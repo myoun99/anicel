@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -195,20 +197,32 @@ void main() {
       final box = tester.widget<RowTransformBox>(
         find.byType(RowTransformBox),
       );
-      expect(box.pose.rotationDegrees, closeTo(30, 0.001));
+      // The FRAME is the picture as the canvas shows it: its top edge runs
+      // the way the folder turned it.
+      final [topLeft, topRight, ...] = box.corners;
+      expect(
+        math.atan2(topRight.y - topLeft.y, topRight.x - topLeft.x) *
+            180 /
+            math.pi,
+        closeTo(30, 0.001),
+      );
+      // …and the turn the box stands on is the row's own, which has none.
+      // ↩️It stood on the folder's turn plus the row's, and the landing took
+      // the folder's back off (50 in, 20 out).
+      expect(box.pose.rotationDegrees, 0);
 
-      box.turn!.committed(50);
+      box.turn!.committed(20);
       await tester.pump();
       expect(
         ownPose(session).rotationDegrees,
         closeTo(20, 0.001),
-        reason: 'shown at 50° under a 30° folder is 20° of its own',
+        reason: 'what the box hands back is the row\'s own turn',
       );
     });
   });
 
   group('in a folder scaled 2x', () {
-    final twice = TransformPose(center: centre, zoom: 2);
+    final twice = TransformPose.uniform(center: centre, zoom: 2);
 
     testWidgets('a move lands under the pointer — half the drag, in the '
         'folder', (tester) async {
@@ -231,19 +245,67 @@ void main() {
       final box = tester.widget<RowTransformBox>(
         find.byType(RowTransformBox),
       );
+      // The FRAME is the picture as the canvas shows it — the fixture's one
+      // mark, 8 across, at twice its size.
+      final [topLeft, topRight, ...] = box.corners;
       expect(
-        box.pose.zoom,
-        closeTo(2, 0.001),
-        reason: 'the box draws the row at the zoom the canvas shows it',
+        topRight.x - topLeft.x,
+        closeTo(8 * 2, 0.001),
+        reason: 'the box draws the row at the size the canvas shows it',
       );
+      // …and the scale the box stands on is the row's own.
+      // ↩️It stood on the folder's zoom times the row's, and the landing
+      // divided the folder's back out (3 in, 1.5 out).
+      expect(box.pose.scale, uniformScale(1));
 
-      box.scale!.committed(3);
+      final scale = box.scale! as RowBoxTwoScales;
+      scale.landing.committed(CanvasPoint(x: 1.5, y: -0.75));
       await tester.pump();
       expect(
-        ownPose(session).zoom,
-        closeTo(1.5, 0.001),
-        reason: 'shown at 3x under a 2x folder is 1.5x of its own',
+        ownPose(session).scale,
+        CanvasPoint(x: 1.5, y: -0.75),
+        reason: 'what the box hands back is the row\'s own two scales',
       );
+    });
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」 — a folder is a row too, so the space a row lives in can be
+  // stretched or flipped now.
+  group('in a folder stretched across and flipped', () {
+    final stretched = TransformPose(center: centre, scaleX: -2);
+
+    testWidgets("the box measures its turn in the folder's space — where the "
+        "row's rotation lives", (tester) async {
+      await standOnTheRowsTransform(tester, stretched);
+      final box = boxOf(tester);
+
+      expect(box.turnSpace, isNotNull);
+      // The folder shows a point 100 right of the centre 200 to its LEFT.
+      expectPoint(
+        box.turnSpace!(CanvasPoint(x: centre.x - 200, y: centre.y + 30)),
+        CanvasPoint(x: centre.x + 100, y: centre.y + 30),
+        'a canvas point, as the folder holds it',
+      );
+    });
+
+    testWidgets('the box is still the row\'s own: its two scales, and the '
+        'sides the folder shows them along', (tester) async {
+      final session = await standOnTheRowsTransform(tester, stretched);
+      final box = boxOf(tester);
+
+      expect(box.scale, isA<RowBoxTwoScales>());
+      expect(box.pose.scale, uniformScale(1));
+      // The picture's top edge runs right to LEFT on the canvas, twice as
+      // long: the fixture's one mark is 8 across.
+      final [topLeft, topRight, ...] = box.corners;
+      expect(topRight.x - topLeft.x, closeTo(-8 * 2, 0.001));
+
+      (box.scale! as RowBoxTwoScales).landing.committed(
+        CanvasPoint(x: 3, y: 1),
+      );
+      await tester.pump();
+      expect(ownPose(session).scale, CanvasPoint(x: 3, y: 1));
     });
   });
 }

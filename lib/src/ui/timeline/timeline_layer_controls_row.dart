@@ -91,8 +91,16 @@ final class ControlsRowFace {
             a.collapsed == b.collapsed &&
             a.isFillReference == b.isFillReference &&
             a.attachedToLayerId == b.attachedToLayerId &&
-            a.attachedPlacement == b.attachedPlacement);
+            a.attachedPlacement == b.attachedPlacement &&
+            _isReference(a) == _isReference(b));
   }
+
+  /// Whether the row stands on a file — what its reference button is
+  /// there for. Only THAT is shown; which file and from where is the
+  /// popover's to read. F-308 (유저 2026-10-06): 「래스터라이즈누르고 레이어
+  /// 이동등 갱신되는행동해야 버튼사라짐」 — left out, a rasterize (and its undo)
+  /// changed nothing this compared, and the button stayed as it was.
+  static bool _isReference(Layer layer) => layer.mediaReference != null;
 
   @override
   int get hashCode => Object.hash(
@@ -108,6 +116,7 @@ final class ControlsRowFace {
     layer.isFillReference,
     layer.attachedToLayerId,
     layer.attachedPlacement,
+    _isReference(layer),
   );
 }
 
@@ -614,7 +623,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       keyPrefix: keyPrefix,
       onMarkSelected: onLayerMarkSelected,
       axis: axis,
-      isVisible: eye.on && !eye.hiddenAbove,
+      isVisible: eye.shown,
     ),
   );
 
@@ -702,8 +711,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// READ, so the letters stand up and the column begins at the top — the
   /// rail's left-aligned name, transposed (user, 2026-08-08). It used to lie
   /// down AND float in the middle of its own column.
-  Widget _nameText(BuildContext context) =>
-      readableText(axis, layer.name, style: layerRowNameStyle(context));
+  ///
+  /// It dims with the eye, as the colour label beside it does (I-62) — so it
+  /// reads the eye the way that label does ([_markChip]), and a flip
+  /// rebuilds the name and not the row.
+  Widget _nameText(BuildContext context) => RailEyeBuilder(
+    layer: layer,
+    builder: (context, eye) => readableText(
+      axis,
+      layer.name,
+      style: layerRowNameStyleFor(layerRowNameStyle(context), shown: eye.shown),
+    ),
+  );
 
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button
@@ -751,26 +770,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _foldTwirl() {
     if (!hasGroupFold || onToggleGroupFold == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
-    return ControlPressClaim(
-      onPressed: () => onToggleGroupFold!(layer.id),
-      child: InkWell(
-        key: ValueKey<String>('$keyPrefix-$kind-twirl-${layer.id}'),
-        onTap: silentPress(() => onToggleGroupFold!(layer.id)),
-        // R26 #28
-        customBorder: const CircleBorder(),
-        child: alongBox(
-          axis,
-          layerLaneToggleSlotWidth,
-          child: acrossBox(
-            axis,
-            24,
-            child: Icon(
-              layerRailTwirlIcon(expanded: groupFoldExpanded),
-              size: 16,
-            ),
-          ),
-        ),
-      ),
+    return LayerFoldTwirl(
+      keyValue: '$keyPrefix-$kind-twirl-${layer.id}',
+      axis: axis,
+      expanded: groupFoldExpanded,
+      onToggle: () => onToggleGroupFold!(layer.id),
     );
   }
 

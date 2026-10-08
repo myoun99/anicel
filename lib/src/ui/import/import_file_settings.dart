@@ -69,6 +69,15 @@ enum MovieParts {
   sound,
 }
 
+/// What of a picture's NUMBERED RUN comes in — the 「연번」 column: `A1`
+/// with its `A2` · `A3` … as one layer's frames, or this file alone.
+///
+/// 🗣️I-76-Q1 (유저 2026-10-08): 「창의 그 파일 줄에서 고른다(기본: 함께)」.
+enum NumberedRun {
+  together,
+  alone,
+}
+
 /// One row's answers.
 class ImportFileSettings {
   const ImportFileSettings({
@@ -76,10 +85,14 @@ class ImportFileSettings {
     this.bake = false,
     this.into = ImportDestination.activeCutLayer,
     this.fit = MediaFitMode.contain,
-    this.psd = PsdPlaceMode.merge,
+    // ↩️F-306-Q1 (유저 2026-10-07: 「psd는 기본값 펼치기. 합치기 남김」) —
+    // MERGE was the default from 08-14. The import brings everything the
+    // file holds, so a PSD comes in as its stack unless the row says merge.
+    this.psd = PsdPlaceMode.expand,
     this.inFrame = 0,
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
+    this.run = NumberedRun.together,
   });
 
   final ImportFileMode mode;
@@ -108,6 +121,10 @@ class ImportFileSettings {
   /// that has a sound ([importSoundAllowed]).
   final MovieParts movieParts;
 
+  /// What of a picture's numbered run comes in (the 「연번」 column) — asked
+  /// only of a picture that is part of one.
+  final NumberedRun run;
+
   bool get isTrimmed => inFrame > 0 || outFrame != null;
 
   ImportFileSettings copyWith({
@@ -120,6 +137,7 @@ class ImportFileSettings {
     int? outFrame,
     bool clearOut = false,
     MovieParts? movieParts,
+    NumberedRun? run,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -129,6 +147,7 @@ class ImportFileSettings {
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
+    run: run ?? this.run,
   );
 
   @override
@@ -141,11 +160,21 @@ class ImportFileSettings {
       other.psd == psd &&
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
-      other.movieParts == movieParts;
+      other.movieParts == movieParts &&
+      other.run == run;
 
   @override
-  int get hashCode =>
-      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame, movieParts);
+  int get hashCode => Object.hash(
+    mode,
+    bake,
+    into,
+    fit,
+    psd,
+    inFrame,
+    outFrame,
+    movieParts,
+    run,
+  );
 }
 
 /// Whether [path] is a Photoshop document — the only kind with a second
@@ -266,15 +295,19 @@ ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
 /// expanded PSD IS its pixels — 「one of them baked means all of them are」
-/// (the user's rule).
+/// (the user's rule). So is a numbered run that comes in [together]: a
+/// layer's reference names one file, and a run is many — the cut folder
+/// those files come from always bakes.
 bool importBakeLocked({
   required bool isPsd,
   required bool placing,
   required PsdPlaceMode psd,
   ImportLayerSpot? spot,
+  bool together = false,
 }) =>
     spot is RowFramesSpot ||
-    (isPsd && placing && psd == PsdPlaceMode.expand);
+    (isPsd && placing && psd == PsdPlaceMode.expand) ||
+    (placing && together);
 
 /// Whether the PSD question has one answer: a row's frames take the merged
 /// picture — expanding makes layers, and a row takes frames.
@@ -303,6 +336,9 @@ ImportFileSettings resolvedImportSettings(
   required bool hasActiveCut,
   required bool lasting,
   ImportLayerSpot? spot,
+
+  /// Whether [settings]' file is part of a numbered run (`celRunOf`).
+  bool inRun = false,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
   final movieParts = importMovieParts(settings.movieParts, spot);
@@ -320,6 +356,7 @@ ImportFileSettings resolvedImportSettings(
             placing: placing,
             psd: psd,
             spot: spot,
+            together: inRun && settings.run == NumberedRun.together,
           ));
   final mode = importModeAllowed(
     mode: settings.mode,
@@ -380,6 +417,12 @@ String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
 
 String importOnOffLabel(bool on) =>
     on ? AppText.strings.commonOn : AppText.strings.commonOff;
+
+/// The 「연번」 column's two answers.
+String importRunLabel(NumberedRun run) => switch (run) {
+  NumberedRun.together => AppText.strings.imRunTogether,
+  NumberedRun.alone => AppText.strings.imRunAlone,
+};
 
 /// The 「소리」 column's three answers: its 끔 and 켬 as they always read,
 /// and the sound alone.

@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/look_test_binding.dart';
+import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -15,7 +18,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -34,6 +36,10 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 void main() {
+  // The view's tests run under the law the app draws by: a frame that was
+  // asked for only to look, and changed nothing, is not drawn.
+  final binding = LookTestBinding.ensureInitialized();
+
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
@@ -125,8 +131,8 @@ void main() {
     required CutFrameCompositeCache composites,
     bool cameraViewEnabled = false,
     ValueListenable<PrerenderProgress>? progress,
+    Listenable? picturesLanded,
     bool Function(CutId cutId)? cutFxEnabledOf,
-    bool Function(CutId cutId)? cutPictureVisibleOf,
     Widget? trackStack,
     // The TRACK's V lanes (R4). The fixture's single cut starts at global
     // 0, so local == global and the identity frame map below is exact.
@@ -138,15 +144,14 @@ void main() {
           body: CanvasPlaybackView(
             controller: controller,
             compositeCache: composites,
-            qualityOf: () => PlaybackQuality.full,
             prerenderProgress:
                 progress ?? ValueNotifier(PrerenderProgress.none),
+            picturesLanded: picturesLanded,
             cameraViewEnabled: cameraViewEnabled,
             cameraFrameSize: const CanvasSize(width: 4, height: 2),
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
-            cutPictureVisibleOf: cutPictureVisibleOf,
             trackStack: trackStack,
             transformTrackOf: transformTrack == null
                 ? null
@@ -158,15 +163,8 @@ void main() {
     );
   }
 
-  PlaybackFramePainter painterOf(WidgetTester tester) {
-    final paint = tester.widget<CustomPaint>(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-        matching: find.byType(CustomPaint),
-      ),
-    );
-    return paint.painter! as PlaybackFramePainter;
-  }
+  PlaybackFramePainter painterOf(WidgetTester tester) =>
+      playbackFramePainter(tester);
 
   testWidgets('shows the warmed composite for the playback frame', (
     tester,
@@ -176,12 +174,10 @@ void main() {
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 1,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -221,33 +217,9 @@ void main() {
 
   // The pose half of the V-row display gates went with the V row's transform:
   // there is no track pose to bypass, and the animated fade it gated is F.I/F.O
-  // spans on the transition row now. The EYE is still a gate, and still here.
-  testWidgets('the V-row eye drops the picture and keeps the paper (R9)', (
-    tester,
-  ) async {
-    // eye off: the warmed composite is withheld from the painter — the
-    // paper stays, the picture doesn't draw.
-    final hidden = fixture();
-    await tester.runAsync(() async {
-      await hidden.composites.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-        quality: PlaybackQuality.full,
-      );
-    });
-    hidden.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: hidden.controller,
-      composites: hidden.composites,
-      cutPictureVisibleOf: (_) => false,
-    );
-    expect(painterOf(tester).image, isNull, reason: 'picture hidden');
-
-    hidden.controller.stop();
-    await tester.pump();
-    hidden.composites.dispose();
-  });
+  // spans on the transition row now. ↩️The EYE was the gate left here — it
+  // dropped the picture and kept the paper (R9) — until it left the V row's
+  // head too (I-73, 2026-10-08).
 
   testWidgets('a playlist GAP frame is a VOID (UI-R9 #2, superseding '
       'R10-⑥): picture AND paper withheld, no fade wash — the panel '
@@ -282,7 +254,6 @@ void main() {
       await composites.prepareComposite(
         cut: gapCut,
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -304,6 +275,18 @@ void main() {
     expect(painterOf(tester).paintPaper, isTrue);
     expect(painterOf(tester).fadeOpacity, 1);
 
+    // …and back in the gap the frame the view still HOLDS is withheld: the
+    // first visit above had nothing held to show, so it could not tell.
+    controller.seekToGlobalFrame(1);
+    await tester.pump();
+    expect(controller.position, isNull, reason: 'LIVENESS: in the gap again');
+    expect(
+      painterOf(tester).image,
+      isNull,
+      reason: 'a void, not the last cut\'s picture',
+    );
+    expect(painterOf(tester).paintPaper, isFalse);
+
     controller.stop();
     await tester.pump();
     controller.dispose();
@@ -319,7 +302,6 @@ void main() {
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -333,6 +315,42 @@ void main() {
 
     expect(f.controller.position!.localFrameIndex, 1);
     expect(painterOf(tester).image, isNotNull, reason: 'stale frame held');
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
+  /// 유저 2026-10-08, the playback rework: the frame under the playhead may
+  /// get its picture while the playhead stands on it, and the controller
+  /// speaks only when the frame changes.
+  testWidgets('a picture that lands under a standing playhead is shown: the '
+      'view repaints when it is told one landed', (tester) async {
+    final f = fixture();
+    final landed = ValueNotifier<int>(0);
+    addTearDown(landed.dispose);
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: f.controller,
+      composites: f.composites,
+      picturesLanded: landed,
+    );
+    expect(painterOf(tester).image, isNull, reason: '⛔premise: none yet');
+
+    await tester.runAsync(
+      () => f.composites.prepareComposite(cut: cut(), frameIndex: 0),
+    );
+    await tester.pump();
+    expect(
+      painterOf(tester).image,
+      isNull,
+      reason: '⛔premise: the frame has not changed, so nothing rebuilt',
+    );
+
+    landed.value += 1;
+    await tester.pump();
+    expect(painterOf(tester).image, isNotNull);
 
     f.controller.stop();
     await tester.pump();
@@ -365,7 +383,6 @@ void main() {
           body: CanvasPlaybackView(
             controller: f.controller,
             compositeCache: f.composites,
-            qualityOf: () => PlaybackQuality.full,
             prerenderProgress: ValueNotifier(PrerenderProgress.none),
             cameraViewEnabled: false,
             cameraFrameSize: const CanvasSize(width: 4, height: 2),
@@ -415,11 +432,61 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('shows warming progress while the cache fills', (tester) async {
+  /// 유저 2026-10-08: 「3 화면을 프레임만큼만 다시그리도록」. The view itself,
+  /// playing: nothing in it asks for a frame of its own while the run goes
+  /// by, so what is drawn is what changed.
+  testWidgets('🚨played through the view, the screen is drawn as often as '
+      'the frame changes — it is looked at on every screen frame', (
+    tester,
+  ) async {
+    final f = fixture();
+    await tester.runAsync(() async {
+      await f.composites.prepareComposite(cut: cut(), frameIndex: 0);
+      await f.composites.prepareComposite(cut: cut(), frameIndex: 1);
+    });
+
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(tester, controller: f.controller, composites: f.composites);
+    await tester.pump();
+    final drawn = binding.drawnFrames;
+    var changes = 0;
+    var frame = f.controller.position!.localFrameIndex;
+    // A second of a 60Hz screen; a frame of the run is 100ms.
+    for (var screen = 0; screen < 60; screen += 1) {
+      await tester.pump(const Duration(microseconds: 16667));
+      final now = f.controller.position!.localFrameIndex;
+      if (now != frame) {
+        changes += 1;
+        frame = now;
+      }
+    }
+
+    expect(changes, 10, reason: '⛔premise: ten frames went by');
+    expect(
+      binding.drawnFrames - drawn,
+      changes,
+      reason: 'sixty screen frames, and the ten that changed the picture '
+          'were drawn',
+    );
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
+  /// 유저 답 F-296-Q5 (2026-10-08): 「자리를 늘 두는 막대로 바꾼다」. ↩️It
+  /// was a strip with the words 「caching N/M」 that came while pictures were
+  /// being made and went when they were — 없다가 생기는 UI.
+  testWidgets('the bar at the foot is always there, says how much of what '
+      'the run wants is made, and says it without words', (tester) async {
     final f = fixture();
     final progress = ValueNotifier(
       const PrerenderProgress(cached: 1, total: 4),
     );
+    addTearDown(progress.dispose);
+    const barKey = ValueKey<String>('canvas-playback-progress');
+    double shown() =>
+        tester.widget<LinearProgressIndicator>(find.byKey(barKey)).value!;
 
     f.controller.play(scope: PlaybackScope.activeCut);
     await pumpView(
@@ -429,18 +496,24 @@ void main() {
       progress: progress,
     );
 
+    expect(shown(), 0.25);
     expect(
-      find.byKey(const ValueKey<String>('canvas-playback-progress')),
-      findsOneWidget,
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('canvas-playback-view')),
+        matching: find.byType(Text),
+      ),
+      findsNothing,
+      reason: '설명 문구 금지 — and the old words were English only',
     );
-    expect(find.text('caching 1/4'), findsOneWidget);
 
     progress.value = const PrerenderProgress(cached: 4, total: 4);
     await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('canvas-playback-progress')),
-      findsNothing,
-    );
+    expect(find.byKey(barKey), findsOneWidget, reason: 'its seat is kept');
+    expect(shown(), 1);
+
+    progress.value = PrerenderProgress.none;
+    await tester.pump();
+    expect(shown(), 1, reason: 'nothing asked for is nothing left to make');
 
     f.controller.stop();
     await tester.pump();

@@ -19,10 +19,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+
+import '../helpers/app_icon_button_probe.dart';
 
 /// 🚨F-101 (유저 2026-09-12): 「스토리보드패널 se랑 타임라인패널 se랑 통일
 /// 안되어있음. 뭐냐면 타임라인패널 se엔 네임태그등 fx 있는데 스토리보드패널엔
@@ -191,6 +194,51 @@ void main() {
       isFalse,
       reason: 'the header wears the timeline\'s switch, and it switches',
     );
+  });
+
+  // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
+  // 변형 도구의 「배율 연동」과 한 스위치」. One switch in the app: each
+  // panel's row shows it, and each flips the one the tool's settings hold.
+  testWidgets("the S row's Scale chain is ONE switch on both panels — the "
+      "transform tool's own", (tester) async {
+    await _openApp(tester);
+    final tool = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .transformOptions!;
+    Finder chain(String panel) => find.byKey(
+      ValueKey<String>('$panel-lane-value-link-${_seId.value}-scale'),
+    );
+    // The Scale lane is inside the row's Transform group.
+    Future<void> openTransform(String panel) async {
+      if (chain(panel).evaluate().isEmpty) {
+        await _press(
+          tester,
+          '$panel-lane-group-toggle-${_seId.value}-transform-group',
+        );
+      }
+    }
+
+    await _press(tester, 'timeline-lane-toggle-${_seId.value}');
+    await openTransform('timeline');
+    expect(tool.value.scaleLinked, isTrue, reason: "the tool's default");
+    expect(tester.appIconButton(chain('timeline')).isSelected, isTrue);
+
+    await _press(tester, 'timeline-lane-value-link-${_seId.value}-scale');
+    expect(tool.value.scaleLinked, isFalse, reason: "the timeline's press");
+    expect(tester.appIconButton(chain('timeline')).isSelected, isFalse);
+
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _press(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
+    await openTransform('storyboard');
+    expect(
+      tester.appIconButton(chain('storyboard')).isSelected,
+      isFalse,
+      reason: 'the storyboard shows the switch the timeline flipped',
+    );
+
+    await _press(tester, 'storyboard-lane-value-link-${_seId.value}-scale');
+    expect(tool.value.scaleLinked, isTrue, reason: "the storyboard's press");
+    expect(tester.appIconButton(chain('storyboard')).isSelected, isTrue);
   });
 
   testWidgets('a clipped take wears its red corner on the S ROW with the '

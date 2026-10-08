@@ -58,6 +58,11 @@ void main() {
     'X',
     'Y', // the transform axes
     'V', // the storyboard's V column, a sheet letter
+    // The export window's Cels list, in the user's own marks (2026-10-06):
+    // 「거기에 CAM버튼도 넣자」 — the camera row, as a sheet writes it — and
+    // 「블록에 디렉션적용시 빨간점말고 D라는 텍스트가 더 맞을듯」.
+    'CAM',
+    'D',
   };
 
   /// Every shape in which a literal reaches the screen from these files.
@@ -213,7 +218,50 @@ void main() {
   /// Edit and To Start — the shared pill's Edit and the sill's 「처음으로」,
   /// which wore table strings until they became actions with keys. Each is
   /// answered in the other four languages by id; the same shape again.
-  const untranslatedElsewhere = 90;
+  ///
+  /// 91 (R9-rest, 2026-10-06): the English row of the text tool's registry
+  /// action, Text Tool — answered in the other four languages by id
+  /// (`shortcutAction.tool-text`). The same shape once more.
+  ///
+  /// 92 (I-45's key, 2026-10-07): the English row of the shared pill's Make
+  /// independent — the button wore a table string until it became an action
+  /// a key can be put on, and is answered in the other four languages by id
+  /// (`shortcutAction.edit-unlink`). The same shape.
+  ///
+  /// 93 (I-63 ③, 2026-10-07): the English row of the layer pill's Add Layer
+  /// — its ＋ became an action beside Add Frame (which only changed its
+  /// words, New Drawing before), answered in the other four languages by id
+  /// (`shortcutAction.layer-add`). The same shape.
+  ///
+  /// 📒Ledger entry 2026-10-07, **95** (93 + 2 — I-40, the top strip's menu
+  /// rows): seventeen rows of the project and settings menus became actions.
+  /// Fifteen of them had their English at the call site, counted there, and
+  /// carry it in the registry now — no change. The other two (새 프로젝트 ·
+  /// 실패본 백업) were worded through getters with an English ROW, which is
+  /// the registry's label now: the row left the table and the count sees a
+  /// literal. All seventeen are answered in the other four languages by id,
+  /// with the words their menu rows already had.
+  ///
+  /// 96 (I-69, 2026-10-08): the English row of the shape tool's registry
+  /// action, Shape Tool — answered in the other four languages by id
+  /// (`shortcutAction.tool-shape`). Its tiles add none: they are generated
+  /// (`_shapeTileActions`) and their label is composed from the table. The
+  /// text tool's shape (91).
+  ///
+  /// 📒Ledger entry 2026-10-08, **118** (96 + 22 — I-40, the timeline bar's
+  /// menu rows): the cut pill's twelve rows, the layer pill's eight, the
+  /// frame pill's one and its auto-frame switch became actions. None was a
+  /// literal this scan reads: sixteen were worded through a getter with an
+  /// English ROW in the table, five through `menuLabel(id, '…')` or the
+  /// window's title, and the thumbnail switch as a ternary of two literals.
+  /// The registry's label is each one's English now, so the count sees
+  /// twenty-two literals it did not see. All are answered in the other four
+  /// languages by id with the words they already had — but 「Pin thumbnail
+  /// frame」, which was English in EVERY language and has its four
+  /// translations as of this round. ★The debt went DOWN (that switch, and
+  /// its 「Unpin」 twin) while the number went up by twenty-two: the number
+  /// is where English is written, not how much is owed.
+  const untranslatedElsewhere = 118;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

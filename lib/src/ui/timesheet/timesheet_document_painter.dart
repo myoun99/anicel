@@ -8,12 +8,14 @@ import '../../core/page_stack.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../../models/sheet_paper.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
@@ -48,38 +50,43 @@ part 'document_painter/timesheet_cells_pass.dart';
 part 'document_painter/timesheet_books_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
-/// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
+/// modeled on the Japanese paper form (A-1/IG style): a portrait page
 /// whose body splits into two side-by-side halves of
 /// [TimesheetDocument.halfFrameCount] rows; each half reads
 /// frame-number gutter | ACTION block (animation layers) | S1·S2 |
 /// CELL block | CAM. The gutter is bare numbers on paper (user direction —
 /// no boxed rail, no grid), printed left of each half.
 ///
-/// The continuous mode keeps the SAME paper width and header band as the
-/// paged form (the paper size never changes with the view toggle — user
-/// rule) and swaps only the body below: ONE half-structure strip with every
-/// row in sequence (global frame numbers) growing downward, in page half
-/// 0's exact geometry so ink coordinates stay stable across the toggle.
+/// 🚨THE FORM IS LAID ON A SHEET OF PAPER (F-294, 유저 2026-10-05:
+/// 「타임시트 용지패널 용지크기 너무 작음 … 1754x2480을 기본으로 할것」). The
+/// form above is measured in units of its own (a frame row is 18); its paper
+/// is `SheetPaper.timesheet`, a size in pixels, and the form lies on it as
+/// large as fits, centred ([_onPaper]) — [paperScale] pixels a unit. Every
+/// measure here stays in the form's units: [paperWidth] and [paperHeight]
+/// are the SHEET as those units measure it, [formRect] is the form on it.
+/// ↩️The form WAS the paper — B4's shape, 1096×1574 of its own units on a
+/// 24fps sheet, shown a unit a pixel.
+///
+/// ↩️There was a CONTINUOUS view beside the pages — one strip of every row
+/// on the page's paper width. The user had it deleted with every trace of
+/// it (2026-10-08, F-252-Q1: 「이어보기를 분명 삭제하라 했던거같은데 …
+/// 삭제. 잔재 싹 삭제」): the sheet is its pages.
 class TimesheetDocumentLayout {
-  TimesheetDocumentLayout({
-    required this.document,
-    this.continuous = false,
-  });
+  TimesheetDocumentLayout({required this.document});
 
   final TimesheetDocument document;
-  final bool continuous;
 
-  /// Page indexes this layout prints, in order: the single strip in
-  /// continuous view, every page one under another otherwise.
+  /// Page indexes this layout prints, in order: every page one under
+  /// another.
   ///
   /// ↩️R26 #41 (07-23) printed ONE sheet at a time in page view and turned
   /// the page by swapping the paper under a view that never moved. F-201
   /// (유저 2026-09-27, F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
   /// 쌓는다」) lays them one under another again, as the conte's and the
   /// viewer's: a turn scrolls to the page (`CanvasBook`).
-  List<int> get visiblePageIndexes => continuous
-      ? const [0]
-      : [for (final page in document.pages) page.index];
+  List<int> get pageIndexes => [
+    for (final page in document.pages) page.index,
+  ];
 
   static const double rowHeight = 18;
   static const double actionColumnWidth = 24;
@@ -87,13 +94,13 @@ class TimesheetDocumentLayout {
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
 
-  /// The CAM group's FIXED total width — the B4 paper must never widen
+  /// The CAM group's FIXED total width — the paper must never widen
   /// when a cut carries more instruction rows (user rule): extra CAM
   /// columns split this allotment into narrower cells instead.
   static const double cameraGroupWidth = cameraColumnWidth * 2;
 
   /// R27 #32: the SE group's FIXED total width, the CAM rule applied to
-  /// the sound columns — adding SE tracks must not lengthen the B4 paper
+  /// the sound columns — adding SE tracks must not lengthen the paper
   /// either. Past the base two slots the extra columns split this
   /// allotment into narrower cells.
   static const double seGroupWidth = seColumnWidth * 2;
@@ -141,42 +148,16 @@ class TimesheetDocumentLayout {
   /// The strips a page lays side by side ([TimesheetSheetKind.strips]).
   int get _strips => document.sheetKind.strips;
 
-  /// A strip's width at its sheet's own column counts, before any scale:
-  /// the ACTION and CELL blocks and the two fixed group allotments.
-  static double _baseStripWidth(TimesheetSheetKind kind) =>
-      kind.celColumns * (actionColumnWidth + celColumnWidth) +
-      seGroupWidth +
-      cameraGroupWidth;
-
-  /// What the strips of [kind] span inside the paper's padding, their
-  /// columns printed [scale] times as wide.
-  static double _stripsSpan(TimesheetSheetKind kind, double scale) =>
-      kind.strips * (frameNumberGutterWidth + _baseStripWidth(kind) * scale) +
-      (kind.strips - 1) * halfGap;
-
-  /// How much wider [kind]'s columns print than the 6-second sheet's: what
-  /// spreads its strips across the SAME paper — 1 on the 6-second sheet,
-  /// about 1.5 on the 3-second one, whose single strip spans what the two
-  /// halves and the gap between them do (the reference sheet's wider
-  /// columns, TOEI_3sec; 유저 2026-09-25: 「형식은 지금 우리가 만든 형식.
-  /// 규격이나 사이즈나 그런거」).
-  static double columnScaleOf(TimesheetSheetKind kind) {
-    final span = _stripsSpan(TimesheetSheetKind.sixSeconds, 1);
-    final fixed = _stripsSpan(kind, 0);
-    return (span - fixed) / (kind.strips * _baseStripWidth(kind));
-  }
-
   int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
 
-  /// Per-column width. Instance-level because the CAM and SE cells share
-  /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
-  /// the base two slots each column in that group narrows so the paper
-  /// width stays put.
-  double columnWidthFor(TimesheetColumnKind kind) =>
-      _baseColumnWidthFor(kind) * columnScaleOf(document.sheetKind);
-
-  /// [columnWidthFor] on the 6-second sheet's scale.
-  double _baseColumnWidthFor(TimesheetColumnKind kind) {
+  /// Per-column width — the same on either sheet: the 3-second sheet
+  /// prints more cells, not wider ones (F-252, 유저 2026-10-08). ↩️Its
+  /// columns printed about half again as wide (`columnScaleOf`).
+  ///
+  /// Instance-level because the CAM and SE cells share a fixed group
+  /// allotment ([cameraGroupWidth] / [seGroupWidth]): past the base two
+  /// slots each column in that group narrows so the paper width stays put.
+  double columnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
     }
@@ -212,12 +193,46 @@ class TimesheetDocumentLayout {
     return width;
   }
 
-  /// One fixed paper width in BOTH modes — the view toggle never resizes
-  /// the paper (or the header band that spans it).
-  double get paperWidth =>
+  /// The printed form's width: its strips, the gap between them and the
+  /// padding round them.
+  double get formWidth =>
       pagePadding * 2 +
       (frameNumberGutterWidth + halfWidth) * _strips +
       halfGap * (_strips - 1);
+
+  /// What the form prints over its rows, and the padding round it all: the
+  /// header band, the memo band and the gap under them.
+  static const double _formHeadHeight =
+      pagePadding * 2 + headerBandHeight + memoBandHeight + headerGap;
+
+  /// The printed form's height: its head and a page's body.
+  double get formHeight => _formHeadHeight + _bodyHeight;
+
+  /// The form on the timesheet's paper (`SheetPaper.timesheet`): as large
+  /// as fits, centred.
+  late final SheetPaperFit _onPaper = SheetPaper.timesheet.around(
+    Size(formWidth, formHeight),
+  );
+
+  /// THE PAPER'S PIXELS A SHEET UNIT TAKES (F-294) — what the panel shows
+  /// the sheet at (`SheetCanvasPanel.paperScale`) and the grade its
+  /// handwriting is kept at: a pixel of the ink is a pixel of the paper, so
+  /// a brush of a size at 100% draws on the sheet as wide as on the canvas.
+  ///
+  /// ↩️It was `timesheetInkScale`, a number of the ink's own: ONE, the
+  /// canvas's grade — the conte's reason (유저 2026-09-26,
+  /// one-paper-brush-width-Q2: 「해상도를 캔버스처럼 낮추기」), and 4 before
+  /// that. One pixel a unit kept the brush as wide as on the canvas only
+  /// because the paper itself was a unit a pixel; the paper has a resolution
+  /// of its own now, and the ink is kept at that.
+  double get paperScale => _onPaper.scale;
+
+  /// The paper of one page, in pixels — what a page's handwriting is kept
+  /// on, pixel for pixel.
+  CanvasSize get paperPixelSize => SheetPaper.timesheet.pixelSize;
+
+  /// The paper's width: the sheet's.
+  double get paperWidth => _onPaper.sheet.width;
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
@@ -239,54 +254,37 @@ class TimesheetDocumentLayout {
   int get _maxHalfRows =>
       halfRowCount(0) > halfRowCount(1) ? halfRowCount(0) : halfRowCount(1);
 
-  double get _pagedBodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
+  double get _bodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
 
-  double get paperHeight => continuous
-      ? pagePadding * 2 +
-            headerBandHeight +
-            memoBandHeight +
-            headerGap +
-            columnsHeaderHeight +
-            document.rowCount * rowHeight
-      : pagePadding * 2 +
-            headerBandHeight +
-            memoBandHeight +
-            headerGap +
-            _pagedBodyHeight;
+  /// The paper's height: the sheet's.
+  double get paperHeight => _onPaper.sheet.height;
 
   double get paperLeft => documentMargin;
 
-  /// Top of a page's paper — the strip's in continuous view.
-  double pageTop(int pageIndex) =>
-      continuous ? documentMargin : _stack.pageRect(pageIndex).top;
+  /// The form on the paper of a page.
+  Rect formRect(int pageIndex) =>
+      (pageRect(pageIndex).topLeft + _onPaper.inset) &
+      Size(formWidth, formHeight);
 
-  /// The paper rect of a page (the whole strip in continuous mode).
-  Rect pageRect(int pageIndex) {
-    if (continuous) {
-      return Rect.fromLTWH(paperLeft, documentMargin, paperWidth, paperHeight);
-    }
-    return Rect.fromLTWH(
-      paperLeft,
-      pageTop(pageIndex),
-      paperWidth,
-      paperHeight,
-    );
-  }
+  /// Top of a page's paper.
+  double pageTop(int pageIndex) => _stack.pageRect(pageIndex).top;
+
+  /// The paper rect of a page.
+  Rect pageRect(int pageIndex) =>
+      Rect.fromLTWH(paperLeft, pageTop(pageIndex), paperWidth, paperHeight);
 
   /// Left edge of a half's column area (past its number gutter).
-  double halfLeft(int pageIndex, int half) {
-    if (continuous) {
-      return paperLeft + pagePadding + frameNumberGutterWidth;
-    }
-    return paperLeft +
-        pagePadding +
-        frameNumberGutterWidth +
-        half * (frameNumberGutterWidth + halfWidth + halfGap);
-  }
+  double halfLeft(int pageIndex, int half) =>
+      paperLeft +
+      _onPaper.inset.dx +
+      pagePadding +
+      frameNumberGutterWidth +
+      half * (frameNumberGutterWidth + halfWidth + halfGap);
 
   /// Top of a half's first row.
   double halfRowsTop(int pageIndex) =>
       pageTop(pageIndex) +
+      _onPaper.inset.dy +
       pagePadding +
       headerBandHeight +
       memoBandHeight +
@@ -347,12 +345,12 @@ class TimesheetDocumentLayout {
   /// ACTION block; the number gutter stays outside both — user fix), its
   /// right edge on half 1's right bold line.
   Rect headerBandRect(int pageIndex) {
-    final page = pageRect(pageIndex);
-    final left = page.left + pagePadding + frameNumberGutterWidth;
+    final form = formRect(pageIndex);
+    final left = form.left + pagePadding + frameNumberGutterWidth;
     return Rect.fromLTWH(
       left,
-      page.top + pagePadding,
-      page.right - pagePadding - left,
+      form.top + pagePadding,
+      form.right - pagePadding - left,
       headerBandHeight,
     );
   }
@@ -394,12 +392,8 @@ class TimesheetDocumentLayout {
     return Rect.fromLTWH(band.left, band.bottom, band.width, memoBandHeight);
   }
 
-  /// Where a global frame lands: page, half and row within the half. The
-  /// continuous strip is a single half per "page block".
+  /// Where a global frame lands: page, half and row within the half.
   ({int page, int half, int row}) positionOfFrame(int frameIndex) {
-    if (continuous) {
-      return (page: 0, half: 0, row: frameIndex);
-    }
     final page = frameIndex ~/ document.pageFrameCount;
     final local = frameIndex % document.pageFrameCount;
     final half = math.min(local ~/ document.halfFrameCount, _strips - 1);
@@ -443,20 +437,16 @@ class TimesheetDocumentLayout {
   /// [pageCount] overrides the document's sheet count for a paint that is
   /// following a cut-length drag (F-88) — the paper itself still re-flows
   /// on the release.
-  String pageLabel(int pageIndex, {int? pageCount}) => continuous
-      ? '1/1'
-      : '${pageIndex + 1}/${pageCount ?? document.pages.length}';
+  String pageLabel(int pageIndex, {int? pageCount}) =>
+      '${pageIndex + 1}/${pageCount ?? document.pages.length}';
 
   /// The paper the document lays out — every page and the gaps between
   /// them, inside the margin round the whole: where the panel's view stops
   /// (F-201).
-  Rect get paper => continuous ? pageRect(0) : _stack.paper;
+  Rect get paper => _stack.paper;
 
-  /// Logical size of the whole document — the one strip in continuous
-  /// view, the stack otherwise.
-  Size get documentSize => continuous
-      ? Size(documentMargin * 2 + paperWidth, documentMargin * 2 + paperHeight)
-      : _stack.size;
+  /// Logical size of the whole document: the stack of its pages.
+  Size get documentSize => _stack.size;
 }
 
 /// Clips to the panel and enters DOCUMENT SPACE — the prologue every
@@ -747,50 +737,30 @@ class TimesheetDocumentPainter extends CustomPainter
         ? null
         : canvasRectShown(resolvedViewport, size);
 
-    if (layout.continuous) {
-      _bands.paintPaper(canvas, 0);
-      _bands.paintHeaderBand(canvas, 0);
-      if (_drawContent) {
-        _bands.paintMemoBand(canvas, 0);
+    // Every page, one under another.
+    for (final page in document.pages) {
+      // A whole page off screen costs nothing at all — this is where the
+      // stacked multi-page document stops being O(document).
+      final pageBounds = layout.pageRect(page.index);
+      if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
+        continue;
       }
-      _cells.paintHalf(
-        canvas,
-        pageIndex: 0,
-        half: 0,
-        startFrame: 0,
-        rowCount: document.rowCount,
-      );
+      _bands.paintPaper(canvas, page.index);
+      _bands.paintHeaderBand(canvas, page.index);
       if (_drawContent) {
-        _books.paintHalf(canvas, pageIndex: 0, half: 0);
+        _bands.paintMemoBand(canvas, page.index);
       }
-    } else {
-      // Every page, one under another.
-      for (final pageIndex in layout.visiblePageIndexes) {
-        final page = document.pages[pageIndex];
-        // A whole page off screen costs nothing at all — this is where
-        // the stacked multi-page document stops being O(document).
-        final pageBounds = layout.pageRect(page.index);
-        if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
-          continue;
-        }
-        _bands.paintPaper(canvas, page.index);
-        _bands.paintHeaderBand(canvas, page.index);
+      for (final strip in layout.halfStrips) {
+        _cells.paintHalf(
+          canvas,
+          pageIndex: page.index,
+          half: strip.half,
+          startFrame:
+              page.startFrame + (strip.half == 0 ? 0 : document.halfFrameCount),
+          rowCount: strip.rowCount,
+        );
         if (_drawContent) {
-          _bands.paintMemoBand(canvas, page.index);
-        }
-        for (final strip in layout.halfStrips) {
-          _cells.paintHalf(
-            canvas,
-            pageIndex: page.index,
-            half: strip.half,
-            startFrame:
-                page.startFrame +
-                (strip.half == 0 ? 0 : document.halfFrameCount),
-            rowCount: strip.rowCount,
-          );
-          if (_drawContent) {
-            _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
-          }
+          _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
         }
       }
     }
@@ -974,7 +944,6 @@ class TimesheetDocumentPainter extends CustomPainter
 
   @override
   Object get props => (
-    layout.continuous,
     viewport,
     face,
     // Null means ALL strata, which is a different input from an empty set,
@@ -1082,12 +1051,6 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
     // the same CODE now, not a second copy kept in step by hand.
     _enterDocumentSpace(canvas, size, viewport, effectiveRatio);
     final position = layout.positionOfFrame(frame);
-    // Page view (R26 #41): the playhead highlights nothing while the user
-    // is looking at another page.
-    if (!layout.visiblePageIndexes.contains(position.page)) {
-      canvas.restore();
-      return;
-    }
     final left = layout.halfLeft(position.page, position.half);
     canvas.drawRect(
       Rect.fromLTWH(
@@ -1104,7 +1067,6 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props => (
     ByIdentity(document),
-    layout.continuous,
     viewport,
     effectiveRatio,
   );

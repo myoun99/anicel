@@ -3,7 +3,6 @@ import '../core/color_matrix.dart';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
@@ -16,6 +15,7 @@ import 'composite_effect_paint.dart'
 import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
 import 'cel_source_effect_pass.dart';
+import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 
 /// The default blend base when the caller does not thread the project
@@ -106,9 +106,9 @@ List<double>? _adjustmentColorMatrix({
 }
 
 /// The canvas point mapped into [entry]'s ARTWORK space — the inverse of
-/// the pose every composite route paints with ([canvasToArtwork], the one
-/// inverse). Null when the pose is singular (a zero zoom collapses the
-/// layer to nothing, so there is no pixel under the pointer).
+/// the placement every composite route paints with ([canvasToArtwork], the
+/// one inverse). Null when the placement is singular (a zero scale
+/// collapses the layer to nothing, so there is no pixel under the pointer).
 ///
 /// R28 #7: posed layers used to be SKIPPED here, which meant any layer
 /// carrying a transform — or merely sitting inside a folder that did —
@@ -117,17 +117,10 @@ List<double>? _adjustmentColorMatrix({
 /// whether a transform key happened to exist at the time.
 CanvasPoint? _artworkPointFor(
   CutFrameCompositeEntry entry,
-  CanvasSize canvasSize,
   CanvasPoint point,
 ) {
-  final pose = entry.pose;
-  if (pose == null) {
-    return point;
-  }
-  return canvasToArtwork(
-    (pose: pose, anchorPoint: entry.anchorPoint),
-    canvasSize,
-  )?.apply(point);
+  final placement = entry.placement;
+  return placement == null ? point : canvasToArtwork(placement)?.apply(point);
 }
 
 /// Samples the color at [point] (P5 eyedropper); returns opaque ARGB.
@@ -231,11 +224,14 @@ int sampleCompositeColor({
     if (read != null && !read.contains(entry.layer.id)) {
       continue;
     }
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
+    final drawing = surfaceResolver(entry.layer, entry.frame);
+    if (drawing == null) {
       continue;
     }
-    final artworkPoint = _artworkPointFor(entry, cut.canvasSize, point);
+    // The cel as it SHOWS — a letter's colour is picked as a drawn line's
+    // is (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+    final surface = celSurfaceWithTextsLaid(drawing);
+    final artworkPoint = _artworkPointFor(entry, point);
     if (artworkPoint == null) {
       continue;
     }

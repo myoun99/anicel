@@ -132,14 +132,26 @@ class _TimesheetCellsPass {
     // the table's outer edges stay), so interior lines draw in segments
     // skipping the SE ranges.
     if (!_painter._drawForm) {
-      // Content-only: skip the grid entirely and print the cells.
-      _paintHalfCells(
-        canvas,
-        left: left,
-        rowsTop: rowsTop,
-        startFrame: startFrame,
-        rowCount: rowCount,
-      );
+      // No form: no grid — and the cells only where the values are printed,
+      // as the form's own branch below asks.
+      //
+      // 🚨F-269 (유저 2026-10-03): 「off해서 껐는데 글자가 남아있고, 글자가
+      // 연하게 됬을뿐」 · 「다른탭 갔다 돌아오면 정상적으로 사라져있음」. This
+      // branch was written when a sheet had two strata, form and content, so
+      // 「not the form」 meant the values. The ink stratum (09-26) is not the
+      // form either, and printed every cell a second time — into a bake that
+      // re-records for the ink alone, so a value turned off stayed in it
+      // until the panel was built again. The export printed them a third
+      // time, once a stratum.
+      if (_painter._drawContent) {
+        _paintHalfCells(
+          canvas,
+          left: left,
+          rowsTop: rowsTop,
+          startFrame: startFrame,
+          rowCount: rowCount,
+        );
+      }
       return;
     }
     _paintRowLines(canvas, sheet);
@@ -173,8 +185,8 @@ class _TimesheetCellsPass {
     }
 
     // Gutter frame numbers on even frames, bare on the paper left of the
-    // half — page-local on paper, global in the continuous strip. On each
-    // second's LAST frame row (24, 48, …) the second index prints BOLD in
+    // half, counted from the page's first frame. On each second's LAST
+    // frame row (24, 48, …) the second index prints BOLD in
     // place of the frame number — the paper convention (A-1 form).
     _paintRowNumbers(canvas, sheet);
 
@@ -194,9 +206,7 @@ class _TimesheetCellsPass {
   void _paintRowNumbers(Canvas canvas, _HalfFrame sheet) {
     for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
       final frame = sheet.startFrame + row;
-      final printed = _painter.layout.continuous
-          ? frame + 1
-          : frame % _painter.document.pageFrameCount + 1;
+      final printed = frame % _painter.document.pageFrameCount + 1;
       final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
       if (printed % _painter.document.fps == 0) {
         _painter._text(
@@ -440,7 +450,7 @@ class _TimesheetCellsPass {
   void _paintMark(Canvas canvas, _CellSlot slot, InbetweenMark mark) =>
       paintInbetweenMark(canvas, mark, (
         center: Offset(slot.centerX, slot.cellCenterY),
-        radius: timesheetInbetweenMarkRadius,
+        size: const Size.square(timesheetInbetweenMarkRadius * 2),
       ), TimesheetDocumentPainter._ink);
 
   /// A held cell's bar, by column: the SE red bar or the action hold bar.
@@ -563,6 +573,8 @@ class _TimesheetCellsPass {
         // X-sheet column verbatim: the mark owns the whole slot.cell width,
         // A/B center in their endpoint cells (frame-name style) and
         // the writing centers on the span's middle slot.row.
+        final rowsTop =
+            slot.cellTop - slot.row * TimesheetDocumentLayout.rowHeight;
         _painter._instructions.paintInstructionRow(
           canvas,
           cell: slot.cell,
@@ -570,6 +582,10 @@ class _TimesheetCellsPass {
           columnWidth: slot.columnWidth,
           centerX: slot.centerX,
           cellTop: slot.cellTop,
+          rows: (
+            top: rowsTop,
+            bottom: rowsTop + rowCount * TimesheetDocumentLayout.rowHeight,
+          ),
         );
       case TimesheetCellKind.empty:
         break;

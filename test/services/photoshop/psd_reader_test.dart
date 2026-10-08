@@ -323,6 +323,120 @@ void main() {
       expect(document.layers.last.hasPixels, isFalse);
     });
 
+    test('a folder Photoshop shows closed comes back closed — an open one '
+        'open (F-306)', () {
+      PsdTestLayer row(String name, int section) => PsdTestLayer(
+        name: name,
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        sectionType: section,
+        planes: const [],
+      );
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 2,
+          layers: [
+            row('</Layer group>', 3),
+            row('open', 1),
+            row('</Layer group>', 3),
+            row('closed', 2),
+          ],
+        ),
+      );
+      expect(
+        [for (final layer in document.layers) (layer.role, layer.collapsed)],
+        [
+          (PsdLayerRole.groupClose, false),
+          (PsdLayerRole.groupOpen, false),
+          (PsdLayerRole.groupClose, false),
+          (PsdLayerRole.groupOpen, true),
+        ],
+      );
+    });
+
+    test('layer effects that are on are said — off at the master switch, or '
+        'every effect off, they are not (F-306)', () {
+      PsdTestLayer layer(String name, List<int>? effects) => PsdTestLayer(
+        name: name,
+        left: 0,
+        top: 0,
+        right: 2,
+        bottom: 2,
+        planes: psdSolidPlanes(2, 2, [9, 9, 9]),
+        effects: effects,
+      );
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 2,
+          layers: [
+            layer('none', null),
+            layer('shadow', psdEffects()),
+            layer('master off', psdEffects(master: false)),
+            layer(
+              'all off',
+              psdEffects(effects: const {'DrSh': false, 'FrFX': false}),
+            ),
+            layer(
+              'one of two',
+              psdEffects(effects: const {'DrSh': false, 'FrFX': true}),
+            ),
+            // A block that cannot be followed: said rather than lost.
+            layer('unreadable', const [0, 0, 0, 0, 0, 0, 0, 9]),
+          ],
+        ),
+      );
+      expect(
+        {
+          for (final layer in document.layers)
+            layer.name: layer.hasLayerEffects,
+        },
+        {
+          'none': false,
+          'shadow': true,
+          'master off': false,
+          'all off': false,
+          'one of two': true,
+          'unreadable': true,
+        },
+      );
+      expect(
+        document.layers.every((layer) => layer.hasPixels),
+        isTrue,
+        reason: 'the walk past the blocks did not lose its place',
+      );
+    });
+
+    test('the legacy effects block counts only where no newer one speaks', () {
+      PsdTestLayer layer(String name, {List<int>? effects}) => PsdTestLayer(
+        name: name,
+        left: 0,
+        top: 0,
+        right: 2,
+        bottom: 2,
+        planes: psdSolidPlanes(2, 2, [9, 9, 9]),
+        effects: effects,
+        legacyEffects: true,
+      );
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 2,
+          layers: [
+            layer('legacy alone'),
+            layer('newer says off', effects: psdEffects(master: false)),
+          ],
+        ),
+      );
+      expect(
+        [for (final layer in document.layers) layer.hasLayerEffects],
+        [true, false],
+      );
+    });
+
     test('an adjustment layer is named rather than mistaken for a picture', () {
       final document = readPsdDocument(
         buildPsd(

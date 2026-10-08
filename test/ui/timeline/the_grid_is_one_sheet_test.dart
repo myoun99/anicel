@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
+import 'timeline_cell_probe.dart' show isInbetweenMarkShape;
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨I-44 (유저 2026-09-23 → 09-24): 「가로선이랑 세로선이 2개 중복해서있고 …
@@ -213,7 +214,7 @@ void main() {
       final painter = painterFor(paperGround: host);
       final spy = _PaintSpy();
       painter.paint(spy, const Size(960, 28));
-      expect(spy.lines, isEmpty, reason: 'the hold dash aside, no line');
+      expect(spy.lines, isEmpty, reason: 'a hold\'s line aside, no line');
       expect(
         spy.fills.map((f) => f.rect).toList(),
         [painter.paperRectFor(10).expandToInclude(painter.paperRectFor(13))],
@@ -447,7 +448,7 @@ void _grid43Round() {
 }
 
 /// Every line and every filled box a painter asks for, with its colour and
-/// in the order asked.
+/// in the order asked — a mark aside ([isInbetweenMarkShape]).
 class _PaintSpy implements Canvas {
   final lines = <({Offset from, Offset to, Color color})>[];
   final fills = <({Rect rect, Color color})>[];
@@ -467,6 +468,9 @@ class _PaintSpy implements Canvas {
 
   @override
   void drawRRect(RRect rrect, Paint paint) {
+    if (isInbetweenMarkShape(rrect)) {
+      return;
+    }
     fills.add((rect: rrect.outerRect, color: paint.color));
     order.add('fill');
   }

@@ -2,9 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 
 /// R7-③ pixel pins: in CANVAS mode the cut pose (V track) moves only the
@@ -61,7 +61,7 @@ void main() {
         canvasSize: canvasSize,
         // The content's center lands on x=8 (the canvas's right edge):
         // its left half fills canvas x 4..8, the right half clips away.
-        cutPose: CameraPose(center: CanvasPoint(x: 8, y: 4)),
+        cutPose: TransformPose(center: CanvasPoint(x: 8, y: 4)),
       ),
     );
     expect(

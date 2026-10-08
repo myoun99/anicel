@@ -27,6 +27,7 @@ import '../../core/path_names.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
+import 'session_scratch.dart';
 
 /// How a folder request ended.
 enum FolderPickStatus {
@@ -248,6 +249,13 @@ class MaterializeCancelled implements Exception {
   String toString() => 'MaterializeCancelled';
 }
 
+/// The clock one wait for a file runs on: how long the wait has gone on,
+/// and a sleep of one slice that ends early when `sooner` does.
+typedef WaitClock = ({
+  Duration Function() elapsed,
+  Future<void> Function(Duration slice, Future<void>? sooner) sleep,
+});
+
 abstract final class FolderPicker {
   /// Test seam. The repo's convention for a Dart→native call is an
   /// injectable override rather than a mocked channel (`setMockMethodCallHandler`
@@ -300,11 +308,6 @@ abstract final class FolderPicker {
   @visibleForTesting
   static Future<FolderGrant> Function(List<String> sourcePaths)?
   debugFilesExporter;
-
-  /// The same seam for [shareFiles]. ⚠️Reset in
-  /// `test/flutter_test_config.dart`, like the seams above.
-  @visibleForTesting
-  static Future<bool> Function(List<String> paths)? debugFileSharer;
 
   /// Test seam for the OS these rules are read from.
   ///
@@ -390,6 +393,31 @@ abstract final class FolderPicker {
   @visibleForTesting
   static bool coordinatorForPlatform(String operatingSystem) =>
       operatingSystem == 'ios' || operatingSystem == 'macos';
+
+  /// Whether [operatingSystem] has a SAVE WINDOW THAT ANSWERS WITH A PATH
+  /// and makes nothing — which is what lets a file be asked its place
+  /// before it exists ([pickSaveDestination]). The desktops have one, macOS
+  /// among them. iOS has none (Apple never built it), and Android's makes
+  /// the file the moment a place is picked.
+  ///
+  /// 🚨A DIFFERENT QUESTION from [grantsAreScoped], and macOS is the
+  /// platform that answers yes to both: its window answers with a path, and
+  /// that path — the one file, nothing beside it — is all the sandbox lets
+  /// the app write. So two things stay as they were there. Save As does not
+  /// ask through this window: a project goes on being saved where it lands,
+  /// and that needs the bookmark its own runner mints with the pick
+  /// ([exportFile]). And nothing may be written BESIDE the answer — no
+  /// suffix added to its name, no folder made around it, no temp file next
+  /// to it.
+  ///
+  /// ⚠️UNVERIFIED ON DEVICE for macOS: written on the Windows workstation.
+  /// It leans on the file_selector plugin's save panel handing the sandbox
+  /// the picked path, as it does for every sandboxed app that saves through
+  /// it.
+  static bool aSaveWindowAnswersAPathOn(String operatingSystem) =>
+      operatingSystem == 'windows' ||
+      operatingSystem == 'linux' ||
+      operatingSystem == 'macos';
 
   /// Asks the user for a folder.
   ///
@@ -549,26 +577,19 @@ abstract final class FolderPicker {
     }, GrantKind.file)).first;
   }
 
-  /// Offers [paths] to another app through the system's share sheet —
-  /// Android's road for several files, where no picker places more than
-  /// one (「드라이브에 저장」 takes them there). True once the sheet was
-  /// shown; whatever takes them reads them afterwards, so they must stay.
-  static Future<bool> shareFiles(List<String> paths) async {
-    final override = debugFileSharer;
-    if (override != null) {
-      return override(paths);
-    }
-    final answer = await _invoke('shareFiles', {
-      'paths': paths,
-    }, GrantKind.file);
-    return answer.first.status == FolderPickStatus.granted;
-  }
+  // 🪦`shareFiles` — Android's share sheet, the road several finished
+  // outputs took there while no window placed more than one — is gone
+  // (F-221, 유저 2026-10-06). It unpacked a folder into loose files, and it
+  // only ever OFFERED them: whatever took them read them later, so they
+  // could not be let go. Several files are asked a folder now, before they
+  // are made (`outputsAskedTheirPlaceFirst`).
 
-  /// Save As on the platforms that HAVE a save dialog: the dialog answers
-  /// with a path — nothing is created and nothing moves. The save that
-  /// follows writes the file at that path itself (temp beside the
-  /// destination + rename, atomic against whatever it replaces), which is
-  /// what every surveyed desktop pro tool does.
+  /// The save window of the platforms that have one answering with a path
+  /// ([aSaveWindowAnswersAPathOn]): nothing is created and nothing moves —
+  /// whoever asked writes the file there itself. Save As on Windows and
+  /// Linux does (temp beside the destination + rename, atomic against
+  /// whatever it replaces — what every surveyed desktop pro tool does), and
+  /// so does everything that writes one file where it is told.
   ///
   /// [acceptedTypeGroups] reaches the dialog's file-type filter. ⚠️The
   /// Windows plugin passes the filter to the dialog but never calls
@@ -587,10 +608,10 @@ abstract final class FolderPicker {
         initialDirectory: initialDirectory,
       );
     }
-    if (grantsAreScoped) {
+    if (!aSaveWindowAnswersAPathOn(_operatingSystem)) {
       throw StateError(
-        'Scoped platforms have no save dialog; Save As goes through '
-        'exportFile there.',
+        '$_operatingSystem has no save window that answers with a path; a '
+        'file is made first and placed there (exportFile).',
       );
     }
     try {
@@ -876,7 +897,9 @@ abstract final class FolderPicker {
   /// The staged road survives as an ALARMED last resort: `staged: true`
   /// is the caller's cue to say so on screen, so a build that still
   /// needs it is visible rather than quietly slower. If it never fires
-  /// in the field, it comes out.
+  /// in the field, it comes out. ↩️Its copy is made in this run's room
+  /// now ([SessionScratch.openedFolder]), which gives it the run's
+  /// lifetime — loose in the system temp, nothing ever removed one.
   ///
   /// ⚠️A pick with NO ENTRY gets no wait and no ask — nothing is on its
   /// way to a path that does not exist — but it does get the one staged
@@ -939,7 +962,7 @@ abstract final class FolderPicker {
     // spacing's running total — so the line it drew skipped seconds (0 · 0 ·
     // 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and
     // the backoff is only the backoff.
-    final clock = Stopwatch()..start();
+    final clock = (debugWaitClock ?? _realWaitClock)();
     var pause = step;
     // What the last probe SAW, so the wait's sentence can be true instead of
     // guessed from the clock ([cloudWaitLine]).
@@ -961,22 +984,17 @@ abstract final class FolderPicker {
         if (isCancelled?.call() ?? false) {
           throw const MaterializeCancelled();
         }
-        if (within != null && clock.elapsed >= within) {
+        if (within != null && clock.elapsed() >= within) {
           return false;
         }
         final left = pause - slept;
         final slice = left < _reportEvery ? left : _reportEvery;
-        final elapsed = Completer<void>();
-        final timer = Timer(slice, elapsed.complete);
-        await (sooner == null
-            ? elapsed.future
-            : Future.any<void>([sooner, elapsed.future]));
-        timer.cancel();
+        await clock.sleep(slice, sooner);
         if (settled?.call() ?? false) {
           return true;
         }
         slept += slice;
-        onWaiting?.call(clock.elapsed, seen);
+        onWaiting?.call(clock.elapsed(), seen);
         if (slept >= pause) {
           // Doubling, capped: the common case lands within a second or two.
           pause = pause * 2;
@@ -1053,16 +1071,28 @@ abstract final class FolderPicker {
         }
       }
     }
-    final dot = path.lastIndexOf('.');
-    final extension = dot > path.lastIndexOf(Platform.pathSeparator)
-        ? path.substring(dot)
-        : '';
+    final name = fileNameOfPath(path);
+    final dot = name.lastIndexOf('.');
+    final extension = dot < 0 ? '' : name.substring(dot);
+    // 🚨IN THIS RUN'S ROOM, NOT LOOSE IN THE SYSTEM TEMP (2026-10-08). The
+    // project door reads its cels out of this copy for as long as the
+    // session is open, so no read could delete it when it was done, and
+    // nothing else ever did: every copy stayed in the temp for good. The
+    // room goes with the run — a normal exit removes it, and the next launch
+    // sweeps the room of a run that died.
+    final room = SessionScratch.openedFolder();
+    Directory(room).createSync(recursive: true);
     final staged =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}'
-        'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
+        '$room/anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
     if (await readFileCoordinated(sourcePath: path, destinationPath: staged) &&
         await arrivalOf(staged) == FileArrival.whole) {
       return (path: staged, staged: true);
+    }
+    // A copy that never arrived whole is nobody's to read.
+    try {
+      File(staged).deleteSync();
+    } on FileSystemException {
+      // Never written, or held: the room goes with the run either way.
     }
     throw FileSystemException('파일을 읽지 못했습니다', path);
   }
@@ -1073,6 +1103,31 @@ abstract final class FolderPicker {
   /// with [_materializeMaxStep]: a clock that skipped seconds is exactly
   /// what F-141 reported.
   static const Duration _reportEvery = Duration(seconds: 1);
+
+  /// The clock a wait runs on: a stopwatch started with it, and a timer for
+  /// each slice — which [sooner] ends early, taking the timer with it.
+  static WaitClock _realWaitClock() {
+    final stopwatch = Stopwatch()..start();
+    return (
+      elapsed: () => stopwatch.elapsed,
+      sleep: (slice, sooner) async {
+        final over = Completer<void>();
+        final timer = Timer(slice, over.complete);
+        await (sooner == null
+            ? over.future
+            : Future.any<void>([sooner, over.future]));
+        timer.cancel();
+      },
+    );
+  }
+
+  /// Test seam for the clock each wait starts — so the beat the window is
+  /// told can be counted in no real time. A pin that waited four real
+  /// seconds went red on a busy machine: the timers slipped past a second
+  /// and the true clock skipped one (board
+  /// `the-cloud-wait-clock-pin-skips-a-second-under-load`).
+  /// ⚠️Reset in `test/flutter_test_config.dart`.
+  static WaitClock Function()? debugWaitClock;
 
   /// Test seam for [requestFileDownload]. ⚠️Reset in
   /// `test/flutter_test_config.dart`.

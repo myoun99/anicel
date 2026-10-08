@@ -176,17 +176,17 @@ void main() {
     addTearDown(image.dispose);
 
     expect(
-      sheetPictureQuality(image, const Rect.fromLTWH(0, 0, 40, 20), 2),
+      sheetPictureQuality(image.width, const Rect.fromLTWH(0, 0, 40, 20), 2),
       FilterQuality.low,
       reason: '80 device pixels for 100: reduced, so filtered',
     );
     expect(
-      sheetPictureQuality(image, const Rect.fromLTWH(0, 0, 50, 25), 2),
+      sheetPictureQuality(image.width, const Rect.fromLTWH(0, 0, 50, 25), 2),
       FilterQuality.none,
       reason: 'a pixel a pixel',
     );
     expect(
-      sheetPictureQuality(image, const Rect.fromLTWH(0, 0, 100, 50), 2),
+      sheetPictureQuality(image.width, const Rect.fromLTWH(0, 0, 100, 50), 2),
       FilterQuality.none,
       reason: 'magnified: the pixels themselves, as the canvas shows them',
     );

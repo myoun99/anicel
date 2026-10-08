@@ -167,9 +167,13 @@ class _WorkspaceBrushPresets {
 
   Timer? _brushHandSettingsSave;
 
-  /// What the workspace does whenever the tool state moves — three rules, in
+  /// What the workspace does whenever the tool state moves — four rules, in
   /// this order.
   ///
+  /// 0. F-319: a hand that is another — another tool, another brush — ends
+  ///    whatever tab the library was looking into
+  ///    (`_WorkspaceBrushGroups.followHand`). First, and for every tool: a
+  ///    tool that paints nothing coming to hand is a hand changed too.
   /// 1. H36: a painting tool in hand that holds NO brush opens on the
   ///    library's opening preset — the moment a tool is first held is its
   ///    opening moment, for every tool and not only the one the app starts
@@ -184,6 +188,7 @@ class _WorkspaceBrushPresets {
   /// Which preset each paint tool holds is not kept here: it rides in that
   /// tool's state, which `PaintToolStateNotifier` banks per tool (R11-④).
   void followBrushTool() {
+    _state._brushGroups.followHand();
     final state = _state._brushTool.value;
     // A tool that puts no brush down carries the brush's state through
     // untouched — nothing it holds is being set by anyone.
@@ -256,18 +261,6 @@ class _WorkspaceBrushPresets {
     _brushHandSettings
       ..clear()
       ..addAll(recalled);
-  }
-
-  void _applyPreset(BrushPreset preset) {
-    // Applying a preset KEEPS the active painting tool (R11-④: the eraser
-    // owns its own preset choice); from a non-painting tool it arms the
-    // brush. Which settings survive the swap is the state's own rule —
-    // see [BrushToolState.withPreset].
-    final current = _state._brushTool.value;
-    final targetTool = canvasToolPaints(current.tool)
-        ? current.tool
-        : CanvasTool.brush;
-    _state._brushTool.value = _brushFromPreset(current, preset, targetTool);
   }
 
   /// [from] holding [preset]'s brush for [tool]. H25: the brush as the hand
@@ -460,7 +453,8 @@ class _WorkspaceBrushPresets {
   ///
   /// ⇒ Applying a preset makes them ONE fact: the tool takes its settings,
   /// the panel highlights it, and H25's per-brush size/opacity comes back
-  /// with it. ⚠️Through `_applyPreset`, not by setting an id — an id alone
+  /// with it. ⚠️Through `_WorkspaceBrushGroups.takeUp`, not by setting an
+  /// id — an id alone
   /// would put the highlight on a brush the tool is not holding, which is
   /// the same disagreement pointing the other way.
   ///
@@ -483,7 +477,7 @@ class _WorkspaceBrushPresets {
     if (preset == null) {
       return;
     }
-    _applyPreset(preset);
+    _state._brushGroups.takeUp(tool, preset);
   }
 
   /// The group the tool's active preset sits in — where a newly saved
@@ -545,26 +539,19 @@ class _WorkspaceBrushPresets {
     }
     final message = await _state._presetLibrary.exportPresets(
       presets,
-      pickDestination: (suggestedName) async {
-        final grant = await pickSaveDestinationForUser(
-          _state.context,
-          suggestedName: suggestedName,
-          acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
-        );
-        return grant?.path;
-      },
-      write: (path, contents) async {
-        // ⚠️The Windows save dialog does not append the extension the filter
-        // names (see `FolderPicker.pickSaveDestination`), so the caller
-        // answers the suffix — here, once, rather than in the library, which
-        // has no business knowing which platform asked.
-        final withSuffix = path.toLowerCase().endsWith(
-          '.$anicelBrushExtension',
-        )
-            ? path
-            : '$path.$anicelBrushExtension';
-        await File(withSuffix).writeAsString(contents, flush: true);
-      },
+      // The door every finished file leaves by: where a save window answers
+      // with a path it asks there — the suffix a name typed bare lacks, and
+      // the replace question it re-opens, are that window's door's
+      // ([pickSaveFileForUser]) — and where none does it writes in the app
+      // first and the export window places it. ↩️This appended the suffix
+      // itself, at the write, and so wrote over whatever stood at the
+      // suffixed name unasked.
+      hand: (suggestedName, write) => handWrittenFileToUser(
+        _state.context,
+        suggestedName: suggestedName,
+        acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
+        write: write,
+      ),
     );
     if (message != null) {
       await _notice(message);

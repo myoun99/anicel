@@ -3,22 +3,20 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/transform_track.dart';
 import '../../models/cut.dart' show Cut;
-import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
-import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
 
-/// The OPACITY VERBS — a layer's, several layers' and a track's opacity:
-/// what the stack shows, the preview while a slider moves and the commit
-/// when it lets go, and the editing fade of the active cut — as their own
-/// object.
+/// The OPACITY VERBS — a layer's and several layers' opacity: what the
+/// stack shows, the preview while a slider moves and the commit when it
+/// lets go, and the editing fade of the active cut — as their own object.
+/// (↩️A track's too, until the V row lost its opacity — I-73, 2026-10-08.)
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Dry-run before cutting: the rest reads it in two places
@@ -53,20 +51,12 @@ class OpacityVerbs {
   final ValueNotifier<({Set<LayerId> layerIds, double opacity})?> dragPreview =
       ValueNotifier(null);
 
-  /// The live V-row opacity drag (per the drag-verb rule): per-move
-  /// preview, ONE write on release.
-  final ValueNotifier<({TrackId trackId, double opacity})?> trackDragPreview =
-      ValueNotifier(null);
-
   /// The master bar's LAST committed value — the bar rests on this, not a
   /// live average (UI-R6 #2).
   double lastMasterOpacity = 1.0;
 
-  /// ⚠️Both previews: the track's was declared beside the layer's and
-  /// never released with it — the session's list named only one.
   void dispose() {
     dragPreview.dispose();
-    trackDragPreview.dispose();
   }
 
   /// The display opacity the editing stack (and the interactive view's
@@ -109,11 +99,12 @@ class OpacityVerbs {
   /// The fade the editing canvas (and the scrub preview) shows at
   /// [frameIndex] (default: the playhead).
   ///
-  /// The animated half is the TRANSITION row's now (an O.L thins the cut
-  /// across its span), so this is the track's STATIC opacity times the cut's
-  /// own transition ramp. R9 #21 still holds for the static half: it is not an
-  /// fx, so the fx bypass does not touch it. ↩️F-192: a one-sided fade no
-  /// longer thins the cut — it lays its screen ([activeCutEditingVeils]).
+  /// The fade is the TRANSITION row's (an O.L thins the cut across its
+  /// span): the cut's own transition ramp, and nothing else. ↩️It was that
+  /// ramp times the track's STATIC opacity (R9 #21) until the V row lost
+  /// its opacity, value and all (I-73, 유저 2026-10-08: 「5. 값도지움」).
+  /// ↩️F-192: a one-sided fade no longer thins the cut — it lays its screen
+  /// ([activeCutEditingVeils]).
   ///
   /// 🚨The RAMP, not [cutOpacityAt]. That one also answers the compositor's
   /// material question — 0 outside the cut's media range — and the playhead
@@ -128,14 +119,12 @@ class OpacityVerbs {
       _activeCutTransitionAnswer(
         frameIndex: frameIndex,
         nothing: 1,
-        answer: (cut, start, globalFrame) =>
-            trackStaticOpacityForCut(cut.id) *
-            cutTransitionRampAt(
-              cutStart: start,
-              cutEnd: start + cut.duration,
-              spans: _transitions.activeTrackTransitionSpans,
-              globalFrame: globalFrame,
-            ),
+        answer: (cut, start, globalFrame) => cutTransitionRampAt(
+          cutStart: start,
+          cutEnd: start + cut.duration,
+          spans: _transitions.activeTrackTransitionSpans,
+          globalFrame: globalFrame,
+        ),
       );
 
   /// The screens one-sided transitions lay over the editing canvas at
@@ -171,40 +160,6 @@ class OpacityVerbs {
       start,
       start + (frameIndex ?? _controllers.timelineController.currentFrameIndex),
     );
-  }
-
-  /// The track's static opacity as everything should READ it — the live
-  /// drag value while one is in flight, the stored value otherwise. The
-  /// composite surfaces call the [forCut] form.
-  double trackStaticOpacity(TrackId trackId) {
-    final dragging = trackDragPreview.value;
-    if (dragging != null && dragging.trackId == trackId) {
-      return dragging.opacity;
-    }
-    return _project.trackById(trackId)?.opacity ?? 1.0;
-  }
-
-  double trackStaticOpacityForCut(CutId cutId) {
-    final owner = _project.trackOwningCut(cutId);
-    return owner == null ? 1.0 : trackStaticOpacity(owner.id);
-  }
-
-  void previewTrackOpacity(TrackId trackId, double opacity) {
-    trackDragPreview.value = (
-      trackId: trackId,
-      opacity: opacity.clamp(0.0, 1.0).toDouble(),
-    );
-  }
-
-  void commitTrackOpacity(TrackId trackId, double opacity) {
-    trackDragPreview.value = null;
-    _project.cutCommandCoordinator.updateTrackDisplay(
-      trackId: trackId,
-      opacity: opacity.clamp(0.0, 1.0).toDouble(),
-      description: 'Track opacity',
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
   }
 
   void setLayerOpacity({required LayerId layerId, required double opacity}) {

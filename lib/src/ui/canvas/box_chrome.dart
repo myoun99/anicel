@@ -17,6 +17,41 @@ typedef SelectionTransformChrome = ({
   Offset? anchor,
 });
 
+/// A handle's square, its outline stroked on the square's own edge.
+const double _handleSide = 9;
+const double _chromeStroke = 1.5;
+
+/// The cross's arm, from its centre to a tip.
+const double _crossArm = 7;
+
+Rect _handleSquare(Offset at) =>
+    Rect.fromCenter(center: at, width: _handleSide, height: _handleSide);
+
+/// 🚨★★★**WHAT A HANDLE AT [at] COVERS ON SCREEN — AND SO WHAT A PRESS HAS
+/// TO LAND ON TO TAKE IT.**
+///
+/// 🗣️유저 2026-10-02 (F-262): 「변형도구의 사각형 공통ui, 꼭짓점이나 십자가
+/// 등 작동박스가 보이는것보다 큰거같음. 박스 외 부분 조작하는데도 크기가
+/// 줄어든다거나 십자가가 움직인다거나. **보이는 만큼 존재하도록.** 십자가는
+/// 물론 복잡한 모양이니 **십자가크기의 박스**」.
+///
+/// ↩️A press took a handle, or the cross, anywhere within 16px of its centre
+/// (`boxHandleHitRadius`, 「≥ touch-friendly」) — a disc 32px across round a
+/// square drawn 9px wide. So a press well clear of everything drawn still
+/// scaled the box or carried the cross off, where the user meant the move
+/// or the turn that lives there.
+///
+/// ⛔ONE SIZE, read by the painter below and by the press ([boxPressAt])
+/// alike: what is drawn and what is grabbed cannot drift apart, because
+/// there is nothing for either to drift from.
+Rect boxHandleFootprint(Offset at) =>
+    _handleSquare(at).inflate(_chromeStroke / 2);
+
+/// What the cross at [at] covers: the box its two arms span — 「십자가크기의
+/// 박스」. A cross is too thin a shape to be the target itself.
+Rect boxCrossFootprint(Offset at) =>
+    Rect.fromCenter(center: at, width: _crossArm * 2, height: _crossArm * 2);
+
 /// Paints [chrome] in [color] — the ONE look every transform box on the
 /// canvas wears.
 ///
@@ -34,21 +69,15 @@ void paintBoxChrome(
 }) {
   final stroke = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.5
+    ..strokeWidth = _chromeStroke
     ..color = color;
 
   if (chrome.box.isNotEmpty) {
     canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
   }
   for (final handle in chrome.handles) {
-    canvas.drawRect(
-      Rect.fromCenter(center: handle, width: 9, height: 9),
-      Paint()..color = Colors.white,
-    );
-    canvas.drawRect(
-      Rect.fromCenter(center: handle, width: 9, height: 9),
-      stroke,
-    );
+    canvas.drawRect(_handleSquare(handle), Paint()..color = Colors.white);
+    canvas.drawRect(_handleSquare(handle), stroke);
   }
   final anchor = chrome.anchor;
   if (anchor != null) {
@@ -65,14 +94,14 @@ void paintBoxChrome(
 /// placing a CENTRE, so the thing has to say exactly which pixel it is
 /// on. A filled dot hides that pixel under itself.
 void _paintAnchorCross(Canvas canvas, Offset at, Color color) {
-  const arm = 7.0;
+  const arm = _crossArm;
   final white = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 3
     ..color = Colors.white;
   final ink = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.5
+    ..strokeWidth = _chromeStroke
     ..color = color;
   // White underneath for the same reason the ants carry it: the artwork
   // beneath can be any colour, and only the pair reads on both.

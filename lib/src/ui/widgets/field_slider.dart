@@ -40,7 +40,7 @@ import '../repaint_props.dart';
 /// one bar read `1`, then `1.2` under the same finger, then `1` again — 유저
 /// 2026-08-31: 「소수점이 있는 슬라이더는 처음부터 소수점까지 보여주도록.
 /// **없는 UI가 생겨나지 않게 하라는 원칙이 이 경우를 말함**」. The digit
-/// count belongs to the BAR (`_FieldSliderState._decimals`), and the few
+/// count belongs to the BAR (`FieldSlider._decimals`), and the few
 /// labels that are not plain numbers (`L50`, `off`, `Auto`) name their own.
 String sliderValueText(num value, {required int decimals, String unit = ''}) {
   final text = value.toStringAsFixed(decimals);
@@ -163,7 +163,7 @@ class FieldSlider extends StatefulWidget {
        // % 표기 삭제. 그냥 안보이게**」) — the layer rows, the storyboard's SE
        // rows, the x-sheet's stood-up rail and the legend's master bar.
        //
-       // ⛔Here and not in [_FieldSliderState._textFor]: `label == null` is
+       // ⛔Here and not in [FieldSlider._textFor]: `label == null` is
        // ALSO how a bar whose label sits BESIDE it is built (the stage
        // dialog's alpha, the export bitrate, the autosave minutes), and
        // those would have lost ` Mb` and their minutes with it. A bar that
@@ -192,7 +192,7 @@ class FieldSlider extends StatefulWidget {
   /// What follows the number — `%`, ` px`, `°`.
   ///
   /// ⛔THE DIGITS ARE NOT HERE and are not the caller's: the bar reads its
-  /// own step for those (F-34, [_FieldSliderState._decimals]).
+  /// own step for those (F-34, [_decimals]).
   final String unit;
 
   /// The factor between the number the MODEL holds and the number the bar
@@ -250,6 +250,93 @@ class FieldSlider extends StatefulWidget {
     context,
     Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
   ).lineGrowthOf(TextMeasure.everyScript);
+
+  /// What the writing stands in from each end of the track.
+  static const double _inset = 8;
+
+  /// The least a name and its number stand apart and still read as two —
+  /// about a word space at the size the bar writes in.
+  /// ⚠️My number, not a ruling: the answer below said to MEASURE the width,
+  /// and a measure with nothing between the two has them touch at the
+  /// widest number. Kept small because that number is the rare one (a
+  /// 2000px brush) and every pixel here is window the bars give up early.
+  static const double _breath = 4;
+
+  /// The narrowest this bar can be and still write its name and the widest
+  /// thing it says whole: the track's insets, the words measured in the
+  /// styles the bar writes them in, a breath between the name and the
+  /// number, and the stepper where it carries one — the bar's own parts, so
+  /// the width is measured rather than guessed.
+  ///
+  /// The number at an END of its range, never the one it holds: a floor
+  /// that moved with the value would move whatever stands beside the bar
+  /// while it is being dragged.
+  ///
+  /// 🗣️top-strip-narrow-overflow-Q1 (유저 2026-10-01, the answer as
+  /// corrected): 「막대 먼저 줄어들고 다음 목록으로」 — 「이름과 숫자가 막대
+  /// 안에 들어가는 최소 폭까지 줄어든다(최소 폭은 실측해서 정한다)」. Below
+  /// this the name gives way to an ellipsis, which is where a bar stops
+  /// saying what it is.
+  double narrowestIn(BuildContext context) {
+    final name = label;
+    final nameRun = name == null
+        ? 0.0
+        : TextMeasure(
+                context,
+                Theme.of(context).textTheme.labelSmall,
+              ).size(name).width +
+              _breath;
+    return _inset * 2 +
+        nameRun +
+        TextMeasure(
+          context,
+          valueStyleIn(context),
+        ).widest([_textFor(min), _textFor(max), ?restingText]) +
+        (_carriesStepper ? _FieldSliderStepper.reach : 0);
+  }
+
+  /// Whether this is the kind of bar that carries the +/− pair — the rule
+  /// is [_FieldSliderState._withStepper]'s, and this is its one statement.
+  bool get _carriesStepper => axis == Axis.horizontal && label != null;
+
+  /// How many digits this bar writes after the point — THE SAME COUNT AT
+  /// EVERY VALUE, which is the whole of F-34 (유저 확정 2026-09-01: 「위젯이
+  /// 자기 스텝을 보고 자릿수를 고른다」).
+  ///
+  /// The only question is 「can this bar land BETWEEN two whole numbers?」:
+  ///  * an EXPONENTIAL sweep multiplies, so it lands anywhere;
+  ///  * a bar with no [divisions] is continuous, so it lands anywhere;
+  ///  * otherwise every reachable value is `min + k·step`, whole for every
+  ///    k exactly when min and step are both whole — IN DISPLAY UNITS,
+  ///    which is what [displayScale] is for.
+  ///
+  /// ⛔It does not ask what the CURRENT value is. That is the bug: a rule
+  /// that hides the decimal for a whole value makes the digit count appear
+  /// and disappear under the finger, which is 「없다가 생기는 UI」.
+  int get _decimals {
+    final divisions = this.divisions;
+    if (scale == FieldSliderScale.exponential || divisions == null) {
+      return 1;
+    }
+    final step = (max - min) * displayScale / divisions;
+    final origin = min * displayScale;
+    return _isWhole(step) && _isWhole(origin) ? 0 : 1;
+  }
+
+  static bool _isWhole(double value) =>
+      (value - value.roundToDouble()).abs() < 1e-9;
+
+  /// The text this bar writes for [value] — the ONE place that is decided.
+  /// (On the bar rather than on its state since 2026-10-07: [narrowestIn]
+  /// asks it of a bar that is not on screen.)
+  String _textFor(double value) {
+    final derived = sliderValueText(
+      value * displayScale,
+      decimals: _decimals,
+      unit: unit,
+    );
+    return valueTextBuilder?.call(value, derived) ?? derived;
+  }
 
   /// The style a bar writes its value in — the theme's `labelSmall`, set
   /// solid.
@@ -583,44 +670,6 @@ class _FieldSliderState extends State<FieldSlider> {
     widget.onChangeEnd?.call(value);
   }
 
-  /// How many digits this bar writes after the point — THE SAME COUNT AT
-  /// EVERY VALUE, which is the whole of F-34 (유저 확정 2026-09-01: 「위젯이
-  /// 자기 스텝을 보고 자릿수를 고른다」).
-  ///
-  /// The only question is 「can this bar land BETWEEN two whole numbers?」:
-  ///  * an EXPONENTIAL sweep multiplies, so it lands anywhere;
-  ///  * a bar with no [FieldSlider.divisions] is continuous, so it lands
-  ///    anywhere;
-  ///  * otherwise every reachable value is `min + k·step`, whole for every
-  ///    k exactly when min and step are both whole — IN DISPLAY UNITS,
-  ///    which is what [FieldSlider.displayScale] is for.
-  ///
-  /// ⛔It does not ask what the CURRENT value is. That is the bug: a rule
-  /// that hides the decimal for a whole value makes the digit count appear
-  /// and disappear under the finger, which is 「없다가 생기는 UI」.
-  int get _decimals {
-    final divisions = widget.divisions;
-    if (widget.scale == FieldSliderScale.exponential || divisions == null) {
-      return 1;
-    }
-    final step = (widget.max - widget.min) * widget.displayScale / divisions;
-    final origin = widget.min * widget.displayScale;
-    return _isWhole(step) && _isWhole(origin) ? 0 : 1;
-  }
-
-  static bool _isWhole(double value) =>
-      (value - value.roundToDouble()).abs() < 1e-9;
-
-  /// The text this bar writes for [value] — the ONE place that is decided.
-  String _textFor(double value) {
-    final derived = sliderValueText(
-      value * widget.displayScale,
-      decimals: _decimals,
-      unit: widget.unit,
-    );
-    return widget.valueTextBuilder?.call(value, derived) ?? derived;
-  }
-
   double get _radius => widget.height < 20 ? 3 : 4;
 
   /// Where the fill starts, in track space — 0 for a quantity, the neutral
@@ -640,8 +689,8 @@ class _FieldSliderState extends State<FieldSlider> {
     final dragging = gestureT != null;
     final t = dragging ? _tFor(_valueFor(gestureT)) : _tFor(widget.value);
     final valueText = dragging
-        ? _textFor(_valueFor(gestureT))
-        : widget.restingText ?? _textFor(widget.value);
+        ? widget._textFor(_valueFor(gestureT))
+        : widget.restingText ?? widget._textFor(widget.value);
 
     final accent = dragging
         ? AppColors.accent
@@ -694,7 +743,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final Widget inner = GroundInkWriting(
       runs: _inkRuns(t, accent),
       builder: (context, ink) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: FieldSlider._inset),
         child: writingIn(ink),
       ),
     );
@@ -828,7 +877,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// axis, whose row has no horizontal room at all, and the buttons would
   /// have to stack into the track itself.
   Widget _withStepper(Widget bar) {
-    if (widget.axis == Axis.vertical || widget.label == null) {
+    if (!widget._carriesStepper) {
       return bar;
     }
     // Kept while nothing it shows changes (see [_stepper]). Its [_stepBy]
@@ -884,6 +933,9 @@ class _FieldSliderStepper extends StatelessWidget {
 
   /// The gap to the bar, so the buttons never look like part of the track.
   static const double _gap = 3;
+
+  /// What the pair takes of its bar's run — what the track does not get.
+  static const double reach = _gap + width;
 
   @override
   Widget build(BuildContext context) {

@@ -44,8 +44,10 @@ Future<Map<String, ui.Image>> readContePageImages(
 /// what exports, the timesheet render's rule. Sheet ink (R5) rides
 /// [inkImageFor] into the same painter, so the PNG carries it for free.
 ///
-/// [scale] rasters at a multiple of the page's logical point size;
-/// [outputSize] (previews) wins over it when set.
+/// The page rasters at its PAPER'S PIXELS — the paper at its own
+/// resolution, the panel's 100% (`ConteSheetMetrics.paperPixelSize`, F-294;
+/// ↩️it multiplied the page's size in points, 595×842 at 1x) — or at
+/// [outputSize], for a preview.
 Future<ui.Image> renderContePageImage({
   required ContePageLayout page,
   required ConteSheetSource source,
@@ -53,15 +55,14 @@ Future<ui.Image> renderContePageImage({
   ui.Image? Function(String assetPath)? imageFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   List<SheetPictureOverInk> picturesOverInk = const [],
-  double scale = 1,
   CanvasSize? outputSize,
   required ConteWords words,
 }) {
   final metrics = page.metrics;
+  final paper = metrics.paperPixelSize;
   final (:width, :height) = offscreenRasterSize(
-    naturalWidth: metrics.pageWidth,
-    naturalHeight: metrics.pageHeight,
-    scale: scale,
+    naturalWidth: paper.width.toDouble(),
+    naturalHeight: paper.height.toDouble(),
     outputSize: outputSize,
   );
   return rasterizeOffscreen(

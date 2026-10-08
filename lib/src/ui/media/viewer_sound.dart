@@ -5,6 +5,30 @@ import '../editor_session_manager.dart';
 import '../playback/audio_playback_schedule.dart';
 import '../playback/audio_windowed_upload.dart';
 
+/// How loud a surface plays its sound: the level its bar stands at, and
+/// whether the speaker beside it is off — the transport's sound cell
+/// (`TransportSound`), held by whoever outlives the surface.
+///
+/// Muting keeps the level: the bar stands where it was, and a press of the
+/// speaker comes back to it.
+class ViewerLoudness {
+  const ViewerLoudness({this.level = 1, this.muted = false});
+
+  /// 0..1.
+  final double level;
+  final bool muted;
+
+  /// What the sound is started at ([ViewerSound.play]).
+  double get gain => muted ? 0 : level;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ViewerLoudness && other.level == level && other.muted == muted;
+
+  @override
+  int get hashCode => Object.hash(level, muted);
+}
+
 /// The media viewer's sound: ONE conformed file, played out of the same
 /// device the timeline plays out of.
 ///
@@ -67,7 +91,8 @@ class ViewerSound {
   /// Whether sound is actually coming out for the current file.
   bool get isCarrying => _device != null;
 
-  /// Starts [sourcePath] at [fromSeconds]; false stands down silently.
+  /// Starts [sourcePath] at [fromSeconds], as loud as [gain]
+  /// ([ViewerLoudness.gain]); false stands down silently.
   ///
   /// ⚠️It asks the conform store rather than a decoder: the sound of a
   /// media asset — a `.wav` on its own or the track inside a movie — is
@@ -75,7 +100,11 @@ class ViewerSound {
   /// inside a real-time buffer. That is the same reason playback conforms
   /// (`record-what-gets-conformed`), and it is why this needs no engine of
   /// its own.
-  bool play(String sourcePath, {double fromSeconds = 0}) {
+  ///
+  /// ⚠️The gain is the one clip's, mixed into what is uploaded: the device
+  /// has no fader of its own, so a sound already going hears a new level by
+  /// being started again where it stands (`MediaRun.soundCell`).
+  bool play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
     stop();
     final seconds = conformStore.durationSecondsFor(sourcePath);
     if (seconds == null || seconds <= 0) {
@@ -95,6 +124,7 @@ class ViewerSound {
           filePath: sourcePath,
           startFrame: 0,
           endFrameExclusive: seconds.ceil(),
+          gain: gain,
         ),
       ],
       rate: _perSecond,

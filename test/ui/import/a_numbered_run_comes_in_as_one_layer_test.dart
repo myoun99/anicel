@@ -1,0 +1,220 @@
+// A PICTURE'S NUMBERED RUN COMES IN AS ONE LAYER (I-76).
+//
+// 🗣️유저 2026-10-06: 「A1 임포트하면 A2,A3같은 파일들 인식해서 다 새 레이어가
+// 아니라 새 레이어의 새 프레임으로서? 동영상이나 뭐 그런거에서 쓰는거 법
+// 통일」 · I-76-Q1 (10-08): 「창의 그 파일 줄에서 고른다(기본: 함께)」 —
+// 「A1-A3 이렇게 한 레이어의 세 프레임으로 인식하는 느낌」.
+//
+// The run is read with the cut folder's grammar, and it lands the way an
+// animated picture does: one layer, a picture the one before it showed
+// folding into that one's exposure.
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+
+import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
+
+void main() {
+  late Directory tempDir;
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp('anicel-numbered-run');
+  });
+
+  tearDown(() => deleteTempQuietly(tempDir));
+
+  /// `A1` and `A2` the same picture, `A3` another, and `B1` alone.
+  Future<Map<String, String>> writeFolder(WidgetTester tester) async =>
+      (await tester.runAsync(() async {
+        return {
+          'A1': await writeSolidPng(tempDir, 'A1.png', rgba: 0x112233FF),
+          'A2': await writeSolidPng(tempDir, 'A2.png', rgba: 0x112233FF),
+          'A3': await writeSolidPng(tempDir, 'A3.png', rgba: 0x445566FF),
+          'B1': await writeSolidPng(tempDir, 'B1.png', rgba: 0x778899FF),
+        };
+      }))!;
+
+  Future<EditorSessionManager> open(
+    WidgetTester tester,
+    List<String> paths,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: paths),
+        ),
+      ),
+    );
+    await tester.pump();
+    return s;
+  }
+
+  /// What a cell reads — a button's word, or the dash of a question that
+  /// does not apply.
+  String cellText(WidgetTester tester, String column, String path) {
+    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+    final widget = tester.widget(cell);
+    if (widget is Text) {
+      return widget.data!;
+    }
+    return tester
+        .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
+        .data!;
+  }
+
+  /// Places what the window holds, and answers the layers that brought —
+  /// by id: the default project has an `A` of its own.
+  Future<List<Layer>> place(WidgetTester tester, EditorSessionManager s) async {
+    final before = {for (final layer in s.requireActiveCut.layers) layer.id};
+    List<Layer> added() => [
+      for (final layer in s.requireActiveCut.layers)
+        if (!before.contains(layer.id)) layer,
+    ];
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    for (var tries = 0; tries < 100 && added().isEmpty; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    return added();
+  }
+
+  testWidgets('the row says the run it would bring, and a picture alone in '
+      'its symbol says nothing', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!, files['B1']!]);
+
+    expect(
+      cellText(tester, 'run', files['A1']!),
+      AppText.strings.imRunSpan('A1', 'A3', 3),
+    );
+    expect(cellText(tester, 'run', files['B1']!), '—');
+  });
+
+  testWidgets('a run\'s word is never cut — its column is as wide as the '
+      'widest word a row says, not only its answers\'', (tester) async {
+    final paths = (await tester.runAsync(
+      () async => [
+        await writeSolidPng(tempDir, 'ABCD1.png'),
+        await writeSolidPng(tempDir, 'ABCD123.png'),
+      ],
+    ))!;
+    await open(tester, [paths.first]);
+    final cell = find.byKey(ValueKey<String>('import-cell-run-${paths.first}'));
+    expect(
+      cellText(tester, 'run', paths.first),
+      AppText.strings.imRunSpan('ABCD1', 'ABCD123', 2),
+      reason: '⛔전제: a word longer than either answer\'s',
+    );
+
+    final word = tester.renderObject<RenderParagraph>(
+      find.descendant(of: cell, matching: find.byType(RichText)),
+    );
+    expect(word.didExceedMaxLines, isFalse, reason: 'the word fits its line');
+  });
+
+  testWidgets('a folder with no run asks nothing about one', (tester) async {
+    final path = (await tester.runAsync(
+      () => writeSolidPng(tempDir, 'A1.png'),
+    ))!;
+    await open(tester, [path]);
+
+    expect(
+      find.byKey(const ValueKey<String>('import-column-run')),
+      findsNothing,
+      reason: 'a column stands only when some row has to answer it',
+    );
+  });
+
+  testWidgets('🚨together, the run is ONE layer named by its symbol, its '
+      'frames by their numbers — the same picture twice is one cel held '
+      'twice, and every file is in the pool', (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!]);
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1), reason: 'one layer for the whole run');
+    final run = added.single;
+    expect(run.name, 'A');
+    expect([for (final frame in run.frames) frame.name], ['1', '3']);
+    expect(
+      {
+        for (final entry in run.timeline.entries)
+          entry.key: entry.value.length,
+      },
+      {0: 2, 2: 1},
+      reason: 'A2 is A1 again: held, not drawn twice',
+    );
+    final project = s.repository.requireProject();
+    for (final name in ['A1', 'A2', 'A3']) {
+      expect(
+        project.mediaAssetByPath(normalizedMediaPath(files[name]!)),
+        isNotNull,
+        reason: '$name registers on its own',
+      );
+    }
+  });
+
+  testWidgets('this file only: the picture comes in alone, as it always '
+      'did', (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!]);
+    final cell = find.byKey(ValueKey<String>('import-cell-run-${files['A1']}'));
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-run-alone')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      cellText(tester, 'run', files['A1']!),
+      AppText.strings.imRunAlone,
+    );
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1));
+    expect(added.single.name, isNot('A'), reason: 'the file\'s own layer');
+    expect(added.single.frames, hasLength(1));
+    expect(
+      s.repository.requireProject().mediaAssetByPath(
+        normalizedMediaPath(files['A2']!),
+      ),
+      isNull,
+      reason: 'nothing of the run but this file came in',
+    );
+  });
+
+  testWidgets('two pictures of one run picked together bring it once',
+      (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!, files['A3']!]);
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1));
+    expect(added.single.frames, hasLength(2));
+  });
+}

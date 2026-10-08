@@ -19,6 +19,7 @@ import 'layer_folder.dart';
 export 'layer_folder.dart'
     show attachFolderLevelsAbove, attachGroupBaseOf, attachOrganizerBaseOf;
 import 'layer_id.dart';
+import 'layer_section_defaults.dart' show firstUnusedLayerName;
 import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -417,6 +418,23 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   return end;
 }
 
+/// Where a NEW row riding [baseId] on its [placement] side lands in
+/// [layers]. The group reads `[below…, base, above…]`: a new below goes
+/// bottommost (before the existing belows and their organizer folders), a
+/// new above topmost (past the group).
+///
+/// One answer for every door a row joins a group by — the add
+/// (`FoldersAndAttachments.addAttachedLayer`) and the copy 겸용 변경 makes
+/// of a row only one of its cuts holds. A missing base answers
+/// `layers.length` either way: the end of the stack.
+int newAttachedRowIndex(
+  LayerId baseId,
+  List<Layer> layers,
+  AttachedPlacement placement,
+) => placement == AttachedPlacement.below
+    ? attachedGroupStartIndex(baseId, layers)
+    : attachedGroupEndIndex(baseId, layers);
+
 /// The attach group [member] belongs to, named by its BASE: the row it
 /// rides, or itself when it IS the base.
 LayerId attachBaseIdOf(Layer member) => member.attachedToLayerId ?? member.id;
@@ -440,23 +458,25 @@ List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
 
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
-/// rows below are `-1`, `-2`, … — each side numbers its own count.
+/// rows below are `-1`, `-2`, … — each side numbers its own.
 ///
 /// R26 #29: the sign hangs off the BASE's name, no space — a row attached
 /// above layer `B` is `B+1`, below is `B-1`.
+///
+/// 🚨F-292 (유저 2026-10-05): 「어태치 레이어 생성시 이미 있는 레이어가
+/// 생성되기도함. A랑 A-2만 있을때 추가하면 A-2가 만들어짐 … ABCD라는 이름을
+/// 나눠쓰는 규칙 그대로 쓰면서 통일할거 통일해서 제대로 순서대로 생성하도록」.
+/// ↩️The number was the side's COUNT plus one, so a side that had lost a
+/// row handed out a name still in use. It is the first one no row of
+/// [layers] wears ([firstUnusedLayerName]) — the cels' own rule, and the
+/// fifth row kind to name itself by it: A with A-2 gets A-1.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
   AttachedPlacement placement,
 ) {
-  var existing = 0;
-  for (final layer in attachedLayersOf(base.id, layers)) {
-    if (layer.attachedPlacement == placement) {
-      existing += 1;
-    }
-  }
   final sign = placement == AttachedPlacement.above ? '+' : '-';
-  return '${base.name}$sign${existing + 1}';
+  return firstUnusedLayerName(layers, (index) => '${base.name}$sign$index');
 }
 
 /// Whether [layer] wears its BASE's composite instead of authoring its own

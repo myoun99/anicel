@@ -14,7 +14,6 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -41,6 +41,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/placement_reading.dart';
 
 /// 🎯A STROKE STEP DRAWS ITS PICTURE (2026-09-25). A patch over the real
 /// base whose picture lands the same bytes on the screen goes there as that
@@ -153,13 +155,13 @@ void main() {
   CompositeNode<CanvasStackRow> row(
     String id, {
     LayerBlendMode blendMode = LayerBlendMode.normal,
-    CameraPose? pose,
+    TransformPose? pose,
   }) => CompositeLeaf<CanvasStackRow>(
     CanvasLayerImageRequest(
       frameKey: key(id),
       opacity: 1,
       blendMode: blendMode,
-      pose: pose,
+      placement: pose == null ? null : placedBy(pose, canvasSize),
     ),
   );
 
@@ -485,7 +487,10 @@ void main() {
       await expectHeads(
         tester,
         below: [
-          row('below', pose: CameraPose(center: CanvasPoint(x: 130, y: 128))),
+          row(
+            'below',
+            pose: TransformPose(center: CanvasPoint(x: 130, y: 128)),
+          ),
         ],
       );
     });
@@ -583,6 +588,68 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }
     });
+  });
+
+  // 🚨A dab's tile is not where a POSED live row shows it. The row's
+  // placement lays the tile somewhere else, so a step patched over the
+  // tile's own rect repaints where nothing changed and leaves the stroke
+  // out.
+  testWidgets('a POSED live row shows each step where the row lies — every '
+      'screen is the one a first paint of that step makes', (tester) async {
+    useView(tester);
+    // 80 to the right: the tile the stroke is in, 64..128 across, shows
+    // over 144..208 — clear of itself.
+    const right = 80;
+    final posed = [
+      CompositeLeaf<CanvasStackRow>(
+        CanvasActiveLayerRow(
+          opacity: 1,
+          placement: placedBy(
+            TransformPose(center: CanvasPoint(x: 128.0 + right, y: 128)),
+            canvasSize,
+          ),
+        ),
+      ),
+    ];
+    final made = await stroke(tester, viewport: CanvasViewport(), nodes: posed);
+
+    final images = await imagesFor(tester, posed);
+    final first = <Uint8List>[];
+    await tester.runAsync(() async {
+      for (var step = 1; step <= steps; step += 1) {
+        final buffers = DisplayBufferCache();
+        addTearDown(buffers.dispose);
+        await paint(
+          tester,
+          buffers: buffers,
+          images: images,
+          nodes: posed,
+          surface: onPaper[step],
+          viewport: CanvasViewport(),
+          background: paper,
+          paintPaper: true,
+        );
+        first.add(await capture());
+      }
+    });
+
+    final width = view.width.toInt();
+    for (var step = 1; step <= steps; step += 1) {
+      final screen = made.screens[step - 1];
+      // Step i's pixel, where the stroke put it in its tile at (1, 1).
+      final at = ((64 + 10 + step) * width + 64 + 3 + step * 4 + right) * 4;
+      const paperAt = (250 * 256 + 250) * 4;
+      expect(
+        screen.sublist(at, at + 4),
+        isNot(screen.sublist(paperAt, paperAt + 4)),
+        reason: 'step $step: its pixel is not on the screen',
+      );
+      expect(
+        listEquals(screen, first[step - 1]),
+        isTrue,
+        reason: 'step $step is not what a first paint of it shows',
+      );
+    }
   });
 
   testWidgets('the buffer counters line says how many patches drew their '

@@ -34,7 +34,6 @@ void main() {
     required AppLanguage language,
     required bool brushAllowed,
     required bool dataSheet,
-    required bool continuous,
   }) async {
     AppText.settings.value = AppLanguageSettings(programLanguage: language);
     final session = EditorSessionManager(initialProject: createDefaultProject());
@@ -56,8 +55,6 @@ void main() {
             // called it a product bug.
             key: ValueKey<AppLanguage>(language),
             session: session,
-            continuous: continuous,
-            onContinuousChanged: (_) {},
             viewport: CanvasViewport(),
             onViewportChanged: (_) {},
             inkController: ink,
@@ -90,7 +87,6 @@ void main() {
     return <String, String>{
       'brush': of('timesheet-brush-toggle-button'),
       'mode': of('timesheet-data-mode-toggle-button'),
-      'view': of('timesheet-page-mode-toggle-button'),
     };
   }
 
@@ -98,7 +94,6 @@ void main() {
   const wasEnglish = <String, List<String>>{
     'brush': ['Block Sheet Ink', 'Allow Sheet Ink'],
     'mode': ['Notation Sheet (repeat/hold words)', 'Data Sheet (as exported)'],
-    'view': ['Page View', 'Continuous View'],
   };
 
   setUp(() {
@@ -115,14 +110,12 @@ void main() {
       language: AppLanguage.ja,
       brushAllowed: true,
       dataSheet: false,
-      continuous: false,
     );
     final ko = await tooltips(
       tester,
       language: AppLanguage.ko,
       brushAllowed: true,
       dataSheet: false,
-      continuous: false,
     );
 
     for (final toggle in wasEnglish.keys) {
@@ -155,14 +148,12 @@ void main() {
       language: AppLanguage.ja,
       brushAllowed: false,
       dataSheet: true,
-      continuous: true,
     );
     final ko = await tooltips(
       tester,
       language: AppLanguage.ko,
       brushAllowed: false,
       dataSheet: true,
-      continuous: true,
     );
 
     for (final toggle in wasEnglish.keys) {

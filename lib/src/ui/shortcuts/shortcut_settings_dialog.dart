@@ -2,11 +2,18 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/brush_group.dart';
+import '../brush/brush_press.dart';
+import '../brush/brush_tool_state.dart';
+import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
+import '../widgets/pill_strip.dart';
+import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
+import 'shortcut_presets.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -56,6 +63,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     _recordFocus.requestFocus();
   }
 
+  /// Takes every key off [actionId] — its own default too, which then
+  /// stays off until the row is reset. A recording under way for it ends:
+  /// the answer to 「which key?」 was 「none」.
+  ///
+  /// 🗣️F-318 (유저 2026-10-08): 「단축키 할당 해제 버튼같은게 없음」. The
+  /// bindings have always held 「no key」 as a recorded answer (an empty
+  /// list, written to the file and read back); nothing in the window
+  /// recorded it — a key could only be replaced by another.
+  void _unassign(String actionId) {
+    if (_recordingActionId == actionId) {
+      setState(() => _recordingActionId = null);
+    }
+    widget.bindings.setActivators(actionId, const []);
+  }
+
   KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
     final actionId = _recordingActionId;
     if (actionId == null || event is! KeyDownEvent) {
@@ -93,7 +115,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// search that only matched the English registry would find nothing in
   /// any other language.
   String _labelOf(EditorActionDefinition definition) =>
-      editorActionLabel(definition.id);
+      actionLabelOf(definition);
 
   String _categoryOf(EditorActionDefinition definition) =>
       AppText.strings.shortcutCategory(
@@ -101,52 +123,175 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         definition.category,
       );
 
-  List<EditorActionDefinition> get _filtered {
-    final query = _search.text.trim().toLowerCase();
-    if (query.isEmpty) {
-      return widget.bindings.definitions;
+  String get _query => _search.text.trim().toLowerCase();
+
+  bool _matches(EditorActionDefinition definition, String query) =>
+      query.isEmpty ||
+      _labelOf(definition).toLowerCase().contains(query) ||
+      _categoryOf(definition).toLowerCase().contains(query);
+
+  /// The brush BUNDLES standing open — a group's, named by its title row's
+  /// action; the root section's, by [_rootBundleOf]. A paint tool has its
+  /// own (F-319): the brush tool's Inks and the eraser's Inks are two.
+  ///
+  /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
+  /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
+  /// 접힘 — 그룹 줄 자체(그룹 키)는 묶음 제목 줄에 둔다. 검색하면 맞는 묶음이
+  /// 펼쳐진다」. So none is open when the window opens, and a search opens
+  /// the ones it finds something in ([_openFoundBundles]) — by putting them
+  /// in this one set, so the twirl folds them again like any other.
+  final Set<String> _openBundles = {};
+
+  /// The root section's bundle in [tool]'s library: the brushes of no
+  /// group. ⚠️Its title is a word and not a row — the root is not a group
+  /// and has no press.
+  static String _rootBundleOf(CanvasTool tool) => '${tool.name}-root';
+
+  /// The bundle [definition] stands in, or null for every other action.
+  String? _bundleOf(EditorActionDefinition definition) =>
+      switch (definition.brushPress) {
+        BrushGroupPress(:final tool, :final group) => brushGroupActionId(
+          tool,
+          group,
+        ),
+        BrushPresetPress(:final tool, group: final group?) =>
+          brushGroupActionId(tool, group),
+        BrushPresetPress(:final tool) => _rootBundleOf(tool),
+        null => null,
+      };
+
+  /// Whether [definition] is a brush of a root section — one that stands
+  /// under the section's word, which is no row of its own.
+  bool _isLoose(EditorActionDefinition definition) =>
+      switch (definition.brushPress) {
+        BrushPresetPress(group: null) => true,
+        _ => false,
+      };
+
+  /// The bundles [query] finds something in — a title or a brush.
+  Set<String> _bundlesFound(String query) => {
+    for (final definition in widget.bindings.definitions)
+      if (_matches(definition, query)) ?_bundleOf(definition),
+  };
+
+  void _openFoundBundles() {
+    final query = _query;
+    if (query.isNotEmpty) {
+      _openBundles.addAll(_bundlesFound(query));
     }
-    return [
-      for (final definition in widget.bindings.definitions)
-        if (_labelOf(definition).toLowerCase().contains(query) ||
-            _categoryOf(definition).toLowerCase().contains(query))
-          definition,
-    ];
   }
+
+  void _toggleBundle(String bundle) => setState(() {
+    if (!_openBundles.remove(bundle)) {
+      _openBundles.add(bundle);
+    }
+  });
+
+  /// The list's rows: every action the search matches under its category,
+  /// and of the brush library a title per bundle with — while it stands open
+  /// — its brushes.
+  List<Widget> _rows(ThemeData theme) {
+    final bindings = widget.bindings;
+    final conflicted = bindings.conflictedActionIds;
+    final touchConflicted = bindings.touchConflictedActionIds;
+    final query = _query;
+    final found = _bundlesFound(query);
+    // A bundle whose TITLE the search matched shows every brush it holds.
+    final titlesFound = {
+      for (final definition in bindings.definitions)
+        if (definition.brushPress is BrushGroupPress &&
+            _matches(definition, query))
+          definition.id,
+    };
+    bool shows(EditorActionDefinition definition, String? bundle) {
+      if (bundle == null) {
+        return _matches(definition, query);
+      }
+      if (!found.contains(bundle)) {
+        return false;
+      }
+      return definition.brushPress is BrushGroupPress ||
+          (_openBundles.contains(bundle) &&
+              (_matches(definition, query) || titlesFound.contains(bundle)));
+    }
+
+    final rows = <Widget>[];
+    String? category;
+    // The root sections whose word already stands — one a paint tool.
+    final rootsTitled = <String>{};
+    for (final definition in bindings.definitions) {
+      final bundle = _bundleOf(definition);
+      final shown = shows(definition, bundle);
+      final rootTitleDue =
+          bundle != null &&
+          _isLoose(definition) &&
+          !rootsTitled.contains(bundle) &&
+          found.contains(bundle);
+      if (!shown && !rootTitleDue) {
+        continue;
+      }
+      if (definition.category != category) {
+        category = definition.category;
+        rows.add(_categoryHeading(theme, definition));
+      }
+      if (rootTitleDue) {
+        rootsTitled.add(bundle);
+        rows.add(_rootTitleRow(theme, bundle));
+      }
+      if (shown) {
+        rows.add(
+          _actionRow(
+            definition,
+            conflicted.contains(definition.id),
+            touchConflicted.contains(definition.id),
+            bundle: bundle,
+          ),
+        );
+      }
+    }
+    return rows;
+  }
+
+  Widget _categoryHeading(
+    ThemeData theme,
+    EditorActionDefinition definition,
+  ) => Padding(
+    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    child: Text(
+      _categoryOf(definition),
+      style: theme.textTheme.labelLarge?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    ),
+  );
+
+  /// The fold of [bundle], where the layer rail's fold is (F-29): at the far
+  /// edge of the name it folds under — the app's one twirl.
+  Widget _twirl(String bundle) => LayerFoldTwirl(
+    keyValue: 'shortcut-bundle-$bundle',
+    expanded: _openBundles.contains(bundle),
+    onToggle: () => _toggleBundle(bundle),
+  );
+
+  Widget _rootTitleRow(ThemeData theme, String bundle) => Padding(
+    key: ValueKey<String>('shortcut-row-$bundle'),
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(brushRootSectionLabel, style: theme.textTheme.bodyMedium),
+        ),
+        _twirl(bundle),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
-    final touchConflicted = bindings.touchConflictedActionIds;
-    final definitions = _filtered;
-
-    final rows = <Widget>[];
-    String? category;
-    for (final definition in definitions) {
-      if (definition.category != category) {
-        category = definition.category;
-        rows.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 4),
-            child: Text(
-              _categoryOf(definition),
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ),
-        );
-      }
-      rows.add(
-        _actionRow(
-          definition,
-          conflicted.contains(definition.id),
-          touchConflicted.contains(definition.id),
-        ),
-      );
-    }
+    final rows = _rows(theme);
 
     return AppWindow(
       windowKey: const ValueKey<String>('shortcut-settings-dialog'),
@@ -165,6 +310,26 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 🗣️I-63: the preset the keys below start from. Picking one
+              // shows ITS keys and what was recorded under it.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PillStrip(
+                  items: [
+                    for (final preset in ShortcutPreset.values)
+                      PillItem(
+                        keyValue: 'shortcut-preset-${preset.name}',
+                        label: AppText.strings.shortcutPresetName(
+                          preset.name,
+                          preset.label,
+                        ),
+                        selected: bindings.preset == preset,
+                        onTap: () => bindings.setPreset(preset),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 key: const ValueKey<String>('shortcut-search-field'),
                 controller: _search,
@@ -173,20 +338,32 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                   hintText: AppText.strings.shortcutSearch,
                   isDense: true,
                 ),
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) => setState(_openFoundBundles),
               ),
-              if (conflicted.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
+              // 🗣️F-318 (유저 2026-10-08): 「동일한 단축키 있을때 빨간
+              // 경고메시지가 영어로 뜨고」 — the table has had the sentence
+              // in every language since the window was localised
+              // (`shortcutConflictBanner`); this line went on writing the
+              // English one itself.
+              //
+              // ⛔Its PLACE is always there (「없다가 생기는 UI 금지」): laid
+              // out in the program language whether or not a key clashes,
+              // and shown when one does. ↩️It was mounted on the clash, and
+              // the list under it jumped down a line — two, in the
+              // languages the sentence wraps in.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Visibility.maintain(
+                  visible: conflicted.isNotEmpty,
                   child: Text(
-                    'Some actions share the same key — the highlighted '
-                    'bindings collide.',
+                    AppText.strings.shortcutConflictBanner,
                     key: const ValueKey<String>('shortcut-conflict-banner'),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
                     ),
                   ),
                 ),
+              ),
               Expanded(
                 child: ListView(
                   key: const ValueKey<String>('shortcut-action-list'),
@@ -214,119 +391,168 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
+  /// How much of a row its keys and its touch gesture may take before they
+  /// wrap — the name and the row's buttons keep the rest.
+  static const double _keysShare = 0.6;
+
   Widget _actionRow(
     EditorActionDefinition definition,
     bool conflicted,
-    bool touchConflicted,
-  ) {
+    bool touchConflicted, {
+    String? bundle,
+  }) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final recording = _recordingActionId == definition.id;
     final activators = bindings.activatorsFor(definition.id);
     final touchGesture = bindings.touchGestureFor(definition.id);
+    final titlesBundle = definition.brushPress is BrushGroupPress;
+
+    // The keys recorded on the row and its touch gesture — what stands
+    // between its name and its buttons.
+    final keys = <Widget>[
+      if (recording)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            AppText.strings.shortcutRecordingHint,
+            key: const ValueKey<String>('shortcut-recording-hint'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        )
+      else
+        for (final activator in activators)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Chip(
+              label: Text(
+                singleActivatorLabel(
+                  bindings.shownActivatorFor(definition.id, activator),
+                ),
+                style: theme.textTheme.labelSmall,
+              ),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              backgroundColor: conflicted
+                  ? theme.colorScheme.errorContainer
+                  : null,
+            ),
+          ),
+      // The TOUCH binding (R11-⑨): one multi-finger gesture per
+      // action, picked from the fixed vocabulary — same custom feel
+      // as the key bindings, same conflict highlighting.
+      // R6 #4: the shared flyout. These rows carried no `height`, so
+      // they came out at Material's 48 beside the app's 32.
+      //
+      // ✅The sentinel is gone with the migration: a flyout item carries
+      // a CALLBACK rather than a value, so "None" simply passes null and
+      // no longer has to be told apart from a dismissal.
+      PanelFlyoutTrigger(
+        key: ValueKey<String>('shortcut-touch-${definition.id}'),
+        tooltip: AppText.strings.shortcutTouch,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        entriesBuilder: () =>
+            <TouchGesture?>[null, ...TouchGesture.values]
+                .asFlyoutValueChoices(
+                  current: touchGesture,
+                  choiceOf: (gesture) => PanelFlyoutChoice(
+                    key:
+                        'shortcut-touch-${definition.id}-'
+                        '${gesture?.name ?? 'none'}',
+                    label: gesture?.label ?? AppText.strings.commonNone,
+                  ),
+                  onPicked: (gesture) => widget.bindings.setTouchGesture(
+                    definition.id,
+                    gesture,
+                  ),
+                ),
+        child: touchGesture == null
+            ? Icon(
+                Icons.touch_app_outlined,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.5,
+                ),
+              )
+            : Chip(
+                label: Text(
+                  touchGesture.label,
+                  style: theme.textTheme.labelSmall,
+                ),
+                avatar: const Icon(Icons.touch_app_outlined, size: 14),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: touchConflicted
+                    ? theme.colorScheme.errorContainer
+                    : null,
+              ),
+      ),
+    ];
 
     return Padding(
+      key: ValueKey<String>('shortcut-row-${definition.id}'),
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(_labelOf(definition), style: theme.textTheme.bodyMedium),
-          ),
-          if (recording)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                AppText.strings.shortcutRecordingHint,
-                key: const ValueKey<String>('shortcut-recording-hint'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
+      // 🗣️F-318: the row gained a button, and a row with several keys
+      // and a touch gesture was already within a few pixels of its
+      // width. The keys and the gesture take what they need up to
+      // [_keysShare] of the row and WRAP past it — the name keeps the
+      // rest, and no row overflows whatever is recorded on it.
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            Expanded(
+              // A brush stands under its bundle's title, a step in.
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: bundle == null || titlesBundle ? 0 : 16,
+                ),
+                child: Text(
+                  _labelOf(definition),
+                  style: theme.textTheme.bodyMedium,
                 ),
               ),
-            )
-          else
-            for (final activator in activators)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Chip(
-                  label: Text(
-                    singleActivatorLabel(
-                      bindings.shownActivatorFor(definition.id, activator),
-                    ),
-                    style: theme.textTheme.labelSmall,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  backgroundColor: conflicted
-                      ? theme.colorScheme.errorContainer
-                      : null,
-                ),
+            ),
+            if (bundle != null && titlesBundle) _twirl(bundle),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: constraints.maxWidth * _keysShare,
               ),
-          // The TOUCH binding (R11-⑨): one multi-finger gesture per
-          // action, picked from the fixed vocabulary — same custom feel
-          // as the key bindings, same conflict highlighting.
-          // R6 #4: the shared flyout. These rows carried no `height`, so
-          // they came out at Material's 48 beside the app's 32.
-          //
-          // ✅The sentinel is gone with the migration: a flyout item carries
-          // a CALLBACK rather than a value, so "None" simply passes null and
-          // no longer has to be told apart from a dismissal.
-          PanelFlyoutTrigger(
-            key: ValueKey<String>('shortcut-touch-${definition.id}'),
-            tooltip: AppText.strings.shortcutTouch,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            entriesBuilder: () =>
-                <TouchGesture?>[null, ...TouchGesture.values]
-                    .asFlyoutValueChoices(
-                      current: touchGesture,
-                      choiceOf: (gesture) => PanelFlyoutChoice(
-                        key:
-                            'shortcut-touch-${definition.id}-'
-                            '${gesture?.name ?? 'none'}',
-                        label: gesture?.label ?? AppText.strings.commonNone,
-                      ),
-                      onPicked: (gesture) => widget.bindings.setTouchGesture(
-                        definition.id,
-                        gesture,
-                      ),
-                    ),
-            child: touchGesture == null
-                ? Icon(
-                    Icons.touch_app_outlined,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.5,
-                    ),
-                  )
-                : Chip(
-                    label: Text(
-                      touchGesture.label,
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    avatar: const Icon(Icons.touch_app_outlined, size: 14),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    backgroundColor: touchConflicted
-                        ? theme.colorScheme.errorContainer
-                        : null,
-                  ),
-          ),
-          AppIconButton(
-            keyValue: 'shortcut-record-${definition.id}',
-            tooltip: AppText.strings.shortcutRecordNew,
-            icon: const Icon(Icons.keyboard),
-            onPressed: () => _startRecording(definition.id),
-          ),
-          AppIconButton(
-            keyValue: 'shortcut-reset-${definition.id}',
-            tooltip: AppText.strings.shortcutResetToDefault,
-            icon: const Icon(Icons.restart_alt),
-            onPressed:
-                bindings.isOverridden(definition.id) ||
-                    bindings.isTouchOverridden(definition.id)
-                ? () => bindings.resetAction(definition.id)
-                : null,
-          ),
-        ],
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 2,
+                children: keys,
+              ),
+            ),
+            AppIconButton(
+              keyValue: 'shortcut-record-${definition.id}',
+              tooltip: AppText.strings.shortcutRecordNew,
+              icon: const Icon(Icons.keyboard),
+              onPressed: () => _startRecording(definition.id),
+            ),
+            // Dead on a row with no key: there is nothing to take off.
+            AppIconButton(
+              keyValue: 'shortcut-unassign-${definition.id}',
+              tooltip: AppText.strings.shortcutUnassign,
+              icon: const Icon(Icons.backspace_outlined),
+              onPressed: activators.isEmpty
+                  ? null
+                  : () => _unassign(definition.id),
+            ),
+            AppIconButton(
+              keyValue: 'shortcut-reset-${definition.id}',
+              tooltip: AppText.strings.shortcutResetToDefault,
+              icon: const Icon(Icons.restart_alt),
+              onPressed:
+                  bindings.isOverridden(definition.id) ||
+                      bindings.isTouchOverridden(definition.id)
+                  ? () => bindings.resetAction(definition.id)
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -77,12 +77,22 @@ void main() {
     await pumpHome(tester);
     await openStrip(tester, 'top-strip-project-button');
 
-    for (final slot in ['file-open', 'file-save', 'file-save-as']) {
+    for (final slot in ['file-open', 'file-save']) {
       final item = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
         find.byKey(ValueKey<String>('menu-$slot')),
       );
       expect(item.enabled, isTrue, reason: '$slot is live since P3');
     }
+    // Save As is one level in since backlog-21-Q1: its door takes no tap of
+    // its own, as no door does, and the project's row behind it is live.
+    final rows = tester
+        .widget<EditorTopStrip>(find.byType(EditorTopStrip))
+        .menuRows(tester.element(find.byType(EditorTopStrip)));
+    expect(
+      rows.singleWhere((row) => row.keyValue == 'menu-file-save-as').enabled,
+      isTrue,
+      reason: 'file-save-as is live since P3',
+    );
 
     // Export used to be its own icon in the strip; it is a once-a-session
     // verb, so it lives behind the same button as saving now.
@@ -94,11 +104,12 @@ void main() {
   });
 
   testWidgets('Settings: the project\'s settings are one level in, beside '
-      'the work\'s — FPS, audio, camera frame, playback quality', (
+      'the work\'s — FPS, audio, camera frame, playback mode', (
     tester,
   ) async {
     // 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」: the sill's ⚙
-    // rows, moved.
+    // rows, moved. ↩️The last was the playback QUALITY until the option
+    // went (유저 2026-10-08); the playback MODE has its seat.
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');
@@ -112,7 +123,7 @@ void main() {
       'project-settings-fps',
       'project-settings-audio-rate',
       'project-settings-camera-size',
-      'project-settings-quality',
+      'project-settings-playback-mode',
     ]) {
       expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
     }

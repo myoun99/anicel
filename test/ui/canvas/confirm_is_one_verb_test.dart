@@ -460,7 +460,15 @@ void main() {
     await strokeAt(tester, Offset.zero);
     await useTool(tester, CanvasTool.move);
     final commands = workspaceOf(tester).canvasSelectionCommands!;
-    commands.setTransformValues(tx: 10, ty: 0, rotationDegrees: 0, scale: 1);
+    commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
+    );
     await pumpFrames(tester);
     commands.applyTransform();
     await pumpFrames(tester);

@@ -14,6 +14,7 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -220,17 +221,21 @@ void main() {
           inkImageFor: (key) => key == rowKey ? ink : null,
         );
         try {
+          // At 1x the page is its paper's pixels (F-294): a point of the
+          // page is `paperScale` of them.
+          expect((rendered.width, rendered.height), (2480, 3508));
+          final scale = metrics.paperScale;
           final inside = await pixelAt(
             rendered,
-            band.center.dx.round(),
-            band.center.dy.round(),
+            (band.center.dx * scale).round(),
+            (band.center.dy * scale).round(),
           );
           expect(inside.$1, greaterThan(200), reason: 'band center is inked');
           expect(inside.$2, lessThan(60));
           final above = await pixelAt(
             rendered,
-            band.center.dx.round(),
-            (metrics.topBandTop + 4).round(),
+            (band.center.dx * scale).round(),
+            ((metrics.topBandTop + 4) * scale).round(),
           );
           expect(
             above,
@@ -242,6 +247,44 @@ void main() {
         }
       } finally {
         ink.dispose();
+      }
+    });
+  });
+
+  testWidgets('a page image is paper from its first row to its last — the '
+      'page is A4 in points and the image A4 in pixels, a hair apart in '
+      'shape, and the page lies centred in it (F-294)', (tester) async {
+    await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final page = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      ).first;
+      final rendered = await renderContePageImage(
+        page: page,
+        source: source,
+        words: conteWordsIn(AppLanguage.ja),
+      );
+      try {
+        expect((rendered.width, rendered.height), (2480, 3508));
+        // The page at the paper's pixels a point takes is short of the
+        // image's height.
+        expect(
+          page.metrics.pageHeight * page.metrics.paperScale,
+          lessThan(3507.5),
+          reason: 'fixture: laid from the corner, the last row is no paper',
+        );
+        for (final y in [0, 3507]) {
+          for (final x in [0, 1240, 2479]) {
+            expect(
+              await pixelAt(rendered, x, y),
+              (255, 255, 255),
+              reason: 'paper at ($x, $y)',
+            );
+          }
+        }
+      } finally {
+        rendered.dispose();
       }
     });
   });
@@ -313,11 +356,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -356,11 +394,6 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -375,15 +408,21 @@ void main() {
   testWidgets('a cell whose camera moves carries the canvas it sweeps, as '
       'sharp on the paper as every window (유저 2026-09-29: 「일단 카메라 '
       '팬대로 해당 코마에서 보여주고」)', (tester) async {
-    // Cut 40's camera pans a screen right across its one cell: two screens
-    // wide, laid on the page a hair under a screen a window (the page's
-    // width stops it), so its picture is a hair under two windows wide.
+    // Cut 40's camera pans half a screen right across its one cell: a
+    // screen and a half wide, laid on the page at a screen a window, so its
+    // picture is a window and a half wide.
+    //
+    // ↩️It panned a whole screen until F-310 (유저 2026-10-06: 「초수칸말고
+    // se칸까지만 최대치로 잡도록」). Two screens wide reached into the time
+    // column at a screen a window; the picture stops where that column
+    // begins now, so that sweep is laid smaller and its raster with it —
+    // which is the layout's pin, not this one's.
     final session = EditorSessionManager(
       initialProject: project(
         camera40: CutCamera(
           keyframes: {
             0: CameraPose(center: CanvasPoint(x: 16, y: 9)),
-            6: CameraPose(center: CanvasPoint(x: 48, y: 9)),
+            6: CameraPose(center: CanvasPoint(x: 32, y: 9)),
           },
         ),
       ),
@@ -407,11 +446,6 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -421,8 +455,8 @@ void main() {
     );
     expect(
       sizes.toSet(),
-      {(32, 18), (64, 18)},
-      reason: 'the still cells\' camera frames, and the swept 64×18 canvas',
+      {(32, 18), (48, 18)},
+      reason: 'the still cells\' camera frames, and the swept 48×18 canvas',
     );
   });
 
@@ -453,11 +487,6 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -478,6 +507,52 @@ void main() {
       reason:
           '🗣️the pages print every picture at the camera frame\'s own '
           'size (유저 2026-09-25 「내보내기는 원본」) — ↩️320px a scale step',
+    );
+  });
+
+  testWidgets('🎯the export prints the book the work keeps: its cover taken '
+      'out, the blank back and the body are the whole book', (tester) async {
+    // 유저 2026-10-02 (I-59): 「이게 내보내기시에도 연동. 내보내기는
+    // 기본적으로 이런식으로 해당 패널에서 설정한 대로 내보내기임」.
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    session.updateTimesheetInfo(
+      session.timesheetInfo.copyWith(conteCover: false),
+    );
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(
+      {
+        for (final file in temp.listSync().whereType<File>())
+          if (file.path.endsWith('.png'))
+            file.path.split(Platform.pathSeparator).last,
+      },
+      {'conte_p1.png', 'conte_p2.png'},
     );
   });
 
@@ -535,17 +610,14 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
 
+    // At 1× a page is its paper's pixels (F-294) — a point of the page is
+    // `paperScale` of them. Where each picture sits is what the pages'
+    // marks say.
+    final scale = const ConteSheetMetrics().paperScale;
     Future<(int, int, int)> pageAt(String name, double x, double y) async {
       final image = (await tester.runAsync(
         () => decodeImageFromList(
@@ -553,11 +625,11 @@ void main() {
         ),
       ))!;
       addTearDown(image.dispose);
-      return (await tester.runAsync(() => pixelAt(image, x.round(), y.round())))!;
+      return (await tester.runAsync(
+        () => pixelAt(image, (x * scale).round(), (y * scale).round()),
+      ))!;
     }
 
-    // At 1× a point is a pixel. Where each picture sits is what the pages'
-    // marks say.
     final source = buildConteSheetSource(session.repository.requireProject());
     final book = layoutConteBook(
       source,
@@ -585,8 +657,9 @@ void main() {
     expect(onBody, (0, 0, 255), reason: 'and so does the logo');
   });
 
-  testWidgets('the page-image scale rasters the page at that multiple — '
-      'the run passes its scale, the preview its fitted size', (
+  testWidgets('a page image is the page at its paper\'s own pixels, as PNG '
+      'or as JPG — there is no scale to pick (유저 2026-10-06: 「시트 '
+      '이미지는 배율 없앰. 늘 용지 그대로. 콘티든 컷봉투든 똑같음」)', (
     tester,
   ) async {
     final session = EditorSessionManager(initialProject: project());
@@ -613,11 +686,6 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     /// A PNG's width from its IHDR — the first chunk, big-endian at 16.
     int pngWidth(String name) {
@@ -626,23 +694,31 @@ void main() {
       return ByteData.sublistView(bytes).getUint32(16);
     }
 
-    // The spec's default is 2×, so the baseline is picked, not assumed.
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
-    await tester.pump();
-    expect(state.debugSpecs.conte.sheetScale, 1);
+    // The page's paper, its own pixels (F-294, 유저 2026-10-05: 「1x하더라도
+    // 100%크기인채로 출력해야」).
     await tester.runAsync(state.export);
     await tester.pump();
-    final atOne = pngWidth('conte_p3.png');
-
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-3')));
-    await tester.pump();
-    expect(state.debugSpecs.conte.sheetScale, 3);
-    await tester.runAsync(state.export);
-    await tester.pump();
+    expect(pngWidth('conte_p3.png'), 2480);
     expect(
-      pngWidth('conte_p3.png'),
-      inInclusiveRange(atOne * 3 - 1, atOne * 3 + 1),
-      reason: 'the run rasters at sheetScale × the page\'s point size',
+      find.byKey(const ValueKey<String>('export-contescale-2')),
+      findsNothing,
+      reason: 'the scale row is gone',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-jpg')),
+    );
+    await tester.pump();
+    expect(state.debugSpecs.conte.format, ExportConteFormat.pageImage);
+    expect(state.debugSpecs.conte.image.stillFormat, ExportStillFormat.jpg);
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final jpg = File('${temp.path}${Platform.pathSeparator}conte_p3.jpg');
+    expect(jpg.existsSync(), isTrue);
+    expect(
+      jpg.readAsBytesSync().take(3),
+      [0xFF, 0xD8, 0xFF],
+      reason: 'a JPG by its bytes, not by its name alone',
     );
   });
 
@@ -699,18 +775,11 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
-    // The page image, at 1×: a point is a pixel.
+    // The page image, at 1×: the paper's pixels, `paperScale` to a point.
     await tester.tap(
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
     await tester.pump();
     await tester.runAsync(state.export);
     await tester.pump();
@@ -722,9 +791,14 @@ void main() {
       ),
     ))!;
     addTearDown(image.dispose);
+    final scale = page.metrics.paperScale;
     Future<bool> redAt(Offset point) async {
       final (r, g, _) = (await tester.runAsync(
-        () => pixelAt(image, point.dx.round(), point.dy.round()),
+        () => pixelAt(
+          image,
+          (point.dx * scale).round(),
+          (point.dy * scale).round(),
+        ),
       ))!;
       return r > 200 && g < 60;
     }
@@ -766,16 +840,26 @@ void main() {
   });
 
   test('the conte spec round-trips through the persisted tab specs', () {
-    const specs = ExportTabSpecs(
+    final specs = ExportTabSpecs(
       conte: ConteExportSpec(
         format: ExportConteFormat.pageImage,
-        sheetScale: 3,
+        image: paperDocumentFormat.copyWith(
+          stillFormat: ExportStillFormat.jpg,
+          jpgQuality: 70,
+        ),
       ),
     );
     final restored = ExportTabSpecs.fromJson(specs.toJson());
     expect(restored.conte.format, ExportConteFormat.pageImage);
-    expect(restored.conte.sheetScale, 3);
+    expect(restored.conte.image.stillFormat, ExportStillFormat.jpg);
+    expect(restored.conte.image.jpgQuality, 70);
     expect(restored, specs);
+    // A scale a file of an older build names is not read: a page is its
+    // paper.
+    expect(
+      ConteExportSpec.fromJson(const {'format': 'pageImage', 'sheetScale': 3}),
+      const ConteExportSpec(format: ExportConteFormat.pageImage),
+    );
     // Old persisted JSON without a conte entry stays readable.
     expect(
       ExportTabSpecs.fromJson(const {'sequence': <String, dynamic>{}}).conte,

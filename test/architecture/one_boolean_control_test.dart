@@ -114,6 +114,7 @@ Widget d() => SettingsSwitchRow(label: 'x', value: true, onChanged: null);
 Widget e() => Icon(on ? Icons.check_box : Icons.check_box_outline_blank);
 Widget f() => Icon(Icons.indeterminate_check_box_outlined);
 Widget g() => BooleanDotButton(keyValue: 'k', value: on, onChanged: null);
+Widget h() => BooleanMixDotButton(keyValue: 'k', value: mix, onChanged: null);
 ''';
     List<String> lines(RegExp pattern) => [
       for (final hit in _hits('planted.dart', planted, pattern))
@@ -121,7 +122,7 @@ Widget g() => BooleanDotButton(keyValue: 'k', value: on, onChanged: null);
     ];
     expect(lines(_materialBoolean), ['planted.dart:1', 'planted.dart:2']);
     expect(lines(_checkGlyph), ['planted.dart:5']);
-    expect(lines(_ringButton), ['planted.dart:7']);
+    expect(lines(_ringButton), ['planted.dart:7', 'planted.dart:8']);
   });
 }
 
@@ -142,8 +143,9 @@ final _materialBoolean = RegExp(
   r'CheckedPopupMenuItem)(\.adaptive)?(<[^>()]*>)?\(',
 );
 
-/// The ring as a button of its own.
-final _ringButton = RegExp(r'\bBooleanDotButton\(');
+/// The ring as a button of its own — the boolean's, and the one a switch
+/// over several things wears (`BooleanMixDotButton`, F-289-Q13).
+final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 
 /// 🚨THE RINGS THAT ARE BUTTONS OF THEIR OWN, and why the row around each
 /// cannot be the control.
@@ -158,14 +160,24 @@ const _ringsOfTheirOwn = <String, String>{
   'lib/src/ui/brush/guide_panels.dart':
       'a guide row: a press on the row SELECTS that guide, so the ring '
       'beside its name (acting on / off) cannot be the whole row',
+  'lib/src/ui/export/export_cels_board.dart':
+      'a row of the export window\'s Cels list: a press on its name STANDS '
+      'the list on it (what the preview shows), so the ring that says '
+      'whether the row is written leads the row as the rail\'s first cell',
 };
 
 /// 🚨THE LEDGER. Measured 2026-09-23: one file wears a check, and it is a
 /// verb.
+///
+/// ↩️2026-10-08: the transform box's pill, the canvas adjusted on the
+/// canvas (I-79) and the camera frame adjusted on the canvas (I-80) each
+/// wore one; the pill's pair is written once now (`targetPillVerbs`), so
+/// one file wears it again.
 const _checkMarkVerbs = <String, String>{
-  'lib/src/ui/canvas/canvas_selection_layer.dart':
-      'the APPLY button of a move/transform session — it commits, and shows '
-      'no state of its own',
+  'lib/src/ui/canvas/canvas_target_pill.dart':
+      'the APPLY button of the pill a canvas verb wears — a move/transform '
+      'session, a canvas or the camera frame adjusted on the canvas: it '
+      'lands what the pill stands under',
 };
 
 /// Every line of [source] (named [path]) where [pattern] matches CODE — a

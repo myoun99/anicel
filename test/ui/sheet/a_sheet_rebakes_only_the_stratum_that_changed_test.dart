@@ -94,15 +94,13 @@ void main() {
             return (
               () => TimesheetTabHost(
                 session: session,
-                continuous: false,
-                onContinuousChanged: (_) {},
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
               ),
               () => ink.commitStroke(
-                plane: TimesheetInkPlane.strip,
-                key: timesheetInkStripKey(session.requireActiveCut.id, 0),
+                plane: null,
+                key: timesheetInkPageKey(session.requireActiveCut.id, 0),
                 strokeData: oneDab(),
                 historyManager: session.historyManager,
               ),
@@ -356,6 +354,7 @@ void main() {
               0,
               value,
               frameIsGlobal: false,
+              scaleLinked: false,
             ),
           ),
           only(const {}),

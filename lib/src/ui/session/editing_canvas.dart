@@ -236,8 +236,6 @@ class EditingCanvas {
         CanvasLayerImageRequest(
           frameKey: _project.brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
-          pose: null,
-          anchorPoint: null,
         ),
       );
     }

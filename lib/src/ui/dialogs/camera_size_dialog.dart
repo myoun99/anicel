@@ -14,30 +14,45 @@ import 'canvas_size_dialog.dart' show CanvasSizeDialog;
 /// width. Bounds reuse [CanvasSizeDialog]'s typing limits: both fields
 /// answer "how big may a document dimension be typed", which is the one
 /// of the app's two ceilings that is actually a limit.
+///
+/// [onAdjustOnCanvas] opens the camera's frame on the canvas instead
+/// (I-80): the window closes, and the size is dragged where the frame
+/// stands.
 Future<CanvasSize?> showCameraSizeDialog(
   BuildContext context, {
   required CanvasSize initialSize,
+  VoidCallback? onAdjustOnCanvas,
 }) {
   return showDialog<CanvasSize>(
     context: context,
-    builder: (context) => _CameraSizeDialog(initialSize: initialSize),
+    builder: (context) => _CameraSizeDialog(
+      initialSize: initialSize,
+      onAdjustOnCanvas: onAdjustOnCanvas,
+    ),
   );
 }
 
 class _CameraSizeDialog extends StatefulWidget {
-  const _CameraSizeDialog({required this.initialSize});
+  const _CameraSizeDialog({required this.initialSize, this.onAdjustOnCanvas});
 
   final CanvasSize initialSize;
+  final VoidCallback? onAdjustOnCanvas;
 
   @override
   State<_CameraSizeDialog> createState() => _CameraSizeDialogState();
 }
 
 class _CameraSizeDialogState extends State<_CameraSizeDialog> {
-  static const _presets = <CanvasSize>[
-    CanvasSize(width: 960, height: 540),
-    CanvasSize(width: 1280, height: 720),
-    CanvasSize(width: 1920, height: 1080),
+  /// The common production frames: a quarter of FHD (qHD), then the
+  /// screens' sizes ([videoSizePresets]).
+  ///
+  /// 🗣️I-80 (유저 2026-10-06): 「카메라 크기 창도 버튼들 이제
+  /// 리스트팝오버로서 여러 프리셋 준비해서 거기서 선택하는방식으로. 선택하면
+  /// 적용되서 숫자 바뀌는느낌」 — the list the canvas size window offers.
+  /// ↩️They were three chips (960 × 540, HD, FHD).
+  static const _presets = <SizePreset>[
+    (name: 'qHD', size: CanvasSize(width: 960, height: 540)),
+    ...videoSizePresets,
   ];
 
   late final TextEditingController _widthController = TextEditingController(
@@ -80,7 +95,9 @@ class _CameraSizeDialogState extends State<_CameraSizeDialog> {
       title: strings.cameraSizeTitle,
       titleIcon: Icons.videocam_outlined,
       onClose: () => Navigator.of(context).pop(),
-      width: 380,
+      // The canvas size window's width: the two share their rows, and the
+      // presets row with 「캔버스에서 조정」 overflowed 380.
+      width: 460,
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,19 +109,12 @@ class _CameraSizeDialogState extends State<_CameraSizeDialog> {
             onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final size in _presets)
-                ActionChip(
-                  key: ValueKey<String>(
-                    'camera-size-preset-${size.width}x${size.height}',
-                  ),
-                  label: Text('${size.width}×${size.height}'),
-                  onPressed: () => _applyPreset(size),
-                ),
-            ],
+          SizePresetsRow(
+            keyPrefix: 'camera-size',
+            groups: const [_presets],
+            entered: enteredSize,
+            onPicked: _applyPreset,
+            onAdjustOnCanvas: widget.onAdjustOnCanvas,
           ),
         ],
       ),

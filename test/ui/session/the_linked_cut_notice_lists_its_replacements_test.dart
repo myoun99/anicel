@@ -56,7 +56,7 @@ void main() {
   );
 
   test('the drawings the origin\'s replace are listed by their place in the '
-      'target — cut, row, drawing', () {
+      'target — cut, row, drawing, and the frame its block starts on', () {
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('linked-notice'),
@@ -73,10 +73,21 @@ void main() {
     );
     addTearDown(s.dispose);
 
-    final preview = cutsOf(
+    List<String> replaced() => cutsOf(
       s,
-    ).convertToLinkedCutPreviewData(const CutId('cut-2'))!;
+    ).convertToLinkedCutPreviewData(const CutId('cut-2'))!.replacedDrawings;
 
-    expect(preview.replacedDrawings, ['2 · A · 1', '2 · A · 2']);
+    // F-284 (유저 2026-10-04): 「프레임 링크된거 보여줄때도 동일하게 해서
+    // 링크된거 보여주는 창 다 법 통일해서 적용」 — ↩️the line ended with the
+    // drawing's name.
+    expect(replaced(), ['2 · A · 1 · 1', '2 · A · 2 · 2']);
+
+    s.appSettings.showSecondsDisplay.value = true;
+    expect(
+      replaced(),
+      ['2 · A · 1 · 0+1', '2 · A · 2 · 0+2'],
+      reason: 'the frame is written the session\'s way, which follows the '
+          'seconds display',
+    );
   });
 }

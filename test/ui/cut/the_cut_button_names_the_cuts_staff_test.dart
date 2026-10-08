@@ -7,11 +7,13 @@ import 'package:anicel/src/ui/cut_command_group.dart';
 import 'package:anicel/src/ui/dialogs/cut_settings_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-/// 🗣️유저 09-25 (project-settings-window): the work's settings carry each
-/// stage's name, a cut's settings the cut's own — 「작품 설정에는 기본값,
-/// 컷 설정에는 컷별 이름」. The cut button's 「컷 설정…」 shows the work's
-/// names faintly where the cut names nobody, and what is typed there is the
-/// cut's.
+/// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
+/// 스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」. The cut
+/// button's 「컷 설정…」 names every stage but the conte's — the work's — and
+/// what is typed there is the cut's.
+///
+/// ↩️It showed the work's names faintly where the cut named nobody (09-25:
+/// 「작품 설정에는 기본값, 컷 설정에는 컷별 이름」).
 void main() {
   const key = LayerMark(process: LayerProcess.key);
   const keyDirector = LayerMark(
@@ -24,9 +26,6 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.updateTimesheetInfo(
-      session.timesheetInfo.withStaffName(key, 'Work Genga'),
-    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -44,18 +43,28 @@ void main() {
   Finder fieldOf(LayerMark mark) =>
       find.byKey(ValueKey<String>('cut-settings-staff-${mark.keySlug}'));
 
-  testWidgets('컷 설정 shows the work\'s name faintly in an empty field, and a '
-      'name typed there is the cut\'s own — one undo takes it back', (
-    tester,
-  ) async {
+  testWidgets('컷 설정 names every stage but the conte\'s, and a name typed '
+      'there is the cut\'s own — one undo takes it back', (tester) async {
     final session = await pumpCutButton(tester);
     expect(
       find.byKey(const ValueKey<String>('cut-settings-window')),
       findsOneWidget,
     );
+    for (final mark in everyLayerMark()) {
+      final process = mark.process;
+      if (process == null) {
+        continue;
+      }
+      expect(
+        fieldOf(mark),
+        staffHolderOf(process) == StaffHolder.cut
+            ? findsOneWidget
+            : findsNothing,
+        reason: '${mark.keySlug}: the conte is the work\'s, 用紙 nobody\'s',
+      );
+    }
     final field = tester.widget<TextField>(fieldOf(key));
     expect(field.controller!.text, isEmpty, reason: 'the cut names nobody');
-    expect(field.decoration!.hintText, 'Work Genga');
 
     await tester.enterText(fieldOf(key), 'Cut Genga');
     await tester.tap(
@@ -63,17 +72,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final cut = session.activeCutOrNull!;
-    expect(cut.metadata.staffNameFor(key), 'Cut Genga');
-    expect(
-      session.timesheetInfo.staffNameForCut(cut.metadata, key),
-      'Cut Genga',
-      reason: 'the forms print the cut\'s name over the work\'s',
-    );
+    expect(session.activeCutOrNull!.metadata.staffNameFor(key), 'Cut Genga');
     expect(
       session.timesheetInfo.staffNameFor(key),
-      'Work Genga',
-      reason: 'the work keeps its own',
+      isEmpty,
+      reason: 'the work keeps no 原画',
     );
 
     session.undo();
@@ -93,10 +96,8 @@ void main() {
             onPressed: () async {
               answer = await showDialog<Map<LayerMark, String>>(
                 context: context,
-                builder: (_) => CutSettingsWindow(
-                  cutStaff: {key.keySlug: 'Cut Genga'},
-                  workStaff: {key.keySlug: 'Work Genga'},
-                ),
+                builder: (_) =>
+                    CutSettingsWindow(cutStaff: {key.keySlug: 'Cut Genga'}),
               );
               answered = true;
             },
@@ -111,7 +112,7 @@ void main() {
     expect(
       tester.widget<TextField>(fieldOf(key)).controller!.text,
       'Cut Genga',
-      reason: 'the cut\'s own name, not the work\'s',
+      reason: 'the cut\'s own name',
     );
     await tester.enterText(fieldOf(keyDirector), 'Sakkan');
     await tester.tap(

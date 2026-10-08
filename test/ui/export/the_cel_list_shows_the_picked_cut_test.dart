@@ -18,16 +18,21 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_cel_layer_row.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+
+import '../../helpers/export_cels_alone.dart';
+import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_preview_probe.dart';
 
 /// F-177 (유저 2026-09-22): 「범위를 프로젝트로 설정시 미리보기 셀 출력
 /// 리스트가 모든 컷 합쳐서 레이어들 보여주는데, 그게아니라 컷 리스트가 있고,
 /// 팝오버로 컷 선택하면 밑에 셀 리스트? 보여주게하도록」 — and the shape
-/// chosen on the board (cel-export-project-list): a button on top of the
-/// list, the list showing the picked cut alone.
+/// chosen on the board (cel-export-project-list): a button at the head of
+/// the list, the list showing the picked cut alone.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -82,9 +87,7 @@ void main() {
     EditorSessionManager session, {
     required ExportScopeKind scope,
   }) async {
-    AppExport.settings.value = AppExportSettings(
-      lastSpecs: ExportTabSpecs(cels: CelsExportSpec(scope: scope)),
-    );
+    AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -103,25 +106,15 @@ void main() {
     await tester.pump();
   }
 
-  /// The bundle rows in the order they are DRAWN, read off the widget tree.
-  List<String> listedIds(WidgetTester tester) => [
-    for (final key in tester
-        .widgetList<InkWell>(find.byType(InkWell))
-        .map((ink) => ink.key)
-        .whereType<ValueKey<String>>()
-        .map((key) => key.value)
-        .where((value) => value.startsWith('export-cels-bundle-')))
-      key.substring('export-cels-bundle-'.length),
-  ];
+  /// The list's rows in the order they are DRAWN.
+  List<String> listedIds(WidgetTester tester) => tester.celsBoardRowIds;
 
   PanelFlyoutButton picker(WidgetTester tester) =>
       tester.widget<PanelFlyoutButton>(
         find.byKey(const ValueKey<String>('export-cels-cut-picker')),
       );
 
-  String transportLine(WidgetTester tester) => tester
-      .widget<Text>(find.byKey(const ValueKey<String>('export-transport-line')))
-      .data!;
+  String transportLine(WidgetTester tester) => tester.exportPreviewLine;
 
   Future<void> pick(WidgetTester tester, CutId cut) async {
     await tester.tap(
@@ -165,34 +158,94 @@ void main() {
     expect(transportLine(tester), 'B1.png · 1 / 1');
   });
 
-  testWidgets('🚨a tick in the picked cut is written to THAT cut', (
-    tester,
-  ) async {
+  testWidgets('🚨what the hand does in the picked cut is written to THAT '
+      'cut — a drawing turned off, and a row', (tester) async {
     final session = twoCuts();
     addTearDown(session.dispose);
     await pumpCels(tester, session, scope: ExportScopeKind.project);
 
     await pick(tester, second);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-bundle-dot-e')),
-    );
-    await tester.pump();
+    await tester.pressInCelsBoard(tester.celsBoardBlock('e', 'e-f1'));
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('d'));
 
     final overrides = session.repository.requireProject().exportOverrides;
-    expect(overrides.deltaFor(second)?.skippedBases, {const LayerId('e')});
+    expect(overrides.deltaFor(second)?.skippedCels, {
+      (row: const LayerId('e'), cel: const FrameId('e-f1')),
+    });
+    expect(overrides.deltaFor(second)?.layerOverrides, {
+      const LayerId('d'): false,
+    });
     expect(
       overrides.deltaFor(first),
       isNull,
       reason: 'it went into the anchor cut\'s delta, which 002 never reads',
     );
-    expect(
-      tester
-          .widget<ExportIncludeDot>(
-            find.byKey(const ValueKey<String>('export-cels-bundle-dot-e')),
-          )
-          .value,
-      isFalse,
+    expect(tester.celsBoardBlockOf('e', 'e-f1').sheet.written, isFalse);
+    expect(tester.celsBoardSwitchState('d'), BooleanMix.off);
+  });
+
+  testWidgets('🚨「커스텀」 and the filters answer for the PICKED cut: its '
+      'rows leaving the rule turn the label, and a filter press puts ITS '
+      'rows back — the other cut\'s stay as the hand left them', (
+    tester,
+  ) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    String label() => tester
+        .widget<Text>(
+          find.byKey(const ValueKey<String>('export-cels-label-text')),
+        )
+        .data!;
+    Map<LayerId, bool> byHand(CutId cut) =>
+        session.repository
+            .requireProject()
+            .exportOverrides
+            .deltaFor(cut)
+            ?.layerOverrides ??
+        const {};
+    final custom = AppText.strings.exSelCustom;
+
+    // A row of the anchor cut answers by hand.
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
+    expect(label(), custom);
+
+    await pick(tester, second);
+    expect(label(), isNot(custom), reason: '002 is on its rules');
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('d'));
+    expect(label(), custom);
+
+    await tester.pressInCelsBoard(
+      find.byKey(const ValueKey<String>('export-cels-select-sheet')),
     );
+    expect(byHand(second), isEmpty, reason: 'the filter put 002 back');
+    expect(label(), isNot(custom));
+    expect(
+      byHand(first),
+      {const LayerId('a'): false},
+      reason: 'the press was made in 002',
+    );
+
+    await pick(tester, first);
+    expect(label(), custom);
+  });
+
+  testWidgets('the picked cut\'s DOCUMENTS are its own: each cut\'s list '
+      'closes with its own timesheet, and no other cut\'s', (tester) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    await tester.pressInCelsBoard(
+      find.byKey(const ValueKey<String>('export-cels-kind-timesheet')),
+    );
+
+    expect(listedIds(tester), const ['b', 'a', 'document-timesheet']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [('001', true)]);
+
+    await pick(tester, second);
+
+    expect(listedIds(tester), const ['e', 'd', 'document-timesheet']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [('002', true)]);
   });
 
   testWidgets('under the cut scope the button is there, shut, naming the '

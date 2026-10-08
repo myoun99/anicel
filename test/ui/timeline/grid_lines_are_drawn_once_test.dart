@@ -162,7 +162,8 @@ void main() {
   });
 }
 
-/// Every filled box a painter asks for, with its colour.
+/// Every filled box a painter asks for, with its colour — a mark aside
+/// ([isInbetweenMarkShape]).
 class _FillSpy implements Canvas {
   final fills = <({Rect rect, Color color})>[];
 
@@ -171,8 +172,11 @@ class _FillSpy implements Canvas {
       fills.add((rect: rect, color: paint.color));
 
   @override
-  void drawRRect(RRect rrect, Paint paint) =>
+  void drawRRect(RRect rrect, Paint paint) {
+    if (!isInbetweenMarkShape(rrect)) {
       fills.add((rect: rrect.outerRect, color: paint.color));
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

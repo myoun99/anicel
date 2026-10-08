@@ -1,23 +1,31 @@
-import 'dart:math' as math;
+import 'dart:ui' show Offset, Rect, Size;
 
-import '../project.dart' show defaultProjectCameraSize;
+import '../../core/contain_rect.dart';
+import '../sheet_paper.dart';
 import 'cut_envelope_form.dart';
 
 /// Ink surface pixels across the FORM's whole width — the resolution every
 /// envelope's handwriting is stored at, whatever paper it prints on — for a
 /// form of [aspectRatio].
 ///
-/// One pixel per paper unit where the form prints on the default shooting
-/// frame: the canvas's grade (유저 2026-09-26, one-paper-brush-width-Q2:
-/// 「해상도를 캔버스처럼 낮추기」), so a brush of a size at 100% draws on the
-/// envelope as wide as on the canvas. It stays the form's, never a cut's
-/// ([CutEnvelopeLayout.inkSurfaceScale]): on a canvas larger than that
-/// frame the ink is coarser in proportion, on a smaller one finer. It was
-/// 4096 whatever the form — two to three times the canvas's grade.
+/// One pixel per pixel of the paper where the form lies on the envelope's
+/// own paper (`SheetPaper.envelope`, F-294 — 유저 2026-10-05: 「컷봉투패널의
+/// 용지는 300dpi」 · 「컷봉투 가로a4 수용할게」): the panel's paper, so a brush
+/// of a size at 100% draws on the envelope as wide as on the canvas. It
+/// stays the form's, never a cut's ([CutEnvelopeLayout.inkSurfaceScale]):
+/// printed on a larger paper the ink is coarser in proportion, on a smaller
+/// one finer.
+///
+/// ↩️It was measured where the form prints on the default shooting frame —
+/// the canvas's grade (유저 2026-09-26, one-paper-brush-width-Q2: 「해상도를
+/// 캔버스처럼 낮추기」) while the panel's paper was its cut's canvas — and
+/// 4096 whatever the form before that.
 double envelopeInkSurfaceWidth(double aspectRatio) {
-  const frame = defaultProjectCameraSize;
   final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
-  return math.min(frame.width.toDouble(), frame.height * ratio).ceilToDouble();
+  return containRect(
+    Size(ratio, 1),
+    Offset.zero & SheetPaper.envelope.extent,
+  ).width.ceilToDouble();
 }
 
 /// A box placed on paper: the form's fractions turned into paper units.
@@ -69,17 +77,18 @@ class CutEnvelopeLayout {
       throw ArgumentError('Paper must have a positive size.');
     }
     // Contain, never cover: a cropped form would lose boxes at the edge.
-    final byWidth = paperWidth / form.aspectRatio <= paperHeight;
-    final width = byWidth ? paperWidth : paperHeight * form.aspectRatio;
-    final height = byWidth ? paperWidth / form.aspectRatio : paperHeight;
+    final placed = containRect(
+      Size(form.aspectRatio, 1),
+      Rect.fromLTWH(0, 0, paperWidth, paperHeight),
+    );
     return CutEnvelopeLayout._(
       form: form,
       paperWidth: paperWidth,
       paperHeight: paperHeight,
-      formX: (paperWidth - width) / 2,
-      formY: (paperHeight - height) / 2,
-      formWidth: width,
-      formHeight: height,
+      formX: placed.left,
+      formY: placed.top,
+      formWidth: placed.width,
+      formHeight: placed.height,
     );
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -29,7 +30,7 @@ typedef _Inputs = ({
   bool seconds,
   double zoom,
   ValueChanged<double>? onZoom,
-  String cutName,
+  ValueListenable<String> cutName,
   TimelineOrientation orientation,
 });
 
@@ -51,6 +52,10 @@ void main() {
   ];
   final cursor = ValueNotifier<int>(29);
   final otherCursor = ValueNotifier<int>(29);
+  // The name is HEARD, like the cursor (I-57): a crossing rebuilds its one
+  // Text, so the fact is which channel the slot listens to.
+  final cutName = ValueNotifier<String>('c1');
+  final otherCutName = ValueNotifier<String>('c2');
   // ONE function, as the workspace's tear-off is in the app.
   void zoom(double _) {}
 
@@ -60,7 +65,7 @@ void main() {
     seconds: true,
     zoom: 24,
     onZoom: zoom,
-    cutName: 'c1',
+    cutName: cutName,
     orientation: TimelineOrientation.horizontal,
   );
 
@@ -175,7 +180,7 @@ void main() {
       seconds: base.seconds,
       zoom: base.zoom,
       onZoom: base.onZoom,
-      cutName: 'c2',
+      cutName: otherCutName,
       orientation: base.orientation,
     ),
     'the orientation its toggle shows': (

@@ -48,7 +48,9 @@ Cut _cut(String id, int duration) => Cut(
 /// Cut 1 covers [0,8), cut 2 covers [8,14). S1 carries a sound at [2,5);
 /// S2 is empty (the hop's landing row). The transition row carries a span
 /// at [2,5).
-Project _project() => Project(
+Project _project({
+  Map<int, InstructionEvent> moreSpans = const {},
+}) => Project(
   id: const ProjectId('mixed-project'),
   name: 'Mixed',
   createdAt: DateTime.utc(2026, 8, 18),
@@ -88,8 +90,9 @@ Project _project() => Project(
         frames: const [],
         timeline: const {},
         kind: LayerKind.transition,
-        instructions: const {
-          2: InstructionEvent(instructionId: 'ol', length: 3),
+        instructions: {
+          2: const InstructionEvent(instructionId: 'ol', length: 3),
+          ...moreSpans,
         },
       ),
     ),
@@ -97,8 +100,12 @@ Project _project() => Project(
 );
 
 void main() {
-  EditorSessionManager sessionFor() {
-    final session = EditorSessionManager(initialProject: _project());
+  EditorSessionManager sessionFor({
+    Map<int, InstructionEvent> moreSpans = const {},
+  }) {
+    final session = EditorSessionManager(
+      initialProject: _project(moreSpans: moreSpans),
+    );
     addTearDown(session.dispose);
     return session;
   }
@@ -288,20 +295,31 @@ void main() {
   test('an ILLEGAL slide step after a valid rigid step kills the rigid '
       'riders with the rigid plans — release commits NOTHING, never the '
       'riders alone', () {
-    final session = sessionFor();
+    // A span nobody selected stands right in front of the one that rides.
+    final session = sessionFor(
+      moreSpans: const {0: InstructionEvent(instructionId: 'wipe', length: 2)},
+    );
     selectMixedSpan(session);
 
     expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
     // Step A: a valid rigid diagonal (+1, S1 → S2) captures rider shifts.
     session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _seLayer2Id);
-    // Step B: back over the grab row, far left — the slide owns the step
-    // and the transition's landing (-7) is illegal, so it HOLDS.
-    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: -9);
+    // Step B: back over the grab row, a frame left — the slide owns the
+    // step, the sound has room and the transition would stand on the span
+    // in front of it, so the step has no landing and HOLDS.
+    //
+    // ↩️It went 「far left」, −9, and the landing that was illegal was the
+    // transition's at −7. A slide's rows stop at the wall as one since
+    // 2026-10-07 (`FrameRangeMoveDrag._rigidSlideDelta`): asked for −9 the
+    // sound goes the two frames it has and takes the transition with it —
+    // a landing, at the wall. What cannot land is a step a KEY rider cannot
+    // take, and this is one.
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: -1);
     session.rangeMove.endFrameRangeMoveDrag();
 
     // The rigid group is all-or-nothing THROUGH the release: nothing
     // landed — most of all not the transition alone.
-    expect(transitionSpansOf(session).keys.toList(), [2]);
+    expect(transitionSpansOf(session).keys.toList(), [0, 2]);
     expect(
       session.repository
           .requireProject()
@@ -323,6 +341,32 @@ void main() {
           .last
           .timeline,
       isEmpty,
+    );
+  });
+
+  test('a slide into the wall stops there as one: the sound goes the two '
+      'frames it has, and the transition goes with it', () {
+    final session = sessionFor();
+    selectMixedSpan(session);
+
+    expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+    session.rangeMove.updateFrameRangeMoveDrag(frameDelta: -9);
+    session.rangeMove.endFrameRangeMoveDrag();
+
+    expect(transitionSpansOf(session).keys.toList(), [0]);
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .first
+          .timeline
+          .keys
+          .toList(),
+      [0],
+      reason: 'asked for −9 the step had no landing at all, and the hand '
+          'at the wall left both two frames from it',
     );
   });
 

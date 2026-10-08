@@ -24,7 +24,9 @@ CutEnvelopeSource buildCutEnvelopeSource({
   return CutEnvelopeSource(
     title: info.title.isEmpty ? project.name : info.title,
     episode: info.episode,
-    note: cut.metadata.note,
+    // The timesheet's first page's memo — F-301-Q1 (유저 2026-10-08):
+    // 「봉투와 「컷 메모」 창은 1쪽 메모」.
+    note: cut.metadata.noteOf(0),
     cuts: [
       for (final line in _cutLines(project, cut))
         CutEnvelopeCutLine(
@@ -34,7 +36,7 @@ CutEnvelopeSource buildCutEnvelopeSource({
         ),
     ],
     cels: cutEnvelopeCelCounts(cut),
-    staff: info.staffForCut(cut.metadata),
+    staff: cut.metadata.staff,
     logoAssetPath: info.logoAssetPath,
     canvasWidth: cut.canvasSize.width,
     canvasHeight: cut.canvasSize.height,
@@ -49,18 +51,10 @@ CutEnvelopeSource buildCutEnvelopeSource({
 /// about a set of cuts, and reading it should not depend on which one
 /// happens to be open.
 List<({String name, int duration})> _cutLines(Project project, Cut cut) {
-  final siblings = <CutId>{
-    cut.id,
-    ...linkedCutSiblings(project, cutId: cut.id),
-  };
-  final lines = <({String name, int duration})>[];
-  for (final track in project.tracks) {
-    for (final candidate in track.cuts) {
-      if (siblings.contains(candidate.id)) {
-        lines.add((name: candidate.name, duration: candidate.duration));
-      }
-    }
-  }
+  final lines = [
+    for (final sibling in linkedCutGroupInTrackOrder(project, cutId: cut.id))
+      (name: sibling.name, duration: sibling.duration),
+  ];
   // A cut that somehow escaped the walk (an id with no cut) still prints
   // its own line rather than an empty envelope.
   if (lines.isEmpty) {
@@ -75,17 +69,5 @@ List<({String name, int duration})> _cutLines(Project project, Cut cut) {
 /// be one set too. The representative is the first sibling in track order
 /// — the same order [buildCutEnvelopeSource] prints the CUT lines in, so
 /// opening any sibling reaches the same sheet and the same handwriting.
-CutId cutEnvelopeInkOwner(Project project, CutId cutId) {
-  final siblings = <CutId>{cutId, ...linkedCutSiblings(project, cutId: cutId)};
-  if (siblings.length == 1) {
-    return cutId;
-  }
-  for (final track in project.tracks) {
-    for (final candidate in track.cuts) {
-      if (siblings.contains(candidate.id)) {
-        return candidate.id;
-      }
-    }
-  }
-  return cutId;
-}
+CutId cutEnvelopeInkOwner(Project project, CutId cutId) =>
+    linkedCutGroupInTrackOrder(project, cutId: cutId).firstOrNull?.id ?? cutId;

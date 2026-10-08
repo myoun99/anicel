@@ -152,7 +152,7 @@ TimesheetDocument _sheet() => TimesheetDocument.fromCut(
     name: '1',
     duration: 12,
     canvasSize: const CanvasSize(width: 1920, height: 1080),
-    metadata: const CutMetadata(note: 'Memo'),
+    metadata: const CutMetadata(pageNotes: ['Memo']),
     layers: [
       rederiveRunBehaviors(
         Layer(

@@ -36,6 +36,16 @@ part 'timeline/timeline_drawing_frames.dart';
 part 'timeline/timeline_retime.dart';
 part 'timeline/timeline_delete.dart';
 
+/// A row that RIDES a spliced row and keeps no timeline of its own: the cels
+/// it gains and the base links that name them (F-275 — a synced attach row's
+/// mirrors of its base's new cels). See
+/// [TimelineController.spliceRunsForLayers].
+typedef SpliceRider = ({
+  LayerId layerId,
+  List<Frame> bornFrames,
+  Map<FrameId, FrameId> bornBaseLinks,
+});
+
 /// Timeline queries and editing commands over the unified timeline model
 /// (drawing blocks with explicit lengths + inbetween marks; emptiness is
 /// the absence of coverage).
@@ -144,10 +154,6 @@ class TimelineController {
 
   bool hasDrawingAtCurrentFrame({required Layer layer}) =>
       _drawings.hasDrawingAtCurrentFrame(layer: layer);
-  bool isDrawingStartForLayer({
-    required Layer layer,
-    required int frameIndex,
-  }) => _drawings.isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) =>
       _drawings.canCreateDrawingAt(layer: layer, frameIndex: frameIndex);
   void createDrawingFrameForLayer({
@@ -194,14 +200,6 @@ class TimelineController {
     >
     fillsByLayer,
   ) => _drawings.drawingFramesCommandsForLayers(fillsByLayer);
-
-  bool isHeldExposureForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 ||
-        isDrawingStartForLayer(layer: layer, frameIndex: frameIndex)) {
-      return false;
-    }
-    return coveringDrawingBlockAt(layer.timeline, frameIndex) != null;
-  }
 
   // ── the marks: their own object, in their own file ──────────────────
   //
@@ -324,6 +322,8 @@ class TimelineController {
 
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) =>
       _delete.canDeleteCellAt(layer: layer, frameIndex: frameIndex);
+  bool blockStandsOn(LayerId layerId, {required int at}) =>
+      _delete.blockStandsOn(layerId, at: at);
   void deleteCellForLayer({required LayerId layerId}) =>
       _delete.deleteCellForLayer(layerId: layerId);
   void deleteBlocksForLayer({
@@ -405,7 +405,12 @@ class TimelineController {
     >
     runs,
     required String description,
-  }) => _retime.spliceRunsForLayers(runs: runs, description: description);
+    List<SpliceRider> riders = const [],
+  }) => _retime.spliceRunsForLayers(
+    runs: runs,
+    description: description,
+    riders: riders,
+  );
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,
@@ -511,6 +516,8 @@ class TimelineController {
   }) => _paste.copyRunForLayer(layerId: layerId, index: index, count: count);
   ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) =>
       _paste.runAtPlayheadForLayer(layerId);
+  ({int index, int count}) runAtForLayer(LayerId layerId, int index) =>
+      _paste.runAtForLayer(layerId, index);
 
   // --- The one splice ----------------------------------------------------------
 

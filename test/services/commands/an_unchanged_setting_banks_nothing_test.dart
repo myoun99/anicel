@@ -75,7 +75,7 @@ void main() {
 
     banksOnce(
       'updateCutNote',
-      (c) => c.updateCutNote(cutId: cutOf(c), note: 'a note'),
+      (c) => c.updateCutNote(cutId: cutOf(c), page: 0, note: 'a note'),
     );
     banksOnce(
       'updateCutThumbnailFrame',
@@ -88,6 +88,37 @@ void main() {
         canvasSize: const CanvasSize(width: 640, height: 480),
       ),
     );
+    banksOnce(
+      'placeCutCanvas',
+      (c) => c.placeCutCanvas(
+        cutId: cutOf(c),
+        canvasSize: const CanvasSize(width: 640, height: 480),
+        contentOffset: (dx: 0, dy: 0),
+      ),
+    );
+    // I-79: the offset is part of the question — a canvas whose edges
+    // were dragged can keep its size and still move the picture.
+    test('🚨placeCutCanvas: the same size with the picture moved is a step, '
+        'and neither moved is none', () {
+      final f = fixture();
+      final size = f.project.tracks.first.cuts.first.canvasSize;
+      f.coordinator.placeCutCanvas(
+        cutId: cutOf(f.coordinator),
+        canvasSize: size,
+        contentOffset: (dx: 0, dy: 0),
+      );
+      expect(f.history.undoCount, 0, reason: 'nothing moved');
+      f.coordinator.placeCutCanvas(
+        cutId: cutOf(f.coordinator),
+        canvasSize: size,
+        contentOffset: (dx: 12, dy: 0),
+      );
+      expect(
+        f.history.undoCount,
+        1,
+        reason: 'the picture moved though the size did not',
+      );
+    });
     banksOnce(
       'updateCutCamera',
       (c) => c.updateCutCamera(

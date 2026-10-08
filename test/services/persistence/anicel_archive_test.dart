@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -92,6 +93,38 @@ void main() {
     expect(remapped.mediaAssets[1].path, 'E:/elsewhere/hiss.wav');
   });
 
+  test('a project at the top of a disk records the media under it relative '
+      'too — and a bare file name stands in no folder', () {
+    // The save asked a folder of its own, which answered `.` for
+    // `/scene.anicel` — the working directory — so a project kept at the
+    // top of a Mac's or Linux's disk recorded nothing relative (board
+    // `the-save-keeps-its-own-folder-of-a-path`).
+    final project = createDefaultProject().copyWith(
+      mediaAssets: [
+        MediaAsset(path: '/snd/boom.wav', name: 'boom'),
+        MediaAsset(path: 'C:/snd/hiss.wav', name: 'hiss'),
+      ],
+    );
+    Map<String, String> recordedBeside(String projectPath) =>
+        parseAnicelArchiveBytes(
+          buildAnicelArchiveBytes(
+            project: project,
+            cels: const [],
+            saveDirectory: folderOfPath(projectPath),
+          ),
+        ).mediaRelativePaths;
+
+    expect(recordedBeside('/scene.anicel'), {'/snd/boom.wav': 'snd/boom.wav'});
+    expect(recordedBeside('C:/scene.anicel'), {
+      'C:/snd/hiss.wav': 'snd/hiss.wav',
+    });
+    expect(
+      recordedBeside('scene.anicel'),
+      isEmpty,
+      reason: 'nothing is under no folder',
+    );
+  });
+
   test('pasteboard tiles (negative coords) round-trip through the cel '
       'blob (v2 signed coords)', () {
     final pixels = Uint8List(8 * 8 * 4);
@@ -122,25 +155,79 @@ void main() {
     expect(reopened.tiles.containsKey(TileCoord(x: 3, y: 0)), isTrue);
   });
 
-  test('legacy v1 entries (drawings/tips) are IGNORED without error — the '
-      'v1 reader is deleted (R20-E3, no production v1 file exists)', () {
+  /// A document that says it is [formatVersion] — or says nothing, for
+  /// null — around a project this build wrote.
+  List<int> documentSaying(int? formatVersion) => utf8.encode(
+    jsonEncode({
+      'formatVersion': ?formatVersion,
+      'project': createDefaultProject().toJson(),
+    }),
+  );
+
+  Matcher refusesNaming(String said) => throwsA(
+    isA<FormatException>().having(
+      (error) => error.message,
+      'message',
+      contains(said),
+    ),
+  );
+
+  // 🗣️유저 2026-10-06 (the save law): 「옛파일 읽는코드는 필요없다고
+  // 확신했어」 → 「아까 답변 범위 ok 옛파일 열었을때 보이는거 ok.」
+  // ↩️This was 「legacy v1 entries (drawings/tips) are IGNORED without
+  // error」: a v1 file opened with its drawings left out and nothing said —
+  // the open the law takes away.
+  test('🚨a file older than this build reads is refused by ITS number — a '
+      'v1 archive, drawings and all, does not open with them left out', () {
     final archive = Archive()
-      ..add(
-        ArchiveFile.string(
-          'project.json',
-          jsonEncode({
-            'formatVersion': 1,
-            'project': createDefaultProject().toJson(),
-          }),
-        ),
-      )
+      ..add(ArchiveFile.bytes('project.json', documentSaying(1)))
       ..add(ArchiveFile.bytes('tips.bin', Uint8List.fromList([1, 0, 0])))
       ..add(ArchiveFile.bytes('drawings/0.bin', Uint8List.fromList([2, 0, 0])));
     final v1Bytes = ZipEncoder().encodeBytes(archive);
 
-    final contents = parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes));
-    expect(contents.project, isNotNull);
-    expect(contents.cels, isEmpty);
+    expect(
+      () => parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes)),
+      refusesNaming('format 1,'),
+    );
+  });
+
+  test('the floor is the first format that opens: the one below it is '
+      'refused by its number, and so is a file that says no format', () {
+    const floor = anicelOldestReadFormatVersion;
+    expect(
+      decodeAnicelProjectDocument(documentSaying(floor)).project,
+      isNotNull,
+    );
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(floor - 1)),
+      refusesNaming('format ${floor - 1},'),
+    );
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(null)),
+      refusesNaming('format 0,'),
+    );
+  });
+
+  // F-252 (format 10): a v9 file may hold the timesheet's strip ink, which
+  // this build no longer reads — it is refused by its number rather than
+  // opened with that writing gone and saved back without it.
+  test('🚨a v9 file is refused by its number — its strip ink would open '
+      'gone', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(9)),
+      refusesNaming('format 9,'),
+    );
+  });
+
+  // F-301 (format 11): a v10 file's cuts each hold ONE note, which this
+  // build no longer reads — refused by its number rather than opened with
+  // every memo gone.
+  test('🚨a v10 file is refused by its number — its notes would open '
+      'gone', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(10)),
+      refusesNaming('format 10,'),
+    );
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {
@@ -176,8 +263,8 @@ void main() {
     );
   });
 
-  test('🚨a build that reads version 3 refuses what this one writes — a '
-      'carry\'s name is the whole name now', () {
+  /// The format version a project written by this build says it is.
+  Object? writtenFormatVersion() {
     final archive = ZipDecoder().decodeBytes(
       buildAnicelArchiveBytes(project: createDefaultProject(), cels: const []),
     );
@@ -189,14 +276,67 @@ void main() {
               ),
             )
             as Map<String, dynamic>;
+    return written['formatVersion'];
+  }
 
+  test('🚨a build that reads version 3 refuses what this one writes — a '
+      'carry\'s name is the whole name now', () {
     expect(
-      written['formatVersion'],
+      writtenFormatVersion(),
       greaterThan(3),
       reason:
           'a v3 build reads `carriedAs` as a bare token and finds none of '
           'the carried bytes — it must refuse the file, not open it without '
           'them and save it back that way (audit 09-25)',
+    );
+  });
+
+  test('🚨a build that reads version 4 refuses what this one writes — a '
+      'cel\'s entry carries the texts set on its picture now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(4),
+      reason:
+          'a v4 build stops at such a cel with 「Unsupported cel entry '
+          'version」 the first time it shows it, one cel at a time, deep in '
+          'a session — it must refuse the file up front (R9-rest, 10-06)',
+    );
+  });
+
+  test('🚨a build that reads version 6 refuses what this one writes — a '
+      'project carries the fonts its texts are set with now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(6),
+      reason:
+          'a v6 build reads neither the document\'s fonts nor their '
+          'entries: it opens the project without them and its next save '
+          'writes the document back without the list — it must refuse the '
+          'file, not shorten it (R9-rest, 10-07)',
+    );
+  });
+
+  test('🚨a build that reads version 7 refuses what this one writes — a '
+      'letter says whether its edges are smoothed now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(7),
+      reason:
+          'a v7 build reads a hard letter as a smooth one, and the first '
+          'edit of its text bakes it smooth and writes it back that way — '
+          'it must refuse the file, not soften it (R9-rest, 10-07)',
+    );
+  });
+
+  test('🚨a build that reads version 8 refuses what this one writes — a '
+      'text says when it is written in columns now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(8),
+      reason:
+          'a v8 build sets a text in columns in lines, over a plate that '
+          'shows columns, and its first edit writes the lines back — it '
+          'must refuse the file (R9-rest, 10-07)',
     );
   });
 }

@@ -10,6 +10,7 @@ import '../../models/tile_coord.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
+import '../../services/cel_text_laying.dart';
 import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -49,7 +50,7 @@ typedef RowFloat = ({LandingPreview preview, Matrix4? canvasToRow});
 /// drawing frames are pixel-identical at any zoom by construction.
 class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   BitmapSurfacePainter({
-    required this.surface,
+    required BitmapSurface surface,
     this.viewport,
     this.overlayModel,
     this.stampPreview,
@@ -58,10 +59,25 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     this.devicePixelRatio = 1.0,
     BitmapTileImageCache? tileImageCache,
     TilePictureBudget? pictureBudget,
-  }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
+  }) : surface = celSurfaceWithTextsLaid(surface),
+       tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        pictureBudget = pictureBudget ?? TilePictureBudget.instance,
        super(repaint: Listenable.merge([?overlayModel, ?stampPreview]));
 
+  /// The tiles this painter draws — the picture AS SHOWN.
+  ///
+  /// 🚨★★★A PAINTER CANNOT BE HANDED A PICTURE'S DRAWING WITHOUT ITS TEXTS
+  /// (R9-rest, 유저 2026-10-06: a text is 「셀의 그림이랑 정확히 동일」). A
+  /// surface that still carries texts has them laid over its tiles HERE, in
+  /// the constructor, so no host that mounts this painter can be the one
+  /// that forgot — the same placement, for the same reason, as the colour
+  /// keys in `CutFrameCompositeLayer`'s constructor. A surface that carries
+  /// none (every sheet's ink, a selection's float, a cel already shown
+  /// through `celSurfaceAsShown`) comes back as the object it was.
+  ///
+  /// ⚠️It does not replace `celSurfaceAsShown` at the routes that key: the
+  /// keys filter the picture the texts are part of, so they have to be laid
+  /// BEFORE the keys run, and only that seam knows the row's chain.
   final BitmapSurface surface;
 
   /// Zoom/pan applied inside the picture; `null` paints at identity.

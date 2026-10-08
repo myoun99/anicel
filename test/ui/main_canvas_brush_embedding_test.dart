@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 
 import '../helpers/panel_finders.dart';
 
@@ -83,7 +84,10 @@ void main() {
     'production brush host stands its editing view down without an active '
     'drawing frame',
     (tester) async {
-      await tester.pumpWidget(const AnicelApp());
+      // A row with no cel: the bare project (the app opens on one, F-211).
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -95,12 +99,12 @@ void main() {
       // selected frame. PANEL-SCOPED (R26 #31): the docked timesheet is a
       // BrushCanvasPanel too, and its ink planes are interactive views.
       expect(inMainCanvas(find.byType(BrushCanvasPanel)), findsOneWidget);
-      // ↩️F-171: the app as it opens used to show a BLANK CANVAS here, with
-      // no editing view at all — and so the first press, which makes the
-      // first cel, had nothing to draw it (「그 가장 처음 상태만 선이
-      // 안그어짐」). The editing view stands on the cel a press would make
-      // now, standing DOWN: mounted to hear the press, taking no stroke
-      // until a cel is under it.
+      // ↩️F-171: an empty row — the app as it opened then — used to show a
+      // BLANK CANVAS here, with no editing view at all — and so the first
+      // press, which makes the first cel, had nothing to draw it (「그 가장
+      // 처음 상태만 선이 안그어짐」). The editing view stands on the cel a
+      // press would make now, standing DOWN: mounted to hear the press,
+      // taking no stroke until a cel is under it.
       expect(
         find.byKey(
           const ValueKey<String>('main-canvas-brush-host-blank-canvas'),

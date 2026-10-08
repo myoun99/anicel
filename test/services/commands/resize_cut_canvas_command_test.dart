@@ -117,7 +117,10 @@ void main() {
         repository: repository,
         cutId: const CutId('cut-target'),
         canvasSize: shrunkenSize,
-        anchor: anchor,
+        contentOffset: anchor.contentOffset(
+          from: const CanvasSize(width: 1920, height: 1080),
+          to: shrunkenSize,
+        ),
         brushFrameStore: store,
       );
     }
@@ -143,6 +146,24 @@ void main() {
       ).execute();
 
       expect(_inkAt(store, 300, 200), isNonZero);
+    });
+
+    // I-79: a canvas whose edges are dragged on the canvas moves the
+    // picture by what no anchor names — here its left edge pulled out by
+    // 100 and its right pushed in by as much, the size unchanged.
+    test('🚨an offset no anchor names moves the picture, the size '
+        'unchanged', () {
+      final store = _storeWithInkAt(x: 500, y: 400);
+      ResizeCutCanvasCommand(
+        repository: _repository(),
+        cutId: const CutId('cut-target'),
+        canvasSize: const CanvasSize(width: 1920, height: 1080),
+        contentOffset: (dx: 100, dy: -50),
+        brushFrameStore: store,
+      ).execute();
+
+      expect(_inkAt(store, 600, 350), isNonZero);
+      expect(_inkAt(store, 500, 400), anyOf(isNull, 0));
     });
 
     test('top-left anchor leaves pixels untouched', () {
@@ -234,7 +255,6 @@ void main() {
         repository: _repository(),
         cutId: const CutId('cut-target'),
         canvasSize: const CanvasSize(width: 2120, height: 1280),
-        anchor: CanvasResizeAnchor.topLeft,
         brushFrameStore: store,
       );
       resize.execute();

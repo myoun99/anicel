@@ -96,7 +96,7 @@ void main() {
       session.selectLayer(animationRowOf(session));
       session.selectFrameIndex(0);
       session.createDrawingAtCurrentFrame();
-      session.exposureVerbs.setCommaForSelectionOrCurrent(4);
+      session.edgeDrag.setCommaForTimelineCursor(4);
       session.selectFrameIndex(2);
 
       expect(session.exposureVerbs.canBlankExposureAtCurrentFrame, isTrue);
@@ -147,7 +147,7 @@ void main() {
         reason: 'an empty cell',
       );
       session.createDrawingAtCurrentFrame();
-      session.exposureVerbs.setCommaForSelectionOrCurrent(4);
+      session.edgeDrag.setCommaForTimelineCursor(4);
 
       expect(
         session.cellInstances.canCreateInstance,

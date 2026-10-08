@@ -9,11 +9,12 @@ import '../../models/frame.dart' show drawingHeadOf;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
-import 'axis_turn.dart' show extentAlong;
+import 'axis_turn.dart' show extentAlong, offsetAlong;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
@@ -43,7 +44,7 @@ import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 import 'timeline_tile_raster_source.dart';
 
-const String _holdDashGlyph = timelineHoldDashGlyph;
+const String _holdGlyph = timelineHoldGlyph;
 
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
@@ -429,13 +430,14 @@ class TimelineRowCellsPainter extends CustomPainter
       ),
     );
     final frameName = frameNameForLayer?.call(layer, frameIndex);
-    // Hold ghosts keep their dash at ANY zoom (it paints as a line, not
-    // text — UI-R12 #18): the continuing stroke is structure.
+    // A hold ghost writes in no cell: its line is the whole ghost's
+    // ([holdLinesIn]). The glyph is what says «a hold» to whoever reads the
+    // model ([_isHold]).
     final holdGhost =
         runEdgeGhostAt(layer, frameIndex)?.mode == TimelineRunEdgeMode.hold;
     final TimelineCellWriting writing;
     if (holdGhost) {
-      writing = (word: _holdDashGlyph, mark: null);
+      writing = (word: _holdGlyph, mark: null);
     } else if (ghost) {
       // Ghosts are TEXT-ONLY (UI-R10 #11): a repeat ghost prints just the
       // cel names, exactly like before — the SHEET alone carries the
@@ -843,26 +845,117 @@ class TimelineRowCellsPainter extends CustomPainter
     for (final frameIndex in writingCellsIn(from, to)) {
       _paintCellForeground(canvas, frameIndex);
     }
+    for (final line in holdLinesIn(from, to)) {
+      _paintHoldLine(canvas, line);
+    }
     canvas.restore();
   }
 
-  /// The cells of [from, to) that WRITE — a word, a mark or a hold dash — in
-  /// order; every other cell inks nothing. The classic pass inks these and
-  /// the tile emitter bakes these, so the two cannot disagree on which.
+  /// Whether [model] is a hold ghost's cell — one that writes nothing of
+  /// its own ([holdLinesIn]).
+  bool _isHold(TimelineRowCellModel model) =>
+      model.ghost && model.glyph == _holdGlyph;
+
+  /// The cells of [from, to) that WRITE — a word or a mark — in order; every
+  /// other cell inks nothing. The classic pass inks these and the tile
+  /// emitter bakes these, so the two cannot disagree on which.
   ///
   /// By stretch (I-22): a stretch whose first cell writes nothing is passed
-  /// in one step, and one that writes is a hold ghost's dashes, a cell each.
+  /// in one step — a hold's among them, whose line is [holdLinesIn]'s.
   @override
   Iterable<int> writingCellsIn(int from, int to) sync* {
     for (final (:start, :end) in _stretchesIn(from, to)) {
       final model = cellModelAt(start);
-      if (model.mark == null && model.glyph.isEmpty) {
+      if (model.mark == null && (model.glyph.isEmpty || _isHold(model))) {
         continue;
       }
       for (var frameIndex = start; frameIndex < end; frameIndex += 1) {
         yield frameIndex;
       }
     }
+  }
+
+  /// The holds' lines over [from, to) — one a hold ghost that reaches it.
+  ///
+  /// ↩️UI-R12 #18 drew A DASH A CELL: a line nearly as wide as its cell with
+  /// 「a deliberate 3px break per boundary so it never fuses into a solid
+  /// rule」 (유저: 「이어진 느낌, 완벽하게는 안 이어지게」). 유저 2026-10-08
+  /// (I-73) turned that round: 「점선말고 이어진선으로하자. 쓸데없이
+  /// 보기힘들어. 잘 이어지도록」 · 「실선으로 바꿈. 뒤집는거임」. A hold is ONE
+  /// line now, from the first of its cells to the last.
+  ///
+  /// ⛔Where it is drawn did not move: in the FREE cells beside a run whose
+  /// edge property is hold — the ghost — and never in a block's own cells
+  /// (유저, the same day: 「블록에 그리는게아니라 성질이 홀드일때 빈공간에
+  /// 그리는것임」).
+  ///
+  /// A hold ghost is one entry of the timeline, so the walk is the
+  /// timeline's — an entry at a time, never a cell at a time (I-22).
+  @override
+  Iterable<TimelineHoldLine> holdLinesIn(int from, int to) sync* {
+    final timeline = layer.timeline;
+    for (
+      var start =
+          timeline.lastKeyBefore(from + 1) ?? timeline.firstKeyAfter(from);
+      start != null && start < to;
+      start = timeline.firstKeyAfter(start)
+    ) {
+      final entry = timeline[start]!;
+      final end = start + (entry.length ?? 1);
+      if (end <= from || entry.ghostOf?.mode != TimelineRunEdgeMode.hold) {
+        continue;
+      }
+      final line = _holdLineOver(start: start, end: end, from: from, to: to);
+      if (line != null) {
+        yield line;
+      }
+    }
+  }
+
+  /// The line of the hold ghost [start, end) as it shows over [from, to):
+  /// its own ends stand [timelineHoldLineInset] in from the cells' edges,
+  /// and where the stretch stops short of one the line runs to the edge.
+  ///
+  /// 🗣️F-208's sliver, as the paper has it ([substrateIn]): a tile ending at
+  /// [to] is as many pixels as its length rounds UP to, so a line that runs
+  /// on past [to] reaches through the cell there too.
+  ///
+  /// Null while there is no room for it between its ends — the cell a hold
+  /// of one frame gets at a far zoom.
+  TimelineHoldLine? _holdLineOver({
+    required int start,
+    required int end,
+    required int from,
+    required int to,
+  }) {
+    final horizontal = axis == Axis.horizontal;
+    final first = math.max(start, from);
+    final past = end > to && to < frameEndIndexExclusive
+        ? to + 1
+        : math.min(end, to);
+    final head = cellRectFor(first);
+    final tail = cellRectFor(past - 1);
+    final startsHere = first == start;
+    final endsHere = past == end;
+    final lo =
+        (horizontal ? head.left : head.top) +
+        (startsHere ? timelineHoldLineInset : 0);
+    final hi =
+        (horizontal ? tail.right : tail.bottom) -
+        (endsHere ? timelineHoldLineInset : 0);
+    if (hi - lo <= 1) {
+      return null;
+    }
+    const half = timelineJoiningLineWidth / 2;
+    final across = horizontal ? head.center.dy : head.center.dx;
+    return (
+      box: horizontal
+          ? Rect.fromLTRB(lo, across - half, hi, across + half)
+          : Rect.fromLTRB(across - half, lo, across + half, hi),
+      startsHere: startsHere,
+      endsHere: endsHere,
+      ink: foregroundInkFor(cellModelAt(first)),
+    );
   }
 
   /// The row's dense, mostly-static part over frames [from, to) — exactly
@@ -984,8 +1077,8 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
-  /// and how large it is: centred on the cell's paper, at the size of the
-  /// cell's word ([timelineInbetweenMarkRadius]). PUBLIC: the tile emitter
+  /// and the box it fills: centred on the cell's paper, at the size of the
+  /// cell's word ([timelineInbetweenMarkSize]). PUBLIC: the tile emitter
   /// bakes the mark exactly here.
   ///
   /// It keeps to its cell, so the tile that holds the cell is the only one
@@ -993,22 +1086,30 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   InbetweenMarkPlace inbetweenMarkLayoutFor(int frameIndex) {
     final paper = paperRectFor(frameIndex);
+    // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and 2,
+    // and a mark sized from 1.3 left the 1px ones.
+    final cell = cellRectFor(frameIndex).size;
     return (
       center: paper.center,
-      radius: timelineInbetweenMarkRadius(
+      size: timelineInbetweenMarkSize(
         baseTextStyle.fontSize ?? 12,
-        // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and
-        // 2, and a mark sized from 1.3 left the 1px ones.
-        cellExtent: extentAlong(axis, cellRectFor(frameIndex).size),
-        crossExtent: axis == Axis.horizontal ? paper.height : paper.width,
+        cell: axis == Axis.horizontal
+            ? Size(cell.width, paper.height)
+            : Size(paper.width, cell.height),
       ),
     );
   }
 
   /// Where the room the word at [frameIndex] may grow into ENDS along the
-  /// frame axis: the end of its block, looked up only as far as a word of
-  /// [extent] could reach. A word on no block — an empty stretch's `x` —
-  /// has its own cell.
+  /// frame axis: the end of its block or the cell before the block's next
+  /// in-between mark, looked up only as far as a word of [extent] could
+  /// reach. A word on no block — an empty stretch's `x` — has its own cell.
+  ///
+  /// 🚨A MARK IS A LETTER OF ITS BLOCK (F-297, 유저 2026-10-05): 「중간나누기
+  /// 점도 하나의 글자로 인식해서 헤드의 프레임이름 작아진다거나 할것」. ↩️A
+  /// name's room ran to the end of its block whatever stood in it, so a
+  /// name wider than its cell was written over the dot beside it; it narrows
+  /// before the dot now, as it would before a letter.
   ///
   /// The block is the EXPOSURE's ([_stateAt]), not the chrome's: a repeat
   /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
@@ -1028,7 +1129,8 @@ class TimelineRowCellsPainter extends CustomPainter
         timelineExposureBlockSegmentAt(
           frameIndex: index,
           stateAt: _stateAt,
-        ).continuesToNext) {
+        ).continuesToNext &&
+        cellModelAt(index + 1).mark == null) {
       index += 1;
       end = endOf(index);
     }
@@ -1036,13 +1138,14 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null when
-  /// the nearest writing is a hold dash or there is none — the word that may
-  /// grow into [frameIndex]'s cell from before it (F-96). PUBLIC: the
+  /// a hold stands nearer or there is none — the word that may grow into
+  /// [frameIndex]'s cell from before it (F-96). PUBLIC: the
   /// classic pass lays it at the start of what it paints, the tile emitter
   /// at the start of a tile.
   ///
-  /// A mark is no word: it keeps to its own cell, so it neither grows into
-  /// [frameIndex] nor stands in the way of a word before it that does.
+  /// A mark is no word: it keeps to its own cell and grows into no other.
+  /// The word before it stops at it ([_wordRoomEnd]), so a word found past
+  /// a mark reaches [frameIndex] no more than its own room lets it.
   ///
   /// Walked back by stretch (I-22): a stretch whose first cell writes no
   /// word is passed in one step.
@@ -1053,16 +1156,17 @@ class TimelineRowCellsPainter extends CustomPainter
       final start = _stretchStartOf(index);
       final model = cellModelAt(start);
       if (model.glyph.isNotEmpty) {
-        return model.ghost && model.glyph == _holdDashGlyph ? null : index;
+        return _isHold(model) ? null : index;
       }
       index = start - 1;
     }
     return null;
   }
 
-  /// The cell's sparse foreground ink (hold dashes, in-between marks, glyph
-  /// text) — the classic pass; tile mode bakes the same content into the
-  /// tiles (T3) and skips this for covered spans.
+  /// The cell's sparse foreground ink (in-between marks, glyph text) — the
+  /// classic pass; tile mode bakes the same content into the tiles (T3) and
+  /// skips this for covered spans. Only a cell that writes is handed here
+  /// ([writingCellsIn], [wordCellBefore]) — never a hold's.
   void _paintCellForeground(Canvas canvas, int frameIndex) {
     final model = cellModelAt(frameIndex);
     final mark = model.mark;
@@ -1076,10 +1180,6 @@ class TimelineRowCellsPainter extends CustomPainter
       return;
     }
     if (model.glyph.isEmpty) {
-      return;
-    }
-    if (model.ghost && model.glyph == _holdDashGlyph) {
-      _paintHoldDash(canvas, cellRectFor(frameIndex), foregroundInkFor(model));
       return;
     }
     // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
@@ -1104,33 +1204,32 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
-  /// A hold ghost's dash across the cell [rect].
-  ///
-  /// UI-R12 #18: the hold dash is a PAINTED line along the frame
-  /// axis, spanning nearly the whole cell — neighbors read as one
-  /// continuing stroke, with a deliberate 3px break per boundary so
-  /// it never fuses into a solid rule (user: 이어진 느낌, 완벽하게는
-  /// 안 이어지게). The text glyph was too short to chain.
-  void _paintHoldDash(Canvas canvas, Rect rect, Color ink) {
-    final dashPaint = Paint()
-      ..color = ink
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    if (axis == Axis.horizontal) {
-      if (rect.width > 4) {
-        canvas.drawLine(
-          Offset(rect.left + 1.5, rect.center.dy),
-          Offset(rect.right - 1.5, rect.center.dy),
-          dashPaint,
-        );
-      }
-    } else if (rect.height > 4) {
-      canvas.drawLine(
-        Offset(rect.center.dx, rect.top + 1.5),
-        Offset(rect.center.dx, rect.bottom - 1.5),
-        dashPaint,
-      );
-    }
+  /// One hold's [line], as the classic pass draws it: a PAINTED stroke along
+  /// the frame axis (UI-R12 #18 — the text glyph was too short to chain),
+  /// round at the hold's own ends and filling [TimelineHoldLine.box] exactly
+  /// — what the tile bakes there. An end that is only the stretch's runs to
+  /// the box's edge, where the stretch's clip takes the round end off.
+  void _paintHoldLine(Canvas canvas, TimelineHoldLine line) {
+    const half = timelineJoiningLineWidth / 2;
+    final box = line.box;
+    final horizontal = axis == Axis.horizontal;
+    canvas.drawLine(
+      offsetAlong(
+        axis,
+        along: (horizontal ? box.left : box.top) + (line.startsHere ? half : 0),
+        across: horizontal ? box.center.dy : box.center.dx,
+      ),
+      offsetAlong(
+        axis,
+        along:
+            (horizontal ? box.right : box.bottom) - (line.endsHere ? half : 0),
+        across: horizontal ? box.center.dy : box.center.dx,
+      ),
+      Paint()
+        ..color = line.ink
+        ..strokeWidth = timelineJoiningLineWidth
+        ..strokeCap = StrokeCap.round,
+    );
   }
 
   @override
@@ -1291,7 +1390,7 @@ Widget timelineRowCellsPaintArea({
     // R26 #37: remember WHICH cell this press hit, whatever the device —
     // the double-tap recognizer only reports the second tap's position.
     onPressDown: timelineCellDoubleTapRecord(
-      layerId: layer.id,
+      row: LayerRowAddress(layer.id),
       cells: cells,
     ),
     onTap: (localPosition) {
@@ -1320,7 +1419,7 @@ Widget timelineRowCellsPaintArea({
       onDoubleTapDown: onActivateCell == null
           ? null
           : timelineCellDoubleTapActivation(
-              layerId: layer.id,
+              row: LayerRowAddress(layer.id),
               cells: cells,
               onActivate: (frameIndex) {
                 select(frameIndex);

@@ -94,7 +94,7 @@ class ExportAccordion extends StatelessWidget {
                       ),
                     ),
                     if (reset != null) ...[
-                      _ResetChip(
+                      ExportResetChip(
                         enabled: reset!.enabled,
                         onPressed: reset!.onTap,
                       ),
@@ -121,8 +121,10 @@ class ExportAccordion extends StatelessWidget {
   }
 }
 
-class _ResetChip extends StatelessWidget {
-  const _ResetChip({required this.enabled, this.onPressed});
+/// 「초기화」 at the head of a module, and of the Cels list's rules: off —
+/// dim, taking no press — while there is nothing to put back.
+class ExportResetChip extends StatelessWidget {
+  const ExportResetChip({super.key, required this.enabled, this.onPressed});
 
   final bool enabled;
   final VoidCallback? onPressed;
@@ -490,18 +492,12 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
-  Widget _qualityRow() => ExportModuleRow(
-    label: AppText.strings.exQuality,
-    child: FieldSlider(
-      key: const ValueKey<String>('export-format-quality'),
-      value: selection.jpgQuality.clamp(1, 100).toDouble(),
-      min: 1,
-      max: 100,
-      divisions: 99,
-      onChanged: enabled
-          ? (next) => _change(selection.copyWith(jpgQuality: next.round()))
-          : null,
-    ),
+  Widget _qualityRow() => ExportJpgQualityRow(
+    keyValue: 'export-format-quality',
+    quality: selection.jpgQuality,
+    onChanged: enabled
+        ? (quality) => _change(selection.copyWith(jpgQuality: quality))
+        : null,
   );
 
   Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
@@ -569,8 +565,120 @@ class ExportFormatModule extends StatelessWidget {
   }
 }
 
+/// 품질: a JPG's quality, 1–100 — ONE row wherever a JPG is written, a cel
+/// or a paper document.
+class ExportJpgQualityRow extends StatelessWidget {
+  const ExportJpgQualityRow({
+    super.key,
+    required this.keyValue,
+    required this.quality,
+    required this.onChanged,
+  });
+
+  final String keyValue;
+  final int quality;
+
+  /// Null while the window is busy.
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final changed = onChanged;
+    return ExportModuleRow(
+      label: AppText.strings.exQuality,
+      child: FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: quality.clamp(1, 100).toDouble(),
+        min: 1,
+        max: 100,
+        divisions: 99,
+        onChanged: changed == null ? null : (next) => changed(next.round()),
+      ),
+    );
+  }
+}
+
+/// What a PAPER DOCUMENT is written as — a timesheet's pages, a cut
+/// envelope, the conte's page images: PNG, or JPG at a quality
+/// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
+/// 추가」).
+///
+/// A document that has a format which is no picture — the timesheet's
+/// digital sheet, the conte's PDF — offers it in the same strip ([before] ·
+/// [after]), and the picture formats are lit only while a picture is what
+/// is written ([pictured]).
+class ExportPaperFormatModule extends StatelessWidget {
+  const ExportPaperFormatModule({
+    super.key,
+    required this.keyPrefix,
+    required this.label,
+    required this.image,
+    required this.onImageChanged,
+    this.pictured = true,
+    this.before = const [],
+    this.after = const [],
+  });
+
+  /// Leads every key of the module: `<keyPrefix>-png`, `-jpg`, `-quality`.
+  final String keyPrefix;
+  final String label;
+  final ExportFormatSelection image;
+
+  /// A picture format, picked — or its quality, moved. Null while the
+  /// window is busy.
+  final ValueChanged<ExportFormatSelection>? onImageChanged;
+  final bool pictured;
+  final List<PillItem> before;
+  final List<PillItem> after;
+
+  static String summarize(ExportFormatSelection image) =>
+      image.stillFormat == ExportStillFormat.jpg
+      ? 'JPG · ${image.jpgQuality}'
+      : image.stillFormat.label;
+
+  @override
+  Widget build(BuildContext context) {
+    final changed = onImageChanged;
+    PillItem still(ExportStillFormat format) => PillItem(
+      keyValue: '$keyPrefix-${format.jsonValue}',
+      label: format.label,
+      selected: pictured && image.stillFormat == format,
+      onTap: changed == null
+          ? null
+          : () => changed(image.copyWith(stillFormat: format)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExportModuleRow(
+          label: label,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: PillStrip(
+              items: [
+                ...before,
+                still(ExportStillFormat.png),
+                still(ExportStillFormat.jpg),
+                ...after,
+              ],
+            ),
+          ),
+        ),
+        if (pictured && image.stillFormat == ExportStillFormat.jpg)
+          ExportJpgQualityRow(
+            keyValue: '$keyPrefix-quality',
+            quality: image.jpgQuality,
+            onChanged: changed == null
+                ? null
+                : (quality) => changed(image.copyWith(jpgQuality: quality)),
+          ),
+      ],
+    );
+  }
+}
+
 /// The Scope module: Cut/Project pills plus an optional tab-specific body
-/// (Sequence's in/out fields, the Cels/Timesheet cut grid later).
+/// (Sequence's in/out fields, the Cels cut grid).
 class ExportScopeModule extends StatelessWidget {
   const ExportScopeModule({
     super.key,
@@ -670,6 +778,59 @@ class ExportSizeModule extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A lone file's name: typed alone, with the extension its format gives it
+/// standing beside the field, fixed.
+///
+/// 🗣️F-221 (유저 2026-10-06): 「이름칸은 확장자랑 텍스트가 같이있는데 확장자는
+/// 따로 나눠서 편집불가하게 그냥 띄우기만하고, 이름만 딱 있도록. 그렇게
+/// 설정한대로 내보낼때 이름 지정되는 방식이지」.
+class ExportFileNameModule extends StatelessWidget {
+  const ExportFileNameModule({
+    super.key,
+    required this.controller,
+    required this.extension,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+
+  /// The format's own, without its dot.
+  final String extension;
+  final bool enabled;
+
+  /// The name was typed on: what shows it elsewhere reads it again.
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AppWindowField(
+      label: AppText.strings.exFileLabel,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              key: const ValueKey<String>('export-file-name-field'),
+              controller: controller,
+              enabled: enabled,
+              onChanged: (_) => onChanged(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '.$extension',
+            key: const ValueKey<String>('export-file-extension'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -776,6 +937,19 @@ class _DigitsFieldState extends State<_DigitsField> {
   }
 }
 
+/// What a kind is called wherever the window names it — its pill in
+/// 「내보낼 종류」 and its prefix field in the naming module.
+String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
+  ExportCelKind.cel => AppText.strings.exCels,
+  // The conte ROW's word (콘티), not the sheet panel's (콘티 용지): the kind
+  // is the row's drawings, written as cels are.
+  ExportCelKind.conte => AppText.strings.tlKindStoryboard,
+  ExportCelKind.art => AppText.strings.exArtLabel,
+  ExportCelKind.direction => AppText.strings.exSelDirection,
+  ExportCelKind.timesheet => AppText.strings.panelTimesheet,
+  ExportCelKind.envelope => AppText.strings.panelEnvelope,
+};
+
 /// Cel-file naming: the CSP-style options ported into the module grammar.
 class ExportCelNamingModule extends StatelessWidget {
   const ExportCelNamingModule({
@@ -784,12 +958,57 @@ class ExportCelNamingModule extends StatelessWidget {
     required this.enabled,
     required this.onChanged,
     required this.suffixController,
+    required this.prefixControllers,
   });
 
   final ExportCelNaming naming;
   final bool enabled;
   final ValueChanged<ExportCelNaming> onChanged;
   final TextEditingController suffixController;
+
+  /// One field a kind ([ExportCelNaming.prefixOf]) — the window's, as the
+  /// suffix's is, so a preset or a reset can write them.
+  final Map<ExportCelKind, TextEditingController> prefixControllers;
+
+  /// How many prefix fields share a line of the settings column.
+  static const int _prefixesPerLine = 3;
+
+  /// 접두사: a field for every kind, empty for none. ⚠️Not trimmed: a
+  /// prefix is whatever was typed, and what leads a file's name is usually
+  /// one character.
+  Widget _prefixFields() {
+    Widget field(ExportCelKind kind) => Expanded(
+      child: AppWindowField(
+        label: exportCelKindLabel(kind),
+        child: TextField(
+          key: ValueKey<String>('export-cel-prefix-${kind.jsonValue}'),
+          controller: prefixControllers[kind],
+          enabled: enabled,
+          onChanged: (value) => onChanged(naming.withPrefix(kind, value)),
+        ),
+      ),
+    );
+    const kinds = ExportCelKind.values;
+    return Column(
+      children: [
+        for (var first = 0; first < kinds.length; first += _prefixesPerLine)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var at = first; at < first + _prefixesPerLine; at += 1) ...[
+                if (at > first) const SizedBox(width: 8),
+                // A short last line keeps the fields' width: an empty seat
+                // where a kind would be.
+                if (at < kinds.length)
+                  field(kinds[at])
+                else
+                  const Expanded(child: SizedBox.shrink()),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
 
   /// Three names the file can carry and the same three the folders can, as
   /// two multi-select strips.
@@ -821,8 +1040,8 @@ class ExportCelNamingModule extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     // Top to bottom the way the file is built: the folder it lands in, the
-    // name it gets, then the digits and suffix (유저 2026-09-09: 「젤 위에
-    // 폴더 생성, 이름 지정, 자릿수/접미사」).
+    // name it gets, what each kind's name starts with, then the digits and
+    // suffix (유저 2026-09-09: 「젤 위에 폴더 생성, 이름 지정, 자릿수/접미사」).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -864,6 +1083,10 @@ class ExportCelNamingModule extends StatelessWidget {
               },
             ),
           ),
+        ),
+        ExportModuleRow(
+          label: strings.exPrefix,
+          child: _prefixFields(),
         ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,

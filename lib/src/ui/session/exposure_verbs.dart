@@ -1,5 +1,4 @@
 import '../../controllers/timeline_controller.dart';
-import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -179,30 +178,9 @@ class ExposureVerbs {
           : TimelineCellExposureState.uncovered;
     }
 
-    if (_controllers.timelineController.isDrawingStartForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.drawingStart;
-    }
-
-    final held = _controllers.timelineController.isHeldExposureForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    // Block-owned dots live on held cells only (offsets 1..length-1), so
-    // markUncovered is never produced anymore — the enum value survives
-    // solely for exhaustive switches over legacy-visual states.
-    if (held &&
-        _controllers.timelineController.hasMarkAt(
-          layer: layer,
-          frameIndex: frameIndex,
-        )) {
-      return TimelineCellExposureState.markHeld;
-    }
-    return held
-        ? TimelineCellExposureState.held
-        : TimelineCellExposureState.uncovered;
+    // Every other row's cells are its own blocks — the reading a row drawn
+    // outside any cut asks too (the storyboard's conte row, I-73).
+    return timelineOwnCelsStateAt(layer, frameIndex);
   }
 
   bool get canDecreaseSelectedExposure {
@@ -225,70 +203,47 @@ class ExposureVerbs {
 
   // --- Comma set (UI-R17 #7: the 1/2/3/4/N buttons) -------------------------
 
-  /// Whether a comma set has a target: the selection's blocks, else the
-  /// active layer's block covering the playhead.
+  /// THE SELECTION's half of the comma press, whichever axis it was swept
+  /// on: sets the exposure length of every selected block to [comma],
+  /// packing each layer's run with the retime ripple (1--2--3-- set to 1
+  /// reads 123; TVP). One composite undo across spanned layers; the
+  /// selection follows the retimed span so repeated comma presses keep
+  /// operating on the same cels.
   ///
-  /// The second rung borrows the delete gate, which answers true for LANE
-  /// KEYS as well — a subject this verb has no branch for. Under a
-  /// claiming band that inheritance is what lit the buttons over a press
-  /// [setCommaForSelectionOrCurrent] then refuses, so the band's claim is
-  /// read here too and the two stay one answer.
-  bool get canSetCommaForSelectionOrCurrent =>
-      _rangeSelections.selectionBlockStartsByLayer() != null ||
-      (!_cells.cellSelectionClaimsSubject &&
-          _cells.canDeleteCellAtCurrentFrame);
-
-  /// Sets the exposure length of every selected block — or the covering
-  /// block at the playhead without a selection — to [comma], packing each
-  /// layer's run with the retime ripple (1--2--3-- set to 1 reads 123;
-  /// TVP). One composite undo across spanned layers; the selection
-  /// follows the retimed span so repeated comma presses keep operating on
-  /// the same cels.
-  void setCommaForSelectionOrCurrent(int comma) {
-    if (comma < 1) {
-      return;
+  /// Returns whether the press WAS the selection's — taken, or a cell band
+  /// that resolves to nothing retimable: that is a no-op, never a press that
+  /// lands on some other row (the delete verb's law). The cursor's half is
+  /// the block under it, whatever its kind — each panel's own cursor
+  /// ([EdgeDragVerbs.setCommaForTimelineCursor] · its storyboard twin).
+  ///
+  /// ↩️F-283. The cursor's half stood here as a second branch, reading the
+  /// active row's cut-local display — which is what failed on the rows keyed
+  /// on the track's axis. And this half answered the cut's band alone: a
+  /// band swept on the TRACK's axis had a rung of its own in the storyboard's
+  /// press and none in the timeline's, whose buttons it lit all the same —
+  /// that press went to the timeline's cursor and re-timed a row the band
+  /// did not name (🧪measured 2026-10-06). One half for both panels, by the
+  /// one collector their gate reads.
+  bool setCommaForSelection(int comma) {
+    // Rows whose timing is not their own are already absent — the shared
+    // collector states that standdown once, so this verb, its `can…` gate
+    // and the cursor's half agree. A reference movie's block is among the
+    // targets: one block, so its retime is its end trim (F-283-Q1).
+    final targets = _rangeSelections.selectionBlockStartsByLayer();
+    if (targets == null) {
+      return _cells.cellSelectionClaimsSubject;
     }
-    final selection = _selection.frameRangeSelection.value;
-    // Single-cel rows are already absent — the shared collector states
-    // that standdown once, so this verb and its `can…` gate agree.
-    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
-    if (selection != null &&
-        selectionTargets != null &&
-        selectionTargets.isNotEmpty) {
-      _retimeKeepingTheCutOnItsRow({
-        for (final entry in selectionTargets.entries)
-          entry.key: {for (final start in entry.value) start: comma},
-      });
-      _rangeSelections.reselectRetimedSelection(selection, selectionTargets);
-      _changes.warmActiveCut();
-      _changes.notifyChanged();
-      return;
-    }
-    if (_cells.cellSelectionClaimsSubject) {
-      // Same law as the delete verb: a band that resolves to nothing
-      // retimable is a no-op, never a press that lands on some other row.
-      return;
-    }
-    final layer = _selection.activeLayer;
-    // Synced attach rows own no timing (free rows retime normally);
-    // single-cel rows are pinned by the covering normalization.
-    if (layer == null ||
-        isSyncedAttachedLayer(layer) ||
-        layer.kind.holdsSingleCel) {
-      return;
-    }
-    final block = coveringDrawingBlockAt(
-      layer.timeline,
-      _controllers.timelineController.currentFrameIndex,
-    );
-    if (block == null || block.entry.ghost) {
-      return;
-    }
-    _retimeKeepingTheCutOnItsRow({
-      layer.id: {block.startIndex: comma},
+    // ⛔No active-cut guard: the starts are commit keys and the retime
+    // applies no lens, so a track band parked in a gap is re-timed like any
+    // other (H11).
+    retimeKeepingTheCutOnItsRow({
+      for (final entry in targets.entries)
+        entry.key: {for (final start in entry.value) start: comma},
     });
+    _rangeSelections.reselectRetimedSelection(targets);
     _changes.warmActiveCut();
     _changes.notifyChanged();
+    return true;
   }
 
   /// The comma buttons' retime, keeping the cut on its storyboard row.
@@ -301,7 +256,14 @@ class ExposureVerbs {
   /// a shortened last panel back out to the cut's end, or left a row pushed
   /// past it standing apart from the cut. Only the comma DRAG moved the cut
   /// with its row, so the buttons now commit by the drag's own law.
-  void _retimeKeepingTheCutOnItsRow(
+  ///
+  /// [newLengthsByLayer] names each block by its start in the row's COMMIT
+  /// keys, so each row is read in its commit form. ↩️It was read as the cut
+  /// SHOWS it: a track-owned S row past the first cut holds no key as large
+  /// as its commit starts there, so a band over the conte row and a sound
+  /// re-timed the conte row and left the sound (F-283, 🧪measured
+  /// 2026-10-06).
+  void retimeKeepingTheCutOnItsRow(
     Map<LayerId, Map<int, int>> newLengthsByLayer,
   ) {
     final controller = _controllers.timelineController;
@@ -311,7 +273,7 @@ class ExposureVerbs {
     Layer? syncedRow;
     for (final MapEntry(key: layerId, value: lengths)
         in newLengthsByLayer.entries) {
-      final before = _project.layerById(layerId);
+      final before = _project.commitLayerById(layerId);
       final after = before == null
           ? null
           : controller.retimedLayerForBlocks(

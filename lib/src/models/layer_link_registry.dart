@@ -143,6 +143,29 @@ class LayerLinkRegistry {
     return null;
   }
 
+  /// (cut, layer)'s counterpart inside [targetCutId] — the member of its
+  /// group that lives there, or null when the row does not reach that cut.
+  ///
+  /// Asked of the REGISTRY, so a command still building the next one can
+  /// ask the groups it has made so far (겸용 변경 seats a copied attach row
+  /// on the row its base was linked to a step earlier).
+  LayerId? counterpartIn({
+    required CutId cutId,
+    required LayerId layerId,
+    required CutId targetCutId,
+  }) {
+    final group = groupOf(cutId: cutId, layerId: layerId);
+    if (group == null) {
+      return null;
+    }
+    for (final member in group.members) {
+      if (member.cutId == targetCutId) {
+        return member.layerId;
+      }
+    }
+    return null;
+  }
+
   /// The canonical member for (cut, layer): itself when unlinked,
   /// otherwise its group's first member.
   LayerLinkMember canonicalOf({

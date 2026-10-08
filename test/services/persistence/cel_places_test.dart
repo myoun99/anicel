@@ -147,6 +147,90 @@ void main() {
     expect(placesOf([drawn('c2', 's1', 's1-f')]), ['drawing Track 1/S1/hey']);
   });
 
+  group('🗣️F-284 — a drawing\'s place says where its blocks start', () {
+    // 유저 2026-10-04: 「인덱스도 표시 … S1의 15」.
+    List<int> startsOf(BrushFrameKey key) =>
+        switch (celPlacesOf(project, [key]).single) {
+          DrawingCelPlace(:final blockStarts) => blockStarts,
+          _ => throw StateError('fixture premise: a drawing'),
+        };
+
+    test('every block that shows it, in the order of the row', () {
+      expect(startsOf(drawn('c1', 'sb', 'sb1')), [0, 8, 16]);
+    });
+
+    test('on the frames of the row\'s OWN axis — a track row\'s are the '
+        'track\'s, whichever cut the key was saved under', () {
+      final long = Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 7),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'Track 1',
+            seLayers: [
+              layer(
+                's1',
+                'S1',
+                [frame('hit')],
+                kind: LayerKind.se,
+                // In the second cut's span: 24 frames in, then 6.
+                timeline: {
+                  30: const TimelineExposure.drawing(FrameId('hit'), length: 2),
+                },
+              ),
+            ],
+            cuts: [cut('c1', '1', const []), cut('c2', '2', const [])],
+          ),
+        ],
+      );
+      expect(
+        switch (celPlacesOf(long, [drawn('c2', 's1', 'hit')]).single) {
+          DrawingCelPlace(:final blockStarts) => blockStarts,
+          _ => throw StateError('fixture premise: a drawing'),
+        },
+        [30],
+      );
+    });
+
+    test('a drawing no block shows stands nowhere', () {
+      final unshown = Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 7),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'Track 1',
+            cuts: [
+              cut('c1', '1', [
+                layer(
+                  'a',
+                  'A',
+                  [frame('shown', '1'), frame('kept', '2')],
+                  timeline: {
+                    3: const TimelineExposure.drawing(
+                      FrameId('shown'),
+                      length: 1,
+                    ),
+                  },
+                ),
+              ]),
+            ],
+          ),
+        ],
+      );
+      List<int> starts(String frameId) =>
+          switch (celPlacesOf(unshown, [drawn('c1', 'a', frameId)]).single) {
+            DrawingCelPlace(:final blockStarts) => blockStarts,
+            _ => throw StateError('fixture premise: a drawing'),
+          };
+      expect(starts('shown'), [3]);
+      expect(starts('kept'), isEmpty);
+    });
+  });
+
   test('conte ink: a block\'s handwriting by its cut and the drawing the '
       'block shows', () {
     expect(

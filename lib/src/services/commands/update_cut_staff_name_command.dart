@@ -3,8 +3,9 @@ import '../project_lookup.dart';
 import 'linked_cut_field_command.dart';
 
 /// Writes one stage's name onto [cutIds] — and onto every 겸용 sibling of
-/// each — in ONE command: 컷 설정 (유저 09-25: 작품 설정에는 기본값, 컷
-/// 설정에는 컷별 이름). An empty name gives the stage back to the work's.
+/// each — in ONE command: 컷 설정 (유저 2026-10-08, F-291-Q1: 「나머진
+/// 컷마다 스태프설정」). An empty name clears the stage. ↩️It gave the stage
+/// back to the work's (09-25: 작품 설정에는 기본값, 컷 설정에는 컷별 이름).
 ///
 /// ONE stage a command, so a pick for several cuts carries the stages it
 /// changed and leaves every other stage as each cut has it — the edit is

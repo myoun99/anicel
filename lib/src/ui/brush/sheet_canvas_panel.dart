@@ -8,18 +8,47 @@ import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/panel_flyout.dart' show PanelFlyoutEntry;
 import 'brush_canvas_panel.dart';
 import 'canvas_book.dart';
+
+/// [paperView] — a sheet panel's view as it is KEPT, in the paper's pixels
+/// — as the sheet's own units read it: a unit is [paperScale] pixels of the
+/// paper ([SheetCanvasPanel.paperScale]).
+///
+/// The one way across, for the panel itself and for a host that reads the
+/// view it keeps (the conte's opening page).
+CanvasViewport sheetUnitsView(CanvasViewport paperView, double paperScale) =>
+    paperScale == 1
+    ? paperView
+    : paperView.copyWith(zoom: paperView.zoom * paperScale);
 
 /// A PAPER panel: [BrushCanvasPanel] as the sheets mount it — no editing
 /// coordinator, no frame keys, a host-local invalidation sink, a view that
 /// never rotates, and a viewport snapped ONCE before any stratum reads it.
 ///
-/// ONE recipe for the four sheet panels (the timesheet's paged and gap
+/// ONE recipe for the four sheet panels (the timesheet's sheet and gap
 /// panels, the conte, the cut envelope), which each typed it out and each
 /// carried the P8 decision below. What differs are values: the paper's
-/// size, the bars' contents, the fit rect, an auto-frame request, the
-/// stroke gate, and the [content] Stack a host lays over the snapped view.
+/// size, the bars' contents, the fit rect, the stroke gate, and the
+/// [content] Stack a host lays over the snapped view.
+///
+/// 🚨★★★THE CANVAS IS THE PAPER'S PIXELS; THE SHEET SPEAKS ITS OWN UNITS
+/// (F-294, 유저 2026-10-05: 「타임시트 용지패널 용지크기 너무 작음」 · 「이런
+/// 패널들은 사이즈 생각할때 dpi를 기준으로 생각할거야」). A sheet is laid in
+/// units of its own — the timesheet's rows, the conte's points — and its
+/// paper is a size in PIXELS (`SheetPaper`); [paperScale] is the pixels a
+/// unit takes. Everything a host hands in is in its units, and this is the
+/// ONE place they become pixels: the canvas the panel shows, where its view
+/// stops, what Fit frames, where a turn of the book goes. The view the panel
+/// keeps is in pixels — 100% is a pixel of the paper to a pixel of the
+/// screen, as on the drawing canvas — and [content] is handed that view as
+/// its units read it ([sheetUnitsView]), so no painter, ink window or
+/// editor over the sheet knows the paper has a resolution at all.
+///
+/// ↩️The canvas WAS the sheet's units, one for one: a conte page was a
+/// canvas 595 pixels across and a timesheet 1096, and the handwriting kept a
+/// pixel a unit was as coarse as that.
 ///
 /// 🚨★★★SNAPPED ONCE, HERE (P8, 유저 답 `host` 2026-08-28).
 ///
@@ -31,20 +60,26 @@ import 'canvas_book.dart';
 /// whole device pixel at fractional pans, which reads as the ink
 /// jumping off the box the moment the pen lifts. One value
 /// cannot drift from itself.
+///
+/// Snapped AS THE SHEET'S UNITS READ IT: every painter over the sheet takes
+/// the view through `applyViewportTransform`, whose own snap must find
+/// nothing left to move — and the phase it snaps to is read off the zoom it
+/// is handed.
 class SheetCanvasPanel extends StatefulWidget {
   const SheetCanvasPanel({
     super.key,
     required this.cacheInvalidationSink,
-    required this.canvasSize,
+    required this.sheetSize,
+    this.paperScale = 1,
     required this.viewport,
     this.viewportController,
     this.onViewportChanged,
     this.bottomBarLeading = const <Widget>[],
+    this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.pageStrip = const <Widget>[],
     this.bottomBarHostToken,
     this.fitFocusRect,
     this.unframedFit,
-    this.autoFrame,
     required this.viewLimit,
     this.book,
     this.strokeHold,
@@ -54,11 +89,27 @@ class SheetCanvasPanel extends StatefulWidget {
   });
 
   final CacheInvalidationSink cacheInvalidationSink;
-  final CanvasSize canvasSize;
+
+  /// The sheet's whole document — its paper and the margin round it — in
+  /// the sheet's own units.
+  final Size sheetSize;
+
+  /// The paper's pixels a unit of the sheet takes (F-294). One where the
+  /// sheet is laid straight in its paper's pixels — the cut envelope's
+  /// form, ruled onto whatever paper it is given.
+  final double paperScale;
+
+  /// The view, in the PAPER'S PIXELS — as [viewportController] holds it and
+  /// [onViewportChanged] reports it.
   final CanvasViewport? viewport;
   final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final List<Widget> bottomBarLeading;
+
+  /// The sheet's own entries in the panel's settings list
+  /// ([BrushCanvasPanel.bottomBarSettings]) — what the host carries in
+  /// [bottomBarHostToken] too, or the memoised bar keeps the old ones.
+  final List<PanelFlyoutEntry> bottomBarSettings;
   final List<Widget> pageStrip;
   final Object? bottomBarHostToken;
   final Rect? fitFocusRect;
@@ -66,7 +117,6 @@ class SheetCanvasPanel extends StatefulWidget {
   /// What a view nobody has framed yet is fitted to
   /// ([BrushCanvasPanel.unframedFit]) — the conte's page in its book.
   final Rect? unframedFit;
-  final CanvasAutoFrameRequest? autoFrame;
 
   /// The sheet's paper, where the view stops ([BrushCanvasPanel.viewLimit],
   /// F-201). ⚠️Required, so a sheet cannot forget to say it: null only
@@ -105,7 +155,8 @@ class SheetCanvasPanel extends StatefulWidget {
   final ({bool allowed, ValueChanged<bool> onChanged, String keyPrefix})?
   brushSwitch;
 
-  /// The sheet's strata, laid over the SNAPPED viewport.
+  /// The sheet's strata, laid over the SNAPPED viewport — the view as the
+  /// sheet's units read it.
   final Widget Function(BuildContext context, CanvasViewport viewport) content;
 
   @override
@@ -123,47 +174,84 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     }
   }
 
+  /// [rect], of the sheet's units, on the paper's pixels.
+  Rect? _onPaper(Rect? rect) {
+    final scale = widget.paperScale;
+    return rect == null
+        ? null
+        : Rect.fromLTRB(
+            rect.left * scale,
+            rect.top * scale,
+            rect.right * scale,
+            rect.bottom * scale,
+          );
+  }
+
+  /// The paper's pixels the sheet's whole document takes.
+  CanvasSize get _canvasSize => CanvasSize(
+    width: (widget.sheetSize.width * widget.paperScale).ceil(),
+    height: (widget.sheetSize.height * widget.paperScale).ceil(),
+  );
+
+  /// The sheet's book, its pages on the paper's pixels — the reader's page
+  /// is the host's own notifier still.
+  CanvasBook? get _bookOnPaper {
+    final book = widget.book;
+    return book == null
+        ? null
+        : CanvasBook(
+            pages: book.pages.scaledBy(widget.paperScale),
+            reading: book.reading,
+          );
+  }
+
+  /// The head of the bar: the brush switch, then the host's own commands.
+  List<Widget> get _barLeading {
+    final brush = widget.brushSwitch;
+    return [
+      if (brush != null)
+        AppIconButton(
+          keyValue: '${brush.keyPrefix}-brush-toggle-button',
+          tooltip: AppText.strings.sheetBrushAllow,
+          icon: const Icon(Icons.brush),
+          isSelected: brush.allowed,
+          size: AppIconButtonSize.strip,
+          onPressed: () => brush.onChanged(!brush.allowed),
+        ),
+      ...widget.bottomBarLeading,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final widget = this.widget;
-    final brush = widget.brushSwitch;
+    final scale = widget.paperScale;
     return BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: widget.cacheInvalidationSink,
-      canvasSize: widget.canvasSize,
+      canvasSize: _canvasSize,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,
       // The sheet's ink/header overlays speak zoom/pan only — the paper
       // never rotates (the timesheet's rule; P8 is the drawing canvas's).
       allowViewRotation: false,
-      // F-179: a sheet is a printed page on the canvas panel's backdrop.
-      hasPasteboard: false,
-      bottomBarLeading: [
-        if (brush != null)
-          AppIconButton(
-            keyValue: '${brush.keyPrefix}-brush-toggle-button',
-            tooltip: AppText.strings.sheetBrushAllow,
-            icon: const Icon(Icons.brush),
-            isSelected: brush.allowed,
-            size: AppIconButtonSize.strip,
-            onPressed: () => brush.onChanged(!brush.allowed),
-          ),
-        ...widget.bottomBarLeading,
-      ],
+      // F-179 · F-272: a sheet is a printed page — no pasteboard, on black.
+      canvasBase: true,
+      bottomBarLeading: _barLeading,
+      bottomBarSettings: widget.bottomBarSettings,
       pageStrip: widget.pageStrip,
       // The switch is built HERE, so its state joins the host's token here —
       // a host that forgot it would get a switch the memo serves stale.
       // Null stays null: that asks for a bar rebuilt every time.
       bottomBarHostToken: widget.bottomBarHostToken == null
           ? null
-          : (widget.bottomBarHostToken, brush?.allowed),
-      fitFocusRect: widget.fitFocusRect,
-      unframedFit: widget.unframedFit,
-      autoFrame: widget.autoFrame,
-      viewLimit: widget.viewLimit,
-      book: widget.book,
+          : (widget.bottomBarHostToken, widget.brushSwitch?.allowed),
+      fitFocusRect: _onPaper(widget.fitFocusRect),
+      unframedFit: _onPaper(widget.unframedFit),
+      viewLimit: _onPaper(widget.viewLimit),
+      book: _bookOnPaper,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,
       // F-80: a sheet runs the selected tool while its drawing is ON. With
       // it off nothing here can act, so the panel makes a plain primary
@@ -174,10 +262,10 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
           ? null
           : CanvasTouchDragAction.navigate,
       runsTheSelectedTool: widget.drawingOn,
-      contentOverride: (context, rawViewport) => widget.content(
+      contentOverride: (context, paperView) => widget.content(
         context,
         renderSnappedViewport(
-          rawViewport,
+          sheetUnitsView(paperView, scale),
           EffectiveDevicePixelRatio.of(context),
         ),
       ),

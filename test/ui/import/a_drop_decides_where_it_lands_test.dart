@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -439,19 +440,12 @@ void main() {
       await open(tester, s, png!, RowFramesSpot(layerId: row.id, frameIndex: 6));
 
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-      for (var tries = 0; tries < 40; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (s.layerById(row.id)!.timeline[6] != null) {
-          break;
-        }
-      }
+      await pumpPastTheWaitWindow(tester);
 
       expect(s.layerById(row.id)!.timeline[6]?.length, 1);
       expect(s.requireActiveCut.layers, hasLength(layerCount));
       await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🚨the canvas: a new layer by default, and a new cut on '

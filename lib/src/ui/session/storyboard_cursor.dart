@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
 import 'active_cut_controllers.dart';
@@ -164,9 +165,19 @@ class StoryboardCursor {
   }
 
   /// The BLOCK under the storyboard cursor, whatever its kind: the standing
-  /// V row's cut, the standing S row's SE block, or the transition row's
-  /// span. Null where the cursor covers nothing (a gap is an honest
-  /// nothing, not a fallback to the other panel's subject).
+  /// V row's cut, the conte row's panel, the standing S row's SE block, or
+  /// the transition row's span. Null where the cursor covers nothing (a gap
+  /// is an honest nothing, not a fallback to the other panel's subject).
+  ///
+  /// 🗣️THE ROW SAYS WHICH (I-73, 유저 2026-10-08): 「v행에서는 콘티블록에
+  /// 서있다거나 하는걸 안하도록 … 컷 선택만 되도록. 그러고 v행 아래에 콘티행
+  /// 만들어서 거기서」. The V row's block is its CUT; the conte row's is the
+  /// PANEL of the cut that stands under it.
+  ///
+  /// ↩️D28 (2026-08-18) answered both off the V row — 「스토리보드레이어 존재
+  /// 시 대상이 스토리보드레이어로」: a cut with a storyboard layer gave its
+  /// panel, one without gave itself — because the panels were drawn inside
+  /// the cut block and had no row to stand on.
   StoryboardCursorBlock? storyboardCursorBlockOrNull() {
     switch (_selection.storyboardStandingRow) {
       case LayerRowAddress(:final layerId)
@@ -176,43 +187,102 @@ class StoryboardCursor {
           return null;
         }
         return StoryboardCursorTransitionSpan(span.key, span.value.length);
+      case LayerRowAddress(:final layerId)
+          when trackIdOfConteRow(layerId) != null:
+        // A cut with no conte row has no panel, and a gap has no cut.
+        final cut = _cutUnderCursor();
+        return cut == null ? null : _panelUnderCursor(cut);
       case LayerRowAddress(:final layerId):
-        final global = _project.trackSeGlobalLayerById(layerId);
-        final frame = _selection.editingGlobalFrame;
-        if (global == null || frame < 0) {
-          return null;
-        }
-        final block = coveringDrawingBlockAt(global.timeline, frame);
-        if (block == null || block.entry.ghost) {
-          return null;
-        }
-        return StoryboardCursorSeBlock(layerId, block.startIndex);
+        return _rowBlockUnderCursor(layerId);
       case LaneRowAddress():
         // A lane row holds keys, not blocks — the lane-verb family owns it.
         return null;
       case TrackRowAddress():
-        // Not parked in a gap ⇒ the cut-local playhead sits inside the
-        // ACTIVE cut, so the cut under the cursor is that cut by
-        // construction (the storyboard's cell press promotes it).
-        if (_timeline.editingSession.playheadInGap) {
-          return null;
-        }
-        final cut = _project.activeCutOrNull;
-        if (cut == null) {
-          return null;
-        }
-        // D28: with a storyboard layer on the cut, the frame verbs target
-        // the PANEL under the cut-local cursor; a cut with NO storyboard
-        // layer keeps the old cut-block law outright.
-        return _panelUnderCursor(cut) ?? StoryboardCursorCutBlock(cut);
+        final cut = _cutUnderCursor();
+        return cut == null ? null : StoryboardCursorCutBlock(cut);
     }
+  }
+
+  /// The cut the storyboard's cursor stands in, or null in a gap.
+  ///
+  /// Not parked in a gap ⇒ the cut-local playhead sits inside the ACTIVE
+  /// cut, so the cut under the cursor is that cut by construction (the
+  /// storyboard's cell press promotes it).
+  Cut? _cutUnderCursor() => _timeline.editingSession.playheadInGap
+      ? null
+      : _project.activeCutOrNull;
+
+  /// The BLOCK under the TIMELINE's cursor — the row that panel stands on
+  /// ([Standing.timelineStandingRow]) × the playhead: the block of a cut's
+  /// own row, a track-owned S row's, or the transition row's span. Null where
+  /// the cursor covers nothing.
+  ///
+  /// 🗣️F-283 (유저 2026-10-04): 「타임라인패널의 se블록에 대해 코마조절
+  /// 1,2,3,4 버튼이 작동안함. 콘티패널에선 작동하는데. 또 법 멋대로
+  /// 사본만든건지 발견된거같은데 통일. 다른 글로벌트랙도 확인하는거 잊지말고.
+  /// 블록이면 1,2,3,4 등 코마조절버튼 작동하는게 규칙임」.
+  ///
+  /// ↩️The timeline's comma press read the block off the ACTIVE row's
+  /// cut-local display and handed its start on as it was. An S row's blocks
+  /// are keyed on the TRACK's axis, so past the first cut that start named
+  /// nothing and the press — its button lit — did nothing; the transition
+  /// row's spans are no timeline entries at all, so it never found one
+  /// (🧪measured 2026-10-06). Both panels resolve a KIND now, and one
+  /// dispatch takes it ([EdgeDragVerbs.setCommaForTimelineCursor]).
+  ///
+  /// What differs from the storyboard's cursor is the standing place, not
+  /// the law: this panel shows no V row, and its transition row is the
+  /// cut's view — a span the cut draws but does not edit (an O.L's mark,
+  /// 유저 2026-09-26) is not under its cursor.
+  StoryboardCursorBlock? timelineCursorBlockOrNull() {
+    switch (_selection.timelineStandingRow) {
+      case LayerRowAddress(:final layerId)
+          when _project.isTrackTransitionLayerId(layerId):
+        final start = _transitions.transitionSpanStartEditableInCutAt(
+          _controllers.timelineController.currentFrameIndex,
+        );
+        final span = start == null
+            ? null
+            : _selection.activeTrack.transitionLayer.instructions[start];
+        return span == null
+            ? null
+            : StoryboardCursorTransitionSpan(start!, span.length);
+      case LayerRowAddress(:final layerId):
+        return _rowBlockUnderCursor(layerId);
+      case LaneRowAddress():
+        // A lane row claims the press the way the storyboard's does (F-87:
+        // never the cel of the layer the lane belongs to).
+        return null;
+      case TrackRowAddress():
+        // 「타임라인에서는 타임라인의 것을」 — cuts are the storyboard's.
+        return null;
+    }
+  }
+
+  /// The block the cursor stands on in [layerId]'s row, in the row's COMMIT
+  /// keys — a track-owned S row's on the TRACK's axis, a cut's own row's in
+  /// its cut. One kind for both: a row's block takes the same verbs
+  /// whichever axis its row keys.
+  StoryboardCursorRowBlock? _rowBlockUnderCursor(LayerId layerId) {
+    final global = _project.trackSeGlobalLayerById(layerId);
+    final frame = global == null
+        ? _controllers.timelineController.currentFrameIndex
+        : _selection.editingGlobalFrame;
+    final row = global ?? _rangeSelections.cutRowWithTimingOfItsOwn(layerId);
+    if (row == null || frame < 0) {
+      return null;
+    }
+    final block = coveringDrawingBlockAt(row.timeline, frame);
+    if (block == null || block.entry.ghost) {
+      return null;
+    }
+    return StoryboardCursorRowBlock(layerId, block.startIndex);
   }
 
   /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s
   /// storyboard row. Null without a row — and for a ghost or uncovered
-  /// cell (junk the coverage rule merely tolerates), which falls back to
-  /// the cut block rather than lighting a verb the machinery will refuse
-  /// (T25).
+  /// cell (junk the coverage rule merely tolerates), which is nothing
+  /// rather than a verb lit over what the machinery will refuse (T25).
   ///
   /// The storyboard's cursor stands in the CONTE's time; the row's keys
   /// count the cut's frames, which begin earlier in a cut an O.L arrives
@@ -240,24 +310,37 @@ class StoryboardCursor {
 
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
   /// selection's blocks — either axis — else the block under the cursor.
-  bool get canSetCommaForStoryboardCursor {
+  bool get canSetCommaForStoryboardCursor =>
+      _canSetCommaOf(storyboardCursorBlockOrNull);
+
+  /// The same gate for the TIMELINE's press ([timelineCursorBlockOrNull]).
+  ///
+  /// ↩️Its cursor rung borrowed the DELETE gate, which answers for subjects
+  /// this press has no branch for: an image row's block, which the press
+  /// then refused, and a lane's key, where the press re-timed the cel of the
+  /// layer the lane belongs to. One resolver for the pair now (T25).
+  bool get canSetCommaForTimelineCursor =>
+      _canSetCommaOf(timelineCursorBlockOrNull);
+
+  bool _canSetCommaOf(StoryboardCursorBlock? Function() cursorBlock) {
     if (_rangeSelections.selectionBlockStartsByLayer() != null) {
       return true;
     }
-    // Its own dispatch already stops at a live band ([setCommaForStoryboardCursor]
-    // returns inside the selection branch), so the gate stops there too —
-    // otherwise the band falls through to the CURSOR rung and lights the
-    // buttons off a cut block the press will never reach.
+    // Its own dispatch already stops at a live cell band (the selection's
+    // half of the press claims it — [ExposureVerbs.setCommaForSelection]),
+    // so the gate stops there too — otherwise the band falls through to the
+    // CURSOR rung and lights the buttons off a block the press will never
+    // reach.
     if (_cells.cellSelectionClaimsSubject) {
       return false;
     }
-    return switch (storyboardCursorBlockOrNull()) {
+    return switch (cursorBlock()) {
       null => false,
       // ⛔An SE block used to answer `activeCutOrNull != null` here, on the
       // grounds that "a parked playhead has no cut to lens through" — the
       // lens is 0 for a track row and the lookup no longer wants a cut
       // (H11). A global row is reachable wherever it is standing.
-      StoryboardCursorSeBlock() ||
+      StoryboardCursorRowBlock() ||
       StoryboardCursorCutBlock() ||
       StoryboardCursorTransitionSpan() ||
       StoryboardCursorStoryboardPanel() => true,
@@ -270,26 +353,34 @@ class StoryboardCursor {
       switch (storyboardCursorBlockOrNull()) {
         null => false,
         // H11: a track row answers wherever it stands — see the create gate.
-        StoryboardCursorSeBlock() ||
+        StoryboardCursorRowBlock() ||
         StoryboardCursorCutBlock() ||
         StoryboardCursorTransitionSpan() ||
-        // D28 ⚠️: delete keeps the CUT answer for now — whether the shared
-        // delete should remove the PANEL instead is a recorded user
-        // question (the frame pill retargeted; the verb matrix beyond it
-        // is the user's to rule).
         StoryboardCursorStoryboardPanel() => true,
       };
 
   /// Deletes THE BLOCK UNDER THE CURSOR, whatever its kind — the cut, the
-  /// SE block, or the transition span, each through its own existing
-  /// removal verb. One undo step each, like the cell delete it mirrors.
+  /// conte panel, the SE block, or the transition span, each through its own
+  /// existing removal verb. One undo step each, like the cell delete it
+  /// mirrors.
+  ///
+  /// 🗣️A PANEL IS DELETED AS A PANEL (I-73, 유저 2026-10-08): 「삭제는
+  /// 컷이아니라 해당 서있는 칸이지워지게」 — the cut row's own block, removed by
+  /// the verb the timeline removes it with. ↩️D28 kept the CUT answer for a
+  /// panel under the V row's cursor, with the question left for the user;
+  /// this is its answer, and the V row's block is the cut alone now.
   void deleteBlockAtStoryboardCursor() {
     switch (storyboardCursorBlockOrNull()) {
       case null:
         return;
-      case StoryboardCursorCutBlock() || StoryboardCursorStoryboardPanel():
+      case StoryboardCursorCutBlock():
         _cutVerbs.deleteActiveCut();
-      case StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
+      case StoryboardCursorStoryboardPanel(:final row, :final panelStartIndex):
+        _controllers.timelineController.deleteBlocksForLayers({
+          row.id: [panelStartIndex],
+        });
+        _changes.notifyChanged();
+      case StoryboardCursorRowBlock(:final layerId, :final blockStartIndex):
         // ⛔This used to return when `activeCutOrNull == null` — the fourth
         // copy of the sentence H11 retired (「a parked playhead has no cut
         // to lens through」, 유저 2026-08-22: 「각 행들은 독립적인 글로벌행이라
@@ -410,12 +501,18 @@ class StoryboardCursorCutBlock extends StoryboardCursorBlock {
   final Cut cut;
 }
 
-class StoryboardCursorSeBlock extends StoryboardCursorBlock {
-  const StoryboardCursorSeBlock(this.layerId, this.blockStartIndex);
+/// A ROW's block — an S row's, or (from the timeline) a cut's own row's.
+///
+/// ↩️`StoryboardCursorSeBlock` until F-283: the storyboard's cursor was the
+/// only one resolved to a kind, and the S rows the only layer rows it
+/// stands on. A cel row's block takes the same verbs.
+class StoryboardCursorRowBlock extends StoryboardCursorBlock {
+  const StoryboardCursorRowBlock(this.layerId, this.blockStartIndex);
 
   final LayerId layerId;
 
-  /// GLOBAL — the S rows' timelines live on the track's axis.
+  /// In the row's COMMIT keys — GLOBAL for an S row, whose timeline lives
+  /// on the track's axis; cut-local for a cut's own row.
   final int blockStartIndex;
 }
 
@@ -426,10 +523,13 @@ class StoryboardCursorTransitionSpan extends StoryboardCursorBlock {
   final int spanLength;
 }
 
-/// D28: the cut's STORYBOARD PANEL under the cursor — with a storyboard
-/// layer on the cut, the frame verbs target the panel, not the cut
-/// (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」, the later law
-/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel exists).
+/// The cut's STORYBOARD PANEL under the cursor — what the storyboard's
+/// CONTE row stands on (I-73, 유저 2026-10-08).
+///
+/// ↩️D28 (2026-08-18): it was the V row's answer wherever the cut carried a
+/// storyboard layer (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」,
+/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel existed). The
+/// V row's block is its cut again, and the panel has the row it is drawn on.
 class StoryboardCursorStoryboardPanel extends StoryboardCursorBlock {
   const StoryboardCursorStoryboardPanel(
     this.cut,

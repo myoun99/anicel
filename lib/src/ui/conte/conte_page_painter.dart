@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -114,9 +113,9 @@ class ContePagePainter extends CustomPainter
   final Set<SheetPaintLayer>? layers;
 
   /// The sheet ink's raster for one window key (R5) — each cell's row-band
-  /// surface, at [conteInkScale] over document points — for an EXPORT,
-  /// which has no view to draw it through. Null (the resolver or the
-  /// image) draws no ink.
+  /// surface, at [ConteSheetMetrics.paperScale] over document points — for
+  /// an EXPORT, which has no view to draw it through. Null (the resolver or
+  /// the image) draws no ink.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
   /// The sheet ink's surface for one window key, ON SCREEN: printed as the

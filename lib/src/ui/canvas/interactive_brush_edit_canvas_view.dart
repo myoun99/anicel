@@ -40,11 +40,13 @@ import 'bitmap_tile_image_cache.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
+import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
 import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
+part 'brush_edit/brush_edit_path_stroke.dart';
 part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
@@ -69,6 +71,16 @@ List<BrushDab>? debugStrokeDabsLaid;
 /// one verb a save needs, not a handle onto its input state.
 typedef StrokeLander = bool Function();
 
+/// Draws a path — two or more points in the view's own space — as ONE
+/// stroke of the brush in hand, and answers whether it is drawn (or will
+/// be, once the cel it asked for is there):
+/// [_BrushEditPathStroke.strokeAlong] handed out, so the tool that traced
+/// the path can have it drawn (I-69, the shape tool).
+///
+/// ⚠️A FUNCTION, for [StrokeLander]'s reason: what leaves this view is the
+/// one verb, not a handle onto its stroke.
+typedef PathStroker = bool Function(List<CanvasPoint> path);
+
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
   /// the engine's navigate-lock and this view's cancel window agreeing).
@@ -91,10 +103,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
-    this.onHoldPick,
+    this.onPathStrokerChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
-    this.onInvokeAction,
+    this.toolHolds,
     this.fillDabAt,
     this.selectionRegion,
     this.overlayModel,
@@ -104,6 +116,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onPressNeedsCel,
     CanvasViewport? viewport,
     CutGuides? guides,
+    this.guideSpace = GuideSpace.canvas,
   }) : viewport = viewport ?? CanvasViewport(),
        guides = guides ?? CutGuides.empty;
 
@@ -160,11 +173,17 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// as before.
   final bool Function()? onPressNeedsCel;
 
-  /// The cut's drawing guides. Empty (the default) leaves the stroke path
-  /// exactly as it was — the ink surfaces that reuse this view (conte,
-  /// timesheet, cut envelope) are not the cut's drawing canvas and pass
-  /// nothing.
+  /// The cut's drawing guides, as they stand on the CANVAS. Empty (the
+  /// default) leaves the stroke path exactly as it was — the ink surfaces
+  /// that reuse this view (conte, timesheet, cut envelope) are not the
+  /// cut's drawing canvas and pass nothing.
   final CutGuides guides;
+
+  /// Where this view's own coordinates lie on that canvas: the placement
+  /// of the row it draws on, when the row carries one (the panel wraps the
+  /// view in the same placement, and hit testing brings a press back
+  /// through it). The canvas itself by default.
+  final GuideSpace guideSpace;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
   /// never kept from the last build.
@@ -215,23 +234,29 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// A held mapped button's live pick (PEN-7a: 「누르는 동안 해당 색을
-  /// 뽑는다」) — the press began here, so this view keeps sampling for it.
-  /// Null disables it. 🪦It was `onAltPick` while Alt picked through this
-  /// view too; I-15 put Alt on the eyedropper tool itself.
-  final ValueChanged<CanvasPoint>? onHoldPick;
+  /// Handed this view's [PathStroker] while it is mounted, and null when
+  /// it goes — published the way [onStrokeLanderChanged] is.
+  final ValueChanged<PathStroker?>? onPathStrokerChanged;
 
-  /// PEN-7a mapped-hold session: a secondary-button press switched the
-  /// tool temporarily — the shell mirrors it on the tool notifier so the
-  /// cursor/panels follow, and restores (or keeps) on release.
+  /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
+  /// eraser, switched the tool temporarily — the shell mirrors it on the
+  /// tool notifier so the cursor/panels follow, and restores (or keeps) on
+  /// release.
+  ///
+  /// ↩️A held PICK and the history verbs came through this view too
+  /// (`onHoldPick` — 🪦`onAltPick` before I-15 — and `onInvokeAction`,
+  /// PEN-11). They draw nothing, and the view hears a press only while a
+  /// drawing tool is armed over a cel, so a button mapped to the eyedropper
+  /// was dead under every other tool (F-299). The panel reads them now,
+  /// where every press on the canvas passes.
   final void Function(CanvasTool tool)? onTemporaryToolHold;
   final void Function({required bool keep})? onTemporaryToolRelease;
 
-  /// PEN-11: one-shot mapped actions (undo/redo) dispatch through the
-  /// registry funnel — fired at a mapped press, or at a HOVER button
-  /// press for pens that report it (the S-Pen hover palm-rejection
-  /// window blocks touch, so the pen carries its own undo).
-  final void Function(String actionId)? onInvokeAction;
+  /// Who holds the tool besides the hand on the keys ([CanvasToolHolds]) —
+  /// the panel's, so its reader of mapped buttons and this view's reading
+  /// of the pen's tail each see the other. Null = this view keeps its own
+  /// (a sheet's ink: no button holds a pick there).
+  final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
   /// primary tap builds the flood's stamp dab here and the view runs it
@@ -319,12 +344,9 @@ class _InteractiveBrushEditCanvasViewState
   /// first dab — rests at 0.0.
   double _currentSpeed = 0.0;
 
-  // The held button (Round 6): a mapped button standing in for a tool.
+  // The held button (Round 6): a mapped button the eraser stands in for.
   late final _BrushEditHold _hold = _BrushEditHold(this);
 
-  /// The contact that started as an ALT pick (TS7), so its moves keep
-  /// sampling.
-  ///
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
@@ -406,7 +428,14 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
+    widget.onPathStrokerChanged?.call(_pathStroke.strokeAlong);
+    _toolHolds.handOver = _door;
   }
+
+  /// This view's door for a press it could not hear
+  /// ([CanvasToolHolds.handOver]) — one closure, so the view takes down
+  /// the door it put up and no other.
+  late final void Function(PointerEvent event) _door = _press.handedOver;
 
   @override
   void didUpdateWidget(covariant InteractiveBrushEditCanvasView oldWidget) {
@@ -417,6 +446,13 @@ class _InteractiveBrushEditCanvasViewState
     // UI-thread hitch — the constant flip lag. A cel identity change now
     // resets the per-stroke state in place; everything else (session
     // state, lineage) flows through the ordinary rebuild.
+    if (!identical(oldWidget.toolHolds, widget.toolHolds)) {
+      final before = oldWidget.toolHolds ?? _ownToolHolds;
+      if (identical(before.handOver, _door)) {
+        before.handOver = null;
+      }
+      _toolHolds.handOver = _door;
+    }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
@@ -461,6 +497,10 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
+    widget.onPathStrokerChanged?.call(null);
+    if (identical(_toolHolds.handOver, _door)) {
+      _toolHolds.handOver = null;
+    }
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.
@@ -561,14 +601,18 @@ class _InteractiveBrushEditCanvasViewState
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
 
+  late final _BrushEditPathStroke _pathStroke = _BrushEditPathStroke(this);
+
   /// What the stroke's contact has read so far, and what it holds until it
   /// has (H43).
   late final _BrushEditOpening _opening = _BrushEditOpening(this);
 
-  /// Whether the pen-tail mapping is engaged (the pen is turned
-  /// tail-down). Not a button hold: it spans strokes until the pen is
-  /// turned back over.
-  bool _penTailActive = false;
+  /// Who holds the tool besides the hand on the keys — the host's when it
+  /// handed one. [CanvasToolHolds.penTail] is this view's to write: whether
+  /// the pen-tail mapping is engaged (the pen is turned tail-down). Not a
+  /// button hold: it spans strokes until the pen is turned back over.
+  late final CanvasToolHolds _ownToolHolds = CanvasToolHolds();
+  CanvasToolHolds get _toolHolds => widget.toolHolds ?? _ownToolHolds;
 
   /// EVERY tool works anywhere on the pasteboard (Flash-style — the
   /// stage rectangle is a crop at composite time, not an input

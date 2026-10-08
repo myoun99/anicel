@@ -15,6 +15,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -292,6 +293,95 @@ void main() {
       // With FX on, the same call filters — so the gate is what decides,
       // not an accident of the code path.
       expect(await celGrey(applyLayerFx: true), greaterThan(0x80 + 100));
+    });
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a cel is sampled where it FIRST SHOWS on the row it is '
+      'composited from — its effects at that frame, not at the cut\'s '
+      'first (F-300: the row is the showing cut\'s)', (tester) async {
+    await tester.runAsync(() async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      var cut = session.requireActiveCut;
+      final layer = cut.layers.firstWhere(
+        (candidate) => candidate.kind == LayerKind.animation,
+      );
+      final frame = Frame(
+        id: const FrameId('cel-frame'),
+        duration: 1,
+        strokes: const [],
+      );
+      // One mid-grey pixel at (4,4), through the display cache.
+      const tile = 256;
+      final pixels = Uint8List(tile * tile * 4);
+      final offset = (4 * cut.canvasSize.width + 4) * 4;
+      const tileOffset = (4 * tile + 4) * 4;
+      pixels[tileOffset] = 0x80;
+      pixels[tileOffset + 1] = 0x80;
+      pixels[tileOffset + 2] = 0x80;
+      pixels[tileOffset + 3] = 255;
+      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
+        key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
+        previewSurface: BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: 256,
+        ).putTiles([
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(size: tile, pixels: pixels),
+          ),
+        ]),
+      );
+      // Brightness keyed: none on the cut's first frame, +60 on its third.
+      session.effectsAndFx.updateLayerEffects(layer.id, [
+        LayerEffect(
+          id: const EffectId('fx'),
+          kind: EffectKind.brightnessContrast,
+          parameters: {
+            'brightness': EffectParameter(
+              track: PropertyTrack<double>().withKey(0, 0).withKey(2, 60),
+            ),
+          },
+        ),
+      ]);
+      cut = session.requireActiveCut;
+      final row = cut.layers.firstWhere(
+        (candidate) => candidate.id == layer.id,
+      );
+
+      /// The cel's grey as the row shows the cel first on [firstShown].
+      Future<int> celGrey({required int firstShown}) async {
+        final axis = row.copyWith(
+          frames: [frame],
+          timeline: {
+            firstShown: TimelineExposure.drawing(frame.id, length: 1),
+          },
+        );
+        final task = ExportCelGroupTask(
+          cut: cut,
+          baseLayer: axis,
+          members: [axis],
+          memberFrames: [frame],
+          baseFrame: frame,
+          celName: 'A1',
+          fileName: 'A1.png',
+        );
+        expect(celGroupFirstExposure(task), firstShown);
+        final image = await ExportFrameRenderer(
+          session: session,
+        ).renderCelGroup(task, ExportSizeMode.canvas);
+        final bytes = await image!.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return bytes!.getUint8(offset);
+      }
+
+      expect(await celGrey(firstShown: 0), closeTo(0x80, 2));
+      expect(await celGrey(firstShown: 2), greaterThan(0x80 + 100));
     });
     await tester.pumpAndSettle();
   });

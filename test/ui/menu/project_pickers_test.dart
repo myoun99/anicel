@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
 import '../../helpers/temp_dir.dart';
 
 /// PICK-6: the project open and Save-As flows, now that a project is ONE
@@ -494,6 +495,44 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('folder-no-path-dialog')),
         findsOneWidget,
+      );
+
+      // The flow waits on the notice; closed, it goes the way every other
+      // road goes — and a test that ended on the open notice left the staged
+      // file in the temp (2026-10-08).
+      await tester.tap(
+        find.byKey(const ValueKey<String>('folder-no-path-close')),
+      );
+      await tester.pumpAndSettle();
+      expect(Directory(offeredSource!).parent.existsSync(), isFalse);
+    });
+
+    testWidgets('an export that THROWS leaves no staged file either', (
+      tester,
+    ) async {
+      installExporter((_) => throw StateError('the window broke'));
+      Object? thrown;
+      final pick = await runFlow(tester, (context) async {
+        try {
+          return await pickProjectSaveTarget(
+            context,
+            'x',
+            folder.path,
+            stageArchive: fakeStage,
+          );
+        } on StateError catch (error) {
+          thrown = error;
+          return null;
+        }
+      });
+
+      expect(thrown, isA<StateError>(), reason: 'CONTROL: the window threw');
+      expect(pick, isNull);
+      expect(
+        Directory(offeredSource!).parent.existsSync(),
+        isFalse,
+        reason: 'a throw is a way out too — the whole staged project stayed '
+            'in the temp for good when only the roads that returned cleaned',
       );
     });
   });

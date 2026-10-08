@@ -88,16 +88,13 @@ void main() {
             ),
           commit: (controller, history) =>
               (controller as TimesheetInkController).commitStroke(
-                plane: TimesheetInkPlane.strip,
-                key: timesheetInkStripKey(cutId, 0),
+                plane: null,
+                key: timesheetInkPageKey(cutId, 0),
                 strokeData: oneDab(),
                 historyManager: history,
               ),
           hasInk: (controller) => (controller as TimesheetInkController)
-              .hasInkFor(
-                TimesheetInkPlane.strip,
-                timesheetInkStripKey(cutId, 0),
-              ),
+              .hasInkFor(null, timesheetInkPageKey(cutId, 0)),
         ),
         'conte': (
           make: () => ConteInkController()

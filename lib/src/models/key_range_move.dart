@@ -1,34 +1,21 @@
 /// Pure planning for KEY-RANGE moves (UI-R20 #2 second half, P3b-2): the
-/// camera row's keyframes and the instruction rows' event spans shift with
-/// a range selection exactly like drawing blocks slide — rigid group, one
-/// delta, all-or-nothing (an illegal landing voids the whole plan).
+/// instruction rows' event spans shift with a range selection exactly like
+/// drawing blocks slide — rigid group, one delta, all-or-nothing (an
+/// illegal landing voids the whole plan).
+///
+/// ↩️The camera row's keyframes were planned here too, as a map of whole
+/// poses. They are the keys of the camera's LANES, and shift by the lanes'
+/// own range move (F-309, `FrameRangeMoveDrag`); what this file still says
+/// of a transform track is what its header row shows.
 library;
 
 import 'camera_instruction.dart';
-import 'camera_pose.dart';
 import 'cel_bank_lanes.dart';
 import 'drawing_block_move.dart';
 import 'key_range_shift.dart';
 import 'layer.dart';
 import 'property_track.dart';
 import 'transform_track.dart';
-
-/// The camera keyframes with every key in [rangeStartIndex,
-/// [rangeEndIndexExclusive]) shifted by [frameDelta]; null when any
-/// shifted key would land below frame 0 or on an UNSHIFTED key (the
-/// block discipline: nothing merges silently).
-Map<int, CameraPose>? shiftCameraKeysInRange({
-  required Map<int, CameraPose> keyframes,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) => shiftKeysInRange(
-  entries: keyframes,
-  rangeStartIndex: rangeStartIndex,
-  rangeEndIndexExclusive: rangeEndIndexExclusive,
-  frameDelta: frameDelta,
-  extentOf: (_) => 1,
-);
 
 /// Every frame carrying a key on ANY lane of [track] — the transform
 /// group header's summary display (UI-R20 #13, the camera row pattern).

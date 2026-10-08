@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 /// The session's link verbs (L4 wiring): 링크 복제, 독립시키기, 겸용컷
 /// 생성/변경 — thin session entrances over the L2 coordinator verbs, plus
@@ -27,7 +28,7 @@ void main() {
     addTearDown(session.dispose);
   });
 
-  test('linkDuplicateActiveLayer links; the badge query sees both members; '
+  test('a linked paste of the row links; the badge query sees both members; '
       'unlinking the row forks back out', () {
     final activeLayer = session.activeLayer!;
     bool groupLinked() =>
@@ -36,7 +37,7 @@ void main() {
     expect(layerVerbs.isLayerLinked(activeLayer.id), isFalse);
     expect(groupLinked(), isFalse);
 
-    layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(session);
 
     final cut = session.requireActiveCut;
     expect(cut.layers.length, layersBefore + 1);
@@ -61,7 +62,7 @@ void main() {
     final activeLayer = session.activeLayer!;
     expect(layerVerbs.linkPartnersOf(activeLayer.id), isEmpty);
 
-    layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(session);
 
     final cut = session.requireActiveCut;
     expect(layerVerbs.linkPartnersOf(activeLayer.id), [
@@ -137,7 +138,7 @@ void main() {
   test('a link shares the drawing and how it is laid in — its blend and its '
       'static opacity — and each use keeps its own eye', () {
     final origin = session.activeLayer!;
-    layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(session);
     final copy = session.requireActiveCut.layers.firstWhere(
       (layer) => layer.name == origin.name && layer.id != origin.id,
     );

@@ -113,6 +113,34 @@ static void qa_transport_store_32(volatile ma_uint32* field, int32_t value) {
   ma_atomic_store_32(field, (ma_uint32)value);
 }
 
+#if !defined(_WIN32)
+#include <time.h>
+#endif
+
+// The monotonic clock both ends of the clock's line read: the callback when
+// it stamps a point, the reader when it asks how long ago that was. Never
+// the wall clock — that one is set, and a line drawn across a setting jumps.
+// (Safe on the realtime thread: neither call locks or allocates.)
+static int64_t qa_clock_now_us(void) {
+#if defined(_WIN32)
+  static LARGE_INTEGER frequency;
+  LARGE_INTEGER counter;
+  if (frequency.QuadPart == 0) {
+    QueryPerformanceFrequency(&frequency);
+  }
+  QueryPerformanceCounter(&counter);
+  // Whole seconds and the remainder apart: the product of the counter and
+  // a million overflows 64 bits within hours of uptime.
+  return (int64_t)(counter.QuadPart / frequency.QuadPart) * 1000000 +
+         (int64_t)(counter.QuadPart % frequency.QuadPart) * 1000000 /
+             frequency.QuadPart;
+#else
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (int64_t)now.tv_sec * 1000000 + (int64_t)now.tv_nsec / 1000;
+#endif
+}
+
 #define QA_DEVICE_MAX_BLOCK 8192
 
 // One complete schedule: everything a mixed block reads (AUDIO-PRO R3
@@ -142,6 +170,33 @@ typedef struct {
   volatile ma_uint64 stop_position;  // exclusive; <= start means "no end"
   volatile ma_uint32 looping;
 
+  // THE CLOCK'S LINE (2026-10-08). `position` is a STAIR: it climbs one
+  // callback at a time, so read between two callbacks it says what was
+  // handed at the last one — and the device has gone on playing since. A
+  // picture that reads the stair changes its frame up to a step late, by a
+  // different amount each frame (user: the late change is what bothers).
+  //
+  // So each callback also says WHEN it handed what it handed, and a reader
+  // draws the line through the latest of those points: the samples handed
+  // by then, plus the time gone by since at the device's rate. The line
+  // meets the stair at every callback and does not fall behind between
+  // them.
+  //
+  // `clock_serial` is the ARM (play, seek) the point belongs to. A callback
+  // already in flight when the transport is armed again writes a point of
+  // the old arm after the new one began; the reader drops a point whose
+  // serial is not the transport's and reads the stair until the new arm's
+  // first callback has spoken. A point with no time (0) is no point.
+  //
+  // One writer — the callback — and read whole through `clock_seq`: odd
+  // while the three are being written, and a reader that saw it move reads
+  // again.
+  volatile ma_uint32 arm_serial;
+  volatile ma_uint32 clock_seq;
+  volatile ma_uint32 clock_serial;
+  volatile ma_uint64 clock_position;
+  volatile ma_uint64 clock_time_us;
+
   // The double-buffered schedule (AUDIO-PRO R3): the callback reads
   // slots[active_slot] and acknowledges through callback_slot; a live
   // replacement builds in the OTHER slot and flips. The old slot frees
@@ -168,6 +223,27 @@ typedef struct {
 } qa_audio_device_state;
 
 static qa_audio_device_state g_audio;
+
+// The callback's last word: what it has handed, when it was asked for it,
+// and under which arm.
+static void qa_audio_stamp_clock(ma_uint32 serial,
+                                 int64_t position,
+                                 int64_t time_us) {
+  const ma_uint32 seq = ma_atomic_load_32(&g_audio.clock_seq);
+  ma_atomic_store_32(&g_audio.clock_seq, seq + 1);
+  ma_atomic_store_32(&g_audio.clock_serial, serial);
+  ma_atomic_store_64(&g_audio.clock_position, (ma_uint64)position);
+  ma_atomic_store_64(&g_audio.clock_time_us, (ma_uint64)time_us);
+  ma_atomic_store_32(&g_audio.clock_seq, seq + 2);
+}
+
+// A new arm: the points written under the old one are no longer the
+// transport's. Called by the control thread alone, with the callback
+// silenced (play) or about to read a moved position (seek).
+static void qa_audio_begin_arm(void) {
+  ma_atomic_store_32(&g_audio.arm_serial,
+                     ma_atomic_load_32(&g_audio.arm_serial) + 1);
+}
 
 // The context outlives devices (AUDIO-PRO R4): enumeration and open-by-
 // index both need one, and re-creating it per open would re-probe the
@@ -285,6 +361,11 @@ static void qa_audio_data_callback(ma_device* device,
   const size_t total = (size_t)frame_count * (size_t)channels;
   memset(out, 0, total * sizeof(float));
 
+  // The arm BEFORE the look at `playing`: a callback that saw the old arm
+  // and then finds a transport armed again stamps its point with the old
+  // serial, and the reader drops it.
+  const ma_uint32 arm = ma_atomic_load_32(&g_audio.arm_serial);
+  const int64_t asked_at_us = qa_clock_now_us();
   if (!qa_transport_load_32(&g_audio.playing) || g_audio.scratch == NULL) {
     return;
   }
@@ -378,6 +459,8 @@ static void qa_audio_data_callback(ma_device* device,
     qa_transport_store_64(&g_audio.position, position + (int64_t)block);
     done += block;
   }
+  qa_audio_stamp_clock(arm, qa_transport_load_64(&g_audio.position),
+                       asked_at_us);
   qa_transport_store_32(&g_audio.callback_in_flight, 0);
 }
 
@@ -458,6 +541,9 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
   g_audio.device_open = 1;
   qa_transport_store_32(&g_audio.playing, 0);
   qa_transport_store_64(&g_audio.position, 0);
+  // A device just opened has no run: whatever the one before it left is
+  // not its point.
+  qa_audio_begin_arm();
 
   if (ma_device_start(&g_audio.device) != MA_SUCCESS) {
     free(g_audio.scratch);
@@ -618,6 +704,7 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   // with a half-updated transport, then publish the fields, then arm. The
   // seq-cst stores double as the release fence playing needs on ARM.
   qa_transport_store_32(&g_audio.playing, 0);
+  qa_audio_begin_arm();
   qa_transport_store_64(&g_audio.position, start_sample);
   qa_transport_store_64(&g_audio.start_position, start_sample);
   qa_transport_store_64(&g_audio.stop_position, stop_sample);
@@ -640,6 +727,10 @@ QA_EXPORT double qa_audio_device_peak(int32_t channel) {
 
 QA_EXPORT void qa_audio_device_stop(void) {
   qa_transport_store_32(&g_audio.playing, 0);
+  // The run is over, and its points with it. (A device that runs OUT by
+  // itself is not stopped here: its last point stands, and the line runs
+  // on through what its buffer still holds.)
+  qa_audio_begin_arm();
   // A stopped transport meters silence - the bars must not freeze at the
   // last audible block.
   qa_transport_store_32(&g_audio.peak_left_bits, 0);
@@ -664,7 +755,44 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 // staleness the next seek or block absorbs; the atomic store only rules
 // out torn values.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
+  qa_audio_begin_arm();
   qa_transport_store_64(&g_audio.position, sample);
+}
+
+// The latest point of the clock's line, for the arm the transport is in:
+// out2[0] = the samples handed when that callback returned, out2[1] = when
+// it was asked for them, on qa_audio_clock_now_us's clock. 0 = no callback
+// has spoken since the transport was last armed: there is only the stair
+// (qa_audio_device_position) to read.
+QA_EXPORT int32_t qa_audio_device_clock(int64_t* out2) {
+  if (out2 == NULL) {
+    return 0;
+  }
+  for (int attempt = 0; attempt < 16; attempt += 1) {
+    const ma_uint32 before = ma_atomic_load_32(&g_audio.clock_seq);
+    if (before & 1u) {
+      continue;
+    }
+    const ma_uint32 serial = ma_atomic_load_32(&g_audio.clock_serial);
+    const int64_t position =
+        (int64_t)ma_atomic_load_64(&g_audio.clock_position);
+    const int64_t time_us = (int64_t)ma_atomic_load_64(&g_audio.clock_time_us);
+    if (ma_atomic_load_32(&g_audio.clock_seq) != before) {
+      continue;
+    }
+    if (time_us == 0 || serial != ma_atomic_load_32(&g_audio.arm_serial)) {
+      return 0;
+    }
+    out2[0] = position;
+    out2[1] = time_us;
+    return 1;
+  }
+  return 0;
+}
+
+// The time now on the clock the line's points are stamped with.
+QA_EXPORT int64_t qa_audio_clock_now_us(void) {
+  return qa_clock_now_us();
 }
 
 // ---------------------------------------------------------------------------

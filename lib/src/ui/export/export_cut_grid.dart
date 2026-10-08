@@ -13,8 +13,8 @@ import '../repaint_props.dart';
 /// the range field.
 typedef ExportCutEntry = ({List<CutId> ids, String label, int number});
 
-/// The v10 cut grid (Cels·Timesheet의 Scope 모듈 전용): 10 columns of
-/// micro number cells — selected = teal fill, excluded = hatching, click
+/// The v10 cut grid (Cels·Timesheet·Envelope의 Scope 모듈 전용): 10 columns
+/// of micro number cells — selected = teal fill, excluded = hatching, click
 /// toggles. All (reset-style) + count + a "1-200" range field; a
 /// theatrical 1500-cut list stays usable through a height-capped
 /// scrolling grid (cells build lazily).

@@ -304,7 +304,6 @@ class InstructionEvent {
     this.text,
     this.valueA,
     this.valueB,
-    this.memo,
   });
 
   /// The span [writing] makes on a block [length] frames long.
@@ -312,8 +311,7 @@ class InstructionEvent {
     : instructionId = writing.instructionId,
       text = writing.text,
       valueA = writing.valueA,
-      valueB = writing.valueB,
-      memo = writing.memo;
+      valueB = writing.valueB;
 
   /// What this span says, without the length a block answers.
   ExposureInstruction get writing => ExposureInstruction(
@@ -321,7 +319,6 @@ class InstructionEvent {
     text: text,
     valueA: valueA,
     valueB: valueB,
-    memo: memo,
   );
 
   /// References a [CameraInstructionDef.id]; a dangling reference (its def
@@ -340,10 +337,6 @@ class InstructionEvent {
   final String? valueA;
   final String? valueB;
 
-  /// Free memo printed into the timesheet's memo band alongside the event's
-  /// endpoints and label; never drawn on the row itself.
-  final String? memo;
-
   /// What displays/prints for this event given its vocabulary [def].
   String displayLabel(CameraInstructionDef? def) {
     final text = this.text;
@@ -359,7 +352,6 @@ class InstructionEvent {
     String? Function()? text,
     String? Function()? valueA,
     String? Function()? valueB,
-    String? Function()? memo,
   }) {
     return InstructionEvent(
       instructionId: instructionId ?? this.instructionId,
@@ -367,7 +359,6 @@ class InstructionEvent {
       text: text == null ? this.text : text(),
       valueA: valueA == null ? this.valueA : valueA(),
       valueB: valueB == null ? this.valueB : valueB(),
-      memo: memo == null ? this.memo : memo(),
     );
   }
 
@@ -396,17 +387,15 @@ class InstructionEvent {
           other.length == length &&
           other.text == text &&
           other.valueA == valueA &&
-          other.valueB == valueB &&
-          other.memo == memo;
+          other.valueB == valueB;
 
   @override
-  int get hashCode =>
-      Object.hash(instructionId, length, text, valueA, valueB, memo);
+  int get hashCode => Object.hash(instructionId, length, text, valueA, valueB);
 
   @override
   String toString() =>
       'InstructionEvent(instructionId: $instructionId, length: $length, '
-      'text: $text, valueA: $valueA, valueB: $valueB, memo: $memo)';
+      'text: $text, valueA: $valueA, valueB: $valueB)';
 }
 
 /// Validates an instruction map: non-negative starts, positive lengths and

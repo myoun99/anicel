@@ -125,6 +125,18 @@ final class QaAudioDevice {
       .lookupFunction<Void Function(Int64), void Function(int)>(
         'qa_audio_device_seek',
       );
+  late final _clock = _library
+      .lookupFunction<Int32 Function(Pointer<Int64>), int Function(Pointer<Int64>)>(
+        'qa_audio_device_clock',
+      );
+  late final _clockNow = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_clock_now_us',
+      );
+
+  /// Where [clockPoint] has the native side write its two numbers. One
+  /// block for the life of the binding: the clock is read every tick.
+  late final Pointer<Int64> _clockOut = calloc<Int64>(2);
   late final _peak = _library
       .lookupFunction<Double Function(Int32), double Function(int)>(
         'qa_audio_device_peak',
@@ -304,7 +316,40 @@ final class QaAudioDevice {
   /// Samples handed to the device — **the clock**. The picture reads this
   /// and shows whatever frame it lands in; when rendering falls behind,
   /// frames are dropped rather than the sound being made to wait.
+  ///
+  /// ⚠️A STAIR: it climbs one audio callback at a time. Between two
+  /// callbacks it says what was handed at the last one, and the device has
+  /// gone on playing since — see [clockPoint] for the line through it.
   int get positionSamples => _position();
+
+  /// The latest point of the clock's LINE: the samples that had been
+  /// handed when a callback returned, and when that callback was asked, in
+  /// microseconds on [clockNowMicros]'s clock. Null when no callback has
+  /// spoken since the transport was last armed — then there is only the
+  /// stair ([positionSamples]).
+  ({int positionSamples, int atMicros})? get clockPoint =>
+      _clock(_clockOut) == 0
+      ? null
+      : (positionSamples: _clockOut[0], atMicros: _clockOut[1]);
+
+  /// The time now on the clock [clockPoint] is stamped with — monotonic,
+  /// and no other clock's.
+  int get clockNowMicros => _clockNow();
+
+  /// The clock, read in the ONE order that makes sense of it: the point
+  /// first, then the stair — which can then only stand at its point or past
+  /// it — then the time, which can then only be after both. Read the other
+  /// way round, a callback landing between the reads puts the point past
+  /// the stair, and a looping device's stair a lap behind it.
+  ({
+    ({int positionSamples, int atMicros})? point,
+    int stairSamples,
+    int nowMicros,
+  })
+  readClock() {
+    final point = clockPoint;
+    return (point: point, stairSamples: _position(), nowMicros: _clockNow());
+  }
 
   /// Moves the transport without restarting anything. Because the mixer
   /// builds a mix rather than starting clips, a seek is just a change of

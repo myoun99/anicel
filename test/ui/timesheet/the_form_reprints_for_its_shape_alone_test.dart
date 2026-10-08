@@ -121,7 +121,7 @@ void main() {
   final values = <String, TimesheetDocumentPainter>{
     'the cut renamed': form(base.copyWith(name: '12A')),
     'a memo written': form(
-      base.copyWith(metadata: base.metadata.copyWith(note: 'O.L')),
+      base.copyWith(metadata: base.metadata.withPageNote(0, 'O.L')),
     ),
     'the title retyped': form(base, info: info.copyWith(title: 'U')),
     'an exposure held longer': form(

@@ -195,6 +195,53 @@ const double timelineGridRowSeamStroke = 1.0;
 double timelineRowPaperExtent(double rowExtent) =>
     rowExtent - timelineGridRowSeamStroke;
 
+/// A block's PAPER as ONE shape, in the box its span fills on its row —
+/// [along] the frames it covers, the row's whole [rowExtent] across: short of
+/// the row seam ([timelineRowPaperExtent]), in the block's own corner over
+/// cells of [frameCellExtent] ([timelineBlockCornerRadiusAt]).
+///
+/// 🗣️F-270 (유저 2026-10-03): 「se블록의 이름칸의 강조색으로 되어있는 바탕색,
+/// 바탕색 실루엣이 블록이랑 딱 맞춰서 꼭짓점이 동그랗게 되지않아서 바탕색
+/// 오버레이만 사각형 실루엣임. 근본/구조적으로 해결」. The SE paper drew this
+/// shape, the warning line clipped itself to its two near corners, and the
+/// name chip laid a bare rect over it: three readers of one box and one
+/// corner, each working it out alone — and the chip not at all. ⇒ Whatever
+/// lies ON a block is clipped by this, so it has no silhouette of its own to
+/// get wrong.
+RRect timelineBlockPaperShape({
+  required Axis axis,
+  required double along,
+  required double rowExtent,
+  required double frameCellExtent,
+}) {
+  final paper = timelineRowPaperExtent(rowExtent);
+  return RRect.fromRectAndRadius(
+    Rect.fromPoints(
+      Offset.zero,
+      offsetAlong(axis, along: along, across: paper),
+    ),
+    timelineBlockCornerRadiusAt(
+      cellExtent: frameCellExtent,
+      crossExtent: paper,
+    ),
+  );
+}
+
+/// [timelineBlockPaperShape] for a painter that knows its block in FRAMES:
+/// a block [frames] long over [along] reads what a cell is worth off its own
+/// box, so a zoom step repaints it without a rebuild.
+RRect timelineBlockPaperShapeOver({
+  required Axis axis,
+  required double along,
+  required double rowExtent,
+  required int frames,
+}) => timelineBlockPaperShape(
+  axis: axis,
+  along: along,
+  rowExtent: rowExtent,
+  frameCellExtent: frames <= 0 ? 0 : along / frames,
+);
+
 /// The position convention: a boundary line's center sits half a pixel
 /// past the boundary — the frame ruler's own snap, now the law's.
 const double timelineGridLineSnap = 0.5;

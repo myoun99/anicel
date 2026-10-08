@@ -35,8 +35,7 @@ import '../../models/media_asset.dart'
         MediaCarry,
         mediaCarryName,
         mediaNameParts,
-        mintMediaCarry,
-        normalizedMediaPath;
+        mintMediaCarry;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -66,6 +65,98 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v11 (2026-10-08, F-301 — 유저 10-05 「타임시트의 메모란은 페이지별로
+/// 다름 … 페이지별로 독립」): a cut's memo is one per page of its timesheet
+/// (`CutMetadata.pageNotes`, a list written only when a page has one)
+/// where it was one per cut (`note`). A v10 build would open a v11 file
+/// without its memos and save it back with none — so the bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔The one note is NOT read here (the save law), and with it goes every
+/// file older than this one ([anicelOldestReadFormatVersion]). What to
+/// carry when one is asked for: each cut's `note` becomes its first page's
+/// memo (`pageNotes: [note]`, left out when the note is empty) — the page
+/// the envelope and the cut-memo window show (F-301-Q1).
+///
+/// v10 (2026-10-08, F-252 — 유저 10-01 「잉크는 용지에 귀속됨」): a
+/// timesheet's ink is the paper's, one surface per page
+/// (`sheet-page-<cut>-p<n>`), and the frame-anchored plane over its column
+/// grid (`sheet-strip-<cut>-b<n>`, one surface per band of frame rows) is
+/// gone. A v9 build would open a v10 file and lay its next stroke on the
+/// grid into the plane this build no longer reads — so the bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔The strip cels are NOT read here (the save law), and with them goes
+/// every file older than this one ([anicelOldestReadFormatVersion]). What
+/// to carry when one is asked for: each strip cel's writing onto the pages
+/// it showed on — a band's rows lie in its page's two halves, and in two
+/// pages' on the 3-second sheet — then every `sheet-strip-*` cel dropped.
+///
+/// v9 (2026-10-07, the text tool's vertical writing — R9-rest): a text on a
+/// cel says when it is written in columns (`CelTextContent.vertical`,
+/// written only where it is). A v8 build reads the text without the word:
+/// it sets the letters in lines over a plate that shows them in columns,
+/// its box, caret and presses all measured in lines — and the first edit
+/// bakes the lines and writes the text back without the word. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor: a
+/// text that does not say is one in lines at THIS version too.
+///
+/// v8 (2026-10-07, the text tool's AA switch — R9-rest): a letter says
+/// whether its edges are smoothed (`TextLetterStyle.antialias`, written
+/// only where they are not). A v7 build reads a letter without the word:
+/// it opens the text as a smooth one, and the first edit of it bakes its
+/// pixels smooth and writes the letters back without the word — hard
+/// letters gone soft, and nothing said. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a letter that does not say is a
+/// smooth one at THIS version too (`TextLetterStyle.toJson` leaves the
+/// word out), so a v7 file was such a document.
+///
+/// v7 (2026-10-07, the text tool's fonts — R9-rest): a project carries the
+/// font files its texts are set with — a `fonts` list in the document
+/// (`Project.fonts`) and an entry apiece under `fonts/`
+/// ([anicelFontEntryName]). A v6 build reads neither: it opens the project
+/// without them and its next save writes the document back without the
+/// list, so the fonts are the project's no longer and a machine that was
+/// never brought them sets those texts in another face. The bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a document that lists no fonts is
+/// what a project that carries none writes at THIS version
+/// (`Project.toJson` leaves the list out), so a v6 file was such a
+/// document.
+///
+/// v6 (2026-10-06, F-256-Q1 — a layer's Scale keys an axis apiece): a
+/// transform track's `scale` lane holds `{x, y}` where it held one number
+/// (`TransformTrack.toJson` — a layer's `transform`, a cut's `camera`). A
+/// v5 build casts that value to a number and fails the open on the cast,
+/// naming nothing a person could act on, so the bump refuses the file up
+/// front instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⛔The one number is NOT read here (🗣️유저 2026-10-06: 「옛파일 읽는코드는
+/// 필요없다고 확신했어」 — the save law), and with it goes every file older
+/// than this one ([anicelOldestReadFormatVersion]). One that has to open
+/// is carried over by hand when it is asked for, and for this version this
+/// is what to carry: each scale key's number `n` becomes `{x: n, y: n}`.
+/// ↩️The round's first commit read the one number as both axes; that reader
+/// went the same day, with the pin beside it.
+/// ↩️So where a paragraph below says an older file 「opens here」, it did
+/// until that floor.
+///
+/// v5 (2026-10-06, the text tool — R9-rest): a cel's entry carries the
+/// TEXTS set on its picture after its tiles (cel stream v3,
+/// `anicelCelBinaryVersion`). A v4 build stops at such an entry with
+/// 「Unsupported cel entry version」 the first time it shows that cel — one
+/// cel at a time, deep in a session, with the rest of the project open — so
+/// the bump refuses the whole file up front instead, as a newer Anicel's
+/// ([decodeAnicelProjectDocument]). v4 files open here unchanged: their
+/// cel streams say v2 and are read as v2.
+///
 /// v4 (audit 09-25, card `audit-0925-carry-follow`): `carriedAs` holds a
 /// carry's WHOLE name, minted when it is carried ([mintMediaCarry] —
 /// `<path hash>-<random>-<file name>`). A v3 build reads it as a bare token
@@ -76,8 +167,8 @@ String projectDisplayName(String path) {
 /// 그냥 올리면 되는거아닌가?」 — it had stayed 3 since 07-29 through every
 /// format change, the 09-24 carry token among them, because no file anyone
 /// keeps was at stake (08-25); a build that loses carried bytes quietly is
-/// reason enough on its own. v3 files still open here: [mediaCarryName]
-/// keeps both older readings.
+/// reason enough on its own. v3 files opened here until the floor rose:
+/// [mediaCarryName] kept both older readings until floor 11.
 ///
 /// v3 (R20-A1 cold-cel tiering): cels persist as PRE-COMPRESSED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
@@ -87,7 +178,50 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 4;
+const int anicelFormatVersion = 11;
+
+/// The oldest format this build reads. A file below it is turned away at
+/// the door, by its number ([decodeAnicelProjectDocument]).
+///
+/// 🗣️유저 2026-10-06 (the save law — board `law-저장`): 「옛파일 읽는코드는
+/// 필요없다고 확신했어」, then, of what an older file shows when it is
+/// opened, 「아까 답변 범위 ok 옛파일 열었을때 보이는거 ok.」 — an older
+/// shape is not read, and the file that holds one is refused in a sentence
+/// that says which format it is, so that it can be asked to be carried
+/// over.
+///
+/// ⛔A change that takes the reading of an older shape out raises this
+/// WITH it. Left behind, the older file dies on a cast that names nothing a
+/// person could act on — or, worse, opens with the value it could not say
+/// filled in by a default, and the next save makes the default the truth.
+///
+/// 6: a scale's one number is no longer read (v6 above).
+/// 10: a timesheet's strip ink is no longer read (v10 above).
+/// 11: a cut's one note is no longer read (v11 above).
+const int anicelOldestReadFormatVersion = 11;
+
+/// A project document the format numbers refuse — saved by a NEWER Anicel,
+/// or in a format older than [anicelOldestReadFormatVersion] — with the
+/// format it says it is in ([saved]; 0 when it says none).
+///
+/// Still a [FormatException], its English for the logs and for whatever
+/// catches one. ↩️It WAS only that, and the person read it as it was:
+/// 「FormatException: This project is in format 9, …」, English in every
+/// language. What a person reads is said where a file error becomes words
+/// (`showFileError`), in the program language, by this number.
+class AnicelFormatRefused extends FormatException {
+  AnicelFormatRefused(this.saved)
+    : super(
+        saved > anicelFormatVersion
+            ? 'This project was saved by a newer Anicel.'
+            : 'This project is in format $saved, older than this Anicel '
+                  'reads ($anicelOldestReadFormatVersion).',
+      );
+
+  final int saved;
+
+  bool get newer => saved > anicelFormatVersion;
+}
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,
@@ -169,6 +303,44 @@ const String anicelMediaEntryPrefix = 'media/';
 /// settings-change sweep exists.
 const String anicelConformEntryPrefix = 'conform/';
 
+/// Where a font file the project carries lives (R9-rest, the text tool's
+/// faces).
+///
+/// A prefix of its own, as a conform's is, because it is another kind of
+/// thing with another rule for leaving: media leaves when the pool lets go
+/// of it, a conform when the audio settings move, and a font when a person
+/// takes it out of the project (`Project.fonts` — 유저 2026-10-06: 「뺄때까지
+/// 두는게 맞지않나 싶은데. 글꼴을 사실상 등록하는거잖아」).
+const String anicelFontEntryPrefix = 'fonts/';
+
+/// The archive entry the font file registered as [carriedAs] is stored
+/// under (`ProjectFontFile.carriedAs`).
+///
+/// The name was minted when the font was registered, as a carry's is
+/// ([anicelMediaEntryName]), so it means ONE set of bytes for good: a font
+/// is written once and never edited, and an entry already in the file is
+/// not written again.
+String anicelFontEntryName(String carriedAs) =>
+    '$anicelFontEntryPrefix$carriedAs';
+
+/// Every prefix under which a project carries something BESIDE its cels and
+/// its manifest — the kinds a save sweeps by name, and whose bulk a
+/// rewrite copies for nothing ([anicelNeedsCompaction]).
+///
+/// ↩️Two kinds were named at each place that asked — `media/ || conform/` —
+/// and fonts are the third (2026-10-06): one list, asked by
+/// [anicelEntryIsCarried].
+const List<String> anicelCarriedEntryPrefixes = [
+  anicelMediaEntryPrefix,
+  anicelConformEntryPrefix,
+  anicelFontEntryPrefix,
+];
+
+/// Whether the entry called [name] is something the project carries beside
+/// its cels ([anicelCarriedEntryPrefixes]).
+bool anicelEntryIsCarried(String name) =>
+    anicelCarriedEntryPrefixes.any(name.startsWith);
+
 /// What fraction of the media a rewrite must copy for nothing has to be
 /// reclaimed before that copying is worth doing.
 ///
@@ -204,6 +376,11 @@ const double anicelMediaRewriteRatio = 0.05;
 /// any other — it is only the denominator this changes — so a conform that
 /// really was replaced still asks for the compaction that reclaims it.
 ///
+/// 🚨**SO DO THE FONTS A PROJECT CARRIES**, for the same sentence: a CJK
+/// font is ten to thirty megabytes written once and never shadowed, and in
+/// the denominator one of them would hold compaction off until the cels
+/// had rotted by half its size ([anicelCarriedEntryPrefixes]).
+///
 /// A named function rather than four lines inside the save isolate,
 /// because it is a rule and rules need somewhere to be checked.
 bool anicelNeedsCompaction({
@@ -216,8 +393,7 @@ bool anicelNeedsCompaction({
   var activeMediaBytes = 0;
   for (final entry in entries) {
     activeBytes += entry.length;
-    if (entry.name.startsWith(anicelMediaEntryPrefix) ||
-        entry.name.startsWith(anicelConformEntryPrefix)) {
+    if (anicelEntryIsCarried(entry.name)) {
       activeMediaBytes += entry.length;
     }
   }
@@ -367,9 +543,9 @@ String anicelCelEntryName(BrushFrameKey key) {
 
 /// The `project.json` payload bytes — shared verbatim by the full-archive
 /// builder and the incremental appender so both save paths write the
-/// identical entry. [saveDirectory] (the file's parent, normalized with
-/// forward slashes) keys the relative-path manifest: media living under
-/// it is recorded relative, everything else stays absolute-only.
+/// identical entry. [saveDirectory] (the folder the file stands in, as
+/// [folderOfPath] answers it) keys the relative-path manifest: media living
+/// under it is recorded relative, everything else stays absolute-only.
 /// [grants] are the security-scoped tokens the project needs to reopen the
 /// media it REFERENCES — top level, beside `mediaPaths`, because they are
 /// bookkeeping about the machine rather than anything about the film.
@@ -442,9 +618,10 @@ class AnicelSessionFields {
 /// cel blob's tail has, through the same [compressAnicelPayload], so zstd
 /// and the deflate floor are chosen in ONE place for both.
 ///
-/// Old files keep their uncompressed `project.json` and still open. The
-/// reader takes whichever it finds, preferring the compressed name so an
-/// incremental append can shadow the old entry without a compaction.
+/// An old file keeps an uncompressed `project.json`, and the reader takes
+/// that too — so such a file is refused by its format number, not as 「not
+/// an Anicel project」. It prefers the compressed name, so an incremental
+/// append can shadow the old entry without a compaction.
 ({String name, Uint8List bytes}) buildAnicelProjectEntry({
   required Project project,
   String? saveDirectory,
@@ -621,18 +798,23 @@ class AnicelProjectDocument {
 /// saved by a NEWER Anicel and silently drop everything it did not
 /// understand — which is a project the user then saves back, shortened.
 ///
+/// The other side is checked here as well: nothing reads the shapes of a
+/// file older than [anicelOldestReadFormatVersion], so it is refused by
+/// its number rather than left to fail wherever its first old value is.
+///
 /// The raw map does not leave: the two readers were still reading the
 /// fields around the project field by field, each its own way, which is
 /// the same split one layer down.
 AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
-  if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
-    throw const FormatException('This project was saved by a newer Anicel.');
+  final saved = decoded['formatVersion'] as int? ?? 0;
+  if (saved > anicelFormatVersion || saved < anicelOldestReadFormatVersion) {
+    throw AnicelFormatRefused(saved);
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
-    mediaRelativePaths: _keyedByPoolPath(decoded['mediaPaths']),
-    mediaEntryNames: _keyedByPoolPath(decoded['mediaEntries']),
+    mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
+    mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
       grants: anicelGrantsField(decoded['grants']),
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
@@ -640,18 +822,6 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     ),
   );
 }
-
-/// A document map keyed by pool path, its keys in the pool's spelling.
-///
-/// The project beside it was just spelled by its own constructors
-/// ([normalizedMediaPath]); a file written while a door still let another
-/// spelling in would otherwise name, under `C:\…\cut/A1.png`, an asset the
-/// pool now calls `C:/…/cut/A1.png` — and an entry the project carries
-/// would read as one it does not.
-Map<String, String> _keyedByPoolPath(Object? json) => {
-  for (final entry in anicelStringMapField(json).entries)
-    normalizedMediaPath(entry.key): entry.value,
-};
 
 /// A document field read as a `{string: string}` map — anything that is
 /// not a string pair is not one, and is left out rather than throwing.
@@ -682,8 +852,9 @@ List<Map<String, Object?>> anicelGrantsField(Object? json) => [
       if (entry is Map) anicelObjectMapField(entry),
 ];
 
-/// Parses .anicel bytes; throws [FormatException] on a newer format or a
-/// missing project entry.
+/// Parses .anicel bytes; throws [FormatException] on a format this build
+/// does not read — a newer one, or one older than
+/// [anicelOldestReadFormatVersion] — or a missing project entry.
 AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   final archive = ZipDecoder().decodeBytes(bytes);
 
@@ -745,16 +916,17 @@ Set<String> projectMediaPaths(Project project) {
 /// [path] relative to [directory] when it lives underneath it (separator-
 /// and case-insensitively on the drive prefix); null otherwise. Forward
 /// slashes throughout so the manifest is portable across platforms.
+/// [directory] is a folder as [folderOfPath] answers one: a root keeps its
+/// slash, and a bare file name stands in no folder, under which nothing is.
 String? _relativeTo(String path, String directory) {
-  final normalizedPath = path.replaceAll('\\', '/');
-  var normalizedDirectory = directory.replaceAll('\\', '/');
-  if (!normalizedDirectory.endsWith('/')) {
-    normalizedDirectory = '$normalizedDirectory/';
+  if (directory.isEmpty) {
+    return null;
   }
-  if (normalizedPath.toLowerCase().startsWith(
-    normalizedDirectory.toLowerCase(),
-  )) {
-    return normalizedPath.substring(normalizedDirectory.length);
+  final normalizedPath = path.replaceAll('\\', '/');
+  // The folder with one slash after it — a root's own, not a second.
+  final under = pathInFolder(directory.replaceAll('\\', '/'), '');
+  if (normalizedPath.toLowerCase().startsWith(under.toLowerCase())) {
+    return normalizedPath.substring(under.length);
   }
   return null;
 }

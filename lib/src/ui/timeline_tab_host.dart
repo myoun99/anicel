@@ -14,6 +14,7 @@ import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
+import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
@@ -79,6 +80,7 @@ class TimelineTabHost extends StatefulWidget {
     this.cameraViewEnabled,
     this.cameraDimOpacity,
     this.onRevealOnionSkinPanel,
+    this.transformOptions,
   });
 
   final EditorSessionManager session;
@@ -158,6 +160,12 @@ class TimelineTabHost extends StatefulWidget {
   /// The workspace's onion-panel reveal (UI-R17 #5): open when hidden,
   /// flash-in-place when already open. Null hides the legend entry.
   final VoidCallback? onRevealOnionSkinPanel;
+
+  /// The transform tool's options: a layer's Scale lane links by its
+  /// 「배율 연동」, and the chain on that row flips it
+  /// ([sessionLaneEditCallbacks]). Null reads the tool's defaults, with no
+  /// chain to show.
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -318,8 +326,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   // ↩️The callbacks' body is [sessionLaneEditCallbacks] (F-101): the
   // storyboard's S rows take the same one, on their own axis.
-  PropertyLaneEditCallbacks get _laneEdit =>
-      sessionLaneEditCallbacks(_session, frameIsGlobal: false);
+  PropertyLaneEditCallbacks get _laneEdit => sessionLaneEditCallbacks(
+    _session,
+    frameIsGlobal: false,
+    transformOptions: widget.transformOptions,
+  );
 
   // ⛔The two LAYER dialogs left this host (2026-08-10): the layer pill is
   // mounted on the storyboard's bar too now, and nothing in either flow was
@@ -537,7 +548,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
-            cutName: _session.activeCutOrNull?.name ?? '',
+            cutName: _session.cutUnderPlayhead.cutName,
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build
@@ -764,6 +775,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   ),
               onClear: _session.clearFrameRangeSelection,
               move: TimelineRangeMoveCallbacks(
+                holds: _session.rangeMove.grabHolds,
                 onBegin: _session.rangeMove.beginFrameRangeMoveDrag,
                 onUpdate: ({required frameDelta, targetLayerId}) =>
                     _session.rangeMove.updateFrameRangeMoveDrag(
@@ -1096,6 +1108,21 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   /// notify with an unchanged token reuses its widgets.
   Widget? _cachedActions;
 
+  /// The shared pill's copy and its two pastes, as the PILL reads them:
+  /// this panel's own answers.
+  ///
+  /// I-77: they answer for ROWS as well as the frame axis now. The token
+  /// read the session's frame-axis getters, which a copy of rows does not
+  /// move — the two pastes stayed dark behind it.
+  ///
+  /// Measured (mutation, 2026-10-07): all three reading the frame axis is
+  /// what `home_frame_and_clipboard_test` kills. Any ONE of them doing so
+  /// survives, because a copy of rows moves the other two with it — they
+  /// are listed by the token's contract, each for the button that reads
+  /// it, not because a test tells them apart.
+  TimelineToolbarPanelContext get _pill =>
+      TimelineToolbarPanelContext(widget.session);
+
   /// Every value the ACTION toolbar's directly-rendered widgets read. Split by
   /// the widget that consumes each so a future button's owner is obvious.
   ///
@@ -1109,20 +1136,20 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.frameVerbs.canRenameFrameAtCurrentFrame,
       session.exposureVerbs.canBlankExposureAtCurrentFrame,
       session.layerMarks.canToggleMarkAtCurrentFrame,
-      session.canCopyFrameAtCurrentFrame,
-      session.canPasteLinkedFrameAtCurrentFrame,
+      _pill.canCopyFrame,
+      _pill.canPasteLinkedFrame,
       // The shared pill's other three gates. They used to ride that pill's
       // own rebuild key, which re-evaluates only when the cached toolbar
       // is dropped — so a change moving ONLY these left them stale. A
       // BAND does exactly that: it can flip cut / edit / independent
       // paste while every entry around them holds its value.
       session.clipboard.canCutRunAtCurrentFrame,
-      session.canPasteIndependentFrameAtCurrentFrame,
+      _pill.canPasteIndependentFrame,
       session.cellInstances.canEditCellInstanceAtCurrentFrame,
       session.cells.canDeleteCellAtCurrentFrame,
       session.exposureVerbs.canDecreaseSelectedExposure,
       session.exposureVerbs.canIncreaseSelectedExposure,
-      session.exposureVerbs.canSetCommaForSelectionOrCurrent,
+      session.storyboardCursor.canSetCommaForTimelineCursor,
       // 🚨F-75 (유저 2026-09-11): 「프레임 1을 색변환의 색삭제 누르고
       // 프레임2로 이동하면 색변환버튼이 비활성화 된 상태임. 다른 인덱스
       // 이동했다가 돌아오면 해결되있음」. The 색 편집 head asks whether the
@@ -1209,42 +1236,47 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     // it belongs — in the token comparison below: a crossed frame costs one
     // derivation (measured 15.6µs in debug for seventeen gates) and
     // rebuilds nothing unless an ANSWER changed.
-    widget.session.playheadMoved.addListener(_handleExternalSignal);
+    for (final signal in _signalsOf(widget)) {
+      signal.addListener(_handleExternalSignal);
+    }
+  }
+
+  /// Every signal that can move a gate WITHOUT a host rebuild.
+  ///
+  /// ↩️Each was hung, unhung and re-hung by hand in three places, and the
+  /// fifth was the one that was missing: the band swept on the STORYBOARD,
+  /// which the comma's gate has read all along and the clipboard's reads now
+  /// (F-281). One list, the storyboard bar's shape.
+  static List<Listenable> _signalsOf(_SeekGatedTimelineToolbar widget) => [
+    widget.session.playheadMoved,
     // A language switch moves its own notifier and fires NO session notify,
     // so nothing else would ever re-derive the tokens for it.
-    widget.session.languageSettings.addListener(_handleExternalSignal);
+    widget.session.languageSettings,
     // Same story for the row you are STANDING on: it publishes on its own
     // notifier, and Edit Instance's enablement now reads it.
-    widget.session.standing.currentRowListenable.addListener(
-      _handleExternalSignal,
-    );
+    widget.session.standing.currentRowListenable,
     // …and for the cut-local BAND, which grows per pointer move on its own
     // notifier. Seven gates read it now (the active-row verbs stand down
     // when it names other rows), so without this the enforcement lands
     // while the buttons stay lit — a dead lit control, which is the exact
     // defect the standdowns exist to remove. The storyboard toolbar has
     // listed it for the same reason.
-    widget.session.frameRangeSelection.addListener(_handleExternalSignal);
-  }
+    widget.session.frameRangeSelection,
+    // …and the TRACK's band, the same selection stated on the other axis:
+    // a band is a subject claim whichever panel it was swept in.
+    widget.session.trackFrameRangeSelection,
+  ];
 
   @override
   void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.playheadMoved.removeListener(_handleExternalSignal);
-      oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
-      oldWidget.session.standing.currentRowListenable.removeListener(
-        _handleExternalSignal,
-      );
-      oldWidget.session.frameRangeSelection.removeListener(
-        _handleExternalSignal,
-      );
-      widget.session.playheadMoved.addListener(_handleExternalSignal);
-      widget.session.languageSettings.addListener(_handleExternalSignal);
-      widget.session.standing.currentRowListenable.addListener(
-        _handleExternalSignal,
-      );
-      widget.session.frameRangeSelection.addListener(_handleExternalSignal);
+      for (final signal in _signalsOf(oldWidget)) {
+        signal.removeListener(_handleExternalSignal);
+      }
+      for (final signal in _signalsOf(widget)) {
+        signal.addListener(_handleExternalSignal);
+      }
       _cachedActions = null;
     }
     _tokenOrSectionsChanged(oldWidget.hiddenSections);
@@ -1252,12 +1284,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
 
   @override
   void dispose() {
-    widget.session.playheadMoved.removeListener(_handleExternalSignal);
-    widget.session.languageSettings.removeListener(_handleExternalSignal);
-    widget.session.standing.currentRowListenable.removeListener(
-      _handleExternalSignal,
-    );
-    widget.session.frameRangeSelection.removeListener(_handleExternalSignal);
+    for (final signal in _signalsOf(widget)) {
+      signal.removeListener(_handleExternalSignal);
+    }
     super.dispose();
   }
 

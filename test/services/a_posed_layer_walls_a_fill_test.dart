@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -29,11 +30,10 @@ void main() {
   const size = CanvasSize(width: 32, height: 32);
   const tile = 8;
 
-  /// An opaque black box outline [side] wide from ([left], [top]) on a
-  /// clear [canvas].
-  BitmapSurface box({
-    required int left,
-    required int top,
+  /// Opaque black box outlines, each [side] wide from its (left, top), on
+  /// a clear [canvas].
+  BitmapSurface boxes(
+    List<(int, int)> corners, {
     required int side,
     CanvasSize canvas = size,
   }) {
@@ -46,11 +46,13 @@ void main() {
       buffer[((y % tile) * tile + (x % tile)) * 4 + 3] = 255;
     }
 
-    for (var i = 0; i <= side; i += 1) {
-      ink(left + i, top);
-      ink(left + i, top + side);
-      ink(left, top + i);
-      ink(left + side, top + i);
+    for (final (left, top) in corners) {
+      for (var i = 0; i <= side; i += 1) {
+        ink(left + i, top);
+        ink(left + i, top + side);
+        ink(left, top + i);
+        ink(left + side, top + i);
+      }
     }
     return BitmapSurface(
       canvasSize: canvas,
@@ -61,6 +63,14 @@ void main() {
       },
     );
   }
+
+  /// One such outline, from ([left], [top]).
+  BitmapSurface box({
+    required int left,
+    required int top,
+    required int side,
+    CanvasSize canvas = size,
+  }) => boxes([(left, top)], side: side, canvas: canvas);
 
   /// An opaque black box outline [from]..[to] (inclusive) on a clear
   /// surface.
@@ -77,7 +87,10 @@ void main() {
         : TransformTrack.empty().copyWith(
             scale: scale == null
                 ? null
-                : PropertyTrack<double>.empty().withKey(0, scale),
+                : PropertyTrack<CanvasPoint>.empty().withKey(
+                    0,
+                    uniformScale(scale),
+                  ),
             position: position == null
                 ? null
                 : PropertyTrack<CanvasPoint>.empty().withKey(0, position),
@@ -107,7 +120,7 @@ void main() {
       color: 0xFF3366CC,
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: active == null ? null : LayerId(active),
-      space: space,
+      space: space == null ? null : placementOf(space, cut.canvasSize),
     )!;
     return (dab.stamp!.width, dab.stamp!.height);
   }
@@ -127,13 +140,27 @@ void main() {
     expect(height, inInclusiveRange(8, 12));
   });
 
+  // A scale of zero — the frame a flip passes through (F-256-Q1) — is the
+  // layer shown as nothing, so it walls nothing: the fill sees the picture
+  // the screen shows.
+  test('a line layer scaled to NOTHING walls nothing: the fill runs as if '
+      'it were not there', () {
+    final (width, height) = filledAt(
+      CanvasPoint(x: 16, y: 16),
+      cutOf([cel('line', scale: 0), cel('paint')]),
+      {'line': outline(12, 19)},
+      active: 'paint',
+    );
+    expect((width, height), (size.width, size.height));
+  });
+
   test('the raster lies in the space the pen is in: a HALF-SIZED paint '
       'layer fills the line art\'s inside at its own scale', () {
     // Unposed box 8..23: inside canvas 9..22 (14). The paint layer is
     // posed 0.5× about the centre, so that inside is artwork 2..29 (28) in
     // its pixels — where the dab lands.
     final space = (
-      pose: TransformPose(
+      pose: TransformPose.uniform(
         center: CanvasPoint(x: 16, y: 16),
         zoom: 0.5,
         rotationDegrees: 0,
@@ -157,6 +184,46 @@ void main() {
     expect(width, lessThanOrEqualTo(28));
     expect(height, greaterThan(20));
   });
+
+  test('🚨a layer is read through the SEED\'s placement first and its own '
+      'second: a line layer moved sideways walls a half-sized paint layer\'s '
+      'fill where it is drawn', () {
+    // The box, artwork 9..15 across and 13..19 down, moved 4 right: drawn
+    // over canvas 13..19 both ways, its inside canvas 14..18. The paint
+    // layer shows at half size about the centre (16, 16), so that inside is
+    // its own pixels 12..21 both ways — 10 wide, its middle at 17.
+    // ⚠️Read the other way round, the move is halved along with the paint
+    // layer: the box walls 2 canvas pixels left of where it is drawn, and
+    // the middle of what fills comes out at 13 across.
+    final cut = cutOf([
+      cel('line', position: CanvasPoint(x: 20, y: 16)),
+      cel('paint', scale: 0.5),
+    ]);
+    final line = box(left: 9, top: 13, side: 6);
+    final dab = buildFillDab(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
+      // Artwork (16, 16) IS canvas (16, 16) under a pose about the centre.
+      point: CanvasPoint(x: 16, y: 16),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      activeLayerId: const LayerId('paint'),
+      space: placementOf((
+        pose: TransformPose.uniform(
+          center: CanvasPoint(x: 16, y: 16),
+          zoom: 0.5,
+        ),
+        anchorPoint: null,
+      ), cut.canvasSize),
+    )!;
+
+    expect(dab.stamp!.width, inInclusiveRange(8, 12));
+    expect(dab.stamp!.height, inInclusiveRange(8, 12));
+    expect(dab.center.x, closeTo(17, 1.5));
+    expect(dab.center.y, closeTo(17, 1.5));
+  });
+
   test('a line layer moved sideways walls the fill where it is drawn — a '
       'compose tile reads the layer across from where it lies, not down', () {
     // A 512 canvas is two compose tiles a side. The box, artwork x 20..40
@@ -176,5 +243,55 @@ void main() {
     expect(width, lessThan(100), reason: 'the walls held');
     expect(width, inInclusiveRange(17, 21));
     expect(height, inInclusiveRange(17, 21));
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. A paint
+  // layer can be stretched along one axis, and a symmetry is still the
+  // canvas's: a stroke's copies and a fill's seeds are turned and mirrored
+  // where the user sees them.
+  test('🚨a symmetry copies the seed where the CANVAS turns it: under a paint '
+      'layer stretched along one axis, each quarter turn of the seed fills '
+      'the box the canvas shows a quarter turn round', () {
+    const wide = CanvasSize(width: 64, height: 64);
+    final middle = CanvasPoint(x: 32, y: 32);
+    // Four boxes a quarter turn apart about the middle of the canvas — to
+    // its right, below it, to its left and above it — each 5 across inside.
+    final line = boxes(
+      [(36, 29), (29, 36), (22, 29), (29, 22)],
+      side: 6,
+      canvas: wide,
+    );
+    // The paint layer shows half as wide: its own x at 32 + (x − 32) / 2.
+    final space = placementOf((
+      pose: TransformPose(center: middle, scaleX: 0.5),
+      anchorPoint: null,
+    ), wide);
+
+    final dab = buildFillDab(
+      cut: cutOf([cel('line'), cel('paint')], canvas: wide),
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
+      // The middle of the right-hand box, (39, 32) on the canvas, in the
+      // paint layer's own pixels.
+      point: CanvasPoint(x: 46, y: 32),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      activeLayerId: const LayerId('paint'),
+      space: space,
+      symmetry: SymmetryShape(
+        axis: GuideAxis(origin: middle, angleDegrees: 90),
+        lineCount: 4,
+        lineSymmetry: false,
+      ),
+    )!;
+
+    // The four insides and nothing else: 19 across and 19 down on the
+    // canvas, so twice as many across in the paint layer's pixels.
+    // ⚠️Turned in the paint layer's own pixels instead, the seed's quarter
+    // turn shows at (32, 46) — under the lower box, in the open — and the
+    // fill runs over the whole picture.
+    final stamp = dab.stamp!;
+    expect(stamp.height, inInclusiveRange(15, 23));
+    expect(stamp.width, inInclusiveRange(30, 46));
   });
 }

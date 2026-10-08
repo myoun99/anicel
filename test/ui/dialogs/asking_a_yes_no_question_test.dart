@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -217,5 +218,123 @@ void main() {
     expect(find.text('C1 · walk'), findsOneWidget);
     expect(find.text('Video · S1 · walk.mp4'), findsOneWidget);
     await answerWith(tester, find.byKey(keys.decline));
+  });
+
+  group('a question that STAYS UNTIL ANSWERED (F-221-Q6, 유저 2026-10-07: '
+      '「고르거나 버릴 때까지 그 확인 창이 떠 있다」)', () {
+    bool? answer;
+    late bool answered;
+
+    /// Asks the same question through the door that stays
+    /// (`askUntilAnswered`), or through the ordinary one.
+    Future<void> open(
+      WidgetTester tester, {
+      required bool staysUntilAnswered,
+    }) async {
+      answer = null;
+      answered = false;
+      const question = ConfirmQuestion(
+        keys: keys,
+        title: 'Not placed yet',
+        message: 'Pick again, or let it go?',
+      );
+      const accept = ConfirmChoice('Pick again');
+      const decline = ConfirmChoice('Let it go');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async {
+                  answer = staysUntilAnswered
+                      ? await askUntilAnswered(
+                          context,
+                          question,
+                          accept: accept,
+                          decline: decline,
+                        )
+                      : await askConfirm(
+                          context,
+                          question,
+                          accept: accept,
+                          decline: decline,
+                        );
+                  answered = true;
+                },
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+    }
+
+    /// The ways out of a window that are none of its buttons.
+    final waysOut = <String, Future<void> Function(WidgetTester tester)>{
+      'a tap on the barrier': (tester) => tester.tapAt(const Offset(3, 3)),
+      'escape': (tester) => tester.sendKeyEvent(LogicalKeyboardKey.escape),
+      'the system\'s back': (tester) => tester.binding.handlePopRoute(),
+    };
+
+    for (final MapEntry(key: way, value: leave) in waysOut.entries) {
+      testWidgets('전제: $way DISMISSES an ordinary question, answering null', (
+        tester,
+      ) async {
+        await open(tester, staysUntilAnswered: false);
+
+        await leave(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(keys.window), findsNothing);
+        expect(answered, isTrue);
+        expect(answer, isNull);
+      });
+
+      testWidgets('🎯$way leaves a question that stays STANDING, and '
+          'unanswered', (tester) async {
+        await open(tester, staysUntilAnswered: true);
+
+        await leave(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(keys.window), findsOneWidget);
+        expect(answered, isFalse);
+        await answerWith(tester, find.byKey(keys.decline));
+      });
+    }
+
+    testWidgets('its barrier OFFERS no dismissal — to a tap, or to the '
+        'dismiss a screen reader reads off a barrier that has one', (
+      tester,
+    ) async {
+      // The veto on the route's pop would leave a tap on the barrier
+      // harmless by itself; the barrier would still say it dismisses.
+      bool offersDismissal() => tester
+          .widget<ModalBarrier>(find.byType(ModalBarrier).last)
+          .dismissible;
+
+      await open(tester, staysUntilAnswered: false);
+      expect(offersDismissal(), isTrue, reason: '전제: an ordinary one does');
+      await answerWith(tester, find.byKey(keys.decline));
+
+      await open(tester, staysUntilAnswered: true);
+      expect(offersDismissal(), isFalse);
+      await answerWith(tester, find.byKey(keys.decline));
+    });
+
+    testWidgets('its two buttons answer as they do everywhere', (
+      tester,
+    ) async {
+      await open(tester, staysUntilAnswered: true);
+      await answerWith(tester, find.byKey(keys.accept));
+      expect(answer, isTrue);
+
+      await open(tester, staysUntilAnswered: true);
+      await answerWith(tester, find.byKey(keys.decline));
+      expect(answer, isFalse);
+      expect(find.byKey(keys.window), findsNothing);
+    });
   });
 }

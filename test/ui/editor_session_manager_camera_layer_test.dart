@@ -8,6 +8,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import '../helpers/pill_row_clipboard.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 
 void main() {
   EditorSessionManager session() =>
@@ -63,9 +65,12 @@ void main() {
     expect(s.exposureVerbs.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
 
-    // Copy/duplicate quietly refuse the camera layer.
+    // Copy/duplicate quietly refuse the camera layer: selected, it is no
+    // row the board takes, and the pill's copy leaves the board empty.
     final board = boardOf(s);
-    board.copyActiveLayer();
+    s.rowSelection.value = [LayerRowAddress(cameraLayer.id)];
+    expect(board.canCopySelectedRows, isFalse);
+    copyRowsWithThePill(s);
     expect(board.hasLayerClipboard, isFalse);
     final layerCount = s.requireActiveCut.layers.length;
     s.layerVerbs.duplicateActiveLayer();

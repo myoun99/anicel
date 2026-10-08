@@ -79,7 +79,6 @@ void main() {
         fixture.controller.selectFrameIndex(12);
         fixture.controller.resolveFrameForLayer(layer: layer);
         fixture.controller.hasDrawingAtCurrentFrame(layer: layer);
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 12);
 
         expect(fixture.cut.duration, 8);
       },

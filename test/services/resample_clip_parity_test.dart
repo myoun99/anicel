@@ -401,8 +401,10 @@ void main() {
     final meshFull = meshWhole.stamp!;
     final meshLeft = meshWhole.center.x - meshFull.width / 2;
     final meshTop = meshWhole.center.y - meshFull.height / 2;
-    // The mesh keeps the WHOLE buffer and fills only the visible part, so
-    // its "window" is the same size — compare the visible region instead.
+    // The mesh's buffer is its window, like the other two warps' — nothing
+    // is built past what was asked for. ↩️It kept the WHOLE rect and filled
+    // only the visible part until 2026-10-06, when a grid carried on past
+    // its box (a range's other cels) could reach far past the wall.
     final meshClipped = transformStampDabMesh(
       dab,
       columns: columns,
@@ -416,12 +418,26 @@ void main() {
       ),
     );
     final meshPart = meshClipped.stamp!;
+    expect(
+      (meshPart.width, meshPart.height),
+      (meshFull.width - 44, meshFull.height - 34),
+      reason: 'mesh: the window is what was asked for, no more',
+    );
+    expect(
+      (
+        meshClipped.center.x - meshPart.width / 2,
+        meshClipped.center.y - meshPart.height / 2,
+      ),
+      (meshLeft + 20, meshTop + 16),
+      reason: 'mesh: and it stands where that part of the whole stands',
+    );
     var meshMismatched = 0;
-    for (var row = 16; row < meshFull.height - 18; row += 1) {
-      for (var column = 20; column < meshFull.width - 24; column += 1) {
-        final offset = (row * meshFull.width + column) * 4;
+    for (var row = 0; row < meshPart.height; row += 1) {
+      for (var column = 0; column < meshPart.width; column += 1) {
+        final whole = ((row + 16) * meshFull.width + (column + 20)) * 4;
+        final part = (row * meshPart.width + column) * 4;
         for (var byte = 0; byte < 4; byte += 1) {
-          if (meshFull.rgba[offset + byte] != meshPart.rgba[offset + byte]) {
+          if (meshFull.rgba[whole + byte] != meshPart.rgba[part + byte]) {
             meshMismatched += 1;
           }
         }

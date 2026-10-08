@@ -902,10 +902,9 @@ class _CollapsedStripPainter extends CustomPainter
     final cell = math.min(place.firstCell, room.width);
     paintInbetweenMark(canvas, mark, (
       center: Offset(room.left + cell / 2, room.center.dy),
-      radius: timelineInbetweenMarkRadius(
+      size: timelineInbetweenMarkSize(
         _labelFontSize,
-        cellExtent: cell,
-        crossExtent: room.height,
+        cell: Size(cell, room.height),
       ),
     ), _headInk);
   }

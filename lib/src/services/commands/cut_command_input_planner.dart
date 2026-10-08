@@ -19,14 +19,6 @@ import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
 import 'link_mirror.dart';
 
-class CreateCutCommandInputPlan {
-  const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
-
-  final CutId cutId;
-  final LayerId layerId;
-}
-
-
 class PasteLayerCommandInputPlan {
   PasteLayerCommandInputPlan({
     required this.newLayerId,
@@ -59,20 +51,6 @@ class DuplicateCutCommandInputPlan {
   final Map<LayerId, LayerId> layerIdMap;
   final Map<FrameId, FrameId> frameIdMap;
 }
-
-/// The ids a new cut takes — [cutId] when it was named before it exists
-/// (the conte's next cut, drawn into ahead of its making).
-CreateCutCommandInputPlan planCreateCutCommandInput(
-  Project project, {
-  CutId? cutId,
-}) {
-  final ids = _ProjectIdSnapshot.fromProject(project);
-  return CreateCutCommandInputPlan(
-    cutId: cutId ?? mintCutId(),
-    layerId: LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds)),
-  );
-}
-
 
 DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   required Project project,

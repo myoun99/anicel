@@ -46,57 +46,13 @@ class _BrushEditOverlay {
     _appendOverlayDabs(batch);
   }
 
-  /// Whether a stroke starting NOW is a tail erase — the tool switch is
-  /// asynchronous, so the stroke's own settings snapshot has to carry
-  /// the substitution exactly as the barrel-eraser path does.
-  bool get penTailErases =>
-      _state._penTailActive &&
-      AppInput.settings.value.canvasPenTail.action ==
-          CanvasPointerAction.eraser;
-
-  /// Engages or releases the tail mapping from the HID observer's view of
-  /// which end of the pen is down.
-  ///
-  /// FLIP-scoped by design, not contact-scoped: the switch happens when
-  /// the pen is turned OVER, so one flip covers a whole erasing pass and
-  /// the eraser's own size and settings are on screen before the first
-  /// stroke — rather than the tool panel blinking brush⇄eraser once per
-  /// stroke. A device whose driver reports no hover degrades to
-  /// per-contact switching for free: its first report IS the contact.
-  ///
-  /// A null reading (no observer, non-Windows, or the report aged out)
-  /// HOLDS the current state rather than releasing — losing sight of the
-  /// pen is not the same as the pen being turned back over.
-  void syncPenTailMapping() {
-    final inverted = PenSidecars.freshInverted();
-    if (inverted == null || inverted == _state._penTailActive) {
-      return;
-    }
-    final mapping = AppInput.settings.value.canvasPenTail;
-    if (inverted) {
-      // A barrel hold that is already running owns the tool.
-      if (_state._hold._hoverToolHoldActive || _state._hold._mappedHoldPointer != null) {
-        return;
-      }
-      final tool = switch (mapping.action) {
-        CanvasPointerAction.eraser => CanvasTool.eraser,
-        CanvasPointerAction.eyedropper => CanvasTool.eyedropper,
-        // pan/undo/redo/none have no tail meaning: those are momentary
-        // verbs, and the tail is a state that can last minutes.
-        _ => null,
-      };
-      if (tool == null) {
-        return;
-      }
-      _state._penTailActive = true;
-      _state.widget.onTemporaryToolHold?.call(tool);
-      return;
-    }
-    _state._penTailActive = false;
-    _state.widget.onTemporaryToolRelease?.call(
-      keep: mapping.release == CanvasPointerRelease.keep,
-    );
-  }
+  /// Engages or releases the tail mapping as this view's hover or contact
+  /// finds the pen — the holds' one sync ([CanvasToolHolds.syncPenTail]),
+  /// through this view's road to the shell.
+  void syncPenTailMapping() => _state._toolHolds.syncPenTail(
+    hold: _state.widget.onTemporaryToolHold,
+    release: _state.widget.onTemporaryToolRelease,
+  );
 
   /// Starts a stroke: whatever the overlay still holds belonged to the
   /// stroke that just ended and was handed over at its commit.

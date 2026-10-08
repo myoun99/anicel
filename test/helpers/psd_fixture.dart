@@ -53,7 +53,15 @@ class PsdTestLayer {
     this.alpha,
     this.mask,
     this.compression = 0,
+    this.effects,
+    this.legacyEffects = false,
   });
+
+  /// The payload of an `lfx2` block — [psdEffects] writes one.
+  final List<int>? effects;
+
+  /// Whether the record also carries the legacy effects block (`lrFX`).
+  final bool legacyEffects;
 
   final String name;
   final String? unicodeName;
@@ -362,7 +370,76 @@ void _writeLayerRecord(
         ..text(adjustment);
       extra.block((block) => block.u32(0));
     }
+    if (layer.legacyEffects) {
+      extra
+        ..text('8BIM')
+        ..text('lrFX');
+      extra.block((block) => block.u32(0));
+    }
+    final effects = layer.effects;
+    if (effects != null) {
+      extra
+        ..text('8BIM')
+        ..text('lfx2');
+      extra.block((block) => block.raw(effects));
+      // An odd block is padded to even, outside its length — the reader
+      // steps over that byte.
+      if (effects.length.isOdd) {
+        extra.u8(0);
+      }
+    }
   });
+}
+
+/// An `lfx2` payload: the object-effects version, then a versioned
+/// descriptor holding the [master] switch and each of [effects] (a
+/// four-character effect key → whether that effect is enabled).
+List<int> psdEffects({
+  bool master = true,
+  Map<String, bool> effects = const {'DrSh': true},
+}) {
+  void key(_Bytes out, String code) {
+    if (code.length == 4) {
+      out
+        ..u32(0)
+        ..text(code);
+    } else {
+      out
+        ..u32(code.length)
+        ..text(code);
+    }
+  }
+
+  void descriptor(_Bytes out, String classId, void Function(_Bytes) items) {
+    out
+      ..u32(1)
+      ..u16(0); // An empty unicode name, as Photoshop writes it.
+    key(out, classId);
+    items(out);
+  }
+
+  final out = _Bytes()
+    ..u32(0)
+    ..u32(16);
+  descriptor(out, 'null', (items) {
+    items.u32(1 + effects.length);
+    key(items, 'masterFXSwitch');
+    items
+      ..text('bool')
+      ..u8(master ? 1 : 0);
+    effects.forEach((code, enabled) {
+      key(items, code);
+      items.text('Objc');
+      descriptor(items, code, (fields) {
+        fields.u32(1);
+        key(fields, 'enab');
+        fields
+          ..text('bool')
+          ..u8(enabled ? 1 : 0);
+      });
+    });
+  });
+  return out.bytes;
 }
 
 Uint8List _channelForId(

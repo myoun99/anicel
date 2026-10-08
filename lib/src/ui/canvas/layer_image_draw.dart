@@ -15,7 +15,7 @@
 /// pose, whether pasteboard artwork is cropped first — because those
 /// change rendered bytes and belong in their own change.
 ///
-/// It is for LAYER images only. The same `applyLayerPoseTransform` also
+/// It is for LAYER images only. The same `applyLayerPlacement` also
 /// carries the cut pose and the V-track pose, but those apply to an
 /// already-composed frame in output space and must not quietly inherit a
 /// layer-level sampling policy.
@@ -26,48 +26,37 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/draw_space.dart';
-import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
-import '../../models/transform_track.dart';
 import '../../services/composite_effect_paint.dart';
 import 'blends_in_place.dart';
 import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
 import '../../services/layer_pose_paint.dart';
 
-/// Runs [body] under [pose].
+/// Runs [body] under [placement].
 ///
-/// Separate from [drawPosedLayerImage] because the editing stack's pose
-/// wrap straddles a node that HAS a pose and has no image: the live
+/// Separate from [drawPosedLayerImage] because the editing stack's wrap
+/// straddles a node that HAS a placement and has no image: the live
 /// surface is painted tile by tile by its own painter, and it still has to
 /// sit under the same transform as everything else in the stack.
 ///
-/// A null pose runs [body] with no save/restore at all, which is what all
-/// three call sites already did — an identity layer should not pay for a
-/// matrix, and more importantly the balance is easier to see this way than
-/// as a save whose restore is fifty lines below.
-T withLayerPose<T>(
+/// A null placement runs [body] with no save/restore at all, which is what
+/// all three call sites already did — an identity layer should not pay for
+/// a matrix, and more importantly the balance is easier to see this way
+/// than as a save whose restore is fifty lines below.
+T withLayerPlacement<T>(
   ui.Canvas canvas, {
-  required TransformPose? pose,
-  required CanvasSize canvasSize,
-  CanvasPoint? anchorPoint,
+  required LayerPlacement? placement,
   double rasterScale = 1,
   required T Function() body,
 }) {
-  if (pose == null) {
+  if (placement == null) {
     return body();
   }
   canvas.save();
   try {
-    applyLayerPoseTransform(
-      canvas,
-      pose,
-      canvasSize,
-      anchorPoint: anchorPoint,
-      rasterScale: rasterScale,
-    );
+    applyLayerPlacement(canvas, placement, rasterScale: rasterScale);
     return body();
   } finally {
     canvas.restore();
@@ -119,9 +108,7 @@ void drawPosedLayerImage(
   required ui.Image image,
   required ui.Rect worldRect,
   required ui.Rect extent,
-  required CanvasSize canvasSize,
-  required TransformPose? pose,
-  CanvasPoint? anchorPoint,
+  required LayerPlacement? placement,
   required double opacity,
   required LayerBlendMode blendMode,
   List<ResolvedLayerEffect> effects = const <ResolvedLayerEffect>[],
@@ -132,11 +119,9 @@ void drawPosedLayerImage(
   bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
   LaidBackWhole? laidBack,
 }) {
-  withLayerPose(
+  withLayerPlacement(
     canvas,
-    pose: pose,
-    canvasSize: canvasSize,
-    anchorPoint: anchorPoint,
+    placement: placement,
     rasterScale: rasterScale,
     body: () {
       final paint = ui.Paint()
@@ -167,7 +152,7 @@ void drawPosedLayerImage(
         tint: tint,
       );
       plan.finalPaint.applyTo(paint);
-      final copyScale = pose == null ? texelScale : null;
+      final copyScale = placement == null ? texelScale : null;
       final laid = _laidDown(
         (image: image, worldRect: worldRect, extent: extent),
         texelScale: copyScale,
@@ -278,11 +263,11 @@ void drawPosedLayerImage(
 /// Each of those gets the whole image; the whole image laid back from the
 /// crop draws the same bytes as the one the cache used to keep, on all three.
 bool inkCropDrawsTheSame({
-  required TransformPose? pose,
+  required LayerPlacement? placement,
   required LayerBlendMode blendMode,
   required List<ResolvedLayerEffect> effects,
 }) =>
-    pose == null &&
+    placement == null &&
     blendsInPlace(blendMode.paintBlendMode) &&
     resolveCompositeEffectPlan(effects).outsetPixels == 0;
 

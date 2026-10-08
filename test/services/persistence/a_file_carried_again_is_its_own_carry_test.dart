@@ -293,7 +293,12 @@ void main() {
     expect(file.mediaStoredBytesFor(path), isNotNull, reason: 'the premise');
     // A record that does not list the entry the file holds: the readers
     // then go to the carry's staged copy or its original, never that entry.
-    file.bindToOpenedFile(projectPath, mediaInFile: const {}, unsaved: false);
+    file.bindToOpenedFile(
+      projectPath,
+      mediaInFile: const {},
+      fontsInFile: const {},
+      unsaved: false,
+    );
 
     expect(
       file.mediaStoredBytesFor(path),
@@ -480,27 +485,5 @@ void main() {
       await tester.runAsync(() => session.movieCels.dispose());
       await tester.pumpAndSettle();
     });
-  });
-
-  test('a carry from before carries had names reads as the path-named one',
-      () {
-    final legacy = MediaAsset.fromJson({
-      'path': path,
-      'name': 'take',
-      'kind': 'audio',
-      'carried': true,
-    });
-    expect(legacy.carriedAs, '');
-    expect(legacy.carried, isTrue);
-    expect(
-      MediaAsset.fromJson(legacy.toJson()),
-      legacy,
-      reason: 'and it is written back as that carry',
-    );
-    expect(
-      MediaAsset.fromJson({'path': path, 'name': 'take', 'kind': 'audio'})
-          .carriedAs,
-      isNull,
-    );
   });
 }

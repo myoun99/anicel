@@ -1,14 +1,12 @@
-import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
-import '../../models/cut_warm_extent.dart';
-import '../../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
+import '../../services/playback/frame_demand.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
-import '../../models/playback_quality.dart';
 import '../playback/canvas_playback_controller.dart';
+import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -19,20 +17,23 @@ import 'session_roles.dart';
 /// dependency direction: the budget knows about a run, not about a rig.
 abstract interface class PlaybackRun {
   CanvasPlaybackController get playback;
-  PlaybackQuality get playbackQuality;
+
+  /// The order pictures are wanted in now — what the warmer follows — or
+  /// null while it follows nothing.
+  FrameDemand? get demand;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
-/// the ranges it must not evict (what is playing, what is about to), the
-/// enforcer that trims it, and whether a frame is ready to show — as its
-/// own object.
+/// the enforcer that trims it by what is wanted soonest, the room the
+/// warmer asks before it makes a picture, and whether a frame is ready to
+/// show — as its own object.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). The wider 「follow playback」 family was measured first and
 /// refused: the session read it from twenty-two places (its lifecycle —
 /// selectCut, dispose, the frame-rate setters — IS the following). This
 /// is the part that stands on its own.
-class PlaybackCacheBudget {
+class PlaybackCacheBudget implements PictureRoom {
   PlaybackCacheBudget({
     required ProjectAccess project,
     required RenderCaches renderCaches,
@@ -48,10 +49,9 @@ class PlaybackCacheBudget {
   PlaybackCacheBudgetEnforcer? _enforcer;
 
   /// [playbackReadyRunsForCut]'s memo: per cut instance, each structure's
-  /// full signature at one quality and one pixel revision.
+  /// full signature at one pixel revision.
   final Expando<
     ({
-      PlaybackQuality quality,
       int pixelRevision,
       Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
     })
@@ -105,10 +105,52 @@ class PlaybackCacheBudget {
     _enforcer?.maxBytes = _debugMaxBytes ?? bytes;
   }
 
+  ///
+  /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
+  /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range
+  /// from the warm's own frame count, because the two disagreeing was not
+  /// hypothetical: warming baked the runway past the end line while the
+  /// range stopped AT the line, so every runway composite was evictable the
+  /// moment it landed. They are one object now, and nothing is kept whole.
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    protect: _playbackProtectedRanges(),
+    demand: _run.demand,
     reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
+    lentBytes: _lentBytes,
   );
+
+  @override
+  int get bytes => _playbackCacheBudgetEnforcer.roomForComposites(
+    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
+    lentBytes: _lentBytes,
+  );
+
+  @override
+  bool makeRoomFor({required int bytes, required int step}) =>
+      _playbackCacheBudgetEnforcer.makeRoomFor(
+        bytes: bytes,
+        step: step,
+        within: this.bytes,
+        demand: _run.demand,
+      );
+
+  /// What an export run holds on this line while it goes — the row
+  /// pictures its held cut pictures are made of (F-289-Q21, 유저 2026-10-07:
+  /// 「붙든다 — 재생 줄의 허용치 안에서」). Playback rests while a run goes,
+  /// so the run borrows the line and the playback caches give way to it;
+  /// they fill again, as they are asked, once it is lent no more.
+  int get lentBytes => _lentBytes;
+  int _lentBytes = 0;
+
+  /// How much of the line a run may hold now — all of it but what the
+  /// playback caches will not give back.
+  int get lendableBytes => _playbackCacheBudgetEnforcer.lendableBytes();
+
+  /// A run holds [bytes] on this line from now on, and the playback caches
+  /// give way to it at once — 0 when its last row is let go.
+  void lend(int bytes) {
+    _lentBytes = bytes;
+    enforcePlaybackCacheBudget();
+  }
 
   /// The OS memory warning, the playback caches' share: the enforcer
   /// lowers its cap, and the trim runs against the lowered cap at once.
@@ -117,59 +159,9 @@ class PlaybackCacheBudget {
     enforcePlaybackCacheBudget();
   }
 
-  /// What budget eviction must never touch: the full PLAYING playlist while
-  /// playback is active (a looping pass must keep every cut warm so the
-  /// second pass plays fully cached), otherwise the active cut's range.
-  ///
-  /// B1: the non-playing range DERIVES from [cutWarmFrameCount] — the same
-  /// law the warm bakes over — because the two disagreeing was not
-  /// hypothetical: warming baked the runway past the end line while this
-  /// stopped AT the line, so every runway composite was evictable the
-  /// moment it landed, by the enforcer that runs after every baked frame.
-  /// The PLAYING branch protects what a playlist PLAYS of each cut, on
-  /// purpose no more: protecting more than plays would starve the budget
-  /// during the one activity that needs it most. ↩️F-227: that is the cut's
-  /// DRAWN frames ([drawnFrameCountsOf]), not `entry.duration` — an O.L
-  /// composites each cut's のりしろ, and a protection that stopped at the
-  /// red line let the O.L's own frames be evicted mid-play.
-  List<PlaybackProtectedRange> _playbackProtectedRanges() {
-    if (_run.playback.isActive) {
-      final drawn = drawnFrameCountsOf(_project.repository.requireProject());
-      return [
-        for (final entry in _run.playback.playlist)
-          PlaybackProtectedRange(
-            cutId: entry.cutId,
-            startFrame: 0,
-            endFrame: math.max(0, (drawn[entry.cutId] ?? entry.duration) - 1),
-            quality: _run.playbackQuality,
-          ),
-      ];
-    }
-
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return const [];
-    }
-    return [
-      PlaybackProtectedRange(
-        cutId: cut.id,
-        startFrame: 0,
-        endFrame: cutWarmFrameCount(cut) - 1,
-        quality: _run.playbackQuality,
-      ),
-    ];
-  }
-
-  /// [_playbackProtectedRanges], for the tests that pin the one-law
-  /// derivation (warm count == protected count) — the production reader
-  /// stays [enforcePlaybackCacheBudget].
-  @visibleForTesting
-  List<PlaybackProtectedRange> debugPlaybackProtectedRanges() =>
-      _playbackProtectedRanges();
-
   /// The stretches of the active cut's frames in `[start, end)` that are
-  /// READY to play at the current quality — the timeline ruler's green
-  /// bar. None without an active cut.
+  /// READY to play — the timeline ruler's green bar. None without an active
+  /// cut.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
     int start,
     int end,
@@ -211,8 +203,7 @@ class PlaybackCacheBudget {
     int end,
   ) {
     final composites = _renderCaches.cutFrameCompositeCache;
-    final quality = _run.playbackQuality;
-    final signed = _signedStructuresOf(cut, quality);
+    final signed = _signedStructuresOf(cut);
     bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
       if (structure.nodes.isEmpty) {
         return true;
@@ -221,7 +212,6 @@ class PlaybackCacheBudget {
         signed[structure] ??= composites.signatureOf(
           cut: cut,
           frameIndex: frameIndex,
-          quality: quality,
         ),
       );
       if (held == null) {
@@ -256,22 +246,19 @@ class PlaybackCacheBudget {
     return runs;
   }
 
-  /// Each structure's full signature for [cut] at [quality], good until a
-  /// pixel moves: [BrushFrameStore.celPixelRevision] is the store's one
+  /// Each structure's full signature for [cut], good until a pixel
+  /// moves: [BrushFrameStore.celPixelRevision] is the store's one
   /// signal that a source revision may have changed (a whole-store swap
   /// opens a new project, so its cuts are new instances and miss here).
   Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
-  _signedStructuresOf(Cut cut, PlaybackQuality quality) {
+  _signedStructuresOf(Cut cut) {
     final revision =
         _renderCaches.cutFrameCompositeCache.frameStore.celPixelRevision.value;
     final held = _signedStructures[cut];
-    if (held != null &&
-        held.quality == quality &&
-        held.pixelRevision == revision) {
+    if (held != null && held.pixelRevision == revision) {
       return held.byStructure;
     }
     final fresh = (
-      quality: quality,
       pixelRevision: revision,
       byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
     );

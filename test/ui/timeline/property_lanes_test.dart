@@ -21,6 +21,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
@@ -30,11 +31,13 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 
@@ -255,7 +258,10 @@ void main() {
         rotation: PropertyTrack<double>().withKey(3, 90),
       );
 
-      final lanes = transformPropertyLanes(track);
+      final lanes = transformPropertyLanes(
+        track,
+        scaleForm: const OneZoom(),
+      );
 
       // The AE structure: the 'Transform' GROUP HEADER leads its lanes
       // (Effects stack below on the same substrate later).
@@ -285,6 +291,7 @@ void main() {
 
       final lanes = transformPropertyLanes(
         track,
+        scaleForm: const TwoScales(),
         includeAnchorAndOpacity: true,
         anchorAt: (_) => CanvasPoint(x: 10, y: 20),
         opacityAt: (_) => 0.5,
@@ -453,6 +460,96 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await tester.pumpAndSettle();
       expect(drawLayer().transformTrack.isEmpty, isTrue);
+    });
+
+    // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼
+    // — 변형 도구의 「배율 연동」과 한 스위치」. The app's half: the switch
+    // the row's chain flips is the one the transform tool's settings show.
+    testWidgets("🔗a layer's Scale row wears the chain, and it is the "
+        "transform tool's own switch — the camera's one zoom wears none", (
+      tester,
+    ) async {
+      await _pump(tester, _project());
+      for (final twirl in const [
+        ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+        _laneToggleKey,
+      ]) {
+        await tester.tap(find.byKey(twirl));
+        await tester.pumpAndSettle();
+      }
+      await _expandTransformGroup(tester, 'lane-draw-layer');
+
+      Finder draw(String cell) => find.byKey(
+        ValueKey<String>('timeline-lane-$cell-lane-draw-layer-scale'),
+      );
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final tool = workspace.transformOptions!;
+      CanvasPoint? scaleKey() => workspace.session.requireActiveCut.layers
+          .firstWhere((layer) => layer.id == const LayerId('lane-draw-layer'))
+          .transformTrack
+          .scale
+          .keyAt(0)
+          ?.value;
+
+      /// Types [across] into the first of the Scale lane's two boxes and
+      /// leaves the second as it is shown.
+      Future<void> typeAcross(String across) async {
+        await tester.tap(draw('value'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const ValueKey<String>(
+              'timeline-lane-value-field-lane-draw-layer-scale-1',
+            ),
+          ),
+          findsOneWidget,
+          reason: 'two boxes: across, and down',
+        );
+        await tester.enterText(draw('value-field'), across);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+      }
+
+      expect(draw('value-link'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+        ),
+        findsOneWidget,
+        reason: "LIVENESS — the camera's Scale row is on the rail",
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-value-link-lane-cam-layer-scale',
+          ),
+        ),
+        findsNothing,
+        reason: 'one zoom has nothing to link',
+      );
+      expect(tool.value.scaleLinked, isTrue);
+      expect(tester.appIconButton(draw('value-link')).isSelected, isTrue);
+
+      // Linked: one box typed, and the other follows it.
+      await typeAcross('200');
+      expect(scaleKey(), uniformScale(2));
+
+      // The chain's press is the tool's switch…
+      await tester.tap(draw('value-link'));
+      await tester.pumpAndSettle();
+      expect(tool.value.scaleLinked, isFalse);
+      expect(tester.appIconButton(draw('value-link')).isSelected, isFalse);
+      await typeAcross('100');
+      expect(scaleKey(), CanvasPoint(x: 1, y: 2));
+
+      // …and the tool's switch, flipped from its own side, is the chain's.
+      tool.value = tool.value.copyWith(scaleLinked: true);
+      await tester.pump();
+      expect(tester.appIconButton(draw('value-link')).isSelected, isTrue);
+      await typeAcross('300');
+      expect(scaleKey(), CanvasPoint(x: 3, y: 6));
     });
   });
 
@@ -788,13 +885,19 @@ void main() {
 
   group('transform lane editing policy', () {
     test('toggle adds a key with the resolved value and removes it again', () {
-      final track = TransformTrack(keyframes: {0: _pose(0), 8: _pose(80)});
+      TransformPose layerPose(double x) => TransformPose.ofCamera(_pose(x));
+      final track = TransformTrack(
+        keyframes: {0: layerPose(0), 8: layerPose(80)},
+      );
 
       final added = transformTrackWithLaneKeyToggled(
         track,
         laneId: 'position',
         frameIndex: 4,
-        resolvedPose: track.resolveAt(frameIndex: 4, orElse: () => _pose(0)),
+        resolvedPose: track.resolveAt(
+          frameIndex: 4,
+          orElse: () => layerPose(0),
+        ),
       )!;
       expect(added.position.keyAt(4)!.value, CanvasPoint(x: 40, y: 40));
       // Only the position lane changed.
@@ -804,9 +907,26 @@ void main() {
         added,
         laneId: 'position',
         frameIndex: 4,
-        resolvedPose: _pose(0),
+        resolvedPose: layerPose(0),
       )!;
       expect(removed.position.keyAt(4), isNull);
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」.
+    test('🚨toggling a Scale key on keys BOTH numbers the row shows there', () {
+      final added = transformTrackWithLaneKeyToggled(
+        TransformTrack.empty(),
+        laneId: 'scale',
+        frameIndex: 4,
+        resolvedPose: TransformPose(
+          center: CanvasPoint(x: 0, y: 0),
+          scaleX: 2,
+          scaleY: -3,
+        ),
+      )!;
+
+      expect(added.scale.keyAt(4)!.value, CanvasPoint(x: 2, y: -3));
+      expect(added.position.isEmpty, isTrue, reason: 'one lane');
     });
 
     test('lane-range shift (UI-R23 #3 part 2) moves ONLY the named lane\'s '
@@ -815,7 +935,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>()
             .withKey(2, CanvasPoint(x: 1, y: 1))
             .withKey(8, CanvasPoint(x: 9, y: 9)),
-        scale: PropertyTrack<double>().withKey(2, 1.5),
+        scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
       );
 
       final shifted = transformLaneLens('position')!.keysShifted(
@@ -866,60 +986,90 @@ void main() {
 
     test('value edits parse AE units and preserve interpolation', () {
       final track = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>().withKey(
+        scale: PropertyTrack<CanvasPoint>().withKey(
           0,
-          1,
+          uniformScale(1),
           interpolation: PropertyKeyInterpolation.hold,
         ),
       );
 
-      final scaled = transformTrackWithLaneValueEdited(
-        track,
-        laneId: 'scale',
-        frameIndex: 0,
-        input: '250%',
-      )!;
-      expect(scaled.scale.keyAt(0)!.value, 2.5);
+      TransformTrack? edited(
+        String laneId,
+        int frameIndex,
+        String input, {
+        ScaleLaneForm scaleForm = const TwoScales(),
+        bool scaleLinked = false,
+        TransformTrack? of,
+      }) => transformTrackWithLaneValueEdited(
+        of ?? track,
+        laneId: laneId,
+        frameIndex: frameIndex,
+        input: input,
+        scaleForm: scaleForm,
+        scaleLinked: scaleLinked,
+      );
+
+      final scaled = edited('scale', 0, '250%')!;
+      expect(scaled.scale.keyAt(0)!.value, uniformScale(2.5));
       expect(
         scaled.scale.keyAt(0)!.interpolation,
         PropertyKeyInterpolation.hold,
         reason: 'editing a value keeps the key interpolation',
       );
 
-      final positioned = transformTrackWithLaneValueEdited(
-        track,
-        laneId: 'position',
-        frameIndex: 4,
-        input: ' 320, 180 ',
-      )!;
+      final positioned = edited('position', 4, ' 320, 180 ')!;
       expect(positioned.position.keyAt(4)!.value, CanvasPoint(x: 320, y: 180));
 
-      final rotated = transformTrackWithLaneValueEdited(
-        track,
-        laneId: 'rotation',
-        frameIndex: 2,
-        input: '-45°',
-      )!;
+      final rotated = edited('rotation', 2, '-45°')!;
       expect(rotated.rotation.keyAt(2)!.value, -45);
 
       // Garbage input is rejected.
+      expect(edited('scale', 0, 'abc'), isNull);
+      expect(edited('position', 0, '12'), isNull);
+
+      // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스
+      // = 반전)」, 「카메라는 줌 하나 그대로」 — the row's FORM reads the
+      // text, so the same two numbers are a layer's scale and not a
+      // camera's.
       expect(
-        transformTrackWithLaneValueEdited(
-          track,
-          laneId: 'scale',
-          frameIndex: 0,
-          input: 'abc',
-        ),
-        isNull,
+        edited('scale', 0, '150, -80%')!.scale.keyAt(0)!.value,
+        CanvasPoint(x: 1.5, y: -0.8),
       );
       expect(
-        transformTrackWithLaneValueEdited(
-          track,
-          laneId: 'position',
-          frameIndex: 0,
-          input: '12',
-        ),
+        edited('scale', 0, '150, -80%', scaleForm: const OneZoom()),
         isNull,
+      );
+
+      // The chain is read against what the lane SHOWS at the frame — here
+      // halfway between two keys, where no key stands.
+      final ramp = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(0, uniformScale(1))
+            .withKey(10, CanvasPoint(x: 2, y: 1)),
+      );
+      expect(
+        edited('scale', 5, '300, 100%', scaleLinked: true, of: ramp)!
+            .scale
+            .keyAt(5)!
+            .value,
+        CanvasPoint(x: 3, y: 2),
+        reason: 'across stood at 150 and doubled, so down doubled with it',
+      );
+      expect(
+        edited('scale', 5, '300, 100%', of: ramp)!.scale.keyAt(5)!.value,
+        CanvasPoint(x: 3, y: 1),
+        reason: 'unlinked, each number is its own',
+      );
+      // A row with no Scale key shows 100, 100 — and links from there.
+      expect(
+        edited(
+          'scale',
+          3,
+          '100, 50%',
+          scaleLinked: true,
+          of: TransformTrack.empty(),
+        )!.scale.keyAt(3)!.value,
+        uniformScale(0.5),
       );
     });
 
@@ -1269,10 +1419,6 @@ void main() {
         '22, 2',
       );
       expect(
-        scrubTransformLaneValue('scale', '150%', const Offset(40, 0)),
-        '170%',
-      );
-      expect(
         scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
         '-5°',
       );
@@ -1290,7 +1436,7 @@ void main() {
         '100%',
       );
       expect(
-        scrubTransformLaneValue('scale', 'garbage', const Offset(1, 0)),
+        scrubTransformLaneValue('rotation', 'garbage', const Offset(1, 0)),
         isNull,
       );
     });

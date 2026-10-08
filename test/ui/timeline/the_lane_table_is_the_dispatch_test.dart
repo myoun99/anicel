@@ -43,7 +43,7 @@ void main() {
     TransformTrack allKeyed() => TransformTrack.properties(
       anchorPoint: keyed(CanvasPoint(x: 1, y: 1), at: 1),
       position: keyed(CanvasPoint(x: 2, y: 2), at: 2),
-      scale: keyed(1.5, at: 3),
+      scale: keyed(uniformScale(1.5), at: 3),
       rotation: keyed(30.0, at: 4),
       opacity: keyed(0.5, at: 5),
     );
@@ -218,7 +218,7 @@ void main() {
       // Keyed IN the range: a zero delta must answer null rather than the
       // unchanged track, and only the guard says so once keys are there.
       final keyedScale = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>().withKey(2, 1.5),
+        scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
       );
       for (final call in [
         () => transformLaneLens('scale')!.keysShifted(

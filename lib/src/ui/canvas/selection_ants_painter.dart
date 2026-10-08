@@ -5,6 +5,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../dashed_path.dart';
 import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -154,8 +155,8 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// white beneath it is `Colors.white` for the same reason.
   static const Color _antColour = Color(0xFF000000);
 
-  static const double _dashOn = 5;
-  static const double _dashOff = 4;
+  /// Five of line, four of none.
+  static const DashPattern _dashes = DashPattern(on: 5, off: 4);
 
   /// Screen pixels. The same number the layer hit-tests the close tap
   /// against, so what the ring says is aimable is what is aimable — and
@@ -179,7 +180,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
-    final phase = _phase.value * (_dashOn + _dashOff);
+    final phase = _phase.value * _dashes.period;
 
     // I-38: where this session started, UNDER everything else — it is what
     // the live outline is being compared against, so the live one is what
@@ -293,34 +294,16 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// here already (R28-S pulled it out of the selection layer so the same
   /// ants show under every tool), so 「앞으로 개미행렬은 이 공통 ui를 사용」
   /// is a rule about where the NEXT one goes rather than a change here.
-  void _paintAnts(Canvas canvas, Path path, double phase) {
-    final white = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.white;
-    final dashes = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = _antColour;
-    canvas.drawPath(path, white);
-    canvas.drawPath(_dashPath(path, phase), dashes);
-  }
-
-  Path _dashPath(Path source, double phase) {
-    final dashed = Path();
-    for (final metric in source.computeMetrics()) {
-      var distance = -phase % (_dashOn + _dashOff);
-      while (distance < metric.length) {
-        final start = distance.clamp(0.0, metric.length);
-        final end = (distance + _dashOn).clamp(0.0, metric.length);
-        if (end > start) {
-          dashed.addPath(metric.extractPath(start, end), Offset.zero);
-        }
-        distance += _dashOn + _dashOff;
-      }
-    }
-    return dashed;
-  }
+  ///
+  /// The pair itself is drawn in one place ([paintDashedOutline]) — a
+  /// dashed line that stands still is the same pair with no phase.
+  void _paintAnts(Canvas canvas, Path path, double phase) =>
+      paintDashedOutline(
+        canvas,
+        path,
+        color: _antColour,
+        dashes: _dashes.marchedBy(phase),
+      );
 
   @override
   Object get props => (

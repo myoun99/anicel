@@ -344,8 +344,16 @@ void main() {
           libPath(file),
     ];
     expect(scaled, isNotEmpty, reason: 'premise: the sheet sets its words');
+    // A CEL IS PAPER TOO (R9-rest, a text written in columns): its plate is
+    // its letters set for the cel's own pixels, at the cel's resolution —
+    // a bake cut for the screen's grid is not that picture.
+    const paper = {'lib/src/ui/text/cel_text_columns.dart'};
+    expect(scaled, containsAll(paper), reason: 'premise: the cel does too');
     expect(
-      scaled.where((path) => !path.startsWith('lib/src/ui/timesheet/')),
+      scaled.where(
+        (path) =>
+            !path.startsWith('lib/src/ui/timesheet/') && !paper.contains(path),
+      ),
       isEmpty,
     );
   });

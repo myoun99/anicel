@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_stack.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 /// R9 P1 — the three items whose whole point is that something happens
 /// IMMEDIATELY, or stops happening at all.
@@ -184,18 +185,29 @@ void main() {
       final storyboard = session.activeLayer!;
       expect(storyboard.kind, LayerKind.storyboard);
 
-      expect(
-        session.layerVerbs.canLinkDuplicateActiveLayer,
-        isFalse,
-        reason: 'a duplicate lands in the SAME cut',
-      );
-
-      // ⚠️THE PASTE ARM IS REACHED FROM HERE, and only from here — see
-      // [LayerClipboard.pasteLayerFromClipboard]'s R9 #7 guard.
+      // ⚠️THE PASTE ARMS ARE REACHED FROM HERE, and only from here — see
+      // [LayerClipboard.canPasteRows]' R9 #7 guard, and the linked paste's.
       final board = boardOf(session);
-      board.copyActiveLayer();
+      copyRowsWithThePill(session);
+      expect(
+        board.hasLayerClipboard,
+        isTrue,
+        reason: '⛔전제: the board DID take the row — the guards below are '
+            'the paste\'s, not the copy\'s',
+      );
+      expect(
+        board.canPasteRowsLinked,
+        isFalse,
+        reason: 'a linked copy lands in the SAME cut',
+      );
+      expect(
+        board.canPasteRows,
+        isFalse,
+        reason: 'this cut already holds its one',
+      );
       session.layerVerbs.duplicateActiveLayer();
-      board.pasteLayerFromClipboard();
+      pasteWithThePill(session);
+      pasteLinkedWithThePill(session);
 
       expect(
         session.requireActiveCut.layers

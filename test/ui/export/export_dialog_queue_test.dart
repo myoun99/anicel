@@ -18,7 +18,9 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/export_preview_probe.dart';
 
 void main() {
   late Directory temp;
@@ -70,9 +72,9 @@ void main() {
   Future<ExportDialogState> pumpDialog(
     WidgetTester tester,
     EditorSessionManager manager, {
-    String? location,
+    String? Function()? askedWhere,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    await tester.binding.setSurfaceSize(const Size(1280, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -80,7 +82,10 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: manager,
-            exportDirectoryPicker: () async => location ?? temp.path,
+            // Where a job goes is asked as it is queued, and a run as it
+            // is pressed: the folder this answers then.
+            exportDirectoryPicker: () async =>
+                askedWhere == null ? temp.path : askedWhere(),
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
@@ -88,11 +93,6 @@ void main() {
     );
     await tester.pump();
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
     return state;
   }
 
@@ -102,17 +102,6 @@ void main() {
     );
     await tester.pump();
   }
-
-  List<String> filesIn(Directory directory) => directory
-      .listSync(recursive: true)
-      .whereType<File>()
-      .map(
-        (file) => file.path
-            .substring(directory.path.length + 1)
-            .replaceAll('\\', '/'),
-      )
-      .toList()
-    ..sort();
 
   testWidgets('Add to Queue freezes specs; Render All runs them in order '
       'and restores the setup', (tester) async {
@@ -153,7 +142,7 @@ void main() {
     await tester.runAsync(state.runQueue);
     await tester.pump();
 
-    expect(filesIn(temp), [
+    expect(filesWrittenUnder(temp), [
       'frame_0001.png',
       'frame_0002.png',
       'shot_0001.png',
@@ -173,25 +162,24 @@ void main() {
 
   testWidgets('a failing job marks itself and the rest still run',
       (tester) async {
-    final state = await pumpDialog(tester, session());
-    await pickPng(tester);
-
     // Job 1 aims INSIDE A FILE — the write must fail.
     final blocker = File('${temp.path}/blocker')..createSync();
-    final broken = '${blocker.path}/nested';
-    state.debugSetLocationForTests(broken);
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
+    final asked = ['${blocker.path}/nested', temp.path];
+    final state = await pumpDialog(
+      tester,
+      session(),
+      askedWhere: () => asked.removeAt(0),
     );
-    await tester.pump();
+    await pickPng(tester);
 
-    state.debugSetLocationForTests(temp.path);
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
-    );
-    await tester.pump();
+    for (var job = 0; job < 2; job += 1) {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-queue-add-button')),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(asked, isEmpty, reason: 'each job was asked its folder');
 
     await tester.runAsync(state.runQueue);
     await tester.pump();
@@ -202,7 +190,7 @@ void main() {
       find.textContaining('1 job done, 1 failed'),
       findsOneWidget,
     );
-    expect(filesIn(temp), [
+    expect(filesWrittenUnder(temp), [
       'blocker',
       'frame_0001.png',
       'frame_0002.png',
@@ -230,10 +218,7 @@ void main() {
       find.byKey(const ValueKey<String>('export-queue-job-1')),
       findsNothing,
     );
-    final output = tester.widget<Text>(
-      find.byKey(const ValueKey<String>('export-output-line')),
-    );
-    expect(output.data, contains('frame_0001.png'));
+    expect(tester.exportPreviewName, 'frame_0001.png');
     expect(state.debugImageFrame, isNotNull);
   });
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import '../helpers/placement_reading.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
@@ -131,7 +133,7 @@ void main() {
         'pose rides the folder, one with a pose gets the composition', () {
       final folderTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+          0: TransformPose.uniform(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
       final plan = planCutFrameComposite(
@@ -142,15 +144,18 @@ void main() {
         frameIndex: 0,
         surfaceResolver: resolver,
       );
-      final pose = plan.single.pose!;
-      expect(pose.center, CanvasPoint(x: 3, y: 2));
-      expect(pose.zoom, 2);
+      final placement = plan.single.placement!;
+      expect(
+        placement.centreOf(canvasSize),
+        nearPoint(CanvasPoint(x: 3, y: 2)),
+      );
+      expect(placement.evenScale, 2);
 
       // Member with its OWN pose: folder composes over layer (zooms
       // multiply).
       final layerTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 2, y: 2), zoom: 3),
+          0: TransformPose.uniform(center: CanvasPoint(x: 2, y: 2), zoom: 3),
         },
       );
       final composedPlan = planCutFrameComposite(
@@ -161,13 +166,13 @@ void main() {
         frameIndex: 0,
         surfaceResolver: resolver,
       );
-      expect(composedPlan.single.pose!.zoom, 6);
+      expect(composedPlan.single.placement!.evenScale, 6);
     });
 
     test('the folder fx switch IS the layer fx switch', () {
       final folderTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+          0: TransformPose.uniform(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
       // R8: the switch is the folder row's own persisted field.
@@ -183,11 +188,52 @@ void main() {
         surfaceResolver: resolver,
       );
       expect(
-        bypassed.single.pose,
+        bypassed.single.placement,
         isNull,
         reason: 'R28 #13: a bypassed folder contributes no FX — and it now '
             'sits in the ONE bypass set, keyed by its own layer id',
       );
+    });
+
+    // The tree is the route every painter takes; the flat plan beside it is
+    // the byte walkers'. Both resolve their surfaces off the one visit, and
+    // each hands the leaf its placement with its own hand.
+    test('the TREE hands a leaf the placement the flat plan hands it — a '
+        'member under a posed folder, with a pose of its own', () {
+      final posed = cut([
+        memberLayer().copyWith(
+          transformTrack: TransformTrack(
+            keyframes: {
+              0: TransformPose(center: CanvasPoint(x: 1, y: 2), scaleX: 3),
+            },
+          ),
+        ),
+        folderRow(
+          'f',
+          transformTrack: TransformTrack(
+            keyframes: {
+              0: TransformPose.uniform(
+                center: CanvasPoint(x: 3, y: 2),
+                zoom: 2,
+              ),
+            },
+          ),
+        ),
+      ]);
+      final flat = planCutFrameComposite(
+        cut: posed,
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      ).single.placement;
+      final tree = planCutFrameCompositeTree(
+        cut: posed,
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+
+      expect(flat, isNotNull);
+      final leaf = tree.single as CompositeLeaf<CutFrameCompositeLayer>;
+      expect(leaf.payload.placement, flat);
     });
   });
 
@@ -353,7 +399,7 @@ void main() {
       frameIndex: 0,
       surfaceResolver: resolver,
     );
-    expect(identityPlan.single.pose, isNull);
+    expect(identityPlan.single.placement, isNull);
 
     // A keyed track resolves per frame (interpolating between keys); the
     // unkeyed components fall back to the identity pose (canvas center).
@@ -363,22 +409,24 @@ void main() {
         10: TransformPose(center: CanvasPoint(x: 10, y: 20)),
       },
     );
-    final poseAt5 = planCutFrameComposite(
+    final placedAt5 = planCutFrameComposite(
       cut: cut([transformed(track: track)]),
       frameIndex: 5,
       surfaceResolver: resolver,
-    ).single.pose;
-    expect(poseAt5, isNotNull);
-    expect(poseAt5!.center.x, 5);
-    expect(poseAt5.center.y, 10);
-    expect(poseAt5.zoom, 1);
+    ).single.placement;
+    expect(placedAt5, isNotNull);
+    expect(
+      placedAt5!.centreOf(canvasSize),
+      nearPoint(CanvasPoint(x: 5, y: 10)),
+    );
+    expect(placedAt5.evenScale, 1);
   });
 
-  test('layerIdentityPose centers the canvas at zoom 1, no rotation', () {
+  test('layerIdentityPose centers the canvas at scale 1, no rotation', () {
     final pose = layerIdentityPose(canvasSize);
     expect(pose.center.x, 2);
     expect(pose.center.y, 2);
-    expect(pose.zoom, 1);
+    expect(pose.scale, uniformScale(1));
     expect(pose.rotationDegrees, 0);
   });
 
@@ -406,7 +454,7 @@ void main() {
     );
     expect(plan.single.opacity, closeTo(0.25, 1e-9));
     // Opacity animation alone never forces the transform path.
-    expect(plan.single.pose, isNull);
+    expect(plan.single.placement, isNull);
 
     final faded = planCutFrameComposite(
       cut: cut([animated(track: fading)]),
@@ -416,7 +464,8 @@ void main() {
     expect(faded, isEmpty);
   });
 
-  test('the anchor point resolves into the plan (null = canvas center)', () {
+  test('the anchor point resolves into the plan (none = canvas center): '
+      'it is the point of the artwork that lands on the position', () {
     final anchored = TransformTrack.empty().copyWith(
       position: PropertyTrack<CanvasPoint>().withKey(
         0,
@@ -433,7 +482,10 @@ void main() {
       frameIndex: 0,
       surfaceResolver: resolver,
     );
-    expect(plan.single.anchorPoint, CanvasPoint(x: 1, y: 1));
+    expect(
+      plan.single.placement!.apply(CanvasPoint(x: 1, y: 1)),
+      CanvasPoint(x: 3, y: 3),
+    );
 
     final unanchored = planCutFrameComposite(
       cut: cut([
@@ -446,7 +498,10 @@ void main() {
       frameIndex: 0,
       surfaceResolver: resolver,
     );
-    expect(unanchored.single.anchorPoint, isNull);
+    expect(
+      unanchored.single.placement!.centreOf(canvasSize),
+      CanvasPoint(x: 3, y: 3),
+    );
   });
 
   test('fx-bypassed layers compose with identity pose and static opacity '
@@ -470,8 +525,7 @@ void main() {
       surfaceResolver: resolver,
     ).single;
 
-    expect(bypassed.pose, isNull);
-    expect(bypassed.anchorPoint, isNull);
+    expect(bypassed.placement, isNull);
     expect(bypassed.opacity, closeTo(0.8, 1e-9));
   });
 
@@ -572,9 +626,8 @@ void main() {
       expect(plan, hasLength(2));
       final basePlan = plan[0];
       final attachPlan = plan[1];
-      expect(attachPlan.pose, isNotNull);
-      expect(attachPlan.pose!.center.x, basePlan.pose!.center.x);
-      expect(attachPlan.pose!.center.y, basePlan.pose!.center.y);
+      expect(attachPlan.placement, isNotNull);
+      expect(attachPlan.placement, basePlan.placement);
       // 0.5 static × 0.5 base opacity sample.
       expect(attachPlan.opacity, closeTo(0.25, 1e-9));
     });
@@ -594,7 +647,7 @@ void main() {
       );
 
       expect(plan.map(markerOf), [1, 3]);
-      expect(plan[1].pose, isNull);
+      expect(plan[1].placement, isNull);
       expect(plan[1].opacity, 1.0);
     });
 

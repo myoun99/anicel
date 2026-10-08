@@ -6,6 +6,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
+import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
@@ -19,6 +20,7 @@ import 'timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
+import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
@@ -70,6 +72,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowsChannel,
+    this.transformOptions,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
@@ -85,6 +88,11 @@ class StoryboardTabHost extends StatefulWidget {
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
   final StoryboardRowsChannel? rowsChannel;
+
+  /// The transform tool's options — the timeline host's own
+  /// ([TimelineTabHost.transformOptions]): an S row's Scale lane links by
+  /// the same switch.
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See
@@ -292,8 +300,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// timeline's own list, Audio lane included, so both hosts take
   /// [sessionLaneEditCallbacks] and the typed offset goes where the
   /// timeline's does.
-  PropertyLaneEditCallbacks get _layerLaneEdit =>
-      sessionLaneEditCallbacks(_session, frameIsGlobal: true);
+  PropertyLaneEditCallbacks get _layerLaneEdit => sessionLaneEditCallbacks(
+    _session,
+    frameIsGlobal: true,
+    transformOptions: widget.transformOptions,
+  );
 
   /// THE cells' press (the timeline's cell contract): pick the row, then
   /// seek to the frame under the pointer. The seek is the ruler's own, so a
@@ -325,6 +336,57 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         seekStoryboardGlobalFrame(_session, globalFrame);
     }
   }
+
+  /// THE cells' press, standing in this panel: [_pressRowFrame] stands
+  /// without the verb, so it names the timeline's seat itself (F-187).
+  void _pressRowFrameHere(TimelineRowAddress row, int globalFrame) =>
+      _session.standing.standInStoryboard(
+        () => _pressRowFrame(row, globalFrame),
+      );
+
+  /// 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대. 지금 프레임블록이랑
+  /// 레이어라벨 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도
+  /// 통일적용」 — a CUT block's double click: its cut, renamed through the
+  /// Edit button's own door ([renameActiveCutWithDialog]).
+  ///
+  /// The press lands first, as a frame block's double tap picks its cell
+  /// before it opens it: that door renames the cut in hand, and a first
+  /// press inside a cut selection stood nowhere — it may have been the
+  /// start of a move.
+  Future<void> _editCutBlock(TrackId trackId, int globalFrame) {
+    _pressRowFrameHere(TrackRowAddress(trackId), globalFrame);
+    return renameActiveCutWithDialog(context, _session);
+  }
+
+  /// …and a CONTE block's: the frame block's own double tap
+  /// ([activateCellOnDoubleTap]) on the cell it is — its cut's storyboard
+  /// row at the cut's own frame. The first click was the pick: the conte
+  /// row's cells are pressed like the timeline's, so the row is stood on
+  /// and the cut's conte layer seated ([Standing.layerAConteStandSeats])
+  /// before the second click arrives — the cell is in hand the way the
+  /// timeline's is when its double tap opens it, and nothing is pressed
+  /// here. ↩️This door pressed first, on the CUT, while the conte blocks
+  /// were the cut block's (F-187, 「컷에서면 콘티레이어가 있다면
+  /// 콘티레이어에 서도록」) — a first press inside a cut selection stood
+  /// nowhere there, as [_editCutBlock]'s still may. The blocks are the
+  /// conte row's now (I-73), whose press always lands (🧪2026-10-08: with
+  /// the press gone no double click opened another cell or stood
+  /// elsewhere).
+  ///
+  /// ⚠️In a cut an O.L arrives into, the frame the storyboard's seek leaves
+  /// the session on is short of the row's own by the のりしろ, so the cell
+  /// that opens is that much early (🧪2026-10-08: a double click on the
+  /// second panel named the first). That is the seek's to put right, for
+  /// every verb at once — board `I-73-ol-index-space`. ⛔Not here: adding
+  /// the のりしろ to the frame handed on moved the playhead, and the name
+  /// still landed where the session stood.
+  Future<void> _editConteBlock(TrackId _, LayerId layerId, int _) =>
+      activateCellOnDoubleTap(
+        context,
+        _session,
+        layerId: layerId,
+        frameIndex: _session.currentFrameIndex,
+      );
 
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.
@@ -446,7 +508,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-          cutName: _session.activeCutOrNull?.name ?? '',
+          cutName: _session.cutUnderPlayhead.cutName,
           trailing: null,
         ),
         () => TimelineViewCluster(
@@ -454,7 +516,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // Global · cut-local pair (UI-R9 #6) — the channel already
           // follows scrubs, gap parking and playback ticks.
           globalFrame: _session.playheadCursors.trackFrame,
-          cutName: _session.activeCutOrNull?.name ?? '',
+          cutName: _session.cutUnderPlayhead.cutName,
           projectFrameRate: _session.projectSettings.projectFrameRate,
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
@@ -568,12 +630,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           },
                     acceptsMediaAssetOnRail: (path) =>
                         _session.storyboardRailDropSpotFor(path) != null,
-                    // THE cells' press ([_pressRowFrame]) stands without the
-                    // verb, so it names the timeline's seat itself (F-187).
-                    onRowFramePress: (row, globalFrame) =>
-                        _session.standing.standInStoryboard(
-                          () => _pressRowFrame(row, globalFrame),
-                        ),
+                    onRowFramePress: _pressRowFrameHere,
                     activeLayerId: _session.activeLayerId,
                     // The rail speaks ROW ADDRESSES, and selecting one lands
                     // the editing focus on it (user 2026-07-29, superseding
@@ -971,13 +1028,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // value instead of an average.
                     opacityDragPreview: _session.opacityVerbs.dragPreview,
                     legendOpacityValue: _session.opacityVerbs.lastMasterOpacity,
-                    // The V row's picture eye (R9): session view state the
-                    // playback display reads.
-                    cutPictureVisibleOf: _session.cutPictureEyes.showsPicture,
-                    onToggleCutPictureVisibility:
-                        _session.cutPictureEyes.toggle,
-                    // R9 #21: the TRACK's own fx master and static opacity —
-                    // persisted model state, unlike the cut toggles above.
+                    // R9 #21: the TRACK's own fx master — persisted model
+                    // state. ↩️Its picture eye and its static opacity stood
+                    // beside it on the V row's head until I-73 (2026-10-08).
                     trackFxStateOf: (track) => _session.effectsAndFx.trackFxState(track.id),
                     onToggleTrackFx: (track) =>
                         _session.effectsAndFx.toggleTrackFx(track.id),
@@ -988,12 +1041,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // R5: AE's group Reset on the V row's chain.
                     onResetTrackEffectGroup: (track, headerLaneId) =>
                         _session.effectsAndFx.resetTrackEffectGroup(track.id, headerLaneId),
-                    trackOpacityOf: (track) =>
-                        _session.opacityVerbs.trackStaticOpacity(track.id),
-                    onTrackOpacityChanged: (track, opacity) =>
-                        _session.opacityVerbs.previewTrackOpacity(track.id, opacity),
-                    onTrackOpacityChangeEnd: (track, opacity) =>
-                        _session.opacityVerbs.commitTrackOpacity(track.id, opacity),
                     // S-row range selection: the SAME track-axis selection the
                     // cut row paints, one row up. The timeline mounts its range
                     // gesture on every layer row (UI-R20 #2) and these rows had
@@ -1067,6 +1114,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // 🚨★★★I-9: and an EMPTY one CREATES — one fork, inside
                     // that shared verb, exactly like the transition row's.
                     onEditSeEntry: _editSeEntry,
+                    // F-255: the cut blocks and the conte blocks open their
+                    // names on the same double tap.
+                    onEditCutBlock: _editCutBlock,
+                    onEditConteBlock: _editConteBlock,
                   ),
                 ),
               ),

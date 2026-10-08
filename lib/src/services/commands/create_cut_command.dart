@@ -3,7 +3,6 @@ import '../editing/editing_session_state.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer_id.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
@@ -15,7 +14,6 @@ class CreateCutCommand implements Command {
     required this.editingSession,
     required this.trackId,
     required CutId cutId,
-    required LayerId layerId,
     required String name,
     this.index,
     // #18 — a gap landing walks INTO the gap: the distance from the
@@ -29,24 +27,22 @@ class CreateCutCommand implements Command {
   }) : cut = _plannedCut(
          cutId: cutId,
          name: name,
-         layerId: layerId,
          canvasSize: canvasSize,
          leadingGapFrames: leadingGapFrames,
          duration: duration,
        );
 
+  /// A new cut is BARE (F-211): its fixtures, and no drawing row.
   static Cut _plannedCut({
     required CutId cutId,
     required String name,
-    required LayerId layerId,
     required CanvasSize canvasSize,
     required int leadingGapFrames,
     required int? duration,
   }) {
-    final base = createDefaultCut(
+    final base = createBareCut(
       cutId: cutId,
       name: name,
-      layerId: layerId,
       canvasSize: canvasSize,
     );
     if (leadingGapFrames == 0 && duration == null) {

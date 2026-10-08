@@ -1,14 +1,17 @@
 /// Which paper a cut's timesheet prints on (유저 2026-09-25, 사진 TOEI_3sec ·
 /// TOEI_book): the 6-second sheet lays two 3-second strips side by side, 8
 /// cel columns a strip; the 3-second sheet is one strip across the same
-/// paper, 12 cel columns (timesheet-3s-columns-Q1: 「사진대로 ACTION 12 ·
-/// CELL 12」 — SE and CAM by our own rule), its columns wider.
+/// paper, its cells as wide as the 6-second sheet's and as many as the two
+/// halves span — 19 (유저 2026-10-08, F-252: 「셀 칸 하나 가로길이
+/// 유지한채로 그만큼 칸 더 많이 만들도록」; SE and CAM by our own rule).
+/// ↩️It printed 12 cel columns half again as wide
+/// (timesheet-3s-columns-Q1: 「사진대로 ACTION 12 · CELL 12」).
 ///
 /// Each CUT keeps its own (timesheet-sheet-kind-scope-Q1: 「컷마다 따로」);
 /// the 6-second sheet unless the cut says otherwise.
 enum TimesheetSheetKind {
   sixSeconds('6s', strips: 2, celColumns: 8),
-  threeSeconds('3s', strips: 1, celColumns: 12);
+  threeSeconds('3s', strips: 1, celColumns: 19);
 
   const TimesheetSheetKind(
     this.jsonValue, {

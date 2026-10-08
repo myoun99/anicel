@@ -16,7 +16,12 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
-import '../../services/viewport_transform_matrix.dart';
+import '../../services/layer_pose_paint.dart'
+    show
+        LayerPlacement,
+        canvasToArtwork,
+        placementMatrix,
+        placementViewportWrapMatrix;
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
@@ -26,6 +31,7 @@ import '../sheet_painting.dart'
     show
         SheetDeviceGrid,
         SheetPictureOverInk,
+        pictureCanvasViewport,
         pictureOutline,
         pictureShowsOnScreen;
 import '../widgets/cursor_notice.dart' show cursorNotices;
@@ -39,19 +45,16 @@ import '../widgets/cursor_notice.dart' show cursorNotices;
 sealed class SheetWindow {
   const SheetWindow({required this.id, required this.key, this.plane});
 
-  /// WHICH of the panel's planes this window belongs to — the timesheet's
-  /// page/strip, the conte's paper/cell/picture. ⛔This layer never reads
-  /// it: it hands the window back to [SheetInkLayer.sessionStateFor] and
+  /// WHICH of the panel's planes this window belongs to — the conte's cell
+  /// or a picture's canvas. ⛔This layer never reads it: it hands the window
+  /// back to [SheetInkLayer.sessionStateFor] and
   /// [SheetInkLayer.onStrokeCommitted], and the panel that made the window
   /// is the only thing that knows what its planes mean. A sheet with one
-  /// plane (the envelope) leaves it null.
+  /// plane (the timesheet, the envelope) leaves it null.
   final Object? plane;
 
-  /// Identifies the WINDOW, not the surface.
-  ///
-  /// The same strip band surface appears through TWO windows on a paged
-  /// timesheet (the page's left and right halves), so the frame key cannot
-  /// stand in for this.
+  /// Identifies the WINDOW — the view the layer mounts for it is keyed by
+  /// this — not the surface.
   final String id;
 
   final BrushFrameKey key;
@@ -97,9 +100,17 @@ sealed class SheetWindow {
   /// pixel on the edge two windows share is exactly one of theirs.
   Rect shownOn(SheetDeviceGrid grid) => grid.snap(documentRect);
 
-  /// How much wider than its surface's own shape this window shows it
-  /// ([SheetInkPlacement.stretch]).
-  double get stretch => 1;
+  /// How this window's view is LAID on the screen past what its viewport
+  /// says ([inkViewport]) — null where the viewport says it all.
+  ///
+  /// A view draws through a pan, a zoom and a turn, and a viewport holds
+  /// nothing else. What a window shows otherwise — the sheet's ink wider
+  /// than its surface's own shape, a picture's cel where its row's placement
+  /// puts it — is laid over the view, and a press reaches the view back
+  /// through the same map, so the brush writes the pixel under the pen.
+  /// ONE answer for the live views ([SheetInkLayer]) and for the print
+  /// ([printSheetInkAsLive]).
+  Matrix4? viewLaidBy(CanvasViewport panelViewport) => null;
 
   /// The live stroke's overlay when SOMEONE ELSE paints this window's
   /// surface, in its place in a composite — a picture's cel inside the
@@ -128,7 +139,7 @@ sealed class SheetWindow {
   SheetWindow shiftedBy(Offset by);
 
   /// The window's on-screen rect under the panel transform, unrounded —
-  /// where its view lays its surface ([sheetInkStretch]). What the screen
+  /// where its view lays its surface ([viewLaidBy]). What the screen
   /// shows of it is cut on the grid ([shownOn]).
   Rect screenRect(CanvasViewport panelViewport) => Rect.fromLTWH(
     panelViewport.panX + panelViewport.zoom * documentRect.left,
@@ -193,8 +204,20 @@ class SheetInkWindow extends SheetWindow {
   /// Ink-surface pixel that maps to [documentRect]'s top-left.
   Offset get inkOffset => placement.origin;
 
+  /// [SheetInkPlacement.stretch] times as wide from the window's left edge
+  /// on screen — null where it is not stretched.
   @override
-  double get stretch => placement.stretch;
+  Matrix4? viewLaidBy(CanvasViewport panelViewport) {
+    final stretch = placement.stretch;
+    if (stretch == 1) {
+      return null;
+    }
+    final left = screenRect(panelViewport).left;
+    return Matrix4.identity()
+      ..translateByDouble(left, 0, 0, 1)
+      ..scaleByDouble(stretch, 1, 1, 1)
+      ..translateByDouble(-left, 0, 0, 1);
+  }
 
   /// The panel transform composed with where surface pixel (0, 0) lies on
   /// the paper — the window at its surface's own shape
@@ -245,17 +268,25 @@ class SheetInkWindow extends SheetWindow {
 ///
 /// ⛔ONE map, the printer's: [canvasToPaper] is the camera
 /// (`cameraProjectionMatrix`) and the slot's contain (`containRect`), and
-/// [artworkToCanvas] the layer's placement (`layerPlacementAt`) — the ones
-/// the picture is painted with, so the pen lands where the picture shows
-/// the stroke. Every step is a zoom, a turn or a move, so the whole chain
-/// is one brush viewport.
+/// [placement] the layer's (`layerPlacementAt`) — the ones the picture is
+/// painted with, so the pen lands where the picture shows the stroke.
+///
+/// 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+/// 반전)」. The camera and the slot are each a zoom, a turn and a move, so
+/// the canvas they show is one brush viewport ([inkViewport]). A row's
+/// placement no longer is one, so it is not in that viewport: the view
+/// sees the cut's CANVAS and is laid through the placement ([viewLaidBy]) —
+/// the main canvas's own draw-through wrap (`placementViewportWrapMatrix`).
+/// ↩️The whole chain, placement and all, was read back as one viewport
+/// (`viewportOfSimilarity(…)!`). A row stretched along one axis, or
+/// flipped, has none to read, and the unwrap threw.
 class SheetPictureWindow extends SheetWindow {
   const SheetPictureWindow({
     required super.id,
     required super.key,
     super.plane,
     required this.picture,
-    required this.artworkToCanvas,
+    required this.placement,
     required this.overlay,
     this.refusal,
   });
@@ -304,19 +335,41 @@ class SheetPictureWindow extends SheetWindow {
   /// The cut's canvas → the paper.
   Matrix4 get canvasToPaper => picture.canvasToPaper;
 
-  /// The cel's own pixels → the cut's canvas.
-  final Matrix4 artworkToCanvas;
+  /// Where the cel's own pixels lie on the cut's canvas — null for a row
+  /// that lies as it is drawn.
+  final LayerPlacement? placement;
 
   @override
   Rect get documentRect => slot;
 
-  Matrix4 get _artworkToPaper => canvasToPaper.multiplied(artworkToCanvas);
+  Matrix4 get _artworkToPaper => switch (placement) {
+    null => canvasToPaper,
+    final placement => canvasToPaper.multiplied(placementMatrix(placement)),
+  };
 
+  /// The view the cut's CANVAS is seen through — the one its live composite
+  /// is drawn through ([pictureCanvasViewport]). The cel's own pixels are
+  /// laid on that canvas by [viewLaidBy].
   @override
   CanvasViewport inkViewport(CanvasViewport panelViewport) =>
-      viewportOfSimilarity(
-        viewportTransformMatrix(panelViewport).multiplied(_artworkToPaper),
-      )!;
+      pictureCanvasViewport(panelViewport, canvasToPaper);
+
+  /// The row's placement, as the main canvas lays its own over its view:
+  /// the wrap shows the cel placed, and a press comes back through it into
+  /// the cel's own pixels.
+  ///
+  /// ⛔ALWAYS a matrix — the identity for a row that lies as it is drawn. A
+  /// view that changes parent is a view mounted again (the main canvas's
+  /// lesson, F-195), and a row's placement comes and goes with a key on a
+  /// lane.
+  @override
+  Matrix4 viewLaidBy(CanvasViewport panelViewport) => switch (placement) {
+    null => Matrix4.identity(),
+    final placement => placementViewportWrapMatrix(
+      placement,
+      inkViewport(panelViewport),
+    ),
+  };
 
   @override
   CanvasSelectionShape surfaceShapeOf(List<Offset> paper) {
@@ -327,12 +380,19 @@ class SheetPictureWindow extends SheetWindow {
   }
 
   /// Its [paperOutline], and nothing where that is no outline at all — a
-  /// camera framing none of the canvas.
+  /// camera framing none of the canvas — or where the row's placement has
+  /// collapsed it: a cel that shows nothing has no pixel under the pen
+  /// ([canvasToArtwork]).
   @override
-  CanvasSelectionRegion? get shows => refusal != null ||
-          paperOutline.length < 3
+  CanvasSelectionRegion? get shows =>
+      refusal != null || paperOutline.length < 3 || _collapsed
       ? null
       : CanvasSelectionRegion.shape(surfaceShapeOf(paperOutline));
+
+  bool get _collapsed => switch (placement) {
+    null => false,
+    final placement => canvasToArtwork(placement) == null,
+  };
 
   @override
   SheetPictureWindow shiftedBy(Offset by) {
@@ -349,7 +409,7 @@ class SheetPictureWindow extends SheetWindow {
           0,
         ).multiplied(canvasToPaper),
       ),
-      artworkToCanvas: artworkToCanvas,
+      placement: placement,
       overlay: overlay,
       refusal: refusal,
     );
@@ -425,20 +485,6 @@ Path? sheetInkShownCut(Rect shows, List<Path> yieldsTo) {
   return shown;
 }
 
-/// How [window]'s view is laid [SheetWindow.stretch] times as wide from the
-/// window's left edge on screen — null where it is not stretched.
-Matrix4? sheetInkStretch(SheetWindow window, CanvasViewport viewport) {
-  final stretch = window.stretch;
-  if (stretch == 1) {
-    return null;
-  }
-  final left = window.screenRect(viewport).left;
-  return Matrix4.identity()
-    ..translateByDouble(left, 0, 0, 1)
-    ..scaleByDouble(stretch, 1, 1, 1)
-    ..translateByDouble(-left, 0, 0, 1);
-}
-
 /// What the print of a sheet's ink is laid through: the panel's
 /// [viewport] at [devicePixelRatio] over a box of [size], and what stands
 /// over all its windows ([above]).
@@ -491,8 +537,8 @@ void printSheetInkAsLive(
     } else {
       canvas.clipPath(cut);
     }
-    if (sheetInkStretch(window, view.viewport) case final stretch?) {
-      canvas.transform(stretch.storage);
+    if (window.viewLaidBy(view.viewport) case final laid?) {
+      canvas.transform(laid.storage);
     }
     BitmapSurfacePainter(
       surface: surface,
@@ -815,7 +861,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
                 ),
                 yieldsTo: shown[index].yieldsTo,
                 child: RepaintBoundary(
-                  child: _stretched(window, _view(window, region)),
+                  child: _laid(window, _view(window, region)),
                 ),
               ),
             ),
@@ -858,14 +904,15 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     );
   }
 
-  /// [view] — a window's — laid [SheetWindow.stretch] times as wide from
-  /// the window's left edge on screen. The view draws its surface at the
-  /// surface's own shape ([SheetWindow.inkViewport]) and a press reaches it
-  /// back through the same stretch, so the brush writes the pixel under the
-  /// pen.
-  Widget _stretched(SheetWindow window, Widget view) =>
-      switch (sheetInkStretch(window, widget.viewport)) {
-        final stretch? => Transform(transform: stretch, child: view),
+  /// [view] — a window's — laid as the window says
+  /// ([SheetWindow.viewLaidBy]): the sheet's ink wider than its surface's own
+  /// shape, a picture's cel where its row's placement puts it. The view
+  /// draws through its own viewport ([SheetWindow.inkViewport]) and a press
+  /// reaches it back through the same map, so the brush writes the pixel
+  /// under the pen.
+  Widget _laid(SheetWindow window, Widget view) =>
+      switch (window.viewLaidBy(widget.viewport)) {
+        final laid? => Transform(transform: laid, child: view),
         null => view,
       };
 }

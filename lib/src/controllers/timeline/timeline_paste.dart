@@ -148,9 +148,15 @@ class _TimelinePaste {
   /// display clone and handed the local answer to [copyRunForLayer], whose
   /// indexes are the EDIT axis — so on a track-owned SE row from cut 2 on,
   /// copy, cut and paste read, lifted and inserted on cut 1's frames.
-  ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) {
+  ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) =>
+      runAtForLayer(layerId, _controller._editFrameIndexFor(layerId));
+
+  /// [runAtPlayheadForLayer] with the cursor SAID, in the row's edit keys —
+  /// for a press that stands where the cut's playhead does not: the
+  /// storyboard's, on a track's row, which has a frame in every cut and in
+  /// the gaps between them (F-281).
+  ({int index, int count}) runAtForLayer(LayerId layerId, int index) {
     final layer = _controller._requireLayer(layerId);
-    final index = _controller._editFrameIndexFor(layerId);
     final covering = coveringDrawingBlockAt(layer.timeline, index);
     if (covering == null) {
       return (index: index, count: 1);

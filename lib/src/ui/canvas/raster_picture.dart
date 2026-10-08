@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 /// Ends [recorder] and rasters its picture to a [width]×[height] image,
 /// synchronously — the ONE spelling of a step that was copied eight times.
 ///
@@ -63,6 +65,20 @@ ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) =>
     real: snapshot ? picture.toImage(width, height) : null,
   ),
 );
+
+/// [picture]'s plain snapshot, WAITED FOR — the one spelling the steps of
+/// a layer image's chain share (the tile compose, a halving, the cut of the
+/// ink), so that the waits can be counted ([debugOnWaitedSnapshot]): a
+/// chain is waited for once, at its last step, whatever its length
+/// (`LayerFrameImageCache.prepare`).
+Future<ui.Image> waitedSnapshot(ui.Picture picture, int width, int height) {
+  debugOnWaitedSnapshot?.call(width, height);
+  return picture.toImage(width, height);
+}
+
+/// Told of every [waitedSnapshot], with the size it rasters.
+@visibleForTesting
+void Function(int width, int height)? debugOnWaitedSnapshot;
 
 /// Ends [recorder], hands the picture to [use], and releases it whatever
 /// [use] does — the one `finally` every raster above shares.

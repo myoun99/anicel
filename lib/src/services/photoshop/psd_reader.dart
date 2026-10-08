@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../abr/photoshop_descriptor.dart';
 import 'photoshop_byte_reader.dart';
 import 'psd_pixels.dart';
 import '../../models/import/import_warning.dart';
@@ -58,6 +59,8 @@ class PsdLayer {
     required this.role,
     required this.pixels,
     required this.adjustmentKey,
+    this.collapsed = false,
+    this.hasLayerEffects = false,
   });
 
   final String name;
@@ -69,6 +72,17 @@ class PsdLayer {
   /// 0–255, as the file stores it.
   final int opacity;
   final bool visible;
+
+  /// A folder row Photoshop shows closed — `lsct` 2, where an open one is 1.
+  /// F-306 (유저 2026-10-07: 「접힌 폴더는 접힌상태로 들여오도록. 이건 tvp든
+  /// 뭐든 임포트할때의 기본」). False on every other row.
+  final bool collapsed;
+
+  /// Whether the record carries layer effects that are switched ON — a
+  /// drop shadow, a stroke … — which the expanded stack cannot draw, so the
+  /// importer names the layer instead of losing them without a word
+  /// (F-306).
+  final bool hasLayerEffects;
 
   /// Clipped to the layer below. We do not map this yet — the flag is
   /// carried so the importer can say so rather than silently flattening the
@@ -280,6 +294,8 @@ class _LayerRecord {
     required this.channels,
     required this.adjustmentKey,
     required this.mask,
+    required this.collapsed,
+    required this.hasLayerEffects,
   });
 
   final String name;
@@ -292,6 +308,8 @@ class _LayerRecord {
   final bool clipping;
   final String blendKey;
   final PsdLayerRole role;
+  final bool collapsed;
+  final bool hasLayerEffects;
 
   /// (channel id, declared byte length) in the order the file stores them.
   final List<(int, int)> channels;
@@ -408,6 +426,12 @@ _LayerRecord _readLayerRecord(
 
   String? adjustmentKey;
   var role = PsdLayerRole.raster;
+  var collapsed = false;
+  // The object-based effects blocks answer for themselves; the legacy one
+  // (`lrFX`) only says effects were written, so it counts only when no
+  // newer block speaks.
+  bool? effectsOn;
+  var legacyEffects = false;
   while (reader.offset + 12 <= extraEnd) {
     final signature = reader.readAscii(4);
     if (signature != '8BIM' && signature != '8B64') {
@@ -434,6 +458,11 @@ _LayerRecord _readLayerRecord(
         3 => PsdLayerRole.groupClose,
         _ => PsdLayerRole.raster,
       };
+      collapsed = type == 2;
+    } else if (key == 'lfx2' || key == 'lmfx') {
+      effectsOn = _effectsSwitchedOn(reader) || (effectsOn ?? false);
+    } else if (key == 'lrFX') {
+      legacyEffects = true;
     }
     reader.offset = blockEnd <= extraEnd ? blockEnd : extraEnd;
     // Blocks are padded to an even length in practice; a stray odd byte
@@ -461,7 +490,32 @@ _LayerRecord _readLayerRecord(
     channels: channels,
     adjustmentKey: adjustmentKey,
     mask: mask,
+    collapsed: collapsed,
+    hasLayerEffects: effectsOn ?? legacyEffects,
   );
+}
+
+/// Whether an object-based effects block (`lfx2`, `lmfx`) holds an effect
+/// that is switched on: the master switch is not off, and some effect's own
+/// `enab` is on. `u32` object-effects version, then a versioned descriptor.
+///
+/// A block this reader cannot follow counts as ON — saying a layer may
+/// have lost something beats losing it without a word.
+bool _effectsSwitchedOn(PhotoshopByteReader reader) {
+  bool on(Object? value) => switch (value) {
+    final PsDescriptor effect => effect['enab'] == true,
+    final List<Object?> effects => effects.any(on),
+    _ => false,
+  };
+  try {
+    reader.skip(4);
+    final effects = readVersionedDescriptor(reader);
+    return effects['masterFXSwitch'] != false && effects.items.values.any(on);
+  } on FormatException {
+    return true;
+  } on RangeError {
+    return true;
+  }
 }
 
 PsdLayer _readLayerPixels(
@@ -561,6 +615,8 @@ PsdLayer _readLayerPixels(
     role: record.role,
     pixels: pixels,
     adjustmentKey: record.adjustmentKey,
+    collapsed: record.collapsed,
+    hasLayerEffects: record.hasLayerEffects,
   );
 }
 

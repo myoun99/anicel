@@ -27,37 +27,40 @@ void main() {
       requireLayerAnywhere(repository.requireProject(), original.id);
 
   test('execute applies, undo restores, execute again re-applies', () {
-    // ↩️The two fields were the opacity and the eye. The static opacity is
-    // the link group's since F-278 (`UpdateLayerOpacityCommand`) and left
-    // this command's snapshot; the twirl is the second field it owns here.
+    // ↩️The two fields were the opacity and the eye, then the twirl and the
+    // eye. The static opacity is the link group's since F-278
+    // (`UpdateLayerOpacityCommand`) and the twirl since F-302
+    // (`UpdateLayerCollapsedCommand`); both left this command's snapshot,
+    // and the mute is the second field it owns here.
     final command = UpdateLayerDisplayCommand(
       repository: repository,
       layerId: original.id,
-      apply: (layer) => layer.copyWith(collapsed: true, isVisible: false),
-      debugLabel: 'Fold and hide',
+      apply: (layer) => layer.copyWith(muted: true, isVisible: false),
+      debugLabel: 'Mute and hide',
     );
     expect(original.isVisible, isTrue, reason: 'fixture');
-    expect(original.collapsed, isFalse, reason: 'fixture');
+    expect(original.muted, isFalse, reason: 'fixture');
 
     command.execute();
-    expect(current().collapsed, isTrue);
+    expect(current().muted, isTrue);
     expect(current().isVisible, isFalse);
 
     command.undo();
-    expect(current().collapsed, original.collapsed);
+    expect(current().muted, original.muted);
     expect(current().isVisible, original.isVisible);
 
     command.execute();
-    expect(current().collapsed, isTrue);
+    expect(current().muted, isTrue);
     expect(current().isVisible, isFalse);
   });
 
-  test('⛔it refuses an edit of what the link group owns — the blend and '
-      'the static opacity have commands of their own, and this one\'s undo '
-      'would not put them back', () {
+  test('⛔it refuses an edit of what the link group owns — the blend, the '
+      'static opacity and the fold have commands of their own, and this '
+      'one\'s undo would not put them back', () {
     for (final apply in <Layer Function(Layer)>[
       (layer) => layer.copyWith(opacity: 0.25),
       (layer) => layer.copyWith(blendMode: LayerBlendMode.multiply),
+      (layer) => layer.copyWith(collapsed: true),
     ]) {
       final command = UpdateLayerDisplayCommand(
         repository: repository,

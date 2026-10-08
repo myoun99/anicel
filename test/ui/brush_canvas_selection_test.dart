@@ -17,15 +17,20 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/stamp_carry.dart' show applyHomography;
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPoseSample;
 import 'package:anicel/src/models/transform_track.dart' show TransformPose;
@@ -36,15 +41,22 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/core/point_bounds.dart';
+import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/placement_reading.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -68,14 +80,14 @@ void main() {
   /// it is 40% of this fixture's 50×50 box, which is why so many pins had
   /// to move their thumb.
   ///
-  /// 🚨★★★**THIS EXACT POINT, and it is the ONLY one worth having.** Nine
-  /// grab targets sit on a 50×50 box — four corners, four edge middles and
-  /// the cross — each claiming a 16px radius, so the free floor is four
-  /// small diamonds. (32.5,32.5) is the middle of one: it is 17.68px from
-  /// the TL corner, the two nearest edge middles AND the cross, all four at
-  /// once, which is the largest clearance the box has to offer. ⛔Nudging
-  /// it "somewhere inside" lands on a handle — that is how this constant
-  /// was born.
+  /// ↩️**THIS EXACT POINT was the only one worth having** while each of the
+  /// nine grab targets on a 50×50 box — four corners, four edge middles and
+  /// the cross — claimed a 16px radius: the free floor was four small
+  /// diamonds, and (32.5,32.5) is the middle of one, 17.68px from the TL
+  /// corner, the two nearest edge middles and the cross alike. A handle is
+  /// taken on the square drawn for it now (F-262, 유저 2026-10-02: 「보이는
+  /// 만큼 존재하도록」), so most of the box is floor again; the point stays
+  /// because it is still as far from all of them as a point can be.
   const insideOffTheCross = Offset(32.5, 32.5);
 
   BrushDab dab(double x, double y) => BrushDab(
@@ -106,6 +118,14 @@ void main() {
     CanvasTool tool = CanvasTool.select,
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    ShapeToolOptions shapeOptions = const ShapeToolOptions(),
+    // The brush in hand, for a case about what a tool does NOT read of it.
+    // Null = the defaults.
+    BrushToolState Function(BrushToolState defaults)? brushInHand,
+    // Every view the panel ASKS for. The fixture's view is held — it does
+    // not move for the asking — so a case reads here whether a gesture was
+    // taken as navigation.
+    ValueChanged<CanvasViewport>? onViewportChanged,
     TransformMode transformMode = TransformMode.normal,
     CanvasViewport? viewport,
     // Extra committed ink, mounted with the fixture. `null` replaces the
@@ -171,12 +191,21 @@ void main() {
     var liveTool = tool;
     // ONE brush, HELD, the way the workspace holds it: a tool switch is a
     // change IN HAND that the panel hears (H40 ②), not a new panel.
+    final inHand =
+        brushInHand?.call(BrushToolState.defaults) ?? BrushToolState.defaults;
     final brush = ValueNotifier(
-      BrushToolState.defaults.copyWith(
+      inHand.copyWith(
         tool: tool,
-        selectShape: shapeKind,
-        fillShape: shapeKind,
+        // Each verb takes the shape only if it speaks it: a line is the
+        // shape tool's alone.
+        selectShape: canvasShapeEncloses(shapeKind) ? shapeKind : null,
+        fillShape: canvasShapeEncloses(shapeKind) ? shapeKind : null,
+        drawShape: canvasToolShapes(CanvasTool.shape).contains(shapeKind)
+            ? shapeKind
+            : null,
         fillBlendMode: blendMode,
+        shapeBlendMode: blendMode,
+        shapeOptions: shapeOptions,
       ),
     );
     addTearDown(brush.dispose);
@@ -198,12 +227,21 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
-                cellPlacementOf: cellPlacementOf,
-                interactiveContentPose: placement,
+                cellPlacementOf: cellPlacementOf == null
+                    ? null
+                    : (key) => placementOfSample(
+                        cellPlacementOf(key),
+                        canvasSize,
+                      ),
+                interactiveContentPose: placementOfSample(
+                  placement,
+                  canvasSize,
+                ),
                 historyManager: history,
                 brushToolState: brush,
                 selectionCommands: commands,
                 viewport: liveViewport,
+                onViewportChanged: onViewportChanged,
                 shapeFillDabFor: (shape, color) => buildShapeFillDab(
                   shape: shape,
                   color: color,
@@ -458,18 +496,18 @@ void main() {
   /// A move drag on a box too small to be grabbed at zoom 1, stated in
   /// CANVAS pixels so the pin keeps asserting the landing it always did.
   ///
-  /// 🚨★★★**NINE 16px TARGETS DO NOT FIT ON A SMALL BOX.** Four corners,
-  /// four edge middles and now the anchor cross each claim a 16px SCREEN
-  /// radius. The free floor is the four quadrant midpoints, each
-  /// `side·√2/4` from the corner, the two near edge middles and the cross
-  /// alike — so a box needs to be **wider than ~46 screen px** before any
-  /// of it can start a move. The fixture's implicit whole-picture box is 34
-  /// canvas px; at zoom 1 its centre was the last free pixel, and R5's
-  /// cross took it.
+  /// ↩️**NINE 16px TARGETS DID NOT FIT ON A SMALL BOX.** Four corners,
+  /// four edge middles and the anchor cross each claimed a 16px SCREEN
+  /// radius, so a box had to be wider than ~46 screen px before any of it
+  /// could start a move; the fixture's implicit whole-picture box is 34
+  /// canvas px, and at zoom 1 R5's cross took its last free pixel. Zooming
+  /// in bought the room back, which is what this helper does.
   ///
-  /// ⛔The answer is not to shrink a radius. Those are touch targets and
-  /// the crowding is real for the user too — but the radii are SCREEN
-  /// space, so zooming in buys the room back, which is what the user does.
+  /// ↩️「The answer is not to shrink a radius — those are touch targets」
+  /// stood here, and it was this session's reasoning, not the user's. 유저
+  /// 2026-10-02 (F-262): 「작동박스가 보이는것보다 큰거같음 … 보이는 만큼
+  /// 존재하도록」 — a handle is the square drawn for it. The pins below keep
+  /// their zoom; they are about the landing, and it is the same one.
   Future<void> moveAtZoom(
     WidgetTester tester, {
     required double zoom,
@@ -588,11 +626,14 @@ void main() {
     await tester.pump();
     // A rotation, so the resampler actually runs (a pure translation
     // short-circuits and never reaches it).
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 24,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
 
@@ -737,7 +778,15 @@ void main() {
     // A ROTATION: a pure translation short-circuits and never reaches the
     // resampler at all, which is what the preview-parity test above says.
     refuseResample = true;
-    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 24, scale: 1);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
+    );
     await tester.pump();
     await tester.pump();
     final afterRefusal = resamples;
@@ -745,7 +794,15 @@ void main() {
     // A second, DIFFERENT transform. With the gate stuck closed this asks
     // for nothing at all — the bug, seen from outside the widget.
     refuseResample = false;
-    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 31, scale: 1);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 31,
+        sx: 1,
+        sy: 1,
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -801,11 +858,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 24,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -1182,11 +1242,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 5,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -1467,11 +1530,14 @@ void main() {
     // is the only one both ends agree about.
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 15,
-      ty: 15,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 15,
+        ty: 15,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     expect(env.commands.transformActive, isTrue, reason: 'the box is open');
@@ -1547,11 +1613,14 @@ void main() {
       }
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 15,
-        ty: 15,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 15,
+          ty: 15,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.coordinator.selectFrame(keys[1]);
@@ -1586,6 +1655,43 @@ void main() {
   /// the pins above, which all move the box by a pure translation, deleting
   /// the re-aim outright changed NOTHING — a translation is the same about
   /// any pivot. Only a scale (or a rotation) asks where the centre is.
+  // 🗣️유저 2026-09-19: 「중요한건 배율 회전 이동의 편집값이 그대로 전달
+  // 되는거야」, and of the cross on 09-20: 「편집값은 절대값이야. 그냥
+  // 고정이야」. ↩️The walk named the scales, the rotation and the move one by
+  // one — the list predates the cross — so the cross went back to the middle
+  // on every step, and a turn about it landed somewhere else on the next cel.
+  testWidgets('🚨every value walks to the next cel — the cross with the '
+      'rest, and each axis\'s own scale', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    const held = TransformValues(
+      sx: -1.5,
+      sy: 0.75,
+      rotationDegrees: 30,
+      tx: 3,
+      ty: -2,
+      anchorX: 9,
+      anchorY: -4,
+    );
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues((_) => held);
+    await tester.pump();
+    expect(env.commands.transformValues, held, reason: '⛔전제');
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 따라왔다');
+    expect(env.commands.transformValues, held);
+  });
+
   testWidgets('⛔×2 on the cel walked to grows ITS drawing where it stands, '
       'not about the pivot of the cel left behind', (tester) async {
     final keys = BrushCanvasFixture.createFrameKeys();
@@ -1601,11 +1707,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
 
@@ -1691,11 +1800,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 50,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 50,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
 
@@ -1784,11 +1896,14 @@ void main() {
     // 「이동+확대하고 둘다 동시적용 해봤는데 **한쪽 값의 확대가 사라졌어.
     // 이동은 남아있는데**」. ⛔A pin that sets one of them measures half the
     // law, and that is exactly why this one let the defect through.
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -1880,11 +1995,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -1906,6 +2024,262 @@ void main() {
       inkAt(env.coordinator, 55, 50),
       isNonZero,
       reason: 'and its ink inside that box moved too',
+    );
+  });
+
+  // A scale of zero on an axis — the frame a flip passes through
+  // (F-256-Q1) — is the row shown as nothing: the box moved nothing of that
+  // cel, so its confirm leaves the cel as it is (「불가능하면 그냥 무시」).
+  // ↩️Only a cel read through the user's selection was turned away; one
+  // taken whole was moved as if its row lay unplaced.
+  testWidgets('🚨a cel its row shows as NOTHING is left as it is by a range '
+      'confirm — with nothing selected too', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final collapsed = (
+      pose: TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
+      anchorPoint: CanvasPoint(x: 0, y: 0),
+    );
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformTargetKeys: () => [keys[0], keys[1]],
+      cellPlacementOf: (key) => key == keys[1] ? collapsed : null,
+    );
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(45, 45), dab(120, 120)],
+    );
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region, isNull, reason: '⛔전제: 아무것도 선택 안 함');
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
+    );
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, 55, 50),
+      isNonZero,
+      reason: 'LIVENESS — the standing cel moved',
+    );
+    env.coordinator.selectFrame(keys[1]);
+    expect(inkAt(env.coordinator, 120, 120), isNonZero, reason: 'as it was');
+    expect(
+      inkAt(env.coordinator, 130, 125),
+      0,
+      reason: '⛔moved here it was moved as if its row lay unplaced',
+    );
+  });
+
+  /// 🚨★★★**A WARP OVER A RANGE BENDS EVERY CEL IN IT**
+  /// (`a-warp-over-a-frame-range-lands-on-one-cel`, measured 2026-10-06).
+  ///
+  /// The two cases above are the 일반 transform's. Under 퍼스 and 메쉬 the
+  /// box's AFFINE is the identity while its corners or its grid carry the
+  /// warp — and the affine was all the confirm handed the range's other
+  /// cels, so a warp bent the cel you stood on and left the rest untouched.
+  /// What comes down now is the box's mapping of the canvas (`StampCarry`),
+  /// the one the float itself went through.
+  for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
+    testWidgets('🚨a WARP confirmed over a frame range bends every cel in '
+        'it — the same warp, each on its own pixels, as ONE undo ($mode)', (
+      tester,
+    ) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        transformMode: mode,
+        transformTargetKeys: () => [keys[0], keys[1]],
+      );
+      // The SAME ink inside the outline on both frames — the fixture's, at
+      // (30,30) · (45,45) · (60,60) — and a witness of its own outside it on
+      // each: only pixels the warp does not touch can say whose cel a
+      // landing was derived against.
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(100, 100)]);
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(
+        sourceDabs: [dab(30, 30), dab(45, 45), dab(60, 60), dab(90, 20)],
+      );
+      env.coordinator.selectFrame(keys.first);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      final before = env.coordinator.currentSurfaceOf(keys.first);
+      final entriesBefore = env.history.undoCount;
+
+      // A quad corner, or an interior grid point (pitch 17 from (20,20)).
+      final grab = mode == TransformMode.perspective
+          ? const Offset(20, 20)
+          : const Offset(37, 37);
+      await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
+      env.commands.applyTransform();
+      await tester.pump();
+
+      expect(env.history.undoCount, entriesBefore + 1, reason: 'one confirm');
+      final one = env.coordinator.currentSurfaceOf(keys.first);
+      final two = env.coordinator.currentSurfaceOf(keys[1]);
+      var changed = 0;
+      for (var y = 5; y < 85; y += 1) {
+        for (var x = 5; x < 85; x += 1) {
+          final onOne = surfacePixelRgba(one, x, y);
+          if (onOne != surfacePixelRgba(before, x, y)) {
+            changed += 1;
+          }
+          if (onOne != surfacePixelRgba(two, x, y)) {
+            fail('the other cel was not bent as the standing one was — at '
+                '($x, $y): ${surfacePixelRgba(two, x, y)}, not $onOne');
+          }
+        }
+      }
+      expect(changed, greaterThan(0), reason: '⛔premise: the warp bent it');
+      expect(surfacePixelRgba(one, 100, 100), isNonZero);
+      expect(
+        surfacePixelRgba(two, 90, 20),
+        isNonZero,
+        reason: 'outside the outline the other cel kept its own ink — it '
+            'was landed on itself',
+      );
+      expect(surfacePixelRgba(two, 100, 100), 0);
+      expect(surfacePixelRgba(one, 90, 20), 0);
+
+      env.history.undo();
+      await tester.pump();
+      expect(
+        surfacePixelRgba(env.coordinator.currentSurfaceOf(keys[1]), 30, 30),
+        isNonZero,
+        reason: '⛔ONE undo takes BOTH cels back',
+      );
+    });
+  }
+
+  testWidgets('🚨with NOTHING selected a quad carries every cel\'s whole '
+      'picture by the same perspective — past the box it stood on too', (
+    tester,
+  ) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformMode: TransformMode.perspective,
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+    // Frame two: ink inside frame one's picture (the fixture draws 28..62)
+    // and ink well past its bottom-right corner.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45), dab(90, 90)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region, isNull, reason: '⛔전제: 아무것도 선택 안 함');
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // The box frames frame one's ink; its bottom-right corner, pulled out.
+    await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
+    env.commands.applyTransform();
+    await tester.pump();
+
+    // Where the SAME homography sends frame two's far ink — the corners as
+    // the confirm recorded them.
+    final offsets = env.commands
+        .recallFor(TransformMode.perspective)!
+        .cornerOffsets;
+    final base = [
+      CanvasPoint(x: 28, y: 28),
+      CanvasPoint(x: 62, y: 28),
+      CanvasPoint(x: 62, y: 62),
+      CanvasPoint(x: 28, y: 62),
+    ];
+    final h = solveHomography(base, [
+      for (var i = 0; i < 4; i += 1)
+        CanvasPoint(x: base[i].x + offsets[i].x, y: base[i].y + offsets[i].y),
+    ])!;
+    final sent = applyHomography(h, CanvasPoint(x: 90, y: 90));
+    expect(
+      sent.distanceTo(CanvasPoint(x: 90, y: 90)),
+      greaterThan(8),
+      reason: '⛔premise: the perspective moves that place',
+    );
+
+    env.coordinator.selectFrame(keys[1]);
+    expect(
+      inkAt(env.coordinator, sent.x.round(), sent.y.round()),
+      isNonZero,
+      reason: '「각자 그림 전체적용」 — frame two\'s ink past frame one\'s '
+          'picture went where the quad sends that place',
+    );
+    expect(
+      inkAt(env.coordinator, 90, 90),
+      0,
+      reason: '⛔left behind here is the defect',
+    );
+  });
+
+  testWidgets('🚨with NOTHING selected a mesh carries the part of another '
+      'cel\'s picture past the box ON, the way its edge was going', (
+    tester,
+  ) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformMode: TransformMode.mesh,
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+    // Frame two: ink just past the corner that will be pulled, and ink past
+    // the opposite corner, which nothing moves.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(45, 45), dab(68, 68), dab(14, 14)],
+    );
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // The grid's bottom-right node, pulled out by (12, 10).
+    await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
+    env.commands.applyTransform();
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys[1]);
+    bool inkWithin(int left, int top, int right, int bottom) {
+      for (var y = top; y < bottom; y += 1) {
+        for (var x = left; x < right; x += 1) {
+          if (inkAt(env.coordinator, x, y) != 0) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    expect(
+      inkWithin(64, 64, 73, 73),
+      isFalse,
+      reason: '⛔left where it was is a tear along the box\'s edge',
+    );
+    expect(
+      inkWithin(80, 78, 112, 106),
+      isTrue,
+      reason: 'past the pulled corner the ink went FURTHER than the corner '
+          'did — the edge cell\'s step, carried on',
+    );
+    expect(
+      inkWithin(12, 12, 17, 17),
+      isTrue,
+      reason: 'and past the corner nothing moved, nothing moved',
     );
   });
 
@@ -2042,8 +2416,8 @@ void main() {
 
     final region = env.commands.region!;
     // The press point: inside the box, OUTSIDE the triangle (the half the
-    // hypotenuse cuts off) — and clear of every handle, whose hit radius
-    // is 16 screen px and which would otherwise open a SCALE instead.
+    // hypotenuse cuts off) — and clear of every handle, which would
+    // otherwise open a SCALE instead.
     final inBoxOutsideOutline = CanvasPoint(x: 40, y: 90);
     expect(
       region.containsPoint(inBoxOutsideOutline),
@@ -2299,11 +2673,14 @@ void main() {
     // and fall back to a whole canvas holding nothing.
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -2452,7 +2829,12 @@ void main() {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformAnchor(x: 30, y: 0);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        anchorX: 30,
+        anchorY: 0,
+      ),
+    );
     await tester.pump();
     expect(env.commands.transformValues!.anchorX, 30, reason: 'the premise');
 
@@ -2573,6 +2955,154 @@ void main() {
     }
   });
 
+  // 🗣️I-79 (유저 2026-10-06): 「변형도구 체크버튼도 이 공용화된거 쓰도록」, and
+  // I-79-Q1 (10-08): 「아니 그냥 위쪽 가운데 말고 아래쪽 가운데로 하자」 — the
+  // box's ✓/✕ wear the canvas's pill, under the middle of the box AS DRAWN.
+  testWidgets('🚨the ✓/✕ pill stands under the middle of the box as drawn — '
+      'a turned box, not the shape it carries', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    // A diamond: turned an eighth, its box stands well past it.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          CanvasPoint(x: 45, y: 20),
+          CanvasPoint(x: 70, y: 45),
+          CanvasPoint(x: 45, y: 70),
+          CanvasPoint(x: 20, y: 45),
+        ]),
+      ),
+    );
+    await tester.pump();
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues(
+      (now) => now.copyWith(rotationDegrees: 45),
+    );
+    await tester.pump();
+
+    final pill = find.byKey(const ValueKey<String>('selection-confirm-pill'));
+    for (final key in const ['selection-move-confirm', 'selection-move-cancel']) {
+      expect(
+        find.descendant(of: pill, matching: find.byKey(ValueKey<String>(key))),
+        findsOneWidget,
+        reason: '$key 는 알약 안에 있다',
+      );
+    }
+    final chrome = chromeOnScreen(tester)!;
+    final drawn = pointsBounds(
+      chrome.box,
+    ).shift(tester.getTopLeft(find.byKey(layerKey)));
+    final rect = tester.getRect(pill);
+    expect(rect.center.dx, closeTo(drawn.center.dx, 0.01), reason: '가운데');
+    expect(
+      rect.top,
+      closeTo(drawn.bottom + targetPillGap, 0.01),
+      reason: '상자 아래 — 상자가 실은 모양 아래가 아니다',
+    );
+  });
+
+  // The rim round the buttons is the PILL's. A press there reached the layer
+  // as 「outside the box」, which is the rotation.
+  testWidgets('🚨알약 테두리에서 시작한 드래그도 회전이 아니다', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+    final before = env.commands.transformValues!;
+
+    final pill = tester.getRect(
+      find.byKey(const ValueKey<String>('selection-confirm-pill')),
+    );
+    final rim = Offset(pill.left + CanvasCapsule.barPillEnd / 2, pill.center.dy);
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('selection-move-confirm')))
+          .contains(rim),
+      isFalse,
+      reason: '⛔전제: 버튼이 아니라 테두리',
+    );
+    final press = await tester.startGesture(rim);
+    await tester.pump();
+    await press.moveBy(const Offset(24, 18));
+    await tester.pump();
+    await press.moveBy(const Offset(24, 18));
+    await tester.pump();
+
+    expect(
+      env.commands.transformValues?.rotationDegrees,
+      before.rotationDegrees,
+      reason: '🚨알약 위에서 끈 것은 회전이 아니다',
+    );
+    expect(env.commands.transformValues?.tx, before.tx, reason: '⛔이동도 아니다');
+    await press.up();
+    await tester.pump();
+  });
+
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록」 — these
+  // two were in the list all along (Enter · Esc) and did not say so. A
+  // button names the action it is, and its tooltip wears that action's key.
+  testWidgets('the box\'s ✓ and ✕ name the actions they press', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+
+    List<String> actionsOf(String key) => tester
+        .widget<AppIconButton>(
+          find.ancestor(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(AppIconButton),
+          ),
+        )
+        .shortcuts;
+    expect(actionsOf('selection-move-confirm'), [EditorActionIds.confirm]);
+    expect(actionsOf('selection-move-cancel'), [
+      EditorActionIds.selectionTransformCancel,
+    ]);
+  });
+
+  // The ✓'s ON state is 「this session has changes」 — the fact the ants
+  // and the box show in the session's red (`targetPillVerbs`' `changed`).
+  testWidgets('the box\'s ✓ is lit once the box has changes', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformValues!.tx, isNot(0), reason: '⛔전제: 옮김');
+
+    expect(
+      tester
+          .appIconButton(
+            find.byKey(const ValueKey<String>('selection-move-confirm')),
+          )
+          .isSelected,
+      isTrue,
+    );
+  });
+
   testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {
     final env = await pumpSelectionPanel(
       tester,
@@ -2616,7 +3146,7 @@ void main() {
 
     // Three operations: scale, move, and the anchor.
     await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
-    final scaled = env.commands.transformValues!.scale;
+    final scaled = env.commands.transformValues!.sx;
     expect(scaled, isNot(1));
     await moveBoxBy(tester, const Offset(10, 5));
     expect(env.commands.transformValues!.tx, isNot(0));
@@ -2632,11 +3162,11 @@ void main() {
     expect(env.commands.undoTransformStep(), isTrue);
     await tester.pump();
     expect(env.commands.transformValues!.tx, 0, reason: '이동이 돌아왔다');
-    expect(env.commands.transformValues!.scale, scaled, reason: '배율은 남았다');
+    expect(env.commands.transformValues!.sx, scaled, reason: '배율은 남았다');
 
     expect(env.commands.undoTransformStep(), isTrue);
     await tester.pump();
-    expect(env.commands.transformValues!.scale, 1, reason: '배율도 돌아왔다');
+    expect(env.commands.transformValues!.sx, 1, reason: '배율도 돌아왔다');
 
     expect(
       env.commands.undoTransformStep(),
@@ -3209,8 +3739,9 @@ void main() {
   });
 
   group('a transform handle is where the hand and the quad say (F-127, F-42)', () {
-    testWidgets('🚨F-127: a pen pressed just off a scale handle and moved one '
-        'pixel moves the handle about one pixel — it never jumps to the pen', (
+    testWidgets('🚨F-127: a pen pressed off a scale handle\'s middle and moved '
+        'one pixel moves the handle about one pixel — it never jumps to the '
+        'pen', (
       tester,
     ) async {
       // 유저 2026-09-13: 「펜만 변형툴 사용하려고 꼭짓점 클릭시작하면 그 순간
@@ -3223,8 +3754,9 @@ void main() {
       await tester.pump();
       final before = chromeOnScreen(tester)!;
 
-      // The bottom-right handle, pressed 8px further down and right — inside
-      // the grab radius, off the handle itself.
+      // The bottom-right handle, pressed 4px further down and right — on
+      // the square, off its middle. ↩️It pressed 8px off, inside a 16px
+      // grab radius that is gone (F-262): out there is the turn now.
       var index = 0;
       for (var i = 1; i < before.handles.length; i += 1) {
         final candidate = before.handles[i];
@@ -3236,7 +3768,7 @@ void main() {
       final handle = before.handles[index];
       final origin = tester.getTopLeft(find.byKey(layerKey));
       final gesture = await tester.startGesture(
-        origin + handle + const Offset(8, 8),
+        origin + handle + const Offset(4, 4),
         kind: PointerDeviceKind.stylus,
       );
       await tester.pump();
@@ -3245,9 +3777,14 @@ void main() {
 
       final after = chromeOnScreen(tester)!;
       expect(
+        env.commands.transformValues!.sx,
+        isNot(1),
+        reason: '⛔전제: the press took the handle — the box scaled',
+      );
+      expect(
         (after.handles[index] - handle).distance,
         lessThan(2),
-        reason: 'a one-pixel move is a one-pixel move, however far off the '
+        reason: 'a one-pixel move is a one-pixel move, wherever on the '
             'handle the pen came down',
       );
       await gesture.up();
@@ -3474,11 +4011,14 @@ void main() {
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
 
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 10,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 10,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
@@ -3514,13 +4054,16 @@ void main() {
       isTrue,
       reason: 'with no box open, a flip opens one — like the numeric fields',
     );
-    expect(env.commands.transformValues?.scale, -1);
+    expect(env.commands.transformValues?.sx, -1);
 
-    env.commands.setTransformValues(
-      tx: 12,
-      ty: 0,
-      rotationDegrees: 30,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 12,
+        ty: 0,
+        rotationDegrees: 30,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
     env.commands.resetTransform();
@@ -3528,7 +4071,7 @@ void main() {
     final values = env.commands.transformValues;
     expect(values?.tx, 0);
     expect(values?.rotationDegrees, 0);
-    expect(values?.scale, 1);
+    expect(values?.sx, 1);
   });
 
   testWidgets('리셋 flattens the WARP in 퍼스 and 메쉬 alike, and keeps nothing '
@@ -3595,11 +4138,14 @@ void main() {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
 
     // Commit something worth remembering.
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 4,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 4,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -3626,6 +4172,552 @@ void main() {
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
 
+  /// 🚨★★★**재현 REPLAYS THE TRANSFORM THAT LANDED — ALL OF IT** (F-265 ·
+  /// F-256).
+  ///
+  /// 🗣️유저 2026-10-03: 「변형으로 좌우반전하고, 다음프레임에서 기록된
+  /// 내역대로 하려고 엔터누르니 좌우반전이아니라 좌우/상하반전이 됨」 —
+  /// 「구조적으로 반전이 제대로 기록안되는? 반전을 숫자로서 표현못하는게
+  /// 원인인거같으니 구조적으로 해결. 심플한 데이터로서 해결하도록」. And
+  /// 10-01: 「변형도구 일반변형, 가로에 대한 단독배율변경같은게 저장안됨.
+  /// 가로세로 통합으로서 저장? 기록됨」.
+  ///
+  /// ↩️The record was four numbers with ONE scale read off the horizontal
+  /// axis. 🧪Measured 2026-10-06, before the fix, on this fixture: a 좌우
+  /// 반전 replayed as both mirrors, a 상하반전 and a top-edge stretch left
+  /// 「nothing to replay」, and a right-edge stretch replayed on both axes.
+  ///
+  /// ⛔Each case goes in through the door a hand uses — the flip buttons'
+  /// verb, a drag on an edge middle — because a record that is right only
+  /// for values typed into it is the bug.
+  group('재현 replays the transform that landed, whole', () {
+    final cases =
+        <
+          String,
+          ({
+            Future<void> Function(
+              WidgetTester tester,
+              CanvasSelectionCommands commands,
+            )
+            perform,
+            TransformValues landed,
+          })
+        >{
+          '좌우반전 — the horizontal mirror alone': (
+            perform: (tester, commands) async {
+              commands.flipTransform(horizontal: true);
+              await tester.pump();
+            },
+            landed: const TransformValues(sx: -1),
+          ),
+          '상하반전 — the vertical mirror alone': (
+            perform: (tester, commands) async {
+              commands.flipTransform(horizontal: false);
+              await tester.pump();
+            },
+            landed: const TransformValues(sy: -1),
+          ),
+          'a right-edge stretch — the horizontal scale alone': (
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(70, 45),
+              const Offset(82.5, 45),
+            ),
+            landed: const TransformValues(sx: 1.5),
+          ),
+          'a top-edge stretch — the vertical scale alone': (
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(45, 20),
+              const Offset(45, 7.5),
+            ),
+            landed: const TransformValues(sy: 1.5),
+          ),
+          'a turn about a cross that was moved': (
+            perform: (tester, commands) async {
+              commands.editTransformValues(
+                (now) => now.copyWith(
+                  anchorX: 9,
+                  anchorY: -4,
+                  rotationDegrees: 30,
+                ),
+              );
+              await tester.pump();
+            },
+            landed: const TransformValues(
+              rotationDegrees: 30,
+              anchorX: 9,
+              anchorY: -4,
+            ),
+          ),
+        };
+
+    for (final entry in cases.entries) {
+      testWidgets(entry.key, (tester) async {
+        final env = await pumpSelectionPanel(tester);
+        await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+        await env.setTool(CanvasTool.move);
+        env.commands.beginTransform();
+        await tester.pump();
+
+        await entry.value.perform(tester, env.commands);
+        expect(
+          env.commands.transformValues,
+          entry.value.landed,
+          reason: '⛔전제: the box holds what the hand did',
+        );
+        env.commands.applyTransform();
+        await tester.pump();
+        expect(env.commands.transformActive, isFalse, reason: '⛔전제: 확정');
+
+        // The next piece: an untouched box, and 적용 with nothing to confirm.
+        env.commands.beginTransform();
+        await tester.pump();
+        expect(
+          env.commands.canApplyTransform,
+          isTrue,
+          reason: 'there is a transform to replay',
+        );
+        env.commands.applyTransform();
+        await tester.pump();
+
+        expect(env.commands.transformValues, entry.value.landed);
+      });
+    }
+
+    testWidgets('🚨a write that names one value is handed the box as it '
+        'stands — a typed X over a 상하반전 leaves it mirrored', (tester) async {
+      // 🧪2026-10-06, before the fix: the four-value write restated a scale
+      // read off the horizontal axis, and the picture stood back up.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.flipTransform(horizontal: false);
+      await tester.pump();
+
+      env.commands.editTransformValues((now) => now.copyWith(tx: now.tx + 5));
+      await tester.pump();
+
+      expect(
+        env.commands.transformValues,
+        const TransformValues(sy: -1, tx: 5),
+      );
+    });
+
+    testWidgets('🚨a corner of a mirrored box grows the mirror — one drag '
+        'after 좌우반전 neither stands it back up nor collapses it', (
+      tester,
+    ) async {
+      // 🧪2026-10-06, before the fix: one pixel of this drag left the
+      // picture at 1% ([TransformBoxLaw.scaled] has the arithmetic).
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.flipTransform(horizontal: true);
+      await tester.pump();
+
+      // Whichever handle stands at the bottom right now, pulled outward
+      // along the diagonal: 25 → 30 from the centre.
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(75, 75));
+
+      final values = env.commands.transformValues!;
+      expect(values.sx, closeTo(-1.2, 1e-9));
+      expect(values.sy, closeTo(1.2, 1e-9));
+    });
+
+    testWidgets('🚨a corner keeps the proportions an edge middle gave the box',
+        (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      await dragOnLayer(tester, const Offset(70, 45), const Offset(82.5, 45));
+      expect(env.commands.transformValues, const TransformValues(sx: 1.5));
+
+      // The bottom-right corner stands at (82.5, 70) — 37.5 by 25 from the
+      // centre — and is pulled a fifth further along that diagonal.
+      await dragOnLayer(tester, const Offset(82.5, 70), const Offset(90, 75));
+
+      final values = env.commands.transformValues!;
+      expect(values.sx, closeTo(1.8, 1e-9));
+      expect(values.sy, closeTo(1.2, 1e-9));
+    });
+  });
+
+  /// 🚨★★★**A HANDLE AND THE CROSS ARE TAKEN WHERE THEY ARE DRAWN** (F-262),
+  /// through the layer's own press.
+  ///
+  /// 🗣️유저 2026-10-02: 「변형도구의 사각형 공통ui, 꼭짓점이나 십자가 등
+  /// 작동박스가 보이는것보다 큰거같음. **박스 외 부분 조작하는데도 크기가
+  /// 줄어든다거나 십자가가 움직인다거나.** 보이는 만큼 존재하도록」.
+  ///
+  /// ↩️Each was taken within 16px of its centre. Every press below is
+  /// inside that disc and off what is drawn: it scaled the box, or carried
+  /// the cross, where the user meant the turn or the move that lives there.
+  testWidgets('🚨a press beside a corner or beside the cross is the box\'s own '
+      '— the turn outside it, the move inside — and on them it is theirs', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    Future<TransformValues> dragged(Offset from, Offset by) async {
+      env.commands.resetTransform();
+      await tester.pump();
+      await dragOnLayer(tester, from, from + by);
+      return env.commands.transformValues!;
+    }
+
+    // 6px out from the top-left corner (20,20), on the diagonal: outside the
+    // box, so the turn.
+    final outside = await dragged(const Offset(14, 14), const Offset(0, 12));
+    expect(outside.sx, 1, reason: '유저: 「크기가 줄어든다거나」');
+    expect(outside.sy, 1);
+    expect(outside.rotationDegrees, isNot(0), reason: '상자 밖은 회전이다');
+
+    // 6px in from the same corner: inside the box, so the move.
+    final inside = await dragged(const Offset(26, 26), const Offset(5, 0));
+    expect(inside, const TransformValues(tx: 5));
+
+    // 10px right of the cross at the centre (45,45): past the box its arms
+    // span, so the move again.
+    final beside = await dragged(const Offset(55, 45), const Offset(0, 5));
+    expect(beside, const TransformValues(ty: 5), reason: '「십자가가 움직인다」');
+
+    // ⛔And ON them, they are still theirs — the corner scales, the cross
+    // is carried, the corner of the cross's box included.
+    final corner = await dragged(const Offset(22, 22), const Offset(-5, -5));
+    expect(corner.sx, closeTo(1.2, 1e-9));
+    expect(corner.sy, closeTo(1.2, 1e-9));
+    final cross = await dragged(const Offset(50, 50), const Offset(3, 0));
+    expect(cross, const TransformValues(anchorX: 3));
+  });
+
+  /// 🚨★★★**WHATEVER ENDS AN OPEN TRANSFORM LANDS WHAT 확정 LANDS** (F-280).
+  ///
+  /// 🗣️유저 2026-10-04: 「일반변형은 도중에 도구 바꾼다거나 하는 동작하면
+  /// 확정되고 바뀌는데, 자유변형은 취소되고 바뀜. 동작이 서로 다르니
+  /// 변형도구는 기본적으로 확정되고 바뀌도록. 기록도 남기는거 등 법 통일도」.
+  ///
+  /// The landing had three implementations, and which one ran depended on
+  /// how the session ended. 🧪Measured 2026-10-06, before the fix, each
+  /// ending against 확정 on the same gesture:
+  ///
+  /// · a painting tool (the layer unmounts) folded the AFFINE alone — a
+  ///   quad or a mesh whose numbers were at rest landed unwarped (유저's
+  ///   「취소되고 바뀜」), and no mode left a record for 재현;
+  /// · another selection tool (the layer stays) folded and then committed —
+  ///   a scaled or turned picture went through its transform TWICE;
+  /// · Ctrl+D landed raw: the same unwarped quad, no record, and NO undo
+  ///   entry — one undo brought the outline back over a picture that stayed
+  ///   transformed;
+  /// · a new selection arriving (전체 선택, 선택 반전) confirmed through the
+  ///   affine-only fold: the unwarped quad again.
+  ///
+  /// ⛔Compared against 확정's own landing rather than a number, because
+  /// 「the same as Enter」 is the law — the pixels, the record 재현 replays,
+  /// and an undo that brings the picture back.
+  group('whatever ends an open transform lands what 확정 lands', () {
+    final gestures =
+        <
+          String,
+          ({
+            TransformMode mode,
+            Future<void> Function(
+              WidgetTester tester,
+              CanvasSelectionCommands commands,
+            )
+            perform,
+
+            /// Where the gesture left the outline's top-left corner, when it
+            /// carried that corner somewhere a reader can name.
+            Offset? topLeft,
+          })
+        >{
+          '일반 — an edge middle stretched': (
+            mode: TransformMode.normal,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(70, 45),
+              const Offset(82.5, 45),
+            ),
+            // The left edge went out as far as the right one: 25 → 37.5.
+            topLeft: const Offset(7.5, 20),
+          ),
+          '자유 — a corner pulled, every number at rest': (
+            mode: TransformMode.perspective,
+            perform: (tester, commands) =>
+                dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14)),
+            topLeft: const Offset(8, 14),
+          ),
+          '자유 — a corner pulled, then turned and moved': (
+            mode: TransformMode.perspective,
+            perform: (tester, commands) async {
+              await dragOnLayer(
+                tester,
+                const Offset(20, 20),
+                const Offset(8, 14),
+              );
+              commands.editTransformValues(
+                (now) => now.copyWith(rotationDegrees: 20, tx: 6),
+              );
+              await tester.pump();
+            },
+            topLeft: null,
+          ),
+          '메쉬 — a grid point pulled, every number at rest': (
+            mode: TransformMode.mesh,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(37, 37),
+              const Offset(31, 42),
+            ),
+            topLeft: null,
+          ),
+          '메쉬 — the corner of the grid pulled': (
+            mode: TransformMode.mesh,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(20, 20),
+              const Offset(10, 12),
+            ),
+            topLeft: const Offset(10, 12),
+          ),
+        };
+
+    for (final gesture in gestures.entries) {
+      testWidgets(gesture.key, (tester) async {
+        late List<int> original;
+        // One ending of the gesture: what it left on the cel, what it left
+        // for 재현, and whether undo brings the picture back.
+        Future<
+          ({
+            List<int> pixels,
+            TransformRecall? recall,
+            String outline,
+            Offset? outlineTopLeft,
+            int entries,
+            List<int> undone,
+          })
+        >
+        endedBy(String ending) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            transformMode: gesture.value.mode,
+          );
+          List<int> read() {
+            final surface = currentSurface(env.coordinator);
+            return [
+              for (var y = 0; y < 120; y += 1)
+                for (var x = 0; x < 120; x += 1)
+                  surfacePixelRgba(surface, x, y) ?? 0,
+            ];
+          }
+
+          original = read();
+          await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+          await env.setTool(CanvasTool.move);
+          env.commands.beginTransform();
+          await tester.pump();
+          final before = env.history.undoCount;
+          await gesture.value.perform(tester, env.commands);
+          switch (ending) {
+            case '확정':
+              env.commands.applyTransform();
+            case 'a painting tool':
+              await env.setTool(CanvasTool.brush);
+            case 'another selection tool':
+              await env.setTool(CanvasTool.select);
+            case 'Ctrl+D':
+              env.commands.deselect();
+            case 'a new selection':
+              // What 전체 선택 · 선택 반전 hand the layer.
+              env.commands.applyRegion(
+                CanvasSelectionRegion.shape(
+                  CanvasSelectionShape.rect(
+                    left: 0,
+                    top: 0,
+                    right: 100,
+                    bottom: 100,
+                  ),
+                ),
+              );
+          }
+          // The unmount lands a frame later — history never runs in a build.
+          await tester.pump();
+          await tester.pump();
+          await settle(tester);
+          final pixels = read();
+          final box = env.commands.region?.selectedBounds;
+          final outline = '$box';
+          final entries = env.history.undoCount - before;
+          for (var i = 0; i < entries; i += 1) {
+            env.history.undo();
+            await tester.pump();
+          }
+          await settle(tester);
+          final landed = (
+            pixels: pixels,
+            recall: env.commands.recallFor(gesture.value.mode),
+            outline: outline,
+            outlineTopLeft: box == null ? null : Offset(box.left, box.top),
+            entries: entries,
+            undone: read(),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          return landed;
+        }
+
+        final confirmed = await endedBy('확정');
+        expect(
+          confirmed.pixels,
+          isNot(original),
+          reason: '⛔전제: 확정이 그림을 바꿨다',
+        );
+        expect(confirmed.recall, isNotNull, reason: '⛔전제: 확정이 기록을 남겼다');
+        expect(confirmed.entries, 1, reason: '⛔전제');
+        expect(confirmed.undone, original, reason: '⛔전제: 언두 하나로 돌아온다');
+        // 확정's own outline is where the box put the picture — the corner
+        // the hand carried is the outline's corner afterwards. (Every other
+        // ending is held to 확정's below, so this is the one place the
+        // outline is read against the gesture itself.)
+        final carried = gesture.value.topLeft;
+        if (carried != null) {
+          expect(
+            (confirmed.outlineTopLeft! - carried).distance,
+            lessThan(0.5),
+            reason: 'the outline went with the corner: '
+                '${confirmed.outlineTopLeft} for $carried',
+          );
+        }
+
+        for (final ending in const [
+          'a painting tool',
+          'another selection tool',
+          'Ctrl+D',
+          'a new selection',
+        ]) {
+          final ended = await endedBy(ending);
+          expect(
+            ended.pixels,
+            confirmed.pixels,
+            reason: '$ending: the cel holds what 확정 would have landed',
+          );
+          final recall = ended.recall;
+          expect(recall, isNotNull, reason: '$ending: 재현 has a record');
+          expect(recall!.values, confirmed.recall!.values, reason: ending);
+          expect(
+            recall.cornerOffsets,
+            confirmed.recall!.cornerOffsets,
+            reason: ending,
+          );
+          expect(
+            recall.meshOffsets,
+            confirmed.recall!.meshOffsets,
+            reason: ending,
+          );
+          // Ctrl+D is the landing and then the deselect — two steps back,
+          // and no outline left; a tool change leaves it where 확정 does.
+          expect(
+            ended.entries,
+            ending == 'Ctrl+D' ? 2 : 1,
+            reason: '$ending: the landing is ONE undo entry of its own',
+          );
+          expect(
+            ended.outline,
+            switch (ending) {
+              'Ctrl+D' => 'null',
+              'a new selection' =>
+                '(bottom: 100.0, left: 0.0, right: 100.0, top: 0.0)',
+              _ => confirmed.outline,
+            },
+            reason: '$ending: the outline went where the picture went',
+          );
+          expect(
+            ended.undone,
+            original,
+            reason: '$ending: undo brings the picture back',
+          );
+        }
+      });
+    }
+  });
+
+  // 🧪Measured 2026-10-06: a box opened and never touched left an undo
+  // step under a tool change — one that stepped back to the same picture.
+  // A float lifted and put back is the cel as it stands; it lands nothing.
+  testWidgets('🚨a box nobody touched leaves no undo step, whatever ends it',
+      (tester) async {
+    for (final marquee in const [true, false]) {
+      for (final ending in const [
+        'a painting tool',
+        'another selection tool',
+        'Ctrl+D',
+        '취소',
+      ]) {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: marquee ? CanvasTool.select : CanvasTool.move,
+        );
+        if (marquee) {
+          await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+          await env.setTool(CanvasTool.move);
+        }
+        final before = env.history.undoCount;
+        final picture = currentSurface(env.coordinator);
+        // What the last real transform left for 재현.
+        const remembered = TransformRecall(
+          values: TransformValues(sx: 2, sy: 2),
+        );
+        env.commands.transformRecalls[TransformMode.normal] = remembered;
+        env.commands.beginTransform();
+        await tester.pump();
+        expect(env.commands.movePending, isTrue, reason: '⛔전제: 들어 올렸다');
+        switch (ending) {
+          case 'a painting tool':
+            await env.setTool(CanvasTool.brush);
+          case 'another selection tool':
+            await env.setTool(CanvasTool.select);
+          case 'Ctrl+D':
+            env.commands.deselect();
+          case '취소':
+            env.commands.cancelTransform();
+        }
+        await tester.pump();
+        await tester.pump();
+        await settle(tester);
+
+        final what = '$ending, ${marquee ? 'a marquee' : 'no selection'}';
+        expect(env.commands.movePending, isFalse, reason: what);
+        expect(env.commands.transformActive, isFalse, reason: what);
+        expect(
+          env.history.undoCount - before,
+          // Dropping a marquee the user drew is a step of its own.
+          ending == 'Ctrl+D' && marquee ? 1 : 0,
+          reason: '$what: nothing landed, so nothing to step back to',
+        );
+        expect(
+          currentSurface(env.coordinator),
+          same(picture),
+          reason: '$what: the cel was never written',
+        );
+        expect(
+          env.commands.recallFor(TransformMode.normal),
+          same(remembered),
+          reason: '$what: a box that did nothing is not the transform 재현 '
+              'replays — the last real one still is',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    }
+  });
+
   for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
     testWidgets('적용 over a box changed only by its WARP commits it — a '
         'point pulled is a change though every number is at rest ($mode)', (
@@ -3645,7 +4737,7 @@ void main() {
       await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
       final values = env.commands.transformValues!;
       expect(values.tx, 0, reason: '⛔전제: 숫자는 그대로다');
-      expect(values.scale, 1);
+      expect(values.sx, 1);
 
       env.commands.applyTransform();
       await tester.pump();
@@ -3790,7 +4882,7 @@ void main() {
     await pen.moveTo(origin + const Offset(85, 85));
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
-    expect(env.commands.transformValues?.scale, closeTo(1.6, 1e-9));
+    expect(env.commands.transformValues?.sx, closeTo(1.6, 1e-9));
 
     // ...then rest a palm on the glass. This used to cancel the drag and
     // hand the gesture to the viewport (유저: "변형 도중 터치 들어오면
@@ -3816,7 +4908,7 @@ void main() {
     // that carries BOTH halves of the law: the centre-pivot 2.0 says the
     // finger did nothing, and 1.2 says the drag restarted at the palm.
     expect(
-      env.commands.transformValues?.scale,
+      env.commands.transformValues?.sx,
       closeTo(1.8, 1e-9),
       reason: '⛔초기화 없이 — the 1.6 is still inside the 1.8',
     );
@@ -3834,15 +4926,15 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(10, 10));
     final scaled = env.commands.transformValues;
     expect(scaled, isNotNull);
-    expect(scaled!.scale, isNot(1.0));
+    expect(scaled!.sx, isNot(1.0));
 
     env.transformOptions.value = env.transformOptions.value.copyWith(
       mode: TransformMode.mesh,
     );
     await tester.pump();
     expect(
-      env.commands.transformValues?.scale,
-      scaled.scale,
+      env.commands.transformValues?.sx,
+      scaled.sx,
       reason: 'switching modes must not silently undo the scale',
     );
   });
@@ -4240,11 +5332,14 @@ void main() {
       await tester.pump();
       final generationOne = floatPainter().surface;
       await settle();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 0.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 0.4,
+          sy: 0.4,
+        ),
       );
       await tester.pump();
       await settle();
@@ -4474,11 +5569,14 @@ void main() {
       // 2026-09-24: 「변형도구=변형중이지 않으면 마지막 변형 재실행,
       // 변형중이면 확정」) and this button is one of its doors.
       final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 4,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 4,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -4530,6 +5628,15 @@ void main() {
             .onPressed,
         isNull,
         reason: '할 게 없으면 회색',
+      );
+      expect(
+        tester
+            .appIconButton(
+              find.byKey(const ValueKey<String>('selection-move-confirm')),
+            )
+            .isSelected,
+        isFalse,
+        reason: 'nothing changed: the ✓ is not lit',
       );
     });
 
@@ -4758,11 +5865,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       // The resample decodes asynchronously; the preview being up is what
       // says the image the confirm will keep actually exists yet.
@@ -4822,11 +5932,14 @@ void main() {
       );
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5043,11 +6156,14 @@ void main() {
       );
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5263,11 +6379,14 @@ void main() {
       await settle(tester);
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 0.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 0.5,
+          sy: 0.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5434,11 +6553,14 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
 
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 1.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 1.4,
+          sy: 1.4,
+        ),
       );
       await settle(tester);
       expect(
@@ -5449,11 +6571,14 @@ void main() {
 
       // Change the warp and confirm WITHOUT letting the new decode land:
       // the image on hand is now the 1.4 picture, the landing is 2.4.
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 2.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 2.4,
+          sy: 2.4,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -5533,11 +6658,14 @@ void main() {
       // (35,35) and turn a quarter.
       await dragOnLayer(tester, const Offset(45, 45), const Offset(35, 35));
       expect(env.commands.transformValues?.anchorX, closeTo(-10, 1e-9));
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 90,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 90,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -5577,7 +6705,7 @@ void main() {
       expect(env.commands.transformValues?.anchorX, closeTo(50, 1e-9));
       expect(env.commands.transformValues?.anchorY, closeTo(50, 1e-9));
       expect(
-        env.commands.transformValues?.scale,
+        env.commands.transformValues?.sx,
         1,
         reason: '⛔and it is not a scale — grabbing the cross moves nothing '
             'but the cross',
@@ -5597,11 +6725,14 @@ void main() {
       await dragOnLayer(tester, const Offset(45, 45), const Offset(65, 55));
       expect(env.commands.transformValues?.anchorX, closeTo(20, 1e-9));
 
-      env.commands.setTransformValues(
-        tx: 5,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 5,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       expect(env.commands.transformValues?.tx, 5);
@@ -5805,11 +6936,14 @@ void main() {
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
 
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 5,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       expect(env.commands.transformActive, isTrue);
@@ -5878,9 +7012,8 @@ void main() {
     // ↩️It was a (+2,0) arrow-key nudge until the nudge went (F-86, 유저
     // 2026-09-12: 「기능부터 잔존코드 싹 삭제」).
     await env.setTool(CanvasTool.move);
-    // ⚠️(30,30) and not (40,40): the lasso's bounds are 10..90, so its
-    // centre (50,50) is where the anchor cross sits (R5) and (40,40) is
-    // inside its grab radius. The DELTA is what this pin is about.
+    // ⚠️(30,30), well clear of the anchor cross at the lasso's centre
+    // (50,50; R5). The DELTA is what this pin is about.
     await dragOnLayer(tester, const Offset(30, 30), const Offset(50, 30));
     env.commands.confirmPendingMove();
     await tester.pump();
@@ -5949,6 +7082,1005 @@ void main() {
     await tester.pump();
 
     expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+  });
+
+  group('the shape tool (I-69)', () {
+    // 유저 2026-10-04: 「브러시 상태를 그대로 사용해서 도형그림 … 그냥 진짜
+    // 브러시랑 똑같이 래스터라이즈되있는 도형」 — the verb, end to end. The
+    // fixture's own ink sits at 30..60; these draw clear of it.
+    testWidgets('draws the traced rectangle as ONE stroke of the brush — its '
+        'outline and not its inside — and leaves the selection alone', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.shape);
+      final before = env.history.undoCount;
+      expect(inkAt(env.coordinator, 150, 100), 0, reason: 'blank to begin with');
+
+      await dragOnLayer(tester, const Offset(100, 100), const Offset(200, 180));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 150, 100), isNonZero, reason: 'the top');
+      expect(inkAt(env.coordinator, 100, 140), isNonZero, reason: 'the left');
+      expect(inkAt(env.coordinator, 200, 140), isNonZero, reason: 'the right');
+      expect(inkAt(env.coordinator, 150, 180), isNonZero, reason: 'the bottom');
+      expect(
+        inkAt(env.coordinator, 150, 140),
+        0,
+        reason: 'a shape drawn is its line: nothing is filled in',
+      );
+      expect(env.commands.region, isNull, reason: 'drawing is not selecting');
+      expect(
+        env.history.undoCount,
+        before + 1,
+        reason: 'one stroke, one step back',
+      );
+
+      env.history.undo();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 150, 100), 0, reason: 'and it goes whole');
+      expect(inkAt(env.coordinator, 100, 140), 0);
+    });
+
+    testWidgets('a line is drawn from one end to the other, and nothing '
+        'beside it', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+      );
+
+      await dragOnLayer(tester, const Offset(100, 200), const Offset(220, 200));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 104, 200), isNonZero, reason: 'one end');
+      expect(inkAt(env.coordinator, 160, 200), isNonZero, reason: 'between');
+      expect(inkAt(env.coordinator, 216, 200), isNonZero, reason: 'the other');
+      expect(inkAt(env.coordinator, 160, 230), 0);
+      expect(env.commands.region, isNull);
+    });
+
+    testWidgets('an ellipse is drawn round the box it was dragged in', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.ellipse,
+      );
+
+      await dragOnLayer(tester, const Offset(300, 100), const Offset(400, 180));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 350, 100), isNonZero, reason: 'the top');
+      expect(inkAt(env.coordinator, 300, 140), isNonZero, reason: 'the left');
+      expect(inkAt(env.coordinator, 350, 140), 0, reason: 'not its inside');
+      expect(
+        inkAt(env.coordinator, 303, 103),
+        0,
+        reason: 'nor the corner of its box — that is what makes it round',
+      );
+    });
+
+    testWidgets('a click draws nothing and leaves nothing to undo', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.shape);
+      final before = env.history.undoCount;
+
+      await tapOnLayer(tester, const Offset(150, 150));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 150, 150), 0);
+      expect(env.history.undoCount, before);
+    });
+
+    // 유저 2026-10-04: 「도형도구의 합성모드가 독립적으로 존재」 — and erase is
+    // in the blend list, which makes a shape an eraser the way it makes the
+    // shape fill one. On the raster, for the shape fill's reason: erase is
+    // carried per dab.
+    testWidgets('a shape drawn on the erase blend REMOVES ink', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+        blendMode: BrushBlendMode.erase,
+      );
+      expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink to erase');
+
+      await dragOnLayer(tester, const Offset(20, 45), const Offset(70, 45));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+    });
+
+    // 유저 답 I-69-Q7 메모 (2026-10-08): 「새 도형도구에서도 선/채움을 고르는
+    // 줄을 넣음. 즉 두곳에 존재하지만 승인. 법만 최대한 하나로 통일」 · Q9:
+    // 「채움은 타입과 무관하다」.
+    group('「채움」', () {
+      // The fixture's fill tool lays an exact shape with a hard edge at
+      // full opacity (the harness's own `shapeFillDabFor`).
+      const exactFill = ShapeToolOptions(
+        part: ShapePart.fill,
+        antiAlias: false,
+      );
+
+      testWidgets('🚨lays the traced shape\'s INSIDE as one area, in one '
+          'step — pixel for pixel what the fill tool\'s shape fill lays', (
+        tester,
+      ) async {
+        const probes = [
+          (150, 140),
+          (101, 101),
+          (199, 179),
+          (100, 100),
+          (200, 180),
+          (150, 99),
+          (150, 181),
+          (90, 140),
+          (210, 140),
+        ];
+        Future<List<int>> laidBy(
+          CanvasTool tool,
+          ShapeToolOptions options,
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: tool,
+            shapeOptions: options,
+          );
+          final before = env.history.undoCount;
+          await dragOnLayer(
+            tester,
+            const Offset(100, 100),
+            const Offset(200, 180),
+          );
+          await tester.pump();
+          expect(env.history.undoCount, before + 1, reason: '$tool: one step');
+          expect(env.commands.region, isNull, reason: 'nothing is selected');
+          return [for (final (x, y) in probes) inkAt(env.coordinator, x, y)];
+        }
+
+        final byTheShapeTool = await laidBy(CanvasTool.shape, exactFill);
+        expect(byTheShapeTool.first, isNonZero, reason: 'the middle is filled');
+        expect(byTheShapeTool.last, 0, reason: 'and nothing outside it');
+
+        final byTheFillTool = await laidBy(
+          CanvasTool.fillShape,
+          const ShapeToolOptions(),
+        );
+        expect(byTheShapeTool, byTheFillTool);
+      });
+
+      testWidgets('🚨at the tool\'s OWN opacity — the brush\'s is not read', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: exactFill.copyWith(opacity: 0.5),
+        );
+
+        await dragOnLayer(tester, const Offset(100, 100), const Offset(200, 180));
+        await tester.pump();
+
+        final alpha = inkAt(env.coordinator, 150, 140) & 0xFF;
+        expect(
+          alpha,
+          inInclusiveRange(126, 129),
+          reason: 'half: the brush in hand is at full opacity',
+        );
+      });
+
+      testWidgets('with the edge switch off every pixel is in or out; with '
+          'it on the edge is smoothed', (tester) async {
+        Future<int> partlyCovered(bool antiAlias) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.ellipse,
+            shapeOptions: exactFill.copyWith(antiAlias: antiAlias),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(300, 100),
+            const Offset(400, 180),
+          );
+          await tester.pump();
+          var partly = 0;
+          for (var x = 295; x <= 405; x += 1) {
+            for (var y = 95; y <= 185; y += 1) {
+              final alpha = inkAt(env.coordinator, x, y) & 0xFF;
+              if (alpha != 0 && alpha != 0xFF) {
+                partly += 1;
+              }
+            }
+          }
+          expect(
+            inkAt(env.coordinator, 350, 140) & 0xFF,
+            0xFF,
+            reason: 'the middle of the ellipse is filled either way',
+          );
+          return partly;
+        }
+
+        expect(await partlyCovered(false), 0);
+        expect(await partlyCovered(true), greaterThan(0));
+      });
+
+      testWidgets('on the erase blend it clears the area', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          blendMode: BrushBlendMode.erase,
+          shapeOptions: exactFill,
+        );
+        expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink');
+
+        await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+      });
+
+      testWidgets('🚨a line has no inside: under the line tile the tool '
+          'draws the line, whatever was chosen', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: exactFill,
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 160, 200), isNonZero, reason: 'the line');
+        expect(inkAt(env.coordinator, 160, 230), 0);
+      });
+
+      // a-marquee-on-a-posed-row, for an area as for a stroke.
+      testWidgets('on a posed row it fills the artwork its trace shows', (
+        tester,
+      ) async {
+        const size = BrushCanvasFixture.canvasSize;
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: exactFill,
+          placement: (
+            pose: TransformPose(
+              center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+            ),
+            anchorPoint: null,
+          ),
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(200, 100),
+          const Offset(300, 180),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(env.coordinator, 150, 140),
+          isNonZero,
+          reason: 'the canvas box (200..300) shows artwork (100..200)',
+        );
+        expect(inkAt(env.coordinator, 250, 140), 0);
+      });
+    });
+
+    // 유저 답 I-69-Q8 (2026-10-08): 「둘 다 (설정에 「모서리: 각지게 | 둥글게」)」
+    // · 「일반은 브러시랑 전혀 관계없는 독립적인것임」.
+    group('「일반」', () {
+      // Ten wide and hard-edged: a pixel is the line's or it is not. A
+      // trace through (x, y) covers the pixels five either side of it —
+      // x - 5 to x + 4.
+      const plain = ShapeToolOptions(
+        type: ShapeLineType.plain,
+        size: 10,
+        antiAlias: false,
+      );
+
+      testWidgets('🚨a rectangle is a ring of the tool\'s OWN width whose '
+          'corners are corners — one area, in one step', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: plain,
+        );
+        final ink = env.coordinator;
+        final before = env.history.undoCount;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 180),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 150, 95), isNonZero, reason: 'the top, outside');
+        expect(inkAt(ink, 150, 104), isNonZero, reason: 'and inside');
+        expect(inkAt(ink, 150, 94), 0, reason: 'five and no more');
+        expect(inkAt(ink, 150, 105), 0);
+        expect(inkAt(ink, 95, 140), isNonZero, reason: 'the left');
+        expect(inkAt(ink, 204, 140), isNonZero, reason: 'the right');
+        expect(inkAt(ink, 150, 184), isNonZero, reason: 'the bottom');
+        expect(inkAt(ink, 150, 140), 0, reason: 'a line: nothing is filled');
+        expect(inkAt(ink, 95, 95), isNonZero, reason: 'the corner, whole');
+        expect(inkAt(ink, 204, 184), isNonZero);
+        expect(inkAt(ink, 94, 94), 0);
+        expect(env.commands.region, isNull, reason: 'drawing is not selecting');
+        expect(env.history.undoCount, before + 1, reason: 'one step back');
+
+        env.history.undo();
+        await tester.pump();
+        expect(inkAt(ink, 150, 95), 0, reason: 'and it goes whole');
+        expect(inkAt(ink, 95, 95), 0);
+      });
+
+      testWidgets('「둥글게」 rounds its corners by half the width', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: plain.copyWith(corners: ShapeCorners.round),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 180),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 95, 95), 0, reason: 'the corner\'s point is gone');
+        expect(inkAt(ink, 204, 184), 0);
+        expect(inkAt(ink, 97, 97), isNonZero, reason: 'within the half stays');
+        expect(inkAt(ink, 202, 182), isNonZero);
+        expect(inkAt(ink, 150, 95), isNonZero, reason: 'the sides as wide');
+        expect(inkAt(ink, 150, 94), 0);
+        expect(inkAt(ink, 150, 105), 0);
+        expect(inkAt(ink, 150, 140), 0);
+      });
+
+      testWidgets('a line is cut square AT its two ends — and 「둥글게」 '
+          'rounds them', (tester) async {
+        Future<BrushFrameEditingCoordinator> drawn(ShapeCorners corners) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.line,
+            shapeOptions: plain.copyWith(corners: corners),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(100, 200),
+            const Offset(220, 200),
+          );
+          await tester.pump();
+          return env.coordinator;
+        }
+
+        final sharp = await drawn(ShapeCorners.sharp);
+        expect(inkAt(sharp, 100, 200), isNonZero, reason: 'its first pixel');
+        expect(inkAt(sharp, 219, 200), isNonZero, reason: 'its last');
+        expect(inkAt(sharp, 99, 200), 0, reason: 'as long as it was traced');
+        expect(inkAt(sharp, 220, 200), 0);
+        expect(inkAt(sharp, 100, 195), isNonZero, reason: 'square at the end');
+        expect(inkAt(sharp, 219, 204), isNonZero);
+        expect(inkAt(sharp, 160, 194), 0, reason: 'ten wide');
+        expect(inkAt(sharp, 160, 205), 0);
+
+        final round = await drawn(ShapeCorners.round);
+        expect(inkAt(round, 97, 200), isNonZero, reason: 'past the end');
+        expect(inkAt(round, 222, 200), isNonZero);
+        expect(inkAt(round, 94, 200), 0, reason: 'by the half, no more');
+        expect(inkAt(round, 225, 200), 0);
+        expect(inkAt(round, 96, 195), 0, reason: 'no corner of a square end');
+        expect(inkAt(round, 160, 195), isNonZero, reason: 'as wide');
+        expect(inkAt(round, 160, 194), 0);
+      });
+
+      testWidgets('🚨nothing of the brush in hand is read — not its size, '
+          'not its opacity', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+          brushInHand: (defaults) => defaults.copyWith(size: 40, opacity: 0.3),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 160, 195) & 0xFF, 0xFF, reason: 'at full strength');
+        expect(inkAt(ink, 160, 204) & 0xFF, 0xFF);
+        expect(inkAt(ink, 160, 194), 0, reason: 'ten wide, not forty');
+        expect(inkAt(ink, 160, 205), 0);
+      });
+
+      testWidgets('at the tool\'s OWN opacity', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain.copyWith(opacity: 0.5),
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(env.coordinator, 160, 200) & 0xFF,
+          inInclusiveRange(126, 129),
+        );
+      });
+
+      testWidgets('with the edge switch off every pixel is the line\'s or it '
+          'is not; with it on the edge is smoothed', (tester) async {
+        Future<int> partlyCovered(bool antiAlias) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.line,
+            shapeOptions: plain.copyWith(antiAlias: antiAlias),
+          );
+          // A slope, so its edges cross the grid.
+          await dragOnLayer(
+            tester,
+            const Offset(300, 100),
+            const Offset(400, 180),
+          );
+          await tester.pump();
+          var partly = 0;
+          for (var x = 290; x <= 410; x += 1) {
+            for (var y = 90; y <= 190; y += 1) {
+              final alpha = inkAt(env.coordinator, x, y) & 0xFF;
+              if (alpha != 0 && alpha != 0xFF) {
+                partly += 1;
+              }
+            }
+          }
+          expect(
+            inkAt(env.coordinator, 350, 140) & 0xFF,
+            0xFF,
+            reason: 'the middle of the line is whole either way',
+          );
+          return partly;
+        }
+
+        expect(await partlyCovered(false), 0);
+        expect(await partlyCovered(true), greaterThan(0));
+      });
+
+      testWidgets('on the erase blend it clears along the line, and leaves '
+          'what it goes round', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          blendMode: BrushBlendMode.erase,
+          shapeOptions: plain,
+        );
+        final ink = env.coordinator;
+        expect(inkAt(ink, 45, 45), isNonZero, reason: 'ink under the line');
+        expect(inkAt(ink, 60, 60), isNonZero, reason: 'ink inside the ring');
+
+        await dragOnLayer(tester, const Offset(20, 45), const Offset(70, 90));
+        await tester.pump();
+
+        expect(inkAt(ink, 45, 45), 0, reason: 'the top side went over it');
+        expect(inkAt(ink, 60, 60), isNonZero, reason: 'the inside is not it');
+      });
+
+      // R26 #18, for an area as for a stroke.
+      testWidgets('the selection clips it', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+        );
+        env.commands.setRegion(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(
+              left: 100,
+              top: 80,
+              right: 150,
+              bottom: 220,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await dragOnLayer(
+          tester,
+          const Offset(60, 150),
+          const Offset(240, 150),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 125, 150), isNonZero, reason: 'inside');
+        expect(inkAt(env.coordinator, 80, 150), 0, reason: 'before it');
+        expect(inkAt(env.coordinator, 200, 150), 0, reason: 'past it');
+      });
+
+      // a-marquee-on-a-posed-row: its width is the row's own pixels, as a
+      // brush's is.
+      testWidgets('on a posed row it lands on the artwork its trace shows', (
+        tester,
+      ) async {
+        const size = BrushCanvasFixture.canvasSize;
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+          placement: (
+            pose: TransformPose(
+              center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+            ),
+            anchorPoint: null,
+          ),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(200, 200),
+          const Offset(300, 200),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(ink, 150, 200),
+          isNonZero,
+          reason: 'the canvas line (200..300) shows artwork (100..200)',
+        );
+        expect(inkAt(ink, 100, 195), isNonZero, reason: 'from its first pixel');
+        expect(inkAt(ink, 99, 200), 0);
+        expect(inkAt(ink, 199, 204), isNonZero, reason: 'to its last');
+        expect(inkAt(ink, 200, 200), 0);
+        expect(inkAt(ink, 250, 200), 0);
+      });
+    });
+
+    // 유저 답 I-69-Q5 (2026-10-08): 「설정 스위치 + Shift」 · 메모 「태블릿은
+    // 지금 다른거 하던거처럼 수정자. 즉 터치 … 그냥 터치면 수정자란뜻」.
+    group('「비율 고정」', () {
+      // A plain line ten wide with a hard edge, so where a side lies is a
+      // row of pixels: a drag (100,100)→(200,150) has its bottom side
+      // along y = 150 left free, and along y = 200 as a square.
+      const free = ShapeToolOptions(
+        type: ShapeLineType.plain,
+        size: 10,
+        antiAlias: false,
+      );
+      final kept = free.copyWith(ratioLock: true);
+
+      Matcher isASquare() => predicate<BrushFrameEditingCoordinator>(
+        (ink) => inkAt(ink, 150, 199) != 0 && inkAt(ink, 150, 150) == 0,
+        'has its bottom side along y = 200',
+      );
+      Matcher isAsDragged() => predicate<BrushFrameEditingCoordinator>(
+        (ink) => inkAt(ink, 150, 150) != 0 && inkAt(ink, 150, 199) == 0,
+        'has its bottom side along y = 150',
+      );
+
+      testWidgets('with the switch on a rectangle is a square, an ellipse a '
+          'circle, and a line keeps to one of eight ways', (tester) async {
+        final box = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+        expect(box.coordinator, isASquare());
+        expect(inkAt(box.coordinator, 199, 150), isNonZero, reason: 'its right');
+
+        final round = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.ellipse,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(300, 100),
+          const Offset(400, 160),
+        );
+        await tester.pump();
+        expect(
+          inkAt(round.coordinator, 350, 199),
+          isNonZero,
+          reason: 'as high as it is wide: its lowest point is at y = 200',
+        );
+        expect(inkAt(round.coordinator, 350, 160), 0);
+
+        final line = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 230),
+        );
+        await tester.pump();
+        expect(inkAt(line.coordinator, 219, 200), isNonZero, reason: 'level');
+        expect(inkAt(line.coordinator, 219, 204), isNonZero);
+        expect(inkAt(line.coordinator, 219, 205), 0, reason: 'with no rise');
+        expect(inkAt(line.coordinator, 215, 229), 0);
+      });
+
+      testWidgets('with the switch off a shape is as it was dragged', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+
+        expect(env.coordinator, isAsDragged());
+      });
+
+      testWidgets('🚨Shift turns the switch the other way round for as long '
+          'as it is held — off to on, and on to off', (tester) async {
+        Future<BrushFrameEditingCoordinator> drawnWithShift(
+          ShapeToolOptions options,
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeOptions: options,
+          );
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await dragOnLayer(
+            tester,
+            const Offset(100, 100),
+            const Offset(200, 150),
+          );
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          return env.coordinator;
+        }
+
+        expect(await drawnWithShift(free), isASquare());
+        expect(await drawnWithShift(kept), isAsDragged());
+      });
+
+      testWidgets('🚨a finger laid on the glass is the modifier: the shape '
+          'goes on being drawn, its ratio kept while the finger rests', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+
+        expect(
+          env.history.undoCount,
+          before + 1,
+          reason: 'the finger did not take the shape out of the hand',
+        );
+        expect(env.coordinator, isASquare());
+      });
+
+      testWidgets('the finger lifting gives the ratio back at the next move', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(190, 140));
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+
+        expect(env.coordinator, isAsDragged());
+      });
+
+      // 유저 2026-08-27: 「손가락이 동시에 착지하는게 불가능하니까」 — a
+      // finger's drag is a gesture of its own only once it has gone the
+      // touch commit slop (18 px), here as for a stroke and for the boxes.
+      testWidgets('🚨a shape dragged BY a finger: a second finger before it '
+          'has gone anywhere makes the pair a screen gesture — nothing is '
+          'drawn', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final first = await tester.startGesture(
+          origin + const Offset(100, 100),
+        );
+        await tester.pump();
+        await first.moveTo(origin + const Offset(108, 100));
+        await tester.pump();
+        final second = await tester.startGesture(
+          origin + const Offset(300, 300),
+        );
+        await tester.pump();
+        await first.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await first.up();
+        await second.up();
+        await tester.pump();
+
+        expect(env.history.undoCount, before, reason: 'no shape was drawn');
+        expect(inkAt(env.coordinator, 150, 150), 0);
+        expect(inkAt(env.coordinator, 150, 199), 0);
+      });
+
+      testWidgets('once it has gone its own way, a second finger is its '
+          'modifier — and moves no view, slide as it may', (tester) async {
+        final asked = <CanvasViewport>[];
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+          onViewportChanged: asked.add,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final first = await tester.startGesture(
+          origin + const Offset(100, 100),
+        );
+        await tester.pump();
+        // 17 px is not yet its own way; 2 more is.
+        await first.moveTo(origin + const Offset(117, 100));
+        await tester.pump();
+        await first.moveTo(origin + const Offset(119, 100));
+        await tester.pump();
+        final second = await tester.startGesture(
+          origin + const Offset(300, 300),
+        );
+        await tester.pump();
+        await second.moveTo(origin + const Offset(380, 340));
+        await tester.pump();
+        await first.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await second.moveTo(origin + const Offset(420, 300));
+        await tester.pump();
+        await first.up();
+        await second.up();
+        await tester.pump();
+
+        expect(env.history.undoCount, before + 1);
+        expect(env.coordinator, isASquare());
+        expect(asked, isEmpty, reason: 'the pair is not a screen gesture');
+      });
+
+      testWidgets('🚨while a pen draws a shape the glass is not the view\'s: '
+          'two fingers laid beside it move nothing', (tester) async {
+        final asked = <CanvasViewport>[];
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+          onViewportChanged: asked.add,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+
+        Future<void> spreadTwoFingers() async {
+          final a = await tester.startGesture(origin + const Offset(400, 300));
+          await tester.pump();
+          final b = await tester.startGesture(origin + const Offset(500, 300));
+          await tester.pump();
+          await a.moveTo(origin + const Offset(340, 300));
+          await tester.pump();
+          await b.moveTo(origin + const Offset(560, 300));
+          await tester.pump();
+          await a.up();
+          await b.up();
+          await tester.pump();
+        }
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        await spreadTwoFingers();
+        expect(asked, isEmpty, reason: 'a finger there is the modifier\'s');
+
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        expect(
+          env.coordinator,
+          isAsDragged(),
+          reason: 'and the shape went on: both fingers were gone by then',
+        );
+
+        // The instrument, last — it moves the view: with nothing in hand
+        // the same two fingers DO ask for another one.
+        await spreadTwoFingers();
+        expect(asked, isNotEmpty, reason: 'two fingers on a still canvas');
+      });
+
+      testWidgets('beside any OTHER drag a finger is still the sign to let '
+          'go: a selection being traced is dropped', (tester) async {
+        final env = await pumpSelectionPanel(tester);
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+
+        expect(env.commands.region, isNull, reason: 'nothing was selected');
+        expect(env.history.undoCount, before);
+      });
+
+      testWidgets('the switch is the shape tool\'s: the fill tool\'s shape '
+          'fill is as it was dragged, whatever the switch says', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.fillShape,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 150, 140), isNonZero, reason: 'filled');
+        expect(
+          inkAt(env.coordinator, 150, 180),
+          0,
+          reason: 'fifty high, as dragged — not a square',
+        );
+      });
+    });
+
+    // R26 #18: 「선택하고 그리면 선택 내부만 그려진다」, whatever drew it.
+    testWidgets('the selection clips a shape as it clips a stroke', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+      );
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 100, top: 80, right: 150, bottom: 220),
+        ),
+      );
+      await tester.pump();
+
+      await dragOnLayer(tester, const Offset(60, 150), const Offset(240, 150));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 125, 150), isNonZero, reason: 'inside');
+      expect(inkAt(env.coordinator, 80, 150), 0, reason: 'before it');
+      expect(inkAt(env.coordinator, 200, 150), 0, reason: 'past it');
+    });
+
+    // a-marquee-on-a-posed-row: traced on the canvas, so on a posed row the
+    // shape goes where the row SHOWS it.
+    testWidgets('a shape lands on the artwork its trace shows', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+
+      await dragOnLayer(tester, const Offset(200, 200), const Offset(300, 200));
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 150, 200),
+        isNonZero,
+        reason: 'the canvas line (200..300) shows artwork (100..200)',
+      );
+      expect(inkAt(env.coordinator, 250, 200), 0);
+    });
   });
 
   group('polygon', () {
@@ -6364,11 +8496,14 @@ void main() {
     debugLastResampledFloat = null;
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 5,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 5,
+        sy: 5,
+      ),
     );
     await tester.pump();
 
@@ -6737,11 +8872,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 2,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 2,
+          sy: 2,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();

@@ -33,7 +33,7 @@ typedef MediaCarry = ({String poolPath, String token});
 /// undo finds its bytes before a save and after one. The path's parts stay
 /// in it so a person looking in the staging room, or inside a `.anicel`,
 /// can tell what they are looking at.
-String mintMediaCarry(String poolPath) => _carryName(
+String mintMediaCarry(String poolPath) => mediaCarryNamed(
   poolPath,
   _carryTokens.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
 );
@@ -41,19 +41,20 @@ String mintMediaCarry(String poolPath) => _carryName(
 final math.Random _carryTokens = math.Random.secure();
 
 /// The name [carry]'s bytes are stored under — the staged copy's, and the
-/// project file entry's behind `media/`.
+/// project file entry's behind `media/`: its token, minted whole
+/// ([mintMediaCarry]).
 ///
-/// A name minted whole ([mintMediaCarry]) is itself. A carry from before
-/// that — `''` for the one a project had before carries had names, a bare
-/// token for one minted before 09-25 — gets the name the same rule gives
-/// it from the path it is at now, which is what those projects hold.
-String mediaCarryName(MediaCarry carry) => carry.token.contains('-')
-    ? carry.token
-    : _carryName(carry.poolPath, carry.token);
+/// ↩️A carry from before names were minted whole — `''` for the one a
+/// project had before carries had names, a bare token for one minted
+/// before 09-25 — was named here from the path it was at. Those projects
+/// are refused by their format number now (the save law, 유저 2026-10-06).
+String mediaCarryName(MediaCarry carry) => carry.token;
 
-String _carryName(String poolPath, String token) {
+/// The whole name a carry of [poolPath] wears with [token] for its middle —
+/// what [mintMediaCarry] mints, with a random one.
+String mediaCarryNamed(String poolPath, String token) {
   final (:hash, :safe) = mediaNameParts(poolPath);
-  return token.isEmpty ? '$hash-$safe' : '$hash-$token-$safe';
+  return '$hash-$token-$safe';
 }
 
 /// A pool path's two halves of every name its bytes are stored under: the
@@ -75,6 +76,31 @@ String _carryName(String poolPath, String token) {
     ).replaceAll(RegExp('[^A-Za-z0-9._-]'), '_'),
   );
 }
+
+/// Whether [name] is ONE NAME bytes can be stored under: of the shape every
+/// such name is minted in ([mintMediaCarry], and the names carries had
+/// before it — [mediaCarryName]) — a word, a dash, and more, in the letters
+/// [mediaNameParts] leaves a name — with nothing of a path in it.
+///
+/// 🚨★★★**ASKED WHERE A NAME BECOMES A PATH.** A stored name is minted
+/// here, written into a project file, and read back — and a project file
+/// comes from anywhere. Read back, it is made a FILE'S name in this run's
+/// room (`MediaStagingStore`). A name saying `../..` was looked for,
+/// written and DELETED outside the room, by opening that file and saving it
+/// (read off the code 2026-10-06 by the brush and the save sessions; card
+/// `a-name-read-from-a-file-becomes-a-path`; 유저 그날: 「그건만
+/// 지금고치자」). So whoever makes a path of a name asks this first, and a
+/// name that is not one is a name nothing is kept under.
+///
+/// The dash is in the rule and not only in the habit: a name with one
+/// before its first dot is never one the system reads as a device (`nul`,
+/// `con.z`).
+///
+/// ⚠️No longest name: a carry's ends in the file's own, which is as long as
+/// a file's name can be.
+bool isOneStoredName(String name) => _oneStoredName.hasMatch(name);
+
+final RegExp _oneStoredName = RegExp(r'^[A-Za-z0-9_]+-[A-Za-z0-9._-]*$');
 
 /// What a media pool entry holds.
 enum MediaAssetKind {
@@ -368,21 +394,11 @@ class MediaAsset {
       fitMode: MediaFitMode.fromJson(json['fit']),
       sourcePath: json['sourcePath'] as String?,
       sourceStamp: json['sourceStamp'] as String?,
-      // Absent in projects written before carries had names, which said
-      // `carried` — and before THAT the same choice was spelled "was it
-      // copied in?" — so those assets keep the answer they were given, as
-      // the carry whose bytes are named by the path alone.
-      // ⚠️Nobody asked for this reading, and there is no one's data to
-      // keep (no production data since 08-25). It stays because it is one
-      // expression while the builds being tested wrote these files: a
-      // project one of them saved keeps its carried bytes in the next. The
-      // same holds for [mediaCarryName]'s bare token. Both can go once no
-      // build that wrote them is in use (audit 09-25).
-      carriedAs:
-          json['carriedAs'] as String? ??
-          ((json['carried'] as bool? ?? json['sourcePath'] != null)
-              ? ''
-              : null),
+      // ↩️A project written before carries had names said `carried` — or,
+      // before that, only a `sourcePath` — and read here as the carry named
+      // by the path alone, 「once no build that wrote them is in use」
+      // (audit 09-25). The format's floor made that so.
+      carriedAs: json['carriedAs'] as String?,
       identity: MediaIdentity.fromJson(json['identity']),
       sourceFps: (json['sourceFps'] as num?)?.toDouble(),
       frameCount: json['frameCount'] as int?,

@@ -77,8 +77,7 @@ void main() {
     final stores = {
       caches.conteInkRowStore,
       caches.envelopeInkStore,
-      caches.timesheetInkStripStore,
-      caches.timesheetInkPageStore,
+      caches.timesheetInkStore,
     };
     expect(
       caches.sheetInkStores.toSet(),
@@ -96,8 +95,7 @@ void main() {
     final stores = [
       session.renderCaches.conteInkRowStore,
       session.renderCaches.envelopeInkStore,
-      session.renderCaches.timesheetInkStripStore,
-      session.renderCaches.timesheetInkPageStore,
+      session.renderCaches.timesheetInkStore,
     ];
     // A budget well above the halving's floor, so a warning that reaches
     // a store shows as exactly half of it.

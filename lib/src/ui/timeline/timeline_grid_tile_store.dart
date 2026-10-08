@@ -30,7 +30,7 @@ import '../../core/bake_once_lru.dart';
 /// canvas calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
-/// the foreground — hold-dash capsules and in-between marks inline, glyph
+/// the foreground — the holds' lines and in-between marks inline, glyph
 /// text through the A8 atlas (T3) — into one op stream, and `_paint` skips
 /// its Dart foreground pass for any span a tile covers. This doc used to say
 /// the opposite ("foreground ink stays the painter's Dart pass on top"),
@@ -594,7 +594,7 @@ class TimelineGridTileStore {
     return writer.build();
   }
 
-  /// Emits the span's FOREGROUND ink (T3) — hold-dash capsules and
+  /// Emits the span's FOREGROUND ink (T3) — the holds' lines and
   /// in-between marks inline — and answers the words it writes, for
   /// [_bakeGlyphs] to set through the A8 atlas: geometry and ink probed from
   /// the painter (the substrate's fidelity rule).
@@ -633,7 +633,11 @@ class TimelineGridTileStore {
         _emitInbetweenMark(
           writer,
           mark,
-          Rect.fromCircle(center: center * dpr, radius: place.radius * dpr),
+          Rect.fromCenter(
+            center: center * dpr,
+            width: place.size.width * dpr,
+            height: place.size.height * dpr,
+          ),
           timelineGridPackRgba(painter.foregroundInkFor(model)),
         );
         continue;
@@ -642,38 +646,6 @@ class TimelineGridTileStore {
         continue;
       }
       final ink = painter.foregroundInkFor(model);
-      final cellRect = painter.cellRectFor(frameIndex);
-      final rect = horizontal
-          ? cellRect.shift(Offset(-originMain, 0))
-          : cellRect.shift(Offset(0, -originMain));
-      if (model.ghost && model.glyph == timelineHoldDashGlyph) {
-        // The hold dash (UI-R12 #18): a 1.4px capsule with the 3px
-        // per-boundary break — the round caps come from the rrect SDF.
-        if (horizontal) {
-          if (rect.width > 4) {
-            writer.rrectFill(
-              (rect.left + 1.5) * dpr,
-              (rect.center.dy - 0.7) * dpr,
-              (rect.width - 3) * dpr,
-              1.4 * dpr,
-              0.7 * dpr,
-              15,
-              timelineGridPackRgba(ink),
-            );
-          }
-        } else if (rect.height > 4) {
-          writer.rrectFill(
-            (rect.center.dx - 0.7) * dpr,
-            (rect.top + 1.5) * dpr,
-            1.4 * dpr,
-            (rect.height - 3) * dpr,
-            0.7 * dpr,
-            15,
-            timelineGridPackRgba(ink),
-          );
-        }
-        continue;
-      }
       // Set, laid and narrowed where the classic pass sets it — its letter
       // gaps first ([TimelineTileRasterSource.cellWordSetFor]).
       final style = painter.glyphStyleFor(model);
@@ -693,6 +665,37 @@ class TimelineGridTileStore {
             ? layout.origin.translate(-originMain, 0)
             : layout.origin.translate(0, -originMain),
       ));
+    }
+    // The holds' lines: the box the classic pass strokes, as a capsule —
+    // the rrect SDF rounds the ends that are a hold's own and leaves square
+    // the ones where the line only runs out of the span.
+    const everyCorner =
+        TimelineGridTileOp.cornerTopLeft |
+        TimelineGridTileOp.cornerTopRight |
+        TimelineGridTileOp.cornerBottomLeft |
+        TimelineGridTileOp.cornerBottomRight;
+    final startCap =
+        TimelineGridTileOp.cornerTopLeft |
+        (horizontal
+            ? TimelineGridTileOp.cornerBottomLeft
+            : TimelineGridTileOp.cornerTopRight);
+    final endCap = everyCorner & ~startCap;
+    for (final line in painter.holdLinesIn(
+      spanStartIndex,
+      spanEndIndexExclusive,
+    )) {
+      final box = horizontal
+          ? line.box.shift(Offset(-originMain, 0))
+          : line.box.shift(Offset(0, -originMain));
+      writer.rrectFill(
+        box.left * dpr,
+        box.top * dpr,
+        box.width * dpr,
+        box.height * dpr,
+        box.shortestSide / 2 * dpr,
+        (line.startsHere ? startCap : 0) | (line.endsHere ? endCap : 0),
+        timelineGridPackRgba(line.ink),
+      );
     }
     return glyphCells;
   }
@@ -771,8 +774,8 @@ class TimelineGridTileStore {
   }
 
   /// An in-between mark as tile ops over [disc], its box in tile pixels —
-  /// the shape [paintInbetweenMark] draws on the classic pass, where the
-  /// painter lays it.
+  /// the shape [paintInbetweenMark] draws on the classic pass
+  /// ([inbetweenMarkShape]), where the painter lays it.
   static void _emitInbetweenMark(
     TimelineGridTileOpWriter writer,
     InbetweenMark mark,
@@ -781,13 +784,14 @@ class TimelineGridTileStore {
   ) {
     switch (mark) {
       case InbetweenMark.one:
-        // A rounded rect as round as it is large is the disc.
+        // A rounded rect as round as it is narrow: the disc, and the
+        // stadium a narrowed one is.
         writer.rrectFill(
           disc.left,
           disc.top,
           disc.width,
           disc.height,
-          disc.width / 2,
+          disc.shortestSide / 2,
           15,
           rgba,
         );
@@ -1091,7 +1095,7 @@ class _TileAtlas {
 /// ([TimelineTileRasterSource.substrateIn]), so the tile look can never
 /// drift from the classic paint's. Coordinates are tile-local physical
 /// pixels (row coords minus the span origin, times DPR). Foreground ink
-/// (glyphs, dashes) stays the painter's Dart pass.
+/// (glyphs, hold lines) stays the painter's Dart pass.
 Int32List timelineGridSubstrateOps({
   required TimelineTileRasterSource painter,
   required int spanStartIndex,

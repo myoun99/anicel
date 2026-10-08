@@ -95,17 +95,16 @@ void main() {
     });
   });
 
-  group('shiftKeysInRange — all or nothing', () {
+  group('shiftKeysAt — all or nothing', () {
     Map<int, String>? shift({
       required Map<int, String> entries,
       required int start,
       required int endExclusive,
       required int delta,
       int extent = 1,
-    }) => shiftKeysInRange<String>(
+    }) => shiftKeysAt<String>(
       entries: entries,
-      rangeStartIndex: start,
-      rangeEndIndexExclusive: endExclusive,
+      moved: keysStartingIn(entries.keys, start, endExclusive),
       frameDelta: delta,
       extentOf: (_) => extent,
     );
@@ -165,6 +164,14 @@ void main() {
       expect(
         shift(entries: {0: 'a', 3: 'b'}, start: 0, endExclusive: 1, delta: 2),
         {2: 'a', 3: 'b'},
+      );
+    });
+
+    test('entries of the moved set may land where another of them stood', () {
+      expect(
+        shift(entries: {2: 'a', 3: 'b'}, start: 2, endExclusive: 4, delta: 1),
+        {3: 'a', 4: 'b'},
+        reason: '3 vacates before 2 lands',
       );
     });
   });

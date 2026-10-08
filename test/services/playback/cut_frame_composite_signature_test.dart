@@ -5,14 +5,17 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
+
+import '../../helpers/placement_reading.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -52,13 +55,11 @@ void main() {
   CutFrameCompositeSignature signature({
     Cut? forCut,
     int frameIndex = 0,
-    PlaybackQuality quality = PlaybackQuality.half,
     int Function(LayerId, FrameId)? revisionOf,
   }) {
     return computeCutFrameCompositeSignature(
       cut: forCut ?? cut(),
       frameIndex: frameIndex,
-      quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
     );
   }
@@ -99,7 +100,7 @@ void main() {
     );
   });
 
-  test('opacity, visibility, quality and canvas size change the signature', () {
+  test('opacity, visibility and canvas size change the signature', () {
     final base = signature();
 
     expect(
@@ -112,7 +113,6 @@ void main() {
       ),
       isNot(base),
     );
-    expect(signature(quality: PlaybackQuality.full), isNot(base));
   });
 
   test('layer order is part of the signature', () {
@@ -144,7 +144,7 @@ void main() {
 
   test('a layer transform joins the signature: edits invalidate, animated '
       'poses split held frames, identity stays null', () {
-    expect(signature().layers.single.pose, isNull);
+    expect(signature().layers.single.placement, isNull);
 
     final moved = cut(
       layers: [
@@ -206,8 +206,11 @@ void main() {
     );
     expect(signature(forCut: anchored), isNot(signature(forCut: unanchored)));
     expect(
-      signature(forCut: anchored).layers.single.anchorPoint,
-      CanvasPoint(x: 10, y: 10),
+      signature(
+        forCut: anchored,
+      ).layers.single.placement!.apply(CanvasPoint(x: 10, y: 10)),
+      CanvasPoint(x: 5, y: 5),
+      reason: 'the anchor is the point of the artwork the position takes',
     );
 
     final fading = cut(
@@ -253,9 +256,46 @@ void main() {
     );
 
     expect(applied, isNot(bypassed));
-    expect(bypassed.layers.single.pose, isNull);
-    expect(bypassed.layers.single.anchorPoint, isNull);
+    expect(bypassed.layers.single.placement, isNull);
     expect(bypassed.layers.single.opacity, closeTo(0.8, 1e-9));
     expect(applied.layers.single.opacity, closeTo(0.4, 1e-9));
+  });
+
+  // ⚠️The frame signature parts two pictures by their HASH before it walks
+  // a single leaf, so every comparison above holds with a leaf that compares
+  // nothing at all. The leaf's own comparison is what answers when two
+  // hashes meet — and a cache keyed by content shows the wrong picture when
+  // it answers yes.
+  test('a leaf parts on each of its inputs by itself', () {
+    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [1]);
+    CompositeLayerSignature leaf({
+      String layer = 'layer-1',
+      String frame = 'frame-1',
+      double opacity = 1,
+      int revision = 7,
+      LayerBlendMode blendMode = LayerBlendMode.normal,
+      double liesAtX = 10,
+      List<ResolvedLayerEffect> effects = const [],
+    }) => CompositeLayerSignature(
+      layerId: LayerId(layer),
+      frameId: FrameId(frame),
+      opacity: opacity,
+      sourceRevision: revision,
+      blendMode: blendMode,
+      placement: placedBy(
+        TransformPose(center: CanvasPoint(x: liesAtX, y: 0)),
+        const CanvasSize(width: 100, height: 50),
+      ),
+      effects: effects,
+    );
+
+    expect(leaf(), leaf());
+    expect(leaf(layer: 'layer-2'), isNot(leaf()));
+    expect(leaf(frame: 'frame-2'), isNot(leaf()));
+    expect(leaf(opacity: 0.5), isNot(leaf()));
+    expect(leaf(revision: 8), isNot(leaf()));
+    expect(leaf(blendMode: LayerBlendMode.multiply), isNot(leaf()));
+    expect(leaf(liesAtX: 20), isNot(leaf()), reason: 'where the row lies');
+    expect(leaf(effects: [blur]), isNot(leaf()));
   });
 }

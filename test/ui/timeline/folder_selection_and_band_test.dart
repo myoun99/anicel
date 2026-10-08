@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/session/folder_bands.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// R28 #11/#12: the folder row stops behaving like a second kind of row.
@@ -66,15 +67,9 @@ void main() {
 
     // And the band a folder row renders is that union, expressed the way
     // every other row expresses coverage: entries in `Layer.timeline`.
-    final band = folderRow.copyWith(
-      timeline: {
-        for (final run in runs)
-          run.start: TimelineExposure.drawing(
-            FrameId('band:f:${run.start}'),
-            length: run.endExclusive - run.start,
-          ),
-      },
-    );
+    // ↩️The clone was built by hand here, so this asked the test what the
+    // test had written; it asks the builder the session's cache calls.
+    final band = folderBandOf(folderRow, [member('a'), member('b')]);
     expect(band.timeline.keys, [0]);
     expect(band.timeline[0]!.length, 4);
     expect(
@@ -84,28 +79,10 @@ void main() {
     );
   });
 
-  test('R28 #11 survives the move to the shared painter: a folder frame '
-      'greys only when NO member drew there', () {
-    // Member A drew frames 0..1, member B drew frame 2. Frame 3 is empty
-    // in the whole subtree — the only one that may grey.
-    bool memberHasContent(Layer layer, int frameIndex) =>
-        layer.id == const LayerId('a') ? frameIndex < 2 : frameIndex == 2;
-
-    final members = [member('a'), member('b')];
-    // The rule the session's `celHasContentForLayer` folder arm applies —
-    // pinned as the CONTRACT rather than as one painter's probe order,
-    // which is what the deleted band test asserted.
-    bool folderHasContent(int frameIndex) =>
-        members.any((m) => memberHasContent(m, frameIndex));
-
-    expect(folderHasContent(0), isTrue, reason: 'A drew it');
-    expect(folderHasContent(1), isTrue, reason: 'A drew it');
-    expect(
-      folderHasContent(2),
-      isTrue,
-      reason: 'only B drew it, and the folder must consult B before greying '
-          '— "다른곳에서 해당위치에 그림그려진 하얀 블록 존재하면 하얗게"',
-    );
-    expect(folderHasContent(3), isFalse, reason: 'nobody drew it: grey');
-  });
+  // 🪦R28 #11's grey — 「다른곳에서 해당위치에 그림그려진 하얀 블록 존재하면
+  // 하얗게」 — stood here as a rule the test wrote for itself (a closure over
+  // two fake members, asserted against its own answers), which is why the
+  // session's arm could read a member's bare cells as drawn and nothing went
+  // red (F-311). It is pinned against the session and the painter now:
+  // `session/a_folder_block_is_what_its_rows_hold_test.dart`.
 }

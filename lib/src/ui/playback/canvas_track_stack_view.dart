@@ -10,7 +10,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_effect.dart' show LayerEffect;
-import '../../models/playback_quality.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
@@ -52,15 +51,13 @@ class CanvasTrackStackView extends StatefulWidget {
     required this.globalFrame,
     required this.positionsOf,
     required this.compositeCache,
-    required this.qualityOf,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.cameraViewEnabled = true,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
-    this.trackStaticOpacityOf,
-    this.cutPictureVisibleOf,
     this.onFrameCached,
+    this.picturesLanded,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
@@ -95,7 +92,6 @@ class CanvasTrackStackView extends StatefulWidget {
   final bool cameraViewEnabled;
 
   final CutFrameCompositeCache compositeCache;
-  final PlaybackQuality Function() qualityOf;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
 
@@ -105,21 +101,29 @@ class CanvasTrackStackView extends StatefulWidget {
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
   seNameTagsOf;
 
-  /// The storyboard V-row display gates (R9), exactly as playback applies
-  /// them: fx off bypasses the cut-level pose AND fade, the eye off hides
-  /// the cut's picture. Null = always on.
+  /// The storyboard V row's display gate (R9), exactly as playback applies
+  /// it: fx off bypasses the cut-level fx work. Null = always on. (↩️The
+  /// eye and the static opacity it stood beside left the V row's head with
+  /// I-73 — see [CanvasPlaybackView.cutFxEnabledOf].)
   final bool Function(CutId cutId)? cutFxEnabledOf;
-
-  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
-  /// while the V row's slider is in flight. Null keeps every track opaque.
-  final double Function(CutId cutId)? trackStaticOpacityOf;
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// Called after each on-demand composite lands in the cache (the
   /// session's budget trim): the parked state has no warmer running its
   /// afterFrameCached hook, so without this nothing would trim what a
   /// long parked scrub piles up.
   final void Function()? onFrameCached;
+
+  /// Null where this view makes what is missing itself: a parked frame, an
+  /// O.L partner — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
+  ///
+  /// Set where a run PLAYS through it
+  /// ([PlaybackPrerenderScheduler.landings]): the warmer follows the run and
+  /// is the one maker of its pictures, in the order the run wants them, so
+  /// this view shows what has landed and repaints when more does. ↩️It
+  /// composed the frame under the playhead itself, beside a warmer that was
+  /// baking the playlist from wherever play had been pressed — two makers,
+  /// one picture between them at the worst moment.
+  final Listenable? picturesLanded;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -179,9 +183,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   /// cuts' composites, which the non-playing protection range (the active
   /// cut only) never covered — without the pins the budget could evict
   /// the exact frames this widget is displaying.
-  final Map<CutId, (CutId, int, PlaybackQuality)> _heldPins = {};
+  final Map<CutId, (CutId, int)> _heldPins = {};
 
-  void _swapHeldPin(CutId cutId, (CutId, int, PlaybackQuality)? next) {
+  void _swapHeldPin(CutId cutId, (CutId, int)? next) {
     final previous = _heldPins[cutId];
     if (previous != null) {
       widget.compositeCache.releasePin(previous);
@@ -218,12 +222,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   /// Holds [composite] — [cut]'s picture at [frameIndex] — as what the view
   /// shows for the cut until a newer one lands: our own clone, and a pin on
   /// its cache slot. Cloning happens only when the source changes.
-  void _hold(
-    Cut cut,
-    int frameIndex,
-    PlaybackQuality quality,
-    ui.Image composite,
-  ) {
+  void _hold(Cut cut, int frameIndex, ui.Image composite) {
     if (identical(composite, _heldSources[cut.id])) {
       return;
     }
@@ -231,24 +230,31 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     _heldSources[cut.id] = composite;
     _heldFrames[cut.id] = composite.clone();
     _heldCanvasSizes[cut.id] = cut.canvasSize;
-    _swapHeldPin(cut.id, (cut.id, frameIndex, quality));
+    _swapHeldPin(cut.id, (cut.id, frameIndex));
   }
 
   @override
   void initState() {
     super.initState();
     widget.globalFrame.addListener(_onFrameMoved);
+    widget.picturesLanded?.addListener(_onFrameMoved);
   }
 
   @override
   void didUpdateWidget(covariant CanvasTrackStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
     rebindListener(oldWidget.globalFrame, widget.globalFrame, _onFrameMoved);
+    rebindListener(
+      oldWidget.picturesLanded,
+      widget.picturesLanded,
+      _onFrameMoved,
+    );
   }
 
   @override
   void dispose() {
     widget.globalFrame.removeListener(_onFrameMoved);
+    widget.picturesLanded?.removeListener(_onFrameMoved);
     for (final image in _heldFrames.values) {
       image.dispose();
     }
@@ -265,7 +271,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
   }
 
-  void _prepare(Cut cut, int frameIndex, PlaybackQuality quality) {
+  void _prepare(Cut cut, int frameIndex) {
     if (_inFlightFrame.containsKey(cut.id)) {
       return;
     }
@@ -274,7 +280,6 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         .prepareCompositeInterruptible(
           cut: cut,
           frameIndex: frameIndex,
-          quality: quality,
           shouldAbort: () => !mounted || !_wantedFrame.containsKey(cut.id),
         )
         .then(
@@ -285,7 +290,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             if (image != null &&
                 mounted &&
                 _wantedFrame.containsKey(cut.id)) {
-              _hold(cut, frameIndex, quality, image);
+              _hold(cut, frameIndex, image);
             }
             if (image != null) {
               widget.onFrameCached?.call();
@@ -349,16 +354,12 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       );
     }
 
-    final quality = widget.qualityOf();
     final layers = <Widget>[?floor];
-    // The unit alpha of each contribution: its transition share times the
-    // track's own opacity and fade. The weights that follow turn those into
-    // source-over alphas — see [sourceOverWeights] for why they are not the
-    // same number.
+    // The unit alpha of each contribution: its transition share. The
+    // weights that follow turn those into source-over alphas — see
+    // [sourceOverWeights] for why they are not the same number.
     final unitAlphas = <double>[
-      for (final position in positions)
-        position.opacity *
-            (widget.trackStaticOpacityOf?.call(position.cut.id) ?? 1.0),
+      for (final position in positions) position.opacity,
     ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
     for (var i = 0; i < positions.length; i++) {
@@ -370,17 +371,14 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       final composite = widget.compositeCache.validCompositeOrNull(
         cut: cut,
         frameIndex: localFrame,
-        quality: quality,
       );
-      if (composite == null) {
-        _prepare(cut, localFrame, quality);
-      } else {
-        _hold(cut, localFrame, quality, composite);
+      if (composite != null) {
+        _hold(cut, localFrame, composite);
+      } else if (widget.picturesLanded == null) {
+        _prepare(cut, localFrame);
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
-      final cutPictureVisible =
-          widget.cutPictureVisibleOf?.call(cut.id) ?? true;
 
       final globalFrame = position.globalFrameIndex;
       final weight = weights[i];
@@ -412,9 +410,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           // rather than the stage moving as one. That variant is
           // unambiguous.
           painter: PlaybackFramePainter(
-            image:
-                cutPictureVisible &&
-                    _heldCanvasSizes[cut.id] == cut.canvasSize
+            image: _heldCanvasSizes[cut.id] == cut.canvasSize
                 ? _heldFrames[cut.id]
                 : null,
             canvasSize: cut.canvasSize,
@@ -429,15 +425,12 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             cameraPose: cameraView
                 ? widget.cameraPoseOf(cut, localFrame)
                 : null,
-            seNameTags: cutPictureVisible
-                ? widget.seNameTagsOf?.call(cut, localFrame) ?? const []
-                : const [],
+            seNameTags: widget.seNameTagsOf?.call(cut, localFrame) ?? const [],
             cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
             // No cutPose/cutAnchorPoint: the V row has no transform. The
             // camera is what moves the picture on the stage.
-            // The V row's chain, on the cut's picture. rasterScale stays 1:
-            // the composite is drawn up to CANVAS space here, whatever
-            // quality it was cached at, and a blur radius is canvas pixels.
+            // The V row's chain, on the cut's picture — the canvas's own
+            // size, so a blur radius is canvas pixels as it stands.
             cutEffects: trackEffectsAt(
               widget.trackEffectsOf?.call(cut.id) ?? const [],
               globalFrame,

@@ -2,10 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
-import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
-import '../models/transform_track.dart' show TransformPose;
-import 'layer_pose_matrix.dart' show canvasToArtwork;
+import 'layer_pose_matrix.dart' show LayerPlacement, canvasToArtwork;
 import 'canvas_selection.dart'
     show SelectionMaskOptions, selectionMaskOnPasteboard;
 import 'canvas_selection_region.dart';
@@ -104,22 +101,20 @@ CelPixelWalk celPixelWalkFor({
 /// region back unchanged, so the pass stays byte-identical to what a lift
 /// on the same selection would take.
 ///
-/// Null when the pose is singular. ⚠️That is a BACKSTOP rather than a path:
-/// [CameraPose] refuses a zero zoom outright, so no pose the model can hold
-/// collapses a layer. `cel_pixel_region_test` pins that refusal, which is
-/// what would tell a later round the guard had become reachable.
+/// Null when the placement has collapsed the row ([canvasToArtwork]): it
+/// shows nothing, so a region drawn on the canvas names none of its
+/// pixels.
+/// ↩️This was a backstop: the pose refused a zero scale outright, and
+/// `cel_pixel_region_test` pinned that refusal to say when the guard
+/// became a path. It did with the minus of the two scales (F-256-Q1) — a
+/// flip passes through zero.
 CanvasSelectionRegion? regionInArtworkSpace({
   required CanvasSelectionRegion region,
-  required TransformPose? pose,
-  required CanvasSize canvasSize,
-  CanvasPoint? anchorPoint,
+  required LayerPlacement? placement,
 }) {
-  if (pose == null) {
+  if (placement == null) {
     return region;
   }
-  final toArtwork = canvasToArtwork(
-    (pose: pose, anchorPoint: anchorPoint),
-    canvasSize,
-  );
+  final toArtwork = canvasToArtwork(placement);
   return toArtwork == null ? null : region.mapped(toArtwork.apply);
 }

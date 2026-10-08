@@ -117,6 +117,7 @@ class _WorkspaceTabs {
           onRequestPicked: slot.open,
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
+          loudness: slot.loudness,
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),
           // I-14: the cut tool reaches the viewer, and a cut there lands in
           // the piece the canvas's cuts fill.
@@ -299,6 +300,8 @@ class _WorkspaceTabs {
                   canvasViewCommands: _state.widget.canvasViewCommands,
                   navigationRegionKey: _state.widget.canvasNavigationRegionKey,
                   canvasSelectionCommands: _state.widget.canvasSelectionCommands,
+                  canvasTextCommands: _state.widget.canvasTextCommands,
+                  textToolOptions: _state._views._textToolOptions,
                   cutPieceSlot: _state._cutPieceSlot,
                   lastStroke: _state.widget.lastStroke,
                   toolHold: _state.widget.toolHold,
@@ -407,13 +410,20 @@ class _WorkspaceTabs {
                           builder: (context, _) => BrushPresetPanel(
                             presets: _state._presetLibrary.presets,
                             groups: _state._presetLibrary.groups,
+                            // This panel is THIS tool's library (F-319):
+                            // its rows and tabs press for it and wear its
+                            // keys, and both tools' panels read the one
+                            // look.
+                            tool: toolState.tool,
+                            look: _state._brushGroups.look,
                             selectedPresetId: toolState.presetId,
                             viewOptions: _state._brushPresetView.value,
                             onViewOptionsChanged: (options) {
                               _state._brushPresetView.value = options;
                               _state._layoutPersistence.scheduleLayoutSave();
                             },
-                            onPresetApplied: _state._brushPresets._applyPreset,
+                            onPresetApplied:
+                                _state._brushGroups.rowPressOf[toolState.tool],
                             onPresetSaveRequested:
                                 _state._brushPresets.saveHeldBrushAsPreset,
                             onPresetDeleted: _state._brushPresets.deletePreset,
@@ -430,7 +440,8 @@ class _WorkspaceTabs {
                             onGroupCreated: _state._presetLibrary.createGroup,
                             onGroupEdited: _state._presetLibrary.editGroup,
                             onGroupDeleted: _state._brushPresets.deleteGroup,
-                            onGroupOpened: _state._brushGroups.openGroup,
+                            onGroupOpened:
+                                _state._brushGroups.tabPressOf[toolState.tool],
                             onGroupsReordered:
                                 _state._brushPresets.arrangeGroups,
                             onLibraryReset:
@@ -623,6 +634,11 @@ class _WorkspaceTabs {
                                           selectionCommands: _state
                                               .widget
                                               .canvasSelectionCommands,
+                                          textOptions:
+                                              _state._views._textToolOptions,
+                                          textCommands:
+                                              _state.widget.canvasTextCommands,
+                                          textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
                                           canvasSize: _state
@@ -693,11 +709,11 @@ class _WorkspaceTabs {
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _state._brushTool,
             builder: (context, tool, _) => ToolSizePresetPanel(
-              size: tool.size,
+              size: tool.activeSize,
               onSizeSelected: (size) => _state._brushTool.value = _state
                   ._brushTool
                   .value
-                  .copyWith(size: size),
+                  .withActiveSize(size),
             ),
           ),
         );
@@ -715,7 +731,12 @@ class _WorkspaceTabs {
               // remove's question all read the session's answer.
               usesOf: (path) => _state.widget.session.mediaPool
                   .mediaAssetUses(path)
-                  .map(mediaAssetUseLine),
+                  .map(
+                    (use) => mediaAssetUseLine(
+                      use,
+                      framePlace: _state.widget.session.framePlaceLabel,
+                    ),
+                  ),
               onImportRequested: () => _state._openImportWindow(poolOnly: true),
               onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {
@@ -831,6 +852,7 @@ class _WorkspaceTabs {
             ]),
             host: (context) => TimelineTabHost(
               session: _state.widget.session,
+              transformOptions: _state._transformOptions,
               // A pool row dropped on a drawing layer: select what it
               // landed on, then open the place window with the file
               // already decided. The drop FILLS the answers and the
@@ -972,6 +994,7 @@ class _WorkspaceTabs {
             ]),
             host: (context) => StoryboardTabHost(
               session: _state.widget.session,
+              transformOptions: _state._transformOptions,
               // A pool row let go on a track's frames: the place window, with
               // the drop's answer — a NEW cut there — shown locked.
               onPlaceMediaAsset: (path, spot) => _state._openImportWindow(
@@ -1144,7 +1167,6 @@ class _WorkspaceTabs {
             // jank. Only the ink overlay consumes the tool state, through
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
-              _state._views._timesheetContinuous,
               _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
               // F-90: a crossing, played or dragged over, turns the sheet
@@ -1155,10 +1177,6 @@ class _WorkspaceTabs {
             ]),
             host: (context) => TimesheetTabHost(
               session: _state.widget.session,
-              continuous: _state._views._timesheetContinuous.value,
-              onContinuousChanged: (continuous) {
-                _state._views._timesheetContinuous.value = continuous;
-              },
               // The host hears the page itself — the panel moves it.
               reading: _state._views._timesheetPage,
               viewportController: _state._views._timesheetViewport,

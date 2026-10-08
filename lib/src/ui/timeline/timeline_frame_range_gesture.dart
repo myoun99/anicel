@@ -75,11 +75,17 @@ void retireRangeDragOnUnmount({
 
 class TimelineRangeMoveCallbacks {
   const TimelineRangeMoveCallbacks({
+    required this.holds,
     required this.onBegin,
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
   });
+
+  /// Whether a drag that starts on [grabLayerId] inside the selection is
+  /// nobody's — the row's blocks cannot move (F-263-Q1; the session's
+  /// `grabHolds` says which rows and why). Asked BEFORE [onBegin].
+  final bool Function(LayerId grabLayerId) holds;
 
   /// Starts moving the CURRENT selection; false = nothing to move.
   ///
@@ -141,6 +147,13 @@ class TimelineRangeMoveRowResolver {
   TimelineRangeMoveCallbacks? session;
   LayerId? _sourceLayerId;
 
+  /// [TimelineRangeMoveCallbacks.holds], of the layer the row a drag
+  /// started on belongs to — the reading the move's begin makes of it.
+  bool holdsRow(TimelineRowAddress row) {
+    final layerId = row.owningLayerId;
+    return layerId != null && (session?.holds(layerId) ?? false);
+  }
+
   bool begin(LayerId layerId) {
     final callbacks = session;
     if (callbacks == null) {
@@ -187,6 +200,7 @@ class TimelineRangeGestureCallbacks {
     required this.isInSelection,
     required this.onSelectUpdate,
     required this.onTapClear,
+    this.rowHolds,
     required this.onMoveBegin,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -240,6 +254,15 @@ class TimelineRangeGestureCallbacks {
   /// #2, "the first scroll touch kept moving the playhead"). Seeking on
   /// the release would walk straight back through both.
   final void Function(TimelineRowAddress row) onTapClear;
+
+  /// Whether [row] is one whose blocks cannot move at all. A drag that
+  /// starts on it INSIDE the selection is nobody's: no move, no new
+  /// selection, and the selection stays (F-263-Q1, 유저 2026-10-07:
+  /// 「옮길 수 없는 행을 누르면 아무 일도 안 일어난다」). Read before
+  /// [onMoveBegin], which is then not asked.
+  ///
+  /// Null on a surface none of whose rows is such a row.
+  final bool Function(TimelineRowAddress row)? rowHolds;
 
   /// Move mode (handle-level): pure grid geometry — frame steps along the
   /// main axis, ROW steps across it (the mount maps rows onto layers or
@@ -345,6 +368,15 @@ class _TimelineFrameRangeGestureLayerState
     _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
+    final rowHolds = widget.callbacks.rowHolds?.call(widget.row) ?? false;
+    if (insideSelection && rowHolds) {
+      // Nobody's: no mode, and nothing to pin a row for. But the hand
+      // DRAGGED — on a row that moves, this step would have carried the
+      // selection — so its release is no tap, for this layer or for the
+      // cells under it: a tap there lets the selection go.
+      _dragStepped = true;
+      return;
+    }
     if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
       setState(() {
         _mode = _RangeDragMode.move;
@@ -405,6 +437,7 @@ class _TimelineFrameRangeGestureLayerState
             (horizontal
                 ? Offset(_scrolledMain, _scrolledCross)
                 : Offset(_scrolledCross, _scrolledMain));
+        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           widget.row,
           _anchorIndex,
@@ -428,6 +461,7 @@ class _TimelineFrameRangeGestureLayerState
           accumulatedDelta: _crossDelta + _scrolledCross,
           rowExtent: widget.crossAxisExtent,
         );
+        _noteMoveSteps(frames, rows);
         if (frames == _lastFrames && rows == _lastRows) {
           return;
         }
@@ -445,6 +479,7 @@ class _TimelineFrameRangeGestureLayerState
   void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
+    _dragStepped = false;
     reportRangeDragFinished(
       dragging: mode != _RangeDragMode.none,
       moving: mode == _RangeDragMode.move,
@@ -522,13 +557,33 @@ class _TimelineFrameRangeGestureLayerState
             widget.callbacks.onTapClear(widget.row);
           }
         },
-        child: GestureDetector(
+        // The release still clears for everything the down could not
+        // decide: a press inside the selection that turned out to be a
+        // tap, and the devices the down stands down for.
+        //
+        // 🚨OFF THE ARENA, as every primary tap beside a double tap is
+        // ([InstantTapRegion] — 유저: 「아무것도 안 했는데 300ms나 반응성
+        // 느려지는 거잖아」). ↩️It was a `GestureDetector`'s tap-up until
+        // F-255 put the frame blocks' double tap on the storyboard's cut
+        // row: an arena tap waits out the double-tap window wherever a
+        // double tap shares its row, and measured there a click inside a
+        // cut selection took 300ms to drop it, where it had taken none.
+        //
+        // ⛔And a press this layer's own pan carried is a DRAG, however
+        // short: a move's first step can come inside the tap's slop (F-238,
+        // a cell narrower than it), and that release must not drop the
+        // selection it has just moved. The pan's end comes after this — a
+        // pointer's listeners hear its up before the recognisers do — so
+        // the mode still says.
+        //
+        // The taps that CANNOT see this layer's mode — the cells under it —
+        // are told through the pointer instead, once the drag has changed
+        // something ([_dragStepped], `pointerDragTookAStep`).
+        child: InstantTapRegion(
           behavior: HitTestBehavior.translucent,
-          // The release still clears for everything the down could not
-          // decide: a press inside the selection that turned out to be a
-          // tap, and the devices the down stands down for.
-          onTapUp: (_) {
-            if (!_clearedOnDown) {
+          onTap: (_) {},
+          onSettledTap: (_) {
+            if (!_clearedOnDown && _mode == _RangeDragMode.none) {
               widget.callbacks.onTapClear(widget.row);
             }
           },
@@ -536,6 +591,7 @@ class _TimelineFrameRangeGestureLayerState
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
+            draggedAStep: () => _dragStepped,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -842,6 +898,7 @@ class _TimelineLaneRangeGestureLayerState
             (horizontal
                 ? Offset(_scrolledMain, _scrolledCross)
                 : Offset(_scrolledCross, _scrolledMain));
+        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
@@ -855,6 +912,7 @@ class _TimelineLaneRangeGestureLayerState
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
         );
+        _noteMoveSteps(frames, 0);
         if (frames == _lastFrames) {
           return;
         }
@@ -871,6 +929,7 @@ class _TimelineLaneRangeGestureLayerState
   void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
+    _dragStepped = false;
     reportRangeDragFinished(
       dragging: mode != _RangeDragMode.none,
       moving: mode == _RangeDragMode.move,
@@ -919,8 +978,7 @@ class _TimelineLaneRangeGestureLayerState
         // The frame block's activation law, RECORD half: which cell of THIS
         // lane the press hit — the recogniser reports only the second tap.
         onPressDown: timelineCellDoubleTapRecord(
-          layerId: widget.layer.id,
-          laneId: widget.laneId,
+          row: _rowAddress,
           cells: _cells,
         ),
         onTap: (localPosition) => widget.callbacks.onTapAt(
@@ -957,8 +1015,7 @@ class _TimelineLaneRangeGestureLayerState
           onDoubleTapDown: activate == null
               ? null
               : timelineCellDoubleTapActivation(
-                  layerId: widget.layer.id,
-                  laneId: widget.laneId,
+                  row: _rowAddress,
                   cells: _cells,
                   onActivate: (frame) =>
                       activate(widget.layer.id, widget.laneId, frame),
@@ -968,6 +1025,7 @@ class _TimelineLaneRangeGestureLayerState
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
+            draggedAStep: () => _dragStepped,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -986,6 +1044,7 @@ Widget _eagerPanDetector({
   required BuildContext context,
   required Object debugOwner,
   required bool Function(Offset down, Offset now) firstStepAt,
+  required bool Function() draggedAStep,
   required void Function(Offset localPosition) onStart,
   required GestureDragUpdateCallback onUpdate,
   required VoidCallback onEnd,
@@ -1000,6 +1059,7 @@ Widget _eagerPanDetector({
               () => EagerPanGestureRecognizer(debugOwner: debugOwner),
               (recognizer) {
                 recognizer.firstStepAt = firstStepAt;
+                recognizer.draggedAStep = draggedAStep;
                 recognizer.supportedDevices = devices;
                 recognizer.gestureSettings =
                     MediaQuery.maybeGestureSettingsOf(context);
@@ -1032,6 +1092,32 @@ mixin _RangeDragFirstStep {
   int _frameAt(Offset localPosition);
 
   bool _pressedInSelection(int frame);
+
+  /// Whether the drag this layer is carrying has CHANGED anything: moved
+  /// what it carries off its seat, or taken its head off the cell it was
+  /// pressed on — or would have, on a row that is no grip
+  /// ([TimelineRangeGestureCallbacks.rowHolds]). What the pan tells the
+  /// taps that share its pointer
+  /// (`EagerPanGestureRecognizer.draggedAStep`) — a release inside a tap's
+  /// slop is no tap once this is so (F-238 made a one-frame move that
+  /// short). Let go with the drag.
+  bool _dragStepped = false;
+
+  /// A SELECT whose head stands on [head], [cross] across its row: stepped
+  /// once that is not the cell it was pressed on ([anchor], this row).
+  void _noteSelectHead(int anchor, int head, double cross) {
+    if (head != anchor || cross < 0 || cross >= _dragRowExtent) {
+      _dragStepped = true;
+    }
+  }
+
+  /// A MOVE now [frames] and [rows] from where it began: stepped once
+  /// either is not zero — and still a drag if it comes back.
+  void _noteMoveSteps(int frames, int rows) {
+    if (frames != 0 || rows != 0) {
+      _dragStepped = true;
+    }
+  }
 
   /// Whether a press at [down], now at [now], has stepped. A press inside the
   /// selection steps when the block would leave its seat, by the nearest-cell

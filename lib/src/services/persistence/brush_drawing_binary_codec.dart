@@ -13,6 +13,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_text.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -34,6 +35,7 @@ class AnicelCelEntry {
     required this.canvasSize,
     required this.tileSize,
     required this.tiles,
+    this.texts = const [],
   });
 
   factory AnicelCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
@@ -41,9 +43,14 @@ class AnicelCelEntry {
       key: key,
       canvasSize: surface.canvasSize,
       tileSize: surface.tileSize,
-      tiles: [
-        for (final entry in surface.tiles.entries)
-          (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
+      tiles: _tileRecordsOf(surface.tiles),
+      texts: [
+        for (final text in surface.texts)
+          (
+            id: text.id,
+            content: jsonEncode(text.content.toJson()),
+            plate: _tileRecordsOf(text.plate),
+          ),
       ],
     );
   }
@@ -51,31 +58,65 @@ class AnicelCelEntry {
   final BrushFrameKey key;
   final CanvasSize canvasSize;
   final int tileSize;
-  final List<({int x, int y, Uint8List pixels})> tiles;
+  final List<AnicelTileRecord> tiles;
+
+  /// The texts the cel's picture carries, bottom → top: each one's id, what
+  /// the person set (as JSON — plain data, like the tiles, so it crosses
+  /// the isolate boundary) and its plate.
+  final List<({int id, String content, List<AnicelTileRecord> plate})> texts;
 
   BitmapSurface toSurface() {
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
-      tiles: {
-        for (final tile in tiles)
-          // 🎯The coordinate has ALWAYS lived beside the pixels here —
-          // Finalizable tiles cannot cross the save/open isolate boundary,
-          // so the durable shape never had one on the tile. It used to
-          // build the TileCoord twice per tile, once as the key and once
-          // for a field that no longer exists.
-          TileCoord(x: tile.x, y: tile.y): BitmapTile(
-            size: tileSize,
-            pixels: tile.pixels,
+      tiles: _tilesOf(tiles, tileSize),
+      texts: [
+        for (final text in texts)
+          CelText(
+            id: text.id,
+            content: CelTextContent.fromJson(
+              jsonDecode(text.content) as Map<String, dynamic>,
+            ),
+            plate: _tilesOf(text.plate, tileSize),
           ),
-      },
+      ],
     );
   }
 }
 
+/// One tile as it crosses the save/open isolate boundary: where it sits and
+/// its raw straight-alpha RGBA bytes.
+typedef AnicelTileRecord = ({int x, int y, Uint8List pixels});
+
+List<AnicelTileRecord> _tileRecordsOf(Map<TileCoord, BitmapTile> tiles) => [
+  for (final entry in tiles.entries)
+    (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
+];
+
+Map<TileCoord, BitmapTile> _tilesOf(
+  List<AnicelTileRecord> records,
+  int tileSize,
+) => {
+  for (final tile in records)
+    // 🎯The coordinate has ALWAYS lived beside the pixels here —
+    // Finalizable tiles cannot cross the save/open isolate boundary, so
+    // the durable shape never had one on the tile. It used to build the
+    // TileCoord twice per tile, once as the key and once for a field that
+    // no longer exists.
+    TileCoord(x: tile.x, y: tile.y): BitmapTile(
+      size: tileSize,
+      pixels: tile.pixels,
+    ),
+};
+
+/// v3 (2026-10-06, the text tool — R9-rest): after the tiles comes the
+/// TEXTS the cel's picture carries — a count, then for each its id, what
+/// the person set (JSON) and its plate's tiles, written as the drawing's
+/// are. A cel with none writes a zero.
+///
 /// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
 /// negative coords. v1 files (u32 coords) still decode.
-const int anicelCelBinaryVersion = 2;
+const int anicelCelBinaryVersion = 3;
 
 /// Encodes a baked cel: key, canvas geometry, then each tile's coord and
 /// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
@@ -111,11 +152,15 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
     surface.tileSize,
     surface.tiles.length,
   );
-  for (final entry in surface.tiles.entries) {
-    writer
-      ..i32(entry.key.x)
-      ..i32(entry.key.y);
-    entry.value.readPixels((_, view) => writer.bytes(view));
+  writer.tilesOf(surface.tiles);
+  writer.u32(surface.texts.length);
+  for (final text in surface.texts) {
+    writer.celTextHeader(
+      text.id,
+      jsonEncode(text.content.toJson()),
+      text.plate.length,
+    );
+    writer.tilesOf(text.plate);
   }
   return writer.takeBytes();
 }
@@ -128,45 +173,69 @@ Uint8List encodeCelEntry(AnicelCelEntry entry) {
     entry.tileSize,
     entry.tiles.length,
   );
-  for (final tile in entry.tiles) {
-    writer
-      ..i32(tile.x)
-      ..i32(tile.y)
-      ..bytes(tile.pixels);
+  writer.tileRecords(entry.tiles);
+  writer.u32(entry.texts.length);
+  for (final text in entry.texts) {
+    writer.celTextHeader(text.id, text.content, text.plate.length);
+    writer.tileRecords(text.plate);
   }
   return writer.takeBytes();
 }
 
-AnicelCelEntry decodeCelEntry(Uint8List bytes) {
-  final reader = _ByteReader(bytes);
+/// What a cel stream says it is, up to its tile count: its version, its
+/// key, its canvas and its tile size — read in ONE place, for the reason
+/// [_ByteWriter.celStreamHeader] is written in one.
+({int version, BrushFrameKey key, CanvasSize canvasSize, int tileSize})
+_celStreamHeaderOf(_ByteReader reader) {
   final version = reader.u8();
   if (version > anicelCelBinaryVersion) {
     throw const FormatException('Unsupported cel entry version.');
   }
-  final key = BrushFrameKey(
-    projectId: ProjectId(reader.string()),
-    trackId: TrackId(reader.string()),
-    cutId: CutId(reader.string()),
-    layerId: LayerId(reader.string()),
-    frameId: FrameId(reader.string()),
+  return (
+    version: version,
+    key: BrushFrameKey(
+      projectId: ProjectId(reader.string()),
+      trackId: TrackId(reader.string()),
+      cutId: CutId(reader.string()),
+      layerId: LayerId(reader.string()),
+      frameId: FrameId(reader.string()),
+    ),
+    canvasSize: CanvasSize(width: reader.u32(), height: reader.u32()),
+    tileSize: reader.u16(),
   );
-  final width = reader.u32();
-  final height = reader.u32();
-  final tileSize = reader.u16();
+}
+
+AnicelCelEntry decodeCelEntry(Uint8List bytes) {
+  final reader = _ByteReader(bytes);
+  final (:version, :key, :canvasSize, :tileSize) = _celStreamHeaderOf(reader);
   final tileCount = reader.u32();
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
+  List<AnicelTileRecord> tiles(int count) => [
+    for (var i = 0; i < count; i += 1)
+      (
+        x: version >= 2 ? reader.i32() : reader.u32(),
+        y: version >= 2 ? reader.i32() : reader.u32(),
+        pixels: reader.bytes(tileByteLength),
+      ),
+  ];
+  final drawing = tiles(tileCount);
   return AnicelCelEntry(
     key: key,
-    canvasSize: CanvasSize(width: width, height: height),
+    canvasSize: canvasSize,
     tileSize: tileSize,
-    tiles: [
-      for (var i = 0; i < tileCount; i += 1)
-        (
-          x: version >= 2 ? reader.i32() : reader.u32(),
-          y: version >= 2 ? reader.i32() : reader.u32(),
-          pixels: reader.bytes(tileByteLength),
-        ),
-    ],
+    tiles: drawing,
+    // The version says whether the texts are there — never the bytes left
+    // over, which a stream cut short would also have none of.
+    texts: version < 3
+        ? const []
+        : [
+            for (var i = reader.u32(); i > 0; i -= 1)
+              (
+                id: reader.i32(),
+                content: reader.longString(),
+                plate: tiles(reader.u32()),
+              ),
+          ],
   );
 }
 
@@ -261,12 +330,26 @@ class AnicelCelBlob {
     return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry) {
-    final compressed = compressAnicelPayload(encodeCelEntry(entry));
+  factory AnicelCelBlob.encode(AnicelCelEntry entry) =>
+      AnicelCelBlob.ofPayload(encodeCelEntry(entry));
+
+  /// The blob of a cel's uncompressed [payload] — the bytes [encodeCelEntry]
+  /// writes, or [encodeCelEntryFromSurface] straight off a surface —
+  /// compressed here. The save isolate's shape: a hot cel arrives there
+  /// already serialised, because a surface cannot cross.
+  ///
+  /// ⛔The blob's own header is READ OFF the payload's, never handed in
+  /// beside it: two copies of a cel's key and size would be two answers to
+  /// what the cel is, and nothing would see them disagree.
+  factory AnicelCelBlob.ofPayload(Uint8List payload) {
+    final (:key, :canvasSize, :tileSize, version: _) = _celStreamHeaderOf(
+      _ByteReader(payload),
+    );
+    final compressed = compressAnicelPayload(payload);
     return AnicelCelBlob.fromCompressedBody(
-      key: entry.key,
-      canvasSize: entry.canvasSize,
-      tileSize: entry.tileSize,
+      key: key,
+      canvasSize: canvasSize,
+      tileSize: tileSize,
       codec: compressed.codec,
       body: compressed.bytes,
     );
@@ -389,6 +472,43 @@ class _ByteWriter {
     u32(tileCount);
   }
 
+  /// One text of the cel stream (v3), up to its plate's tiles: its id, what
+  /// the person set as JSON, and how many tiles follow. Written in ONE
+  /// place for the header's reason above — two routes write this stream.
+  void celTextHeader(int id, String contentJson, int plateTileCount) {
+    i32(id);
+    longString(contentJson);
+    u32(plateTileCount);
+  }
+
+  /// A text's settings: a string that can outgrow [string]'s 16-bit length
+  /// (a page of letters is tens of thousands of bytes as JSON).
+  void longString(String value) {
+    final encoded = utf8.encode(value);
+    u32(encoded.length);
+    _builder.add(encoded);
+  }
+
+  /// Tiles straight off a surface or a plate — each one's coordinate, then
+  /// its bytes read in place ([BitmapTile.readPixels], never the copying
+  /// `pixels` getter; see [encodeCelEntryFromSurface]).
+  void tilesOf(Map<TileCoord, BitmapTile> tiles) {
+    for (final entry in tiles.entries) {
+      i32(entry.key.x);
+      i32(entry.key.y);
+      entry.value.readPixels((_, view) => bytes(view));
+    }
+  }
+
+  /// The same tiles from their isolate-boundary records.
+  void tileRecords(List<AnicelTileRecord> tiles) {
+    for (final tile in tiles) {
+      i32(tile.x);
+      i32(tile.y);
+      bytes(tile.pixels);
+    }
+  }
+
   void bytes(List<int> value) => _builder.add(value);
 
   Uint8List takeBytes() => _builder.takeBytes();
@@ -433,6 +553,16 @@ class _ByteReader {
 
   String string() {
     final length = u16();
+    final value = utf8.decode(
+      Uint8List.sublistView(_bytes, _offset, _offset + length),
+    );
+    _offset += length;
+    return value;
+  }
+
+  /// A string written by `_ByteWriter.longString`.
+  String longString() {
+    final length = u32();
     final value = utf8.decode(
       Uint8List.sublistView(_bytes, _offset, _offset + length),
     );

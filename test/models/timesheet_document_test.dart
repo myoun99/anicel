@@ -116,25 +116,32 @@ void main() {
       expect(overridden.episode, 'MV');
     });
 
-    test('the 作業者 is the 원화 worker — not another stage\'s, nor a '
-        'correction\'s', () {
-      // 유저 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든
-      // 스태프의 원화 이름 인식하게하고」.
+    test('🎯the 作業者 is the CUT\'s 러프원화 worker — not another stage\'s, '
+        'nor a correction\'s', () {
+      // 유저 2026-10-05 (F-291): 「타임시트에 적히는 이름 기준이 원화이름인데,
+      // 그게아니라 레이아웃 아니면 러프원화의 이름임. 기본적으로
+      // 러프원화이름이면 될거같고」 — and 10-08 (F-291-Q1), the stages are
+      // the cut's.
       final document = _document(
-        _cut(),
-        info: TimesheetInfo.empty
-            .withStaffName(const LayerMark(process: LayerProcess.key), '大川')
-            .withStaffName(
-              const LayerMark(process: LayerProcess.layout),
-              'LO',
-            )
-            .withStaffName(
-              const LayerMark(
-                process: LayerProcess.key,
-                revise: LayerRevise.animationDirector,
+        _cut().copyWith(
+          metadata: const CutMetadata()
+              .withStaffName(
+                const LayerMark(process: LayerProcess.roughKey),
+                '大川',
+              )
+              .withStaffName(const LayerMark(process: LayerProcess.key), '原')
+              .withStaffName(
+                const LayerMark(process: LayerProcess.layout),
+                'LO',
+              )
+              .withStaffName(
+                const LayerMark(
+                  process: LayerProcess.roughKey,
+                  revise: LayerRevise.animationDirector,
+                ),
+                '作監',
               ),
-              '作監',
-            ),
+        ),
       );
       expect(document.artist, '大川');
     });
@@ -251,7 +258,7 @@ void main() {
     });
 
     test('more animation layers than the 6-second strip\'s 8 take the '
-        '3-second sheet (timesheet-sheet-capacity-Q1), and past its 12 they '
+        '3-second sheet (timesheet-sheet-capacity-Q1), and past its 19 they '
         'grow its ACTION block', () {
       List<TimesheetColumn> actionsOf(int layers) => _document(
         _cut(layers: [for (var i = 0; i < layers; i += 1) _layer('L$i')]),
@@ -260,13 +267,13 @@ void main() {
           .toList();
 
       final ten = actionsOf(10);
-      expect(ten, hasLength(12));
+      expect(ten, hasLength(19));
       expect(ten[9].layerName, 'L9');
       expect(ten[10].layerName, isNull);
 
-      final fourteen = actionsOf(14);
-      expect(fourteen, hasLength(14));
-      expect(fourteen[13].layerName, 'L13');
+      final twentyOne = actionsOf(21);
+      expect(twentyOne, hasLength(21));
+      expect(twentyOne[20].layerName, 'L20');
     });
 
     test('SE layers fill the S slots and extra ones grow the section', () {
@@ -678,13 +685,13 @@ void main() {
           layers: const [],
           duration: 48,
           canvasSize: const CanvasSize(width: 1280, height: 720),
-          metadata: const CutMetadata(note: 'カットO.L'),
+          metadata: const CutMetadata(pageNotes: ['カットO.L']),
         ),
         projectName: 'Project',
         fps: 24,
       );
 
-      expect(document.memoText, 'カットO.L');
+      expect(document.memoTextOf(0), 'カットO.L');
     });
 
     test('visibleHeaderFields keeps printing order minus hidden boxes', () {

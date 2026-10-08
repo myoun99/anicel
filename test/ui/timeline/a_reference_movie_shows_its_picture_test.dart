@@ -14,7 +14,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
@@ -227,7 +226,6 @@ void main() {
     await tester.runAsync(() async {
       warmer.requestWarmCut(
         cutId: s.requireActiveCut.id,
-        quality: PlaybackQuality.quarter,
         aroundFrameIndex: 10,
       );
       final deadline = DateTime.now().add(_answersWithin);

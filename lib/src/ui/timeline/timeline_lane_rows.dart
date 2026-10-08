@@ -33,12 +33,14 @@ import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_block_word.dart';
+import '../repaint_props.dart';
 import 'timeline_cell_style.dart'
     show
         TimelineBlockWordGrowth,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
-        timelineInBlockInk;
+        timelineInBlockInk,
+        timelineJoiningLineWidth;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
@@ -61,6 +63,10 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// The stood-up navigator (three 20px buttons) and value readout, plus
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
+
+/// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
+/// height.
+const double _laneValueLinkExtent = 18;
 
 /// The stood-up value readout's type, and the most LINES any lane makes of
 /// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
@@ -1028,6 +1034,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           const SizedBox(width: 6),
         ],
         Expanded(child: label),
+        ?_valueLink(),
         const SizedBox(width: 4),
         SizedBox(
           width: layerLaneValueSlotWidth,
@@ -1051,6 +1058,35 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 ),
         ),
       ],
+    );
+  }
+
+  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale,
+  /// After Effects' own mark beside the two numbers. One press flips the
+  /// switch the rail handed over, and on and off are told by colour alone
+  /// ([AppIconButton.isSelected]).
+  ///
+  /// 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
+  /// 변형 도구의 「배율 연동」과 한 스위치」. Always on the row that has one:
+  /// what a press changes is its colour, never whether it is there.
+  ///
+  /// Null on every lane that is not [PropertyLaneRow.linkable], and on a
+  /// rail that was handed no chain.
+  Widget? _valueLink() {
+    final link = widget.laneEdit?.valueLink;
+    if (!lane.linkable || link == null) {
+      return null;
+    }
+    return ListenableBuilder(
+      listenable: link.changes,
+      builder: (context, _) => AppIconButton(
+        keyValue: '$_keyPrefix-lane-value-link-${layer.id}-${lane.laneId}',
+        tooltip: link.tooltip,
+        size: AppIconButtonSize.micro,
+        isSelected: link.isOn(),
+        onPressed: link.toggle,
+        icon: const Icon(Icons.link),
+      ),
     );
   }
 
@@ -1084,13 +1120,26 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         final showsValue =
             valueLabel != null &&
             extent >= _laneLabelFloor + gap + _laneValueExtent;
+        final valueExtent = showsValue ? gap + _laneValueExtent : 0.0;
+        final navigatorExtent = lane.showsKeyNavigator
+            ? gap + _laneNavigatorExtent
+            : 0.0;
         final showsNavigator =
             lane.showsKeyNavigator &&
+            extent >= _laneLabelFloor + navigatorExtent + valueExtent;
+        // The chain is paid LAST, once everything the column already showed
+        // has its room: it links the value, so it is never there without
+        // it, and no key button is shed to make it room. Asked of the
+        // navigator the LANE has, not of whether it is showing — or the
+        // chain would come and go and come again as the column grew.
+        final link = showsValue ? _valueLink() : null;
+        final showsLink =
+            link != null &&
             extent >=
                 _laneLabelFloor +
-                    gap +
-                    _laneNavigatorExtent +
-                    (showsValue ? gap + _laneValueExtent : 0);
+                    navigatorExtent +
+                    valueExtent +
+                    _laneValueLinkExtent;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1099,6 +1148,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               const SizedBox(height: gap),
             ],
             Expanded(child: label),
+            if (showsLink)
+              SizedBox(
+                height: _laneValueLinkExtent,
+                child: Center(child: link),
+              ),
             if (showsValue) ...[
               const SizedBox(height: gap),
               // A fixed slot, so a long readout ellipsises inside it instead
@@ -1214,13 +1268,14 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// (D43-2 재개 c) and its own bottom border (D43-2 재개 d) — and to light
   /// with the standing row (F-25). The grid sheet under the rows does every
   /// one of them now, with the rail's own test for the light
-  /// ([timelineRowGround]); the band is its gesture and its markers.
+  /// ([timelineRowGround]); the band is its gesture, the line between its
+  /// keys and its markers.
   @override
   Widget build(BuildContext context) {
     return _withSpacers(
       Stack(
         clipBehavior: Clip.none,
-        children: [?_gestureLayer(), ..._liveMarkers()],
+        children: [?_gestureLayer(), ?_keysLine(), ..._liveMarkers()],
       ),
     );
   }
@@ -1251,6 +1306,36 @@ class TimelineLaneFrameRow extends StatelessWidget {
 
   bool _inWindow(int frame) =>
       frame >= frameStartIndex && frame < frameEndIndexExclusive;
+
+  /// The line between this lane's keys ([TimelineLaneKeysLine]) — the part
+  /// of it the band's window holds, UNDER the markers.
+  Widget? _keysLine() {
+    final span = timelineKeysLineSpan(lane.keyedFrames);
+    if (span == null ||
+        span.last < frameStartIndex ||
+        span.first >= frameEndIndexExclusive) {
+      return null;
+    }
+    final from = math.max(span.first, frameStartIndex);
+    final past = math.min(span.last + 1, frameEndIndexExclusive);
+    return placedAlong(
+      axis,
+      along: _edge(from),
+      across: 0,
+      alongExtent: _edge(past) - _edge(from),
+      acrossExtent: _crossExtent,
+      child: TimelineLaneKeysLine(
+        key: ValueKey<String>(
+          '$keyPrefix-lane-keys-line-${layer.id}-${lane.laneId}',
+        ),
+        axis: axis,
+        cells: past - from,
+        color: layerMarkColor(layer.mark),
+        startsAtKey: from == span.first,
+        endsAtKey: past == span.last + 1,
+      ),
+    );
+  }
 
   /// R26 #3: the header row washes when the selection spans its WHOLE
   /// member group — the SAME predicate the gesture uses to decide
@@ -1557,8 +1642,16 @@ List<Widget> timelineUnionKeyMarkerSpans({
   required Layer layer,
   required PropertyLaneRow lane,
   required double crossExtent,
+  required Axis axis,
 }) {
   return [
+    // UNDER the marks.
+    ?_unionKeysLineSpan(
+      keyPrefix: keyPrefix,
+      layer: layer,
+      lane: lane,
+      axis: axis,
+    ),
     for (final frame in lane.keyedFrames.toList()..sort())
       TimelineFrameSpan(
         key: ValueKey<String>(
@@ -1605,6 +1698,152 @@ List<Widget> timelineUnionKeyMarkerSpans({
         ),
       ),
   ];
+}
+
+/// The line between a union row's keys, as the span it is laid out over —
+/// the band's own drawing ([TimelineLaneKeysLine]), from the first key's
+/// cell through the last's — or null while the row has no two keys to join.
+TimelineFrameSpan? _unionKeysLineSpan({
+  required String keyPrefix,
+  required Layer layer,
+  required PropertyLaneRow lane,
+  required Axis axis,
+}) {
+  final span = timelineKeysLineSpan(lane.keyedFrames);
+  if (span == null) {
+    return null;
+  }
+  return TimelineFrameSpan(
+    key: ValueKey<String>(
+      '$keyPrefix-lane-keys-line-span-${layer.id}-${lane.laneId}',
+    ),
+    placement: TimelineFrameSpanPlacement(
+      startIndex: span.first,
+      endIndexExclusive: span.last + 1,
+    ),
+    child: TimelineLaneKeysLine(
+      key: ValueKey<String>(
+        '$keyPrefix-lane-keys-line-${layer.id}-${lane.laneId}',
+      ),
+      axis: axis,
+      cells: span.last - span.first + 1,
+      color: layerMarkColor(layer.mark),
+    ),
+  );
+}
+
+/// The frames the line between a row's keys runs over — from its first key
+/// to its last, both included — or null while it has no two keys to join.
+({int first, int last})? timelineKeysLineSpan(Iterable<int> keyedFrames) {
+  int? first;
+  int? last;
+  for (final frame in keyedFrames) {
+    if (first == null || frame < first) {
+      first = frame;
+    }
+    if (last == null || frame > last) {
+      last = frame;
+    }
+  }
+  return first == null || last == null || first == last
+      ? null
+      : (first: first, last: last);
+}
+
+/// THE LINE BETWEEN A ROW'S KEYS (I-73, 유저 2026-10-08). A DRAWING, and
+/// nothing else — the band beneath it owns every pointer.
+///
+/// 「슬슬 키가 2개이상일땐 키 끼리 선으로 이어주는거? … 점선말고
+/// 이어진선으로하자 … 그 선을 fx나 카메라나 동일하게 적용되는거 맞지? 아무튼
+/// 키에도 적용. se 글로벌행도 타임라인패널에서 똑같이」 — and where it runs:
+/// 「첫 키 앞은 비움. 근데 키 하나면 여전히 선 안넣고, 두개일때만 처음이랑
+/// 마지막 사이에 선 그리도록하자. 즉 마지막 키 뒷부분은 선 안그림. se행이든
+/// 트랜스폼이든 카메라든 전부 동일. 즉 사이만 존재하도록」.
+///
+/// So ONE line from the row's first key to its last ([timelineKeysLineSpan])
+/// — every key between them stands on it — and none where a key is not on
+/// both sides: before the first, after the last, beside a key alone. One
+/// drawing for every key mark on the frame axis, as [TimelineLaneKeyMarker]
+/// is: a member lane, a group header's union, the camera row's summary.
+///
+/// It fills the box of the [cells] it is laid over and strokes from the
+/// middle of the first to the middle of the last, where the two marks
+/// stand. A box that stops short of a key — a band's window does — has the
+/// line run to that edge instead ([startsAtKey], [endsAtKey]).
+class TimelineLaneKeysLine extends StatelessWidget {
+  const TimelineLaneKeysLine({
+    super.key,
+    required this.axis,
+    required this.cells,
+    required this.color,
+    this.startsAtKey = true,
+    this.endsAtKey = true,
+  });
+
+  final Axis axis;
+
+  /// How many frame cells the box spans — the cell's extent is DERIVED from
+  /// the box, so a zoom step lays this out again and rebuilds nothing.
+  final int cells;
+
+  /// The row's COLOUR LABEL, as its key marks take it.
+  final Color color;
+
+  final bool startsAtKey;
+  final bool endsAtKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _KeysLinePainter(
+          axis: axis,
+          cells: cells,
+          color: color,
+          startsAtKey: startsAtKey,
+          endsAtKey: endsAtKey,
+        ),
+      ),
+    );
+  }
+}
+
+class _KeysLinePainter extends CustomPainter with RepaintOnProps {
+  _KeysLinePainter({
+    required this.axis,
+    required this.cells,
+    required this.color,
+    required this.startsAtKey,
+    required this.endsAtKey,
+  });
+
+  final Axis axis;
+  final int cells;
+  final Color color;
+  final bool startsAtKey;
+  final bool endsAtKey;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final along = extentAlong(axis, size);
+    final halfCell = cells < 1 ? 0.0 : along / cells / 2;
+    final from = startsAtKey ? halfCell : 0.0;
+    final to = endsAtKey ? along - halfCell : along;
+    if (to <= from) {
+      return;
+    }
+    final across = extentAcross(axis, size) / 2;
+    canvas.drawLine(
+      offsetAlong(axis, along: from, across: across),
+      offsetAlong(axis, along: to, across: across),
+      Paint()
+        ..color = color
+        ..strokeWidth = timelineJoiningLineWidth,
+    );
+  }
+
+  @override
+  Object get props => (axis, cells, color, startsAtKey, endsAtKey);
 }
 
 /// One key marker. A DRAWING, and nothing else.

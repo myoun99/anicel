@@ -29,6 +29,48 @@ void main() {
   void up(int pointer, PointerDeviceKind kind) =>
       census.note(PointerUpEvent(pointer: pointer, kind: kind));
 
+  test('🚨the census says WHAT is down — each contact\'s kind, pointer and '
+      'age on the events\' own clock, so a screenshot names the press that '
+      'lost its lift', () {
+    expect(census.held, 'none');
+
+    census.note(
+      const PointerDownEvent(
+        pointer: 1,
+        kind: PointerDeviceKind.mouse,
+        timeStamp: Duration(seconds: 10),
+      ),
+    );
+    census.note(
+      const PointerDownEvent(
+        pointer: 5,
+        kind: PointerDeviceKind.touch,
+        timeStamp: Duration(seconds: 12),
+      ),
+    );
+    census.note(
+      const PointerMoveEvent(
+        pointer: 5,
+        kind: PointerDeviceKind.touch,
+        timeStamp: Duration(milliseconds: 14500),
+      ),
+    );
+    expect(census.held, 'mouse#1 +4.5s · touch#5 +2.5s');
+
+    census.note(
+      const PointerUpEvent(
+        pointer: 5,
+        kind: PointerDeviceKind.touch,
+        timeStamp: Duration(seconds: 15),
+      ),
+    );
+    expect(
+      census.held,
+      'mouse#1 +5.0s',
+      reason: 'the press nothing lifts is the one that only gets older',
+    );
+  });
+
   test('a press is down until its lift or its cancel, and a hand that lifts '
       'cancels nothing', () {
     down(1, PointerDeviceKind.stylus);

@@ -4,11 +4,13 @@ import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
+import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
@@ -21,6 +23,9 @@ import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
+import '../../services/commands/link_mirror.dart'
+    show linkMirrorRows, linkMirrorTargets;
+import '../../services/commands/update_layer_collapsed_command.dart';
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -296,10 +301,16 @@ class Standing {
   ///
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
+  ///
+  /// The track's CONTE row is a row of this rail too (I-73, 유저 2026-10-08:
+  /// 「콘티행에 서야 콘티행에 서도록」) — the selected track's own: it is
+  /// there in every cut and in a gap, so it is stood on under the row's own
+  /// address ([trackConteRowId]) and never under a cut's layer.
   TimelineRowAddress get selectedRow {
     final row = _storyboardRow;
     if (row is LayerRowAddress &&
-        _trackSe.isTrackOwnedRailLayerId(row.layerId)) {
+        (_trackSe.isTrackOwnedRailLayerId(row.layerId) ||
+            trackIdOfConteRow(row.layerId) == _selection.selectedTrackId)) {
       return row;
     }
     return TrackRowAddress(_selection.selectedTrackId);
@@ -732,9 +743,18 @@ class Standing {
   ///
   /// Asked ONCE, after the stand and its frame have landed, against
   /// [before] — the layer the stand found: an S row (or one of its lanes)
-  /// the cut shows seats its layer; the V row is standing on the CUT
-  /// ([layerACutStandSeats]). A row the cut does not show — a gap has no
-  /// cut, a V lane's carrier is no layer — seats nothing.
+  /// the cut shows seats its layer; the track's conte row seats the conte
+  /// layer of the cut it stands in ([layerAConteStandSeats]). A row the cut
+  /// does not show — a gap has no cut, a V lane's carrier is no layer —
+  /// seats nothing.
+  ///
+  /// ↩️THE V ROW SEATS NO ROW OF ITS CUT (I-73, 유저 2026-10-08): 「컷에
+  /// 설때는 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에 서야
+  /// 콘티행에 서도록」. 09-26's 「컷에서면 콘티레이어가 있다면 콘티레이어에
+  /// 서도록」 was said while the cut block WAS its conte blocks; they are a
+  /// row of their own now, and that sentence is that row's. Standing on a
+  /// cut keeps [before] where the cut shows it, else the cut comes back on
+  /// the row it was left on ([layerACutSwitchSeats]).
   ///
   /// A flip, a ruler seek and playback that cross a cut give the same answer
   /// ([layerACutSwitchSeats]).
@@ -747,10 +767,13 @@ class Standing {
 
   LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
       switch (storyboardStandingRow) {
+        LayerRowAddress(:final layerId)
+            when trackIdOfConteRow(layerId) != null =>
+          layerAConteStandSeats(before: before),
         LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
             when _activeCutHasLayer(layerId) =>
           layerId,
-        TrackRowAddress() => layerACutStandSeats(before: before),
+        TrackRowAddress() => _activeCutHasLayer(before) ? before : null,
         _ => null,
       };
 
@@ -772,15 +795,18 @@ class Standing {
     return storyboard ?? _lastLayerByCut[cutId];
   }
 
-  /// The layer standing on the active CUT seats (F-187): its conte row when
-  /// it has one ([storyboardLayerForCut]); else [before] — the layer you
-  /// stood on — when the cut shows it (a track's S row does, in every cut);
-  /// else null, and nothing is done: the cut's own landing ([selectCut]'s
-  /// memory) stands.
+  /// The layer standing on a CONTE CELL of the active cut seats (F-187):
+  /// the cut's conte row when it has one ([storyboardLayerForCut]); else
+  /// [before] — the layer you stood on — when the cut shows it (a track's S
+  /// row does, in every cut); else null, and nothing is done: the cut's own
+  /// landing ([selectCut]'s memory) stands (「컷에설때 콘티레이어가 없다면
+  /// 마지막에 선 레이어 그냥 그대로둠. 아무것도 안하고」).
   ///
-  /// ★One answer for every door that stands on a cut — the storyboard's V
-  /// row and the conte preview's cells.
-  LayerId? layerACutStandSeats({required LayerId? before}) {
+  /// ★One answer for every door that stands on a conte cell — the
+  /// storyboard's conte row and the conte preview's cells. ↩️The
+  /// storyboard's V row was one of them until I-73 (10-08): it stands on
+  /// the CUT, which seats no row ([_seatTimelineOnStoryboardStand]).
+  LayerId? layerAConteStandSeats({required LayerId? before}) {
     final cut = _project.activeCutOrNull;
     final conte = cut == null ? null : storyboardLayerForCut(cut);
     if (conte != null) {
@@ -961,10 +987,21 @@ class Standing {
   /// lane you are on repaints nothing.
   void _seatLayer(LayerId layerId, {TimelineRowAddress? row}) {
     var changed = false;
-    // A frame-range selection is single-layer (UI-R8): moving to another
-    // row drops it. The lane selection follows the same rule.
-    if (_selection.frameRangeSelection.value != null &&
-        _selection.frameRangeSelection.value!.layerId != layerId) {
+    // A frame-range selection lives on the rows it COVERS: moving to a row
+    // outside them drops it. The lane selection follows the same rule, on
+    // its one layer.
+    //
+    // ↩️F-263 (유저 2026-10-02): 「프레임 여러행,여러프레임 복수선택하고
+    // 이동하려고 클릭할때, 선택내의 현재 행을 클릭해야 이동시작가능함.
+    // 선택된곳 어디든 클릭하면 이동시작하도록」. It read 「a frame-range
+    // selection is single-layer (UI-R8): moving to another row drops it」 and
+    // asked the ANCHOR row — true when a selection was one row. Since it
+    // spans rows (UI-R17 #8), a press on any other row it covered was let
+    // through by the press's own question ([standOnRow], T10: inside the
+    // selection holds it) and then dropped here, so the drag that followed
+    // swept a new selection instead of carrying this one.
+    if (_selection.frameRangeSelection.value case final cells?
+        when !cells.coversLayer(layerId)) {
       _selection.clearFrameRangeSelection();
       changed = true;
     }
@@ -1068,11 +1105,24 @@ class Standing {
     if (shut.isEmpty) {
       return;
     }
+    final repository = _project.repository;
+    final cutId = _project.requireActiveCut.id;
     for (final folder in shut) {
-      _project.repository.updateLayer(
+      // Every use of the folder opens with it: its fold is the link
+      // group's (F-302), and a walk that opened this cut's alone would
+      // leave one folder folded two ways.
+      for (final use in linkMirrorTargets(
+        repository.requireProject(),
+        cutId: cutId,
         layerId: folder,
-        update: (layer) => layer.copyWith(collapsed: false),
-      );
+      )) {
+        UpdateLayerCollapsedCommand.writeCollapsed(
+          repository,
+          cutId: use.cutId,
+          layerId: use.layerId,
+          value: false,
+        );
+      }
     }
     _changes.notifyChanged();
   }
@@ -1165,15 +1215,18 @@ class Standing {
       final track = layerId == null
           ? null
           : _trackSe.trackOwnedRailOwner(layerId);
-      if (track == null) {
+      if (layerId == null || track == null) {
         return null;
       }
-      final layer = [
-        track.transitionLayer,
-        ...track.seLayers,
-      ].where((candidate) => candidate.id == layerId).firstOrNull;
-      return layer != null &&
-              hidden.contains(timelineSectionForLayerKind(layer.kind))
+      // The conte row is a row of this rail by its own address, and sits
+      // in the section the timeline puts its kind in (I-73).
+      final kind = trackIdOfConteRow(layerId) != null
+          ? LayerKind.storyboard
+          : [track.transitionLayer, ...track.seLayers]
+                .where((candidate) => candidate.id == layerId)
+                .firstOrNull
+                ?.kind;
+      return kind != null && hidden.contains(timelineSectionForLayerKind(kind))
           ? track
           : null;
     }
@@ -1200,7 +1253,18 @@ class Standing {
     final baseId = attachGroupBaseOf(layer, stack);
     final folded = _railView.collapsedAttachBaseIds.value;
     if (baseId != null && folded.contains(baseId)) {
-      _railView.collapsedAttachBaseIds.value = {...folded}..remove(baseId);
+      // Every use of the base unfolds with it (F-302).
+      final cutId = _project.activeCutId;
+      _railView.collapsedAttachBaseIds.value = {...folded}
+        ..removeAll(
+          cutId == null
+              ? [baseId]
+              : linkMirrorRows(
+                  _project.repository.requireProject(),
+                  cutId: cutId,
+                  layerId: baseId,
+                ),
+        );
     }
   }
 

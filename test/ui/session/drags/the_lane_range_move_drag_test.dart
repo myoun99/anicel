@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -27,7 +26,7 @@ void main() {
   TransformTrack trackWithKeysAt(List<int> frames) => TransformTrack(
     keyframes: {
       for (final frame in frames)
-        frame: CameraPose(center: CanvasPoint(x: frame.toDouble(), y: 0)),
+        frame: TransformPose(center: CanvasPoint(x: frame.toDouble(), y: 0)),
     },
   );
 

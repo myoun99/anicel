@@ -41,19 +41,16 @@ class _TrackCommands {
     );
   }
 
-  /// The V track's static opacity and fx master (R9 #21) in one undo step;
-  /// no-op when nothing changes.
+  /// The V track's fx master (R9 #21) in one undo step; no-op when nothing
+  /// changes.
   void updateTrackDisplay({
     required TrackId trackId,
-    double? opacity,
-    bool? fxEnabled,
+    required bool fxEnabled,
     String description = 'Edit track display',
   }) {
     for (final track in _coordinator.repository.requireProject().tracks) {
       if (track.id == trackId) {
-        final sameOpacity = opacity == null || track.opacity == opacity;
-        final sameFx = fxEnabled == null || track.fxEnabled == fxEnabled;
-        if (sameOpacity && sameFx) {
+        if (track.fxEnabled == fxEnabled) {
           return;
         }
         break;
@@ -64,7 +61,6 @@ class _TrackCommands {
       UpdateTrackDisplayCommand(
         repository: _coordinator.repository,
         trackId: trackId,
-        opacity: opacity,
         fxEnabled: fxEnabled,
         description: description,
       ),

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -31,6 +32,10 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 /// the one cell (F-175) — on the row you stand on, as the rows below show
 /// it through a drag. One cursor layer carries it for the timeline, the
 /// x-sheet and the folded row.
+///
+/// 🗣️F-268 (유저 2026-10-03): 「블록에선 블록이 꼭짓점 둥그니까 괜찮은데 빈칸은
+/// 각진 사각형이기때문에 그에맞춰 사각형으로 칠하도록. 지금 빈칸인데도 꼭짓점이
+/// 동그람」 — it wears the SHAPE of what it stands on too.
 void main() {
   const metrics = TimelineGridMetrics.defaults;
 
@@ -68,6 +73,7 @@ void main() {
     TimelineDragPreview? preview,
     Axis axis = Axis.horizontal,
     int windowStart = 0,
+    List<TimelineDisplayRow>? shown,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -80,7 +86,7 @@ void main() {
               children: [
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(frame),
-                  rows: rows,
+                  rows: shown ?? rows,
                   activeLayerId: const LayerId('a'),
                   currentRow: ValueNotifier<TimelineRowAddress?>(standing),
                   dragPreview: ValueNotifier<TimelineDragPreview?>(preview),
@@ -121,13 +127,66 @@ void main() {
     );
   }
 
-  testWidgets('on a block, the block — a fill and no line', (tester) async {
+  BoxDecoration worn(WidgetTester tester) =>
+      tester.widget<DecoratedBox>(wash).decoration as BoxDecoration;
+  final blockCorner = BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: metrics.frameCellWidth,
+      crossExtent: metrics.layerRowHeight,
+    ),
+  );
+
+  testWidgets('on a block, the block — a fill and no line, in the block\'s '
+      'own corner', (tester) async {
     await pump(tester, frame: 8);
     expect(washed(tester), (start: 6, end: 12, row: 0));
-    final decoration =
-        tester.widget<DecoratedBox>(wash).decoration as BoxDecoration;
-    expect(decoration.color, timelineStandingWashColor);
-    expect(decoration.border, isNull);
+    expect(worn(tester).color, timelineStandingWashColor);
+    expect(worn(tester).border, isNull);
+    expect(worn(tester).borderRadius, blockCorner);
+    expect(blockCorner, isNot(BorderRadius.zero), reason: '⛔전제: 둥글다');
+  });
+
+  testWidgets('F-268: where no block stands, it is the cell\'s square — an '
+      'empty cell, a lane\'s cell, a ghost\'s cell', (tester) async {
+    await pump(tester, frame: 12);
+    expect(worn(tester).borderRadius, BorderRadius.zero, reason: '빈칸');
+    expect(worn(tester).color, timelineStandingWashColor);
+
+    await pump(
+      tester,
+      frame: 8,
+      standing: const LaneRowAddress(LayerId('a'), 'position'),
+    );
+    expect(
+      worn(tester).borderRadius,
+      BorderRadius.zero,
+      reason: 'a lane\'s keys are points — the block under it on the layer '
+          'row does not round the lane\'s cell',
+    );
+
+    // [0,3) drawn, then its end hold as ONE ghost over [3,9): text on empty
+    // paper, no block chrome (UI-R10 #11).
+    final held = drawn('a', {0: 3}).copyWith(
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('a0'), length: 3),
+        3: const TimelineExposure.drawing(
+          FrameId('a0'),
+          length: 6,
+          ghostOf: TimelineRunEdgeGhost(
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.hold,
+          ),
+        ),
+      },
+    );
+    final heldRows = [TimelineDisplayRow.layer(held, layerIndex: 0)];
+    await pump(tester, frame: 5, shown: heldRows);
+    expect(washed(tester), (start: 5, end: 6, row: 0), reason: '⛔전제: 한 칸');
+    expect(worn(tester).borderRadius, BorderRadius.zero, reason: '고스트');
+
+    await pump(tester, frame: 1, shown: heldRows);
+    expect(washed(tester), (start: 0, end: 3, row: 0));
+    expect(worn(tester).borderRadius, blockCorner, reason: 'its own block');
   });
 
   testWidgets('on an empty cell, that one cell (F-175)', (tester) async {

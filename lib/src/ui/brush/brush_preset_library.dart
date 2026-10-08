@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/mapped_or_same.dart';
@@ -23,21 +22,6 @@ import 'picked_file.dart';
 import '../../models/brush_hand_settings.dart';
 import '../../services/brush_pack_file.dart';
 import '../text/app_strings.dart';
-
-/// Production picker: the platform open-file dialog, showing EVERY file.
-///
-/// 🚨유저 2026-08-29: 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수
-/// 있게하고, 대응만 지원안되는 확장자면 그 때 해당 파일 지원안된다고 안내창
-/// 띄우게」. [BrushPresetLibrary.importFromFile] is the "그 때" — it already
-/// returns a user-facing message, so the refusal has somewhere to go.
-Future<PickedFile?> _openBrushFileDialog() async {
-  final file = await openFile(acceptedTypeGroups: const []);
-  if (file == null) {
-    return null;
-  }
-  final bytes = await File(file.path).readAsBytes();
-  return (name: file.name, bytes: bytes);
-}
 
 /// The brush preset library: the groups, the preset list and every
 /// mutation on them — save/rename/reorder/
@@ -69,9 +53,11 @@ BrushPreset? openingPresetFor({
   if (alreadyChosen) {
     return null;
   }
-  // ⛔And never move the hand. From a non-painting tool, applying a preset
-  // arms the brush — at startup that would change the tool the app opens
-  // with, which nobody asked for.
+  // ⛔And never move the hand. A brush is taken up FOR a paint tool, which
+  // comes to hand with it — at startup that would change the tool the app
+  // opens with, which nobody asked for.
+  // ↩️「From a non-painting tool, applying a preset arms the brush」 was how
+  // it would have, until a press named its tool (F-319).
   if (!toolPaints || presets.isEmpty) {
     return null;
   }
@@ -112,7 +98,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     BrushTipLibrary? tipLibrary,
     this.handSettingsPort,
   }) : _fileService = fileService ?? BrushPresetFileService(),
-       _filePicker = filePicker ?? _openBrushFileDialog,
+       _filePicker = filePicker ?? pickAnyFile,
        _tipLibrary = tipLibrary;
 
   final BrushPresetFileService _fileService;
@@ -342,11 +328,23 @@ class BrushPresetLibrary extends ChangeNotifier {
   /// lost. The two entry points are the user's own split (`H25-Q1`, 답
   /// both-by-selection): one brush, or the group it sits in.
   ///
+  /// [hand] puts a file called its first argument in the person's hands:
+  /// it asks where, has its second write the file at a path — there, or in
+  /// the app first where no save window answers with a path — and answers
+  /// where it landed, null when the person would not have it.
+  /// 🚨brush-export-has-no-road-where-no-save-window-answers-a-path
+  /// (2026-10-08): it asked the save window for a path itself, and on the
+  /// iPad and Android, which have no such window, every export ended in an
+  /// error.
+  ///
   /// Returns the user-facing message, or null when the save was cancelled.
   Future<String?> exportPresets(
     List<BrushPreset> presets, {
-    required Future<String?> Function(String suggestedName) pickDestination,
-    required Future<void> Function(String path, String contents) write,
+    required Future<String?> Function(
+      String suggestedName,
+      Future<bool> Function(String path) write,
+    )
+    hand,
   }) async {
     if (presets.isEmpty) {
       return null;
@@ -367,23 +365,32 @@ class BrushPresetLibrary extends ChangeNotifier {
     final suggested =
         '${presets.length == 1 ? presets.single.name : _groupNameFor(groupIds)}'
         '.$anicelBrushExtension';
-    final String? path;
-    try {
-      path = await pickDestination(suggested);
-    } on Object catch (error) {
-      return 'Could not choose where to save: $error';
+    Object? writeFailed;
+    Future<bool> write(String path) async {
+      try {
+        await File(path).writeAsString(encodeBrushPack(pack), flush: true);
+        return true;
+      } on Object catch (error) {
+        writeFailed = error;
+        return false;
+      }
     }
-    if (path == null || _disposed) {
+
+    final String? landed;
+    try {
+      landed = await hand(suggested, write);
+    } on Object catch (error) {
+      return AppText.strings.brExportPlaceUnchosen(error);
+    }
+    if (writeFailed case final failed?) {
+      return AppText.strings.brExportNotWritten(failed);
+    }
+    if (landed == null || _disposed) {
       return null;
     }
-    try {
-      await write(path, encodeBrushPack(pack));
-    } on Object catch (error) {
-      return 'Could not write the brush file: $error';
-    }
     return presets.length == 1
-        ? 'Exported "${presets.single.name}".'
-        : 'Exported ${presets.length} brushes.';
+        ? AppText.strings.brExportedOne(presets.single.name)
+        : AppText.strings.brExportedMany(presets.length);
   }
 
   /// The presets in [groupId], in library order — the second entry point.
@@ -432,14 +439,14 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   String _groupNameFor(Set<BrushGroupId?> groupIds) {
     if (groupIds.length != 1) {
-      return 'Brushes';
+      return AppText.strings.brExportFallbackName;
     }
     for (final group in _groups) {
       if (group.id == groupIds.single) {
         return group.name;
       }
     }
-    return 'Brushes';
+    return AppText.strings.brExportFallbackName;
   }
 
   /// The decode→merge half of [importFromFile], on a file already picked.
@@ -486,7 +493,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     } on SutDecodeException catch (error) {
       return error.message;
     } on Exception {
-      return 'This file could not be read as a brush file.';
+      return AppText.strings.brImportUnreadable;
     }
     if (_disposed) {
       return null;
@@ -523,12 +530,10 @@ class BrushPresetLibrary extends ChangeNotifier {
     // The pack's tips become library tips in their own right, so they can be
     // put on any brush and survive the preset they arrived with.
     unawaited(_adoptCarriedTips());
-    final summary = imported.length == 1
-        ? 'Imported 1 brush from "${pick.name}".'
-        : 'Imported ${imported.length} brushes from "${pick.name}".';
+    final summary = AppText.strings.brImported(imported.length, pick.name);
     return warnings.isEmpty
         ? summary
-        : '$summary (${warnings.length} entries with warnings)';
+        : AppText.strings.brImportWarnings(summary, warnings.length);
   }
 
   /// The SQLite reader needs a file path; work on a scratch copy so the

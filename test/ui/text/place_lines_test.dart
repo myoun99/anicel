@@ -18,6 +18,10 @@ import 'package:anicel/src/ui/text/place_lines.dart';
 /// row by its cut and its name, a frame the way the save's lost-picture list
 /// names a drawing — one line for a frame on a row, in both lists.
 void main() {
+  /// The ruler's plain count, as a session with the seconds display off
+  /// hands it in.
+  String counted(int frameIndex) => '${frameIndex + 1}';
+
   test('a row placed from the file reads as its cut and its name', () {
     expect(
       mediaAssetUseLine(
@@ -27,6 +31,7 @@ void main() {
           ownerName: 'C1',
           layerName: 'walk',
         ),
+        framePlace: counted,
       ),
       'C1 · walk',
     );
@@ -38,6 +43,7 @@ void main() {
       ownerName: 'Video',
       layerName: 'S1',
       celName: 'walk.mp4',
+      blockStarts: [14],
     );
     expect(
       mediaAssetUseLine(
@@ -48,20 +54,69 @@ void main() {
           frameId: FrameId('step'),
           place: place,
         ),
+        framePlace: counted,
       ),
-      'Video · S1 · walk.mp4',
+      'Video · S1 · walk.mp4 · 15',
     );
-    expect(celPlaceLine(place), 'Video · S1 · walk.mp4');
+    expect(
+      celPlaceLine(place, framePlace: counted),
+      'Video · S1 · walk.mp4 · 15',
+    );
   });
 
   test('an image row\'s unnamed cel reads as its cut and its row — the '
-      'row\'s name is the picture\'s, and no empty third part trails it', () {
+      'row\'s name is the picture\'s, and no empty part trails it', () {
     expect(
       celPlaceLine(
-        const DrawingCelPlace(ownerName: 'C1', layerName: 'BG', celName: ''),
+        const DrawingCelPlace(
+          ownerName: 'C1',
+          layerName: 'BG',
+          celName: '',
+          blockStarts: [],
+        ),
+        framePlace: counted,
       ),
       'C1 · BG',
+      reason: 'a drawing no block shows stands nowhere to be written',
     );
+  });
+
+  group('🗣️F-284 — a frame\'s line ends with where its blocks start', () {
+    // 유저 2026-10-04: 「링크된 오디오 링크버튼눌러서 쓰는곳 확인할때,
+    // 인덱스도 표시. 예를들어 se는 지금 S1 등 트랙이름까지만 표시되는데,
+    // S1의 15 … 이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법 통일」.
+    DrawingCelPlace sound(List<int> blockStarts) => DrawingCelPlace(
+      ownerName: 'Video',
+      layerName: 'S1',
+      celName: '',
+      blockStarts: blockStarts,
+    );
+
+    test('a sound, which has no name: its row, then its frame', () {
+      expect(
+        celPlaceLine(sound(const [14]), framePlace: counted),
+        'Video · S1 · 15',
+      );
+    });
+
+    test('a drawing several blocks show: every block, in the row\'s '
+        'order', () {
+      expect(
+        celPlaceLine(sound(const [0, 14, 30]), framePlace: counted),
+        'Video · S1 · 1, 15, 31',
+      );
+    });
+
+    test('🚨the frame is written by the notation handed in — the '
+        'line has none of its own', () {
+      expect(
+        celPlaceLine(
+          sound(const [14, 24]),
+          framePlace: (frame) => '${frame ~/ 24}+${frame % 24 + 1}',
+        ),
+        'Video · S1 · 0+15, 1+1',
+      );
+    });
   });
 
   group('linkPartnerLines — where a linked row\'s pictures are shared', () {

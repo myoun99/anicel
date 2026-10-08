@@ -50,12 +50,14 @@ class _WorkspaceDocks {
     bool compact = false,
     bool chromeless = false,
     bool stripAtBottom = false,
+    double stripEdgeOutline = 0,
     List<Widget>? trailing,
     bool collapsed = false,
   }) {
     return EditorDockHost(
       chromeless: chromeless,
       stripAtBottom: stripAtBottom,
+      stripEdgeOutline: stripEdgeOutline,
       trailing: trailing,
       collapsed: collapsed,
       layout: _state._layout,
@@ -415,9 +417,18 @@ class _WorkspaceDocks {
     // frame, which is the far side from the artwork — so it flips with the
     // region out of the same law that moved the resize handle.
     stripAtBottom: !onTop,
+    // …and that edge is the region's own outline, which its ring is drawn
+    // over ([buildBottomDock]): the tabs' grip bands stand clear of it
+    // (F-257).
+    stripEdgeOutline: _floatingRingWidth,
     trailing: [_bottomCollapseButton(onTop: onTop)],
     collapsed: _state._bottomDockCollapsed,
   );
+
+  /// The width of the ring the floating region ends in — ONE number for the
+  /// ring ([buildBottomDock]) and for whatever on the region's edge has to
+  /// stand clear of it ([buildBottomDockContent]).
+  static const double _floatingRingWidth = 1;
 
   Widget buildBottomDock({
     required double availableExtent,
@@ -440,7 +451,10 @@ class _WorkspaceDocks {
         shape: _floatingBottomShape(
           inset: inset,
           onTop: onTop,
-          side: const BorderSide(color: AppColors.backdrop),
+          side: const BorderSide(
+            color: AppColors.backdrop,
+            width: _floatingRingWidth,
+          ),
         ),
       ),
       child: SuperellipseClip(

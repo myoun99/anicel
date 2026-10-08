@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -6,7 +8,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerKindIcon;
+    show layerKindDisplayName, layerKindIcon;
+import '../helpers/dart_sources.dart';
 
 /// ⑤⑥ 유저 2026-08-12 — the Add Layer entrance.
 void main() {
@@ -84,6 +87,46 @@ void main() {
         findsOneWidget,
         reason: '$key must wear the same glyph its ROW wears',
       );
+      expect(
+        find.descendant(
+          of: entry,
+          matching: find.text(layerKindDisplayName(kind)),
+        ),
+        findsOneWidget,
+        reason: '$key must say the name its ROW says',
+      );
     }
+  });
+
+  // add-layer-menu-kind-name-copy: the Add menu kept a kind → `tlKind*`
+  // switch of its own beside [layerKindDisplayName]. The two answered alike,
+  // so nothing a user could see was wrong — and a kind added to one would
+  // have been missing from the other. A copy that agrees today passes every
+  // behaviour test, so the pin is who READS the table.
+  test('⛔the name of a kind is asked of ONE function — no surface keeps a '
+      'table of its own', () {
+    final readers = [
+      for (final file in dartFilesUnder('lib/src/ui'))
+        if (file.readAsStringSync().contains('.tlKindAnimation')) libPath(file),
+    ];
+    // ↩️The one reader was `layerKindDisplayName` itself, in
+    // layer_label_controls.dart. It asks `LayerKindWords.labelFor` now — the
+    // table moved beside the other names the models own, because the
+    // shortcut list composes 「레이어 추가: 애니메이션」 in a GIVEN language
+    // and cannot import a timeline widget's file for a word (I-40,
+    // 2026-10-08). Still one reader, and the function is still the door
+    // every surface uses.
+    expect(readers, ['lib/src/ui/text/model_vocabulary.dart']);
+    expect(
+      File(
+        'lib/src/ui/timeline/layer_label_controls.dart',
+      ).readAsStringSync(),
+      matches(
+        RegExp(
+          r'String layerKindDisplayName\(LayerKind kind\) =>\s+'
+          r'kind\.labelFor\(AppText\.language\);',
+        ),
+      ),
+    );
   });
 }

@@ -1,6 +1,6 @@
-import 'dart:math' as math;
-
+import '../core/turn_trig.dart';
 import '../models/canvas_point.dart';
+import '../models/transform_values.dart';
 
 /// The Ctrl+T free-transform affine (P9b), canvas space:
 /// `p' = R(θ) · S(sx, sy) · (p − pivot) + pivot + t` — scale about the
@@ -13,60 +13,58 @@ import '../models/canvas_point.dart';
 /// 「**항상 상자의 중심**」 and rotation is 「**앵커를 기준으로**」. They
 /// still ride one matrix, because rotating about the anchor is rotating
 /// about the pivot plus a shift — see [appliedTx].
+///
+/// ⚠️It is [values] AIMED AT [pivot] and nothing more: what the transform
+/// does is the values', where the piece stands is the pivot's. A door that
+/// carries the edit somewhere else — the record 재현 replays, the tool
+/// panel, another cel — carries [values] whole ([TransformValues] has what
+/// spelling them one by one cost).
 class SelectionAffine {
-  const SelectionAffine({
-    required this.pivot,
-    this.sx = 1,
-    this.sy = 1,
-    this.rotationDegrees = 0,
-    this.tx = 0,
-    this.ty = 0,
-    this.anchorX = 0,
-    this.anchorY = 0,
-  });
+  /// The long way round to [SelectionAffine.of], for a caller that states
+  /// the numbers where it builds the affine.
+  SelectionAffine({
+    required CanvasPoint pivot,
+    double sx = 1,
+    double sy = 1,
+    double rotationDegrees = 0,
+    double tx = 0,
+    double ty = 0,
+    double anchorX = 0,
+    double anchorY = 0,
+  }) : this.of(
+         pivot,
+         TransformValues(
+           sx: sx,
+           sy: sy,
+           rotationDegrees: rotationDegrees,
+           tx: tx,
+           ty: ty,
+           anchorX: anchorX,
+           anchorY: anchorY,
+         ),
+       );
+
+  /// [values] aimed at [pivot].
+  const SelectionAffine.of(this.pivot, this.values);
 
   final CanvasPoint pivot;
-  final double sx;
-  final double sy;
-  final double rotationDegrees;
-  final double tx;
-  final double ty;
 
-  /// WHERE THE ROTATION HAPPENS, as a displacement from [pivot].
-  ///
-  /// ⚠️Two doubles rather than a [CanvasPoint] for the same reason [tx] and
-  /// [ty] are: a displacement is not a place, and this one has to have a
-  /// const default so that 「no anchor」 needs no null anywhere.
-  ///
-  /// 🗣️유저 2026-09-20: 「tvp도 클튜도 **앵커포인트 별도로 둘수있어. 기본값은
-  /// 중심**인데, 그걸 유저가 드래그해서 움직이는방식 … **앵커포인트는 회전시
-  /// 앵커를 기준으로 회전**해」 — while 확대/축소 is 「**항상 상자의 중심**」,
-  /// which is [pivot]. Two centres, because they answer two questions.
-  ///
-  /// ⛔**A DISPLACEMENT, NOT A POINT, in absolute canvas units.** 유저 fixed
-  /// both halves the same day: 「기본값 상자안의 자리에서 **얼마나 이동됬나**」
-  /// and 「**편집값은 절대값이야. 그냥 고정이야.** 용지가 어떻든간에 **무조건
-  /// 같은값**으로 편집이 이루어져야되」. Zero is the box centre, so the
-  /// default needs no special case anywhere.
-  final double anchorX;
-  final double anchorY;
+  /// Everything the transform does, and no place.
+  final TransformValues values;
 
-  /// ⚠️The ANCHOR is not part of this. Moving it alone changes no pixel —
-  /// [appliedTx] shows why: with no rotation it costs nothing — so a box
-  /// whose anchor moved and nothing else still has nothing to land.
-  bool get isIdentity =>
-      sx == 1 && sy == 1 && rotationDegrees == 0 && tx == 0 && ty == 0;
+  double get sx => values.sx;
+  double get sy => values.sy;
+  double get rotationDegrees => values.rotationDegrees;
+  double get tx => values.tx;
+  double get ty => values.ty;
+  double get anchorX => values.anchorX;
+  double get anchorY => values.anchorY;
 
-  /// Nothing but a move: the pixels travel without being resampled.
-  ///
-  /// 🚨★★★**THE CHEAP PATH IS A LAW, NOT AN OPTIMISATION.** A translation
-  /// carries the lifted stamp byte-exactly by moving its centre, so a drag
-  /// inside the box neither resamples nor re-decodes — it is as cheap as it
-  /// was when the move lived outside the affine entirely, which is what
-  /// 유저's 「**가볍게 구조적으로 설계**」 asks of this round. ⛔The anchor is
-  /// not consulted: with no rotation it costs nothing ([appliedTx]).
-  bool get isPureTranslation =>
-      sx == 1 && sy == 1 && rotationDegrees == 0;
+  /// Whether the transform changes no pixel ([TransformValues.isIdentity]).
+  bool get isIdentity => values.isIdentity;
+
+  /// Nothing but a move ([TransformValues.isPureTranslation]).
+  bool get isPureTranslation => values.isPureTranslation;
 
   /// The translation the composite actually applies: [tx]/[ty] plus what
   /// the anchor costs.
@@ -99,12 +97,10 @@ class SelectionAffine {
   /// 방향으로 서로 순간이동**해」 — a frame that hit the stale entry and a
   /// frame that recomputed, alternating.
   ///
-  /// ⚠️`the_key_knows_every_field_test` fails if a field is added to this
-  /// class and not to this string. That ratchet is the point: 「I will
-  /// remember」 is what was tried and it is what broke.
-  String get cacheKey =>
-      '$sx,$sy,$rotationDegrees,$tx,$ty,'
-      '${pivot.x},${pivot.y},$anchorX,$anchorY';
+  /// ⚠️`the_values_are_listed_whole_test` fails if a field is added to this
+  /// class or to [TransformValues] and not to its string. That ratchet is
+  /// the point: 「I will remember」 is what was tried and it is what broke.
+  String get cacheKey => '${values.cacheKey},${pivot.x},${pivot.y}';
 
   /// WHERE THE CROSS IS DRAWN — the rotation's centre in canvas space.
   ///
@@ -119,41 +115,15 @@ class SelectionAffine {
   CanvasPoint get anchorCanvas =>
       CanvasPoint(x: pivot.x + anchorX + tx, y: pivot.y + anchorY + ty);
 
-  double get _radians => rotationDegrees * math.pi / 180;
-
-  /// The rotation's cosine and sine, EXACT at the quarter turns.
-  ///
-  /// `math.cos(pi / 2)` is 6.1e-17, not zero, and that residue is enough to
-  /// make a quarter turn miss the resampler's lattice: destination pixel
-  /// centres land a hair off source pixel centres, the footprint reaches a
-  /// neighbour it should not, and "rotating by 90° gives back the same
-  /// pixels" becomes a rounding accident rather than a guarantee. Reading
-  /// the table for exact multiples of 90 makes it structural.
+  /// The rotation's cosine and sine, EXACT at the quarter turns
+  /// ([turnSin] has the table and why it is one).
   ///
   /// Both the geometry ([apply], which moves the selection outline) and the
   /// pixels (the resample fold) read these, so the ants and the picture can
   /// never disagree about where the rotation went.
-  double get cosTheta {
-    final quarter = _exactQuarterTurn;
-    return quarter == null ? math.cos(_radians) : _quarterCos[quarter];
-  }
+  double get cosTheta => turnCos(rotationDegrees);
 
-  double get sinTheta {
-    final quarter = _exactQuarterTurn;
-    return quarter == null ? math.sin(_radians) : _quarterSin[quarter];
-  }
-
-  /// 0/1/2/3 for an exact 0/90/180/270, null for anything in between.
-  int? get _exactQuarterTurn {
-    if (rotationDegrees % 90 != 0 || !rotationDegrees.isFinite) {
-      return null;
-    }
-    final quarter = (rotationDegrees ~/ 90) % 4;
-    return quarter < 0 ? quarter + 4 : quarter;
-  }
-
-  static const List<double> _quarterCos = <double>[1, 0, -1, 0];
-  static const List<double> _quarterSin = <double>[0, 1, 0, -1];
+  double get sinTheta => turnSin(rotationDegrees);
 
   CanvasPoint apply(CanvasPoint point) {
     final lx = (point.x - pivot.x) * sx;
@@ -185,6 +155,11 @@ class SelectionAffine {
     return CanvasPoint(x: lx / sx + pivot.x, y: ly / sy + pivot.y);
   }
 
+  /// Other values on the same pivot — how a door that changed the edit
+  /// hands it back.
+  SelectionAffine withValues(TransformValues values) =>
+      SelectionAffine.of(pivot, values);
+
   SelectionAffine copyWith({
     double? sx,
     double? sy,
@@ -193,16 +168,15 @@ class SelectionAffine {
     double? ty,
     double? anchorX,
     double? anchorY,
-  }) {
-    return SelectionAffine(
-      pivot: pivot,
-      sx: sx ?? this.sx,
-      sy: sy ?? this.sy,
-      rotationDegrees: rotationDegrees ?? this.rotationDegrees,
-      tx: tx ?? this.tx,
-      ty: ty ?? this.ty,
-      anchorX: anchorX ?? this.anchorX,
-      anchorY: anchorY ?? this.anchorY,
-    );
-  }
+  }) => withValues(
+    values.copyWith(
+      sx: sx,
+      sy: sy,
+      rotationDegrees: rotationDegrees,
+      tx: tx,
+      ty: ty,
+      anchorX: anchorX,
+      anchorY: anchorY,
+    ),
+  );
 }

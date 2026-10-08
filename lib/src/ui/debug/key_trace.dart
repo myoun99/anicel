@@ -26,4 +26,10 @@ abstract final class KeyTrace {
   /// [event] stopped playback and does nothing else.
   static void spentOnAStop(KeyEvent event) =>
       sink?.call('eat ${stamp(event)} → stopped playback');
+
+  /// [verb] — undo, redo — was asked for and REFUSED because a contact is
+  /// down (F-173). Whatever door asked: a key, a button, a finger tap. The
+  /// inspector's `census` line says which contact (F-232).
+  static void refusedUnderAContact(String verb) =>
+      sink?.call('gate $verb refused → a contact is down');
 }

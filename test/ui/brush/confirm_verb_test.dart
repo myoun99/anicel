@@ -4,12 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/last_stroke_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/confirm_verb.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/session/canvas_adjust.dart';
+
+import '../../helpers/cel_text_hand.dart';
 
 /// Which door 확정 opens — the ORDER is the law (confirm-button, 유저
 /// 2026-09-24): an open polygon first (it is what the user is looking at),
@@ -24,11 +32,16 @@ void main() {
   final lastStroke = LastStrokeSlot();
   final tool = ValueNotifier(BrushToolState.defaults);
   final options = ValueNotifier(TransformToolOptions.defaults);
+  final adjust = CanvasAdjust();
+  var landed = 0;
   final verb = ConfirmVerb(
     selection: selection,
+    text: CelTextCommands(),
     lastStroke: lastStroke,
     tool: tool,
     transformOptions: options,
+    canvasAdjust: () => adjust,
+    landCanvasAdjust: () => landed += 1,
   );
   final owner = Object();
 
@@ -39,9 +52,11 @@ void main() {
 
   setUp(() {
     applied = 0;
+    landed = 0;
     reinputs = 0;
     canApply = false;
     sessionOpen = false;
+    adjust.end();
     tool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.brush);
     selection
       ..abandonPolygon()
@@ -86,11 +101,72 @@ void main() {
     expect(applied, 0);
   });
 
+  // I-79: a canvas adjusted on the canvas is the mode the user stepped
+  // into — 확정 lands it.
+  test('🚨an open canvas adjust is what 확정 lands — before everything else',
+      () {
+    selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
+    adjust.begin(
+      CanvasEdgesDraft.of(
+        const CutId('c'),
+        const CanvasSize(width: 8, height: 8),
+      ),
+    );
+
+    expect(verb.canConfirm, isTrue);
+    verb.confirm();
+    expect(landed, 1);
+    expect(
+      selection.hasOpenPolygon,
+      isTrue,
+      reason: '⛔the polygon waits: the adjust was the newer step',
+    );
+    expect(reinputs, 0);
+
+    adjust.end();
+    verb.confirm();
+    expect(landed, 1, reason: 'closed, it is not what 확정 lands');
+    expect(selection.hasOpenPolygon, isFalse);
+  });
+
   test('an open polygon is closed first — and nothing else happens', () {
     selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
     expect(verb.canConfirm, isTrue);
     verb.confirm();
     expect(selection.hasOpenPolygon, isFalse, reason: '닫혔다');
+    expect(reinputs, 0, reason: '⛔재입력이 끼어들지 않는다');
+    expect(applied, 0);
+  });
+
+  test('🚨a text in hand is what a confirm lets go of — before 적용, before '
+      'the last stroke: neither is laid down under it', () {
+    final text = CelTextCommands();
+    addTearDown(text.dispose);
+    final hand = textHand(
+      bake: bakesAtOnce,
+      text: CelTextContent(
+        spans: const [
+          CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+        ],
+        anchor: CanvasPoint(x: 8, y: 8),
+      ),
+    );
+    text.bind(hand.tool);
+    final withAText = ConfirmVerb(
+      selection: selection,
+      text: text,
+      lastStroke: lastStroke,
+      tool: tool,
+      transformOptions: options,
+      canvasAdjust: () => adjust,
+      landCanvasAdjust: () => landed += 1,
+    );
+    expect(hand.tool.session, isNotNull, reason: '⛔fixture: in hand');
+
+    expect(withAText.canConfirm, isTrue);
+    withAText.confirm();
+
+    expect(hand.tool.session, isNull, reason: 'let go of');
     expect(reinputs, 0, reason: '⛔재입력이 끼어들지 않는다');
     expect(applied, 0);
   });

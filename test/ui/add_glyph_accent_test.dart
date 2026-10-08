@@ -29,7 +29,9 @@ void main() {
           (match.start - _window).clamp(0, source.length),
           (match.end + _window).clamp(0, source.length),
         );
-        if (window.contains('addGlyph') || window.contains('accent: true')) {
+        if (window.contains('addGlyph') ||
+            window.contains('accent: true') ||
+            window.contains(_aFlyoutCommandThatAdds)) {
           continue;
         }
         if (_allowed.any(window.contains)) {
@@ -51,6 +53,16 @@ void main() {
     );
   });
 }
+
+/// A FLYOUT'S OWN COMMAND THAT ADDS. A row or a header of the app's one
+/// picker can carry a small command (`PanelFlyoutRowAction`), and it is the
+/// flyout that colours the command's glyph — by what the command says it
+/// DOES: one that adds wears [AppColors.addGlyph] there
+/// (`PanelFlyoutRowAction.glyphColor`, pinned by
+/// `a_flyout_header_command_and_row_warning_test`). Saying so IS taking
+/// the colour from the law, at the one place the flyout reads it — so it
+/// is read here as the accent it is, and is not an exception in [_allowed].
+const String _aFlyoutCommandThatAdds = 'does: PanelFlyoutActionDoes.adds';
 
 /// `\b` keeps `Icons.add_box_outlined` and friends out: they are their own
 /// glyphs, and the law is about the bare plus.

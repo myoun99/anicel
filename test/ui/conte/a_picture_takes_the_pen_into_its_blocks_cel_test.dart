@@ -47,7 +47,10 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart'
     show exportFrameGround;
+import 'package:anicel/src/ui/media/viewer_render_tier.dart'
+    show pictureRenderWidthFor;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -67,7 +70,9 @@ void main() {
   const layerId = LayerId('sb');
   const frameId = FrameId('sb-0');
 
-  Cut cut() => Cut(
+  /// [rowPose]: where the conte row lies on the canvas — as it is drawn,
+  /// when null.
+  Cut cut({TransformPose? rowPose}) => Cut(
     id: cutId,
     name: '39',
     duration: 10,
@@ -81,16 +86,23 @@ void main() {
         timeline: const {
           0: TimelineExposure.drawing(frameId, length: 10),
         },
+        transformTrack: rowPose == null
+            ? null
+            : TransformTrack(keyframes: {0: rowPose}),
       ),
     ],
   );
 
-  Project project() => Project(
+  Project project({TransformPose? rowPose}) => Project(
     id: const ProjectId('conte-project'),
     name: 'Conte',
     createdAt: DateTime.utc(2026, 9, 26),
     tracks: [
-      Track(id: const TrackId('track'), name: 'Video', cuts: [cut()]),
+      Track(
+        id: const TrackId('track'),
+        name: 'Video',
+        cuts: [cut(rowPose: rowPose)],
+      ),
     ],
   );
 
@@ -134,10 +146,14 @@ void main() {
     /// The name the band of a block not yet written on is written under.
     String bandOf(ContePlacedCell cell) => 'band-${cell.source.startFrame}';
 
-    Future<Offset> pump(WidgetTester tester, CameraPose pose) async {
-      final drawn = cut();
+    Future<Offset> pump(
+      WidgetTester tester,
+      CameraPose pose, {
+      TransformPose? rowPose,
+    }) async {
+      final drawn = cut(rowPose: rowPose);
       page = layoutConteSheet(
-        buildConteSheetSource(project()),
+        buildConteSheetSource(project(rowPose: rowPose)),
         metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
       ).first;
       final metrics = page.metrics;
@@ -236,6 +252,116 @@ void main() {
         isFalse,
         reason: 'unzoomed, it would have gone twice as far',
       );
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+    // 반전)」. A row's placement is no longer a zoom, a turn and a move: the
+    // pen goes to its cel through one no viewport can say.
+    group('through a row\'s placement', () {
+      // The camera shows the canvas as it is.
+      final still = CameraPose(center: CanvasPoint(x: 320, y: 180));
+
+      testWidgets('🚨a row STRETCHED along one axis: a step right on the '
+          'paper is half as far along the cel, a step down twice as far', (
+        tester,
+      ) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: 2,
+            scaleY: 0.5,
+          ),
+        );
+        final shown = picture.shown;
+        const right = 24.0;
+        const down = 12.0;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(right / 2, 0),
+          shown.center + const Offset(right, 0),
+        ]);
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(0, down / 2),
+          shown.center + const Offset(0, down),
+        ]);
+
+        // Canvas pixels per paper unit.
+        final perPaper = canvas.width / shown.width;
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(inkAt(cel, const Offset(320, 180)), isTrue);
+        expect(
+          inkAt(cel, Offset(320 + right * perPaper / 2, 180)),
+          isTrue,
+          reason: 'twice as wide on the canvas: half as far in the cel',
+        );
+        expect(
+          inkAt(cel, Offset(320 + right * perPaper, 180)),
+          isFalse,
+          reason: 'read as it is drawn, the stroke would have gone this far',
+        );
+        expect(
+          inkAt(cel, Offset(320, 180 + down * perPaper * 2)),
+          isTrue,
+          reason: 'half as tall on the canvas: twice as far in the cel',
+        );
+      });
+
+      testWidgets('🚨a row FLIPPED: a step right on the paper is a step left '
+          'along the cel', (tester) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: -1,
+          ),
+        );
+        final shown = picture.shown;
+        const step = 24.0;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(step / 2, 0),
+          shown.center + const Offset(step, 0),
+        ]);
+
+        final along = step * canvas.width / shown.width;
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(inkAt(cel, const Offset(320, 180)), isTrue);
+        expect(inkAt(cel, Offset(320 - along, 180)), isTrue);
+        expect(
+          inkAt(cel, Offset(320 + along, 180)),
+          isFalse,
+          reason: 'unflipped, the stroke would have gone right',
+        );
+      });
+
+      // Keyed from 100 to −100, the frame halfway is a scale of zero: the
+      // picture shows nothing of the row there, and has no pixel of its cel
+      // to hand the pen.
+      testWidgets('a row scaled to NOTHING on an axis: its picture takes no '
+          'ink, and says nothing of it', (tester) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: 0,
+          ),
+        );
+        final shown = picture.shown;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(12, 0),
+          shown.center + const Offset(24, 0),
+        ]);
+
+        expect(tester.takeException(), isNull);
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(cel == null || cel.tiles.isEmpty, isTrue);
+      });
     });
 
     testWidgets('🗣️H49: a stroke from the picture out over its cell\'s band '
@@ -388,7 +514,7 @@ void main() {
     expect(live, findsOneWidget);
     final pageTopLeft = conteBodyTopLeft(tester);
     final centre = pageTopLeft + cell.pictureRect.center;
-    final at = centre - tester.getTopLeft(live);
+    final at = tester.renderObject<RenderBox>(live).globalToLocal(centre);
 
     /// The live composite's own painter, rasterized: is there ink at [at]?
     Future<bool> showsInk() async {
@@ -479,6 +605,10 @@ void main() {
     /// Every height the panel asked the printed picture at, in order.
     final askedHeights = <double>[];
 
+    /// The canvas region each of those asks showed — null for a still
+    /// camera's frame.
+    final askedRegions = <Rect?>[];
+
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held still over its one block — two keys at one place are no camera
     /// work — or panning on to [last]; its conte row posed by [rowPose], its
@@ -553,14 +683,17 @@ void main() {
     /// Handwriting over the top of a band surface of [size]: a hairline in
     /// every seventh column and every fifth row, across its first three
     /// tile rows — a pattern a sub-pixel shift or a softer filter changes
-    /// everywhere.
+    /// everywhere. A hairline is a POINT of the page wide: the surface is
+    /// kept at the paper's pixels (F-294), [nib] of them to the point.
     BitmapSurface hatched(CanvasSize size) {
       const tile = defaultCelTileSize;
+      final nib = const ConteSheetMetrics().paperScale.ceil();
       BitmapTile hatchedAt(int tileX, int tileY) {
         final pixels = Uint8List(tile * tile * 4);
         for (var y = 0; y < tile; y += 1) {
           for (var x = 0; x < tile; x += 1) {
-            if ((tileX * tile + x) % 7 == 0 || (tileY * tile + y) % 5 == 0) {
+            if (((tileX * tile + x) ~/ nib) % 7 == 0 ||
+                ((tileY * tile + y) ~/ nib) % 5 == 0) {
               final i = (y * tile + x) * 4;
               pixels[i] = 0x10;
               pixels[i + 1] = 0x10;
@@ -609,6 +742,10 @@ void main() {
       WidgetTester tester,
       Project project, {
       ui.Image? printed,
+
+      /// The print at the height it is asked for, when it is not one image
+      /// whatever the height ([printed]).
+      ui.Image Function(double shownHeight)? printedAt,
       BitmapSurface? cel,
       CanvasViewport? view,
       BitmapSurface Function(CanvasSize size)? band,
@@ -626,8 +763,8 @@ void main() {
           conteInkRowKey(cutId, 'band'),
           band(
             CanvasSize(
-              width: (metrics.bodyWidth * conteInkScale).ceil(),
-              height: (metrics.bodyHeight * conteInkScale).ceil(),
+              width: (metrics.bodyWidth * metrics.paperScale).ceil(),
+              height: (metrics.bodyHeight * metrics.paperScale).ceil(),
             ),
           ),
         );
@@ -657,7 +794,7 @@ void main() {
                 listenable: Listenable.merge([session, ink, cels, brushOn]),
                 builder: (context, _) => ConteTabHost(
                   session: session,
-                  thumbnails: printed == null
+                  thumbnails: printed == null && printedAt == null
                       ? null
                       : (
                           resolve:
@@ -668,7 +805,8 @@ void main() {
                                 region,
                               }) {
                                 askedHeights.add(shownHeight);
-                                return printed;
+                                askedRegions.add(region);
+                                return printed ?? printedAt!(shownHeight);
                               },
                           landed: const _NeverLands(),
                           pending: () => false,
@@ -790,19 +928,33 @@ void main() {
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
       // The camera at 4× frames canvas x 240–400, y 135–225: white, and
-      // from x 384 the blue of tile (3, 1). What the print renders of it,
-      // pixel for pixel.
-      final printed = (await tester.runAsync(() async {
+      // from x 384 — nine tenths across — the blue of tile (3, 1). What the
+      // print renders of it, pixel for pixel, at the width it is asked for
+      // (F-215-Q1: at most the camera's 640 — the live composite is drawn
+      // into a raster of that width too).
+      final prints = <ui.Image>[];
+      addTearDown(() {
+        for (final print in prints) {
+          print.dispose();
+        }
+      });
+      ui.Image printedAt(double shownHeight) {
+        final width = pictureRenderWidthFor(
+          shownHeight,
+          Size(canvas.width.toDouble(), canvas.height.toDouble()),
+        );
+        final height = canvas.scaledToWidth(width).height;
         final recorder = ui.PictureRecorder();
         Canvas(recorder)
           ..drawColor(exportFrameGround, BlendMode.src)
           ..drawRect(
-            const Rect.fromLTWH(144, 0, 16, 90),
+            Rect.fromLTRB(width * 0.9, 0, width.toDouble(), height.toDouble()),
             Paint()..color = blue,
           );
-        return recorder.endRecording().toImage(160, 90);
-      }))!;
-      addTearDown(printed.dispose);
+        final print = recorder.endRecording().toImageSync(width, height);
+        prints.add(print);
+        return print;
+      }
       bool hatch(Color color) =>
           color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
       bool isBlue(Color color) => color == blue;
@@ -815,7 +967,7 @@ void main() {
           final slot = await pumpPanel(
             tester,
             framed(zoom: 4, inkId: 'band'),
-            printed: printed,
+            printedAt: printedAt,
             band: hatched,
             view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
           );
@@ -847,6 +999,124 @@ void main() {
         }
       }
       expect(moved, isEmpty, reason: 'device pixels the brush switch moved');
+    });
+
+    testWidgets('🗣️F-215-Q1: magnified past the camera, the live picture is '
+        'composited at the camera\'s pixels, not the screen\'s — and laid '
+        'and filtered as the print is (유저 2026-10-08: 「둘 다 카메라 '
+        '해상도로」)', (tester) async {
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(exportFrameGround, BlendMode.src);
+        return recorder.endRecording().toImage(640, 360);
+      }))!;
+      addTearDown(printed.dispose);
+      // The camera at 4× has four of its 640 pixels across each of the 160
+      // canvas pixels it frames.
+      final slot = await pumpPanel(
+        tester,
+        framed(zoom: 4),
+        printed: printed,
+        view: CanvasViewport(zoom: 6),
+      );
+      expect(
+        slot.width * 1.25,
+        greaterThan(640),
+        reason: '⛔전제: the screen shows more pixels than the camera has',
+      );
+      brushOn.value = true;
+      await tester.pumpAndSettle();
+
+      final live = find.byKey(
+        const ValueKey<String>('conte-picture-live-picture-39-0'),
+      );
+      final stack = tester.widget<CanvasLayerStackView>(live);
+      expect(
+        stack.viewport.zoom * 1.25,
+        closeTo(4, 1e-6),
+        reason: 'device pixels per canvas pixel: the camera\'s, no more',
+      );
+      final laid = tester.widget<Transform>(
+        find.ancestor(of: live, matching: find.byType(Transform)).first,
+      );
+      expect(
+        laid.filterQuality,
+        sheetPictureQuality(640, Offset.zero & Size(slot.width, 1), 1.25),
+        reason: 'laid on the screen with the print\'s own filter',
+      );
+    });
+
+    testWidgets('🗣️F-215-Q1: the live raster is the print\'s — as many pixels '
+        'as the print is asked for, laid on the picture\'s frame — where the '
+        'camera pans too', (tester) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(exportFrameGround, BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      const zoom = 6.0;
+      for (final last in [
+        null,
+        CameraPose(center: CanvasPoint(x: 400, y: 180), zoom: 4),
+      ]) {
+        askedHeights.clear();
+        askedRegions.clear();
+        await pumpPanel(
+          tester,
+          framed(zoom: 4, last: last),
+          printed: printed,
+          view: CanvasViewport(zoom: zoom),
+        );
+        brushOn.value = true;
+        await tester.pumpAndSettle();
+        final pans = last != null;
+        expect(
+          askedRegions.last != null,
+          pans,
+          reason: '⛔전제: a panning camera\'s print shows the region it sweeps',
+        );
+
+        final live = find.byKey(
+          const ValueKey<String>('conte-picture-live-picture-39-0'),
+        );
+        final region = askedRegions.last;
+        expect(
+          tester.getSize(live).width * tester.view.devicePixelRatio,
+          closeTo(
+            pictureRenderWidthFor(
+              askedHeights.last,
+              region?.size ??
+                  Size(canvas.width.toDouble(), canvas.height.toDouble()),
+            ),
+            0.5,
+          ),
+          reason: 'as many pixels as the print${pans ? ' of the region' : ''}',
+        );
+        final page = layoutConteSheet(
+          buildConteSheetSource(session.repository.requireProject()),
+          metrics: ConteSheetMetrics(
+            cameraAspect: session.camera.cameraFrameAspect,
+          ),
+        ).first;
+        final frame = contePictureOf(page.cells.single, page.metrics).frame;
+        final origin = conteBodyTopLeft(tester);
+        expect(
+          tester.getRect(live),
+          rectMoreOrLessEquals(
+            Rect.fromLTWH(
+              origin.dx + zoom * frame.left,
+              origin.dy + zoom * frame.top,
+              zoom * frame.width,
+              zoom * frame.height,
+            ),
+            epsilon: 1e-6,
+          ),
+          reason: 'laid on the picture\'s frame, edge to edge',
+        );
+      }
     });
 
     testWidgets('the camera\'s work is printed over the live picture — its '
@@ -893,7 +1163,7 @@ void main() {
         tester,
         framed(
           zoom: 0.5,
-          rowPose: CameraPose(center: CanvasPoint(x: 220, y: 180)),
+          rowPose: TransformPose(center: CanvasPoint(x: 220, y: 180)),
         ),
       );
       brushOn.value = true;

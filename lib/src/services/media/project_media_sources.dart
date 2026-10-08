@@ -90,26 +90,58 @@ enum MediaBytesAt {
 /// ([MediaStagingStore.keepLeftBehind]): the file its session reads carries
 /// from will not hold them afterwards, and an undo can bring their carries
 /// back (board `undo-after-save-reads-the-original`).
+///
+/// ⚠️[mediaInFile] is what the DOCUMENT says the file holds, and a document
+/// comes from anywhere: a name it lists that is not under the media folder
+/// is not a media entry, and is left out here rather than cut at a length
+/// it may not have (card `a-name-read-from-a-file-becomes-a-path`). What is
+/// left of a name is the room's to judge ([MediaStagingStore.keepLeftBehind]).
 List<MediaLeftBehind> mediaLeftBehind({
   required String? projectFilePath,
   required Set<String> mediaInFile,
   required Map<MediaCarry, MediaByteSource> mediaToStore,
 }) {
-  final left = mediaInFile.difference({
-    for (final carry in mediaToStore.keys) ...anicelMediaEntryNames(carry),
-  });
+  return entriesLeftBehind(
+    projectFilePath,
+    mediaInFile.difference({
+      for (final carry in mediaToStore.keys) ...anicelMediaEntryNames(carry),
+    }),
+    under: anicelMediaEntryPrefix,
+  );
+}
+
+/// Where each of [left] — entries of the project file at [projectFilePath],
+/// named WITH their folder, [under] — lies in that file now, under the name
+/// it wears without it. One the file does not hold is left out; so is every
+/// one, when there is nothing to read.
+///
+/// ⛔A name that is not [under] the folder is not one of these entries, and
+/// is left out rather than cut at a length it may not have (the ⚠️ on
+/// [mediaLeftBehind]): the folder is asked for and stripped in this one
+/// place, so no kind of entry can be walked without saying which it is.
+///
+/// ↩️This was the body of [mediaLeftBehind]. The fonts a project carries
+/// leave their file by the same law (`fontsLeftBehind`, 2026-10-06), and
+/// what differs between the two is WHICH entries those are — said by each
+/// — not how one is found.
+List<MediaLeftBehind> entriesLeftBehind(
+  String? projectFilePath,
+  Set<String> left, {
+  required String under,
+}) {
   final layout = left.isEmpty ? null : readableAnicelLayout(projectFilePath);
   if (layout == null) {
     return const [];
   }
   return [
     for (final name in left)
-      if (layout.entryNamed(name) case final entry?)
-        (
-          name: name.substring(anicelMediaEntryPrefix.length),
-          offset: entry.dataOffset,
-          length: entry.length,
-        ),
+      if (name.startsWith(under))
+        if (layout.entryNamed(name) case final entry?)
+          (
+            name: name.substring(under.length),
+            offset: entry.dataOffset,
+            length: entry.length,
+          ),
   ];
 }
 

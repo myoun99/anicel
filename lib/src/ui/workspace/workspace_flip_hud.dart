@@ -118,11 +118,11 @@ class _WorkspaceFlipHud {
     );
   }
 
-  /// The gap's window: one row — the track — with its panels as blocks.
+  /// The gap's window: one row — the track — with its cuts as blocks.
   ///
   /// Same model, same columns, same haptic rule; only the material
   /// changes, which is exactly what the flip itself does down in the
-  /// session. A panel is a run, the space between cuts is uncovered.
+  /// session. A cut is a run, the space between cuts is uncovered.
   FlipHudSnapshot _flipHudTrackSnapshot(EditorSessionManager session) {
     // ⛔The session's track axis, not a walk of its own — see
     // [storyboardActiveTrackLayout] (one track a film, 전제 8, so its
@@ -139,7 +139,7 @@ class _WorkspaceFlipHud {
       rows: [
         flipHudTrackRow(
           name: session.trackOwningCut(entries.first.cutId)?.name ?? 'Track',
-          panels: storyboardPanelsOnTrack(entries),
+          cuts: entries,
         ),
       ],
       rowIndex: 0,

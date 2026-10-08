@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart';
+import '../timeline/property_lane_model.dart'
+    show laneGroupKey, parseLaneGroupKey;
 import '../timeline/timeline_row_filter.dart';
 import '../timeline/timeline_section_policy.dart';
 
@@ -60,6 +63,62 @@ class RailView {
   final ValueNotifier<Set<String>> expandedLaneGroupKeys = ValueNotifier(
     const <String>{},
   );
+
+  /// The link table the three sets below were last made to agree with.
+  LayerLinkRegistry? _followed;
+
+  /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
+  /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
+  /// 상태 접힌 상태 공유하라는것. 법통일」 — a row that JOINED a link group
+  /// wears the group's twirls and folds: its CANONICAL row's
+  /// ([LayerLinkGroup.canonical] — the row a 겸용 cut was made from).
+  ///
+  /// A press reaches every use of its row by itself (the toggles take the
+  /// row's other uses along), so the sets already agree inside every group
+  /// that stood; this is for the uses a command just made — a new 겸용 cut's
+  /// rows have ids nothing was ever folded by. Asked after a command, an
+  /// undo and a redo, and it answers at once while [links] is the table it
+  /// last saw.
+  void followLinks(LayerLinkRegistry links) {
+    if (identical(links, _followed)) {
+      return;
+    }
+    _followed = links;
+    for (final rows in [collapsedAttachBaseIds, expandedLaneLayerIds]) {
+      final next = Set<LayerId>.of(rows.value);
+      for (final group in links.groups) {
+        final uses = [for (final member in group.members) member.layerId];
+        if (next.contains(group.canonical.layerId)) {
+          next.addAll(uses);
+        } else {
+          next.removeAll(uses);
+        }
+      }
+      if (!setEquals(next, rows.value)) {
+        rows.value = next;
+      }
+    }
+    final keys = Set<String>.of(expandedLaneGroupKeys.value);
+    for (final group in links.groups) {
+      final uses = {for (final member in group.members) member.layerId};
+      final open = [
+        for (final key in expandedLaneGroupKeys.value)
+          if (parseLaneGroupKey(key) case final row?
+              when row.layerId == group.canonical.layerId)
+            row.laneId,
+      ];
+      keys.removeWhere(
+        (key) => uses.contains(parseLaneGroupKey(key)?.layerId),
+      );
+      keys.addAll([
+        for (final use in uses)
+          for (final laneId in open) laneGroupKey(use, laneId),
+      ]);
+    }
+    if (!setEquals(keys, expandedLaneGroupKeys.value)) {
+      expandedLaneGroupKeys.value = keys;
+    }
+  }
 
   void dispose() {
     hiddenSections.dispose();

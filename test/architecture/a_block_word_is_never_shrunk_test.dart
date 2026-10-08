@@ -14,6 +14,13 @@ import '../helpers/dart_sources.dart';
 /// square (D39-2) — and for the rulers' numbers, which are no block's
 /// writing. ⛔A behaviour test can only prove the surfaces it knows about
 /// keep their type; this scan proves nothing ELSE reaches for the shrink.
+///
+/// ↩️The in-between DOT was allowed it too (D39-2, 유저 2026-09-24: 「a
+/// mark, not a word」) until F-297 (유저 2026-10-05): 「중간나누기 점도
+/// 하나의 글자로 인식해서 … 점 지금 줌 낮아지면 크기 자체가 작아지는데
+/// 그게아니라 글자랑 똑같이 법 통일해서 가로가 작아지도록」. It keeps its
+/// size and narrows along the frame axis now (`timelineInbetweenMarkSize`),
+/// so its painter is one more file this scan holds.
 void main() {
   const shrink = 'timelineFittedGlyphFontSize(';
   const allowed = {
@@ -21,10 +28,6 @@ void main() {
     'lib/src/ui/timeline/timeline_cell_style.dart',
     // A key mark's size (D39) — a mark, not a word.
     'lib/src/ui/timeline/timeline_lane_rows.dart',
-    // An in-between mark's size (D39-2, 유저 2026-09-24) — a mark, not a
-    // word: the dot an unnamed drawing's head wears, once printed as its
-    // word, is drawn now.
-    'lib/src/ui/timeline/inbetween_mark_painter.dart',
     // The rulers' numbers (R9 #4 · I-22) — the frame axis, not a block.
     'lib/src/ui/timeline/timeline_frame_ruler_painter.dart',
     'lib/src/ui/timeline/xsheet_timeline_grid.dart',

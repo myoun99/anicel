@@ -1,3 +1,4 @@
+import '../../models/attached_layer_resolve.dart' show attachedMirrorCelId;
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -117,6 +118,108 @@ mintIndependentClip({
   );
 }
 
+/// What one synced attach row gains when its base's cels are re-cut as cels
+/// of their own: the mirror cels [born], the [baseLinks] that name them, and
+/// which mirror each came from ([minted]) — for the pictures
+/// ([carryBakedPictures]).
+typedef MirrorCopies = ({
+  LayerId layerId,
+  List<Frame> born,
+  Map<FrameId, FrameId> baseLinks,
+  Map<FrameId, FrameId> minted,
+});
+
+/// 🚨F-275 (유저 2026-10-04): 「기준레이어 링크된상태에서 독립시킬때, 어태치
+/// 싱크레이어의 그림은 사라지고 기준레이어 그림만 남아있는데, 어태치 싱크
+/// 레이어 그림도 남아있도록」 — the SYNCED attach rows riding a base whose
+/// cels [baseMinted] (source → copy) were re-cut take their MIRRORS of those
+/// cels along.
+///
+/// A mirror cel is the attach row's picture OF a base cel, found by the base
+/// cel's id ([Layer.baseFrameLinks]). A base cel given a new id had no mirror
+/// under it, so the settle minted an EMPTY one
+/// (`cutWithReconciledAttachedMirrors`): the base kept its picture and the
+/// attach row lost the one drawn there. Each copy's mirror is born here
+/// instead — a copy of its source's mirror, under the very id the settle
+/// gives it ([attachedMirrorCelId] with [mintedUnder]'s answer), so the
+/// settle finds the link already made.
+///
+/// ⚠️A base cel a row never mirrored has nothing to keep there: the settle
+/// mints its empty mirror as before. A FREE attach row authors its own cels
+/// and is not one of [attachedRows].
+List<MirrorCopies> mirrorCopiesFor({
+  required Iterable<Layer> attachedRows,
+  required Map<FrameId, FrameId> baseMinted,
+  required LayerId Function(Layer attached) mintedUnder,
+}) {
+  final copies = <MirrorCopies>[];
+  for (final attached in attachedRows) {
+    final born = <Frame>[];
+    final baseLinks = <FrameId, FrameId>{};
+    final minted = <FrameId, FrameId>{};
+    for (final MapEntry(key: source, value: copy) in baseMinted.entries) {
+      final linked = attached.baseFrameLinks[source];
+      final mirror = linked == null ? null : attached.frameById(linked);
+      if (mirror == null) {
+        continue;
+      }
+      final id = attachedMirrorCelId(mintedUnder(attached), copy);
+      born.add(duplicateFrameContent(frame: mirror, newFrameId: id));
+      baseLinks[copy] = id;
+      minted[mirror.id] = id;
+    }
+    if (born.isNotEmpty) {
+      copies.add((
+        layerId: attached.id,
+        born: born,
+        baseLinks: baseLinks,
+        minted: minted,
+      ));
+    }
+  }
+  return copies;
+}
+
+/// How the drawings of a clip placed on a row relate to the ones it was
+/// copied from ([placedClipFor]).
+enum ClipLanding {
+  /// The SAME drawings, exposed again — 「링크」 on the row they belong to.
+  sameDrawings,
+
+  /// Drawings of the row's own that keep their NAMES — 「링크」 on any other
+  /// row (I-71, [placedClipFor]).
+  sameNames,
+
+  /// Drawings of the row's own, and of no name — 「독립」.
+  ownDrawings,
+}
+
+/// The drawings [layer] already holds under the names [row]'s drawings
+/// carry — each of the clip's named drawings, to the one of [layer]'s that
+/// answers to its name. What a [ClipLanding.sameNames] placing JOINS, and
+/// what the linked paste asks about before it writes (I-71).
+///
+/// The names are compared as the rename compares them
+/// ([TimelineController.nameConflicts] — a stored name, whole), and a
+/// drawing of no name joins nothing: 「이름없으면 독립적인거니까」.
+Map<FrameId, FrameId> drawingsHeldUnderTheNamesOf(
+  Layer layer,
+  ({TimelineClipRow clip, List<Frame> cels}) row,
+) {
+  // A name is held ONCE on a row whose names are identities, so which
+  // holder a second would be is not a question this has to answer.
+  final holders = <String, FrameId>{
+    for (final frame in layer.frames) ?frame.name: frame.id,
+  };
+  final shown = {
+    for (final exposure in row.clip.exposures.values) ?exposure.frameId,
+  };
+  return {
+    for (final cel in row.cels)
+      if (shown.contains(cel.id)) cel.id: ?holders[cel.name],
+  };
+}
+
 /// WHAT A CLIP BECOMES WHEN IT LANDS ON [layer] — the linked branch and
 /// the independent one, side by side, so a paste asks once per row, and a
 /// block duplicate — a paste of the block beside itself — asks the same.
@@ -147,25 +250,28 @@ placedClipFor({
   required Layer layer,
   required ({TimelineClipRow clip, List<Frame> cels, List<AudioClip> sounds})
   row,
-  required bool independent,
+  required ClipLanding landing,
   required FrameIds ids,
 }) {
-  final placed = independent
-      ? _independentClipOf(layer, row, () => ids.mintFrameId(layer.id))
-      : (
-          clip: row.clip,
-          born: [
-            // A 잘라내기 orphaned the cels it lifted, so the layer no longer
-            // holds them; the clipboard does. Bringing back the SAME id is
-            // what makes cut-then-paste-back a move rather than a deletion —
-            // and re-adding only what is missing keeps a plain copy from
-            // duplicating anything.
-            for (final cel in row.cels)
-              if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
-          ],
-          bornSounds: const <AudioClip>[],
-          minted: const <FrameId, FrameId>{},
-        );
+  FrameId mint() => ids.mintFrameId(layer.id);
+  final placed = switch (landing) {
+    ClipLanding.ownDrawings => _independentClipOf(layer, row, mint),
+    ClipLanding.sameNames => _namedClipOf(layer, row, mint),
+    ClipLanding.sameDrawings => (
+      clip: row.clip,
+      born: [
+        // A 잘라내기 orphaned the cels it lifted, so the layer no longer
+        // holds them; the clipboard does. Bringing back the SAME id is
+        // what makes cut-then-paste-back a move rather than a deletion —
+        // and re-adding only what is missing keeps a plain copy from
+        // duplicating anything.
+        for (final cel in row.cels)
+          if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
+      ],
+      bornSounds: const <AudioClip>[],
+      minted: const <FrameId, FrameId>{},
+    ),
+  };
   final written = conteHandwritingOfACopy(
     placed.clip.exposures,
     () => ids.mintFrameId(conteInkRowLayerId).value,
@@ -176,6 +282,64 @@ placedClipFor({
     bornSounds: placed.bornSounds,
     minted: placed.minted,
     handwriting: written.copies,
+  );
+}
+
+/// [row] landing on [layer] — a row it was NOT copied from — with its
+/// drawings' names kept: the linked paste across rows.
+///
+/// 🗣️I-71 (유저 2026-10-05): 「그 외에도 그냥 다른레이어에 붙여넣을때
+/// 독립붙여넣기밖에 안되는데, 링크붙여넣기 가능하게. 동작은 말한대로 이름
+/// 유지되는붙여넣기. 해당행동시 기존에 이름 존재한다면 링크시킬지 묻는것도
+/// 띄우고」.
+///
+/// A link is 「the same drawing exposed again」, and a drawing belongs to its
+/// row — on another row there is no same drawing to expose. What crosses is
+/// the NAME, a drawing's identity inside a row (「같은 이름 = 같은 그림」):
+///
+/// • a name [layer] already holds — the block shows the drawing [layer] HAS
+///   under it ([drawingsHeldUnderTheNamesOf]); nothing is born, and the
+///   copied picture is not brought. The caller asked first.
+/// • a name it does not — a drawing of [layer]'s own is born wearing it.
+/// • no name — a drawing of its own and of no name, as 독립 lays it: with no
+///   identity there is nothing to carry.
+({
+  TimelineClipRow clip,
+  List<Frame> born,
+  List<AudioClip> bornSounds,
+  Map<FrameId, FrameId> minted,
+})
+_namedClipOf(
+  Layer layer,
+  ({TimelineClipRow clip, List<Frame> cels, List<AudioClip> sounds}) row,
+  FrameId Function() mint,
+) {
+  final held = drawingsHeldUnderTheNamesOf(layer, (
+    clip: row.clip,
+    cels: row.cels,
+  ));
+  final own = mintIndependentClip(
+    clip: row.clip.withExposures({
+      for (final MapEntry(key: index, value: exposure)
+          in row.clip.exposures.entries)
+        if (!held.containsKey(exposure.frameId)) index: exposure,
+    }),
+    from: [(cels: row.cels, sounds: row.sounds)],
+    // The names are what this landing keeps.
+    namesAreIdentity: false,
+    mint: mint,
+  );
+  return (
+    clip: row.clip.withExposures({
+      for (final MapEntry(key: index, value: exposure)
+          in row.clip.exposures.entries)
+        if (held[exposure.frameId] case final holder?)
+          index: exposure.copyWith(frameId: holder),
+      ...own.clip.exposures,
+    }),
+    born: own.born,
+    bornSounds: own.bornSounds,
+    minted: own.minted,
   );
 }
 

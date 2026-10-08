@@ -235,19 +235,8 @@ void main() {
         mediaNameParts(path),
       );
       expect(
-        mediaCarryName((poolPath: 'C:/media/take 1.wav', token: '')),
-        mediaCarryName((poolPath: path, token: '')),
-      );
-    });
-
-    test('a carry from before names were minted is named from the path it '
-        'is at — what those projects hold', () {
-      final (:hash, :safe) = mediaNameParts(path);
-
-      expect(mediaCarryName((poolPath: path, token: '')), '$hash-$safe');
-      expect(
-        mediaCarryName((poolPath: path, token: 'c0ffee01')),
-        '$hash-c0ffee01-$safe',
+        mediaCarryNamed('C:/media/take 1.wav', 'c0ffee01'),
+        mediaCarryNamed(path, 'c0ffee01'),
       );
     });
   });

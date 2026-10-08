@@ -40,6 +40,22 @@ List<({CutId cutId, LayerId layerId})> linkMirrorTargets(
   ];
 }
 
+/// The ROWS of [linkMirrorTargets]: every use of the row, by the id the
+/// rail keeps its view state by — the twirls and the folds, which a linked
+/// row wears as one (F-302).
+List<LayerId> linkMirrorRows(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) => [
+  for (final target in linkMirrorTargets(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+  ))
+    target.layerId,
+];
+
 /// The transform track ([cutId], [layerId]) keys: the row's own, except the
 /// CAMERA row's — the row is its cut's transform header (F-17), and its
 /// lanes live on [Cut.camera].
@@ -147,6 +163,25 @@ List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {
   ];
 }
 
+/// [cutId]'s 겸용 group as CUTS, in TRACK order: the cut itself and its
+/// [linkedCutSiblings] — the cut alone when it is linked to none. The FIRST
+/// is the group's owner.
+///
+/// Track order, never 「the open cut first」: a group is one thing to
+/// whatever reads it — the envelope's CUT lines and its ink's owner, the
+/// export's joined cut name, the cut a cel is composited in (F-300) — and
+/// what it reads must not depend on which sibling happens to be open.
+///
+/// ↩️Each of those walked the tracks for itself.
+List<Cut> linkedCutGroupInTrackOrder(Project project, {required CutId cutId}) {
+  final group = <CutId>{cutId, ...linkedCutSiblings(project, cutId: cutId)};
+  return [
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        if (group.contains(cut.id)) cut,
+  ];
+}
+
 /// [layerId]'s counterpart inside [targetCutId] — the member of its link
 /// group that lives there, or null when the row does not reach that cut.
 ///
@@ -158,18 +193,11 @@ LayerId? linkCounterpartIn(
   required CutId cutId,
   required LayerId layerId,
   required CutId targetCutId,
-}) {
-  final group = project.linkRegistry.groupOf(cutId: cutId, layerId: layerId);
-  if (group == null) {
-    return null;
-  }
-  for (final member in group.members) {
-    if (member.cutId == targetCutId) {
-      return member.layerId;
-    }
-  }
-  return null;
-}
+}) => project.linkRegistry.counterpartIn(
+  cutId: cutId,
+  layerId: layerId,
+  targetCutId: targetCutId,
+);
 
 /// [sibling]'s own order after the same MOVE that produced [sourceOrder] —
 /// or null when the sibling shares none of the moved rows.

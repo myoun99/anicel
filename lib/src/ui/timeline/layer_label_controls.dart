@@ -355,8 +355,10 @@ enum RailSubject {
   /// rows.
   layer,
 
-  /// The storyboard's TRACK row: its eye shows the cut pictures, and its FX
-  /// switch is the track's own.
+  /// The storyboard's TRACK row: its FX switch is the track's own. (↩️Its
+  /// eye showed the cut pictures, and said so, until the eye left the row
+  /// — I-73, 2026-10-08. The eye is a layer row's alone now and names no
+  /// subject.)
   track,
 }
 
@@ -543,6 +545,24 @@ bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
 TextStyle layerRowNameStyle(BuildContext context) =>
     DefaultTextStyle.of(context).style;
 
+/// A row's name as the row's EYE leaves it: [style] itself while the row is
+/// [shown], and on a row that is not, its ink at the rail's one 「off」
+/// ([AppColors.offAlpha]) — the alpha the eye and the colour label beside it
+/// already wear, so a hidden row reads as off in one language.
+///
+/// 🗣️I-62 (유저 2026-10-03): 「레이어 비지블off시 색라벨 비활성화색?으로
+/// 하는데, 추가로 레이어 이름도 비활성화색? 반투명? 어둡게」.
+///
+/// The colour stays the caller's ([layerRowNameStyle]: what a name is
+/// coloured by is what the row IS); this only says how that colour reads on
+/// a row that is off.
+TextStyle layerRowNameStyleFor(TextStyle style, {required bool shown}) {
+  final ink = style.color;
+  return shown || ink == null
+      ? style
+      : style.copyWith(color: ink.withValues(alpha: AppColors.offAlpha));
+}
+
 /// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
 /// bypassed. Defined ONCE (R28 follow-up).
 ///
@@ -596,7 +616,6 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.isVisible,
     required this.onToggle,
     this.hiddenAbove = false,
-    this.subject = RailSubject.layer,
     this.tooltip,
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
@@ -607,12 +626,9 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// off colour (F-185).
   final bool hiddenAbove;
 
-  /// The row this eye stands on — what its tooltip names.
-  final RailSubject subject;
-
   /// The whole tooltip, when the caller has one of its own — the guides
   /// panel says 「가이드 표시」 rather than 'Show guide'. Null keeps the
-  /// Show/Hide pair for [subject], which is what every rail wants.
+  /// layer's Show/Hide pair, which is what every rail wants.
   final String? tooltip;
 
   /// The full widget key string ('timeline-layer-visibility-a').
@@ -625,12 +641,8 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// The x-sheet's column header runs a hair smaller than the rails.
   final double iconSize;
 
-  String _showHideFor(AppStrings strings) => switch (subject) {
-    RailSubject.layer =>
-      isVisible ? strings.railHideLayer : strings.railShowLayer,
-    RailSubject.track =>
-      isVisible ? strings.railHideCutPicture : strings.railShowCutPicture,
-  };
+  String _showHide(AppStrings strings) =>
+      isVisible ? strings.railHideLayer : strings.railShowLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -639,7 +651,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       height: 26,
       child: AppIconButton(
         keyValue: keyValue,
-        tooltip: tooltip ?? _showHideFor(AppText.strings),
+        tooltip: tooltip ?? _showHide(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
@@ -845,20 +857,8 @@ IconData layerKindIcon(LayerKind kind) {
 /// ⚠️Trade terms stay in their own script or in English (user 2026-08-12:
 /// 「현장용어만 원어/영어로 두기로 하자」): SE, Transition, Direction. That
 /// is a decision about the WORDS and it lives in the tables, not here.
-String layerKindDisplayName(LayerKind kind) {
-  final strings = AppText.strings;
-  return switch (kind) {
-    LayerKind.animation => strings.tlKindAnimation,
-    LayerKind.storyboard => strings.tlKindStoryboard,
-    LayerKind.image => strings.tlKindImage,
-    LayerKind.se => strings.tlKindSe,
-    LayerKind.instruction => strings.tlKindInstruction,
-    LayerKind.transition => strings.tlKindTransition,
-    LayerKind.camera => strings.tlKindCamera,
-    LayerKind.folder => strings.tlKindFolder,
-    LayerKind.adjustment => strings.tlKindAdjustment,
-  };
-}
+String layerKindDisplayName(LayerKind kind) =>
+    kind.labelFor(AppText.language);
 
 /// Chip colour of [mark] — and, since ⑲, the colour of that layer's frame
 /// BLOCKS as well.

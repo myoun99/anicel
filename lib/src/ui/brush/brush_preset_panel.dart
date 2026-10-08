@@ -1,4 +1,6 @@
 import '../widgets/app_tooltip.dart';
+import '../shortcuts/brush_actions.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
@@ -24,12 +26,14 @@ import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
+import 'brush_library_look.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
 import 'brush_preset_view_options.dart';
 import 'brush_name_label.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
+import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../sliced_value_listenable_builder.dart';
@@ -61,9 +65,6 @@ enum _BrushPresetMenuAction {
 // ⚠️It was NOT the cause of R4 #11. Dropping it was tried as a fix first and
 // measured: the rail still went red. The crash is a live tooltip being
 // re-parented, and it is fixed separately in `_dismissTooltipsOnPress`.
-
-/// Label for the root section holding presets that belong to no group.
-const String _rootSectionLabel = 'Default';
 
 /// The brush library panel: a rail of group TABS down the left, and the open
 /// group's brushes beside it — one row per preset with a tip icon, a stroke
@@ -100,6 +101,8 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupEdited,
     this.onGroupDeleted,
     this.onGroupOpened,
+    this.tool = CanvasTool.brush,
+    this.look,
     this.onGroupsReordered,
     this.onLibraryReset,
     this.onPresetExported,
@@ -144,10 +147,25 @@ class BrushPresetPanel extends StatefulWidget {
   /// naming the count).
   final ValueChanged<BrushGroupId>? onGroupDeleted;
 
-  /// Told which tab was opened — the root section's is null — so the paint
-  /// tool in hand can take up the brush it last held there (F-250); the
-  /// panel only shows the tab.
+  /// A tab PRESSED — the root section's is null: the host has [tool] take up
+  /// the brush it last held there (F-250), and settles the tab shown
+  /// ([look]). The one press a group's key makes too (F-319).
   final ValueChanged<BrushGroupId?>? onGroupOpened;
+
+  /// The paint tool whose library this is: its tabs and its brushes are the
+  /// buttons of THAT tool's rows of the shortcut list (F-319: 「브러시도구의
+  /// 브러시그룹/브러시 … 지우개도구의 브러시그룹/브러시」), and wear their keys.
+  final CanvasTool tool;
+
+  /// The tab looked into while the hand cannot say it — the host's, which
+  /// then keeps it: settles it in [onGroupOpened] and ends it when the hand
+  /// changes. Null, a panel on its own: it keeps one itself, by the brush it
+  /// is built holding ([selectedPresetId]).
+  ///
+  /// ⚠️Why the host's: the tool library keeps a panel alive for each paint
+  /// tool, and one kept off stage is not built again when another tool comes
+  /// to hand ([BrushLibraryLook]).
+  final BrushLibraryLook? look;
 
   /// Called with the full reordered group list after a tab drag.
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
@@ -217,17 +235,31 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   // Library tab keeps no State once it closes, so every close forgot them.
   // The host keeps them in the workspace file now ([widget.viewOptions]) and
   // this is its answer, flipped here the moment a toggle is picked. The open
-  // TAB stays session state — on a fresh launch it follows the selected
-  // brush, which is a better answer than whatever was open last time.
+  // TAB is kept nowhere: it is the held brush's ([_openGroupId]), which is
+  // a better answer than whatever was open last time.
   late BrushPresetViewOptions _viewOptions = widget.viewOptions;
   bool get _showTipIcon => _viewOptions.showTipIcon;
   bool get _showStrokePreview => _viewOptions.showStrokePreview;
   bool get _showName => _viewOptions.showName;
 
-  /// The open tab; `null` is the root section (presets in no group). Unset
-  /// until the user picks one, so the panel can follow the selection.
-  BrushGroupId? _activeGroupId;
-  bool _tabChosen = false;
+  /// THE TAB SHOWN IS THE HELD BRUSH'S ([_openGroupId]) — and the tab looked
+  /// into while the hand cannot say it is [BrushLibraryLook]'s, which says
+  /// who decided and what it replaced. The host's when it hands one in;
+  /// this panel's own otherwise, and then this panel keeps it ([_keepsLook]).
+  BrushLibraryLook? _ownLook;
+
+  BrushLibraryLook get _look =>
+      widget.look ?? (_ownLook ??= BrushLibraryLook());
+
+  /// Whether the look is this panel's to keep — to settle on a tab's press
+  /// and to end when the hand changes. A host that hands one in keeps it.
+  bool get _keepsLook => widget.look == null;
+
+  void _onLookChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   /// A preset is mid-drag: the rail watches the pointer so hovering a tab
   /// opens it, the way a spring-loaded folder does.
@@ -337,18 +369,25 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       ? const <BrushGroup?>[]
       : [...widget.groups, if (_hasRootTab) null];
 
-  /// The open tab. Until the user picks one this follows the SELECTED brush,
-  /// so opening the panel lands on the group you are painting from.
-  BrushGroupId? get _openGroupId {
-    if (_tabChosen) {
-      return _activeGroupId;
-    }
+  /// The tab the held brush shows in — a record, since the root section's
+  /// is a null group — or null while the hand holds no brush the library
+  /// can name.
+  ({BrushGroupId? group})? get _heldTab {
     final selectedId = widget.selectedPresetId;
     final selected = selectedId == null
         ? null
         : widget.presets.where((preset) => preset.id == selectedId).firstOrNull;
-    if (selected != null) {
-      return _ownerGroupId(selected);
+    return selected == null ? null : (group: _ownerGroupId(selected));
+  }
+
+  /// The open tab: the one the held brush shows in — or the one being
+  /// looked into ([_look]) until the hand next changes.
+  BrushGroupId? get _openGroupId {
+    if (_look.value case (:final group)) {
+      return group;
+    }
+    if (_heldTab case (:final group)) {
+      return group;
     }
     return widget.groups.isEmpty ? null : widget.groups.first.id;
   }
@@ -556,25 +595,28 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     );
   }
 
-  /// A tab TAPPED: the paint tool in hand takes up its brush there
-  /// (F-250), then the tab shows. Told every time, the open tab's own
-  /// included — whether the hand already holds a brush of this tab is the
-  /// workspace's question, and the tab shown can differ from it after a
-  /// switch of tool. ⛔Not a drag's spring-loaded opening ([_openTab]),
-  /// which only shows where a dragged brush can land.
+  /// A tab TAPPED: the host has the tool take up its brush there (F-250)
+  /// and settles the tab shown — the press its key makes too. Told every
+  /// time, the open tab's own included: whether the hand already holds a
+  /// brush of this tab is the host's question. A tab with a brush to take
+  /// up changes the hand, and the library follows it; one with none is
+  /// looked into ([BrushLibraryLook]). ⛔Not a drag's spring-loaded opening
+  /// ([_openTab]), which only shows where a dragged brush can land.
+  ///
+  /// A panel keeping its own look settles it here, by the brush it is built
+  /// holding — it has no host that knows the hand any better.
   void _enterTab(BrushGroupId? groupId) {
+    if (_keepsLook) {
+      _look.settle(groupId, held: _heldTab);
+    }
     widget.onGroupOpened?.call(groupId);
-    _openTab(groupId);
   }
 
   void _openTab(BrushGroupId? groupId) {
-    if (_tabChosen && _activeGroupId == groupId) {
+    if (_openGroupId == groupId) {
       return;
     }
-    setState(() {
-      _tabChosen = true;
-      _activeGroupId = groupId;
-    });
+    _look.value = (group: groupId);
   }
 
   /// Moves a group in the rail. The rail is a plain list of tabs, so a tab
@@ -699,9 +741,26 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _look.addListener(_onLookChanged);
+  }
+
+  @override
   void didUpdateWidget(BrushPresetPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     _selection.value = widget.selectedPresetId;
+    if (widget.look != oldWidget.look) {
+      (oldWidget.look ?? _ownLook)?.removeListener(_onLookChanged);
+      _look.addListener(_onLookChanged);
+    }
+    // The hand changed: the library shows what it holds now, whatever tab
+    // was being looked into (F-319). ⚠️Only a look this panel keeps — a
+    // host's has been ended by the host, which heard the hand itself, and
+    // may have looked into a tab since (a group's key on an empty group).
+    if (_keepsLook && widget.selectedPresetId != oldWidget.selectedPresetId) {
+      _look.end();
+    }
     // A restored or reset layout reaches an open panel through here; the
     // panel's own flips come back equal and change nothing.
     if (widget.viewOptions != oldWidget.viewOptions) {
@@ -711,6 +770,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   @override
   void dispose() {
+    (widget.look ?? _ownLook)?.removeListener(_onLookChanged);
+    _ownLook?.dispose();
     _springTimer?.cancel();
     _railController.dispose();
     _scrollController.dispose();
@@ -867,6 +928,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       _railShowIcon,
       _railShowName,
       _railDragging,
+      widget.tool,
     );
     final kept = _railKept;
     if (kept != null && _railKeptFor == key) {
@@ -935,7 +997,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             final group = tabs[index];
             final tab = _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
-              label: group?.name ?? _rootSectionLabel,
+              label: group?.name ?? brushRootSectionLabel,
+              shortcuts: [
+                if (group != null) brushGroupActionId(widget.tool, group.id),
+              ],
               icon: group?.icon,
               showIcon: _railShowIcon,
               showName: _railShowName,
@@ -992,6 +1057,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       _showStrokePreview,
       _showName,
       widget.onPresetApplied,
+      widget.tool,
     );
     final kept = _listKept;
     if (kept != null && _listKeptFor == key) {
@@ -1037,6 +1103,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         final preset = visible[index];
         final row = _BrushPresetRow(
           preset: preset,
+          shortcuts: [brushPresetActionId(widget.tool, preset.id)],
           selection: _selection,
           onApplied: widget.onPresetApplied,
           showTipIcon: _showTipIcon,
@@ -1219,7 +1286,13 @@ class _BrushGroupTab extends StatelessWidget {
     this.showName = false,
     this.showTooltip = true,
     this.onEdit,
+    this.shortcuts = const [],
   });
+
+  /// The actions this tab is the button of (I-56) — a group's tab is its
+  /// group's shortcut row, and its tooltip wears that row's key as every
+  /// button's does. The root section's tab has none: it is not a group.
+  final List<String> shortcuts;
 
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
   /// a tab index while a brush is being dragged over it.
@@ -1253,6 +1326,9 @@ class _BrushGroupTab extends StatelessWidget {
   /// 96 cut a group name at two or three characters, which is what 「이름이
   /// 제대로 보이도록」 was about.
   static const double namedWidth = 120;
+
+  /// The size a group's name is written at — and the key after it.
+  static const double nameFontSize = 11;
 
   /// The tab's picture: the group's chosen icon, else its first brush, else
   /// a plain folder. Choosing is for when that guess reads wrong.
@@ -1348,7 +1424,7 @@ class _BrushGroupTab extends StatelessWidget {
                       // — so the tail is what gives.
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: nameFontSize,
                         color: selected
                             ? colorScheme.onSurface
                             : colorScheme.onSurfaceVariant,
@@ -1356,6 +1432,10 @@ class _BrushGroupTab extends StatelessWidget {
                     ),
                   ),
                 ),
+              // 🗣️F-319: 「이름이 있는곳은 흐린글자로 표시임」 — the group's
+              // key after its name, as a menu row wears one. Nothing where
+              // no name shows; the tooltip says it there, as on any button.
+              if (showName) _BrushKeyText(shortcuts, fontSize: nameFontSize),
             ],
           ),
         ),
@@ -1367,7 +1447,7 @@ class _BrushGroupTab extends StatelessWidget {
     // switch groups under the finger.
     final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
     final face = showTooltip
-        ? AppTooltip(message: label, child: instant)
+        ? ShortcutTooltip(label: label, shortcuts: shortcuts, child: instant)
         : instant;
     return SizedBox(height: extent, child: face);
   }
@@ -1456,9 +1536,33 @@ class _GroupIconPicker extends StatelessWidget {
   }
 }
 
+/// The KEY of a brush library name: its action's live key after the name,
+/// dim — the one look a key beside a name has ([ShortcutKeysText]) — at the
+/// size of that name, and in no more than [_room] of the row, so a long
+/// chord gives its own tail and not the whole name.
+class _BrushKeyText extends StatelessWidget {
+  const _BrushKeyText(this.actionIds, {required this.fontSize});
+
+  final List<String> actionIds;
+  final double fontSize;
+
+  static const double _room = 48;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: _room),
+    child: ShortcutKeysText(
+      actionIds: actionIds,
+      fontSize: fontSize,
+      padding: const EdgeInsets.only(left: 2, right: 4),
+    ),
+  );
+}
+
 class _BrushPresetRow extends StatelessWidget {
   const _BrushPresetRow({
     required this.preset,
+    required this.shortcuts,
     required this.selection,
     required this.onApplied,
     required this.showTipIcon,
@@ -1467,6 +1571,10 @@ class _BrushPresetRow extends StatelessWidget {
   });
 
   final BrushPreset preset;
+
+  /// The actions this row is the button of (I-56) — the brush's row of the
+  /// shortcut list, in the library of the tool this panel is.
+  final List<String> shortcuts;
 
   /// Which preset is held — read here, so a pick redraws the two rows whose
   /// answer flips and nothing else (H40, see the panel's `_selection`).
@@ -1626,7 +1734,22 @@ class _BrushPresetRow extends StatelessWidget {
           if (showName)
             SizedBox(
               height: brushPresetNameBandHeight,
-              child: BrushNameLabel(name: preset.name, selected: selected),
+              // 🗣️F-319: 「이름이 있는곳은 흐린글자로 표시임」 — the brush's
+              // key after its name, as its group's tab wears one.
+              child: Row(
+                children: [
+                  Expanded(
+                    child: BrushNameLabel(
+                      name: preset.name,
+                      selected: selected,
+                    ),
+                  ),
+                  _BrushKeyText(
+                    shortcuts,
+                    fontSize: BrushNameLabel.fontSize,
+                  ),
+                ],
+              ),
             ),
         ],
       ),

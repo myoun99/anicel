@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 
@@ -24,10 +25,7 @@ void main() {
     double rotation = 0,
     List<CanvasPoint> corners = const [],
   }) => TransformRecall(
-    tx: 0,
-    ty: 0,
-    rotationDegrees: rotation,
-    scale: scale,
+    values: TransformValues(sx: scale, sy: scale, rotationDegrees: rotation),
     cornerOffsets: corners,
   );
 
@@ -45,7 +43,7 @@ void main() {
       ],
     );
 
-    expect(commands.recallFor(TransformMode.normal)!.scale, 1.2);
+    expect(commands.recallFor(TransformMode.normal)!.values.sx, 1.2);
     expect(
       commands.recallFor(TransformMode.perspective)!.hasPerspective,
       isTrue,
@@ -53,8 +51,8 @@ void main() {
     // ⛔THE POINT. The 퍼스 entry's affine is identity, so a shared slot
     // would have made 일반's Enter do NOTHING once a warp landed last.
     expect(
-      commands.recallFor(TransformMode.perspective)!.scale,
-      1,
+      commands.recallFor(TransformMode.perspective)!.values.isIdentity,
+      isTrue,
       reason:
           'the warp carried no scale — which is exactly the case that '
           'made one shared slot read as a dead key',
@@ -85,11 +83,42 @@ void main() {
     commands.transformRecalls[TransformMode.perspective] = recall(rotation: 24);
     commands.transformRecalls[TransformMode.normal] = recall(scale: 2);
 
-    expect(commands.recallFor(TransformMode.normal)!.scale, 2);
+    expect(commands.recallFor(TransformMode.normal)!.values.sx, 2);
     expect(
-      commands.recallFor(TransformMode.perspective)!.rotationDegrees,
+      commands.recallFor(TransformMode.perspective)!.values.rotationDegrees,
       24,
       reason: '퍼스 was not touched, so 퍼스 still remembers',
+    );
+  });
+
+  // 🗣️유저 2026-10-03 (F-265): 「변형으로 좌우반전하고, 다음프레임에서 기록된
+  // 내역대로 하려고 엔터누르니 좌우반전이아니라 좌우/상하반전이 됨」. A recall
+  // was worth offering only when ITS ONE scale — the horizontal — had moved,
+  // so a 상하반전, or a stretch along the vertical alone, left nothing to
+  // replay.
+  test('🚨a recall that changed ONE axis is worth offering, whichever axis', () {
+    for (final values in const [
+      TransformValues(sx: -1),
+      TransformValues(sy: -1),
+      TransformValues(sx: 1.5),
+      TransformValues(sy: 1.5),
+    ]) {
+      expect(
+        TransformRecall(values: values).isIdentity,
+        isFalse,
+        reason: '$values',
+      );
+    }
+    expect(
+      const TransformRecall(values: TransformValues.identity).isIdentity,
+      isTrue,
+    );
+    expect(
+      const TransformRecall(
+        values: TransformValues(anchorX: 12, anchorY: -3),
+      ).isIdentity,
+      isTrue,
+      reason: 'the cross moved alone changes no pixel — nothing to replay',
     );
   });
 }

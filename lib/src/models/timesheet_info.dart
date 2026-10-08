@@ -1,5 +1,4 @@
 import '../core/collection_equality.dart';
-import 'cut_metadata.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
 
@@ -11,16 +10,18 @@ import 'layer_mark.dart';
 enum TimesheetHeaderField { episode, title, scene, cut, time, name, sheet }
 
 /// The work's words every paper form prints — its title (the project's
-/// name while it has none), its episode (話数), who does each stage's work
-/// — plus how the timesheet prints its header. Project-level: every cut's
-/// sheets share it.
+/// name while it has none), its episode (話数), who does the conte — plus
+/// how the timesheet prints its header. Project-level: every cut's sheets
+/// share it.
 ///
 /// ⛔No scene: 유저 09-25 「씬은 작품설정에선 필요없어. 1500컷을 작업한다치면
 /// 콘티패널 내에서 컷들을 하나로 묶어서 씬/파트 이렇게 묶게할예정」 — a scene
 /// belongs to a group of cuts, not to the work.
-/// ⛔No artist of its own: a sheet's 作業者 is the 원화 worker in [staff]
+/// ⛔No artist of its own: a sheet's 作業者 is a stage's worker on the CUT
+/// (`sheetArtistMark`). ↩️It was the 원화 worker in the work's [staff]
 /// (유저 09-25 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의
-/// 원화 이름 인식하게하고」).
+/// 원화 이름 인식하게하고」) until the stages other than the conte became
+/// each cut's (F-291-Q1, 2026-10-08).
 class TimesheetInfo {
   const TimesheetInfo({
     this.title = '',
@@ -32,6 +33,8 @@ class TimesheetInfo {
     this.logoAssetPath,
     this.coverImagePath,
     this.envelopeFormId = CutEnvelopePresets.analogId,
+    this.conteCover = true,
+    this.conteBlankPage = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -54,10 +57,10 @@ class TimesheetInfo {
   /// wash) — default on, toggleable per project.
   final bool seEmptyFill;
 
-  /// Who does each colour label's work — the name a paper form prints for
-  /// a stage, or for a stage's correction — keyed by the label's
-  /// [LayerMark.keySlug]: 원화 is `key`, 원화 작화감독 is
-  /// `key-animation-director`.
+  /// Who does the conte's work — its worker and its corrections, the stages
+  /// the work keeps ([StaffHolder.work]; every other stage is the cut's,
+  /// `CutMetadata.staff`) — keyed by the label's [LayerMark.keySlug]: the
+  /// conte is `conte`, its 감독 `conte-director`.
   ///
   /// 🚨★★★ONE VOCABULARY, THE COLOUR LABELS. 유저 09-25: 「이런 스태프는
   /// 색라벨에 자세하게 나와있으니 그거 기반으로」, grouped 「공정별 묶음 —
@@ -86,6 +89,16 @@ class TimesheetInfo {
   /// workspace value that did not outlive the session.
   final String envelopeFormId;
 
+  /// Whether the conte book opens with its COVER, and whether the cover's
+  /// BLANK back follows it (유저 2026-09-25: 「보통 1페이지는 표지,
+  /// 2페이지는 인쇄할때 생각해서 빈용지, 3페이지부터 콘티 본 페이지」) —
+  /// each put in or taken out in the conte panel's settings and kept with
+  /// the work, and an export prints the book the panel shows (유저
+  /// 2026-10-02, I-59: 「1페이지 헤더 넣기/빼기, 2페이지 빈용지 넣기빼기.
+  /// 위치는 콘티 용지패널의 설정버튼안에. 이게 내보내기시에도 연동」).
+  final bool conteCover;
+  final bool conteBlankPage;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -106,6 +119,8 @@ class TimesheetInfo {
     String? Function()? logoAssetPath,
     String? Function()? coverImagePath,
     String? envelopeFormId,
+    bool? conteCover,
+    bool? conteBlankPage,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -123,24 +138,14 @@ class TimesheetInfo {
           ? this.coverImagePath
           : coverImagePath(),
       envelopeFormId: envelopeFormId ?? this.envelopeFormId,
+      conteCover: conteCover ?? this.conteCover,
+      conteBlankPage: conteBlankPage ?? this.conteBlankPage,
     );
   }
 
   /// [mark]'s name replaced ([staffWithName]).
   TimesheetInfo withStaffName(LayerMark mark, String name) =>
       copyWith(staff: staffWithName(staff, mark, name));
-
-  /// Who does each stage's work on [cut]: the work's staff, with the cut's
-  /// own names over it (유저 09-25: 작품 설정에는 기본값, 컷 설정에는 컷별
-  /// 이름 — [[project-settings-window]]).
-  Map<String, String> staffForCut(CutMetadata cut) => {
-    ...staff,
-    ...cut.staff,
-  };
-
-  /// The name for [mark]'s work on [cut] ([staffForCut]), or empty.
-  String staffNameForCut(CutMetadata cut, LayerMark mark) =>
-      staffForCut(cut)[mark.keySlug] ?? '';
 
   Map<String, dynamic> toJson() => {
     'title': title,
@@ -154,6 +159,8 @@ class TimesheetInfo {
     if (coverImagePath != null) 'cover': coverImagePath,
     if (envelopeFormId != CutEnvelopePresets.analogId)
       'envelopeForm': envelopeFormId,
+    if (!conteCover) 'conteCover': false,
+    if (!conteBlankPage) 'conteBlankPage': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -173,6 +180,8 @@ class TimesheetInfo {
       coverImagePath: json['cover'] as String?,
       envelopeFormId:
           json['envelopeForm'] as String? ?? CutEnvelopePresets.analogId,
+      conteCover: json['conteCover'] as bool? ?? true,
+      conteBlankPage: json['conteBlankPage'] as bool? ?? true,
     );
   }
 
@@ -187,6 +196,8 @@ class TimesheetInfo {
           other.logoAssetPath == logoAssetPath &&
           other.coverImagePath == coverImagePath &&
           other.envelopeFormId == envelopeFormId &&
+          other.conteCover == conteCover &&
+          other.conteBlankPage == conteBlankPage &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -200,6 +211,8 @@ class TimesheetInfo {
     logoAssetPath,
     coverImagePath,
     envelopeFormId,
+    conteCover,
+    conteBlankPage,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

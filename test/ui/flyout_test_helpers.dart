@@ -13,8 +13,6 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // layer menu and onto the pill, the same way 'delete-cut-button' left the
   // cut menu below.
   'duplicate-layer-button': 'timeline-layer-menu-button',
-  'copy-layer-button': 'timeline-layer-menu-button',
-  'paste-layer-button': 'timeline-layer-menu-button',
   'delete-layer-button': 'timeline-layer-menu-button',
   'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
   'timeline-rasterize-layer-button': 'timeline-layer-menu-button',

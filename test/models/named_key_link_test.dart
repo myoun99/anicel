@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -255,7 +256,7 @@ void main() {
   group('transform lanes', () {
     TransformTrack lanes({
       PropertyTrack<double>? rotation,
-      PropertyTrack<double>? scale,
+      PropertyTrack<CanvasPoint>? scale,
     }) => TransformTrack.properties(
       anchorPoint: PropertyTrack.empty(),
       position: PropertyTrack.empty(),
@@ -311,7 +312,12 @@ void main() {
 
     test('the same name in another LANE is another link', () {
       final result = transformTrackWithNamedKeys(
-        lanes(rotation: track({0: (10, 'A')}), scale: track({0: (2, 'A')})),
+        lanes(
+          rotation: track({0: (10, 'A')}),
+          scale: PropertyTrack(
+            keys: {0: PropertyKey(uniformScale(2), name: 'A')},
+          ),
+        ),
         const TransformNamedChanges(
           rotation: {
             'A': (value: 45, interpolation: PropertyKeyInterpolation.linear),
@@ -322,7 +328,7 @@ void main() {
       expect(result.rotation.keyAt(0)!.value, 45);
       expect(
         result.scale.keyAt(0)!.value,
-        2,
+        uniformScale(2),
         reason: 'Rotation A and Scale A are different names by construction',
       );
     });

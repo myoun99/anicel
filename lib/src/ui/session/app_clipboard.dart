@@ -19,12 +19,25 @@ import 'pixel_board.dart';
 /// made on its own — a test, a tool — gets one of its own.
 ///
 /// ⛔Separate boards, not one: a frame copy and a layer copy are two
-/// payloads answering two sets of verbs (G0-2), and 픽셀 복사 is a third
-/// ([PixelBoard], I-55). The cut tool's piece is yet another holder, kept by
-/// the workspace the app has one of ([CutPieceSlot]) — it crossed projects
-/// before any of this (유저 2026-08-12: 「다른 프로젝트에 붙여넣고 싶을 수
-/// 있으니」).
+/// payloads (G0-2), and 픽셀 복사 is a third ([PixelBoard], I-55). The cut
+/// tool's piece is yet another holder, kept by the workspace the app has
+/// one of ([CutPieceSlot]) — it crossed projects before any of this (유저
+/// 2026-08-12: 「다른 프로젝트에 붙여넣고 싶을 수 있으니」).
+///
+/// 🗣️I-77 (유저 2026-10-06): 「복사/붙여넣기버튼 레이어도 연결」. ↩️The frame
+/// board and the layer board answered 「two sets of verbs」 — the pill's and
+/// the layer menu's. They answer ONE now, the shared pill's copy and its
+/// two pastes, so ONE of them is in hand at a time: taking a copy of rows
+/// lets the frames go, and the other way round. That is F-161's sentence at
+/// the pill's scale — 「복사는 언제나 하나 들고있음. 보통 프로그램이
+/// 그러니까」 — and it is what lets a paste need no second question: it
+/// puts down what is in hand.
 class AppClipboard {
+  AppClipboard() {
+    frames.onTake = layers.letGo;
+    layers.onTake = frames.letGo;
+  }
+
   final FrameBoard frames = FrameBoard();
   final LayerBoard layers = LayerBoard();
 

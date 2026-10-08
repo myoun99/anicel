@@ -43,7 +43,6 @@ class _CutCommands {
     CutId? cutId,
   }) {
     final project = _coordinator.repository.requireProject();
-    final plan = planCreateCutCommandInput(project, cutId: cutId);
     final anchor = placement == null
         ? _insertionAnchorFor(project, trackId)
         : (
@@ -54,8 +53,12 @@ class _CutCommands {
       repository: _coordinator.repository,
       editingSession: _coordinator.editingSession,
       trackId: trackId,
-      cutId: plan.cutId,
-      layerId: plan.layerId,
+      // The run's own id, unless one was named ahead ([mintCutId] says why
+      // not the project's first free one). ↩️A plan stood between, which
+      // named a layer id as well — for the blank layer A a new cut was
+      // born with. A new cut is bare now (F-211), and its id is all there
+      // is to name.
+      cutId: cutId ?? mintCutId(),
       name: nextCutNameAfter(project, anchor.referenceName),
       index: anchor.index,
       leadingGapFrames: placement?.leadingGapFrames ?? 0,
@@ -182,11 +185,55 @@ class _CutCommands {
     }
   }
 
+  /// [cutId]'s canvas at [canvasSize], the picture kept to [anchor] — one
+  /// way of saying [placeCutCanvas]'s offset.
   void resizeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
   }) {
+    _requirePositive(canvasSize);
+    placeCutCanvas(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      contentOffset: anchor.contentOffset(
+        from: _coordinator._requireCut(cutId).canvasSize,
+        to: canvasSize,
+      ),
+    );
+  }
+
+  /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
+  /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
+  /// changes anything.
+  ///
+  /// ⚠️The offset is part of the question: a canvas whose edges were
+  /// dragged can keep its size and still move the picture.
+  void placeCutCanvas({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+  }) {
+    _requirePositive(canvasSize);
+    _coordinator._executeIfChanged(
+      subject: _coordinator._requireCut(cutId),
+      value: (
+        canvasSize,
+        contentOffset.dx.roundToDouble(),
+        contentOffset.dy.roundToDouble(),
+      ),
+      read: (cut) => (cut.canvasSize, 0.0, 0.0),
+      command: (_) => ResizeCutCanvasCommand(
+        repository: _coordinator.repository,
+        cutId: cutId,
+        canvasSize: canvasSize,
+        contentOffset: contentOffset,
+        brushFrameStore: _coordinator.brushFrameStore,
+      ),
+    );
+  }
+
+  static void _requirePositive(CanvasSize canvasSize) {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) {
       throw ArgumentError.value(
         canvasSize,
@@ -194,19 +241,6 @@ class _CutCommands {
         'Canvas size must be positive.',
       );
     }
-
-    _coordinator._executeIfChanged(
-      subject: _coordinator._requireCut(cutId),
-      value: canvasSize,
-      read: (cut) => cut.canvasSize,
-      command: (_) => ResizeCutCanvasCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        canvasSize: canvasSize,
-        anchor: anchor,
-        brushFrameStore: _coordinator.brushFrameStore,
-      ),
-    );
   }
 
   void renameCut({required CutId cutId, required String newName}) =>
@@ -250,21 +284,22 @@ class _CutCommands {
     );
   }
 
-  void updateCutNote({required CutId cutId, required String note}) =>
-      _coordinator._executeIfChanged(
-        subject: _coordinator._requireCut(cutId),
-        value: note,
-        read: (cut) => cut.metadata.note,
-        command: (_) => UpdateCutNoteCommand(
-          repository: _coordinator.repository,
-          cutId: cutId,
-          note: note,
-        ),
-      );
+  void updateCutNote({
+    required CutId cutId,
+    required int page,
+    required String note,
+  }) => _coordinator._executeIfChanged(
+    subject: _coordinator._requireCut(cutId),
+    value: note,
+    read: (cut) => cut.metadata.noteOf(page),
+    command: (_) => UpdateCutNoteCommand(
+      repository: _coordinator.repository,
+      cutId: cutId,
+      page: page,
+      note: note,
+    ),
+  );
 
-  /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
-  /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
-  /// them already wears [mark].
   /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
   /// siblings, as ONE undo step — the stages it does not name keep each
   /// cut's own, and a stage every cut already has so is no step at all.
@@ -322,6 +357,9 @@ class _CutCommands {
     });
   }
 
+  /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
+  /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
+  /// them already wears [mark].
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
     final project = _coordinator.repository.requireProject();
     if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(

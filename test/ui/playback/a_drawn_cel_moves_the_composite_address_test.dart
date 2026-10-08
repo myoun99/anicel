@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
@@ -23,7 +22,6 @@ void main() {
     Object signature() => s.renderCaches.cutFrameCompositeCache.signatureOf(
       cut: s.requireActiveCut,
       frameIndex: 0,
-      quality: PlaybackQuality.full,
     );
     final blank = signature();
 

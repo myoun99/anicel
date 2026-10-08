@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../models/canvas_point.dart';
 import '../../native/qa_native_engine.dart';
+import '../guide_geometry.dart' show GuideTransform;
 import '../selection_affine.dart';
 import 'resample_kernel.dart';
 
@@ -117,6 +118,30 @@ ResampleTransform selectionAffineResampleTransform({
     f: (offsetX * -sin + offsetY * cos) * invSy + affine.pivot.y - srcTop,
   );
 }
+
+/// A plane affine that takes destination CANVAS points to source canvas
+/// points, folded the same way: for an output whose first pixel is at
+/// ([outLeft], [outTop]) reading a source whose first pixel is at
+/// ([srcLeft], [srcTop]). The kernel supplies both half pixels, as above.
+///
+/// What carries a picture through a row's PLACEMENT — any affine, a shear
+/// included, which [selectionAffineResampleTransform]'s scale-then-turn
+/// cannot say: the fill reading a posed layer, a stamp crossing onto the
+/// canvas and back.
+ResampleTransform planeResampleTransform({
+  required GuideTransform toSource,
+  required num srcLeft,
+  required num srcTop,
+  required int outLeft,
+  required int outTop,
+}) => ResampleTransform(
+  a: toSource.a,
+  b: toSource.c,
+  c: toSource.a * outLeft + toSource.c * outTop + toSource.tx - srcLeft,
+  d: toSource.b,
+  e: toSource.d,
+  f: toSource.b * outLeft + toSource.d * outTop + toSource.ty - srcTop,
+);
 
 /// The perspective quad's homography, folded the same way.
 ///

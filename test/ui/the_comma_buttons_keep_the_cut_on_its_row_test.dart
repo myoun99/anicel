@@ -42,7 +42,7 @@ void main() {
     session.selectLayer(storyboardId);
     session.selectFrameIndex(5);
 
-    commaOf(session).setCommaForSelectionOrCurrent(3);
+    session.edgeDrag.setCommaForTimelineCursor(3);
 
     expect(rowOf(session, storyboardId), {0: 5, 5: 3});
     expect(session.requireActiveCut.duration, 8);
@@ -54,7 +54,7 @@ void main() {
     session.selectLayer(storyboardId);
     session.selectFrameIndex(0);
 
-    commaOf(session).setCommaForSelectionOrCurrent(8);
+    session.edgeDrag.setCommaForTimelineCursor(8);
 
     expect(rowOf(session, storyboardId), {0: 8, 8: 19});
     expect(session.requireActiveCut.duration, 27);
@@ -68,7 +68,7 @@ void main() {
       headIndex: 4,
     );
 
-    commaOf(session).setCommaForSelectionOrCurrent(8);
+    expect(commaOf(session).setCommaForSelection(8), isTrue);
 
     expect(rowOf(session, storyboardId), {0: 8, 8: 19});
     expect(session.requireActiveCut.duration, 27);
@@ -78,7 +78,7 @@ void main() {
     final (session, storyboardId) = scene();
     session.selectLayer(storyboardId);
     session.selectFrameIndex(5);
-    commaOf(session).setCommaForSelectionOrCurrent(3);
+    session.edgeDrag.setCommaForTimelineCursor(3);
 
     session.undo();
 
@@ -95,7 +95,7 @@ void main() {
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
 
-    commaOf(session).setCommaForSelectionOrCurrent(30);
+    session.edgeDrag.setCommaForTimelineCursor(30);
 
     expect(session.requireActiveCut.duration, 24);
   });

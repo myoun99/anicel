@@ -154,7 +154,7 @@ void main() {
         words: timesheetWordsIn(AppLanguage.en),
         face: const TextStyle(),
         document: document,
-        layout: TimesheetDocumentLayout(document: document, continuous: true),
+        layout: TimesheetDocumentLayout(document: document),
         viewport: viewport,
       );
 
@@ -196,7 +196,7 @@ void main() {
   // F-78: each span-writing kind, its column in view and its START row
   // just above the view's top (row 5: past the one row of slack), so the
   // rows in view are the ones its start writes down.
-  final layout = TimesheetDocumentLayout(document: document, continuous: true);
+  final layout = TimesheetDocumentLayout(document: document);
   for (final (name, which, page, topRow)
       in <(String, bool Function(TimesheetColumn), int, int)>[
         (

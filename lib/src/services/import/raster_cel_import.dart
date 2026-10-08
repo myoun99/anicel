@@ -275,6 +275,27 @@ Future<BitmapSurface> rasterizeImageToSurface({
   }
 }
 
+/// Bakes [tiles] — a decoded picture already cut into cel tiles of
+/// [defaultCelTileSize], straight RGBA, by their place in tiles — as [key]'s
+/// cel on a [canvas]-size picture. The picture they begin as: the doors
+/// that decode a file's own cels (a .tvpp, a .clip) hand theirs here.
+void bakeCelTiles(
+  BrushFrameStore store,
+  BrushFrameKey key,
+  CanvasSize canvas,
+  List<({int x, int y, Uint8List pixels})> tiles,
+) => bakeCelSurface(
+  store,
+  key,
+  BitmapSurface(canvasSize: canvas).putTiles([
+    for (final tile in tiles)
+      (
+        coord: TileCoord(x: tile.x, y: tile.y),
+        tile: BitmapTile(size: defaultCelTileSize, pixels: tile.pixels),
+      ),
+  ]),
+);
+
 /// Bakes [surface] as [key]'s cel — the exact donation pair the drawing
 /// commit uses (display cache seeds the frame state, then the baked
 /// truth + the edit mark), so playback/thumbnails see the cel

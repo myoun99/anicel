@@ -1,10 +1,7 @@
-import 'dart:ui' show Offset;
-
 import 'canvas_point.dart';
 import 'cut.dart';
 import 'cut_camera.dart';
 import 'drawing_guide.dart';
-import 'frame.dart';
 import 'layer.dart';
 import 'property_track.dart';
 
@@ -135,11 +132,10 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
 ///    the render identical at every zoom.
 ///  * A NULL anchor re-reads as the canvas centre, so the position keys
 ///    move by Δcentre instead (see the file doc).
-///  * TEXT cel anchors ([Frame.textContent]'s canvas-coordinate
-///    position) move by the content offset — the baked raster is a
-///    projection of them, and the next re-bake (which the resize itself
-///    triggers) would otherwise snap the text back to the pre-resize
-///    spot (adversarial review).
+///
+/// 🪦A third bullet moved a TEXT cel's canvas-coordinate anchor with its
+/// picture. The TEXT row went with F-154 and its payload with the save
+/// format's floor (`anicelOldestReadFormatVersion`): nothing holds one.
 Layer translateLayerForResize(
   Layer layer, {
   required double dx,
@@ -151,43 +147,14 @@ Layer translateLayerForResize(
   final hasExplicitAnchor = track.anchorPoint.isNotEmpty;
   final positionDx = hasExplicitAnchor ? dx : centreDx;
   final positionDy = hasExplicitAnchor ? dy : centreDy;
-  final nextTrack =
-      track.position.isEmpty && track.anchorPoint.isEmpty
-      ? track
-      : track.copyWith(
-          position: _translatedPointTrack(
-            track.position,
-            positionDx,
-            positionDy,
-          ),
-          anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
-        );
-
-  var framesChanged = false;
-  final nextFrames = <Frame>[];
-  for (final frame in layer.frames) {
-    final content = frame.textContent;
-    final position = content?.position;
-    if (content == null || position == null || (dx == 0 && dy == 0)) {
-      nextFrames.add(frame);
-      continue;
-    }
-    framesChanged = true;
-    nextFrames.add(
-      frame.copyWith(
-        textContent: content.copyWith(
-          position: Offset(position.dx + dx, position.dy + dy),
-        ),
-      ),
-    );
-  }
-
-  if (identical(nextTrack, layer.transformTrack) && !framesChanged) {
+  if (track.position.isEmpty && track.anchorPoint.isEmpty) {
     return layer;
   }
   return layer.copyWith(
-    transformTrack: nextTrack,
-    frames: framesChanged ? nextFrames : layer.frames,
+    transformTrack: track.copyWith(
+      position: _translatedPointTrack(track.position, positionDx, positionDy),
+      anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
+    ),
   );
 }
 

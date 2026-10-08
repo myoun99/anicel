@@ -11,6 +11,8 @@ import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
+import '../timeline/property_lane_model.dart'
+    show laneGroupKey, parseLaneGroupKey;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
@@ -170,12 +172,46 @@ class SessionRowButtonPresses {
       ToggleIdInSetCommand(
         notifier: expanded,
         layerId: id,
+        // F-302: every use of a linked row twirls with it.
+        alongWith: session.rowsFoldingWith(id),
         debugLabel: 'Toggle layer lanes',
       ),
     );
     if (closing) {
       session.handOffCurrentRowOnFold(id);
     }
+  }
+
+  /// A lane GROUP's twirl inside a row's twirl-down — Transform, an
+  /// effect's header — by its view-state key ([laneGroupKey]).
+  ///
+  /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기 … 공유.
+  /// 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태 공유하라는것. 법통일」 —
+  /// the same group of every use of a linked row opens and shuts with it: a
+  /// linked row's effects are one chain, so its groups are one too.
+  ///
+  /// ↩️It was the workspace's own, and wrote the pressed row's key alone.
+  void toggleLaneGroup(String groupKey) {
+    final expanded = session.railView.expandedLaneGroupKeys;
+    final next = Set<String>.of(expanded.value);
+    final row = parseLaneGroupKey(groupKey);
+    final everyUse = [
+      groupKey,
+      if (row != null)
+        for (final use in session.rowsFoldingWith(row.layerId))
+          laneGroupKey(use, row.laneId),
+    ];
+    if (next.contains(groupKey)) {
+      next.removeAll(everyUse);
+      // Closing: only this group's MEMBERS go, so the header is what
+      // swallows them and where the standing row lands (R5 #11).
+      if (row != null) {
+        session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
+      }
+    } else {
+      next.addAll(everyUse);
+    }
+    expanded.value = next;
   }
 
   bool? _groupOpen(LayerId id) {
@@ -224,6 +260,8 @@ class SessionRowButtonPresses {
       ToggleIdInSetCommand(
         notifier: folded,
         layerId: baseId,
+        // F-302: every use of a linked base folds its group with it.
+        alongWith: session.rowsFoldingWith(baseId),
         debugLabel: 'Toggle attach group',
       ),
     );
@@ -242,10 +280,9 @@ class SessionRowButtonPresses {
       cameraDim!.value = opacity;
       return;
     }
-    final rows = _opacityRows(pressed);
     session.rowSelectionVerbs.pickAcross(pressed, (id) {
-      if (rows.contains(id)) {
-        session.opacityVerbs.commitLayerOpacity(id, opacity);
+      for (final row in _sliderRowsOf(id)) {
+        session.opacityVerbs.commitLayerOpacity(row, opacity);
       }
     }, description: 'Set opacity');
   }
@@ -293,12 +330,27 @@ class SessionRowButtonPresses {
   /// The rows the speaker is drawn on (`_muteButton` in the rail row).
   static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;
 
-  /// The rows a slider press moves: those it acts on that carry an opacity
-  /// slider of their own — the camera's is the view's dim, and stays out.
+  /// The rows a slider press moves: what the slider of each row it acts on
+  /// moves ([_sliderRowsOf]).
   Set<LayerId> _opacityRows(LayerId pressed) => {
     for (final id in session.rowSelectionVerbs.rowsActedOnBy(pressed))
-      if (_hasOwnSlider(_row(id))) id,
+      ..._sliderRowsOf(id),
   };
+
+  /// The rows the slider on [id] moves: [id] itself when it carries an
+  /// opacity slider of its own — the camera's is the view's dim, and stays
+  /// out — and the attach layers riding it while its group is folded.
+  ///
+  /// 🚨F-266 (유저 2026-10-03): 「어태치 레이어가 있을떄, 기준레이어
+  /// 접혀있을때 비지블 on off가 내부 어태치된 레이어들한테도 적용되는데, 이거
+  /// 불투명도 조절도 똑같이 접혀있을때 모두한테 적용되도록. 접혀있을떄만」. The
+  /// same rows the eye sets ([_flipEye], F-184) — the layers, not the group's
+  /// organizer folders, whose strength is their own value as their eye is.
+  /// Unfolded, every row keeps its own slider.
+  List<LayerId> _sliderRowsOf(LayerId id) => [
+    for (final row in [?_row(id), ..._foldedRidersOf(id)])
+      if (_hasOwnSlider(row)) row.id,
+  ];
 
   static bool _hasOwnSlider(Layer? layer) =>
       layer != null &&

@@ -13,6 +13,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/models/cel_bank_lanes.dart';
@@ -288,12 +289,12 @@ void main() {
     });
 
     test('the storyboard cursor 25 frames into the receiving cut stands on '
-        'panel 2 — conte time, not the held-back frames', () {
+        'panel 2 on the conte row — conte time, not the held-back frames', () {
       final s = session();
       addTearDown(s.dispose);
       s.selectCut(receiving);
       s.standOnRow(
-        const TrackRowAddress(TrackId('t')),
+        LayerRowAddress(trackConteRowId(const TrackId('t'))),
         panel: WorkingPanel.storyboard,
         frameIndex: 25,
       );
@@ -303,6 +304,23 @@ void main() {
         (block! as StoryboardCursorStoryboardPanel).panelStartIndex,
         32,
       );
+    });
+
+    // I-73 (유저 2026-10-08: 「v행에서는 콘티블록에 서있다거나 하는걸
+    // 안하도록」): ↩️the V row answered with that panel until the panels had
+    // a row of their own.
+    test('… and on the V row, on the CUT', () {
+      final s = session();
+      addTearDown(s.dispose);
+      s.selectCut(receiving);
+      s.standOnRow(
+        const TrackRowAddress(TrackId('t')),
+        panel: WorkingPanel.storyboard,
+        frameIndex: 25,
+      );
+      final block = s.storyboardCursor.storyboardCursorBlockOrNull();
+      expect(block, isA<StoryboardCursorCutBlock>());
+      expect((block! as StoryboardCursorCutBlock).cut.id, receiving);
     });
   });
 }

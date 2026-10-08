@@ -30,7 +30,6 @@ class TimesheetStrata extends StatelessWidget {
   const TimesheetStrata({
     super.key,
     required this.layout,
-    required this.pagedLayout,
     required this.viewport,
     required this.words,
     required this.dragPreview,
@@ -40,7 +39,6 @@ class TimesheetStrata extends StatelessWidget {
   });
 
   final TimesheetDocumentLayout layout;
-  final TimesheetDocumentLayout pagedLayout;
 
   /// The panel's pan/zoom.
   final CanvasViewport viewport;
@@ -134,11 +132,7 @@ class TimesheetStrata extends StatelessWidget {
     // The walk the live brush layer mounts its windows from.
     final windows = ink == null
         ? const <SheetInkWindow>[]
-        : timesheetInkWindows(
-            layout: layout,
-            pagedLayout: pagedLayout,
-            cutId: cutId,
-          );
+        : timesheetInkWindows(layout: layout, cutId: cutId);
     return {
       SheetStratum.form: painterOf(SheetStratum.form),
       SheetStratum.content: painterOf(
@@ -149,8 +143,7 @@ class TimesheetStrata extends StatelessWidget {
         SheetStratum.ink: painterOf(
           SheetStratum.ink,
           ink: windows,
-          inkSurfaceFor: (key) =>
-              ink.controller.surfaceFor(TimesheetInkPlane.of(key), key),
+          inkSurfaceFor: (key) => ink.controller.surfaceFor(null, key),
           liveInkKeys: ink.live
               ? {for (final window in windows) window.key}
               : const {},

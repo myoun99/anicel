@@ -185,6 +185,112 @@ void main() {
     });
   });
 
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. A row can
+  // be stretched along one axis, and the guides are the canvas's: the
+  // session measures where the user is looking and hands the stroke back
+  // its own points.
+  group('PerspectiveSnapSession in a placed row', () {
+    /// A row twice as wide and half as tall: its (x, y) shows at (2x, y/2).
+    const stretched = GuideSpace(
+      toCanvas: GuideTransform(2, 0, 0, 0.5, 0, 0),
+      toStroke: GuideTransform(0.5, 0, 0, 2, 0, 0),
+    );
+
+    PerspectiveShape towards(List<(double, double)> directions) =>
+        PerspectiveShape(
+          vanishingPoints: [
+            for (final (dx, dy) in directions)
+              VanishingPointTowards(dx: dx, dy: dy),
+          ],
+          eyeLevel: GuideAxis(origin: _point(0, 0), angleDegrees: 0),
+        );
+
+    test('a point lands where the ray comes nearest the pen ON THE CANVAS', () {
+      final session = PerspectiveSnapSession.maybeStart(
+        guides: _guidesWith(towards([(1, 1)])),
+        // Shown at (20, 20).
+        start: _point(10, 40),
+        zoom: 1,
+        space: stretched,
+      )!;
+
+      // Shown at (60, 35): the canvas's diagonal through (20, 20) comes
+      // nearest it at (47.5, 47.5).
+      final released = session.follow(_point(30, 70));
+
+      final shown = stretched.toCanvas.apply(released.last);
+      _expectPoint(shown, 47.5, 47.5);
+      // …which the row's own pixels would not call the nearest point of
+      // that line — the answer measuring in the artwork gave.
+      _expectPoint(released.last, 23.75, 95);
+    });
+
+    test('the ray that wins is the one the CANVAS shows the stroke along', () {
+      // A row ten times as tall as it is drawn: a drag its own pixels call
+      // mostly sideways, (10, 6), shows as mostly downward, (10, 60).
+      const tall = GuideSpace(
+        toCanvas: GuideTransform(1, 0, 0, 10, 0, 0),
+        toStroke: GuideTransform(1, 0, 0, 0.1, 0, 0),
+      );
+      final session = PerspectiveSnapSession.maybeStart(
+        guides: _guidesWith(towards([(1, 0), (0, 1)])),
+        start: _point(0, 0),
+        zoom: 1,
+        space: tall,
+      )!;
+
+      final released = session.follow(_point(10, 6));
+
+      _expectPoint(released.last, 0, 6);
+    });
+
+    test('the travel that locks is travel on the CANVAS', () {
+      // Shown a quarter the size, ten of the row's pixels are two and a
+      // half on the canvas: no direction yet.
+      const small = GuideSpace(
+        toCanvas: GuideTransform(0.25, 0, 0, 0.25, 0, 0),
+        toStroke: GuideTransform(4, 0, 0, 4, 0, 0),
+      );
+      final slow = PerspectiveSnapSession.maybeStart(
+        guides: _guidesWith(_horizontalVanishing()),
+        start: _point(0, 0),
+        zoom: 1,
+        space: small,
+      )!;
+      expect(slow.follow(_point(10, 1)), isEmpty);
+      expect(slow.follow(_point(40, 2)), hasLength(2));
+
+      // Shown four times the size, two of them are eight.
+      const large = GuideSpace(
+        toCanvas: GuideTransform(4, 0, 0, 4, 0, 0),
+        toStroke: GuideTransform(0.25, 0, 0, 0.25, 0, 0),
+      );
+      final quick = PerspectiveSnapSession.maybeStart(
+        guides: _guidesWith(_horizontalVanishing()),
+        start: _point(0, 0),
+        zoom: 1,
+        space: large,
+      )!;
+      expect(quick.follow(_point(2, 0.1)), hasLength(1));
+    });
+
+    test('a short flick settles on the canvas\'s ray too', () {
+      final session = PerspectiveSnapSession.maybeStart(
+        guides: _guidesWith(towards([(1, 1)])),
+        start: _point(10, 40),
+        zoom: 1,
+        space: stretched,
+      )!;
+      // Shown at (22, 21): under the lock travel, so it is held.
+      expect(session.follow(_point(11, 42)), isEmpty);
+
+      final released = session.finish();
+
+      final shown = stretched.toCanvas.apply(released.single);
+      _expectPoint(shown, 21.5, 21.5);
+    });
+  });
+
   group('replicateDabs', () {
     final transforms = symmetryTransforms(
       SymmetryShape(

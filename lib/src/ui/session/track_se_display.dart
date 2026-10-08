@@ -4,6 +4,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_empty_gaps.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
+import '../../models/track_conte_row.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -80,12 +81,15 @@ class TrackSeDisplay {
   /// of [isTrackOwnedRailLayerId], for the verbs that need the track and not
   /// just a yes.
   Track? trackOwnedRailOwner(LayerId layerId) {
-    final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
+    // C②: the V track's synthetic lane CARRIER is a rail row too — an
+    // escalated lane drag anchors the track-axis selection on it. And so is
+    // the track's CONTE row (I-73): the cuts' conte layers shown as one row
+    // of this rail, which no cut's layer id names ([trackConteRowId]).
+    final mintedFor =
+        trackIdOfTransformLaneCarrier(layerId) ?? trackIdOfConteRow(layerId);
     return trackSeAnywhere(layerId)?.track ??
         _transitions.trackTransitionOwner(layerId) ??
-        // C②: the V track's synthetic lane CARRIER is a rail row too — an
-        // escalated lane drag anchors the track-axis selection on it.
-        (carrierTrackId == null ? null : _project.trackById(carrierTrackId));
+        (mintedFor == null ? null : _project.trackById(mintedFor));
   }
 
   /// The GLOBAL track layer for [layerId] (never a display clone).

@@ -15,8 +15,15 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/ui/brush/brush_library_look.dart';
 import 'package:anicel/src/ui/brush/brush_name_label.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/brush/brush_preset_view_options.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
@@ -986,6 +993,313 @@ void main() {
 
     expect(_row('preset-sampled'), findsOneWidget);
     expect(_row('preset-calligraphy'), findsNothing);
+  });
+
+  // 🗣️F-319 (유저 2026-10-08): 「브러시는 항상 선택된그룹/브러시 를 보여줌 …
+  // 계속해서 이런 선택된걸 제대로 표시안하는걸 몇번째 피드백하는지
+  // 모르겟는데」 · 「이상한건 됫다가 말았다가 함」.
+  //
+  // The panel followed the held brush only UNTIL A TAB WAS TAPPED — a latch
+  // that lasted for as long as the panel stayed mounted. And the tool
+  // library keeps one panel mounted for EACH paint tool, each with its own:
+  // one tool's library followed while the other's had stopped.
+  // ↩️This said 「it is mounted only while a paint tool is in hand: so it
+  // followed again after a trip through any other tool」 — written from the
+  // panel alone, and wrong: a panel is kept alive off stage
+  // (`KeyedKeepAliveStack`). What was measured is in
+  // workspace_applies_a_preset_test.
+  group('the open tab is the held brush\'s', () {
+    const dry = BrushGroupId('dry');
+    const groups = [
+      BrushGroup(id: _ink, name: 'Ink'),
+      BrushGroup(id: _paint, name: 'Paint'),
+      BrushGroup(id: dry, name: 'Dry'),
+    ];
+    List<BrushPreset> presets() => [
+      _calligraphy().copyWith(groupId: _ink),
+      _sampled().copyWith(groupId: _paint),
+      _marker().copyWith(groupId: _paint),
+    ];
+    Future<void> holding(WidgetTester tester, String held) => _pumpPanel(
+      tester,
+      groups: groups,
+      presets: presets(),
+      selectedPresetId: BrushPresetId(held),
+    );
+
+    testWidgets('🚨after a tab was tapped too: the hand changes, and the '
+        'library shows what it holds', (tester) async {
+      await holding(tester, 'preset-sampled');
+      // Nothing is wired to take a brush up here, so the tap only LOOKS.
+      await tester.tap(_tab('ink'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-calligraphy'), findsOneWidget, reason: '⛔premise');
+
+      await holding(tester, 'preset-marker');
+
+      expect(_row('preset-marker'), findsOneWidget);
+      expect(_row('preset-calligraphy'), findsNothing);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget, reason: 'and again');
+      expect(_row('preset-marker'), findsNothing);
+    });
+
+    testWidgets('a tab with no brush to take up is LOOKED INTO — for as '
+        'long as the hand is the same', (tester) async {
+      await holding(tester, 'preset-sampled');
+
+      await tester.tap(_tab('dry'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-sampled'), findsNothing, reason: 'the empty tab');
+
+      // The same hand, built again: nothing to follow.
+      await holding(tester, 'preset-sampled');
+      expect(_row('preset-sampled'), findsNothing);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget);
+    });
+
+    testWidgets('tapping the tab the library already shows looks into '
+        'nothing', (tester) async {
+      await holding(tester, 'preset-sampled');
+      await tester.tap(_tab('paint'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-sampled'), findsOneWidget);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget);
+    });
+
+    /// The library as a host mounts it: the look, the tool and the keys
+    /// handed in.
+    Future<void> hosted(
+      WidgetTester tester,
+      String held, {
+      BrushLibraryLook? look,
+      CanvasTool tool = CanvasTool.brush,
+      EditorShortcutBindings? keys,
+      BrushPresetViewOptions view = const BrushPresetViewOptions(),
+      ValueChanged<BrushGroupId?>? onGroupOpened,
+    }) async {
+      final panel = BrushPresetPanel(
+        groups: groups,
+        presets: presets(),
+        selectedPresetId: BrushPresetId(held),
+        tool: tool,
+        look: look,
+        viewOptions: view,
+        onGroupOpened: onGroupOpened,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 260,
+              child: SingleChildScrollView(
+                child: keys == null
+                    ? panel
+                    : EditorShortcutScope(bindings: keys, child: panel),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // The tool library keeps a panel alive for each paint tool, and one kept
+    // off stage is not built again when another tool comes to hand — so the
+    // look is the HOST's there, which hears the hand itself
+    // ([BrushLibraryLook]).
+    testWidgets('🚨a look the host hands in is the host\'s to keep: the '
+        'panel shows it, tells the host of a tab pressed, and neither '
+        'settles nor ends it', (tester) async {
+      final look = BrushLibraryLook();
+      addTearDown(look.dispose);
+      final pressed = <BrushGroupId?>[];
+      Future<void> holding(String held) =>
+          hosted(tester, held, look: look, onGroupOpened: pressed.add);
+      await holding('preset-sampled');
+
+      await tester.tap(_tab('ink'));
+      await tester.pumpAndSettle();
+      expect(pressed, [_ink]);
+      expect(look.value, isNull, reason: 'the host settles it, or nobody');
+      expect(_row('preset-sampled'), findsOneWidget, reason: 'so it stays');
+
+      look.settle(dry, held: (group: _paint));
+      await tester.pumpAndSettle();
+      expect(_row('preset-sampled'), findsNothing, reason: 'the empty tab');
+
+      // Built again holding another brush — as a panel kept off stage is,
+      // long after the host looked into a tab for it.
+      await holding('preset-calligraphy');
+      expect(look.value, (group: dry), reason: 'not the panel\'s to end');
+      expect(_row('preset-calligraphy'), findsNothing);
+
+      look.end();
+      await tester.pumpAndSettle();
+      expect(_row('preset-calligraphy'), findsOneWidget);
+    });
+
+    test('a look is settled by the tab pressed and the tab the hand is '
+        'in', () {
+      final look = BrushLibraryLook();
+      addTearDown(look.dispose);
+      var told = 0;
+      look.addListener(() => told += 1);
+
+      look.settle(_ink, held: (group: _ink));
+      expect(look.value, isNull, reason: 'the hand says it');
+      expect(told, 0);
+
+      look.settle(dry, held: (group: _ink));
+      expect(look.value, (group: dry));
+      // The root section — a null group — is a tab like any other.
+      look.settle(null, held: (group: _ink));
+      expect(look.value, (group: null), reason: 'looking into the root');
+      look.settle(null, held: (group: null));
+      expect(look.value, isNull, reason: 'the hand is in the root');
+      // A hand holding no brush the library can name says no tab at all.
+      look.settle(null, held: null);
+      expect(look.value, (group: null));
+
+      look.end();
+      expect(look.value, isNull);
+      expect(told, 5);
+    });
+
+    // 🗣️F-319 (유저 2026-10-08): 「단축키는 이름 표시하는것처럼 브러시 그룹
+    // 옆에 흐린글자로 표시하는거 잊지말고. 이름이 있는곳은 흐린글자로
+    // 표시임」 · 「브러시도구의 브러시그룹/브러시 … 지우개도구의
+    // 브러시그룹/브러시」.
+    group('a key stands after the name it is the key of', () {
+      const sampled = BrushPresetId('preset-sampled');
+      const brush = CanvasTool.brush;
+      const eraser = CanvasTool.eraser;
+      EditorShortcutBindings keysWith(Map<String, LogicalKeyboardKey> keys) {
+        final bindings = EditorShortcutBindings()
+          ..setBrushActions(brushActionsOf(groups, presets()));
+        addTearDown(bindings.dispose);
+        for (final MapEntry(key: action, value: key) in keys.entries) {
+          bindings.setActivators(action, [SingleActivator(key)]);
+        }
+        return bindings;
+      }
+
+      Finder keyIn(Finder place, String key) =>
+          find.descendant(of: place, matching: find.text(key));
+
+      testWidgets('a group\'s after its tab\'s name and a brush\'s after its '
+          'row\'s — dim, and the size of that name', (tester) async {
+        final keys = keysWith({
+          brushGroupActionId(brush, _paint): LogicalKeyboardKey.keyK,
+          brushPresetActionId(brush, sampled):
+              LogicalKeyboardKey.keyJ,
+        });
+        await hosted(tester, 'preset-sampled', keys: keys);
+
+        final onTab = tester.widget<Text>(keyIn(_tab('paint'), 'K'));
+        expect(onTab.style?.color, AppColors.shortcutKeys);
+        expect(
+          onTab.style?.fontSize,
+          tester.widget<Text>(keyIn(_tab('paint'), 'Paint')).style?.fontSize,
+        );
+        final onRow = tester.widget<Text>(keyIn(_row('preset-sampled'), 'J'));
+        expect(onRow.style?.color, AppColors.shortcutKeys);
+        expect(onRow.style?.fontSize, BrushNameLabel.fontSize);
+        // After the name: further along the row.
+        expect(
+          tester.getTopLeft(keyIn(_tab('paint'), 'K')).dx,
+          greaterThan(tester.getTopRight(keyIn(_tab('paint'), 'Paint')).dx),
+        );
+        expect(
+          tester.getTopLeft(keyIn(_row('preset-sampled'), 'J')).dx,
+          greaterThan(
+            tester.getTopLeft(keyIn(_row('preset-sampled'), 'Sampled')).dx,
+          ),
+        );
+        // A name with no key wears none.
+        expect(keyIn(_tab('ink'), 'K'), findsNothing);
+        expect(keyIn(_row('preset-marker'), 'J'), findsNothing);
+
+        // Re-recorded: the key shown is the key in force.
+        keys.setActivators(brushGroupActionId(brush, _paint), const [
+          SingleActivator(LogicalKeyboardKey.keyM),
+        ]);
+        await tester.pump();
+        expect(keyIn(_tab('paint'), 'M'), findsOneWidget);
+        expect(keyIn(_tab('paint'), 'K'), findsNothing);
+      });
+
+      testWidgets('🚨the ERASER\'s library wears the eraser\'s keys, not the '
+          'brush tool\'s', (tester) async {
+        final keys = keysWith({
+          brushGroupActionId(brush, _paint): LogicalKeyboardKey.keyK,
+          brushPresetActionId(brush, sampled):
+              LogicalKeyboardKey.keyJ,
+          brushGroupActionId(eraser, _ink): LogicalKeyboardKey.keyL,
+        });
+        await hosted(
+          tester,
+          'preset-sampled',
+          keys: keys,
+          tool: eraser,
+        );
+
+        expect(keyIn(_tab('paint'), 'K'), findsNothing);
+        expect(keyIn(_row('preset-sampled'), 'J'), findsNothing);
+        expect(keyIn(_tab('ink'), 'L'), findsOneWidget);
+      });
+
+      testWidgets('where no name shows, no key does', (tester) async {
+        final keys = keysWith({
+          brushGroupActionId(brush, _paint): LogicalKeyboardKey.keyK,
+          brushPresetActionId(brush, sampled):
+              LogicalKeyboardKey.keyJ,
+        });
+        await hosted(
+          tester,
+          'preset-sampled',
+          keys: keys,
+          view: const BrushPresetViewOptions(
+            showName: false,
+            railShowName: false,
+          ),
+        );
+
+        expect(_tab('paint'), findsOneWidget, reason: '⛔premise');
+        expect(find.text('Paint'), findsNothing, reason: '⛔premise');
+        expect(find.text('K'), findsNothing);
+        expect(find.text('J'), findsNothing);
+      });
+
+      testWidgets('a long chord gives its own tail — the row does not '
+          'overflow, and the name keeps most of it', (tester) async {
+        final bindings = keysWith(const {});
+        const chord = SingleActivator(
+          LogicalKeyboardKey.f12,
+          control: true,
+          alt: true,
+          shift: true,
+        );
+        bindings
+          ..setActivators(brushGroupActionId(brush, _paint), const [
+            chord,
+          ])
+          ..setActivators(brushPresetActionId(brush, sampled), const [
+            chord,
+          ]);
+        await hosted(tester, 'preset-sampled', keys: bindings);
+
+        expect(tester.takeException(), isNull);
+        final tab = tester.getSize(_tab('paint'));
+        final name = tester.getSize(keyIn(_tab('paint'), 'Paint'));
+        expect(name.width, greaterThan(tab.width / 3));
+      });
+    });
   });
 
   testWidgets('no root tab when every brush is filed', (tester) async {

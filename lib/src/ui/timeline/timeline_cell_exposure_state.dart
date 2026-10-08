@@ -1,3 +1,7 @@
+import '../../models/layer.dart';
+import '../../models/timeline_coverage.dart'
+    show coveringDrawingBlockAt, hasBreakdownDotAt;
+
 /// What one timeline cell shows under the unified timeline model.
 ///
 /// `uncovered` cells are empty timesheet cells (rendered with the "X"
@@ -34,4 +38,40 @@ bool timelineEmptyRunStartsAt({
     return false;
   }
   return previous == null || previous.isCovered;
+}
+
+/// What a cell of [layer]'s OWN blocks shows at [frameIndex], read off the
+/// row alone: a block's first cell, a cell it holds — with the in-between
+/// dot the block carries there — or nothing.
+///
+/// THE reading for every row whose cells are its own blocks. The session
+/// asks it for a cut's rows once a folder's band and the camera's keys have
+/// answered for themselves (`ExposureVerbs.exposureStateForLayer`), and the
+/// storyboard's conte row asks it of a row no session holds — the cuts'
+/// conte layers laid on the track's axis (I-73).
+///
+/// ↩️The session spelled it out of three timeline-controller questions,
+/// which made the answer the session's to give: a row drawn outside a cut
+/// had nobody to ask.
+TimelineCellExposureState timelineOwnCelsStateAt(Layer layer, int frameIndex) {
+  if (layer.timeline[frameIndex]?.isDrawing ?? false) {
+    return TimelineCellExposureState.drawingStart;
+  }
+  if (coveringDrawingBlockAt(layer.timeline, frameIndex) == null) {
+    return TimelineCellExposureState.uncovered;
+  }
+  // Block-owned dots live on held cells only (offsets 1..length-1), so
+  // markUncovered is never produced anymore — the enum value survives
+  // solely for exhaustive switches over legacy-visual states.
+  return hasBreakdownDotAt(layer.timeline, frameIndex)
+      ? TimelineCellExposureState.markHeld
+      : TimelineCellExposureState.held;
+}
+
+/// The name of the cel [layer]'s own block shows at [frameIndex] — the
+/// block covering it — or null where none covers it or the cel is unnamed.
+/// [timelineOwnCelsStateAt]'s twin, for the same rows.
+String? timelineOwnCelNameAt(Layer layer, int frameIndex) {
+  final cel = coveringDrawingBlockAt(layer.timeline, frameIndex)?.frameId;
+  return cel == null ? null : layer.frameById(cel)?.name;
 }

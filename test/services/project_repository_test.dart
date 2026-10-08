@@ -1029,7 +1029,7 @@ void main() {
         layers: [layer],
         duration: 24,
         canvasSize: const CanvasSize(width: 1920, height: 1080),
-        metadata: const CutMetadata(note: 'Cut note'),
+        metadata: const CutMetadata(pageNotes: ['Cut note']),
       );
       final repository = ProjectRepository(
         initialProject: _project(
@@ -1066,7 +1066,7 @@ void main() {
       expect(updatedLayer.timeline[0]!.length, updatedCut.duration);
       expect(updatedLayer.isVisible, isFalse);
       expect(updatedLayer.opacity, 0.25);
-      expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
+      expect(updatedCut.metadata, const CutMetadata(pageNotes: ['Cut note']));
       expect(cut.layers.single.kind, LayerKind.animation);
     });
 

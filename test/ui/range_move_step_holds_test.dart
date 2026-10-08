@@ -1,16 +1,20 @@
-// A RANGE-MOVE STEP THAT CANNOT LAND HOLDS THE LAST VALID ONE, AND A ROW
-// THAT CANNOT HOP KEEPS THE WHOLE SPAN ON THE FRAME AXIS.
+// A RANGE-MOVE STEP THAT CANNOT LAND HOLDS THE LAST VALID ONE.
 //
-// Three survivors of the mutation campaign (2026-09-03, the rigid row hop
+// Two survivors of the mutation campaign (2026-09-03, the rigid row hop
 // cut): the pointer leaving the rows fell through to the plain slide
-// (`holds: false`), an illegal slide step went on to publish an empty
-// preview (`illegal` no longer gating the riders), and a SYNCED attach row
-// carrying content no longer vetoed the rigid hop. Each pin drives the
+// (`holds: false`), and an illegal slide step went on to publish an empty
+// preview (`illegal` no longer gating the riders). Each pin drives the
 // session's drag and reads the drop.
+//
+// ↩️A third stood here until F-276 (유저 2026-10-04): "a SYNCED attach row
+// carrying content keeps the span on the frame axis — the rigid hop stands
+// down". It pinned code, not a decision, and the user asked for the
+// opposite: 「프레임 블록은 이동가능한곳이라면 어디든 이동가능」. A row that
+// cannot hop no longer keeps the rows that can — pinned in
+// `session/a_block_leaves_a_row_that_carries_attach_rows_test.dart`.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -62,8 +66,21 @@ void main() {
     expect(layerOf(s, bId).timeline[0]!.frameId, aFrameId);
   });
 
-  test('an ILLEGAL slide step HOLDS the last valid slide, and the drop '
-      'commits that one', () {
+  // ↩️This pinned the opposite until 2026-10-07: 「into the wall … the step
+  // changes nothing — not the outline, not the preview, not what the drop
+  // will commit」. That left the group a frame RIGHT of where it started
+  // with the hand a thousand frames left of it, and the release committed
+  // that frame. The wall read as a refused landing only because the planner
+  // answers null for 「the run is where it started」 — the conflation R28 #5
+  // named for a zero delta (유저: 「더 이상 왼쪽으로 이동이 안먹혀버리고 그
+  // 자리에서 멈춰버린다」). A group that can go no further that way than
+  // where it started IS where it started.
+  //
+  // The law this file is for — a step that cannot land holds the one
+  // before it — is pinned with a step that truly cannot land, the keys
+  // riding a slide: `session/a_slide_of_several_rows_stops_as_one_test.dart`.
+  test('a slide into the wall the group started at is HOME, and the drop '
+      'commits nothing', () {
     final (s, aId, bId, _) = threeRows();
     s.selectLayer(aId);
     s.updateFrameRangeSelectionDrag(
@@ -75,53 +92,15 @@ void main() {
     expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
     expect(s.frameRangeSelection.value!.startIndex, 1);
-    final held = s.dragPreview.value;
-    expect(held, isNotNull);
+    expect(s.dragPreview.value, isNotNull);
 
-    // Into the wall: the run clamps to frame 0, where it already was, so no
-    // plan lands and the step changes nothing — not the outline, not the
-    // preview, not what the drop will commit.
+    // Into the wall: neither run can go in front of frame 0.
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: -1000);
-    expect(s.frameRangeSelection.value!.startIndex, 1);
-    expect(s.dragPreview.value, same(held));
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(s.dragPreview.value, isNull);
 
     s.rangeMove.endFrameRangeMoveDrag();
-    expect(layerOf(s, aId).timeline.containsKey(1), isTrue);
-    expect(layerOf(s, bId).timeline.containsKey(1), isTrue);
-  });
-
-  test('a SYNCED attach row carrying content keeps the span on the frame '
-      'axis: the rigid hop stands down instead of hopping the drawing row '
-      'alone', () {
-    final (s, aId, bId, cId) = threeRows();
-    s.selectLayer(aId);
-    s.folders.addAttachedLayer(AttachedPlacement.below);
-    final syncedId = s.activeLayer!.id;
-    final bFrameId = layerOf(s, bId).frames.single.id;
-    expect(
-      layerOf(s, syncedId).timeline.containsKey(0),
-      isTrue,
-      reason: 'the synced row mirrors the base block inside the range',
-    );
-
-    s.selectLayer(bId);
-    s.updateFrameRangeSelectionDrag(
-      layerId: bId,
-      anchorIndex: 0,
-      headIndex: 0,
-      headLayerId: syncedId,
-    );
-    expect(
-      s.frameRangeSelection.value!.spanLayerIds,
-      containsAll([syncedId, bId]),
-    );
-    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
-    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: cId);
-    s.rangeMove.endFrameRangeMoveDrag();
-
-    // B stayed home: the synced row's timing belongs to its base, so the
-    // span could only slide — and a zero slide is no move at all.
-    expect(layerOf(s, bId).timeline[0]!.frameId, bFrameId);
-    expect(layerOf(s, cId).timeline.keys, isEmpty);
+    expect(layerOf(s, aId).timeline.keys, [0]);
+    expect(layerOf(s, bId).timeline.keys, [0]);
   });
 }

@@ -45,6 +45,7 @@ void main() {
         (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
     onClear: () {},
     move: TimelineRangeMoveCallbacks(
+      holds: (_) => false,
       onBegin: (_) => true,
       onUpdate: ({required frameDelta, targetLayerId}) {},
       onEnd: () {},

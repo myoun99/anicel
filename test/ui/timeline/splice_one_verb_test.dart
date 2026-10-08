@@ -77,21 +77,40 @@ void main() {
     expect(_layer(session).frames.length, 2, reason: 'a link makes no new cel');
   });
 
-  testWidgets('F-152 — a 잘라내기 STANDING still banks the whole block it '
-      'lifts: banking less would make it a delete (결정 14 ②ⓐ)', (
+  // 🚨F-277 (유저 2026-10-04): 「프레임 복사 붙여넣기시, 선택하지 않은채로
+  // 그냥 블록에 선 채로 복사하면 붙여넣을때 1코마로 붙여넣는거처럼, 잘라내기도
+  // 선택안하고 동일한 상황에서 잘라내면 1코마로 붙여넣도록」.
+  //
+  // ↩️It read 「F-152 — a 잘라내기 STANDING still banks the whole block it
+  // lifts: banking less would make it a delete (결정 14 ②ⓐ)」 and pasted
+  // 'BBBAACC'. The block still comes out whole; what the board holds is its
+  // drawing, one comma of it — the SAME cel on a linked paste, so nothing
+  // the cut lifted is lost.
+  testWidgets('F-277 — a 잘라내기 STANDING takes the whole block out and '
+      'pastes ONE comma, as the copy from the same press does', (
     tester,
   ) async {
     final session = await _pump(tester, 'AABBBCC');
 
+    // Mid-block, as the standing copy's pin stands.
     _stand(session, 3);
     session.clipboard.cutRunAtCurrentFrame();
     expect(_row(session), 'AA...CC', reason: 'LIVENESS — the block came out');
+    expect(
+      _layer(session).frames.map((frame) => frame.id.value),
+      isNot(contains('cel-B')),
+      reason: '⛔전제: the cut orphaned the cel — the board is where it is',
+    );
 
     _stand(session, 0);
     session.pasteLinkedFrameAtCurrentFrame();
     // F-235: A moves out of the paste's way and the hole takes it — C stays.
-    // ↩️'BBBAA...CC' carried the hole along.
-    expect(_row(session), 'BBBAACC');
+    expect(_row(session), 'BAA..CC');
+    expect(
+      _layer(session).frames.map((frame) => frame.id.value),
+      contains('cel-B'),
+      reason: 'the cel the cut lifted is back — the same one',
+    );
   });
 
   testWidgets('the linked paste places the SAME cel, and the run is still '

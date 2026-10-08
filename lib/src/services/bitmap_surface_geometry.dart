@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_text.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
@@ -198,8 +200,83 @@ BitmapSurface resizeBitmapSurfaceCanvas(
             entry.key.y < tileYEnd)
           entry.key: entry.value,
     },
+    texts: _textsMoved(surface, dx: 0, dy: 0, canvasSize: canvasSize),
   );
 }
+
+/// [surface]'s texts as a move of its pixels by ([dx], [dy]) onto
+/// [canvasSize] leaves them: each where the picture now is.
+///
+/// 🚨★★★A TEXT MOVES AS THE PICTURE IT IS PART OF (유저 2026-10-06: 「셀의
+/// 그림이랑 정확히 동일」). Its plate is pixels, so it takes the very pass the
+/// drawing's tiles take — [translateBitmapSurface], run on the plate as a
+/// surface of its own — and is cut at the same pasteboard wall. Its anchor
+/// is the number those pixels were set from, so it moves by the same
+/// offset: left where it was, the next edit would set the letters back at
+/// the place the resize moved them away from.
+///
+/// ⛔Nothing is clamped or brought back when a text ends up off the page —
+/// the tool law (유저 2026-09-20: 「그건 유저가 그렇게 하고싶지않으면 생각해서
+/// 할일이야」).
+List<CelText> _textsMoved(
+  BitmapSurface surface, {
+  required int dx,
+  required int dy,
+  required CanvasSize canvasSize,
+}) => [
+  for (final text in surface.texts)
+    CelText(
+      id: text.id,
+      content: celTextContentMoved(text.content, dx: dx, dy: dy),
+      plate: translateBitmapSurface(
+        _plateOn(surface, text.plate),
+        dx: dx,
+        dy: dy,
+        canvasSize: canvasSize,
+      ).tiles,
+    ),
+];
+
+/// A text's [plate] as a surface of its own, on the grid of the picture it
+/// is laid over ([over]) — what lets its pixels take the drawing's pass.
+BitmapSurface _plateOn(BitmapSurface over, Map<TileCoord, BitmapTile> plate) =>
+    BitmapSurface(
+      canvasSize: over.canvasSize,
+      tileSize: over.tileSize,
+      tiles: plate,
+    );
+
+/// [content] standing ([dx], [dy]) whole pixels from where it stood — the
+/// number its plate's pixels were set from, moved as they are
+/// ([celTextPlateMoved]).
+CelTextContent celTextContentMoved(
+  CelTextContent content, {
+  required int dx,
+  required int dy,
+}) => dx == 0 && dy == 0
+    ? content
+    : content.copyWith(
+        anchor: CanvasPoint(x: content.anchor.x + dx, y: content.anchor.y + dy),
+      );
+
+/// A text's [plate] moved by ([dx], [dy]) whole pixels over [over], the
+/// picture it is laid on: the very pass a drawing's tiles take
+/// ([translateBitmapSurface]), run on the plate as a surface of its own,
+/// and cut at the same pasteboard wall.
+///
+/// The text tool moves a text by this (R9-rest) — a text dragged a whole
+/// number of pixels is its pixels dragged, with nothing set again.
+Map<TileCoord, BitmapTile> celTextPlateMoved(
+  Map<TileCoord, BitmapTile> plate,
+  BitmapSurface over, {
+  required int dx,
+  required int dy,
+}) => translateBitmapSurface(
+  _plateOn(over, plate),
+  dx: dx,
+  dy: dy,
+  canvasSize: over.canvasSize,
+).tiles;
 
 /// Translates the surface's pixels by integer ([dx], [dy]) and adopts
 /// [canvasSize] — the anchored-resize blit. Whole-tile shifts rebase
@@ -256,6 +333,7 @@ BitmapSurface translateBitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
       tiles: rebased,
+      texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
     );
   }
 
@@ -337,6 +415,7 @@ BitmapSurface translateBitmapSurface(
   return BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSize,
+    texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
   ).putMaterializedTiles([
     for (final entry in buffers.entries)
       (

@@ -1,6 +1,9 @@
 import 'dart:collection';
 
 import '../editing/default_cut_helpers.dart';
+import '../editing/default_layer_helpers.dart'
+    show defaultLayerIdForSequence;
+import '../editing/run_id_mint.dart' show mintFrameId;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/canvas_size.dart';
@@ -40,6 +43,22 @@ class ImportIdMint {
     required this.nextFrameId,
     required this.nextCutId,
   });
+
+  /// The ids of a project being MADE — before any session holds it, so
+  /// there is nothing in it to step past: each id is the next of its kind,
+  /// in the forms an import mints into a project that exists
+  /// (`ImportLanding.idMint`). The drawings' come from the process's one
+  /// mint ([mintFrameId]), which the session born for the project goes on
+  /// counting from. A .tvpp and a .clip are both such projects.
+  factory ImportIdMint.forANewProject() {
+    var layers = 0;
+    var cuts = 0;
+    return ImportIdMint(
+      nextLayerId: () => defaultLayerIdForSequence(layers += 1),
+      nextFrameId: mintFrameId,
+      nextCutId: () => CutId('import-cut-${cuts += 1}'),
+    );
+  }
 
   final LayerId Function() nextLayerId;
   final FrameId Function(LayerId layerId) nextFrameId;
@@ -211,12 +230,19 @@ SequenceLayerImportPlan planSequenceLayer({
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
   List<int>? sourceFrameIndices,
+
+  /// Each position's cel NAME, when the source names its pictures — a
+  /// numbered run's cel labels, as the cut folder names its cels
+  /// ([planCutFolderImport]). A folded run of duplicates takes its first
+  /// position's name.
+  List<String>? frameNames,
 }) {
   assert(sourceFiles.length == frameFingerprints.length);
   assert(
     sourceFrameIndices == null ||
         sourceFrameIndices.length == sourceFiles.length,
   );
+  assert(frameNames == null || frameNames.length == sourceFiles.length);
   final layerId = mint.nextLayerId();
   final frames = <Frame>[];
   final timeline = SplayTreeMap<int, TimelineExposure>();
@@ -249,7 +275,14 @@ SequenceLayerImportPlan planSequenceLayer({
     flush();
     final frameId = mint.nextFrameId(layerId);
     celOrdinal += 1;
-    frames.add(Frame(id: frameId, duration: 1, strokes: const []));
+    frames.add(
+      Frame(
+        id: frameId,
+        duration: 1,
+        strokes: const [],
+        name: frameNames?[i],
+      ),
+    );
     bakes.add(
       PlannedCelBake(
         cutId: cutId,

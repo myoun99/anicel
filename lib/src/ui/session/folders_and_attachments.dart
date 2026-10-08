@@ -96,12 +96,10 @@ class FoldersAndAttachments {
     }
     // [below…, base, above…]: a new below goes bottommost (before the
     // existing belows and their organizer folders), a new above topmost
-    // (past the group). The new row INHERITS the base's folderId — the
-    // group shares the base's folder, and a null row inside a folder's
-    // contiguous run would break the folder invariant.
-    var insertionIndex = placement == AttachedPlacement.below
-        ? attachedGroupStartIndex(base.id, cut.layers)
-        : attachedGroupEndIndex(base.id, cut.layers);
+    // (past the group) — [newAttachedRowIndex]. The new row INHERITS the
+    // base's folderId — the group shares the base's folder, and a null row
+    // inside a folder's contiguous run would break the folder invariant.
+    var insertionIndex = newAttachedRowIndex(base.id, cut.layers, placement);
     var folderId = base.folderId;
     // SIBLING rule: adding from an attach row that lives in an ORGANIZER
     // folder ([연출]/[작감]…) with the same placement joins that folder —

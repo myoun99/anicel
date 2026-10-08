@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
@@ -85,7 +84,7 @@ void skipToStart(
 /// buttons never move.
 const double _dropSlotWidth = 72;
 
-/// Play/stop, loop mode and quality transport row.
+/// Play/stop and loop mode transport row.
 ///
 /// One widget serves both contexts: the timeline hosts it with
 /// [PlaybackScope.activeCut] (play the active cut) and the storyboard with
@@ -135,14 +134,6 @@ class PlaybackTransportControls extends StatelessWidget {
   /// included (D1: a leading gap PARKS there, the same origin an
   /// all-cuts play starts from). Active playback seeks itself.
   final VoidCallback? onSkipToStart;
-
-  static String qualityLabel(PlaybackQuality quality) {
-    return switch (quality) {
-      PlaybackQuality.full => 'Full',
-      PlaybackQuality.half => '1/2',
-      PlaybackQuality.quarter => '1/4',
-    };
-  }
 
   /// What the row shows of the playback: the buttons' states. The drop count
   /// is its slot's own read ([_droppedFramesSlot]).
@@ -197,13 +188,12 @@ class PlaybackTransportControls extends StatelessWidget {
               _voiceRecordButton(),
             if (isVoiceRecording != null && voiceRecordClipLit != null)
               _clipLight(),
-            // ⛔The QUALITY selector left this row (유저 확정, 2026-08-10:
-            // 품질도 설정에 두자). It is a setting, not a transport control —
-            // touched about as often as the project frame rate — and the
-            // transport is the one row on the 문턱 that has to stay readable
-            // at a glance. Its entries (and their key strings) live in
-            // [ProjectSettingsMenu] now. [qualityLabel] stays here because
-            // the label is this widget's vocabulary; the menu borrows it.
+            // ↩️The QUALITY selector left this row (유저 확정, 2026-08-10:
+            // 품질도 설정에 두자) — a setting, not a transport control, and
+            // the transport is the one row on the 문턱 that has to stay
+            // readable at a glance. On 2026-10-08 it left the app (유저:
+            // 「재생화질 옵션 자체가 … 그냥 없애고 원본재생으로만 두자」):
+            // playback shows a cut's picture at its own size.
             // The level meter (AUDIO-PRO R2), only while THIS scope's
             // playback is live — a silent strip otherwise would just be
             // chrome.
@@ -291,6 +281,9 @@ class PlaybackTransportControls extends StatelessWidget {
         // colour is what made the row hard to read.
         return AppIconButton(
           keyValue: 'playback-record-voice-button',
+          // 🗣️I-40: the action was in the shortcut list (Ctrl+R) and its button
+          // did not say so — every button wears the key of the action it is.
+          shortcuts: const [EditorActionIds.voiceRecordToggle],
           tooltip: recording
               ? strings.recordVoiceStopTooltip
               : strings.recordVoiceTooltip,
@@ -305,9 +298,13 @@ class PlaybackTransportControls extends StatelessWidget {
   AppIconButton _loopToggle() {
     return AppIconButton(
       keyValue: 'playback-loop-toggle',
+      // The state it is in, in the program's language — the play button's
+      // law below. ↩️`'Loop (click for play once)'` and its twin stood here
+      // in English for everyone; `transportLoop` sat in the table in five
+      // languages, read by nobody.
       tooltip: controller.loopMode == PlaybackLoopMode.loop
-          ? 'Loop (click for play once)'
-          : 'Play once (click for loop)',
+          ? AppText.strings.transportLoop
+          : AppText.strings.transportOnce,
       isSelected: controller.loopMode == PlaybackLoopMode.loop,
       icon: const Icon(Icons.repeat),
       onPressed: () {
@@ -322,7 +319,14 @@ class PlaybackTransportControls extends StatelessWidget {
   AppIconButton _playButton(bool isPlayingHere) {
     return AppIconButton(
       keyValue: 'playback-play-button',
-      tooltip: isPlayingHere ? 'Stop' : 'Play',
+      // 🗣️play-button-tooltip-untranslated (2026-10-02): the two arms were
+      // English literals, so the sill said 「Play」 in every language — and a
+      // ternary is exactly what the translation ratchet cannot read (F-37:
+      // 「the first literal after the colon or nothing at all」). Both arms
+      // read the table; ⛔a literal here is invisible to the scan.
+      tooltip: isPlayingHere
+          ? AppText.strings.playbackStop
+          : AppText.strings.menuPlay,
       shortcuts: const [EditorActionIds.playbackToggle],
       isSelected: isPlayingHere,
       icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),

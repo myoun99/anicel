@@ -65,11 +65,15 @@ class CutFolderImportDoor {
   /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
   /// per extra number (the field 겸용컷; separate undo steps).
   /// Returns the parse-and-plan warnings, or null when nothing imported.
+  ///
+  /// [onProgress] hears each scan baked — the import window's wait counts
+  /// them (F-282-Q1).
   Future<List<ImportWarning>?> importCutFolder({
     required String folderPath,
     required bool copyIntoProject,
     CutFolderParseConfig config = const CutFolderParseConfig(),
     MediaFitMode fit = MediaFitMode.contain,
+    void Function(int baked, int total)? onProgress,
   }) async {
     final directory = Directory(folderPath);
     if (!directory.existsSync()) {
@@ -153,7 +157,8 @@ class CutFolderImportDoor {
       // Each file bakes exactly once — decode, bake, dispose, so the
       // peak stays ONE image no matter how large the folder (the
       // measured folders run past 100 scanned cels).
-      for (final bake in plan.bakes) {
+      for (final (index, bake) in plan.bakes.indexed) {
+        onProgress?.call(index, plan.bakes.length);
         final List<DecodedImageFrame> frames;
         try {
           frames = await decodeImageFrames(

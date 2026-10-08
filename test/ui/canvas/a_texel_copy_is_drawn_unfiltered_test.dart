@@ -1,11 +1,13 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
+
+import '../../helpers/placement_reading.dart';
 
 /// 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
 /// 2026-09-24 「통일해서」) — the law the sub-tree blit, the tile blits and
@@ -41,7 +43,7 @@ void main() {
     ui.Image image, {
     required ui.Rect worldRect,
     required double? texelScale,
-    CameraPose? pose,
+    TransformPose? pose,
     bool drawAtOrigin = false,
   }) {
     final canvas = _SpyCanvas();
@@ -50,8 +52,9 @@ void main() {
       image: image,
       worldRect: worldRect,
       extent: worldRect,
-      canvasSize: const CanvasSize(width: 120, height: 80),
-      pose: pose,
+      placement: pose == null
+          ? null
+          : placedBy(pose, const CanvasSize(width: 120, height: 80)),
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       texelScale: texelScale,
@@ -106,7 +109,10 @@ void main() {
         full,
         worldRect: rect,
         texelScale: 1,
-        pose: CameraPose(center: CanvasPoint(x: 61, y: 40), zoom: 1.2),
+        pose: TransformPose.uniform(
+          center: CanvasPoint(x: 61, y: 40),
+          zoom: 1.2,
+        ),
       ),
       ui.FilterQuality.low,
     );

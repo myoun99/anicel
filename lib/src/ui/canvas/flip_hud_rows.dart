@@ -1,8 +1,7 @@
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
-import '../storyboard_layer_policy.dart'
-    show StoryboardTrackPanel, storyboardPanelsOnTrack;
+import '../../models/storyboard_timeline_layout.dart';
 import '../timeline/property_lane_model.dart' show PropertyLaneRow;
 import '../timeline/timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'flip_hud_model.dart';
@@ -109,26 +108,30 @@ FlipHudRow flipHudLaneRow(
   );
 }
 
-/// A track's V ROW in the flip window: its PANELS on the track's axis
-/// ([storyboardPanelsOnTrack]) — the blocks the V row's flip steps through —
-/// each named for its cut.
+/// A track's V ROW in the flip window: its CUTS on the track's axis — the
+/// blocks the V row's flip steps through — each by its name.
+///
+/// ↩️Its PANELS, each named for its cut, while the V row's flip counted
+/// them (2026-09-24); the V row counts cuts again and the panels are the
+/// conte row's blocks (I-73, 유저 2026-10-08: 「v행에서는 콘티블록에
+/// 서있다거나 하는걸 안하도록 … 컷 선택만 되도록」).
 ///
 /// A track is not a layer; the rail shows its name alone, and the space
 /// between cuts is not a missing drawing, so it carries no timesheet X.
 FlipHudRow flipHudTrackRow({
   required String name,
-  required List<StoryboardTrackPanel> panels,
+  required List<StoryboardTimelineLayoutEntry> cuts,
 }) => FlipHudRow(
   name: name,
   kind: LayerKind.storyboard,
   showsKindIcon: false,
   holdsDrawings: false,
   runs: [
-    for (final panel in panels)
+    for (final cut in cuts)
       FlipHudRun(
-        startIndex: panel.start,
-        length: panel.endExclusive - panel.start,
-        label: panel.cut.cut.name,
+        startIndex: cut.startFrame,
+        length: cut.duration,
+        label: cut.cut.name,
       ),
   ],
 );

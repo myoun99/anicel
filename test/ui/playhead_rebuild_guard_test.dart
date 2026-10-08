@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/home_page_probes.dart' show isActionButtonEnabled;
+import '../helpers/pill_row_clipboard.dart';
 
 /// R13-2 playhead rebuild guards: committed seeks and cursor moves must
 /// not rebuild what they don't change — measured on device as the
@@ -200,26 +201,27 @@ void main() {
     // went with it. What replaces it is the INVERSE guard: the three values
     // that left must no longer be able to reconstruct the toolbar.
     //
-    // 1-3. fps, audio sample rate and playback quality are ENTRIES of the
-    // settings pill now, and a flyout builds its entries at OPEN time — so
-    // none of them is a value this bar renders. A token that still carried
-    // them would reconstruct ~20 buttons for a menu nobody has open.
+    // 1-3. fps, audio sample rate and the playback mode (the playback
+    // quality, until 2026-10-08) are ENTRIES of the settings pill now, and a
+    // flyout builds its entries at OPEN time — so none of them is a value
+    // this bar renders. A token that still carried them would reconstruct
+    // ~20 buttons for a menu nobody has open.
     var before = toolbar();
     final oldRate = session.projectSettings.projectFrameRate;
     session.projectSettings.setProjectFps(session.projectSettings.projectFps + 5);
     session.projectAudio.setProjectAudioSampleRate(
       session.projectAudio.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
-    session.playbackRig.setPlaybackQuality(
-      session.playbackRig.playbackQuality == PlaybackQuality.full
-          ? PlaybackQuality.half
-          : PlaybackQuality.full,
+    session.playbackRig.setPlaybackMode(
+      session.playbackRig.playbackMode == PlaybackMode.skipFrames
+          ? PlaybackMode.everyPicture
+          : PlaybackMode.skipFrames,
     );
     await tester.pump();
     expect(session.projectSettings.projectFrameRate == oldRate, isFalse,
         reason: 'sanity: the fps mutation must actually change the rate');
     expect(identical(toolbar(), before), isTrue,
-        reason: 'the toolbar prints no project axis and no playback quality '
+        reason: 'the toolbar prints no project axis and no playback mode '
             '— they moved to the settings pill and must not drag it along');
 
     // 4. Landing a drawing flips the cell-sensitive enablements (which the
@@ -326,6 +328,45 @@ void main() {
       reason: 'the gates went dark, so the BUTTONS must too — enforcing a '
           'standdown while the bar keeps its old enablement leaves exactly '
           'the dead lit control the standdown exists to remove',
+    );
+
+    await drainWarming(tester);
+  });
+
+  testWidgets('a band swept on the STORYBOARD refreshes it too — the same '
+      'claim on the track\'s axis, on a notifier of its own (F-281)', (
+    tester,
+  ) async {
+    final session = await pumpNotifyWrappedHost(tester);
+    Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
+
+    final row = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(row);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pump();
+    expect(session.clipboard.canCutRunAtCurrentFrame, isTrue, reason: 'sanity');
+    final beforeBand = toolbar();
+
+    session.rangeSelections.updateTrackRowRangeSelectionByFrame(
+      layerId: session.activeTrack.seLayers.first.id,
+      anchorGlobalFrame: 0,
+      headGlobalFrame: 1,
+    );
+    await tester.pump();
+
+    expect(
+      session.clipboard.canCutRunAtCurrentFrame,
+      isFalse,
+      reason: 'sanity: the band names an S row, which this press would miss',
+    );
+    expect(
+      identical(toolbar(), beforeBand),
+      isFalse,
+      reason: 'the gates went dark with no seek, no stand and no notify — '
+          'only the track band\'s own notifier says so',
     );
 
     await drainWarming(tester);
@@ -485,7 +526,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(session);
     final zoom = ValueNotifier<double>(24);
     addTearDown(zoom.dispose);
     await pumpZoomableTimeline(tester, session, zoom);
@@ -522,8 +563,6 @@ void main() {
         home: Scaffold(
           body: TimesheetTabHost(
             session: session,
-            continuous: false,
-            onContinuousChanged: (_) {},
           ),
         ),
       ),

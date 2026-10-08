@@ -1,5 +1,4 @@
 import '../../models/cut.dart';
-import '../../models/playback_quality.dart';
 import 'cut_frame_composite_signature.dart';
 
 /// A run of consecutive frames whose composited picture is one picture.
@@ -60,7 +59,6 @@ class CutFrameCompositeSpan {
 List<CutFrameCompositeSpan> computeCutFrameCompositeSpans({
   required Cut cut,
   required ({int startIndex, int endIndexExclusive}) frames,
-  required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
 }) {
   final spans = <CutFrameCompositeSpan>[];
@@ -74,7 +72,6 @@ List<CutFrameCompositeSpan> computeCutFrameCompositeSpans({
     final signature = computeCutFrameCompositeSignature(
       cut: cut,
       frameIndex: frameIndex,
-      quality: quality,
       revisionOf: revisionOf,
     );
     if (current == null) {

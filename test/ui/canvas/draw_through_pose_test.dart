@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/services/layer_pose_paint.dart';
 import '../../helpers/blank_cel.dart';
+import '../../helpers/placement_reading.dart';
 
 /// The draw-through wrap (R3 ⑩): wrapping the interactive view in
 /// `Transform(layerPoseViewportWrapMatrix(...))` shows the active layer
@@ -37,9 +38,8 @@ Future<void> _pumpPosedView(
             width: _canvasSize.width.toDouble(),
             height: _canvasSize.height.toDouble(),
             child: Transform(
-              transform: layerPoseViewportWrapMatrix(
-                pose,
-                _canvasSize,
+              transform: placementViewportWrapMatrix(
+                placedBy(pose, _canvasSize),
                 CanvasViewport(),
               ),
               child: InteractiveBrushEditCanvasView(
@@ -117,13 +117,52 @@ void main() {
       // (2,2)-(6,6) on screen.
       await _pumpPosedView(
         tester,
-        pose: TransformPose(center: CanvasPoint(x: 4, y: 4), zoom: 0.5),
+        pose: TransformPose.uniform(center: CanvasPoint(x: 4, y: 4), zoom: 0.5),
         onResult: results.add,
       );
 
       await _tapAtScreen(tester, const Offset(1, 1));
 
       expect(results, isEmpty);
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+    // 반전)」. A flip is the minus of one scale, and keyed from 100 to −100
+    // the frame halfway is a scale of zero.
+    testWidgets('a row FLIPPED across and stretched takes the pen where the '
+        'picture shows it', (tester) async {
+      final results = <List<BrushDab>>[];
+      // Mirrored across and twice as wide about the centre (4,4): artwork
+      // x shows at 4 − 2·(x − 4), so artwork (3.5, 2) shows at (5, 2).
+      await _pumpPosedView(
+        tester,
+        pose: TransformPose(center: CanvasPoint(x: 4, y: 4), scaleX: -2),
+        onResult: results.add,
+      );
+
+      await _tapAtScreen(tester, const Offset(5, 2));
+
+      expect(results, hasLength(1));
+      final dab = results.single.single;
+      expect(dab.center.x, closeTo(3.5, 0.01));
+      expect(dab.center.y, closeTo(2, 0.01));
+    });
+
+    testWidgets('a row scaled to NOTHING on an axis takes no pen: there is no '
+        'artwork under a tap, wherever it lands', (tester) async {
+      final results = <List<BrushDab>>[];
+      await _pumpPosedView(
+        tester,
+        pose: TransformPose(center: CanvasPoint(x: 4, y: 4), scaleX: 0),
+        onResult: results.add,
+      );
+
+      for (final at in const [Offset(4, 4), Offset(1, 6), Offset(7, 2)]) {
+        await _tapAtScreen(tester, at);
+      }
+
+      expect(results, isEmpty);
+      expect(tester.takeException(), isNull);
     });
   });
 }

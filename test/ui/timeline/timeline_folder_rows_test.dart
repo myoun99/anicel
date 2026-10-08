@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
@@ -112,6 +113,7 @@ void main() {
       expandedLayerIds: {const LayerId('f')},
       lanesForLayer: (row) => transformPropertyLanes(
         row.transformTrack,
+        scaleForm: scaleLaneFormOf(row),
         includeAnchorAndOpacity: true,
       ),
     );

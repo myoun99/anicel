@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_playhead.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import 'timeline_cell_probe.dart' show isInbetweenMarkShape;
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️유저 2026-09-24: 「블록 세로선 역시 있는것도 좋아서 환경설정에 옵션으로
@@ -547,6 +548,8 @@ class _OrderSpy implements Canvas {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+/// Every box a painter fills, in order — a mark aside
+/// ([isInbetweenMarkShape]).
 class _PaintSpy implements Canvas {
   final fills = <({Rect rect, int argb})>[];
 
@@ -559,7 +562,7 @@ class _PaintSpy implements Canvas {
 
   @override
   void drawRRect(RRect rrect, Paint paint) {
-    if (paint.style == PaintingStyle.fill) {
+    if (paint.style == PaintingStyle.fill && !isInbetweenMarkShape(rrect)) {
       fills.add((rect: rrect.outerRect, argb: paint.color.toARGB32()));
     }
   }

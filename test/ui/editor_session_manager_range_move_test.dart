@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/lane_range_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 /// UI-R8: frame-range selection (block-snapped) + the range move drag
 /// session — channel-only previews, one undo per drag, selection follows
@@ -368,6 +370,209 @@ void main() {
     rangeMove(s).endFrameRangeMoveDrag();
     expect(s.activeCutOrNull!.camera.keyframeAt(2), isNotNull);
     expect(s.canUndo, undoDepth, reason: 'void moves commit nothing');
+  });
+
+  // 🗣️F-309 (유저 2026-10-06): 「존재하지 않는 키를 새로 만들어서 이동함.
+  // 떼도 커밋되있음. 멋대로 키를 만들어내지 않도록, 있는 키만 움직이도록
+  // 근본/구조적 해결」.
+  group('🚨F-309: the camera row\'s keys move on the lanes they are on', () {
+    /// A session whose camera holds [track], standing on the camera row.
+    (EditorSessionManager, Layer camera) cameraKeyed(TransformTrack track) {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
+      s.selectLayer(camera.id);
+      s.camera.updateActiveCutCameraTrack(track, description: 'fixture');
+      return (s, camera);
+    }
+
+    /// The camera keying Position at 2 — held, and named — and Scale at 6.
+    (EditorSessionManager, Layer camera) keyedOnTwoLanes() => cameraKeyed(
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty()
+            .withKey(
+              2,
+              CanvasPoint(x: 40, y: 30),
+              interpolation: PropertyKeyInterpolation.hold,
+            )
+            .withKeyName(2, 'in'),
+        scale: PropertyTrack<CanvasPoint>.empty().withKey(6, uniformScale(2)),
+      ),
+    );
+
+    void slide(
+      EditorSessionManager s,
+      Layer camera, {
+      required int from,
+      required int by,
+    }) {
+      s.updateFrameRangeSelectionDrag(
+        layerId: camera.id,
+        anchorIndex: from,
+        headIndex: from,
+      );
+      expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+      rangeMove(s).updateFrameRangeMoveDrag(frameDelta: by);
+    }
+
+    TransformTrack landed(EditorSessionManager s) =>
+        s.activeCutOrNull!.camera.track;
+
+    // 🔬Measured before the fix by the timeline session (2026-10-07, the
+    // default project, the camera row moved +3): keyed on Zoom alone, the
+    // camera came back with a Position key at (0, 0) — in the canvas's
+    // corner — and a Rotation key; keyed on Opacity alone, it came back
+    // WITHOUT its Opacity key and with the other three.
+    final keyedAlone = <String, TransformTrack Function(int frame)>{
+      'Anchor Point': (frame) => TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack<CanvasPoint>.empty().withKey(
+          frame,
+          CanvasPoint(x: 7, y: 9),
+        ),
+      ),
+      'Position': (frame) => TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          frame,
+          CanvasPoint(x: 40, y: 30),
+        ),
+      ),
+      'Scale': (frame) => TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>.empty().withKey(
+          frame,
+          uniformScale(2),
+        ),
+      ),
+      'Rotation': (frame) => TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(frame, 15),
+      ),
+      'Opacity': (frame) => TransformTrack.empty().copyWith(
+        opacity: PropertyTrack<double>().withKey(frame, 0.5),
+      ),
+    };
+    for (final MapEntry(key: lane, value: keyedAt) in keyedAlone.entries) {
+      test('a camera keyed on $lane ALONE comes back keyed on $lane alone, '
+          'the key as it was', () {
+        final (s, camera) = cameraKeyed(keyedAt(2));
+        slide(s, camera, from: 2, by: 3);
+        rangeMove(s).endFrameRangeMoveDrag();
+
+        expect(landed(s), keyedAt(5));
+      });
+    }
+
+    test('a frame keyed on Position alone lands keyed on Position alone — '
+        'its hold a hold, its name its name', () {
+      final (s, camera) = keyedOnTwoLanes();
+      slide(s, camera, from: 2, by: 2);
+      rangeMove(s).endFrameRangeMoveDrag();
+
+      final position = landed(s).position;
+      expect(position.keys.keys, [4]);
+      expect(position.keyAt(4)!.value, CanvasPoint(x: 40, y: 30));
+      expect(position.keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(position.keyAt(4)!.name, 'in');
+      expect(
+        landed(s).scale.keys.keys,
+        [6],
+        reason: 'Scale had no key in the range: none is made, none moves',
+      );
+      expect(landed(s).rotation.keys, isEmpty);
+    });
+
+    test('a frame only Scale keys rides the row\'s move too — the row is every '
+        'lane it has', () {
+      final (s, camera) = keyedOnTwoLanes();
+      slide(s, camera, from: 6, by: 1);
+      rangeMove(s).endFrameRangeMoveDrag();
+
+      expect(landed(s).scale.keys.keys, [7]);
+      expect(landed(s).position.keys.keys, [2]);
+    });
+
+    test('what the drag shows is the track the release lands', () {
+      final (s, camera) = keyedOnTwoLanes();
+      slide(s, camera, from: 2, by: 2);
+      final shown = s.camera.activeCutCameraTrack;
+      expect(shown, isNot(landed(s)), reason: 'nothing is written yet');
+      // The channel hands the project's views — the storyboard, the sheet
+      // — the same track, for the cut it is the camera of.
+      final onChannel = s.dragPreview.value! as BlockMoveDragPreview;
+      expect(onChannel.cameraTrack, shown);
+      expect(onChannel.cameraCutId, s.activeCutOrNull!.id);
+
+      rangeMove(s).endFrameRangeMoveDrag();
+      expect(landed(s), shown);
+      expect(s.camera.activeCutCameraTrack, landed(s));
+    });
+
+    test('a key slid onto a frame ANOTHER lane keys lands there: the two '
+        'stand at one frame, each on its lane', () {
+      final (s, camera) = keyedOnTwoLanes();
+      slide(s, camera, from: 2, by: 4);
+      rangeMove(s).endFrameRangeMoveDrag();
+
+      expect(landed(s).position.keys.keys, [6]);
+      expect(landed(s).scale.keys.keys, [6]);
+      expect(landed(s).scale.keyAt(6)!.value, uniformScale(2));
+    });
+
+    // The other header rows — a layer's Transform header, and the camera's
+    // own, reached as a LANE — ride the same law by the lane move.
+    for (final onTheCamera in [false, true]) {
+      final where = onTheCamera ? 'the camera\'s' : 'a layer\'s';
+      test('a move on $where Transform header moves the key its Position '
+          'lane holds and makes none on the others', () {
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        final row = onTheCamera
+            ? s.layers.firstWhere((l) => l.kind == LayerKind.camera)
+            : s.activeLayer!;
+        final keyed = TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            5,
+            CanvasPoint(x: 10, y: 20),
+          ),
+        );
+        if (onTheCamera) {
+          s.camera.updateActiveCutCameraTrack(keyed, description: 'fixture');
+        } else {
+          s.laneVerbs.updateLayerTransformTrack(row.id, keyed);
+        }
+        final header = transformGroupHeaderLane.laneId;
+        s.updateLaneRangeSelectionDrag(
+          layerId: row.id,
+          laneId: header,
+          anchorIndex: 5,
+          headIndex: 5,
+          spanLaneIds: [header],
+        );
+        expect(laneMove(s).beginLaneRangeMoveDrag(), isTrue);
+        laneMove(s).updateLaneRangeMoveDrag(frameDelta: 3);
+        laneMove(s).endLaneRangeMoveDrag();
+
+        final after = onTheCamera
+            ? s.activeCutOrNull!.camera.track
+            : s.layers.firstWhere((l) => l.id == row.id).transformTrack;
+        expect(after.position.keys.keys, [8]);
+        expect(after.scale.keys, isEmpty);
+        expect(after.rotation.keys, isEmpty);
+        expect(after.opacity.keys, isEmpty);
+        expect(after.anchorPoint.keys, isEmpty);
+      });
+    }
+
+    test('a key slid onto a key of ITS lane is held back, and nothing is '
+        'written', () {
+      final (s, camera) = keyedOnTwoLanes();
+      final before = landed(s).copyWith(
+        position: landed(s).position.withKey(5, CanvasPoint(x: 1, y: 1)),
+      );
+      s.camera.updateActiveCutCameraTrack(before, description: 'fixture');
+      slide(s, camera, from: 2, by: 3);
+      rangeMove(s).endFrameRangeMoveDrag();
+
+      expect(landed(s), before);
+    });
   });
 
   test('P3b-2: instruction spans ride the range move too — shifted rows '
@@ -1086,7 +1291,7 @@ void main() {
               position: PropertyTrack<CanvasPoint>()
                   .withKey(2, CanvasPoint(x: 1, y: 1))
                   .withKey(8, CanvasPoint(x: 9, y: 9)),
-              scale: PropertyTrack<double>().withKey(2, 1.5),
+              scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
               rotation: PropertyTrack.empty(),
               opacity: PropertyTrack.empty(),
             ),
@@ -1216,7 +1421,7 @@ void main() {
                 2,
                 CanvasPoint(x: 1, y: 1),
               ),
-              scale: PropertyTrack<double>().withKey(3, 1.5),
+              scale: PropertyTrack<CanvasPoint>().withKey(3, uniformScale(1.5)),
               rotation: PropertyTrack<double>().withKey(9, 45),
               opacity: PropertyTrack.empty(),
             ),
@@ -1484,6 +1689,14 @@ void main() {
       s.activeCutOrNull!.camera.keyframeAt(0),
       isNotNull,
       reason: 'the repository stays put while the drag previews',
+    );
+    // The multi-row arm previews the camera's keys where the plain slide
+    // does: to the session's readers and on the channel, the one track.
+    final shown = s.camera.activeCutCameraTrack!;
+    expect(shown.position.keys.keys, [2]);
+    expect(
+      (s.dragPreview.value! as BlockMoveDragPreview).cameraTrack,
+      shown,
     );
     final undoDepthBefore = s.canUndo;
     rangeMove(s).endFrameRangeMoveDrag();

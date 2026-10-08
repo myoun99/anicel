@@ -10,8 +10,10 @@
 library;
 
 import 'dart:math' as math;
-import 'dart:ui' show Rect;
+import 'dart:ui' show Rect, Size;
 
+import '../canvas_size.dart';
+import '../sheet_paper.dart';
 import 'conte_sheet_source.dart';
 
 /// The sheet's fixed measurements — the first preset's page (유저
@@ -27,6 +29,46 @@ class ConteSheetMetrics {
 
   final double pageWidth;
   final double pageHeight;
+
+  /// THE PAPER'S PIXELS A POINT TAKES (F-294, 유저 2026-10-05: 「콘티패널이랑
+  /// 컷봉투패널의 용지는 300dpi인 2480x3508으로함」): this page laid on the
+  /// conte's paper (`SheetPaper.conte`) as large as fits — the page is A4
+  /// and so is the paper, so it fills it (to the point size's own rounding:
+  /// 841.89pt come to 3507.4 of its 3508 pixels). What the panel shows the
+  /// sheet at (`SheetCanvasPanel.paperScale`), and the conte ink's
+  /// resolution: its surfaces' pixels per page point — what the ink is
+  /// drawn at and what every printer lays it back at. A pixel of the ink is
+  /// a pixel of the paper, so a brush of a size at 100% draws on the sheet
+  /// as wide as on the canvas.
+  ///
+  /// ↩️It was `conteInkScale`, a number of the ink's own, and what follows
+  /// is its history. ONE, the canvas's grade (유저 2026-09-26,
+  /// one-paper-brush-width-Q2: 「해상도를 캔버스처럼 낮추기」): a brush of a
+  /// size at 100% draws on the sheet as wide as on the canvas, and a surface
+  /// pixel is a pixel of the brush's own size. It was 4 — a brush four times
+  /// thinner than on the canvas at the same size, and sixteen times the
+  /// memory. One pixel a point kept the brush as wide as on the canvas only
+  /// because the paper itself was shown a point a pixel — a page 595 pixels
+  /// across, and handwriting as coarse as that (「지금까지가 잉크가 이상하게
+  /// 됬던거뿐이야」). The paper has a resolution of its own now; the ink is
+  /// kept at it, and the brush is as wide as on the canvas still.
+  ///
+  /// ↩️The page painter kept a copy of the controller's number so as not to
+  /// import the input side; two numbers that must agree are two chances to
+  /// print ink at a scale it was not drawn at.
+  ///
+  /// ↩️↩️The conte's paper drew a brush as thin as the pictures beside it for
+  /// two days (F-217-Q1 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」, while
+  /// a stroke crossed from a picture onto the paper); the user took it back
+  /// once a stroke stays in the cell it starts in (2026-09-30, H50: 「원본
+  /// 1:1그대로 공용로직 그대로 적용해서 원복하자. 지금 브러시 너무작은데
+  /// 중요한건 너무작아서 브러시가 끊겨서」). The paper reads the brush in
+  /// its own pixels, as the timesheet's and the envelope's do.
+  double get paperScale =>
+      SheetPaper.conte.around(Size(pageWidth, pageHeight)).scale;
+
+  /// The paper of one page, in pixels — what a page image is at 1x.
+  CanvasSize get paperPixelSize => SheetPaper.conte.pixelSize;
 
   /// Left and right: the cut box starts here, the table ends here.
   double get marginX => 30;
@@ -258,7 +300,7 @@ typedef ConteCameraPlan = ({
 
   /// The paper a pixel of the swept canvas takes: a screen to a row's
   /// window, less where the sweep would pass the picture's rows or the
-  /// page's right edge.
+  /// dialogue column's right edge.
   double scale,
 });
 
@@ -267,9 +309,14 @@ typedef ConteCameraPlan = ({
 /// The picture shows the canvas the camera sweeps at a screen a row: down
 /// over as many rows as it is screens tall, up to
 /// [conteCameraPictureRowsMax], and right as far as it is wide — into the
-/// ACTION column, then the dialogue's, then the time's (「필요한만큼 알아서
-/// 침범」 · 「se칸까지」 · 「초수칸까지도 확장가능하게해」). A sweep larger than
-/// that is laid smaller ([ConteCameraPlan.scale]).
+/// ACTION column, then the dialogue's, and no further (「필요한만큼 알아서
+/// 침범」 · 「se칸까지」). A sweep larger than that is laid smaller
+/// ([ConteCameraPlan.scale]).
+///
+/// ↩️It reached on through the time column to the page's edge (유저
+/// 2026-09-30: 「초수칸까지도 확장가능하게해」), until F-310 (유저
+/// 2026-10-06): 「카메라 움직임 있을때 지금 초수 칸 까지 침범하는데,
+/// 초수칸말고 se칸까지만 최대치로 잡도록」.
 ///
 /// Once the picture takes the whole ACTION column there is no room for the
 /// cell's words beside it, and they ALL move to the row under it — the
@@ -306,7 +353,7 @@ double _fieldScale(
   int pictureRows,
 ) {
   final tallest = pictureRows * m.rowHeight - 2 * m.silhouetteBorder;
-  final widest = m.bodyRight - m.pictureLeft - 2 * m.silhouetteBorder;
+  final widest = m.timeLeft - m.pictureLeft - 2 * m.silhouetteBorder;
   return [
     m.windowHeight / work.screen.height,
     tallest / work.field.height,
@@ -415,7 +462,8 @@ class ContePageLayout {
 
 /// The whole conte as printed: the cover, the blank page behind it, then
 /// the body [layoutConteSheet] lays out — the order the panel turns through
-/// and the exports print.
+/// and the exports print. The work may leave the cover or its blank back
+/// out ([ConteSheetSource.cover] · [ConteSheetSource.blankPage]).
 List<ContePageLayout> layoutConteBook(
   ConteSheetSource source, {
   ConteSheetMetrics metrics = const ConteSheetMetrics(),
@@ -430,12 +478,15 @@ List<ContePageLayout> layoutConteBook(
     metrics: metrics,
     bodyCount: body.length,
   );
+  final front = [
+    if (source.cover) ContePageKind.cover,
+    if (source.blankPage) ContePageKind.blank,
+  ];
   return [
-    bare(0, ContePageKind.cover),
-    bare(1, ContePageKind.blank),
+    for (final (index, kind) in front.indexed) bare(index, kind),
     for (final page in body)
       ContePageLayout(
-        pageIndex: page.pageIndex + 2,
+        pageIndex: page.pageIndex + front.length,
         bodyIndex: page.pageIndex,
         cells: page.cells,
         cutBands: page.cutBands,

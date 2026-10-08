@@ -238,6 +238,32 @@ class ParsedCelLayer {
 
   final String symbol;
   final List<ParsedCel> cells;
+
+  /// Whether [fileName] is one of this layer's cels — the surviving file of
+  /// one, or a revision the policy folded into one (rule F).
+  bool holds(String fileName) => cells.any(
+    (cel) =>
+        fileNameOfPath(cel.file) == fileName ||
+        cel.olderRevisions.map(fileNameOfPath).contains(fileName),
+  );
+}
+
+/// The numbered run [fileName] is part of in [folder]: its layer, when that
+/// layer has more cels than this one — null for a file that is no cel
+/// (rule E's `_` names, anything the grammar does not read) or the only
+/// one of its symbol.
+///
+/// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서 다
+/// 새 레이어가 아니라 새 레이어의 새 프레임으로서?」 — read with the cut
+/// folder's own grammar (rule B: a layer's symbol and its cel numbers), the
+/// one the folder import reads, not a second one.
+ParsedCelLayer? celRunOf(String fileName, CutFolderParseResult folder) {
+  for (final layer in folder.layers) {
+    if (layer.holds(fileName)) {
+      return layer.cells.length > 1 ? layer : null;
+    }
+  }
+  return null;
 }
 
 /// A `_`-prefixed picture (rule E): `_BG`, `_BOOK2`, `_BG補足` — each

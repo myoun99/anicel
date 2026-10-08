@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/session/cut_verbs.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨AN ID FREE IN THE PROJECT IS NOT FREE IN THE SESSION.
 ///
@@ -98,9 +99,9 @@ void main() {
     final blank = blankRow();
 
     session.selectLayer(drawn);
-    session.layerClipboard.copyActiveLayer();
+    copyRowsWithThePill(session);
     final before = rowsNow();
-    session.layerClipboard.pasteLayerFromClipboard();
+    pasteWithThePill(session);
     final undone = session.requireActiveCut.layers.singleWhere(
       (layer) => !before.contains(layer.id),
     );
@@ -113,8 +114,8 @@ void main() {
     expect(rowsNow(), before, reason: 'fixture: the paste is undone');
 
     session.selectLayer(blank.id);
-    session.layerClipboard.copyActiveLayer();
-    session.layerClipboard.pasteLayerFromClipboard();
+    copyRowsWithThePill(session);
+    pasteWithThePill(session);
     final pasted = session.requireActiveCut.layers.singleWhere(
       (layer) => !before.contains(layer.id),
     );
@@ -161,7 +162,6 @@ void main() {
     session.cutVerbs.createCut();
     final gone = cutsNow().difference(first).single;
     writeSheet(envelopeInkBoxKey(gone, 'memo'));
-    writeSheet(timesheetInkStripKey(gone, 0));
     writeSheet(timesheetInkPageKey(gone, 0));
     session.cutCommandCoordinator.deleteCut(cutId: gone);
     expect(cutsNow(), first, reason: 'fixture: the cut is gone');
@@ -170,7 +170,6 @@ void main() {
     final made = cutsNow().difference(first).single;
 
     expect(readSheet(envelopeInkBoxKey(made, 'memo')), isNull);
-    expect(readSheet(timesheetInkStripKey(made, 0)), isNull);
     expect(readSheet(timesheetInkPageKey(made, 0)), isNull);
   });
 

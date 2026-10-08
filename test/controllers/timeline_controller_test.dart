@@ -45,28 +45,6 @@ void main() {
       );
     });
 
-    test('drawing start and held cells classify by coverage', () {
-      final fixture = _fixture();
-      final layer = fixture.layer;
-
-      expect(
-        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 0),
-        isTrue,
-      );
-      expect(
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 1),
-        isTrue,
-      );
-      expect(
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 3),
-        isFalse,
-      );
-      expect(
-        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 6),
-        isTrue,
-      );
-    });
-
     test('effective duration is the block length', () {
       final fixture = _fixture();
 
@@ -93,13 +71,6 @@ void main() {
           frameIndex: 0,
         ),
         isNull,
-      );
-      expect(
-        fixture.controller.isDrawingStartForLayer(
-          layer: fixture.layer,
-          frameIndex: -1,
-        ),
-        isFalse,
       );
     });
   });
@@ -137,6 +108,57 @@ void main() {
 
       // The next block starts at 6.
       expect(fixture.layer.timeline[4]!.length, 2);
+    });
+
+    test('the cel carries the length its block LANDED with — clamped, or '
+        'the rest of the hold it divided — not the length asked for', () {
+      int lengthOfTheCelMadeAt(int index, {int? asked}) {
+        final fixture = _fixture();
+        fixture.controller.selectFrameIndex(index);
+        fixture.controller.createDrawingFrameForLayer(
+          layerId: _layerId,
+          frameId: const FrameId('new'),
+          length: asked ?? 1,
+        );
+        return fixture.layer.frames
+            .firstWhere((frame) => frame.id == const FrameId('new'))
+            .duration;
+      }
+
+      expect(lengthOfTheCelMadeAt(4, asked: 10), 2, reason: 'clamped at 6');
+      expect(lengthOfTheCelMadeAt(1), 2, reason: 'the rest of [0, 3)');
+    });
+
+    test('a name arrives trimmed, and a blank one as no name — the cel\'s '
+        'and its SE entry\'s alike', () {
+      final fixture = _fixture();
+      fixture.controller.selectFrameIndex(4);
+
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: _layerId,
+        frameId: const FrameId('new'),
+        name: '  N1 ',
+        seName: ' door  ',
+      );
+      final named = fixture.layer.frames.firstWhere(
+        (frame) => frame.id == const FrameId('new'),
+      );
+      expect(named.name, 'N1');
+      expect(named.seName, 'door');
+
+      final blank = _fixture();
+      blank.controller.selectFrameIndex(4);
+      blank.controller.createDrawingFrameForLayer(
+        layerId: _layerId,
+        frameId: const FrameId('new'),
+        name: '   ',
+        seName: '',
+      );
+      final unnamed = blank.layer.frames.firstWhere(
+        (frame) => frame.id == const FrameId('new'),
+      );
+      expect(unnamed.name, isNull);
+      expect(unnamed.seName, isNull);
     });
 
     test('DIVIDES a covered cell instead of refusing it: the new drawing '

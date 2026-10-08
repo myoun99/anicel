@@ -38,9 +38,55 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
+/// The stack seat directly above [layerId] in `cut-1` — where a linked copy
+/// made standing on that row is aimed (I-77: the copy is a PASTE's, and
+/// lands where it is asked to).
+int seatAbove(Project project, String layerId) =>
+    requireCut(
+      project,
+      const CutId('cut-1'),
+    ).layers.indexWhere((layer) => layer.id.value == layerId) +
+    1;
+
 void main() {
   group('CutCommandCoordinator', () {
-    test('createCut mints a cut id of its own, the first free layer id, and '
+    test('🚨a cut made after one was UNDONE takes an id of its own — an id '
+        'free in the project is not free in the session', () {
+      // An undone or deleted cut gives its id back to the project while the
+      // session keeps its sheets' handwriting under it (card
+      // `undone-paste-reuses-ids`). ↩️Pinned on the create-cut plan, asked
+      // twice of one project; the plan held this one id once F-211 took
+      // its layer id, and went with it.
+      final fixture = _oneCutFixture();
+      const track = TrackId('track-1');
+      fixture.coordinator.createCut(trackId: track);
+      final undone = fixture.cutsFor(track).last.id;
+      fixture.historyManager.undo();
+      expect(
+        [for (final cut in fixture.cutsFor(track)) cut.id],
+        isNot(contains(undone)),
+        reason: '⛔전제: the id is free in the project again',
+      );
+
+      fixture.coordinator.createCut(trackId: track);
+
+      expect(fixture.cutsFor(track).last.id, isNot(undone));
+    });
+
+    test('a cut id named AHEAD is the id the cut takes (H44: the conte\'s '
+        'next cut is drawn into before it exists)', () {
+      final fixture = _oneCutFixture();
+      const track = TrackId('track-1');
+
+      fixture.coordinator.createCut(
+        trackId: track,
+        cutId: const CutId('named-ahead'),
+      );
+
+      expect(fixture.cutsFor(track).last.id, const CutId('named-ahead'));
+    });
+
+    test('createCut mints a cut id of its own, makes the cut BARE, and '
         'records undo/redo — the redo bringing back the SAME cut', () {
       final existingCut = _cut(
         id: 'cut-2',
@@ -68,7 +114,12 @@ void main() {
       expect(cuts.first, existingCut);
       expect(created, isNot(existingCut.id));
       expect(cuts.last.name, name, reason: 'named after the cut it follows');
-      expect(cuts.last.layers.first.id, const LayerId('layer-1'));
+      expect(
+        [for (final layer in cuts.last.layers) layer.kind],
+        [LayerKind.instruction, LayerKind.camera],
+        reason: 'F-211: a new cut is bare — ↩️it was born with a blank '
+            'layer under the first free layer id',
+      );
       expect(fixture.editingSession.activeCutId, created);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -125,6 +176,7 @@ void main() {
           cutId: const CutId('cut-1'),
           // Selecting the ATTACH member resolves to the whole group.
           layerId: const LayerId('color'),
+          insertionIndex: seatAbove(fixture.project, 'color'),
         );
 
         final cut = requireCut(fixture.project, const CutId('cut-1'));
@@ -286,6 +338,7 @@ void main() {
         coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         final copyId = fixture.project.linkRegistry.groups
             .firstWhere(
@@ -379,6 +432,7 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         fixture.coordinator.renameLayer(
           cutId: const CutId('cut-1'),
@@ -783,6 +837,7 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         final cut = requireCut(fixture.project, const CutId('cut-1'));
         final baseCopyId = cut.layers[2].id;
@@ -920,6 +975,76 @@ void main() {
         );
       });
 
+      test('F-305: deleting a folder deletes what it holds, in every 겸용 '
+          'cut — the base with its attach row — and one undo brings both '
+          'cuts back', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'linked',
+        );
+        final linkedCutId = fixture
+            .cutsFor(const TrackId('track-1'))
+            .firstWhere((cut) => cut.name == 'linked')
+            .id;
+        final folderId = fixture.coordinator.createFolderFromLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        )!;
+        Cut origin() => requireCut(fixture.project, const CutId('cut-1'));
+        Cut linked() => requireCut(fixture.project, linkedCutId);
+        List<String> names(Cut cut) => [
+          for (final layer in cut.layers) layer.name,
+        ];
+        expect(names(origin()), ['base', 'color', 'Folder 1', 'unrelated']);
+        // The linked cut carries a direction row of its own beside them.
+        const mirrored = [
+          'base',
+          'color',
+          'Folder 1',
+          'unrelated',
+          'Direction 1',
+        ];
+        expect(names(linked()), mirrored, reason: 'fixture');
+        final steps = fixture.historyManager.undoCount;
+
+        expect(
+          () => fixture.coordinator.deleteLayer(
+            cutId: const CutId('cut-1'),
+            layerId: folderId,
+          ),
+          returnsNormally,
+          reason: 'the base takes its attach row along, and the walk must '
+              'not then reach for a row that is gone',
+        );
+
+        expect(
+          names(origin()),
+          ['unrelated'],
+          reason: 'the folder went and took the base and its attach row — '
+              'it used to dissolve and leave them standing',
+        );
+        expect(names(linked()), ['unrelated', 'Direction 1']);
+        expect(fixture.historyManager.undoCount, steps + 1, reason: 'ONE');
+
+        fixture.historyManager.undo();
+        expect(names(origin()), ['base', 'color', 'Folder 1', 'unrelated']);
+        expect(names(linked()), mirrored);
+        expect(folderStructureProblem(origin().layers), isNull);
+        expect(folderStructureProblem(linked().layers), isNull);
+        expect(
+          origin().layers.firstWhere((layer) => layer.name == 'base').folderId,
+          folderId,
+        );
+      });
+
       test('a folder FX track rides updateLayerTransformTrack in one undo '
           '(per-use — the 겸용 counterpart keeps its own)', () {
         final fixture = _fixture(
@@ -945,7 +1070,7 @@ void main() {
 
         final track = TransformTrack(
           keyframes: {
-            0: TransformPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
+            0: TransformPose.uniform(center: CanvasPoint(x: 5, y: 5), zoom: 2),
           },
         );
         fixture.coordinator.updateLayerTransformTrack(
@@ -1060,10 +1185,12 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('layer-1'),
+          insertionIndex: seatAbove(fixture.project, 'layer-1'),
         );
 
         final registry = fixture.project.linkRegistry;
@@ -1123,23 +1250,23 @@ void main() {
         activeCutId: cutA.id,
       );
 
-      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'General note');
+      fixture.coordinator.updateCutNote(cutId: cutA.id, page: 0, note: 'General note');
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
 
       fixture.historyManager.undo();
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, '');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), '');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -1149,7 +1276,7 @@ void main() {
       final cutA = _cut(
         id: 'cut-1',
         name: 'Cut A',
-        metadata: const CutMetadata(note: 'Same note'),
+        metadata: const CutMetadata(pageNotes: ['Same note']),
       );
       final fixture = _fixture(
         _project(
@@ -1161,10 +1288,10 @@ void main() {
       );
       final beforeJson = fixture.project.toJson();
 
-      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'Same note');
+      fixture.coordinator.updateCutNote(cutId: cutA.id, page: 0, note: 'Same note');
 
       expect(fixture.project.toJson(), beforeJson);
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'Same note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'Same note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 0);
@@ -1185,6 +1312,7 @@ void main() {
       expect(
         () => fixture.coordinator.updateCutNote(
           cutId: const CutId('cut-missing'),
+          page: 0,
           note: 'General note',
         ),
         throwsA(
@@ -2509,6 +2637,19 @@ void main() {
       );
     });
   });
+}
+
+/// A project of one track holding one cut, stood on.
+_Fixture _oneCutFixture() {
+  final cut = _cut(id: 'cut-2', name: 'Existing', layers: [_layer(id: 'l')]);
+  return _fixture(
+    _project(
+      tracks: [
+        _track(id: 'track-1', name: 'Video', cuts: [cut]),
+      ],
+    ),
+    activeCutId: cut.id,
+  );
 }
 
 _Fixture _fixture(Project project, {required CutId activeCutId}) {

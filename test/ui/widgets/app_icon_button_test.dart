@@ -666,8 +666,6 @@ void main() {
           home: Scaffold(
             body: TimesheetTabHost(
               session: session,
-              continuous: false,
-              onContinuousChanged: (_) {},
               viewport: CanvasViewport(),
               onViewportChanged: (_) {},
               onBrushAllowedChanged: (_) {},
@@ -686,11 +684,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      // …the sheet-mode controls that joined the bar (R26 #41)…
+      // …the sheet-mode control that joined the bar (R26 #41)…
       expect(
         find.ancestor(
           of: find.byKey(
-            const ValueKey<String>('timesheet-page-mode-toggle-button'),
+            const ValueKey<String>('timesheet-data-mode-toggle-button'),
           ),
           matching: find.byType(AppIconButton),
         ),

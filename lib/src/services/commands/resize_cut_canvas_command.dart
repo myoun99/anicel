@@ -30,18 +30,29 @@ class ResizeCutCanvasCommand
     required this.repository,
     required this.cutId,
     required this.canvasSize,
-    this.anchor = CanvasResizeAnchor.topLeft,
+    this.contentOffset = (dx: 0.0, dy: 0.0),
     this.brushFrameStore,
   });
 
   final ProjectRepository repository;
   final CutId cutId;
   final CanvasSize canvasSize;
-  final CanvasResizeAnchor anchor;
 
-  /// When set, the cut's brush strokes are shifted so the artwork stays
-  /// pinned to [anchor] (the project model only stores the cut size; stroke
-  /// data lives in the app-level brush store).
+  /// How far the picture moves on the canvas: where the old canvas's top
+  /// left lands on the new one. Zero keeps the picture where it was, at
+  /// the top left.
+  ///
+  /// ↩️It was one of the nine anchors ([CanvasResizeAnchor]), which say
+  /// it for a size typed into the window. A canvas whose edges are dragged
+  /// on the canvas (I-79) moves the picture by what no anchor names — a
+  /// left edge pulled out and a right one pushed in shift it with the size
+  /// unchanged — so the anchors became one way of saying this
+  /// ([CanvasResizeAnchor.contentOffset]).
+  final ({double dx, double dy}) contentOffset;
+
+  /// When set, the cut's brush strokes are shifted by [contentOffset] (the
+  /// project model only stores the cut size; stroke data lives in the
+  /// app-level brush store).
   final BrushFrameStore? brushFrameStore;
 
   Project? _previousProject;
@@ -133,14 +144,13 @@ class ResizeCutCanvasCommand
     _previousProject = project;
 
     final fromSize = requireCut(project, cutId).canvasSize;
-    final offset = anchor.contentOffset(from: fromSize, to: canvasSize);
     // Rounded ONCE, before both consumers: the raster blit can only move
     // whole pixels, and a model moved by the exact .5 of an odd-delta
     // centre anchor would sit half a pixel off the picture forever
     // (adversarial review). The centre's own movement stays exact — it
     // is a model-only quantity (the null-anchor law below).
-    _contentDx = offset.dx.roundToDouble();
-    _contentDy = offset.dy.roundToDouble();
+    _contentDx = contentOffset.dx.roundToDouble();
+    _contentDy = contentOffset.dy.roundToDouble();
     _centreDx = (canvasSize.width - fromSize.width) / 2;
     _centreDy = (canvasSize.height - fromSize.height) / 2;
 
@@ -193,7 +203,8 @@ class ResizeCutCanvasCommand
     // phantom bytes (adversarial review).
     //
     // This command wrote that rule first and the rest of the stack now
-    // shares it — [BitmapSurface.tilesNotSharedWith] IS this loop, lifted.
+    // shares it — [BitmapSurface.keptTilesNotSharedWith] IS this loop,
+    // lifted.
     _previousBaked = {
       for (final cut in previousSurfaces.entries)
         cut.key: {

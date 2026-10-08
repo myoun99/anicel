@@ -58,7 +58,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../core/path_names.dart' show pathHash;
+import '../../core/path_names.dart' show fileNameOfPath, pathHash;
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart'
@@ -209,9 +209,11 @@ class ProjectAssetLayout {
 
   static String _withoutExtension(String path) {
     final normalized = path.replaceAll('\\', '/');
-    final slash = normalized.lastIndexOf('/');
-    final dot = normalized.lastIndexOf('.');
-    return dot > slash ? normalized.substring(0, dot) : normalized;
+    final name = fileNameOfPath(normalized);
+    final dot = name.lastIndexOf('.');
+    return dot < 0
+        ? normalized
+        : normalized.substring(0, normalized.length - name.length + dot);
   }
 
   /// `<project>.assets` — beside the file, not inside it.
@@ -318,7 +320,7 @@ class ConformCacheLayout {
   /// open, which is the cost that path was built to remove.
   String conformPathFor(String mediaPath) {
     final normalized = normalizedMediaPath(mediaPath);
-    final name = normalized.substring(normalized.lastIndexOf('/') + 1);
+    final name = fileNameOfPath(normalized);
     final key = pathHash(
       '$normalized|$sampleRate|$speedNumerator/$speedDenominator',
     );
@@ -699,11 +701,6 @@ class AudioConformPipeline {
     String? cacheError;
     if (conformPath != null) {
       try {
-        final directory = conformPath.substring(
-          0,
-          conformPath.replaceAll('\\', '/').lastIndexOf('/'),
-        );
-        Directory(directory).createSync(recursive: true);
         final wav = encodeConform(
           samples: converted,
           channels: decoded.channels,

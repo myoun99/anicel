@@ -34,8 +34,8 @@ import '../editor_session_manager.dart';
 /// it lived on moved.
 ///
 /// The dialog names what is going, so a multi-row delete cannot read as a
-/// single-row one — the names ARE the message, and no new string is invented
-/// to say a number the names already say.
+/// single-row one. ↩️「The names ARE the message」: they were joined into its
+/// sentence until F-303, and are the window's list now ([_deleteWindowFor]).
 Future<void> deleteRowSelectionWithDialog(
   BuildContext context,
   EditorSessionManager session,
@@ -44,14 +44,9 @@ Future<void> deleteRowSelectionWithDialog(
   if (ids.isEmpty) {
     return Future<void>.value();
   }
-  final byId = {for (final layer in session.layers) layer.id: layer};
-  final names = [
-    for (final id in ids)
-      if (byId[id] case final layer?) layer.name,
-  ];
   return confirmThenCommit(
     context,
-    dialog: (_) => DeleteLayerDialog(layerName: names.join(', ')),
+    dialog: (_) => _deleteWindowFor(session, ids),
     commit: session.deleteSelectionSubject,
   );
 }
@@ -66,8 +61,29 @@ Future<void> deleteActiveLayerWithDialog(
   }
   return confirmThenCommit(
     context,
-    dialog: (_) => DeleteLayerDialog(layerName: activeLayer.name),
+    dialog: (_) => _deleteWindowFor(session, [activeLayer.id]),
     commit: session.layerVerbs.deleteActiveLayer,
+  );
+}
+
+/// The delete window for [ids]: every row that goes, listed under its one
+/// sentence as the rail lists them — the rows named and the rows they take
+/// along ([LayerVerbs.rowsHeldBy]: a folder's, F-305; a base's attach rows).
+/// One window for the selection's delete and the standing row's, for one
+/// row and for many (F-303).
+DeleteLayerDialog _deleteWindowFor(
+  EditorSessionManager session,
+  List<LayerId> ids,
+) {
+  final going = {
+    ...ids,
+    for (final row in session.layerVerbs.rowsHeldBy(ids)) row.id,
+  };
+  return DeleteLayerDialog(
+    rows: [
+      for (final row in session.layers.reversed)
+        if (going.contains(row.id)) row.name,
+    ],
   );
 }
 

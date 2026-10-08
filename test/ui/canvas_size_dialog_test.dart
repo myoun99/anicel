@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
   CanvasResizeRequest? dialogResult;
@@ -10,6 +11,7 @@ void main() {
   Future<void> pumpOpenDialog(
     WidgetTester tester, {
     CanvasSize initialSize = const CanvasSize(width: 1920, height: 1080),
+    VoidCallback? onAdjustOnCanvas,
   }) async {
     dialogResult = null;
     await tester.pumpWidget(
@@ -20,8 +22,10 @@ void main() {
               onPressed: () async {
                 dialogResult = await showDialog<CanvasResizeRequest>(
                   context: context,
-                  builder: (context) =>
-                      CanvasSizeDialog(initialSize: initialSize),
+                  builder: (context) => CanvasSizeDialog(
+                    initialSize: initialSize,
+                    onAdjustOnCanvas: onAdjustOnCanvas,
+                  ),
                 );
               },
               child: const Text('open'),
@@ -164,13 +168,22 @@ void main() {
     }
   });
 
-  testWidgets('preset chip fills both fields', (tester) async {
+  // 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서」.
+  testWidgets('a preset picked from the list fills both fields, and the list '
+      'marks the one the fields hold', (tester) async {
     await pumpOpenDialog(tester);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-size-preset-1280x720')),
+      findsNothing,
+      reason: 'the presets are a list, not chips on the window',
+    );
 
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-size-presets')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-size-preset-1280x720')),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(
       fieldByKey(tester, 'canvas-size-width-field').controller!.text,
@@ -179,6 +192,97 @@ void main() {
     expect(
       fieldByKey(tester, 'canvas-size-height-field').controller!.text,
       '720',
+    );
+
+    final marked = [
+      for (final entry in tester
+          .widget<PanelFlyoutButton>(
+            find.byKey(const ValueKey<String>('canvas-size-presets')),
+          )
+          .entriesBuilder())
+        if (entry is PanelFlyoutItem && entry.selected) entry.keyValue,
+    ];
+    expect(marked, ['canvas-size-preset-1280x720']);
+  });
+
+  // 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
+  // 150, 200 and 300 dpi, a line, then HD · FHD · 2K · 4K; 「용지는 특히
+  // 홀수만 아니면됨」.
+  testWidgets('the list holds the paper sizes, a line, then the video sizes '
+      '— none of them odd', (tester) async {
+    await pumpOpenDialog(tester);
+    final entries = tester
+        .widget<PanelFlyoutButton>(
+          find.byKey(const ValueKey<String>('canvas-size-presets')),
+        )
+        .entriesBuilder();
+
+    expect(
+      [
+        for (final entry in entries)
+          if (entry is PanelFlyoutItem) entry.keyValue else '—',
+      ],
+      [
+        'canvas-size-preset-1754x1240',
+        'canvas-size-preset-2340x1654',
+        'canvas-size-preset-3508x2480',
+        '—',
+        'canvas-size-preset-1280x720',
+        'canvas-size-preset-1920x1080',
+        'canvas-size-preset-2560x1440',
+        'canvas-size-preset-3840x2160',
+      ],
+    );
+    for (final row in entries.whereType<PanelFlyoutItem>()) {
+      final size = RegExp(r'(\d+)x(\d+)$').firstMatch(row.keyValue)!;
+      expect(
+        int.parse(size[1]!).isEven && int.parse(size[2]!).isEven,
+        isTrue,
+        reason: row.keyValue,
+      );
+    }
+  });
+
+  testWidgets('⛔no caption explains the anchor grid', (tester) async {
+    await pumpOpenDialog(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('canvas-size-dialog')),
+        matching: find.textContaining('16384'),
+      ),
+      findsNothing,
+      reason: 'the range is the fields\' to enforce, not a sentence\'s',
+    );
+  });
+
+  // 🗣️I-79-Q3 (유저 2026-10-08): 「캔버스에서 조정」.
+  testWidgets('🚨「캔버스에서 조정」 closes the window and opens the adjust on '
+      'the canvas — and stays, greyed, where there is nothing to open', (
+    tester,
+  ) async {
+    var opened = 0;
+    await pumpOpenDialog(tester, onAdjustOnCanvas: () => opened += 1);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-adjust-on-canvas')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(opened, 1);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-size-dialog')),
+      findsNothing,
+      reason: 'the window steps aside for the canvas',
+    );
+    expect(dialogResult, isNull, reason: 'nothing resized from the window');
+
+    await pumpOpenDialog(tester);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey<String>('canvas-size-adjust-on-canvas')),
+          )
+          .onPressed,
+      isNull,
     );
   });
 

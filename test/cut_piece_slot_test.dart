@@ -239,16 +239,23 @@ void main() {
     });
 
     test('only the drag-out verbs wear a shape', () {
-      // The verbs that drag an outline out of the canvas: select, the
-      // shape fill and the cut tools. MOVE does not — it drags a region
-      // that already exists rather than tracing a new one.
+      // The verbs that drag a shape out of the canvas: select, the shape
+      // fill, the cut tools — and the shape tool, which draws what it
+      // traced (I-69). MOVE does not — it drags a region that already
+      // exists rather than tracing a new one.
       for (final tool in CanvasTool.values) {
         expect(
           BrushToolState(tool: tool).activeShapeKind != null,
           tool == CanvasTool.select ||
               tool == CanvasTool.fillShape ||
-              canvasToolCuts(tool),
+              canvasToolCuts(tool) ||
+              canvasToolDrawsShapes(tool),
           reason: '$tool',
+        );
+        expect(
+          BrushToolState(tool: tool).activeShapeKind != null,
+          canvasToolShapes(tool).isNotEmpty,
+          reason: '$tool wears a shape exactly when it speaks any',
         );
       }
       // MOVE mounts the selection layer but traces nothing.
@@ -286,7 +293,8 @@ void main() {
       for (final kind in CanvasShapeKind.values) {
         expect(
           find.byKey(ValueKey<String>('sub-tool-cut-${kind.name}')),
-          findsOne,
+          // A line encloses nothing to cut (I-69).
+          canvasShapeEncloses(kind) ? findsOne : findsNothing,
           reason: '$kind',
         );
       }

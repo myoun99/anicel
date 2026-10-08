@@ -97,6 +97,54 @@ void main() {
     c.detachTicker();
   });
 
+  // 🧪Both tests of a run that plays once looked only at how it ends, and
+  // two mutants lived: one ended the run on its first tick, the other let
+  // it run a frame over its end.
+  testWidgets('a run that plays once goes through its frames first — it '
+      'ends when its clock has run out, and not before', (tester) async {
+    final stopped = <PlaybackPosition>[];
+    final c = controller(onStopped: stopped.add);
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+    c.loopMode = PlaybackLoopMode.once;
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(c.isActive, isTrue);
+    expect(c.position!.localFrameIndex, 1);
+    expect(stopped, isEmpty);
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets('🚨a run that plays once ends ON the tick its clock runs out: '
+      'that tick does not show the first frame again', (tester) async {
+    final stopped = <PlaybackPosition>[];
+    final shown = <int>[];
+    final c = controller(onStopped: stopped.add);
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+    c.loopMode = PlaybackLoopMode.once;
+    c.globalFrameIndexListenable.addListener(() {
+      final frame = c.globalFrameIndexListenable.value;
+      if (frame != null) {
+        shown.add(frame);
+      }
+    });
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    // Four frames of 100ms: the clock has run out at 400ms to the tick.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(c.isActive, isFalse);
+    expect(stopped.single.localFrameIndex, 3);
+    expect(shown, [0, 3], reason: 'the last frame, and never the first again');
+    c.detachTicker();
+  });
+
   testWidgets('long frame gaps drop frames instead of stretching time', (
     tester,
   ) async {

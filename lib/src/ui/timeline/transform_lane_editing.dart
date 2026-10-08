@@ -8,6 +8,7 @@ import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'lane_span_keys_shift.dart';
 import 'property_lane_lens.dart';
+import 'scale_lane_form.dart';
 
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
@@ -48,7 +49,7 @@ TransformTrack? transformTrackWithLaneKeyToggled(
       return track.copyWith(
         scale: track.scale.keyAt(frameIndex) != null
             ? track.scale.withoutKey(frameIndex)
-            : track.scale.withKey(frameIndex, resolvedPose.zoom),
+            : track.scale.withKey(frameIndex, resolvedPose.scale),
       );
     case 'rotation':
       return track.copyWith(
@@ -174,14 +175,18 @@ TransformTrack? transformTrackWithLaneKeysInterpolated(
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
 /// playhead), preserving an existing key's interpolation. Accepted input
-/// per lane (AE display units): position/anchor `x, y`; scale `150` or
-/// `150%` (zoom·100); rotation `45` or `45°`; opacity `75` or `75%`
+/// per lane (AE display units): position/anchor `x, y`; scale as the row's
+/// [scaleForm] reads it — a camera's one zoom `150%`, a layer's two
+/// `150, 80%`, the one left as shown carried when [scaleLinked]
+/// ([ScaleLaneForm.typed]); rotation `45` or `45°`; opacity `75` or `75%`
 /// (clamped 0–100). Null on parse failure.
 TransformTrack? transformTrackWithLaneValueEdited(
   TransformTrack track, {
   required String laneId,
   required int frameIndex,
   required String input,
+  required ScaleLaneForm scaleForm,
+  required bool scaleLinked,
 }) {
   if (frameIndex < 0) {
     return null;
@@ -210,16 +215,21 @@ TransformTrack? transformTrackWithLaneValueEdited(
         ),
       );
     case 'scale':
-      final percent = double.tryParse(input.replaceAll('%', '').trim());
-      if (percent == null || percent <= 0) {
+      // What the lane shows at the frame is what the typed value is read
+      // against — a link carries the box that was left as it was shown.
+      final scale = scaleForm.typed(
+        input,
+        current: track.scale.resolveAt(
+          frameIndex: frameIndex,
+          orElse: () => uniformScale(1),
+          lerp: CanvasPoint.lerp,
+        ),
+        linked: scaleLinked,
+      );
+      if (scale == null) {
         return null;
       }
-      return track.copyWith(
-        scale: track.scale.withKey(
-          frameIndex,
-          percent / 100,
-        ),
-      );
+      return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
     case 'rotation':
       final degrees = double.tryParse(input.replaceAll('°', '').trim());
       if (degrees == null) {
@@ -265,18 +275,14 @@ TransformTrack transformTrackWithPositionDragged(
 
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
 /// the scale lane alone. Dragging a corner is a statement about scale, so
-/// nothing else keys.
+/// nothing else keys. [scale] is the two the box reached — a camera's the
+/// one zoom, twice.
 TransformTrack transformTrackWithScaleDragged(
   TransformTrack track, {
   required int frameIndex,
-  required double zoom,
+  required CanvasPoint scale,
 }) {
-  return track.copyWith(
-    scale: track.scale.withKey(
-      frameIndex,
-      zoom,
-    ),
-  );
+  return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
 }
 
 /// The transform box's ROTATE release (R5 #10) — the rotation lane alone.
@@ -372,7 +378,7 @@ TransformTrack? transformTrackWithGroupReset(
 
   final anchor = reset(track.anchorPoint, defaultAnchorPoint);
   final position = reset(track.position, identity.center);
-  final scale = reset(track.scale, identity.zoom);
+  final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);
   if (anchor == null &&
@@ -404,7 +410,7 @@ LaneLens<TransformTrack>? transformLaneLens(String laneId) =>
         get: (track) => track.position,
         set: (track, lane) => track.copyWith(position: lane),
       ),
-      'scale' => PropertyLaneLens<TransformTrack, double>(
+      'scale' => PropertyLaneLens<TransformTrack, CanvasPoint>(
         get: (track) => track.scale,
         set: (track, lane) => track.copyWith(scale: lane),
       ),

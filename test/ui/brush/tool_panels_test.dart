@@ -96,15 +96,17 @@ void main() {
       ]);
     });
 
-    testWidgets('every shape gets a tile under every drag-out verb', (
-      tester,
-    ) async {
+    testWidgets('every shape a drag-out verb speaks gets a tile under it, '
+        'and no other shape does', (tester) async {
       // The point of the shared vocabulary: adding a CanvasShapeKind must
       // not need a hand-written tile per verb. If this fails after a shape
       // is added, some verb was left behind.
+      // ↩️It read 「every shape under every verb」 until the shape tool
+      // (I-69) brought the line, which only a verb that DRAWS speaks.
       for (final (verb, prefix) in const [
         (CanvasTool.select, 'sub-tool-select'),
         (CanvasTool.cut, 'sub-tool-cut'),
+        (CanvasTool.shape, 'sub-tool-shape'),
       ]) {
         await tester.pumpWidget(
           app(
@@ -115,14 +117,42 @@ void main() {
             ),
           ),
         );
+        expect(canvasToolShapes(verb), isNotEmpty, reason: '$verb');
         for (final kind in CanvasShapeKind.values) {
           expect(
             find.byKey(ValueKey<String>('$prefix-${kind.name}')),
-            findsOneWidget,
+            canvasToolShapes(verb).contains(kind)
+                ? findsOneWidget
+                : findsNothing,
             reason: '$verb / $kind',
           );
         }
       }
+    });
+
+    testWidgets('the shape tool lists the three shapes it draws and picks one '
+        'on tap', (tester) async {
+      final pressed = <ToolPress>[];
+      await tester.pumpWidget(
+        app(
+          ToolLibraryPanel(
+            tool: CanvasTool.shape,
+            onPress: pressed.add,
+            brushLibrary: const SizedBox.shrink(),
+          ),
+        ),
+      );
+      expect(
+        tester.widgetList<ListTile>(find.byType(ListTile)),
+        hasLength(3),
+        reason: 'a rectangle, an ellipse and a line',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-shape-line')),
+      );
+      expect(pressed, [
+        const ShapeTilePress(CanvasTool.shape, CanvasShapeKind.line),
+      ]);
     });
   });
 
@@ -146,7 +176,8 @@ void main() {
         for (final kind in CanvasShapeKind.values) {
           expect(
             find.byKey(ValueKey<String>('sub-tool-fill-${kind.name}')),
-            findsOneWidget,
+            // A line has no inside to fill.
+            canvasShapeEncloses(kind) ? findsOneWidget : findsNothing,
             reason: '$verb / $kind',
           );
         }
@@ -299,6 +330,15 @@ void main() {
         CanvasTool.move: {},
         CanvasTool.guide: {},
         CanvasTool.eyedropper: {},
+        // The text's size and colour are its own, in the tool settings.
+        CanvasTool.text: {},
+        // The shape tool draws with the brush in hand: its size and its
+        // opacity, under a blend of its own. No pen is read.
+        CanvasTool.shape: {
+          ToolParameter.blend,
+          ToolParameter.size,
+          ToolParameter.opacity,
+        },
       };
       expect(
         table.keys.toSet(),
@@ -338,6 +378,8 @@ void main() {
         CanvasTool.guide: CanvasTool.guide,
         CanvasTool.select: CanvasTool.select,
         CanvasTool.move: CanvasTool.move,
+        CanvasTool.text: CanvasTool.text,
+        CanvasTool.shape: CanvasTool.shape,
       };
       expect(
         groups.keys.toSet(),

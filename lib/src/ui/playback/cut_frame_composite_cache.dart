@@ -24,29 +24,6 @@ import '../../core/pin_counts.dart';
 typedef CutBrushFrameKeyResolver =
     BrushFrameKey Function(Cut cut, LayerId layerId, FrameId frameId);
 
-/// The frame range being played (or about to play) that budget eviction
-/// must not touch.
-class PlaybackProtectedRange {
-  const PlaybackProtectedRange({
-    required this.cutId,
-    required this.startFrame,
-    required this.endFrame,
-    required this.quality,
-  });
-
-  final CutId cutId;
-  final int startFrame;
-  final int endFrame;
-  final PlaybackQuality quality;
-
-  bool contains(CutId cutId, int frameIndex, PlaybackQuality quality) {
-    return cutId == this.cutId &&
-        quality == this.quality &&
-        frameIndex >= startFrame &&
-        frameIndex <= endFrame;
-  }
-}
-
 class _CompositeEntry {
   _CompositeEntry({required this.image, required this.signature});
 
@@ -61,14 +38,22 @@ class _CompositeEntry {
   /// the whole index per candidate and comparing SIGNATURES, whose `==`
   /// walks every layer node — O(candidates × index × layers), inside a
   /// function that runs after every warmed frame.
-  final Set<(CutId, int, PlaybackQuality)> indexKeys =
-      <(CutId, int, PlaybackQuality)>{};
+  final Set<(CutId, int)> indexKeys = <(CutId, int)>{};
 
   int lastUsed = 0;
 }
 
-/// Level-2 playback cache: `(cut, frameIndex, quality)` → composited
-/// canvas-space `ui.Image`, GPU-composed from [LayerFrameImageCache] images.
+/// Level-2 playback cache: `(cut, frameIndex)` → the cut's picture there,
+/// a canvas-space `ui.Image` GPU-composed from [LayerFrameImageCache] images.
+///
+/// 🚨A CUT'S PICTURE IS THE CANVAS'S OWN SIZE (유저 2026-10-08: 「재생화질
+/// 옵션 자체가 1/4재생소재 만드는게 손해니까 그냥 없애고 원본재생으로만
+/// 두자」). ↩️It was rastered at a playback quality tier's size — half by
+/// default, with every layer image made at that tier — and the tier was the
+/// third part of every key here. Measured on the device, the smaller tiers
+/// took LONGER to prepare than this one (F-296): a layer image at a tier is
+/// drawn whole, halved and cropped, where at its own size the ink is drawn
+/// once.
 ///
 /// Composites self-validate through [CutFrameCompositeSignature]; held
 /// exposures produce equal signatures and therefore share one stored image
@@ -88,8 +73,7 @@ class CutFrameCompositeCache {
   // R8: the fx switches are model state on the cut, so nothing about them
   // is held here — they reach the signature through the plan, which
   // self-invalidates any cached frame whose pixels they change.
-  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature> _index =
-      {};
+  final Map<(CutId, int), CutFrameCompositeSignature> _index = {};
   final Map<CutFrameCompositeSignature, _CompositeEntry> _images = {};
   int _useCounter = 0;
   bool _disposed = false;
@@ -100,15 +84,10 @@ class CutFrameCompositeCache {
   /// frame.
   int _estimatedBytes = 0;
 
-  CutFrameCompositeSignature _signatureFor(
-    Cut cut,
-    int frameIndex,
-    PlaybackQuality quality,
-  ) {
+  CutFrameCompositeSignature _signatureFor(Cut cut, int frameIndex) {
     return computeCutFrameCompositeSignature(
       cut: cut,
       frameIndex: frameIndex,
-      quality: quality,
       revisionOf: (layerId, frameId) =>
           frameStore
               .frameOrNull(frameKeyOf(cut, layerId, frameId))
@@ -127,8 +106,7 @@ class CutFrameCompositeCache {
   CutFrameCompositeSignature signatureOf({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
-  }) => _signatureFor(cut, frameIndex, quality);
+  }) => _signatureFor(cut, frameIndex);
 
   /// The cached composite when its stored signature still matches the cut's
   /// current state; `null` on miss or staleness.
@@ -143,8 +121,8 @@ class CutFrameCompositeCache {
   /// already paid for.
   ///
   /// The hit adopts the key (`_pointIndexAt`), which is load-bearing, not
-  /// cosmetic: pins and protected ranges test an entry's `indexKeys`, so
-  /// an unfiled frame would be an unprotectable frame.
+  /// cosmetic: a pin and the budget's order both read an entry's
+  /// `indexKeys`, so an unfiled frame would be a frame nobody can keep.
   ///
   /// ⚠️Cost shape: a MISS now computes one signature where the bare index
   /// miss used to return free — but every miss path that matters was
@@ -153,10 +131,9 @@ class CutFrameCompositeCache {
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
   }) {
-    final indexKey = (cut.id, frameIndex, quality);
-    final fresh = _signatureFor(cut, frameIndex, quality);
+    final indexKey = (cut.id, frameIndex);
+    final fresh = _signatureFor(cut, frameIndex);
     final entry = _images[fresh];
     if (entry == null) {
       return null;
@@ -174,18 +151,18 @@ class CutFrameCompositeCache {
     CutFrameCompositeSignature signature,
   ) => _images[signature]?.signature;
 
-  /// The lookup both prepare paths share: the signature this (cut, frame,
-  /// quality) composites to, the index key that points at it, and the
-  /// cached image when one is already held (touched as used, and the index
-  /// repointed, exactly as a hit has always done).
+  /// The lookup both prepare paths share: the signature this (cut, frame)
+  /// composites to, the index key that points at it, and the cached image
+  /// when one is already held (touched as used, and the index repointed,
+  /// exactly as a hit has always done).
   ({
     CutFrameCompositeSignature signature,
-    (CutId, int, PlaybackQuality) indexKey,
+    (CutId, int) indexKey,
     ui.Image? hit,
   })
-  _lookup(Cut cut, int frameIndex, PlaybackQuality quality) {
-    final signature = _signatureFor(cut, frameIndex, quality);
-    final indexKey = (cut.id, frameIndex, quality);
+  _lookup(Cut cut, int frameIndex) {
+    final signature = _signatureFor(cut, frameIndex);
+    final indexKey = (cut.id, frameIndex);
     final existing = _images[signature];
     if (existing == null) {
       return (signature: signature, indexKey: indexKey, hit: null);
@@ -200,9 +177,8 @@ class CutFrameCompositeCache {
   Future<ui.Image> prepareComposite({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
   }) async {
-    final found = _lookup(cut, frameIndex, quality);
+    final found = _lookup(cut, frameIndex);
     final hit = found.hit;
     if (hit != null) {
       return hit;
@@ -221,10 +197,9 @@ class CutFrameCompositeCache {
   Future<ui.Image?> prepareCompositeInterruptible({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
     required bool Function() shouldAbort,
   }) async {
-    final found = _lookup(cut, frameIndex, quality);
+    final found = _lookup(cut, frameIndex);
     final hit = found.hit;
     if (hit != null) {
       return hit;
@@ -255,7 +230,7 @@ class CutFrameCompositeCache {
   /// hold reference counts on it, and the orphan's image could never be
   /// released (the leak the parked track stack surfaced).
   ui.Image _storeComposed(
-    (CutId, int, PlaybackQuality) indexKey,
+    (CutId, int) indexKey,
     CutFrameCompositeSignature signature,
     ui.Image image,
   ) {
@@ -280,10 +255,9 @@ class CutFrameCompositeCache {
     CutFrameCompositeSignature signature, {
     bool Function()? shouldAbort,
   }) async {
-    final raster = scaledCanvasSize(cut.canvasSize, signature.quality);
+    final raster = cut.canvasSize;
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
-    final scale = raster.width / cut.canvasSize.width;
     final rasterBounds = ui.Rect.fromLTWH(
       0,
       0,
@@ -291,17 +265,16 @@ class CutFrameCompositeCache {
       raster.height.toDouble(),
     );
     var aborted = false;
+    var layerBytes = 0;
 
-    // ⛔1, not [scale]. This walk paints in RASTER pixels — there is no CTM
-    // scale here; the quality tier is already baked into `rasterBounds` and
-    // into every layer image. The number a sub-tree rasterises at is the
-    // scale of the canvas it is drawn into, and that canvas is 1:1.
+    // This walk paints in canvas pixels with no matrix on the canvas, so a
+    // sub-tree rasterises at the scale of the canvas it is drawn into: 1.
     const rasterScale = 1.0;
 
-    // [texelScale]: raster pixels per canvas unit on [canvas] — the tier's
-    // own at the top, times the scale a sub-tree raster snapped its grid to
-    // below a folder (smaller only when its cap clamps it). Every canvas here
-    // is a raster aligned to canvas space.
+    // [texelScale]: raster pixels per canvas unit on [canvas] — 1 at the top,
+    // times the scale a sub-tree raster snapped its grid to below a folder
+    // (smaller only when its cap clamps it). Every canvas here is a raster
+    // aligned to canvas space.
     Future<void> paintNodes(
       ui.Canvas canvas,
       List<CompositeNodeSignature> nodes, {
@@ -329,10 +302,9 @@ class CutFrameCompositeCache {
             // node, so a plain 통과 folder costs no buffer at all.
             final groupPlan = resolveCompositeEffectPlan(
               effects,
-              // This canvas IS the raster: the cut composites at the quality
-              // tier's resolution with no CTM carrying that scale, so the
-              // chain arrives pre-multiplied or a Half preview blurs double.
-              space: DrawSpace.preScaled(scale),
+              // Canvas pixels, one to one: the chain's radii are already in
+              // the space this draw lands in.
+              space: DrawSpace.canvas,
             );
             final groupPaint = layerCompositePaint(
               opacity: opacity,
@@ -368,9 +340,7 @@ class CutFrameCompositeCache {
             :final effects,
             :final mix,
           ):
-            // R6b: the scope into one buffer, the row's chain onto it. The
-            // radii scale with this quality tier's raster like every other
-            // blur here.
+            // R6b: the scope into one buffer, the row's chain onto it.
             //
             // 🚨ONE RASTER, TWO BLITS. Below full strength the scope used to
             // be COMPOSED twice — the mix is a crossfade, not a fade-out —
@@ -380,10 +350,8 @@ class CutFrameCompositeCache {
               bounds: rasterBounds,
               effects: effects,
               mix: mix,
-              // This canvas IS the raster: the cut composites at the quality
-              // tier's resolution with no CTM carrying that scale, so the
-              // chain arrives pre-multiplied or a Half preview blurs double.
-              space: DrawSpace.preScaled(scale),
+              // Canvas pixels, one to one, as the group's chain above.
+              space: DrawSpace.canvas,
             );
             await drawSubtreeAsImageAsync(
               canvas: canvas,
@@ -407,11 +375,12 @@ class CutFrameCompositeCache {
             final layerImage = await layerImages.prepare(
               key: frameKeyOf(cut, layer.layerId, layer.frameId),
               canvasSize: cut.canvasSize,
-              quality: signature.quality,
+              // The cel at its own pixels.
+              quality: PlaybackQuality.full,
               sourceEffects: halves.source,
               shouldAbort: shouldAbort,
               inkSuffices: inkCropDrawsTheSame(
-                pose: layer.pose,
+                placement: layer.placement,
                 blendMode: layer.blendMode,
                 effects: halves.paint,
               ),
@@ -426,32 +395,27 @@ class CutFrameCompositeCache {
               }
               continue;
             }
-            // Layer transforms apply at composite time; the pose is
-            // canvas-space, adapted to this quality tier's raster scale.
-            // Folder FX is already COMPOSED into this pose by the shared
-            // visit (an affine transform distributes over compositing, so
-            // it needs no buffer) — one pose, every route identical.
+            layerBytes += estimatedImageBytes(
+              layerImage.image.width,
+              layerImage.image.height,
+            );
+            // Layer transforms apply at composite time; the placement is
+            // canvas-space, as this raster is.
+            // Folder FX is already FOLDED into it by the shared visit (an
+            // affine transform distributes over compositing, so it needs
+            // no buffer) — one placement, every route identical.
             //
             // R6: the row's effects filter its own picture before the
-            // opacity/blend meet the stack, and the images here are
-            // ALREADY at this quality tier's raster — so the scale reaches
-            // the effect resolver too, or a half-size preview would show a
-            // double-strength blur.
+            // opacity/blend meet the stack.
             drawPosedLayerImage(
               canvas,
               image: layerImage.image,
               worldRect: layerImage.worldRect,
               extent: layerImage.extent,
-              canvasSize: cut.canvasSize,
-              pose: layer.pose,
-              anchorPoint: layer.anchorPoint,
+              placement: layer.placement,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: halves.paint,
-              // The pose and the dst rect are GEOMETRY, so this stays a plain
-              // scale; `drawPosedLayerImage` turns it into a [DrawSpace] for
-              // the chain itself.
-              rasterScale: scale,
               texelScale: texelScale,
               // A4: today's value, now in writing — bilinear, as this
               // route has always sampled a posed layer. An unposed one lands
@@ -466,8 +430,8 @@ class CutFrameCompositeCache {
               drawAtOriginWhen: (worldRect, image) =>
                   worldRect.left == 0 &&
                   worldRect.top == 0 &&
-                  image.width == (worldRect.width * scale).round() &&
-                  image.height == (worldRect.height * scale).round(),
+                  image.width == worldRect.width.round() &&
+                  image.height == worldRect.height.round(),
             );
         }
       }
@@ -484,13 +448,14 @@ class CutFrameCompositeCache {
     final walkWatch = InputInspector.visible.value
         ? (Stopwatch()..start())
         : null;
-    await paintNodes(canvas, signature.nodes, texelScale: scale);
+    await paintNodes(canvas, signature.nodes, texelScale: 1);
     if (aborted) {
       recorder.endRecording().dispose();
       return null;
     }
     final picture = recorder.endRecording();
     walkWatch?.stop();
+    _lastComposeLayerBytes = layerBytes;
     try {
       // Last check before the big slice: the full-canvas rasterization is
       // the composite's dominant cost (raster-thread contention included).
@@ -532,9 +497,34 @@ class CutFrameCompositeCache {
 
   int get estimatedBytes => _estimatedBytes;
 
-  /// Evicts least-recently-used composites until at or under [maxBytes],
-  /// never touching frames inside any of the [protect] ranges (the playing
-  /// playlist may span several cuts).
+  /// What the layer images of the picture composed last weigh — the working
+  /// set the next picture is most likely made of again (a background held
+  /// through the cut, the cels still on screen). The budget keeps room for
+  /// it beside the composites, or a full window would rebuild every layer
+  /// image for every picture.
+  int get lastComposeLayerBytes => _lastComposeLayerBytes;
+  int _lastComposeLayerBytes = 0;
+
+  /// Lets go of composites until at or under [maxBytes] — the ones WANTED
+  /// LATEST first, and never one a screen shows (a pinned slot). Answers
+  /// whether the total fits.
+  ///
+  /// [stepOf] says how many frames on a slot is wanted (`FrameDemand.stepOf`;
+  /// null = not at all, so the first to go). Among pictures wanted equally
+  /// the least recently used goes first — the whole order, when nobody says
+  /// what is wanted.
+  ///
+  /// With [laterThan], only pictures wanted later than that many frames on
+  /// may go: room for a picture is never made out of one wanted sooner than
+  /// it.
+  ///
+  /// 🚨NOTHING IS KEPT WHOLE BUT WHAT A SCREEN SHOWS (유저 2026-10-08: 「4
+  /// 허용치도 해결」; 「저장」 10-08: 「천장은 지키는 범위에도 걸린다 — 지키는
+  /// 것만으로 넘치면 화면 핀이 아닌 것부터 놓는다」). ↩️A `protect` list of
+  /// frame RANGES was passed over here whatever [maxBytes] said — the active
+  /// cut's frames, and every cut of the playlist while playing — so the cap
+  /// held only for what nobody had asked to keep, and when a memory warning
+  /// halved it the same ranges stayed.
   ///
   /// One pass over the IMAGES, using each entry's own reverse keys: no
   /// signature is hashed or compared here at all. The old shape re-walked
@@ -543,43 +533,64 @@ class CutFrameCompositeCache {
   /// every layer node — which made the enforcer O(entries² × layers) in
   /// the function that runs after every warmed frame. At 1500 cuts it was
   /// costlier than the work it freed.
-  void enforceBudget({
+  bool enforceBudget({
     required int maxBytes,
-    List<PlaybackProtectedRange> protect = const [],
+    int? Function(CutId cutId, int frameIndex)? stepOf,
+    int? laterThan,
   }) {
     if (_estimatedBytes <= maxBytes) {
-      return;
+      return true;
     }
-    bool isProtected(_CompositeEntry entry) {
-      for (final key in entry.indexKeys) {
-        // A pinned frame is on screen through a holder's clone —
-        // playback's held frame, the parked track stack. Evicting it
-        // returns no bytes and re-composites the exact picture being
-        // shown.
-        if (_pins.isPinned(key)) {
-          return true;
-        }
-        for (final range in protect) {
-          if (range.contains(key.$1, key.$2, key.$3)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    final evictable =
-        _images.values.where((entry) => !isProtected(entry)).toList()
-          ..sort((a, b) => a.lastUsed.compareTo(b.lastUsed));
-    for (final candidate in evictable) {
+    final candidates = <(_CompositeEntry, int)>[
+      for (final entry in _images.values)
+        if (!_isPinned(entry)) (entry, _wantedAt(entry, stepOf)),
+    ]..sort((a, b) {
+      final latestFirst = b.$2.compareTo(a.$2);
+      return latestFirst != 0
+          ? latestFirst
+          : a.$1.lastUsed.compareTo(b.$1.lastUsed);
+    });
+    for (final (candidate, wantedAt) in candidates) {
       if (_estimatedBytes <= maxBytes) {
+        break;
+      }
+      if (laterThan != null && wantedAt <= laterThan) {
+        // Latest first: everything from here on is wanted sooner still.
         break;
       }
       for (final key in candidate.indexKeys.toList()) {
         _releaseIndexEntry(key);
       }
     }
+    return _estimatedBytes <= maxBytes;
   }
+
+  /// Wanted by no frame at all — later than any step.
+  static const int _neverWanted = 1 << 62;
+
+  /// How many frames on [entry]'s picture is wanted: the soonest of the
+  /// slots it is filed under.
+  int _wantedAt(
+    _CompositeEntry entry,
+    int? Function(CutId cutId, int frameIndex)? stepOf,
+  ) {
+    var soonest = _neverWanted;
+    if (stepOf == null) {
+      return soonest;
+    }
+    for (final key in entry.indexKeys) {
+      final step = stepOf(key.$1, key.$2);
+      if (step != null && step < soonest) {
+        soonest = step;
+      }
+    }
+    return soonest;
+  }
+
+  /// A pinned frame is on screen through a holder's clone — playback's held
+  /// frame, the parked track stack. Evicting it returns no bytes and
+  /// re-composites the exact picture being shown.
+  bool _isPinned(_CompositeEntry entry) => entry.indexKeys.any(_pins.isPinned);
 
   void dispose() {
     _disposed = true;
@@ -595,14 +606,13 @@ class CutFrameCompositeCache {
   // the slot, eviction refuses it, and [pinnedBytes] reports what the
   // screen is actually holding.
 
-  final PinCounts<(CutId, int, PlaybackQuality)> _pins =
-      PinCounts<(CutId, int, PlaybackQuality)>();
+  final PinCounts<(CutId, int)> _pins = PinCounts<(CutId, int)>();
 
-  void retainPin((CutId, int, PlaybackQuality) indexKey) {
+  void retainPin((CutId, int) indexKey) {
     _pins.retain(indexKey);
   }
 
-  void releasePin((CutId, int, PlaybackQuality) indexKey) {
+  void releasePin((CutId, int) indexKey) {
     _pins.release(indexKey);
   }
 
@@ -625,7 +635,7 @@ class CutFrameCompositeCache {
   }
 
   void _pointIndexAt(
-    (CutId, int, PlaybackQuality) indexKey,
+    (CutId, int) indexKey,
     CutFrameCompositeSignature signature,
   ) {
     final previous = _index[indexKey];
@@ -639,7 +649,7 @@ class CutFrameCompositeCache {
     _images[signature]!.indexKeys.add(indexKey);
   }
 
-  void _releaseIndexEntry((CutId, int, PlaybackQuality) indexKey) {
+  void _releaseIndexEntry((CutId, int) indexKey) {
     final signature = _index.remove(indexKey);
     if (signature != null) {
       _releaseSignature(signature, indexKey);
@@ -648,7 +658,7 @@ class CutFrameCompositeCache {
 
   void _releaseSignature(
     CutFrameCompositeSignature signature,
-    (CutId, int, PlaybackQuality) indexKey,
+    (CutId, int) indexKey,
   ) {
     final entry = _images[signature];
     if (entry == null) {

@@ -23,29 +23,6 @@ const ProjectId conteInkProjectId = ProjectId('conte-ink');
 const TrackId conteInkTrackId = TrackId('conte-ink');
 const LayerId conteInkRowLayerId = LayerId('conte-row');
 
-/// The conte ink's resolution: its surfaces' pixels per page point — what
-/// the ink is drawn at and what every printer lays it back at.
-///
-/// ONE, the canvas's grade (유저 2026-09-26, one-paper-brush-width-Q2:
-/// 「해상도를 캔버스처럼 낮추기」): a brush of a size at 100% draws on the
-/// sheet as wide as on the canvas, and a surface pixel is a pixel of the
-/// brush's own size. It was 4 — a brush four times thinner than on the
-/// canvas at the same size, and sixteen times the memory; zoomed in, the ink
-/// now shows its pixels as the canvas does.
-///
-/// ↩️The page painter kept a copy of the controller's number so as not to
-/// import the input side; two numbers that must agree are two chances to
-/// print ink at a scale it was not drawn at.
-///
-/// ↩️↩️The conte's paper drew a brush as thin as the pictures beside it for
-/// two days (F-217-Q1 「종이에서는 붓을 그림 칸 비율로 줄여 긋기」, while
-/// a stroke crossed from a picture onto the paper); the user took it back
-/// once a stroke stays in the cell it starts in (2026-09-30, H50: 「원본
-/// 1:1그대로 공용로직 그대로 적용해서 원복하자. 지금 브러시 너무작은데
-/// 중요한건 너무작아서 브러시가 끊겨서」). The paper reads the brush in
-/// its own pixels, as the timesheet's and the envelope's do.
-const int conteInkScale = 1;
-
 /// Cell-anchored plane: one surface per storyboard BLOCK — the block's own
 /// [inkId] (`ExposureMemo.inkId`) in the frame slot, not its drawing's id:
 /// two exposures of one cel write each for itself.

@@ -41,6 +41,62 @@ PerspectiveShape _perspective(
 );
 
 void main() {
+  // A row's placement is one of these (F-256-Q1), and a stamp crosses a
+  // placement that only MOVES by moving its centre, byte for byte.
+  test('a map only moves when every direction is left as it is — a shear '
+      'or a mirror that keeps a 1 somewhere is not a move', () {
+    expect(const GuideTransform(1, 0, 0, 1, 7, -3).isPureTranslation, isTrue);
+    expect(const GuideTransform.identity().isPureTranslation, isTrue);
+    for (final (a, b, c, d) in const [
+      (1.0, 0.5, 0.0, 1.0),
+      (1.0, 0.0, 0.5, 1.0),
+      (-1.0, 0.0, 0.0, 1.0),
+      (1.0, 0.0, 0.0, 2.0),
+    ]) {
+      expect(
+        GuideTransform(a, b, c, d, 7, -3).isPureTranslation,
+        isFalse,
+        reason: '[$a $c; $b $d]',
+      );
+    }
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): a row can be stretched along one axis, and
+  // a guide is still a thing of the canvas the user is looking at.
+  group('symmetryCopiesIn', () {
+    final shape = _symmetry(axis: _verticalAxis(40), lineCount: 4);
+
+    test('on the canvas the copies are the canvas\'s own', () {
+      expect(
+        symmetryCopiesIn(GuideSpace.canvas, shape),
+        symmetryTransforms(shape),
+      );
+    });
+
+    test('in a placed row every copy is the canvas\'s, read through the '
+        'placement — and the original stays exactly itself', () {
+      // Its own (x, y) shows at (2x + 7, y/2 − 3): no similarity.
+      const space = GuideSpace(
+        toCanvas: GuideTransform(2, 0, 0, 0.5, 7, -3),
+        toStroke: GuideTransform(0.5, 0, 0, 2, -3.5, 6),
+      );
+      final stroke = _point(11, 29);
+      final back = space.toStroke.apply(space.toCanvas.apply(stroke));
+      _expectPoint(back, stroke.x, stroke.y);
+
+      final copies = symmetryCopiesIn(space, shape);
+      final onCanvas = symmetryTransforms(shape);
+
+      expect(copies, hasLength(onCanvas.length));
+      expect(copies.first, const GuideTransform.identity());
+      for (var k = 0; k < copies.length; k += 1) {
+        final shown = space.toCanvas.apply(copies[k].apply(stroke));
+        final expected = onCanvas[k].apply(space.toCanvas.apply(stroke));
+        _expectPoint(shown, expected.x, expected.y);
+      }
+    });
+  });
+
   group('symmetryTransforms', () {
     test('produces exactly lineCount copies in both modes', () {
       for (final count in [2, 4, 6, 8, 16]) {

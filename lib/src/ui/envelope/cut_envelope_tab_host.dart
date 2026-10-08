@@ -3,12 +3,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/sheet_paper.dart';
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
@@ -118,16 +118,17 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     final cut = session.cutUnderPlayhead.resolve()?.cut;
     final form = CutEnvelopePresets.byId(widget.formId);
 
-    // The panel shows the CUT-fitted paper: that is the size the export
-    // drops into a working file at, so what is on screen is what ships.
-    // Ink is measured against the FORM, not this, so a cut with a bigger
-    // canvas never moves what is already written.
-    final paper = cut == null
-        ? CanvasSize(width: 1920, height: (1920 / form.aspectRatio).round())
-        : CanvasSize(
-            width: cut.canvasSize.width,
-            height: cut.canvasSize.height,
-          );
+    // The panel shows the envelope's OWN paper — A4 on its side at 300dpi
+    // (F-294, 유저 2026-10-05: 「콘티패널이랑 컷봉투패널의 용지는 300dpi」 ·
+    // 「컷봉투 가로a4 수용할게」), whatever cut it is the envelope of. Ink is
+    // measured against the FORM, not this, so a paper of another size —
+    // an export's — never moves what is already written.
+    //
+    // ↩️It showed the CUT-fitted paper, the size the export drops into a
+    // working file at (「what is on screen is what ships」): a paper that
+    // changed with the cut under the playhead, and 1920 across with none.
+    // The export still chooses its own paper (`CutEnvelopePaperMode`).
+    final paper = SheetPaper.envelope.pixelSize;
     final layout = CutEnvelopeLayout.fit(
       form: form,
       paperWidth: paper.width.toDouble(),
@@ -155,7 +156,9 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
 
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
-      canvasSize: paper,
+      // The form is ruled straight onto the paper's pixels (its layout
+      // scales with the paper it is given), so a unit here IS a pixel.
+      sheetSize: SheetPaper.envelope.extent,
       viewport: widget.viewport,
       viewportController: widget.viewportController,
       onViewportChanged: widget.onViewportChanged,

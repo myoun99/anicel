@@ -3,8 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
+import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
+import '../widgets/transport_bar.dart' show TransportSound;
+import 'audio_viewer_document.dart';
 import 'page_rasters.dart';
 import 'viewer_sound.dart';
 
@@ -23,6 +27,9 @@ abstract interface class MediaRunSurface {
   /// The file whose SOUND plays beside the pages, or null when the thing
   /// shown cannot carry any.
   String? get soundPath;
+
+  /// How loud that sound plays — asked each time it starts.
+  ViewerLoudness get loudness;
 
   bool get mounted;
 
@@ -130,6 +137,93 @@ class MediaRun {
   /// or sound. 유저 2026-09-08: 「뷰어 소리 내는 범위는 싹 다야」 — so a
   /// waveform, which turns no pages at all, still gets the button.
   bool get canPlay => turnsItsOwnPages || _surface.soundPath != null;
+
+  // --- What a transport counts over this run --------------------------------
+
+  /// The sound shown as its own picture — a waveform, one page — or null
+  /// when the document is not one.
+  AudioPeaks? get _waveform => switch (_surface.document) {
+    final AudioViewerDocument waveform => waveform.peaks,
+    _ => null,
+  };
+
+  /// The instant of a frame and back, in microseconds, rounded the way the
+  /// mixer's samples are ([ProjectFrameRate.frameToSample]) so the pair
+  /// round-trips: a seek to a frame reads back as that frame.
+  static const int _micros = Duration.microsecondsPerSecond;
+
+  /// How many frames a transport runs over: a waveform's length in
+  /// [rate]'s frames, anything else its pages — one when there is nothing,
+  /// and the bar sits there inert.
+  ///
+  /// 🚨ONE COUNT for every surface that puts a transport under a run — the
+  /// import window's preview and the media viewer (F-289). ↩️It was the
+  /// import preview's own, and the viewer's transport would have been the
+  /// second place a sound is counted in frames.
+  int frameCount(ProjectFrameRate rate) =>
+      _waveform?.durationFrames(rate) ?? math.max(1, _pageCount);
+
+  /// Where the playhead stands, in those frames: the page, or a waveform's
+  /// seconds ([soundSeconds]) — a waveform is one page.
+  int frameAt(ProjectFrameRate rate) => _waveform == null
+      ? _page
+      : rate.sampleToFrame((soundSeconds * _micros).round(), _micros);
+
+  /// The hand moved the playhead to [frame]. A waveform's seconds move with
+  /// it; anything else turns to the page. A run going picks up from there,
+  /// sound and all ([movedByHand]).
+  void seekToFrame(int frame, ProjectFrameRate rate) {
+    _surface.setState(() {
+      if (_waveform != null) {
+        soundSeconds = rate.frameToSample(frame, _micros) / _micros;
+      } else {
+        _surface.turnToPage(frame);
+      }
+      // TURNING A PAGE IS ASKING AGAIN — the viewer's law for a page its
+      // engine once refused (`MediaViewerTabHost`'s `_forgetRefusals`).
+      _rasters.forgetRefusals();
+    });
+    movedByHand();
+  }
+
+  /// The transport's sound cell over this run: the surface's loudness as it
+  /// stands, and what a hand on the speaker or the bar asks of it
+  /// ([onChanged] — the surface keeps the answer) — or null when the thing
+  /// shown carries no sound, and the cell stands off.
+  ///
+  /// A level is mixed into what the device is handed ([ViewerSound.play]),
+  /// so a sound already going is armed again where it stands — once the
+  /// hand lets go of the bar, not on every step under it. Moving the bar
+  /// un-mutes: the hand is asking to hear it.
+  TransportSound? soundCell({
+    required ValueChanged<ViewerLoudness> onChanged,
+  }) {
+    if (_surface.soundPath == null) {
+      return null;
+    }
+    final loudness = _surface.loudness;
+    void set(ViewerLoudness next, {required bool settled}) {
+      if (next != loudness) {
+        onChanged(next);
+      }
+      if (settled) {
+        movedByHand();
+      }
+    }
+
+    return TransportSound(
+      level: loudness.level,
+      muted: loudness.muted,
+      onLevelChanged: (level) =>
+          set(ViewerLoudness(level: level), settled: false),
+      onLevelSettled: (level) =>
+          set(ViewerLoudness(level: level), settled: true),
+      onMuteToggled: () => set(
+        ViewerLoudness(level: loudness.level, muted: !loudness.muted),
+        settled: true,
+      ),
+    );
+  }
 
   // --- The playback buffer (a player, not a slideshow) --------------------
 
@@ -328,7 +422,11 @@ class MediaRun {
       }
       if (soundPath != null) {
         soundSeconds = _resumeSeconds();
-        sound.play(soundPath, fromSeconds: soundSeconds);
+        sound.play(
+          soundPath,
+          fromSeconds: soundSeconds,
+          gain: _surface.loudness.gain,
+        );
       }
       // ⛔A run with neither pages to turn nor sound coming out is a timer
       // saying 「재생 중」 to the actuation gate while nothing happens — and

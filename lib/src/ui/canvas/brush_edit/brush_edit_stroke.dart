@@ -47,6 +47,79 @@ class _BrushEditStroke {
     _state._opening.startContact(
       _state._pressure.noteSample(event, opening: true),
     );
+    _arm(
+      strokeSettings,
+      at: canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+      // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
+      // jitter come from its press, so every view that hears the press
+      // rolls the same numbers. ↩️Written for a sheet's windows each
+      // drawing their own slice of one stroke (one paper, 유저 2026-09-25);
+      // a stroke is one window's now (H49, 09-30), and the press still
+      // decides its dice.
+      dice: Object.hash(event.pointer, event.timeStamp),
+    );
+    // A press off the pasteboard lays nothing down; the stroke's first dab
+    // comes where a move crosses in.
+    _state._opening.press(
+      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
+      at: event.timeStamp,
+      position: canvasPosition,
+    );
+  }
+
+  /// The pointer a stroke the TOOL lays wears: none of a real pointer's
+  /// numbers, which count up from zero.
+  static const int _toolsOwnStroke = -1;
+
+  /// A stroke the TOOL lays begins at [canvasPosition] (I-69) — no pointer
+  /// under it and no pen: the pressure rests at full
+  /// ([_BrushEditPressure.restInput]), and nothing is laid here. Its first
+  /// dab is its first advance's, which finds no dab before it and lays the
+  /// start of its segment, turned the way the segment runs
+  /// ([advanceStrokeTo]). A pen's press lays a dab of its own because a pen
+  /// that never moves has still pressed; a path always goes on.
+  ///
+  /// ⚠️Nothing steadies it and nothing snaps it, and not because anything
+  /// here says so: its points go straight to [advanceStrokeTo], past the
+  /// stabiliser and the perspective snap a pen's samples pass through
+  /// ([takeSample], [advanceStrokeThroughGuides]). A stroke the tool lays
+  /// goes where it was told.
+  ///
+  /// ⚠️[_toolsOwnStroke] stands in for the pointer for the length of the
+  /// ONE call that lays the stroke and lands it ([_BrushEditPathStroke]):
+  /// the landing asks whether a stroke is in flight by asking for its
+  /// pointer, and no pointer event is heard in between.
+  void beginToolStroke(
+    CanvasPoint canvasPosition, {
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
+    _state._activeDrawingPointer = _toolsOwnStroke;
+    _state._touchStrokeDownPosition = null;
+    _state._touchStrokeCommitted = false;
+    final strokeSettings = _state.widget.inputSettings();
+    _state._activeStrokeInputSettings = strokeSettings;
+    _arm(
+      strokeSettings,
+      at: canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: dice,
+    );
+  }
+
+  /// THE STROKE IS ARMED — everything a stroke stands on before its first
+  /// dab, whoever begins it: the host hears that one is in flight, the
+  /// stabiliser, the snap, the symmetry, the dynamics and the ground mixer
+  /// are made for it from [strokeSettings], and the overlay opens in its
+  /// blend.
+  void _arm(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
+    final canvasPosition = at;
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
@@ -65,17 +138,12 @@ class _BrushEditStroke {
       guides: _state.widget.guides,
       start: canvasPosition,
       zoom: _state.widget.viewport.zoom,
+      space: _state.widget.guideSpace,
     );
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
         ? const []
-        : symmetryTransforms(symmetry);
-    // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
-    // jitter come from its press, so every view that hears the press rolls
-    // the same numbers. ↩️Written for a sheet's windows each drawing their
-    // own slice of one stroke (one paper, 유저 2026-09-25); a stroke is one
-    // window's now (H49, 09-30), and the press still decides its dice.
-    final dice = Object.hash(event.pointer, event.timeStamp);
+        : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);
     _state._strokeDynamics = BrushStrokeDynamics(
@@ -111,13 +179,6 @@ class _BrushEditStroke {
     _state._overlay._overlayModel.preBlendBase = strokeSurface;
     _state._collectedDabs.clear();
     _state._prepareLiveRasterizer();
-    // A press off the pasteboard lays nothing down; the stroke's first dab
-    // comes where a move crosses in.
-    _state._opening.press(
-      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
-      at: event.timeStamp,
-      position: canvasPosition,
-    );
   }
 
   /// One pen sample for the stroke: painted now — or, while the stroke
@@ -417,14 +478,21 @@ class _BrushEditStroke {
   ) {
     final overlay = _state._overlay._overlayModel;
     for (final entry in promoted) {
+      // ★The tile the coordinate SHOWS once this lands — the committed tile,
+      // or it with the cel's texts laid over (R9-rest): the overlay has
+      // been showing exactly that tile's pixels, so that is the tile its
+      // picture belongs to. Handed to the committed tile instead, a picture
+      // holding letters would stand for the bare drawing — and go on
+      // showing them after the text was moved or deleted.
+      final shown = overlay.tileShownFor(entry.coord, entry.tile);
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
       );
       if (image != null) {
-        BitmapTileImageCache.instance.adoptDecoded(entry.tile, image);
+        BitmapTileImageCache.instance.adoptDecoded(shown, image);
       } else {
-        BitmapTileImageCache.instance.pictureFor(entry.tile);
+        BitmapTileImageCache.instance.pictureFor(shown);
       }
     }
     _state.widget.onSourceStrokeCommitted(data);

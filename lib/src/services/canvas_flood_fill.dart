@@ -12,7 +12,6 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/layer_id.dart';
@@ -24,6 +23,7 @@ import 'canvas_color_sampler.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
+import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
@@ -163,7 +163,7 @@ class LazyCanvasRasterRgb {
     bool extendBeyondCanvas = false,
     CanvasReadSource source = CanvasReadSource.display,
     LayerId? activeLayerId,
-    LayerPoseSample? space,
+    LayerPlacement? space,
   }) {
     // Extended (pasteboard) fills widen the raster by a finite apron and
     // shift its origin into negative world space; the default raster IS
@@ -201,7 +201,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     required Set<LayerId>? read,
-    required LayerPoseSample? space,
+    required LayerPlacement? space,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -228,10 +228,7 @@ class LazyCanvasRasterRgb {
     // eyedropper reads by too. R20-C2's flag (the CSP lighthouse: paint on a
     // colour layer never blocks or leaks a fill traced against the line
     // art) is one of its three answers since I-36. HOW each is read is
-    // [_carryInto]'s: in the seed's [space], through the layer's pose.
-    final toCanvas = space == null
-        ? null
-        : artworkToCanvas(space, cut.canvasSize);
+    // [_carryInto]'s: in the seed's [space], through the layer's placement.
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
@@ -239,11 +236,13 @@ class LazyCanvasRasterRgb {
       if (read != null && !read.contains(entry.layer.id)) {
         continue;
       }
-      final carry = _carryInto(entry, space, toCanvas, cut.canvasSize);
+      final carry = _carryInto(entry, space);
       final surface = surfaceResolver(entry.layer, entry.frame);
       if (carry.shows && surface != null) {
         _layers.add((
-          surface: surface,
+          // The cel as it SHOWS: a letter bounds a fill as a drawn line
+          // does (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+          surface: celSurfaceWithTextsLaid(surface),
           opacity: entry.opacity,
           toArtwork: carry.toArtwork,
         ));
@@ -608,26 +607,17 @@ class LazyCanvasRasterRgb {
     );
   }
 
-  /// [toArtwork] folded into the kernel's destination-INDEX → source-index
-  /// form, for a tile at [world]'s origin reading [source] — the kernel
-  /// supplies both half pixels (see `selectionAffineResampleTransform`).
+  /// [toArtwork] folded for a tile at [world]'s origin reading [source].
   static ResampleTransform _resampleFold(
     GuideTransform toArtwork,
     DirtyRegion world,
     DirtyRegion source,
-  ) => ResampleTransform(
-    a: toArtwork.a,
-    b: toArtwork.c,
-    c: toArtwork.a * world.left +
-        toArtwork.c * world.top +
-        toArtwork.tx -
-        source.left,
-    d: toArtwork.b,
-    e: toArtwork.d,
-    f: toArtwork.b * world.left +
-        toArtwork.d * world.top +
-        toArtwork.ty -
-        source.top,
+  ) => planeResampleTransform(
+    toSource: toArtwork,
+    srcLeft: source.left,
+    srcTop: source.top,
+    outLeft: world.left,
+    outTop: world.top,
   );
 }
 
@@ -643,9 +633,9 @@ typedef _ReadLayer = ({
 /// How [entry] is read by a raster laid in [space]: null `toArtwork` for a
 /// layer placed exactly as that space (read 1:1, byte for byte as before —
 /// every layer, when nothing is posed); otherwise the map from raster WORLD
-/// into the layer's artwork, out through the space's pose ([toCanvas]) and
-/// in through the inverse of the layer's own. `shows` is false when the
-/// layer's pose collapses it: it shows nothing, so it walls nothing.
+/// into the layer's artwork, out through the space's placement and in
+/// through the inverse of the layer's own. `shows` is false when the
+/// layer's placement collapses it: it shows nothing, so it walls nothing.
 ///
 /// 🚨I-36 — THE POSE LAW, the eyedropper's since R28 #7: a posed layer is
 /// read THROUGH its pose, never skipped. P5+P6 skipped posed layers in both
@@ -657,25 +647,19 @@ typedef _ReadLayer = ({
 /// artwork.
 ({bool shows, GuideTransform? toArtwork}) _carryInto(
   CutFrameCompositeEntry entry,
-  LayerPoseSample? space,
-  GuideTransform? toCanvas,
-  CanvasSize canvasSize,
+  LayerPlacement? space,
 ) {
-  if (entry.pose == space?.pose &&
-      (space == null || entry.anchorPoint == space.anchorPoint)) {
+  final placement = entry.placement;
+  if (placement == space) {
     return (shows: true, toArtwork: null);
   }
-  final pose = entry.pose;
-  final fromCanvas = pose == null
+  final fromCanvas = placement == null
       ? const GuideTransform.identity()
-      : canvasToArtwork(
-          (pose: pose, anchorPoint: entry.anchorPoint),
-          canvasSize,
-        );
+      : canvasToArtwork(placement);
   if (fromCanvas == null) {
     return (shows: false, toArtwork: null);
   }
-  final carried = toCanvas == null ? fromCanvas : fromCanvas.compose(toCanvas);
+  final carried = space == null ? fromCanvas : fromCanvas.compose(space);
   return (shows: true, toArtwork: carried.isIdentity ? null : carried);
 }
 
@@ -1155,26 +1139,41 @@ FloodFillRegion? _gapCloseFloodRegion({
 
 /// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):
 /// the outline the user just drew, filled with [color] whatever is under
-/// it.
+/// it — [buildRegionFillDab] for one outline.
+BrushDab? buildShapeFillDab({
+  required CanvasSelectionShape shape,
+  required int color,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) => buildRegionFillDab(
+  region: CanvasSelectionRegion.shape(shape),
+  color: color,
+  opacity: opacity,
+  options: options,
+);
+
+/// An AREA laid as ONE dab: every pixel [region] covers, painted [color]
+/// whatever is under it and whoever asked — the fill tool's shape fill
+/// ([buildShapeFillDab]), and what the shape tool lays without the brush:
+/// its fill and its plain line (I-69).
 ///
 /// It shares the flood's tail rather than resembling it. Once there is a
 /// coverage mask the two are the same problem, so the expand and
 /// anti-alias passes are literally [_cropAndFinishFloodRegion] — which is
 /// why "AA follows the fill" (유저 확정) needed no new rasterizer: the
 /// bucket's AA has always been a post-pass over a binary mask, and a
-/// polygon's mask is binary too.
+/// region's mask is binary too.
 ///
 /// What it does NOT share is the front: no lazy compose, no seed, no
-/// tolerance. A shape fill never looks at the picture, so it never pays to
+/// tolerance. An area never looks at the picture, so it never pays to
 /// composite one — this is markedly cheaper than a flood, not a variant of
-/// it. Null when the outline covers no pixels at all.
-BrushDab? buildShapeFillDab({
-  required CanvasSelectionShape shape,
+/// it. Null when the region covers no pixels at all.
+BrushDab? buildRegionFillDab({
+  required CanvasSelectionRegion region,
   required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
 }) {
-  final region = CanvasSelectionRegion.shape(shape);
   final bounds = region.coverageBounds;
   final left = bounds.left.floor();
   final top = bounds.top.floor();
@@ -1257,7 +1256,7 @@ BrushDab? buildFillDab({
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
   LayerId? activeLayerId,
-  LayerPoseSample? space,
+  LayerPlacement? space,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {
@@ -1287,9 +1286,15 @@ BrushDab? buildFillDab({
   // The raster is built ONCE and every flood samples it, so N copies cost N
   // floods and not N composites — and every copy sees the same untouched
   // picture, which is what makes the result independent of seed order.
+  //
+  // [symmetry] is the CANVAS's and [point] is in [space]: the copies are
+  // the canvas's, read through the seed's placement like a stroke's.
   final seeds = symmetry == null
       ? <CanvasPoint>[point]
-      : [for (final copy in symmetryTransforms(symmetry)) copy.apply(point)];
+      : [
+          for (final copy in symmetryCopiesIn(guideSpaceOf(space), symmetry))
+            copy.apply(point),
+        ];
   final parts = <FloodFillRegion>[];
   var reachedWall = false;
   for (final seed in seeds) {

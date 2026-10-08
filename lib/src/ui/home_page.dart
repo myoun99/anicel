@@ -14,6 +14,7 @@ import '../models/working_panel.dart';
 import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
+import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
@@ -36,6 +37,7 @@ import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
+import 'brush/brush_library_keys.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
@@ -48,16 +50,21 @@ import 'input/contact_census.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
+import 'cut_command_group.dart' show landCanvasAdjust;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
+import 'menu/project_open_door.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
     show playOrStop, skipToStart, toggleVoiceRecordingWithFeedback;
+import 'shortcuts/brush_actions.dart';
 import 'shortcuts/editor_action_registry.dart';
+import 'shortcuts/panel_actions.dart';
 import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
@@ -68,6 +75,7 @@ import 'timeline/instance_editor_commands.dart'
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
+import 'timeline/timeline_bar_menus.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
@@ -81,6 +89,7 @@ import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
+import 'widgets/panel_flyout.dart' show pressFlyoutRow;
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -102,6 +111,7 @@ class HomePage extends StatefulWidget {
     this.layoutStore,
     this.presetFileService,
     this.tipLibraryService,
+    this.fontLibraryService,
     this.languageSettingsStore,
   });
 
@@ -124,6 +134,10 @@ class HomePage extends StatefulWidget {
   /// tips by id and load after them, so a test that seeds presets seeds
   /// this too, on its own directory.
   final BrushTipLibraryService? tipLibraryService;
+
+  /// Where the fonts this device was brought are kept — a test that brings
+  /// one hands in a library on its own directory.
+  final FontLibraryService? fontLibraryService;
 
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
@@ -273,6 +287,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
+  /// The text tool's channel (R9-rest): the keys, a step of history about
+  /// to be taken and a project going off screen reach the text the canvas
+  /// is holding through here. The WINDOW's, as the selection's is.
+  final CelTextCommands _canvasTextCommands = CelTextCommands();
+
   /// The last drawing action, which 확정 lays down again. Shell-owned
   /// because it outlives a project (유저: 「프로그램을 닫을 때까지」).
   final LastStrokeSlot _lastStroke = LastStrokeSlot();
@@ -280,9 +299,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 확정 — Enter here, and the rail's ↵ and 적용 in the workspace.
   late final ConfirmVerb _confirm = ConfirmVerb(
     selection: _canvasSelectionCommands,
+    text: _canvasTextCommands,
     lastStroke: _lastStroke,
     tool: _brushTool,
     transformOptions: _transformOptions,
+    canvasAdjust: () => _session.canvasAdjust,
+    landCanvasAdjust: () => landCanvasAdjust(context, _session),
   );
 
   /// Undo and redo — the keys, the finger taps and a mapped button here,
@@ -307,6 +329,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final EditorShortcutBindings _shortcuts = EditorShortcutBindings(
     store: _unlessTesting(ShortcutSettingsStore.new),
   )..sheet = _flipHud;
+
+  /// The brush library as the keys reach it (I-56): the workspace says what
+  /// it holds, the bindings make rows of it, and a brush action presses
+  /// through it.
+  late final BrushLibraryKeys _brushKeys = BrushLibraryKeys()
+    ..addListener(_showBrushesToShortcuts);
+
+  void _showBrushesToShortcuts() => _shortcuts.setBrushActions(
+    brushActionsOf(_brushKeys.groups, _brushKeys.presets),
+  );
+
+  /// The workspace's panels as rows of the shortcut list (I-40) — told
+  /// whenever the panels' menu changes, and when the program language does:
+  /// a panel's row wears the panel's own name.
+  void _showPanelsToShortcuts() =>
+      _shortcuts.setPanelActions(panelActionsOf(_panelsMenu.entries));
+
+  /// The top strip as it is on screen — and as a KEY presses it: a menu
+  /// row's action is pressed among this same strip's rows
+  /// ([EditorTopStrip.menuRows]), so a key and its row cannot be handed
+  /// different things.
+  EditorTopStrip _topStrip() => EditorTopStrip(
+    projects: _projects,
+    onCloseProject: (session) => unawaited(_closeProject(session)),
+    panelsMenu: _panelsMenu,
+    brushTool: _brushTool,
+    colorBackground: _colorWheelBackground,
+    colorPalette: _colorPalette,
+    onColorPaletteChanged: _setColorPalette,
+  );
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
   /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
@@ -372,6 +424,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
+    _panelsMenu.addListener(_showPanelsToShortcuts);
+    AppText.settings.addListener(_showPanelsToShortcuts);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
       _paletteService?.loadOrDefaults().then((palette) {
@@ -441,6 +495,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // too (2026-09-16).
   }
 
+  /// R9-rest: this device's font library is about to let go of [files].
+  /// Every open project that carries one of them — in front or behind —
+  /// takes its bytes first ([ProjectFonts.holdBytesOf]): a font registered
+  /// with a project stays the project's, whatever the device's list does.
+  Future<void> _keepFontFiles(Set<String> files) => Future.wait([
+    for (final session in _projects.sessions)
+      session.projectFonts.holdBytesOf(files),
+  ]);
+
   /// Makes a session for [project] and hangs this shell's hooks on it — the
   /// one way a project comes to be open ([OpenProjects.open] and
   /// [OpenProjects.prepare] call it).
@@ -452,6 +515,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       frameworkImageCache: PaintingBinding.instance.imageCache,
       failedSaveCopies: _failedSaveCopies,
       appClipboard: _clipboard,
+      // The library the workspace lists its fonts from, so a project is
+      // saved with the files a person sees in that list.
+      fontLibrary: widget.fontLibraryService,
       // ONE FILE, ONE WRITER — see [ProjectFile.isOpenElsewhere].
       fileIsOpenElsewhere: (path) {
         final bound = _projects.boundTo(path);
@@ -552,11 +618,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     if (_onScreen != null) {
       _canvasSelectionCommands.confirmPendingMove();
+      // R9-rest: and a text in hand lands on the project it was set in.
+      _canvasTextCommands.landNow();
     }
     _onScreen = session;
     _canvasSelectionCommands.document = session.canvasSelection;
     _history = HistoryVerbs(
       selection: _canvasSelectionCommands,
+      text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
     );
@@ -640,6 +709,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _noteUserActivity(PointerEvent event) {
     _contacts.note(event);
     _autosaveClock.noteActivity(strokeInFlight: _contacts.anyDown);
+    // What the undo door will be told is down, where a screenshot can read
+    // it (F-232). ⛔Built only while the inspector is shown: this runs on
+    // every pointer event, a stroke's moves included.
+    if (InputInspector.visible.value) {
+      InputInspector.pin('census', 'census ${_contacts.held}');
+    }
   }
 
   /// The window lost the OS's focus — a notification took it, another app
@@ -758,12 +833,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     _goingAway.clear();
     _appSettings.dispose();
+    _panelsMenu.removeListener(_showPanelsToShortcuts);
     _panelsMenu.dispose();
     _brushTool.dispose();
     _transformOptions.dispose();
     _lastStroke.dispose();
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
+    AppText.settings.removeListener(_showPanelsToShortcuts);
+    _brushKeys.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();
     super.dispose();
@@ -834,16 +912,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       );
       return;
     }
-    if (definition?.pixelVerb case final verb?) {
-      if (_session.pixelVerbs.canRunPixelVerb) {
-        _session.pixelVerbs.runPixelVerb(verb);
-      }
+    // 🗣️I-56 (유저 2026-10-01): 「브러시 그룹이나 브러시에도 단축키」 — a brush
+    // action presses what the brush's row or the group's tab does.
+    if (definition?.brushPress case final press?) {
+      _brushKeys.press(press);
       return;
     }
-    if (definition?.pixelClipboardVerb case final verb?) {
-      if (_session.pixelVerbs.canRunPixelClipboardVerb(verb)) {
-        _session.pixelVerbs.runPixelClipboardVerb(verb);
-      }
+    // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록.
+    // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
+    // a row of a menu is pressed AS the row: built the way its menu builds
+    // it, and pressed only where the menu would let it be. The rows are the
+    // top strip's and the timeline bar's, the bar's built for the panel
+    // being worked in — as every key on that bar speaks to it.
+    if (definition?.menuRow ?? false) {
+      pressFlyoutRow([
+        ..._topStrip().menuRows(context),
+        ...TimelineBarMenus(
+          session: _session,
+          panel: _workingPanel,
+        ).rows(context),
+      ], actionId);
       return;
     }
     // 🗣️I-31: a blend action picks what the strip's blend chooser picks, and
@@ -933,11 +1021,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (panel.canBlankExposure) {
           panel.blankExposure();
         }
+      // I-63 ③: the layer pill's ＋, pressed by key — the one kind the panel
+      // being worked in adds (the timeline an animation layer, the
+      // storyboard an S row), which is what that button's press is.
+      case EditorActionIds.layerAdd:
+        _workingPanel.addLayer();
       case EditorActionIds.frameToggleMark:
         final panel = _workingPanel;
         if (panel.canToggleMark) {
           panel.toggleMark();
         }
+      // I-40: the frame pill's standing switch, by key — its button's press.
+      case EditorActionIds.frameAutoCreate:
+        toggleAutoCreateFrameOnDraw(_session);
       case EditorActionIds.timelinePushBlocks:
         final row = _workingPanel.shiftCurrentRow;
         if (_session.blockShift.canPushBlocks(currentRow: row)) {
@@ -1019,17 +1115,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.pasteLinkedPress?.call();
       case EditorActionIds.editPasteIndependent:
         _workingPanel.pasteIndependentPress?.call();
+      case EditorActionIds.editUnlink:
+        _workingPanel.unlinkPress?.call();
       case EditorActionIds.editDelete:
-        _workingPanel
-            .deletePress(
-              onDeleteRowSelection: () =>
-                  unawaited(deleteRowSelectionWithDialog(context, _session)),
-            )
-            ?.call();
-      case EditorActionIds.fileSave:
-        unawaited(saveProject(context, _session));
-      case EditorActionIds.fileSaveAs:
-        unawaited(promptSaveProjectAs(context, _session));
+        // R9-rest: the thing in hand first — Delete takes a text held by
+        // its box off its cel, and only with none in hand is it the
+        // panel's delete (the frames and rows selected there).
+        if (_canvasTextCommands.holdsText) {
+          _canvasTextCommands.deleteText();
+        } else {
+          _workingPanel
+              .deletePress(
+                onDeleteRowSelection: () =>
+                    unawaited(deleteRowSelectionWithDialog(context, _session)),
+              )
+              ?.call();
+        }
       case EditorActionIds.layerVisibilitySolo:
         _session.visibilitySolo.toggleLayerVisibilitySolo();
       case EditorActionIds.canvasZoomIn:
@@ -1067,8 +1168,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _abandonPolygonOrCancelTransform() {
+    // I-79: Escape closes a canvas being adjusted on the canvas — its ✕.
+    if (_session.canvasAdjust.isOpen) {
+      _session.canvasAdjust.end();
+      return;
+    }
     if (_canvasSelectionCommands.hasOpenPolygon) {
       _canvasSelectionCommands.abandonPolygon();
+      return;
+    }
+    // R9-rest: Esc lets go of a text held by its box — what a click away
+    // does (the press table 유저 took on 2026-10-06). Held by its letters
+    // the key is the field's, and lets go of those.
+    if (_canvasTextCommands.holdsText) {
+      _canvasTextCommands.confirm();
       return;
     }
     _canvasSelectionCommands.cancelTransform();
@@ -1236,25 +1349,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             in _projects.sessions)
                                           projectTabLabel(_projects, session),
                                       ]),
-                                      builder: (context, _) => EditorTopStrip(
-                                        projects: _projects,
-                                        onCloseProject: (session) =>
-                                            unawaited(_closeProject(session)),
-                                        panelsMenu: _panelsMenu,
-                                        brushTool: _brushTool,
-                                        colorBackground: _colorWheelBackground,
-                                        colorPalette: _colorPalette,
-                                        onColorPaletteChanged: _setColorPalette,
-                                      ),
+                                      builder: (context, _) => _topStrip(),
                                     ),
                                   ),
                                 ),
                                 Expanded(
                                   child: EditorWorkspace(
                                     session: _session,
+                                    onProjectFilesDropped: (paths) =>
+                                        unawaited(_openDroppedProjects(paths)),
                                     layoutStore: widget.layoutStore,
                                     presetFileService: widget.presetFileService,
                                     tipLibraryService: widget.tipLibraryService,
+                                    fontLibraryService:
+                                        widget.fontLibraryService,
+                                    keepFontFiles: _keepFontFiles,
                                     panelsMenu: _panelsMenu,
                                     brushTool: _brushTool,
                                     transformOptions: _transformOptions,
@@ -1266,12 +1375,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         _canvasNavigationRegionKey,
                                     canvasSelectionCommands:
                                         _canvasSelectionCommands,
+                                    canvasTextCommands: _canvasTextCommands,
                                     lastStroke: _lastStroke,
                                     toolHold: _toolHold,
                                     confirm: _confirm,
                                     history: _history,
                                     layerNav: _timelineLayerNav,
                                     flipHud: _flipHud,
+                                    brushKeys: _brushKeys,
                                     onInvokeAction: _invokeAction,
                                   ),
                                 ),
@@ -1376,6 +1487,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
     return ensureUnsavedWorkSettled(context, session);
+  }
+
+  /// Project files dropped on the window (F-247): through the Open door —
+  /// the one the Project menu and the Recent rows use — one after another,
+  /// each in a tab of its own.
+  Future<void> _openDroppedProjects(List<String> paths) async {
+    final door = ProjectOpenDoor(_projects);
+    for (final path in paths) {
+      if (!mounted) {
+        return;
+      }
+      await door.open(context, (
+        path: path,
+        folderBookmark: null,
+        placed: false,
+      ));
+    }
   }
 
   /// A tab's close button: the same question the window asks, for that
@@ -1486,13 +1614,19 @@ final class _ProjectHooks {
     final history = session.historyManager;
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
-    history.onBeforeUndoRedo =
-        shell._canvasSelectionCommands.confirmPendingMove;
+    //
+    // R9-rest: and a text in hand lands the same way — as it is shown, at
+    // once — so the step taken is the one the user is looking at.
+    history.onBeforeUndoRedo = () {
+      shell._canvasSelectionCommands.confirmPendingMove();
+      shell._canvasTextCommands.landNow();
+    };
     // ...and a step that WAITED for its pictures asks first whether there
     // is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>
         shell._canvasSelectionCommands.movePending ||
-        shell._canvasSelectionCommands.transformActive;
+        shell._canvasSelectionCommands.transformActive ||
+        shell._canvasTextCommands.holdsAnything;
     history.addListener(shell._recordRecentColor);
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its

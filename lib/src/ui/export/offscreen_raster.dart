@@ -4,19 +4,19 @@ import 'dart:ui' as ui;
 import '../../models/canvas_size.dart';
 
 /// The pixel size one page rasters at: the caller's [outputSize] when it
-/// names one, otherwise the page's natural size at [scale].
+/// names one — the preview asks for a thumbnail at a size it chose and must
+/// get exactly that — otherwise the page's own size, its paper's pixels.
 ///
-/// An explicit size WINS over the scale — the preview asks for a thumbnail
-/// at a size it chose and must get exactly that, whatever run scale the
-/// export settings carry.
+/// ↩️It took a SCALE over the page too (the export window's 1x–4x row).
+/// 유저 2026-10-06: 「시트 이미지는 배율 없앰. 늘 용지 그대로. 콘티든
+/// 컷봉투든 똑같음」.
 ({int width, int height}) offscreenRasterSize({
   required double naturalWidth,
   required double naturalHeight,
-  required double scale,
   CanvasSize? outputSize,
 }) => (
-  width: outputSize?.width ?? (naturalWidth * scale).round(),
-  height: outputSize?.height ?? (naturalHeight * scale).round(),
+  width: outputSize?.width ?? naturalWidth.round(),
+  height: outputSize?.height ?? naturalHeight.round(),
 );
 
 /// One offscreen raster: a recorder, a canvas handed to [paint], the

@@ -3,85 +3,25 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 
-const _ol = CameraInstructionDef(
-  id: 'ol',
-  name: 'O.L',
-  iconKey: 'overlap',
-  markType: CameraInstructionMarkType.ol,
-);
-const _pan = CameraInstructionDef(id: 'pan', name: 'PAN', iconKey: 'pan');
-
+/// THE MEMO BAND PRINTS THE CUT NOTE, AND NOTHING A DIRECTION WRITES (I-72,
+/// 유저 2026-10-05: 「앞으론 디렉션레이어 만든게 타임시트 용지의 메모란에
+/// 텍스트로 추가되지않음」). The session side — a new span writes nothing into
+/// the note — is `a_direction_writes_nothing_into_the_sheet_memo_test`.
 void main() {
-  group('timesheetMemoInstructionLine', () {
-    test('full form: endpoints, mark glyph, label, memo', () {
-      const event = InstructionEvent(
-        instructionId: 'ol',
-        length: 6,
-        valueA: 'C',
-        valueB: 'D',
-        memo: 'カットO.L',
-      );
-      expect(timesheetMemoInstructionLine(event, _ol), 'C⋈D O.L カットO.L');
-    });
-
-    test('blank parts drop out; bar defs use the arrow glyph', () {
-      expect(
-        timesheetMemoInstructionLine(
-          const InstructionEvent(instructionId: 'ol', length: 6, valueA: 'A'),
-          _ol,
-        ),
-        'A⋈ O.L',
-      );
-      expect(
-        timesheetMemoInstructionLine(
-          const InstructionEvent(
-            instructionId: 'pan',
-            length: 12,
-            valueA: 'A',
-            valueB: 'B',
-          ),
-          _pan,
-        ),
-        'A→B PAN',
-      );
-    });
-
-    test('free event text wins over the vocabulary name; a dangling def '
-        'falls back to bar + raw id', () {
-      expect(
-        timesheetMemoInstructionLine(
-          const InstructionEvent(
-            instructionId: 'pan',
-            length: 4,
-            text: 'メモリPAN',
-            memo: 'ゆっくり',
-          ),
-          _pan,
-        ),
-        '→ メモリPAN ゆっくり',
-      );
-      expect(
-        timesheetMemoInstructionLine(
-          const InstructionEvent(instructionId: 'gone', length: 4),
-          null,
-        ),
-        '→ gone',
-      );
-    });
-  });
-
-  test('fromCut derives NO instruction lines — the shorthand writes itself '
-      'into the (editable) cut note at creation instead (R5-⑥)', () {
+  test('fromCut derives no instruction lines: the memo band is the cut note '
+      'alone', () {
     final cut = Cut(
       id: const CutId('memo-cut'),
       name: 'Memo Cut',
       duration: 24,
       canvasSize: const CanvasSize(width: 640, height: 360),
+      metadata: const CutMetadata(pageNotes: ['N']),
       layers: [
         Layer(
           id: const LayerId('cel'),
@@ -101,7 +41,6 @@ void main() {
               length: 6,
               valueA: 'C',
               valueB: 'D',
-              memo: 'カットO.L',
             ),
           },
         ),
@@ -115,8 +54,6 @@ void main() {
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
-    // The memo band prints only the cut note; the instruction event alone
-    // contributes nothing derived.
-    expect(document.memoText, cut.metadata.note);
+    expect(document.memoTextOf(0), 'N');
   });
 }

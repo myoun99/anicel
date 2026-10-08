@@ -1,7 +1,6 @@
 import '../widgets/empty_state_text.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/envelope/cut_envelope_paper.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../dialogs/app_prompt_dialog.dart';
@@ -37,9 +36,7 @@ class ExportPresetRail extends StatelessWidget {
     ExportTab.sequence => AppText.strings.exTabSequence,
     ExportTab.image => AppText.strings.exImage,
     ExportTab.cels => AppText.strings.exCels,
-    ExportTab.timesheet => AppText.strings.panelTimesheet,
     ExportTab.conte => AppText.strings.panelConte,
-    ExportTab.envelope => AppText.strings.panelEnvelope,
   };
 
   /// One-line rule summary under the preset name.
@@ -52,24 +49,10 @@ class ExportPresetRail extends StatelessWidget {
       '${ExportFormatModule.summarize(spec.format)} · '
           '${exportCelLabelText(spec.label)} · '
           '${exportCelFilterSummary(spec)}',
-    TimesheetExportSpec() => switch (spec.format) {
-      ExportTimesheetFormat.sheetImage => AppText.strings.exSheetImage,
-      ExportTimesheetFormat.xdts => 'XDTS',
-    },
     ConteExportSpec() => switch (spec.format) {
       ExportConteFormat.pdf => AppText.strings.exVectorPdf,
       ExportConteFormat.pageImage => AppText.strings.exPageImage,
     },
-    EnvelopeExportSpec() => [
-      if (spec.paperMode == CutEnvelopePaperMode.cut)
-        AppText.strings.exCutSize
-      else
-        AppText.strings.exRealSheet,
-      if (spec.separateLayerFiles)
-        AppText.strings.exPngCount(spec.orderedLayers.length)
-      else
-        AppText.strings.exLayerCount(spec.orderedLayers.length),
-    ].join(' · '),
   };
 
   @override

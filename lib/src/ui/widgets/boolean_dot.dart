@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../repaint_props.dart';
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 
@@ -41,12 +44,20 @@ class BooleanDot extends StatelessWidget {
   const BooleanDot({
     super.key,
     required this.value,
+    this.mixed = false,
     this.inPickOneGroup = false,
     this.enabled = true,
     this.size,
-  });
+  }) : assert(!(mixed && value), 'a mixed ring is not on');
 
   final bool value;
+
+  /// Whether what this stands for is on in some places and off in others —
+  /// the letters a text setting speaks for, some bold and some not
+  /// (R9-rest, the tool settings 유저 took on 2026-10-06: 「섞인 값은 「—」로
+  /// 보입니다」). The ring wears a dash then: neither state's glyph, and
+  /// still a ring. [value] is false with it — a press turns every one ON.
+  final bool mixed;
 
   /// Whether turning this ON turns something else OFF.
   final bool inPickOneGroup;
@@ -70,9 +81,15 @@ class BooleanDot extends StatelessWidget {
   /// reports it without saying it again.
   @override
   Widget build(BuildContext context) => Semantics(
-    toggled: value,
+    // A mixed ring is neither: it says so, and says no state.
+    toggled: mixed ? null : value,
+    mixed: mixed ? true : null,
     child: Icon(
-      value ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      switch ((mixed, value)) {
+        (true, _) => Icons.remove_circle_outline,
+        (false, true) => Icons.radio_button_checked,
+        (false, false) => Icons.radio_button_unchecked,
+      },
       size: size,
       color: switch ((enabled, value, inPickOneGroup)) {
         (false, _, _) => AppColors.glyphDisabled,
@@ -101,6 +118,7 @@ class BooleanDotButton extends StatelessWidget {
     required this.onChanged,
     required this.tooltip,
     this.inPickOneGroup = false,
+    this.size = AppIconButtonSize.bar,
   });
 
   final String keyValue;
@@ -114,22 +132,180 @@ class BooleanDotButton extends StatelessWidget {
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
 
+  /// 「크기는 알아서」 — the bar's size, unless the slot the button stands in
+  /// was promised a box of its own (a rail row's cell: [AppIconButtonBox]).
+  /// The dense one left with the export window's ring-only rows, which are
+  /// settings rows now (유저 09-24, 「설정 줄 하나로」).
+  final AppIconButtonMetrics size;
+
   @override
   Widget build(BuildContext context) {
     final changed = onChanged;
     return AppIconButton(
       keyValue: keyValue,
       tooltip: tooltip,
-      // 「크기는 알아서」 — the bar's size. The dense one left with the export
-      // window's ring-only rows, which are settings rows now (유저 09-24,
-      // 「설정 줄 하나로」).
-      size: AppIconButtonSize.bar,
+      size: size,
       icon: BooleanDot(
         value: value,
         inPickOneGroup: inPickOneGroup,
         enabled: changed != null,
       ),
       onPressed: changed == null ? null : () => changed(!value),
+    );
+  }
+}
+
+/// What a switch over SEVERAL things says of them: every one on, every one
+/// off, or some of each.
+enum BooleanMix {
+  off,
+  mixed,
+  on;
+
+  /// What [values] say together. Nothing at all says [off].
+  static BooleanMix of(Iterable<bool> values) {
+    var count = 0;
+    var lit = 0;
+    for (final value in values) {
+      count += 1;
+      if (value) {
+        lit += 1;
+      }
+    }
+    return lit == 0
+        ? BooleanMix.off
+        : lit == count
+        ? BooleanMix.on
+        : BooleanMix.mixed;
+  }
+
+  /// What a press asks of everything under the switch: on — unless every
+  /// one of them already is, and then off.
+  bool get pressTurnsOn => this != BooleanMix.on;
+}
+
+/// 🚨THE BOOLEAN OVER MANY — [BooleanDot]'s ring, wearing HALF its dot
+/// where the things under it disagree.
+///
+/// 유저 2026-10-06 (F-289-Q13): 「폴더줄의 스위치는 섞임모양 넣는게
+/// 나을거같아. 새로운 타입으로 두자. 다른곳에서도 이용가능하게」 — a row that
+/// stands for several rows (a folder over its layers) switches them
+/// together, and has a third thing to say: some are on.
+///
+/// ⛔STILL A RING, and the dot is what changes — the law [BooleanDot] is
+/// built on. On and off ARE that control, drawn by it; the mixed state is
+/// the same ring on the same grid with the left half of the same dot, so
+/// the three read as one control in three states rather than as a second
+/// one beside it. ↩️The export window's own list drew a nine-pixel square,
+/// half filled.
+///
+/// A switch over many is never one of a pick-one group — there is nothing
+/// beside it to send the eye to — so it has no `inPickOneGroup`.
+///
+/// This is the LOOK alone; the control is [BooleanMixDotButton].
+class BooleanMixDot extends StatelessWidget {
+  const BooleanMixDot({
+    super.key,
+    required this.value,
+    this.enabled = true,
+    this.size,
+  });
+
+  final BooleanMix value;
+
+  /// False paints [AppColors.glyphDisabled] — the GLYPH still says which.
+  final bool enabled;
+
+  /// Null takes the surrounding [IconTheme]'s size.
+  final double? size;
+
+  @override
+  Widget build(BuildContext context) {
+    final whole = switch (value) {
+      BooleanMix.on => true,
+      BooleanMix.off => false,
+      BooleanMix.mixed => null,
+    };
+    if (whole != null) {
+      return BooleanDot(value: whole, enabled: enabled, size: size);
+    }
+    return Semantics(
+      mixed: true,
+      child: CustomPaint(
+        size: Size.square(size ?? IconTheme.of(context).size ?? 24),
+        painter: _HalfDotPainter(
+          enabled ? AppColors.accent : AppColors.glyphDisabled,
+        ),
+      ),
+    );
+  }
+}
+
+/// The ring [BooleanDot] wears with the left half of its dot, on the grid
+/// its two glyphs are drawn on — twenty-four units a side, the ring two
+/// units thick with its outside ten from the centre, the dot five.
+class _HalfDotPainter extends CustomPainter with RepaintOnProps {
+  const _HalfDotPainter(this.color);
+
+  final Color color;
+
+  @override
+  Object get props => (color,);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final unit = size.shortestSide / 24;
+    final centre = size.center(Offset.zero);
+    canvas.drawCircle(
+      centre,
+      9 * unit,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 * unit,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: centre, radius: 5 * unit),
+      math.pi / 2,
+      math.pi,
+      true,
+      Paint()..color = color,
+    );
+  }
+}
+
+/// [BooleanMixDot] as a control of its own — pressed, it hands [onChanged]
+/// what every thing under it should become ([BooleanMix.pressTurnsOn]).
+class BooleanMixDotButton extends StatelessWidget {
+  const BooleanMixDotButton({
+    super.key,
+    required this.keyValue,
+    required this.value,
+    required this.onChanged,
+    required this.tooltip,
+    this.size = AppIconButtonSize.bar,
+  });
+
+  final String keyValue;
+  final BooleanMix value;
+
+  /// Null disables the button.
+  final ValueChanged<bool>? onChanged;
+
+  final String tooltip;
+
+  /// See [BooleanDotButton.size].
+  final AppIconButtonMetrics size;
+
+  @override
+  Widget build(BuildContext context) {
+    final changed = onChanged;
+    return AppIconButton(
+      keyValue: keyValue,
+      tooltip: tooltip,
+      size: size,
+      icon: BooleanMixDot(value: value, enabled: changed != null),
+      onPressed: changed == null ? null : () => changed(value.pressTurnsOn),
     );
   }
 }

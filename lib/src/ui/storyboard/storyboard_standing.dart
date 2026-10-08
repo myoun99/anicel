@@ -1,46 +1,22 @@
 part of '../storyboard_panel.dart';
 
 /// WHERE THE STORYBOARD STANDS — the ring around the standing cell, the
-/// block under the playhead, the active cut of a track and the band a
-/// track row spans — as its own object.
+/// block under the playhead and the band a track row spans — as its own
+/// object.
 ///
 /// 🚨A collaborator carved out of `_StoryboardPanelState` (the audit's SRP
 /// cut, 2026-09-02). Measured before cutting: one State member shared.
 /// It reaches the State through `_state`.
+///
+/// ↩️It answered two more questions for the V row's head — a track's ACTIVE
+/// cut, and the cut under the playhead on a track (UI-R13 #2: the row's eye
+/// acted on that one, each track independently, a gap a no-op rather than a
+/// grey button). The eye left the head with I-73 (2026-10-08, see
+/// [StoryboardTrackLabelRow.trackFxState]) and nobody asks either any more.
 class _StoryboardStanding {
   _StoryboardStanding(this._state);
 
   final _StoryboardPanelState _state;
-
-  /// The ACTIVE cut when it lives on [track]; null otherwise (the rail's
-  /// lane controls then stand down, like the S-row layer controls).
-  Cut? activeCutOf(Track track) {
-    for (final cut in track.cuts) {
-      if (cut.id == _state.widget.activeCutId) {
-        return cut;
-      }
-    }
-    return null;
-  }
-
-  /// The cut sitting under the current global playhead on track
-  /// [trackIndex] (UI-R13 #2: the V-row fx/eye act on THIS, each track
-  /// independently). Null when the playhead is unwired or the index is a
-  /// gap on this track — the buttons then no-op, never gray out.
-  Cut? cutAtPlayheadOn(int trackIndex) {
-    final globalFrame = _state.widget.playheadFrame?.value;
-    if (globalFrame == null) {
-      return null;
-    }
-    for (final entry in buildStoryboardTimelineLayout(_state.widget.project)) {
-      if (entry.trackIndex == trackIndex &&
-          globalFrame >= entry.startFrame &&
-          globalFrame < entry.endFrame) {
-        return entry.cut;
-      }
-    }
-    return null;
-  }
 
   /// Where you STAND on this track, said to semantics and to the probes that
   /// read it: the cell under the playhead on the row you stand on. It
@@ -159,19 +135,23 @@ class _StoryboardStanding {
   /// a lane's cell. The V row's cut wears it on its bands instead, never
   /// over its pictures ([standingCutOn]; 10-01 「썸네일 제외한 띠 부분」) —
   /// so no unit here.
-  ({int startIndex, int endIndexExclusive})? _standingUnit(
+  StandingUnit? _standingUnit(
     Track track,
     TimelineRowAddress row,
     int frame,
   ) => switch (row) {
     TrackRowAddress() => null,
-    LaneRowAddress() => (startIndex: frame, endIndexExclusive: frame + 1),
+    LaneRowAddress() => (
+      startIndex: frame,
+      endIndexExclusive: frame + 1,
+      block: false,
+    ),
     LayerRowAddress(:final layerId) => _unitOn(track, layerId, frame),
   };
 
   /// The standing wash over [unit], in the row's [band].
   Widget _washOver(
-    ({int startIndex, int endIndexExclusive}) unit,
+    StandingUnit unit,
     ({double top, double height}) band,
     TimelineScale scale,
   ) {
@@ -185,20 +165,36 @@ class _StoryboardStanding {
         decoration: timelineStandingWashDecorationAt(
           cellExtent: scale.pixelsPerFrame,
           crossExtent: band.height,
+          block: unit.block,
         ),
       ),
     );
   }
 
-  /// The unit under [frame] on an S row: what a click there selects
-  /// ([trackRowMaterialBlocks] — its sound or its span, else the one cell),
-  /// read off the row as it is shown: through a drag, previewed (H12); while
-  /// a take rolls, the take.
-  ({int startIndex, int endIndexExclusive}) _unitOn(
+  /// The unit under [frame] on a layer row of the track: what a click there
+  /// selects ([trackRowMaterialBlocks] — its sound, its span or its panel,
+  /// else the one cell), read off the row as it is shown: through a drag,
+  /// previewed (H12); while a take rolls, the take.
+  ///
+  /// The CONTE row is shown as the cuts' conte layers on the track's axis
+  /// ([trackConteRowShown]), on the cuts as a drag in flight lays them — so
+  /// its unit is the panel, and a cut with no conte layer holds one cell.
+  StandingUnit _unitOn(
     Track track,
     LayerId layerId,
     int frame,
   ) {
+    if (trackIdOfConteRow(layerId) != null) {
+      return standingUnitAt(
+        lanes: [
+          trackRowMaterialBlocks(
+            trackConteRowShown(track.id, _cutsAsShownOn(track)),
+            spans: false,
+          ),
+        ],
+        index: frame,
+      );
+    }
     final spans = layerId == track.transitionLayer.id;
     var shown = timelineDragPreviewGlobalLayerFor(
       _state.widget.dragPreview?.value,
@@ -212,12 +208,27 @@ class _StoryboardStanding {
         shown = _state._seDisplayAt(track, slot);
       }
     }
-    final unit = snapSpanToBlocks(
+    return standingUnitAt(
       lanes: [if (shown != null) trackRowMaterialBlocks(shown, spans: spans)],
-      anchorIndex: frame,
-      headIndex: frame,
+      index: frame,
     );
-    return unit ?? (startIndex: frame, endIndexExclusive: frame + 1);
+  }
+
+  /// [track]'s cuts on its axis as the panel shows them now — re-timed by a
+  /// drag in flight ([_StoryboardRailRows._previewedEntriesFor]), else as
+  /// committed.
+  List<StoryboardTimelineLayoutEntry> _cutsAsShownOn(Track track) {
+    final trackIndex = _state.widget.project.tracks.indexOf(track);
+    return _state._railRows._previewedEntriesFor(
+      trackIndex,
+      _state.widget.dragPreview?.value,
+      [
+        for (final entry in buildStoryboardTimelineLayout(
+          _state.widget.project,
+        ))
+          if (entry.trackIndex == trackIndex) entry,
+      ],
+    );
   }
 
   /// The cross-axis band [row] occupies inside this track's group, or null
@@ -232,7 +243,7 @@ class _StoryboardStanding {
   ) {
     var y = 0.0;
     for (final slot in _state._railRows._trackGroupRowGeometry(track)) {
-      if (slot.row == row || slot.laneRow == row) {
+      if (_standingAddressOf(slot) == row) {
         return (top: y, height: slot.height);
       }
       y += slot.height;

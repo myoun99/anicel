@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../helpers/placement_reading.dart';
+
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -320,7 +322,10 @@ void main() {
                       CanvasActiveLayerRow(
                         opacity: 1,
                         // The row placed 2 to the right of where it is drawn.
-                        pose: TransformPose(center: CanvasPoint(x: 6, y: 4)),
+                        placement: placedBy(
+                          TransformPose(center: CanvasPoint(x: 6, y: 4)),
+                          canvasSize,
+                        ),
                       ),
                     ),
                   ],

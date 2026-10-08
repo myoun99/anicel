@@ -76,4 +76,58 @@ void main() {
     );
     expect(command.undo, throwsStateError);
   });
+
+  // 🗣️F-302 (유저 2026-10-05): 「겸용컷 … 펼친 상태 접힌 상태 공유하라는것.
+  // 법통일」 — a linked row's other uses take the pressed row's new
+  // membership with it.
+  group('the rows taken along', () {
+    const pressed = LayerId('pressed');
+    const twin = LayerId('twin');
+    const other = LayerId('other');
+
+    ToggleIdInSetCommand toggle(ValueNotifier<Set<LayerId>> set) =>
+        ToggleIdInSetCommand(
+          notifier: set,
+          layerId: pressed,
+          alongWith: const [pressed, twin],
+          debugLabel: 'Twirl',
+        );
+
+    test('they take the PRESSED row\'s new membership — not each its own '
+        'flipped', () {
+      // The twin already stands open and the pressed row does not: a flip
+      // of each would leave them apart again.
+      final set = ValueNotifier<Set<LayerId>>({twin, other});
+      addTearDown(set.dispose);
+
+      toggle(set).execute();
+
+      expect(set.value, {pressed, twin, other});
+    });
+
+    test('undo puts back each row\'s OWN membership, and a row the command '
+        'never named keeps what it has', () {
+      final set = ValueNotifier<Set<LayerId>>({twin});
+      addTearDown(set.dispose);
+      final command = toggle(set)..execute();
+      set.value = {...set.value, other};
+
+      command.undo();
+
+      expect(set.value, {twin, other});
+    });
+
+    test('pressed shut, they shut with it — and redo shuts them again', () {
+      final set = ValueNotifier<Set<LayerId>>({pressed, twin, other});
+      addTearDown(set.dispose);
+      final command = toggle(set)..execute();
+      expect(set.value, {other});
+
+      command.undo();
+      expect(set.value, {pressed, twin, other});
+
+      command.execute();
+      expect(set.value, {other});
+    });
+  });
 }

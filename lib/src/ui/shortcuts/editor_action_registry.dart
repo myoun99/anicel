@@ -4,13 +4,19 @@ import 'package:flutter/services.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/export_format_selection.dart' show ExportStillFormat;
+import '../../models/layer_effect.dart' show EffectKind;
+import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
-import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
+import '../brush/brush_press.dart';
+import '../brush/brush_tool_state.dart'
+    show CanvasTool, canvasToolRailGroup, canvasToolShapes;
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
-import '../text/model_vocabulary.dart' show BrushBlendModeWords;
+import '../text/model_vocabulary.dart'
+    show BrushBlendModeWords, EffectKindWords, LayerKindWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
 
 /// The single shortcut intent: every editor action dispatches through ONE
@@ -42,12 +48,46 @@ class EditorActionDefinition {
     this.blendMode,
     this.pixelClipboardVerb,
     this.sheetMove,
-  });
+    this.brushPress,
+    this.menuRow = false,
+  }) : composedName = null;
+
+  /// An action whose name is COMPOSED rather than tabled: [name] says it in
+  /// a language, and its English is the registry's own wording ([label]) —
+  /// one composer for both, so the two cannot come to differ.
+  EditorActionDefinition.composed({
+    required this.id,
+    required String Function(AppLanguage language) name,
+    required this.category,
+    required this.defaultActivators,
+    this.toolPress,
+    this.blendMode,
+    this.menuRow = false,
+  }) : label = name(AppLanguage.en),
+       composedName = name,
+       defaultTouchGesture = null,
+       hold = false,
+       zoomsView = false,
+       pixelVerb = null,
+       pixelClipboardVerb = null,
+       sheetMove = null,
+       brushPress = null;
 
   final String id;
   final String label;
   final String category;
   final List<SingleActivator> defaultActivators;
+
+  /// The action's name in a language, when that name is composed of other
+  /// names — a shape tile's of its verb and its shape, a blend action's of
+  /// the blend's own, an add-layer row's of the menu's name and the kind's
+  /// — and null for every action a table names by its id.
+  ///
+  /// ↩️Until 2026-10-08 each family was a branch wherever a name is asked
+  /// (is it a shape tile, is it a blend), and again where the tables are
+  /// checked for a row. The layer kinds and the effect kinds (I-40) would
+  /// have been the third and fourth branch; a family says its own name now.
+  final String Function(AppLanguage language)? composedName;
 
   /// The multi-finger touch gesture bound by default (R11-⑨); most
   /// actions ship unbound — every action is ASSIGNABLE in the settings
@@ -79,10 +119,15 @@ class EditorActionDefinition {
   /// button finds its action by [toolActionIdFor].
   final ToolPress? toolPress;
 
-  /// The verb a row of the colour edit list runs, or null.
+  /// The verb a row of the colour edit list runs, or null — WHICH row the
+  /// action is, and how that row finds its action ([pixelVerbActionIdFor]).
+  /// The press is the row's own ([menuRow]).
   ///
   /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
+  ///
+  /// ↩️Until 2026-10-08 the shell ran the verb itself behind the row's gate
+  /// — the row's two lines written a second time, as 저장 had been.
   final CelPixelVerb? pixelVerb;
 
   /// The blend mode a BLEND action picks for the tool in hand, or null.
@@ -108,6 +153,24 @@ class EditorActionDefinition {
   /// keys bound bare to the block and row moves — and this is what tells the
   /// keys and the flip which move walks which way ([sheetMoveActionId]).
   final SheetMove? sheetMove;
+
+  /// What a BRUSH action presses (I-56) — a group's tab or one brush of the
+  /// brush library — or null for every other action. These rows are not in
+  /// [editorActionDefinitions]: the library is the user's own, so they are
+  /// made from it as it stands (`brushActionsOf`).
+  final BrushPress? brushPress;
+
+  /// A row of a menu (I-40) — the top strip's two, or the timeline bar's
+  /// (the pills' menus and the colour edit list): the action IS that row,
+  /// and a key presses it where the row can be pressed (`pressFlyoutRow`,
+  /// over the rows the shell gathers from both).
+  ///
+  /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
+  /// 열기 닫기같은거든 뭐든 모든 버튼」. ⛔A menu row's action has no road of
+  /// its own to what the row does: 저장 had one — the row's call written a
+  /// second time in the shell's switch — and two roads to one verb are what
+  /// drift apart.
+  final bool menuRow;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when
@@ -147,7 +210,8 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
     ?definition.pixelVerb: definition.id,
 };
 
-/// The shape tiles of [verb] as actions, one per [CanvasShapeKind].
+/// The shape tiles of [verb] as actions, one per shape it speaks
+/// (`canvasToolShapes`).
 ///
 /// ★GENERATED from the verb × shape product, never hand-written:
 /// [CanvasShapeKind] warns that the product grows like one, so a new shape
@@ -155,18 +219,24 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
 /// composed (`shapeTileLabel`) — the English one here from the English
 /// table — so no language tables a shape tile twice.
 List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
-  for (final shape in CanvasShapeKind.values)
-    EditorActionDefinition(
+  for (final shape in canvasToolShapes(verb))
+    EditorActionDefinition.composed(
       // Named for the rail tool the tile belongs to — 'tool-select-lasso',
       // 'tool-fill-rect' — which is the id the rectangle select already had.
       id: 'tool-${canvasToolRailGroup(verb).name}-${shape.name}',
-      label: shapeTileLabel(verb, shape, AppStrings.of(AppLanguage.en)),
+      name: (language) => shapeTileLabel(verb, shape, AppStrings.of(language)),
       category: 'Tools',
       defaultActivators: [
         // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
-        // 2026-10-02): W walks up now, and 「올가미를 z」.
+        // 2026-10-02): W walks up now, and 「올가미를 z」. ↩️I-63 (유저
+        // 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록. 언두 실수할때
+        // z만 누르거나하니까」 — so bare Z presses NOTHING, on purpose: it
+        // is the key a hand lands on when Ctrl slips off an undo.
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
-          const SingleActivator(LogicalKeyboardKey.keyZ),
+          const SingleActivator(LogicalKeyboardKey.keyX),
+        // 🗣️I-63 ⑤ (유저 2026-10-04, F-279): 「올가미채우기를 y로」.
+        if (verb == CanvasTool.fillShape && shape == CanvasShapeKind.lasso)
+          const SingleActivator(LogicalKeyboardKey.keyY),
         // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를
         // 단축키 c로 두도록 변경하고, 스탬프를 v로」 — 「잘라내기를
         // 고르고싶으면 올가미 잘라내기의 단축키를 사용할 예정」.
@@ -188,9 +258,9 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
 /// ([blendModeActionLabel]), so no table names a mode twice.
 List<EditorActionDefinition> _blendModeActions() => [
   for (final (index, mode) in BrushBlendMode.values.indexed)
-    EditorActionDefinition(
-      id: 'tool-blend-${mode.name}',
-      label: blendModeActionLabel(mode, AppLanguage.en),
+    EditorActionDefinition.composed(
+      id: blendModeActionId(mode),
+      name: (language) => blendModeActionLabel(mode, language),
       category: 'Tools',
       defaultActivators: [
         if (index < _functionKeys.length) SingleActivator(_functionKeys[index]),
@@ -213,6 +283,122 @@ const _functionKeys = [
   LogicalKeyboardKey.f11,
   LogicalKeyboardKey.f12,
 ];
+
+/// The action that picks [mode] — spelled here once, for whoever names a
+/// blend action without the list in hand (a shortcut preset).
+String blendModeActionId(BrushBlendMode mode) => 'tool-blend-${mode.name}';
+
+/// The kinds the layer pill's add menu offers, in its order — its rows and
+/// their actions are both made from this list.
+///
+/// ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12: 「레이어
+/// +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」). The `＋`
+/// itself makes an animation layer now, so an entry meaning "whatever is
+/// selected" answered a question nothing asks.
+const addLayerKinds = [
+  LayerKind.animation,
+  LayerKind.storyboard,
+  LayerKind.image,
+  LayerKind.se,
+  LayerKind.instruction,
+  // R6b: the row that filters everything below it. It lands above the
+  // active layer like every other kind, which is what puts the rows it
+  // grades underneath it.
+  LayerKind.adjustment,
+  // R5 #14: a FOLDER is something you add, empty, and then fill by
+  // dropping rows on it — the file-manager shape, replacing "group the
+  // active layer into a folder".
+  LayerKind.folder,
+  // Neither the camera nor the transition is offered — a cut owns exactly
+  // one camera and the transition row belongs to the track.
+];
+
+/// The English of [EditorActionIds.layerAdd], which the kinds' names are
+/// composed over as well.
+const _addLayerLabel = 'Add Layer';
+
+/// The add menu's kinds as actions, one per kind it offers.
+///
+/// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
+/// 모든 버튼」; asked how far (I-40-Q1, 10-08), 유저 chose the command
+/// buttons and menu rows of the editing screen. ★GENERATED from the menu's
+/// own list, so a kind added to the menu arrives in the shortcut list with
+/// it, and named by composition — 「레이어 추가: 애니메이션」 — out of two
+/// names the tables already hold.
+/// ⚠️Not [EditorActionIds.layerAdd]: that is the pill's `＋`, which adds the
+/// one kind the panel being worked in adds; a row here adds ITS kind, where
+/// the panel can.
+List<EditorActionDefinition> _addLayerKindActions() => [
+  for (final kind in addLayerKinds)
+    EditorActionDefinition.composed(
+      id: addLayerKindActionId(kind),
+      name: (language) => addLayerKindActionLabel(kind, language),
+      category: 'Timeline',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String addLayerKindActionId(LayerKind kind) => 'layer-add-${kind.name}';
+
+String addLayerKindActionLabel(LayerKind kind, AppLanguage language) {
+  final add = AppStrings.of(
+    language,
+  ).shortcutLabel(EditorActionIds.layerAdd, _addLayerLabel);
+  return '$add: ${kind.labelFor(language)}';
+}
+
+/// The fx pill's rows as actions, one per [EffectKind] — the menu lists
+/// every kind, always (it dims what the row cannot take), and so does this.
+/// The action's name is the row's own: 「{name} 추가」.
+List<EditorActionDefinition> _addEffectActions() => [
+  for (final kind in EffectKind.values)
+    EditorActionDefinition.composed(
+      id: addEffectActionId(kind),
+      name: (language) => addEffectActionLabel(kind, language),
+      category: 'Timeline',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String addEffectActionId(EffectKind kind) => 'effect-add-${kind.jsonValue}';
+
+String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
+    AppStrings.of(
+      language,
+    ).tlAddEffectTemplate.replaceAll('{name}', kind.labelFor(language));
+
+/// The formats 「다른 이름으로 저장」 writes a picture in, in its second
+/// level's order after the project — its rows and their actions are both
+/// made from this list.
+///
+/// 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
+/// 프로젝트(.anicel) · PNG · JPG」. The two the answer names, and no more.
+const saveAsImageFormats = [ExportStillFormat.png, ExportStillFormat.jpg];
+
+/// Save As's picture rows as actions, one per format it writes.
+///
+/// 🗣️I-40: every menu row is an action. Named by composition —
+/// 「다른 이름으로 저장: PNG」 — out of the word the row that opens them
+/// wears and the format's own name. ⚠️Not [EditorActionIds.fileSaveAs]:
+/// that one saves the PROJECT, and its row is the first of the three.
+List<EditorActionDefinition> _saveAsImageActions() => [
+  for (final format in saveAsImageFormats)
+    EditorActionDefinition.composed(
+      id: saveAsImageActionId(format),
+      name: (language) => saveAsImageActionLabel(format, language),
+      category: 'File',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String saveAsImageActionId(ExportStillFormat format) =>
+    'file-save-as-${format.fileExtension}';
+
+String saveAsImageActionLabel(ExportStillFormat format, AppLanguage language) =>
+    '${AppStrings.of(language).saveAsTitle}: ${format.label}';
 
 /// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
 String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
@@ -247,6 +433,8 @@ abstract final class EditorActionIds {
   static const toolEyedropper = 'tool-eyedropper';
   static const toolFill = 'tool-fill';
   static const toolFillBucket = 'tool-fill-bucket';
+  static const toolText = 'tool-text';
+  static const toolShape = 'tool-shape';
   static const toolGuide = 'tool-guide';
   static const toolSelect = 'tool-select';
   static const toolTransform = 'tool-transform';
@@ -297,6 +485,9 @@ abstract final class EditorActionIds {
   /// 🗣️I-18 — 자동 이름 지정, the shared pill's button beside Edit.
   static const editAutoName = 'edit-auto-name';
 
+  /// 🗣️I-45 — 링크 독립, the shared pill's button beside the linked paste.
+  static const editUnlink = 'edit-unlink';
+
   /// The colour edit list's four verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
@@ -313,9 +504,62 @@ abstract final class EditorActionIds {
   static const fileSave = 'file-save';
   static const fileSaveAs = 'file-save-as';
 
+  /// 🗣️I-40: the rest of the top strip's two menus, each id the id its row
+  /// has always been keyed and worded by (`menu-<id>`).
+  static const fileNew = 'file-new';
+  static const fileOpen = 'file-open';
+  static const fileBackUpFailedCopy = 'file-back-up-failed-copy';
+  static const fileImport = 'file-import';
+  static const fileExport = 'file-export';
+  static const workSettings = 'work-settings';
+  static const keyboardShortcuts = 'edit-keyboard-shortcuts';
+  static const preferences = 'edit-preferences';
+  static const about = 'help-about';
+  static const inputInspector = 'edit-input-inspector';
+  static const frameTimingOverlay = 'edit-frame-timing-overlay';
+  static const frameStats = 'edit-frame-stats';
+  static const showRepaints = 'edit-show-repaints';
+  static const bakePanels = 'edit-bake-panels';
+  static const toolRailOnRight = 'window-tool-rail-right';
+  static const regionOnTop = 'window-region-on-top';
+  static const resetLayout = 'window-reset-layout';
+
   /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
-  /// ↩️The key is T since F-261.
+  /// ↩️The key is T since F-261. ↩️Q since I-63.
   static const layerVisibilitySolo = 'layer-visibility-solo';
+
+  /// 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
+  /// 기본값 등록하고싶음」 — the layer pill's ＋.
+  static const layerAdd = 'layer-add';
+
+  /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's two (and its
+  /// ＋), the layer pill's two, the frame pill's. Where the retired menu bar
+  /// worded a row by an id (`menuAction.<id>`), the action keeps that id.
+  static const cutNew = 'cut-new';
+  static const cutDuplicate = 'cut-duplicate';
+  static const cutCreateLinked = 'cut-create-linked';
+  static const cutRename = 'cut-rename';
+  static const cutEditNote = 'cut-edit-note';
+  static const cutSettings = 'cut-settings';
+  static const cutCanvasSize = 'cut-canvas-size';
+  static const cutConvertLinked = 'cut-convert-linked';
+  static const cutPinThumbnail = 'cut-pin-thumbnail';
+  static const cutMoveLeft = 'cut-move-left';
+  static const cutMoveRight = 'cut-move-right';
+  static const cutCopyAeCamera = 'cut-copy-ae-camera';
+  static const layerDuplicate = 'layer-duplicate';
+  static const layerDetach = 'layer-detach';
+  static const layerRasterize = 'layer-rasterize';
+  static const layerStoryboard = 'layer-storyboard';
+  static const layerAttachFreeAbove = 'layer-attach-free-above';
+  static const layerAttachFreeBelow = 'layer-attach-free-below';
+  static const layerAttachSyncedAbove = 'layer-attach-synced-above';
+  static const layerAttachSyncedBelow = 'layer-attach-synced-below';
+  static const frameSelectRowSpan = 'frame-select-row-span';
+
+  /// The frame pill's standing switch (F-61), a button rather than a row.
+  static const frameAutoCreate = 'frame-auto-create';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
   /// 설정에 줌 스냅 설정한대로」. ↩️The keys are Shift+E and Shift+Q since
@@ -520,6 +764,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyV, control: true),
     ],
   ),
+  // 🗣️I-45 (유저 2026-09-20): 「링크 독립버튼. 위치는 타임라인의 공용
+  // 알약부분?」 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로」). It
+  // ships unbound: nobody named a key. The words are the user's own for it,
+  // 「링크 독립」, and they live here now — the button wears this name.
+  const EditorActionDefinition(
+    id: EditorActionIds.editUnlink,
+    label: 'Make independent',
+    category: 'Edit',
+    defaultActivators: [],
+  ),
   // Bare Delete and Backspace: a focused text field keeps both (bare keys
   // stand down there), so they never reach a pill while you are typing.
   const EditorActionDefinition(
@@ -534,12 +789,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // key. The label is the button's own, and a bar button's writing carries
   // no '…' (B9).
   // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
-  // the play key). ↩️X once D walked right (「편집을 x」).
+  // the play key). ↩️X once D walked right (「편집을 x」). ↩️I-63 (유저
+  // 2026-10-03): 「지금 편집버튼 x인데 쉬프트+f로」 — X is the lasso
+  // select's now.
   const EditorActionDefinition(
     id: EditorActionIds.editInstance,
     label: 'Edit',
     category: 'Edit',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyX)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyF, shift: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editAutoName,
@@ -558,6 +817,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.replaceColour,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editClearPixels,
@@ -565,6 +825,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
     pixelVerb: CelPixelVerb.clearPixels,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editDeleteColour,
@@ -572,6 +833,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.deleteColour,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editKeepColour,
@@ -579,6 +841,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.keepColour,
+    menuRow: true,
   ),
   // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
   // — actions, in the list's order. No key ships with them: none was named.
@@ -588,6 +851,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.copy,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsAbove,
@@ -595,6 +859,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteAbove,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsBelow,
@@ -602,6 +867,25 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
+    menuRow: true,
+  ),
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
+  // 모든 버튼」 — the project menu's rows, in the menu's order. Each is the
+  // row itself ([EditorActionDefinition.menuRow]); none but the two saves
+  // ships with a key: nobody named one.
+  const EditorActionDefinition(
+    id: EditorActionIds.fileNew,
+    label: 'New project',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileOpen,
+    label: 'Open…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
@@ -610,6 +894,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true),
     ],
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSaveAs,
@@ -618,6 +903,29 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
     ],
+    menuRow: true,
+  ),
+  ..._saveAsImageActions(),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileBackUpFailedCopy,
+    label: 'Back up failed copy…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileImport,
+    label: 'Import / Place…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileExport,
+    label: 'Export…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
   ),
   // 🗣️I-19 (유저 2026-09-13): 「툴 내의 세부툴도 숏컷 지정 가능하게 하려고.
   // 툴 자체에 설정할수도있고 툴 내부의 세부툴도 설정가능하게」. ★Every rail
@@ -667,6 +975,25 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     toolPress: ToolTilePress(CanvasTool.fill),
   ),
   ..._shapeTileActions(CanvasTool.fillShape),
+  // R9-rest: no key of its own — a bare T solos the active layer (F-261),
+  // and a person binds what they want.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolText,
+    label: 'Text Tool',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.text),
+  ),
+  // I-69: no key of its own, nor its tiles' — a person binds what they
+  // want.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolShape,
+    label: 'Shape Tool',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.shape),
+  ),
+  ..._shapeTileActions(CanvasTool.shape),
   // 「가이드 툴을 g로 지정」.
   const EditorActionDefinition(
     id: EditorActionIds.toolGuide,
@@ -781,7 +1108,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Toggle Onion Skin',
     category: 'View',
     // 🗣️F-261 (유저 2026-10-02): 「우선 어니언스킨을 Q로」 — the left hand's.
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
+    // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동,
+    // 어니언스킨을 t로이동」 — the two trade places.
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCcw,
@@ -864,9 +1193,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // comma set above. Registering them is what makes them assignable at
   // all: the shortcut dialog lists the registry, so an unbound action is
   // still a row the user can put a key on.
+  // 🗣️I-63 ③ (유저 2026-10-03): 「프레임추가는 이름이 새 그림인데
+  // 그게아니라 프레임 추가로 하고」 — the row is named for the button it
+  // presses, the frame pill's ＋. ↩️It read 'New Drawing' (「새 그림」).
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
-    label: 'New Drawing',
+    label: 'Add Frame',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  // 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
+  // 기본값 등록하고싶음 … j말고 왼손쪽에 다른걸로 할당하고싶음」 — the
+  // layer pill's ＋ is a row now, beside Add Frame. Which key each takes is
+  // the user's to name; no key was said, so both wait unbound.
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAdd,
+    label: _addLayerLabel,
     category: 'Timeline',
     defaultActivators: [],
   ),
@@ -897,10 +1239,271 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」.
   // ↩️F-261 (유저 2026-10-02): 「활성레이어솔로도 옮길까 … 지워줘 … T로가자」
   // — T, the left hand's last free letter, and `=` binds nothing.
+  // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동, 어니언스킨을
+  // t로이동」 — Q, and the onion skin takes T.
   const EditorActionDefinition(
     id: EditorActionIds.layerVisibilitySolo,
     label: 'Solo active layer',
     category: 'Timeline',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
+  ),
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+  // 버튼같은거나」 — the rows of the timeline bar's menus, in the bar's own
+  // order: 컷 · 레이어 · 프레임. Each IS its row and is pressed as the row
+  // ([EditorActionDefinition.menuRow]) on the panel being worked in. None has
+  // a key: no key was ever said for one.
+  const EditorActionDefinition(
+    id: EditorActionIds.cutNew,
+    label: 'New cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutDuplicate,
+    label: 'Duplicate cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCreateLinked,
+    label: 'Create linked cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutRename,
+    label: 'Rename cut…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutEditNote,
+    label: 'Edit cut note…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutSettings,
+    label: 'Cut settings…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCanvasSize,
+    label: 'Canvas size…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutConvertLinked,
+    label: 'Convert to linked cut…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // One name for the switch, and the row's check says which way it stands.
+  // ↩️The row read 「Pin thumbnail frame」 or 「Unpin thumbnail frame」 by its
+  // state, in English in every language.
+  const EditorActionDefinition(
+    id: EditorActionIds.cutPinThumbnail,
+    label: 'Pin thumbnail frame',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutMoveLeft,
+    label: 'Move cut left',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutMoveRight,
+    label: 'Move cut right',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCopyAeCamera,
+    label: 'Copy camera AE keyframes',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDuplicate,
+    label: 'Duplicate layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDetach,
+    label: 'Detach from base',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerRasterize,
+    label: 'Rasterize layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerStoryboard,
+    label: 'Storyboard layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  ..._addLayerKindActions(),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachFreeAbove,
+    label: 'Attach free layer above',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachFreeBelow,
+    label: 'Attach free layer below',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachSyncedAbove,
+    label: 'Attach synced layer above',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachSyncedBelow,
+    label: 'Attach synced layer below',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameSelectRowSpan,
+    label: 'Select whole row',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // The frame pill's standing switch (F-61) — a button, not a row, so the
+  // shell presses what the button presses.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameAutoCreate,
+    label: 'Make a frame where there is none',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  // The fx pill's rows, after the frame pill's — the bar's order.
+  ..._addEffectActions(),
+  // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
+  // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
+  // nothing and is no action; the rows under it are.
+  const EditorActionDefinition(
+    id: EditorActionIds.workSettings,
+    label: 'Work settings…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.keyboardShortcuts,
+    label: 'Keyboard shortcuts…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.preferences,
+    label: 'Preferences…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.about,
+    label: 'About Anicel',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.inputInspector,
+    label: 'Input Inspector',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameTimingOverlay,
+    label: 'Frame Timing Overlay',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameStats,
+    label: 'Frame Stats',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.showRepaints,
+    label: 'Show Repaints',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.bakePanels,
+    label: 'Bake Static Panels',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // ⚠️LAST, and that is the point: the workspace's own panels follow these
+  // as rows of the same category (`panelActionsOf`).
+  const EditorActionDefinition(
+    id: EditorActionIds.toolRailOnRight,
+    label: 'Tool strip on the right',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.regionOnTop,
+    label: 'Timeline region on top',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.resetLayout,
+    label: 'Reset workspace layout',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
   ),
 ];
+
+/// The category the panels' rows stand under — these three, and one row per
+/// panel of the workspace.
+const String panelActionCategory = 'Panels';

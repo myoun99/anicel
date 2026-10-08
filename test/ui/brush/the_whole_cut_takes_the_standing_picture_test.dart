@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -21,6 +22,8 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 /// 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
 /// 신설. 내용은 화면의 전체 그림을 잘라냄」 — I-28-Q1 「지금 서 있는 셀의 그림
@@ -197,7 +200,12 @@ void main() {
     expect(workspace.brushTool!.value.tool, CanvasTool.cutStamp);
   });
 
-  testWidgets('a cel with no drawing leaves the hand as it was', (tester) async {
+  // 🗣️F-254 (유저 2026-10-01): 「전체 잘라내기, 지금 작동안하는 그림없는
+  // 곳에선 아무메시지 안뜨는데 뜨도록. 내용은 잘라낼 대상이 존재하지
+  // 않습니다.」
+  testWidgets('a cel with no drawing leaves the hand as it was — and says '
+      'there is nothing to cut', (tester) async {
+    addTearDown(cursorNotices.clear);
     final session = await pump(tester);
     inkTwoSquares(session);
     final slot = CutPieceSlot();
@@ -206,6 +214,11 @@ void main() {
     session.pixelVerbs.cutWhole();
     final held = slot.piece;
     expect(held, isNotNull);
+    expect(
+      cursorNotices.message,
+      isNull,
+      reason: 'a cut that took a picture has nothing to explain',
+    );
 
     session.selectFrameIndex(1);
     await tester.pump();
@@ -216,6 +229,12 @@ void main() {
       same(held),
       reason: 'the slot outlives frames, cuts and projects — one press on '
           'an empty cel must not throw it away',
+    );
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    expect(
+      AppStrings.of(AppLanguage.ko).noticeNothingToCut,
+      '잘라낼 대상이 존재하지 않습니다',
+      reason: '유저가 준 문장 그대로',
     );
   });
 }

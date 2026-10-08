@@ -4,15 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show CanvasSelectionShape;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
+import '../helpers/placement_reading.dart';
 
 void main() {
   const canvas = CanvasSize(width: 1024, height: 512);
@@ -143,11 +144,7 @@ void main() {
     test('an unposed layer gets the region back unchanged', () {
       expect(
         identical(
-          regionInArtworkSpace(
-            region: region,
-            pose: null,
-            canvasSize: canvas,
-          ),
+          regionInArtworkSpace(region: region, placement: null),
           region,
         ),
         isTrue,
@@ -161,10 +158,12 @@ void main() {
       // artwork coordinates.
       final moved = regionInArtworkSpace(
         region: region,
-        pose: CameraPose(
-          center: CanvasPoint(x: canvas.width / 2 + 50, y: canvas.height / 2),
+        placement: placedBy(
+          TransformPose(
+            center: CanvasPoint(x: canvas.width / 2 + 50, y: canvas.height / 2),
+          ),
+          canvas,
         ),
-        canvasSize: canvas,
       );
 
       // ⚠️`singleShape`, not a reach into the step: a step holds the copies
@@ -175,15 +174,25 @@ void main() {
       expect(points.first.y, closeTo(100, 0.001));
     });
 
-    test('the singular-pose guard is a backstop, not a path', () {
-      // A pose cannot collapse a layer in the first place, so the null
-      // return in regionInArtworkSpace is unreachable through the model.
-      // Pinned rather than deleted: if CameraPose ever admits a zero zoom,
-      // this is the line that says the guard has become a real path.
-      expect(
-        () => CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 0),
-        throwsArgumentError,
-      );
+    // ↩️「the singular-pose guard is a backstop, not a path」 stood here,
+    // pinning that a pose REFUSED a zero scale — kept, it said, so that
+    // 「if TransformPose ever admits a zero scale … this is the line that
+    // says the guard has become a real path」. It has: a flip passes
+    // through zero (F-256-Q1).
+    test('a region on a row its placement has COLLAPSED names no pixel', () {
+      for (final collapsed in [
+        TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
+        TransformPose(center: CanvasPoint(x: 0, y: 0), scaleY: 0),
+      ]) {
+        expect(
+          regionInArtworkSpace(
+            region: region,
+            placement: placedBy(collapsed, canvas),
+          ),
+          isNull,
+          reason: '$collapsed',
+        );
+      }
     });
   });
 }

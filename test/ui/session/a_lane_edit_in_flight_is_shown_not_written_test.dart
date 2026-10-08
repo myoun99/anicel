@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/session/lane_verbs.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// F-195 at the session: A LANE EDIT IN FLIGHT IS SHOWN, NOT WRITTEN — and
 /// what it shows is what its release writes.
 ///
@@ -61,6 +63,12 @@ void main() {
     return found!;
   }
 
+  /// Where that row shows the canvas centre — its Position, while its
+  /// anchor is the centre.
+  CanvasPoint shownCentre(EditorSessionManager session) => activeRowIn(
+    session,
+  ).placement!.centreOf(session.requireActiveCut.canvasSize);
+
   Layer committed(EditorSessionManager session, Layer layer) =>
       session.requireActiveCut.layers.byId(layer.id)!;
 
@@ -77,14 +85,17 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       final preview = session.dragPreview.value;
       expect(preview, isA<LaneEditPreview>());
-      expect(activeRowIn(session).pose!.center, CanvasPoint(x: 40, y: 30));
+      expect(shownCentre(session), nearPoint(CanvasPoint(x: 40, y: 30)));
       expect(
-        session.frameVerbs.layerCanvasPoseSample(row.id)!.pose.center,
-        CanvasPoint(x: 40, y: 30),
+        session.frameVerbs
+            .layerCanvasPoseSample(row.id)!
+            .centreOf(session.requireActiveCut.canvasSize),
+        nearPoint(CanvasPoint(x: 40, y: 30)),
         reason: 'the pen draws in the space the picture shows',
       );
       expect(
@@ -100,6 +111,7 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
 
@@ -121,6 +133,7 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
       session.laneVerbs.previewLaneValueAt(
         row.id,
@@ -128,6 +141,7 @@ void main() {
         0,
         'not a value',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       expect(session.dragPreview.value, isNull);
@@ -144,7 +158,7 @@ void main() {
 
       session.laneVerbs.previewLayerTransformAtPlayhead(row.id, moveTo);
       final shown = (session.dragPreview.value! as LaneEditPreview).row!;
-      expect(activeRowIn(session).pose!.center, CanvasPoint(x: 12, y: 34));
+      expect(shownCentre(session), nearPoint(CanvasPoint(x: 12, y: 34)));
 
       session.laneVerbs.editLayerTransformAtPlayhead(
         row.id,
@@ -172,8 +186,8 @@ void main() {
       );
       session.selectFrameIndex(2);
       expect(
-        activeRowIn(session).pose!.center.x,
-        50,
+        shownCentre(session).x,
+        closeTo(50, 1e-9),
         reason: 'the premise: halfway between the two keys',
       );
 
@@ -190,8 +204,8 @@ void main() {
 
       expect(session.dragPreview.value, isA<LaneEditPreview>());
       expect(
-        activeRowIn(session).pose!.center.x,
-        100,
+        shownCentre(session).x,
+        closeTo(100, 1e-9),
         reason: 'the key slid onto the playhead — the picture shows it there',
       );
       expect(
@@ -247,6 +261,7 @@ void main() {
         0,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       expect(
@@ -271,6 +286,7 @@ void main() {
         0,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
       expect(session.dragPreview.value, isNull);
@@ -292,6 +308,7 @@ void main() {
         4,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
       session.updateLaneRangeSelectionDrag(
@@ -334,6 +351,7 @@ void main() {
       0,
       '12',
       frameIsGlobal: true,
+      scaleLinked: false,
     );
 
     final shown = timelineDragPreviewTrackEffectsFor(
@@ -376,6 +394,7 @@ void main() {
       2,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
 
     final preview = session.dragPreview.value;
@@ -412,6 +431,7 @@ void main() {
       2,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
       description: 'Set Position',
     );
     expect(
@@ -434,6 +454,7 @@ void main() {
       0,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
     expect(
       session.dragPreview.value,
@@ -476,6 +497,7 @@ void main() {
       0,
       '40%',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
 
     expect(seOpacity(), closeTo(0.4, 1e-9));

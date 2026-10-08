@@ -33,6 +33,8 @@ import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD.
 ///
 /// When the extent MOVES, the previous buffer is not wrong — it is OFFSET.
@@ -264,7 +266,10 @@ void main() {
       ),
       CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(
         opacity: 1,
-        pose: TransformPose(center: CanvasPoint(x: 3, y: 2)),
+        placement: placedBy(
+          TransformPose(center: CanvasPoint(x: 3, y: 2)),
+          canvasSize,
+        ),
       )),
     ];
     Future<void> pumpAt(CanvasViewport viewport) async {

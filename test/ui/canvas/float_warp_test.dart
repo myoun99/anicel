@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/stamp_carry.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart';
 import 'package:anicel/src/ui/canvas/transform_box.dart';
@@ -100,6 +101,64 @@ void main() {
       [for (final point in ring) point.x.toInt()],
       [0, 1, 2, 5, 8, 7, 6, 3],
     );
+  });
+
+  /// `a-warp-over-a-frame-range-lands-on-one-cel` (2026-10-06): what the
+  /// open box hands the cels a range confirm reaches — the mapping the
+  /// float itself goes through, whichever of the three it is.
+  group('what the open box does, for any stamp on the canvas', () {
+    TransformBox quadBox() =>
+        box()..warp.corners = [CanvasPoint(x: 5, y: -3), zero, zero, zero];
+    TransformBox meshBox() => box()
+      ..warp.meshColumns = 2
+      ..warp.meshRows = 2
+      ..warp.mesh = [
+        for (var i = 0; i < 9; i += 1)
+          if (i == 4) CanvasPoint(x: 3, y: 2) else zero,
+      ];
+
+    test('it is the shape the box is in', () {
+      expect(warp(box(scale: 2)).carry, isA<AffineCarry>());
+      expect(
+        warp(quadBox(), mode: TransformMode.perspective).carry,
+        isA<QuadCarry>(),
+      );
+      expect(warp(meshBox(), mode: TransformMode.mesh).carry, isA<MeshCarry>());
+    });
+
+    test('a box that changes no pixel carries nothing', () {
+      expect(warp(box()).carry, isNull);
+      expect(warp(box(), mode: TransformMode.perspective).carry, isNull);
+      expect(warp(box(), mode: TransformMode.mesh).carry, isNull);
+    });
+
+    test('🚨it stops at the pasteboard wall — another cel\'s picture is not '
+        'resampled past it either', () {
+      for (final carry in [
+        warp(box(scale: 2)).carry!,
+        warp(quadBox(), mode: TransformMode.perspective).carry!,
+        warp(meshBox(), mode: TransformMode.mesh).carry!,
+      ]) {
+        expect(
+          carry.within,
+          (left: 70.0, top: 0.0, right: 1000.0, bottom: 1000.0),
+          reason: '${carry.runtimeType}',
+        );
+      }
+    });
+
+    test('the float through it is what the commit lands', () {
+      final open = warp(box(scale: 2));
+      final host = _Host(open);
+      final preview = FloatResamplePreview(host);
+      addTearDown(preview.discard);
+
+      final landed = preview.warped()!;
+      final carried = open.carry!.through(float());
+
+      expect(carried.center, landed.center);
+      expect(carried.stamp!.rgba, landed.stamp!.rgba);
+    });
   });
 
   group('the preview through the warp', () {

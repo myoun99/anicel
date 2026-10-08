@@ -598,4 +598,83 @@ void main() {
     shapeController.seekToGlobalFrame(6);
     expect(volumeLog, ['a.wav 0.50'], reason: 'past the fade, the envelope');
   });
+
+  /// 유저 2026-10-08: 「그 자리에서 멈췃다가 구워지면 이어서 재생」 — the
+  /// sound waits with the clock, or it would be heard ahead of its picture.
+  group('a run that waits for its picture', () {
+    final missing = <int>{};
+    setUp(() {
+      missing.clear();
+      controller.waitsOn =
+          (frame, {required placed}) => missing.contains(frame);
+    });
+
+    test('the players stop where the run waits, and start again where it '
+        'goes on — at the frame it stands on', () {
+      controller.play(scope: PlaybackScope.activeCut);
+      log.clear();
+
+      missing.add(4);
+      controller.seekToGlobalFrame(4);
+      expect(controller.isWaiting, isTrue, reason: '⛔premise');
+      expect(log, ['stop a.wav']);
+
+      log.clear();
+      missing.clear();
+      controller.lookAgain();
+      expect(log, ['start a.wav @400ms']);
+    });
+
+    test('dragged BACK onto a frame that is not there, nothing is started '
+        'only to be stopped — a jump is not answered on a frame the run '
+        'waits on', () {
+      controller.play(scope: PlaybackScope.activeCut);
+      // Frame 5: a.wav alone is sounding (b.wav begins on 6).
+      controller.seekToGlobalFrame(5);
+      log.clear();
+
+      missing.add(1);
+      controller.seekToGlobalFrame(1);
+      expect(controller.isWaiting, isTrue, reason: '⛔premise');
+      expect(log, ['stop a.wav']);
+    });
+
+    test('dragged off the frame it waits on, onto one that is there, the '
+        'sound starts once — the going-on has one owner', () {
+      controller.play(scope: PlaybackScope.activeCut);
+      missing.add(4);
+      controller.seekToGlobalFrame(4);
+      expect(controller.isWaiting, isTrue, reason: '⛔premise');
+      log.clear();
+
+      // Backwards, so the frame listener sees a jump it would answer too.
+      controller.seekToGlobalFrame(1);
+      expect(controller.isWaiting, isFalse, reason: '⛔premise');
+      expect(log, ['start a.wav @100ms']);
+    });
+
+    test('dragged from one frame that is not there to another, the sound '
+        'stays stopped', () {
+      controller.play(scope: PlaybackScope.activeCut);
+      missing.addAll([1, 4]);
+      controller.seekToGlobalFrame(4);
+      log.clear();
+
+      controller.seekToGlobalFrame(1);
+      expect(controller.isWaiting, isTrue, reason: '⛔premise');
+      expect(log, isEmpty);
+    });
+
+    test('a run that waits from its first frame starts no sound until it '
+        'goes on', () {
+      missing.add(0);
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(log, ['prepare a.wav', 'prepare b.wav']);
+
+      log.clear();
+      missing.clear();
+      controller.lookAgain();
+      expect(log, ['start a.wav @0ms']);
+    });
+  });
 }

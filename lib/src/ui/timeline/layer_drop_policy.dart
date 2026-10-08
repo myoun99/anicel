@@ -117,9 +117,13 @@ class LayerDropPlan {
   LayerId movingId,
 ) {
   final index = stack.indexWhere((layer) => layer.id == movingId);
-  if (index < 0) {
-    return null;
-  }
+  return index < 0 ? null : _carriedFrom(stack, index);
+}
+
+/// The stack slice the row at [index] carries — [_ownDragRun] for a row
+/// already found. A gap asks it too ([modelInsertionForSlot]): what a row
+/// carries is what a line beside it has to clear.
+({int start, int endExclusive}) _carriedFrom(List<Layer> stack, int index) {
   final moving = stack[index];
   if (moving.kind.groupsLayers) {
     final members = stack.subtreeMembersOf(moving.id);
@@ -162,8 +166,25 @@ int? modelInsertionForSlot({
   final before = indexOfDisplay(slot - 1);
   final after = indexOfDisplay(slot);
   if (before != null && after != null) {
-    // Adjacent in the stack whichever way the surface renders them.
-    return before > after ? before : after;
+    // 🚨F-312 (유저 2026-10-06): 「접혀있을땐 사이에 두는게 안되고 어태치에
+    // 넣는거밖에 안됨」 — and F-31 before it (2026-08-24): 「보이는것중에서만
+    // 이동하도록」.
+    //
+    // Adjacent ON SCREEN is not adjacent in the stack: a folded folder's
+    // members and a folded base's riders sit between the two rows with no
+    // row of their own. ⛔This answered `upper` alone — the seat directly
+    // under the upper row — and under a folded group that seat is INSIDE it
+    // (a folder sits above its members, a base above its below riders), so
+    // the line between two rows dropped the run into a group nobody could
+    // see. A gap is a move (유저 2026-08-09); joining is said ON the row.
+    //
+    // So the seat is under everything the upper row CARRIES. When the lower
+    // row is itself one of those — an open folder's first member, a base's
+    // nearest rider — nothing is hidden between them and `upper` stands.
+    final upper = before > after ? before : after;
+    final lower = before > after ? after : before;
+    final under = _carriedFrom(stack, upper).start;
+    return under > lower ? under : upper;
   }
   final only = before ?? after;
   if (only == null) {
@@ -209,10 +230,11 @@ int? modelInsertionForSlot({
   final reversed =
       firstModel != null && lastModel != null && firstModel > lastModel;
   final atListEnd = before != null;
-  if (reversed) {
-    return atListEnd ? only : only + 1;
-  }
-  return atListEnd ? only + 1 : only;
+  // Past the end row is past what it carries, on whichever side that is
+  // (F-312): a folded base at the foot of the rail has its below riders
+  // under it, and the last line of the list is under those.
+  final carried = _carriedFrom(stack, only);
+  return reversed == atListEnd ? carried.start : carried.endExclusive;
 }
 
 /// Where a NEW row lands for the caret gap [slot] of [displayRows] — the
@@ -261,10 +283,12 @@ int? newRowInsertionForSlot({
 /// arrived with no door. The first attach rider on a base is the other: a
 /// base with no riders has no inside either.
 ///
-/// Both are the same gesture — you put the thing ON the thing — and the two
+/// Both are the same gesture — you put the thing ON the thing — and the
 /// answers come from what the target IS: a folder swallows, a drawing row
-/// takes a rider. Everything after that is [resolveLayerDrop]'s, so the two
-/// paths cannot disagree about what is legal.
+/// takes a rider, and an attach row takes the run into the group it rides
+/// (F-312, [_joinRidersGroup]). Everything after that is
+/// [resolveLayerDrop]'s, so the two paths cannot disagree about what is
+/// legal.
 LayerDropPlan? resolveLayerDropOnRow({
   required List<Layer> stack,
   required LayerId movingId,
@@ -298,6 +322,9 @@ LayerDropPlan? resolveLayerDropOnRow({
       alsoMoving: alsoMoving,
     );
   }
+  if (isAttachedLayer(target)) {
+    return _joinRidersGroup(stack, movingId, targetIndex, alsoMoving);
+  }
   // ⑤ (user, 2026-08-12): 「어태치 장착 면은 두 행의 상대 위치가 정한다.
   // 아래에서 위로 붙이면 아래쪽 어태치여야 하는데 지금은 무조건 위쪽
   // 어태치가 된다」.
@@ -320,6 +347,68 @@ LayerDropPlan? resolveLayerDropOnRow({
         ? AttachedPlacement.below
         : AttachedPlacement.above,
     alsoMoving: alsoMoving,
+  );
+}
+
+/// The plan for dropping [movingId]'s run ON the attach row at [riderIndex]:
+/// it joins that row's group.
+///
+/// F-312 (유저 2026-10-06): 「어태치쪽에 가까우면 어태치, 아니면 사이 … 위아래
+/// 어태치레이어가 있는 곳의, 기준레이어의 사이에 두고싶은건데 … 펼쳐져있으면
+/// 사이에 넣는거밖에 안되고 **어태치의 마지막/위어태치 이렇게 두는게 안됨**」.
+///
+/// The gaps strictly inside a group already attach ([_slotInsideGroup]), so
+/// the one seat no caret reaches is the group's OUTER EDGE — that gap is
+/// also the first gap outside, and to a run that is not in the group it
+/// means 「사이」. Between two groups it has to keep meaning that, or there
+/// is no way left to put a row between them. So the edge is said the way a
+/// first rider is: ON the row. Near the line is between, on the attach row
+/// is attach.
+///
+/// The run lands on the row's OUTER side, away from the base — on the edge
+/// row that is the group's new last row, where a row added from the menu
+/// goes too ([newAttachedRowIndex]), and on any other it is the gap a caret
+/// names anyway.
+///
+/// ⛔Not the side the run came from (⑤, the rule next door). That one
+/// answers which side of the base's PICTURE a rider takes; here the row
+/// under the pointer already says it, and a run arriving from the base's
+/// side could never become the last.
+///
+/// Null when the run already rides that base. There is nothing to join, so
+/// where it sits is the gap's question, and F-31② splits the edge for it.
+/// ⛔Mounting it again would also re-decide its timing mode — a mount picks
+/// synced or free afresh — for a row that only moved.
+LayerDropPlan? _joinRidersGroup(
+  List<Layer> stack,
+  LayerId movingId,
+  int riderIndex,
+  Set<LayerId> alsoMoving,
+) {
+  final rider = stack[riderIndex];
+  final baseId = rider.attachedToLayerId;
+  final baseIndex = stack.indexWhere((layer) => layer.id == baseId);
+  final moving = stack.firstWhere((layer) => layer.id == movingId);
+  final rides =
+      moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, stack);
+  // A dangling link names no group to join.
+  if (baseIndex < 0 || rides == baseId) {
+    return null;
+  }
+  final above = riderIndex > baseIndex;
+  return resolveLayerDrop(
+    stack: stack,
+    movingId: movingId,
+    insertAt: above ? riderIndex + 1 : riderIndex,
+    forceMountBaseId: baseId,
+    forceMountPlacement: above
+        ? AttachedPlacement.above
+        : AttachedPlacement.below,
+    alsoMoving: alsoMoving,
+    // The pointer is in the row it dropped on, which is not the run's own
+    // group: a run that rides another base lets go of it here rather than
+    // being read as still touching it at the edge.
+    pointerInRow: rider.id,
   );
 }
 
@@ -810,7 +899,8 @@ LayerId? _groupBaseOfRow(List<Layer> stack, Layer row, {LayerId? ownBase}) {
 /// Strictly inside is what MAKES an attach, and the strictness is the whole
 /// safety of it: the slots at a group's two outer edges stay ordinary moves,
 /// so a row can always be placed next to a group without joining it, and
-/// passing above or below one commits nothing. The price is that a base with
+/// passing above or below one commits nothing. (Joining AT an edge is said
+/// ON the edge row — F-312, [_joinRidersGroup].) The price is that a base with
 /// no attach rows yet has no inner slot at all — mounting the FIRST one is
 /// the Layer menu's job ("위/아래 레이어에 장착"), the same way an empty
 /// folder cannot be entered by stepping.
@@ -982,8 +1072,11 @@ List<({int rowIndex, EffectId effectId})> effectHeaderRowsOf(
 ///
 /// Handing THIS list to the drop policy is also what makes the landing
 /// right: with only visible rows in it, the gap after a folded folder has
-/// the next VISIBLE row on its far side, so the insertion lands after the
-/// folder's members instead of among them.
+/// the next VISIBLE row on its far side, and [modelInsertionForSlot] seats
+/// a line between two visible rows clear of whatever is folded between
+/// them — after the folder's members instead of among them. (↩️F-312: the
+/// second half was promised here before it was true. The seat it named was
+/// the top of the folded group.)
 List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
   final layers = <({int rowIndex, Layer layer})>[];
   for (var index = 0; index < rows.length; index += 1) {

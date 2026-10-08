@@ -5,7 +5,8 @@ import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/track_id.dart';
-import '../persistence/cel_places.dart' show DrawingCelPlace, rowOwnerName;
+import '../persistence/cel_places.dart'
+    show DrawingCelPlace, RowDrawingPlaces, rowOwnerName;
 import '../project_lookup.dart' show projectLayersWithOwners;
 
 /// Where a project uses a file of its media pool, by the names a person
@@ -108,6 +109,7 @@ Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
     if (linked.isEmpty) {
       continue;
     }
+    final row = RowDrawingPlaces(track: owned.track, cut: cut, layer: layer);
     for (final frame in layer.frames) {
       if (linked.contains(frame.id)) {
         yield FrameMediaUse(
@@ -115,12 +117,7 @@ Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
           cutId: cut?.id,
           layerId: layer.id,
           frameId: frame.id,
-          place: DrawingCelPlace.at(
-            track: owned.track,
-            cut: cut,
-            layer: layer,
-            frame: frame,
-          ),
+          place: row.of(frame),
         );
       }
     }

@@ -563,7 +563,8 @@ void main() {
       painter,
       isNot(contains('_stripWritingGround')),
       reason: 'the create + stood on the paper-white composite in the strip '
-          'until 2026-09-26; it stands in the conte top band now',
+          'until 2026-09-26, then in the conte top band; it is the conte '
+          'row\'s own button now (I-73)',
     );
     expect(
       'storyboardPanelPictureGroundColor'.allMatches(painter).length,
@@ -578,26 +579,28 @@ void main() {
     );
     expect(
       painter,
-      contains('final cutGround = _bandGround(block, StoryboardBand.cut);'),
+      contains('final cutGround = _bandGround(block);'),
       reason: 'the cut\'s number and length read the cut\'s band',
     );
     expect(
-      painter,
-      contains(
-        'final conteGround = _bandGround(block, StoryboardBand.conte);',
-      ),
-      reason: 'the panels\' names and commas and the + read the conte '
-          'blocks\' band',
-    );
-    expect(
-      RegExp(
-        r'_paintPanel(Heads|Commas)\(canvas, block, ground: conteGround\);',
-      ).allMatches(painter).length,
+      'ground: cutGround'.allMatches(painter).length,
       2,
-      reason: 'the panel NAME and its COMMA stand in the conte blocks\' '
-          'bands (유저 2026-09-26) and are handed that band\'s fill — the '
-          'same kind of ground the cut title receives, so one block cannot '
-          'wear two inks for one reason again (D29-2)',
+      reason: 'the two words a cut block writes — its number and its '
+          'length — are each handed that band\'s fill',
+    );
+    // ↩️The panel NAME and its COMMA stood in the conte blocks' bands here
+    // (유저 2026-09-26) and were handed that band's fill —
+    // `_paintPanelHeads` / `_paintPanelCommas(…, ground: conteGround)` — so
+    // one block could not wear two inks for one reason again (D29-2). They
+    // are the conte row's now (I-73, 2026-10-08): a panel is a frame block,
+    // written in the block's own ink (F-24, above), and the cut block has
+    // no conte band left to hand anything.
+    expect(painter, isNot(contains('conteGround')));
+    expect(
+      painter,
+      isNot(matches(RegExp('_paintPanel(Heads|Commas)'))),
+      reason: 'the cut block draws its panels\' PICTURES and none of their '
+          'writing',
     );
     expect(
       painter,

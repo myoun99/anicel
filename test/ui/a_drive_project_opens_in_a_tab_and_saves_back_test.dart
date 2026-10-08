@@ -30,6 +30,9 @@ import '../models/import/tvpp_test_builder.dart';
 void main() {
   late Directory folder;
   late Map<String, String> documents;
+  // How many writes into a document have FINISHED — the moment a reader may
+  // open it (see the save below).
+  var written = 0;
 
   Future<Map<Object?, Object?>?> provider(
     String method,
@@ -52,6 +55,7 @@ void main() {
       case 'writeDocument':
         final uri = arguments['uri']! as String;
         File(arguments['sourcePath']! as String).copySync(documents[uri]!);
+        written++;
         return {
           'status': 'granted',
           'items': [
@@ -67,6 +71,7 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_drive_tabs_');
     documents = {};
+    written = 0;
     ProviderDocuments.debugChannel = provider;
   });
 
@@ -114,6 +119,17 @@ void main() {
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
   }
 
+  // 🚨HOW LONG THE WAITS BELOW WAIT IS A TIME, NOT A NUMBER OF ROUNDS.
+  // ⛔They counted 200 rounds — about five seconds on an idle machine — and a
+  // round grows with the load. This file went red in a batch beside other
+  // runs with the save not yet in the document (`Expected: <2> Actual: <1>`)
+  // on 2026-10-06 and again on 10-07, on lanes that touched nothing of
+  // saving, and passed alone each time (board
+  // `a-poll-that-counts-rounds-runs-out-under-load`). A wait that passes
+  // returns the moment what it waits for is there, so the ceiling costs
+  // nothing; it is only how long a real failure takes to say so.
+  const patience = Duration(seconds: 60);
+
   Future<void> tapKey(WidgetTester tester, String key) async {
     final target = find.byKey(ValueKey<String>(key));
     await tester.ensureVisible(target);
@@ -122,13 +138,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Pumps real time until [done] says so.
+  /// One beat of real time: the test clock moves, then the disk gets a turn.
+  Future<void> beat(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 25)),
+    );
+  }
+
+  /// Pumps real time until [done] says so, or [patience] has run out.
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    for (var attempt = 0; attempt < 200 && !done(); attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
+    final deadline = DateTime.now().add(patience);
+    while (!done() && DateTime.now().isBefore(deadline)) {
+      await beat(tester);
     }
     await tester.pumpAndSettle();
   }
@@ -177,16 +199,17 @@ void main() {
     opened.cutVerbs.createCut();
     await tester.pump();
 
+    final writes = written;
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-save')));
-    var saved = before;
-    for (var attempt = 0; attempt < 200 && saved == before; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-      saved = await cutsIn(tester, documents[drive.uri]!);
-    }
+    // 🚨THE DOCUMENT IS READ ONCE, AFTER ITS WRITE — never during it. This
+    // read every beat while the save was in flight, and on Windows
+    // `copySync` deletes its target before it copies: a read in that gap
+    // found no file, or one held by the copy (OS 32), and failed the test
+    // under load (10-06 · 10-07 · 10-08; board
+    // `the-drive-tab-test-reads-its-document-while-it-is-rewritten`).
+    await until(tester, () => written > writes);
+    final saved = await cutsIn(tester, documents[drive.uri]!);
     // The save's window lingers a beat after it lands, then goes.
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();

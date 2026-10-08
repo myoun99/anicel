@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -10,7 +12,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -231,7 +232,6 @@ void main() {
             body: CanvasPlaybackView(
               controller: controller,
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               prerenderProgress: ValueNotifier(PrerenderProgress.none),
               cameraViewEnabled: false,
               cameraFrameSize: canvasSize,
@@ -242,13 +242,7 @@ void main() {
         ),
       );
 
-      final paint = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-          matching: find.byType(CustomPaint),
-        ),
-      );
-      expect(paint.painter, isA<PlaybackFramePainter>());
+      final paint = playbackFramePaint(tester);
       expect(
         paint.willChange,
         isFalse,
@@ -292,7 +286,6 @@ void main() {
                 globalFrameIndex: globalFrame,
               ),
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>

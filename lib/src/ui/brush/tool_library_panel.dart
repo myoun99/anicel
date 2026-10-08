@@ -61,19 +61,23 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
         ),
         (press: TransformModePress(TransformMode.mesh), icon: Icons.grid_4x4),
       ],
+      // The SHAPE tool's tiles: the shapes it draws (I-69).
+      CanvasTool.shape => _shapeTiles(CanvasTool.shape),
       CanvasTool.brush ||
       CanvasTool.eraser ||
       CanvasTool.eyedropper ||
-      CanvasTool.guide => const [],
+      CanvasTool.guide ||
+      CanvasTool.text => const [],
     };
 
-/// One shape tile per [CanvasShapeKind], in rail order, for [verb].
+/// One shape tile per shape [verb] speaks ([canvasToolShapes]), in rail
+/// order.
 ///
 /// ONE list feeds every drag-out verb, so a new [CanvasShapeKind] shows up
-/// under select, cut and fill from a single entry here rather than from one
-/// hand-written tile per verb.
+/// under every verb that speaks it from a single entry here rather than
+/// from one hand-written tile per verb.
 List<({SubToolPress press, IconData icon})> _shapeTiles(CanvasTool verb) => [
-  for (final shape in CanvasShapeKind.values)
+  for (final shape in canvasToolShapes(verb))
     (
       press: ShapeTilePress(verb, shape),
       icon: switch (shape) {
@@ -81,6 +85,7 @@ List<({SubToolPress press, IconData icon})> _shapeTiles(CanvasTool verb) => [
         CanvasShapeKind.ellipse => Icons.circle_outlined,
         CanvasShapeKind.lasso => Icons.gesture,
         CanvasShapeKind.polygon => Icons.polyline_outlined,
+        CanvasShapeKind.line => Icons.horizontal_rule,
       },
     ),
 ];
@@ -179,6 +184,8 @@ class ToolLibraryPanel extends StatelessWidget {
       case CanvasTool.fill:
       case CanvasTool.fillShape:
         return _tileList('tool-library-fill', _tiles(CanvasTool.fill));
+      case CanvasTool.shape:
+        return _tileList('tool-library-shape', _tiles(CanvasTool.shape));
       case CanvasTool.move:
         return ValueListenableBuilder<TransformToolOptions>(
           valueListenable: transformOptions ?? _fallbackTransformOptions,
@@ -189,6 +196,11 @@ class ToolLibraryPanel extends StatelessWidget {
         );
       case CanvasTool.eyedropper:
         return const _ToolNote(keyValue: 'tool-library-eyedropper');
+      case CanvasTool.text:
+        // One verb and no tiles: what a text is set in is a setting, and the
+        // texts of the cel are listed there too (유저 2026-10-06: 「도구설정에
+        // 선택된 텍스트라는 항목」).
+        return const _ToolNote(keyValue: 'tool-library-text');
       case CanvasTool.guide:
         // The cut's own guides, grouped by kind — the same shape the brush
         // library has (group, then entries), with one difference worth

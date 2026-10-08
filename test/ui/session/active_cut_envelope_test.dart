@@ -38,7 +38,7 @@ void main() {
       ),
       'duplicateActiveCut': (s) => s.cutVerbs.duplicateActiveCut(),
       'deleteActiveCut': (s) => s.cutVerbs.deleteActiveCut(),
-      'updateActiveCutNote': (s) => s.cutVerbs.updateActiveCutNote('note'),
+      'updateActiveCutNote': (s) => s.cutVerbs.updateActiveCutNote(page: 0, note: 'note'),
       'renameActiveCut': (s) => s.cutVerbs.renameActiveCut('X'),
       'createLinkedCutFromActiveCut': (s) =>
           s.cutVerbs.createLinkedCutFromActiveCut(),

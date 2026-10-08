@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -328,7 +330,44 @@ void main() {
       reason: 'the caller has to be able to TELL the user a copy was made',
     );
     expect(source.path, isNot(path));
+    expect(
+      source.path,
+      endsWith('.tvpp'),
+      reason: 'the copy keeps the kind its name says',
+    );
     expect(File(source.path).readAsBytesSync(), const [4, 5]);
+    expect(
+      source.path,
+      startsWith('${SessionScratch.openedFolder()}/'),
+      reason: 'in this run\'s room, which goes with the run — loose in the '
+          'system temp, nothing ever removed one',
+    );
+    File(source.path).deleteSync();
+  });
+
+  test('a copy of a file with no extension takes none from its folder — '
+      'whichever separator the path was spelled with', () async {
+    // The extension was cut where the platform's separator last stood, so
+    // a forward-slash path on Windows took `.cut/take` from its folder
+    // (board `the-save-keeps-its-own-folder-of-a-path`, 2026-10-08).
+    final folder = Directory('${temp.path}/in.cut')..createSync();
+    final path = '${folder.path}/take'.replaceAll(r'\', '/');
+    File(path).writeAsBytesSync(const <int>[]);
+    FolderPicker.debugDownloadRequester = (_) async {};
+    FolderPicker.debugCoordinatedReader =
+        ({required String sourcePath, required String destinationPath}) async {
+          File(destinationPath).writeAsBytesSync(const [4, 5]);
+          return true;
+        };
+
+    final source = await FolderPicker.materializeOpenedFile(
+      path,
+      within: const Duration(milliseconds: 20),
+      step: const Duration(milliseconds: 5),
+    );
+
+    expect(source.staged, isTrue, reason: 'fixture: the last resort');
+    expect(fileNameOfPath(source.path), isNot(contains('.')));
     File(source.path).deleteSync();
   });
 

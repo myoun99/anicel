@@ -1,5 +1,6 @@
 import '../editing/default_cut_helpers.dart';
 import '../editing/editing_session_state.dart';
+import '../editing/run_id_mint.dart' show mintCutId;
 import '../../core/collection_equality.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
@@ -184,6 +185,15 @@ class CutCommandCoordinator {
     canvasSize: canvasSize,
     anchor: anchor,
   );
+  void placeCutCanvas({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+  }) => _cuts.placeCutCanvas(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+  );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
@@ -198,8 +208,11 @@ class CutCommandCoordinator {
     beforeGaps: beforeGaps,
     afterGaps: afterGaps,
   );
-  void updateCutNote({required CutId cutId, required String note}) =>
-      _cuts.updateCutNote(cutId: cutId, note: note);
+  void updateCutNote({
+    required CutId cutId,
+    required int page,
+    required String note,
+  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note);
   void setCutStaffNames({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
@@ -302,12 +315,10 @@ class CutCommandCoordinator {
   );
   void updateTrackDisplay({
     required TrackId trackId,
-    double? opacity,
-    bool? fxEnabled,
+    required bool fxEnabled,
     String description = 'Edit track display',
   }) => _tracks.updateTrackDisplay(
     trackId: trackId,
-    opacity: opacity,
     fxEnabled: fxEnabled,
     description: description,
   );
@@ -439,8 +450,15 @@ class CutCommandCoordinator {
     originCutId: originCutId,
     targetCutId: targetCutId,
   );
-  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) =>
-      _links.linkDuplicateLayer(cutId: cutId, layerId: layerId);
+  LayerId linkDuplicateLayer({
+    required CutId cutId,
+    required LayerId layerId,
+    required int insertionIndex,
+  }) => _links.linkDuplicateLayer(
+    cutId: cutId,
+    layerId: layerId,
+    insertionIndex: insertionIndex,
+  );
 
   // ── the folder and attachment commands: their own object ────────────
   //
@@ -491,11 +509,8 @@ class CutCommandCoordinator {
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    // Deleting a FOLDER row means dissolving it: the members are rows in
-    // their own right and stay where they are. (Deleting the pictures too
-    // would make one Delete key destroy work the row itself never held.)
     if (layer.kind.groupsLayers) {
-      dissolveFolder(cutId: cutId, folderId: layerId);
+      _deleteFolderWithWhatItHolds(cutId: cutId, folder: layer);
       return;
     }
     // Attach rows are accessories — always deletable, never counted toward
@@ -620,6 +635,45 @@ class CutCommandCoordinator {
           layerId: layerId,
         ),
       ],
+    );
+  }
+
+  /// Deletes [folder] and every row it holds, as ONE undo step.
+  ///
+  /// 🗣️F-305 (유저 2026-10-06): 「타임라인에서 폴더 삭제할때 내용물도 함께
+  /// 삭제 … 드래그로 밖으로 꺼내고 폴더삭제하는게 확실함. 폴더 삭제한단건
+  /// 내용물도 삭제하고싶다는것임」.
+  ///
+  /// ↩️Since the folder became a layer (2026-07-23) its delete DISSOLVED it:
+  /// 「the members are rows in their own right and stay where they are.
+  /// (Deleting the pictures too would make one Delete key destroy work the
+  /// row itself never held.)」 — that round's own reasoning, and the user's
+  /// ruling is the other way: what is to be kept is dragged out first.
+  ///
+  /// Each row goes by its OWN delete ([deleteLayer]) — a folder inside by
+  /// this walk again, a base with its attach rows, and a row the cut may not
+  /// lose (its last instruction row) not at all. So what stays behind stays
+  /// for the reason it would have stayed alone, and is let out to the
+  /// folder's parent as the folder row goes ([dissolveFolder] — every 겸용
+  /// counterpart with it; it finds nothing to do where the folder went
+  /// along already, an organizer with its last row).
+  void _deleteFolderWithWhatItHolds({
+    required CutId cutId,
+    required Layer folder,
+  }) {
+    List<Layer> rows() => _requireCut(cutId).layers;
+    historyManager.runAsOneStep(
+      'Delete folder ${folder.name} and what it holds',
+      () {
+        for (final held in rows().directMembersOf(folder.id)) {
+          // A row before it may have taken this one along: a base, its
+          // attach rows.
+          if (rows().byId(held.id) != null) {
+            deleteLayer(cutId: cutId, layerId: held.id);
+          }
+        }
+        dissolveFolder(cutId: cutId, folderId: folder.id);
+      },
     );
   }
 
@@ -814,9 +868,7 @@ class CutCommandCoordinator {
 
   /// Writes a direction row's spans — which ARE its blocks (R27,
   /// [LayerKind.spansRideBlocks]) — as the edit [spans] makes of the row;
-  /// one undo step, no-op when it changes nothing. An optional [note]
-  /// rewrites the cut note in the SAME undo step (the creation flow
-  /// auto-writes the memo shorthand — R5-⑥).
+  /// one undo step, no-op when it changes nothing.
   ///
   /// ⛔Not a span map in and a span map out. A map says where spans are,
   /// not which block each one was, and a direction row's span is a block
@@ -827,18 +879,15 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required Layer Function(Layer row) spans,
     String description = 'Edit instructions',
-    String? note,
   }) {
     final before = _requireLayer(cutId: cutId, layerId: layerId);
     if (!before.kind.spansRideBlocks) {
       throw StateError('Direction spans belong on direction rows only.');
     }
-    final cut = _requireCut(cutId);
     final after = rederiveRunBehaviors(
       spans(before),
       drawnFrameCount: cutDrawnFrameCount(repository.requireProject(), cutId)!,
     );
-    final notes = note != null && cut.metadata.note != note;
     historyManager.executeAsOneStep(description, [
       if (after != before)
         UpdateLayerTimelineCommand(
@@ -846,8 +895,6 @@ class CutCommandCoordinator {
           before: before,
           after: after,
         ),
-      if (notes)
-        UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
     ]);
   }
 

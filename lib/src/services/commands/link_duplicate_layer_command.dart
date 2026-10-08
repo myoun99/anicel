@@ -1,9 +1,9 @@
-import '../../models/attached_layer_resolve.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/new_row_placement.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_tree_editor.dart';
@@ -25,11 +25,17 @@ import '../project_repository.dart';
 ///   copied base; nothing attaches to the ORIGINAL group.
 /// - The registry gains one link pair per member (extending the member's
 ///   existing group when it is already linked).
+/// - The copies land where a NEW row would, asked for [insertionIndex]
+///   ([newRowPlacement] — never inside another attach group, and in the
+///   folder of the row below). ↩️They landed directly above their source
+///   group while the layer menu's 「링크해서 복제」 was the only door; it
+///   is a PASTE's now (I-77), and a paste lands where it is pressed.
 class LinkDuplicateLayerCommand implements Command {
   LinkDuplicateLayerCommand({
     required this.repository,
     required this.cutId,
     required this.sourceLayerId,
+    required this.insertionIndex,
     required this.layerIdMap,
     required this.newGroupIdBySource,
   });
@@ -39,6 +45,9 @@ class LinkDuplicateLayerCommand implements Command {
 
   /// Any member of the group to duplicate (resolves to its base).
   final LayerId sourceLayerId;
+
+  /// The seat in the cut's stack the copies are aimed at.
+  final int insertionIndex;
 
   /// Planned ids: source member id → its copy's id (planner-assigned so
   /// redo reproduces the exact state).
@@ -64,8 +73,8 @@ class LinkDuplicateLayerCommand implements Command {
       );
       final track = group.track;
       final cut = group.cut;
-      final baseId = group.baseId;
       final members = group.members;
+      final placement = newRowPlacement(cut.layers, insertionIndex);
 
       final copies = <Layer>[
         for (final member in members)
@@ -81,20 +90,19 @@ class LinkDuplicateLayerCommand implements Command {
               // defaults — same FrameIds IS the link.
             );
             // An ORGANIZER folder copied with the group re-parents its
-            // member copies onto the copied folder row; folder pointers
-            // OUT of the slice (the group's shared outer folder) carry
-            // over unchanged.
-            final remappedFolderId = member.folderId == null
+            // member copies onto the copied folder row. A folder pointer
+            // OUT of the slice — the folder the group stood in — is the
+            // landing's: the copies join the folder they are put down in.
+            final copiedFolderId = member.folderId == null
                 ? null
                 : layerIdMap[member.folderId!];
-            return remappedFolderId == null
-                ? copy
-                : copy.copyWith(folderId: remappedFolderId);
+            return copy.copyWith(
+              folderId: copiedFolderId ?? placement.folderId,
+            );
           }(),
       ];
 
-      final nextLayers = [...cut.layers]
-        ..insertAll(attachedGroupEndIndex(baseId, cut.layers), copies);
+      final nextLayers = [...cut.layers]..insertAll(placement.index, copies);
 
       _registryBefore = project.linkRegistry;
       var groups = [...project.linkRegistry.groups];

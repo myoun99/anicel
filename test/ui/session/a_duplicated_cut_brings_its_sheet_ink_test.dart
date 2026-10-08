@@ -57,7 +57,6 @@ void main() {
     );
     write(conteInkRowKey(source.id, 'ink-1'));
     write(envelopeInkBoxKey(source.id, 'memo'));
-    write(timesheetInkStripKey(source.id, 2));
     write(timesheetInkPageKey(source.id, 1));
 
     session.cutVerbs.duplicateActiveCut();
@@ -70,12 +69,11 @@ void main() {
       reason: 'the copied block keeps its id, on the copy\'s cut',
     );
     expect(read(envelopeInkBoxKey(copy.id, 'memo')), same(ink));
-    expect(read(timesheetInkStripKey(copy.id, 2)), same(ink));
     expect(read(timesheetInkPageKey(copy.id, 1)), same(ink));
     expect(
-      read(timesheetInkStripKey(copy.id, 1)),
+      read(timesheetInkPageKey(copy.id, 0)),
       isNull,
-      reason: 'band for band — nothing written where the source had none',
+      reason: 'page for page — nothing written where the source had none',
     );
     expect(
       read(conteInkRowKey(source.id, 'ink-1')),
@@ -102,12 +100,12 @@ void main() {
   test('a key of another cut is left alone', () {
     const elsewhere = CutId('another-cut');
     write(envelopeInkBoxKey(elsewhere, 'memo'));
-    write(timesheetInkStripKey(elsewhere, 0));
+    write(timesheetInkPageKey(elsewhere, 0));
 
     session.cutVerbs.duplicateActiveCut();
     final copy = session.requireActiveCut.id;
 
     expect(read(envelopeInkBoxKey(copy, 'memo')), isNull);
-    expect(read(timesheetInkStripKey(copy, 0)), isNull);
+    expect(read(timesheetInkPageKey(copy, 0)), isNull);
   });
 }

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 
@@ -43,7 +42,7 @@ void main() {
   });
 
   test('title falls back to the project name; the memo comes from the cut', () {
-    session.cutVerbs.updateActiveCutNote('PAN (A)→(B)');
+    session.cutVerbs.updateActiveCutNote(page: 0, note: 'PAN (A)→(B)');
 
     final source = buildCutEnvelopeSource(
       project: session.repository.requireProject(),
@@ -107,25 +106,20 @@ void main() {
       final paper = cutEnvelopePaperSize(
         mode: CutEnvelopePaperMode.cut,
         cut: cut,
-        formAspectRatio: CutEnvelopePresets.analog.aspectRatio,
       );
 
       expect(paper.width, cut.canvasSize.width);
       expect(paper.height, cut.canvasSize.height);
     });
 
-    test('sheet mode takes the form\'s own shape', () {
-      final form = CutEnvelopePresets.analog;
+    test('sheet mode is the envelope\'s own paper — A4 on its side at '
+        '300dpi, whatever the cut (F-294)', () {
+      final cut = session.requireActiveCut;
 
-      final paper = cutEnvelopePaperSize(
-        mode: CutEnvelopePaperMode.sheet,
-        cut: session.requireActiveCut,
-        formAspectRatio: form.aspectRatio,
-        sheetWidth: 1320,
+      expect(
+        cutEnvelopePaperSize(mode: CutEnvelopePaperMode.sheet, cut: cut),
+        (width: 3508, height: 2480),
       );
-
-      expect(paper.width, 1320);
-      expect(paper.height, (1320 / form.aspectRatio).round());
     });
 
     test('the mode round-trips through JSON', () {

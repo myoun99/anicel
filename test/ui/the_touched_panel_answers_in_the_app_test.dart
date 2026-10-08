@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
@@ -22,6 +23,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 
 import '../helpers/conte_track_fixture.dart';
 import '../helpers/home_page_probes.dart';
@@ -296,11 +299,19 @@ void main() {
       await key(tester, LogicalKeyboardKey.arrowDown);
     }
     expect(session.currentRow, TrackRowAddress(track.id));
+    // I-73: the conte row is under the V row, and it is the last.
+    final conteRow = LayerRowAddress(trackConteRowId(track.id));
     await key(tester, LogicalKeyboardKey.arrowDown);
     expect(
       session.currentRow,
-      TrackRowAddress(track.id),
-      reason: 'the V row is the bottom of the storyboard\'s rows',
+      conteRow,
+      reason: '↩️the V row was the bottom of the storyboard\'s rows',
+    );
+    await key(tester, LogicalKeyboardKey.arrowDown);
+    expect(
+      session.currentRow,
+      conteRow,
+      reason: 'the conte row is the bottom of the storyboard\'s rows',
     );
     expect(session.workingPanel, WorkingPanel.storyboard);
   });
@@ -316,8 +327,10 @@ void main() {
     final storyboard = hud.debugSnapshotFor(FlipHudAxis.row)!;
     expect(
       [for (final row in storyboard.rows.skip(1)) row.name],
-      ['S2', 'S1', 'V1'],
-      reason: 'the storyboard\'s own stack under its transition row',
+      ['S2', 'S1', 'V1', layerKindDisplayName(LayerKind.storyboard)],
+      reason: 'the storyboard\'s own stack under its transition row — the '
+          'conte row last, by the name its rail label wears (no cut has a '
+          'conte layer here, so the kind\'s own word)',
     );
     expect(storyboard.currentRow!.name, 'V1');
 
@@ -348,9 +361,12 @@ void main() {
     expect(row.isLane, isTrue);
   });
 
+  // I-73 (유저 2026-10-08: 「v행에서는 콘티블록에 서있다거나 하는걸 안하도록
+  // … v행 아래에 콘티행 만들어서 거기서」): ↩️the V row's window drew its
+  // PANELS while its flip counted them (2026-09-24).
   testWidgets('the window draws the blocks the flip steps through: the V '
-      'row\'s PANELS, the transition row\'s SPANS — and the gap\'s window the '
-      'same panels', (tester) async {
+      'row\'s CUTS, the conte row\'s PANELS, the transition row\'s SPANS — '
+      'and the gap\'s window the V row\'s cuts', (tester) async {
     List<(int, int)> runsOf(FlipHudSnapshot snapshot) => [
       for (final run in snapshot.currentRow!.runs) (run.startIndex, run.length),
     ];
@@ -362,8 +378,19 @@ void main() {
     session.standOnRow(const TrackRowAddress(conteTrackId));
     expect(
       runsOf(hud.debugSnapshotFor(FlipHudAxis.frame)!),
-      [(0, 4), (4, 4), (8, 4), (15, 10)],
-      reason: 'cut-1\'s three conte panels, then cut-2 whole',
+      [(0, 12), (15, 10)],
+      reason: 'cut-1 whole, then cut-2 whole',
+    );
+
+    session.standOnRow(
+      LayerRowAddress(trackConteRowId(conteTrackId)),
+      panel: WorkingPanel.storyboard,
+    );
+    expect(
+      runsOf(hud.debugSnapshotFor(FlipHudAxis.frame)!),
+      [(0, 4), (4, 4), (8, 4)],
+      reason: 'cut-1\'s three conte panels — cut-2 has no conte layer, and '
+          'holds none of this row\'s blocks',
     );
 
     final track = session.repository.requireProject().tracks.single;
@@ -378,13 +405,13 @@ void main() {
     );
 
     // The TIMELINE, parked in the gap: no cut, so no rows — the track is
-    // the row, and it is drawn in the V row's own panels.
+    // the row, and it is drawn in the V row's own blocks, its cuts.
     session.claimTimelineRow();
     session.selectGlobalFrame(13);
     expect(session.activeCutOrNull, isNull, reason: 'premise: the gap');
     expect(
       runsOf(hud.debugSnapshotFor(FlipHudAxis.frame)!),
-      [(0, 4), (4, 4), (8, 4), (15, 10)],
+      [(0, 12), (15, 10)],
     );
   });
 

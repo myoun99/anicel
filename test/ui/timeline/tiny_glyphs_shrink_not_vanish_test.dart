@@ -29,10 +29,6 @@ import 'package:anicel/src/ui/text/word_bake.dart';
 /// 보고싶다는게 래스터랑 다른점」. That is the assertion that matters most
 /// here — a change that improved the tiny case by blurring the ordinary
 /// one would have traded away the thing being protected.
-/// Source with every run of whitespace removed, so an assertion about
-/// WHAT the code says cannot fail over HOW it is wrapped.
-String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
-
 void main() {
   /// Mean coverage across a bitmap — the number that decides whether a
   /// tinted glyph reads as a mark or as nothing.
@@ -106,18 +102,76 @@ void main() {
     expect(wordBakeScale(legibleBakeSize), 1);
     expect(wordBakeScale(14), 1);
     expect(wordBakeScale(legibleBakeSize / 2), 2);
-    // ⚠️WHITESPACE-FREE. The first version matched a multi-line literal and
-    // answered differently on Windows (CRLF) and CI (LF) — a test that
-    // depends on line endings measures the checkout, not the code.
-    final source = _squash(
-      File('lib/src/ui/text/word_bake.dart').readAsStringSync(),
-    );
+    // ↩️The source was scanned here for an arm that handed the raster back
+    // unfiltered at scale 1 (`times==wordBakedAsItIs?big`). There is no arm
+    // now (2026-10-08): every bake goes through the average, and what keeps
+    // 「no rounding on the path that was already right」 is that the average
+    // of ONE pixel is that pixel — measured, not scanned. (That the bake of
+    // such a word IS the word drawn straight, byte for byte:
+    // `text/a_baked_word_stands_where_the_word_does_test.dart`.)
+    final raster = Uint8List.fromList([
+      for (var i = 0; i < 5 * 4; i += 1) (i * 37 + 11) % 256,
+    ]);
     expect(
-      source.contains('bakeScale==1?big'),
-      isTrue,
-      reason:
-          'and at scale 1 the alpha is the bake itself, not a filtered '
-          'copy of it — no rounding on the path that was already right',
+      boxFilterA8(raster, 5, 4, 5, 4),
+      raster,
+      reason: 'a raster averaged into a box its own size is itself',
+    );
+  });
+
+  test('a pixel takes the PART of a source pixel it covers — a ratio that '
+      'is no whole number shares no pixel between two windows', () {
+    // 3 → 2: each pixel covers one and a half — a whole pixel and half the
+    // middle one. ↩️The filter took every pixel a window touched, whole, so
+    // the middle one counted in full on both sides: [75, 45].
+    expect(boxFilterA8(Uint8List.fromList([90, 60, 30]), 3, 1, 2, 1), [80, 40]);
+    // And down the other axis, by the same rule.
+    expect(boxFilterA8(Uint8List.fromList([90, 60, 30]), 1, 3, 1, 2), [80, 40]);
+    // Both at once: a pixel's mean weighs each source pixel by the AREA of
+    // it that is covered — the corner one by a quarter.
+    expect(
+      boxFilterA8(
+        Uint8List.fromList([90, 60, 30, 60, 60, 60, 30, 60, 240]),
+        3,
+        3,
+        2,
+        2,
+      ),
+      // (90 + 60/2 + 60/2 + 60/4) / 2.25 = 73.3 …, and so on round.
+      [73, 46, 46, 140],
+    );
+  });
+
+  test('a pixel told what it covers takes that — and what lies past the '
+      'source\'s edge is empty, not left out of the mean', () {
+    // Two source pixels each, starting one pixel before the source: a row's
+    // first pixel is half empty, and so is its last. A row's end is the
+    // source's edge too — the pixel after it in memory is the next row's
+    // first, and no pixel reads it (the last two bytes are a row past the
+    // source, there so that a read too far has something to read).
+    expect(
+      boxFilterA8(
+        Uint8List.fromList([80, 40, 200, 100, 9, 9]),
+        2,
+        2,
+        2,
+        2,
+        along: (origin: -1, step: 2),
+      ),
+      [40, 20, 100, 50],
+    );
+    // Half a pixel on: each row is half of two, and the last half is past
+    // the end.
+    expect(
+      boxFilterA8(
+        Uint8List.fromList([100, 50]),
+        1,
+        2,
+        1,
+        2,
+        down: (origin: 0.5, step: 1),
+      ),
+      [75, 25],
     );
   });
 

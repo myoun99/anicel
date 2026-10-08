@@ -3,12 +3,9 @@ import 'dart:collection';
 import 'camera_pose.dart';
 import 'canvas_point.dart';
 import 'property_track.dart';
+import 'transform_pose.dart';
 
-/// The shared transform pose shape: a point in canvas coordinates plus
-/// uniform scale and rotation. The camera has used this shape since C0
-/// (center/zoom/rotation); layer transforms resolve to the same shape, so
-/// the dedicated name arrives with the property-lanes rename.
-typedef TransformPose = CameraPose;
+export 'transform_pose.dart';
 
 /// The AE-unified transform property set, in After Effects order. Display
 /// conventions live at the UI/clipboard layer (Scale shown as zoom·100 %,
@@ -25,6 +22,14 @@ enum TransformPropertyId { anchorPoint, position, scale, rotation, opacity }
 /// yields resolved poses at the union of keyed frames. The camera keeps
 /// speaking pose while the property lanes speak per-property.
 ///
+/// 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. The
+/// [scale] lane holds TWO numbers, one value, like Position and Anchor
+/// Point — AE's Scale is one property with two components, so its keys,
+/// its names and its clipboard line stay one. The camera writes its one
+/// zoom to both (the same option's terms: 「카메라는 줌 하나 그대로」)
+/// through its own wrapper (`CutCamera`), which is where a [CameraPose]
+/// goes in and comes out; the track itself speaks [TransformPose].
+///
 /// An empty track means "no transform work" — consumers supply their own
 /// default pose (the camera's canvas-centered pose, a layer's identity).
 class TransformTrack {
@@ -34,7 +39,7 @@ class TransformTrack {
         keys: _poseComponentKeys(keyframes, (pose) => pose.center),
       ),
       scale = PropertyTrack(
-        keys: _poseComponentKeys(keyframes, (pose) => pose.zoom),
+        keys: _poseComponentKeys(keyframes, (pose) => pose.scale),
       ),
       rotation = PropertyTrack(
         keys: _poseComponentKeys(keyframes, (pose) => pose.rotationDegrees),
@@ -53,14 +58,17 @@ class TransformTrack {
 
   final PropertyTrack<CanvasPoint> anchorPoint;
   final PropertyTrack<CanvasPoint> position;
-  final PropertyTrack<double> scale;
+
+  /// The scale along each axis as ONE value — x across, y down, 1 being the
+  /// size the layer has (`TransformPose.scale`).
+  final PropertyTrack<CanvasPoint> scale;
   final PropertyTrack<double> rotation;
   final PropertyTrack<double> opacity;
 
   TransformTrack copyWith({
     PropertyTrack<CanvasPoint>? anchorPoint,
     PropertyTrack<CanvasPoint>? position,
-    PropertyTrack<double>? scale,
+    PropertyTrack<CanvasPoint>? scale,
     PropertyTrack<double>? rotation,
     PropertyTrack<double>? opacity,
   }) {
@@ -119,7 +127,7 @@ class TransformTrack {
   TransformTrack withKeyframe(int frameIndex, TransformPose pose) {
     return copyWith(
       position: position.withKey(frameIndex, pose.center),
-      scale: scale.withKey(frameIndex, pose.zoom),
+      scale: scale.withKey(frameIndex, pose.scale),
       rotation: rotation.withKey(frameIndex, pose.rotationDegrees),
     );
   }
@@ -145,17 +153,19 @@ class TransformTrack {
     TransformPose? defaultPose;
     TransformPose fallback() => defaultPose ??= orElse();
 
+    final scales = scale.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => fallback().scale,
+      lerp: CanvasPoint.lerp,
+    );
     return TransformPose(
       center: position.resolveAt(
         frameIndex: frameIndex,
         orElse: () => fallback().center,
         lerp: CanvasPoint.lerp,
       ),
-      zoom: scale.resolveAt(
-        frameIndex: frameIndex,
-        orElse: () => fallback().zoom,
-        lerp: lerpDouble,
-      ),
+      scaleX: scales.x,
+      scaleY: scales.y,
       rotationDegrees: rotation.resolveAt(
         frameIndex: frameIndex,
         orElse: () => fallback().rotationDegrees,
@@ -169,29 +179,15 @@ class TransformTrack {
       'anchorPoint': anchorPoint.toJson((value) => value.toJson()),
     if (position.isNotEmpty)
       'position': position.toJson((value) => value.toJson()),
-    if (scale.isNotEmpty) 'scale': scale.toJson((value) => value),
+    if (scale.isNotEmpty) 'scale': scale.toJson((value) => value.toJson()),
     if (rotation.isNotEmpty) 'rotation': rotation.toJson((value) => value),
     if (opacity.isNotEmpty) 'opacity': opacity.toJson((value) => value),
   };
 
   factory TransformTrack.fromJson(Map<String, dynamic> json) {
-    // Legacy pose-keyed tracks ({'keyframes': [{index, pose}]}) migrate to
-    // synchronized per-property keys on load.
-    if (json.containsKey('keyframes')) {
-      final keyframes = <int, TransformPose>{};
-      for (final item in json['keyframes'] as List? ?? const []) {
-        final entry = item as Map<String, dynamic>;
-        final index = entry['index'] as int;
-        if (keyframes.containsKey(index)) {
-          throw FormatException('Duplicate transform keyframe index: $index');
-        }
-        keyframes[index] = TransformPose.fromJson(
-          entry['pose'] as Map<String, dynamic>,
-        );
-      }
-      return TransformTrack(keyframes: keyframes);
-    }
-
+    // ↩️A pose-keyed track ({'keyframes': [{index, pose}]}) migrated to
+    // per-property keys here — the shape of files whose format is refused
+    // by its number now (the save law, 유저 2026-10-06).
     return TransformTrack.properties(
       anchorPoint: PropertyTrack.fromJson(
         json['anchorPoint'] as List?,
@@ -203,7 +199,7 @@ class TransformTrack {
       ),
       scale: PropertyTrack.fromJson(
         json['scale'] as List?,
-        (value) => (value! as num).toDouble(),
+        (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
       ),
       rotation: PropertyTrack.fromJson(
         json['rotation'] as List?,
@@ -259,7 +255,7 @@ class TransformNamedChanges {
 
   final Map<String, NamedKeyValue<CanvasPoint>> anchorPoint;
   final Map<String, NamedKeyValue<CanvasPoint>> position;
-  final Map<String, NamedKeyValue<double>> scale;
+  final Map<String, NamedKeyValue<CanvasPoint>> scale;
   final Map<String, NamedKeyValue<double>> rotation;
   final Map<String, NamedKeyValue<double>> opacity;
 

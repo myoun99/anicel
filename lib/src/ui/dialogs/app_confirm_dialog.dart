@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/anicel_project_archive.dart'
+    show AnicelFormatRefused, anicelOldestReadFormatVersion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../input/control_press_claim.dart';
@@ -117,6 +119,16 @@ class DetailsDisclosure extends StatefulWidget {
 class _DetailsDisclosureState extends State<DetailsDisclosure> {
   late bool _open = widget.startsOpen;
 
+  /// The heading and its count. Flexible: one longer than the window is
+  /// wide wraps under itself rather than running off the edge (F-303 gave
+  /// the list to windows whose headings are sentences).
+  Widget _heading(ThemeData theme) => Flexible(
+    child: Text(
+      '${widget.heading} (${widget.lines.length})',
+      style: theme.textTheme.bodyMedium,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -134,10 +146,7 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
                 _open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
                 size: 18,
               ),
-              Text(
-                '${widget.heading} (${widget.lines.length})',
-                style: theme.textTheme.bodyMedium,
-              ),
+              _heading(theme),
             ],
           ),
         )),
@@ -247,9 +256,24 @@ void showFileError(BuildContext context, Object error) => unawaited(
   showAppNotice(
     context,
     title: AppText.strings.commonNotice,
-    message: '$error',
+    message: fileErrorWords(error),
   ),
 );
+
+/// What a person reads for a file [error]: the program language's sentence
+/// where the app knows what went wrong, the error's own words otherwise.
+///
+/// 🗣️유저 2026-10-06 (the save law): an older file 「여는 문에서 형식
+/// 번호를 말해 주며 한 문장으로 거절한다」 — and it was saying it in English
+/// with `FormatException:` in front, whatever the program language.
+String fileErrorWords(Object error) => switch (error) {
+  AnicelFormatRefused(newer: true) => AppText.strings.openNewerFormat,
+  AnicelFormatRefused(:final saved) => AppText.strings.openOlderFormat(
+    saved,
+    anicelOldestReadFormatVersion,
+  ),
+  _ => '$error',
+};
 
 /// One of the two answers a yes/no window offers: what the button SAYS
 /// and how loudly it says it.
@@ -329,6 +353,36 @@ Future<bool?> askConfirm(
   context,
   (context) =>
       confirmWindow(context, question, accept: accept, decline: decline),
+);
+
+/// [askConfirm] for the question that STANDS UNTIL IT IS ANSWERED: the
+/// barrier, escape and the system's back leave the window where it is, and
+/// only its two buttons take it down ([showDialogVerb]).
+///
+/// For the question where walking away would itself be one of the answers
+/// and nobody chose it — a finished export that is still to be handed over
+/// (F-221-Q6, 유저 2026-10-07: 「고르거나 버릴 때까지 그 확인 창이 떠
+/// 있다」). Both answers are named: such a window has no 「cancel」 to
+/// default to.
+///
+/// ⚠️Null is still an answer the CALLER can get — torn down while the
+/// window stood, or the window taken down from outside (a pop meant for
+/// another route). Neither is the user's.
+///
+/// A door of its own rather than a flag on [askConfirm]: what stays is the
+/// ROUTE, so it is decided where the window is opened — a question that
+/// carried it would be ignored by every flow that builds [confirmWindow]
+/// inside a dialog of its own.
+Future<bool?> askUntilAnswered(
+  BuildContext context,
+  ConfirmQuestion question, {
+  required ConfirmChoice accept,
+  required ConfirmChoice decline,
+}) => showDialogVerb<bool>(
+  context,
+  (context) =>
+      confirmWindow(context, question, accept: accept, decline: decline),
+  staysUntilAnswered: true,
 );
 
 /// The two-button confirm window itself, so a verb that wants the window

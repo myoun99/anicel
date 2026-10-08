@@ -98,11 +98,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     state = tester.state<ExportDialogState>(find.byType(ExportDialog));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
     await tester.runAsync(state.export);
     await tester.pump();
 

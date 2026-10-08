@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import '../widgets/app_window.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
@@ -36,7 +38,11 @@ class CanvasResizeRequest {
 /// Studio) chooses where existing artwork stays pinned; cropped strokes are
 /// kept and reappear if the canvas grows again.
 class CanvasSizeDialog extends StatefulWidget {
-  const CanvasSizeDialog({super.key, required this.initialSize});
+  const CanvasSizeDialog({
+    super.key,
+    required this.initialSize,
+    this.onAdjustOnCanvas,
+  });
 
   static const int minDimension = 1;
 
@@ -67,16 +73,31 @@ class CanvasSizeDialog extends StatefulWidget {
 
   final CanvasSize initialSize;
 
+  /// Opens the canvas's adjust ON the canvas, the window closing to show
+  /// it (I-79-Q3, 유저 2026-10-08: 「캔버스에서 조정」). Null greys the
+  /// button out.
+  final VoidCallback? onAdjustOnCanvas;
+
   @override
   State<CanvasSizeDialog> createState() => _CanvasSizeDialogState();
 }
 
 class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
-  static const _presets = <(String, CanvasSize)>[
-    ('Default', CanvasSize(width: 2340, height: 1654)),
-    ('HD', CanvasSize(width: 1280, height: 720)),
-    ('FHD', CanvasSize(width: 1920, height: 1080)),
-    ('4K', CanvasSize(width: 3840, height: 2160)),
+  /// The sizes the presets list offers, each with its name: the paper's,
+  /// a line, then the video's ([videoSizePresets]).
+  ///
+  /// 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서 여러 프리셋
+  /// 준비하고」 — the app's one picking list ([SizePresetsRow]).
+  /// ↩️They were four chips in a row.
+  ///
+  /// 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
+  /// 150, 200 (a new cut's, [defaultCutCanvasSize]) and 300 dpi, then
+  /// HD · FHD · 2K · 4K. 「현장마다 용지 크기 다름 … 용지는 특히 홀수만
+  /// 아니면됨」: a studio types its own, and no size here is odd.
+  static const _paperPresets = <SizePreset>[
+    (name: 'A4 150dpi', size: CanvasSize(width: 1754, height: 1240)),
+    (name: 'A4 200dpi', size: defaultCutCanvasSize),
+    (name: 'A4 300dpi', size: CanvasSize(width: 3508, height: 2480)),
   ];
 
   late final TextEditingController _widthController = TextEditingController(
@@ -136,38 +157,21 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final (label, size) in _presets)
-                ActionChip(
-                  key: ValueKey<String>(
-                    'canvas-size-preset-${size.width}x${size.height}',
-                  ),
-                  label: Text('$label ${size.width}×${size.height}'),
-                  onPressed: () => _applyPreset(size),
-                ),
-            ],
+          SizePresetsRow(
+            keyPrefix: 'canvas-size',
+            groups: const [_paperPresets, videoSizePresets],
+            entered: enteredRequest?.size,
+            onPicked: _applyPreset,
+            onAdjustOnCanvas: widget.onAdjustOnCanvas,
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _AnchorGrid(
-                selected: _anchor,
-                onSelected: (anchor) => setState(() => _anchor = anchor),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  strings.canvasAnchorHelpTemplate
-                      .replaceAll('{min}', '${CanvasSizeDialog.minDimension}')
-                      .replaceAll('{max}', '${CanvasSizeDialog.maxDimension}'),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
+          // ⛔No caption beside the grid: the rule against explaining a
+          // control under it (no-explanatory-ui-copy). ↩️It said what an
+          // anchor is, that cropped strokes come back, and the size range —
+          // which the fields already enforce by refusing what is outside it.
+          _AnchorGrid(
+            selected: _anchor,
+            onSelected: (anchor) => setState(() => _anchor = anchor),
           ),
         ],
       ),

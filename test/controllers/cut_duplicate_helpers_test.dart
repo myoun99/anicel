@@ -128,7 +128,7 @@ void main() {
 
     test('preserves source metadata', () {
       final source = _sourceCut().copyWith(
-        metadata: const CutMetadata(note: 'FX-heavy cut.'),
+        metadata: const CutMetadata(pageNotes: ['FX-heavy cut.']),
       );
 
       final duplicate = duplicateCutAsIndependentCopy(

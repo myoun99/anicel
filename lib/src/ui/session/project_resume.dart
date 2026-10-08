@@ -1,6 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
+import '../../models/playback_mode.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
 
@@ -34,7 +34,10 @@ class ProjectResume {
     this.layerId,
     this.frameIndex = 0,
     this.tools = const {},
-    this.playbackQuality,
+    this.playbackMode,
+    this.timelineZoom = const {},
+    this.storyboardZoom,
+    this.frameAxisOffsets = const {},
   });
 
   static const ProjectResume none = ProjectResume();
@@ -49,19 +52,38 @@ class ProjectResume {
   /// read there.
   final Map<String, Object?> tools;
 
-  /// The resolution playback previewed at — a project setting kept here,
-  /// beside the project and not in it (유저 답 playback-quality-undo-Q1
-  /// 「언두 안 됨 — 보기 설정처럼(저장은 됨)」): picking one is no edit, so
-  /// no undo step takes it back and nothing marks the film unsaved, and the
+  /// What a run does at a frame whose picture is not made yet — a project
+  /// setting kept here, beside the project and not in it, as the playback
+  /// quality whose seat it took was (유저 답 playback-quality-undo-Q1
+  /// 「언두 안 됨 — 보기 설정처럼(저장은 됨)」): picking one is no edit, so no
+  /// undo step takes it back and nothing marks the film unsaved, and the
   /// file still keeps it. Null when the file says nothing.
-  final PlaybackQuality? playbackQuality;
+  final PlaybackMode? playbackMode;
+
+  /// The timeline zoom each cut was left at (F-253 → F-267, 유저 2026-10-01:
+  /// 「프로젝트와 같이 저장되도록」) — a cut nobody zoomed is not here.
+  final Map<CutId, double> timelineZoom;
+
+  /// The conte's zoom (F-267) — null when it was left at its default.
+  final double? storyboardZoom;
+
+  /// How far each frame panel was scrolled along its frames, by rail, in
+  /// pixels at that panel's zoom (F-267) — a rail left at its start is not
+  /// here.
+  final Map<String, double> frameAxisOffsets;
 
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
     if (frameIndex > 0) 'frameIndex': frameIndex,
     if (tools.isNotEmpty) 'tools': tools,
-    if (playbackQuality != null) 'playbackQuality': playbackQuality!.name,
+    if (playbackMode != null) 'playbackMode': playbackMode!.name,
+    if (timelineZoom.isNotEmpty)
+      'timelineZoom': {
+        for (final entry in timelineZoom.entries) entry.key.value: entry.value,
+      },
+    if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
+    if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -77,9 +99,25 @@ class ProjectResume {
           : null,
       frameIndex: frameIndex is int && frameIndex > 0 ? frameIndex : 0,
       tools: anicelObjectMapField(json['tools']),
-      playbackQuality: PlaybackQuality.values
-          .where((quality) => quality.name == json['playbackQuality'])
+      playbackMode: PlaybackMode.values
+          .where((mode) => mode.name == json['playbackMode'])
           .firstOrNull,
+      timelineZoom: {
+        for (final MapEntry(:key, :value)
+            in anicelObjectMapField(json['timelineZoom']).entries)
+          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
+            CutId(key): value.toDouble(),
+      },
+      storyboardZoom: switch (json['storyboardZoom']) {
+        final num zoom when zoom.isFinite && zoom > 0 => zoom.toDouble(),
+        _ => null,
+      },
+      frameAxisOffsets: {
+        for (final MapEntry(:key, :value)
+            in anicelObjectMapField(json['frameAxisOffsets']).entries)
+          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
+            key: value.toDouble(),
+      },
     );
   }
 }

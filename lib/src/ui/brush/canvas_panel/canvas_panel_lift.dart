@@ -63,7 +63,7 @@ class _CanvasPanelLift {
     required BitmapSurface holed,
     required BrushDab eraseDab,
     required BrushFrameKey key,
-    required LayerPoseSample? placement,
+    required LayerPlacement? placement,
   }) {
     final session = _MoveSession(
       region: region,
@@ -127,7 +127,7 @@ class _CanvasPanelLift {
   /// lifted from — the one crossing a landing makes, through the same
   /// placement the lift crossed out through (a-marquee-on-a-posed-row).
   BrushDab _stampBackInArtwork(_MoveSession session, BrushDab stampDab) =>
-      stampInArtwork(stampDab, session.placement, _state.widget.canvasSize);
+      stampInArtwork(stampDab, session.placement);
 
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
@@ -173,7 +173,7 @@ class _CanvasPanelLift {
     _MoveSession session,
     BrushDab stampDab,
     Command landOn,
-    SelectionAffine? affine,
+    StampCarry? carry,
   ) {
     final ladder = _state.widget.transformTargetKeys?.call();
     final coordinator = _state.widget._editableCoordinator;
@@ -205,6 +205,13 @@ class _CanvasPanelLift {
     // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
     // 중심**」, and with a range live that is the one box on screen, so the
     // same affine describes every cel's landing.
+    //
+    // ↩️And the affine was not all of it either. Under 퍼스 and 메쉬 it is
+    // the identity while the box's corners or grid carry the warp, so a
+    // warp confirmed over a range bent the cel you stood on and left the
+    // others untouched (measured 2026-10-06). What comes down here now is
+    // the box's mapping of the canvas, whichever of the three it was
+    // ([StampCarry]) — the one the float itself went through.
     // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
     // (a-marquee-on-a-posed-row): the user's outline is taken back into the
     // cel's artwork, and the cel's own stamp goes out onto the canvas, takes
@@ -223,17 +230,21 @@ class _CanvasPanelLift {
         continue;
       }
       final placement = placementOf(key);
+      // A row that shows this cel as NOTHING — scaled to zero on an axis,
+      // the frame a flip passes through — has put nothing of it on the
+      // canvas for the box to have moved (「불가능하면 그냥 무시」).
+      // ↩️Only a cel read through the user's selection was turned away
+      // here, by the region coming back null; a cel taken whole went on,
+      // and was moved as if its row lay unplaced.
+      if (placement != null && canvasToArtwork(placement) == null) {
+        continue;
+      }
       final userSelectionInArtwork = userSelection == null
           ? null
           : regionInArtworkSpace(
               region: userSelection,
-              pose: placement?.pose,
-              anchorPoint: placement?.anchorPoint,
-              canvasSize: canvasSize,
+              placement: placement,
             );
-      if (userSelection != null && userSelectionInArtwork == null) {
-        continue;
-      }
       final surface = coordinator.currentSurfaceOf(key);
       final lift = buildSelectionLiftDabs(
         region:
@@ -259,18 +270,15 @@ class _CanvasPanelLift {
         preLiftSurface: coordinator.currentSurfaceOf(key),
         landingDabs: _landingDabs(
           lift.eraseDab,
-          // ⚠️The SAME resample the standing cel's float went through, on
-          // this cel's own pixels. A pure translation still costs nothing:
-          // `transformStampDab` carries it by moving the centre.
-          affine == null
+          // ⚠️The SAME mapping the standing cel's float went through, on
+          // this cel's own pixels — affine, quad or mesh, whichever the box
+          // was doing ([StampCarry]). A pure translation still costs
+          // nothing: the carry moves the centre.
+          carry == null
               ? lift.stampDab
               : stampInArtwork(
-                  transformStampDab(
-                    stampOnCanvas(lift.stampDab, placement, canvasSize),
-                    affine,
-                  ),
+                  carry.through(stampOnCanvas(lift.stampDab, placement)),
                   placement,
-                  canvasSize,
                 ),
         ),
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
@@ -285,7 +293,7 @@ class _CanvasPanelLift {
   void handleLiftConfirmed(
     int liftToken,
     BrushDab stampDab,
-    SelectionAffine? affine,
+    StampCarry? carry,
   ) {
     final coordinator = _state.widget._editableCoordinator;
     final session = _closeSession(liftToken);
@@ -338,7 +346,7 @@ class _CanvasPanelLift {
       );
       historyManager.executeAsOneStep(
         landOn.description,
-        _landingsPerCel(session, stampDab, landOn, affine).values.toList(),
+        _landingsPerCel(session, stampDab, landOn, carry).values.toList(),
       );
     }
 
@@ -471,7 +479,7 @@ class _MoveSession {
   /// floats on the canvas and lands back through THIS
   /// ([stampInArtwork]), the one it was lifted through, so the two
   /// crossings cannot disagree (a-marquee-on-a-posed-row).
-  final LayerPoseSample? placement;
+  final LayerPlacement? placement;
 
   /// Null after a memory warning took it — never a lost edit, only a lost
   /// computation.

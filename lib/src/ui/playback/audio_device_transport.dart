@@ -23,6 +23,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/device_clock_line.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
@@ -78,7 +79,7 @@ class AudioDeviceTransport {
 
   bool _attached = false;
   bool _wasActive = false;
-  bool _wasPlaying = false;
+  bool _wasSounding = false;
 
   /// Whether THIS activation runs on the device. Decided once at
   /// activation (like the schedule itself); the platform-player sync
@@ -105,6 +106,11 @@ class AudioDeviceTransport {
   /// 0) and re-arms from 0 — every later seam is the C's sample-exact
   /// wrap.
   bool _needsLoopRearm = false;
+
+  /// The device's count as the picture reads it: a line through the stair,
+  /// counted on through every lap ([DeviceClockLine], where the reasons
+  /// are).
+  final DeviceClockLine _line = DeviceClockLine();
 
   bool get carryingPlayback => _carrying;
 
@@ -207,28 +213,35 @@ class AudioDeviceTransport {
 
   void _onControllerChanged() {
     final active = controller.isActive;
-    final playing = controller.isPlaying;
+    // 🚨THE SOUND WAITS WITH THE CLOCK. A run that waits for its picture
+    // ([CanvasPlaybackController.isWaiting] — 유저 2026-10-08: 「그 자리에서
+    // 멈췃다가 구워지면 이어서 재생」) has stopped its clock on a frame, and
+    // sound that ran on would be heard ahead of the picture it belongs to.
+    // ↩️These two branches were the pause's, and stood dead after T28 took
+    // pause away; a wait is not a pause — nobody presses it — but it stops
+    // and starts the device exactly so.
+    final sounding = controller.isPlaying && !controller.isWaiting;
     if (active && !_wasActive) {
       _activate();
-      if (playing && _carrying) {
-        _arm(controller.globalFrameIndexListenable.value ?? 0);
+      if (sounding && _carrying) {
+        _arm(controller.playlistFrame);
       }
     } else if (!active && _wasActive) {
       _carrying = false;
       _device?.stop();
     } else if (active && _carrying) {
-      if (playing && !_wasPlaying) {
-        // Resume re-arms at the controller's frame — a paused seek moved
-        // it, and play() from stopped is exactly a seek-and-go.
-        _arm(controller.globalFrameIndexListenable.value ?? 0);
-      } else if (!playing && _wasPlaying) {
-        // Pause = stop the transport where it stands. The position is
-        // irrelevant afterwards; resume re-arms from the controller.
+      if (sounding && !_wasSounding) {
+        // The picture came: the run goes on from the frame it stands on,
+        // and so does the sound.
+        _arm(controller.playlistFrame);
+      } else if (!sounding && _wasSounding) {
+        // The transport stops where it stands. Its position is irrelevant
+        // afterwards; going on re-arms from the controller's frame.
         _device?.stop();
       }
     }
     _wasActive = active;
-    _wasPlaying = playing;
+    _wasSounding = sounding;
   }
 
   /// Decides whether this run rides the device, and uploads the schedule
@@ -314,34 +327,55 @@ class AudioDeviceTransport {
     if (_window.hasStreaming) {
       _uploadWindow(startSample);
     }
+    _startDevice(device, startSample: startSample, looping: loop && frame == 0);
+  }
+
+  /// Starts the device at [startSample], and the line that reads it — in
+  /// ONE place, so the device is never started under a line still counting
+  /// the run before.
+  void _startDevice(
+    QaAudioDevice device, {
+    required int startSample,
+    required bool looping,
+  }) {
     device.play(
       startSample: startSample,
-      stopSample: _rate.frameToSample(_totalFrames, _deviceRate),
-      looping: loop && frame == 0,
+      stopSample: _stopSample,
+      looping: looping,
+    );
+    _line.arm(
+      deviceRate: _deviceRate,
+      carriesFor: device.latencySamples,
+      // A device loops from the top or not at all ([_needsLoopRearm]).
+      lapSamples: looping ? _stopSample : 0,
     );
   }
+
+  /// The run's end on the device: the first sample past its last frame.
+  int get _stopSample => _rate.frameToSample(_totalFrames, _deviceRate);
 
   void _onSeeked(int globalFrame) {
     if (!_carrying) {
       return;
     }
-    if (controller.isPlaying) {
+    if (_wasSounding && !controller.isWaiting) {
       // A live seek re-arms rather than seeks: the arm owns the loop
       // bookkeeping (seeking mid-first-pass changes where the wrap must
       // land) and a play() from a seek is indistinguishable from one.
       _arm(globalFrame);
     }
-    // Paused: nothing to move — resume re-arms from the controller frame.
+    // Waiting — before the seek, or on the frame it landed on: nothing to
+    // move. The run going on re-arms from the controller's frame.
   }
 
   /// What the controller shows instead of its wall clock; null while the
   /// device does not carry this run.
-  AudioClockStatus? clockStatus() {
+  ClockReading? clockStatus() {
     final device = _device;
     if (!_carrying || device == null) {
       return null;
     }
-    if (!controller.isPlaying) {
+    if (!controller.isPlaying || controller.isWaiting) {
       return null;
     }
     if (!device.isPlaying) {
@@ -351,19 +385,16 @@ class AudioDeviceTransport {
         // the right one. One poll interval of seam, once.
         _needsLoopRearm = false;
         _armFrame = 0;
-        device.play(
-          startSample: 0,
-          stopSample: _rate.frameToSample(_totalFrames, _deviceRate),
-          looping: true,
-        );
-        return const AudioClockStatus(globalFrame: 0);
+        _startDevice(device, startSample: 0, looping: true);
+        return const ClockReading(globalFrame: 0);
       }
-      return AudioClockStatus(globalFrame: _totalFrames - 1, ended: true);
+      return ClockReading(globalFrame: _totalFrames - 1, ended: true);
     }
+    final clock = device.readClock();
     // Streaming windows advance from here (AUDIO-PRO R6): this poll runs
     // every displayed frame, and the window's own rule decides.
     _window.followPlayback(
-      positionSamples: device.positionSamples,
+      positionSamples: clock.stairSamples,
       deviceRate: _deviceRate,
       conformStore: conformStore,
       current: () {
@@ -373,20 +404,25 @@ class AudioDeviceTransport {
             : null;
       },
     );
-    final heard = math.max(
-      0,
-      device.positionSamples -
-          device.latencySamples +
-          _resolveUserOffsetSamples(_deviceRate),
+    // 🚨THE PICTURE READS THE LINE, NOT THE STAIR (유저 2026-10-08:
+    // 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로 어떻게 안되나」).
+    // The device's own count climbs one callback at a time; the line
+    // through it is where that count has got to by now.
+    final count = _line.read(clock);
+    // What is HEARD trails the count by the device's latency (the user's
+    // own correction on top) — taken off BEFORE the count is folded into
+    // the loop: the lap that is heard is not the lap that is handed.
+    final heard = _line.foldedIntoTheLap(
+      count - device.latencySamples + _resolveUserOffsetSamples(_deviceRate),
     );
-    var frame = _rate.sampleToFrame(heard, _deviceRate);
+    var frame = _rate.sampleToFrame(math.max(0, heard), _deviceRate);
     if (frame < _armFrame) {
       // The device's own latency is still draining the first samples of
       // this arm; showing an EARLIER frame than the one play was pressed
-      // on would read as a jump back. (After a loop wrap the arm frame is
-      // 0, so this clamp never fights the wrap.)
+      // on would read as a jump back. (A loop is armed at frame 0, so this
+      // clamp never fights the wrap.)
       frame = _armFrame;
     }
-    return AudioClockStatus(globalFrame: frame);
+    return ClockReading(globalFrame: frame);
   }
 }

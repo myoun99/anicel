@@ -20,6 +20,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
+import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 void main() {
@@ -512,6 +513,43 @@ void main() {
       ).commitSourceStroke(sourceDabs: [dab(x: 40, y: 22)]);
       return store;
     }
+
+    testWidgets('🚨an image is WAITED FOR once at every level, whole or ink: '
+        'the steps before the last are drawn straight into the next', (
+      tester,
+    ) async {
+      final waited = <(int, int)>[];
+      debugOnWaitedSnapshot = (width, height) => waited.add((width, height));
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      await tester.runAsync(() async {
+        for (final (quality, ink, whole) in const [
+          (PlaybackQuality.full, (16, 16), (64, 48)),
+          (PlaybackQuality.half, (8, 8), (32, 24)),
+          (PlaybackQuality.quarter, (4, 4), (16, 12)),
+        ]) {
+          for (final inkSuffices in [true, false]) {
+            final cache = LayerFrameImageCache(frameStore: storeWithInk());
+            waited.clear();
+            final image = (await cache.prepare(
+              key: key('ink'),
+              canvasSize: inkCanvas,
+              quality: quality,
+              sourceEffects: const [],
+              inkSuffices: inkSuffices,
+            ))!;
+            final kept = inkSuffices ? ink : whole;
+            expect(
+              waited,
+              [kept],
+              reason: '$quality, ink alone $inkSuffices: one wait, and it is '
+                  'for the image that is kept',
+            );
+            expect((image.image.width, image.image.height), kept);
+            cache.dispose();
+          }
+        }
+      });
+    });
 
     testWidgets('a row that draws exactly from its ink is stored as its ink — '
         'at every level, the same rect', (tester) async {

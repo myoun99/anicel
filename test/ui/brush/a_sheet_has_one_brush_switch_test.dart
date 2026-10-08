@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -34,7 +33,7 @@ void main() {
     SheetStrokeHold? hold,
   }) => SheetCanvasPanel(
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    canvasSize: const CanvasSize(width: 600, height: 800),
+    sheetSize: const Size(600, 800),
     viewLimit: null,
     viewport: CanvasViewport(),
     bottomBarHostToken: hostToken,
@@ -91,7 +90,7 @@ void main() {
         tester,
         SheetCanvasPanel(
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          canvasSize: const CanvasSize(width: 600, height: 800),
+          sheetSize: const Size(600, 800),
           viewLimit: null,
           viewport: CanvasViewport(),
           brushSwitch: (allowed: false, onChanged: (_) {}, keyPrefix: 'probe'),
@@ -130,10 +129,13 @@ void main() {
     });
   });
 
-  testWidgets('a sheet lays its paper on the backdrop — no pasteboard is '
-      'painted anywhere on its stage', (tester) async {
-    // Two colours nothing else on the stage uses, so one pixel of the
-    // pasteboard anywhere is an answer.
+  testWidgets('a sheet lays its paper on black — nothing of the room, '
+      'pasteboard or backdrop, is painted anywhere on its stage', (
+    tester,
+  ) async {
+    // Two colours nothing else on the stage uses, so one pixel of either
+    // anywhere is an answer: no pasteboard (F-179), and black rather than
+    // the room's backdrop (F-272).
     const backdrop = 0xFFFF0000;
     const pasteboard = 0xFF0000FF;
     const boundaryKey = ValueKey<String>('stage');
@@ -150,8 +152,8 @@ void main() {
     );
     expect(
       tester.widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
-          .hasPasteboard,
-      isFalse,
+          .canvasBase,
+      isTrue,
     );
 
     final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -165,18 +167,22 @@ void main() {
       image.dispose();
       return data!.buffer.asUint8List();
     });
+    var blackPixels = 0;
     var backdropPixels = 0;
     var pasteboardPixels = 0;
     for (var i = 0; i + 3 < rgba!.length; i += 4) {
       final argb =
           rgba[i + 3] << 24 | rgba[i] << 16 | rgba[i + 1] << 8 | rgba[i + 2];
-      if (argb == backdrop) {
+      if (argb == 0xFF000000) {
+        blackPixels += 1;
+      } else if (argb == backdrop) {
         backdropPixels += 1;
       } else if (argb == pasteboard) {
         pasteboardPixels += 1;
       }
     }
-    expect(backdropPixels, greaterThan(0), reason: 'the backdrop shows');
+    expect(blackPixels, greaterThan(0), reason: 'the stage shows, black');
+    expect(backdropPixels, 0, reason: 'not the room\'s backdrop');
     expect(pasteboardPixels, 0, reason: 'no pasteboard plane under a sheet');
   });
 

@@ -16,11 +16,18 @@ import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_moves.dart';
+import '../../services/media/project_font_sources.dart'
+    show
+        ProjectFontsToStore,
+        fontNamesStored,
+        fontsLeftBehind,
+        projectFontEntryNames;
 import '../../services/media/project_media_sources.dart'
     show
         ProjectConforms,
@@ -42,15 +49,16 @@ import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
-import '../playback/playback_cache_budget.dart' show defaultPlaybackQuality;
-import 'playback_rig.dart';
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
+import 'panel_view_memory.dart';
+import 'playback_rig.dart';
 import 'project_file.dart';
 import 'rail_view.dart' show StandingLaw;
+import 'timeline_zoom_memory.dart';
 import 'visibility_solo.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
@@ -58,7 +66,8 @@ import 'session_roles.dart';
 import 'live_stroke_landing.dart';
 
 /// What every road of a save carries besides its path: THE PROJECT IT IS
-/// WRITING, the media the archive stores, the conforms beside them, and
+/// WRITING, the media the archive stores, the conforms beside them, the
+/// fonts registered with it, and
 /// the reporter the UI gave it. Made once per save — by
 /// [ProjectFileDoor._carryFor], the only place that reads either — and
 /// handed whole, so the four roads cannot disagree about what a save is.
@@ -66,14 +75,19 @@ typedef _SaveCarry = ({
   Project project,
   Map<MediaCarry, MediaByteSource> mediaToStore,
   ProjectConforms conforms,
+  ProjectFontsToStore fonts,
   void Function(double)? onProgress,
 });
 
 /// What [ProjectFileDoor.writeArchiveCopy] wrote, and everything
 /// [ProjectFileDoor.adoptPlacedArchive] needs to make that archive the
-/// project: the media entry names it stored, and the edit count it is clean
-/// as of ([ProjectFile.bindToSavedFile]).
-typedef StagedArchive = ({Set<String> mediaInFile, int cleanAsOf});
+/// project: the media entry names it stored, the font entry names it holds,
+/// and the edit count it is clean as of ([ProjectFile.bindToSavedFile]).
+typedef StagedArchive = ({
+  Set<String> mediaInFile,
+  Set<String> fontsInFile,
+  int cleanAsOf,
+});
 
 /// Saves the session into a `.anicel` and opens one back.
 /// Who asked for a save — the ONE thing the two entrances disagree about.
@@ -115,8 +129,12 @@ class ProjectFileDoor {
     required FailedSaveCopies failedCopies,
     required StandingLaw keepStandingShown,
     required PlaybackRig playback,
+    required TimelineZoomMemory timelineZoom,
+    required PanelViewMemory panelViews,
   }) : _file = file,
        _playback = playback,
+       _timelineZoom = timelineZoom,
+       _panelViews = panelViews,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -136,9 +154,17 @@ class ProjectFileDoor {
   final ProjectFile _file;
   final ProjectAccess _project;
 
-  /// Whose playback quality a save keeps and an open puts back
-  /// ([ProjectResume.playbackQuality]).
+  /// Whose playback mode a save keeps and an open puts back
+  /// ([ProjectResume.playbackMode]).
   final PlaybackRig _playback;
+
+  /// Whose cuts' zooms a save keeps and an open puts back
+  /// ([ProjectResume.timelineZoom]).
+  final TimelineZoomMemory _timelineZoom;
+
+  /// Whose conte zoom and panel scrolls a save keeps and an open puts back
+  /// ([ProjectResume.storyboardZoom], [ProjectResume.frameAxisOffsets]).
+  final PanelViewMemory _panelViews;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -528,6 +554,7 @@ class ProjectFileDoor {
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
       mediaInFile: {...mediaEntryNamesFor(carry.mediaToStore).values},
+      fontsInFile: carry.fonts.held,
       cleanAsOf: cleanAsOf,
     );
   }
@@ -560,6 +587,7 @@ class ProjectFileDoor {
     _file.bindToSavedFile(
       placedPath,
       mediaInFile: staged.mediaInFile,
+      fontsInFile: staged.fontsInFile,
       cleanAsOf: staged.cleanAsOf,
     );
     _letGoOfTheFileItLeft(left, placedPath);
@@ -692,6 +720,7 @@ class ProjectFileDoor {
         ),
       },
       conforms: _file.conformsToStore(),
+      fonts: _file.fontsToStore(project),
       onProgress: onProgress,
     );
   }
@@ -715,13 +744,25 @@ class ProjectFileDoor {
   /// The bar is shared by bytes, as the write shares it within an entry:
   /// the copy is its part of the file it reads from, and the write runs the
   /// rest.
+  ///
+  /// 🚨AND A FONT A PERSON TOOK OUT OF THE PROJECT leaves its file by the
+  /// same law, into the same room, under its own name (R9-rest): taking one
+  /// out is a step of history, and on a machine that was never brought the
+  /// font the file was the only place its bytes were (`fontsLeftBehind`).
   Future<_SaveCarry> _keepWhatItLeavesBehind(_SaveCarry carry) async {
     final boundFile = _file.path;
-    final left = mediaLeftBehind(
-      projectFilePath: boundFile,
-      mediaInFile: _file.mediaInFile,
-      mediaToStore: carry.mediaToStore,
-    );
+    final left = [
+      ...mediaLeftBehind(
+        projectFilePath: boundFile,
+        mediaInFile: _file.mediaInFile,
+        mediaToStore: carry.mediaToStore,
+      ),
+      ...fontsLeftBehind(
+        projectFilePath: boundFile,
+        fontsInFile: _file.fontsInFile,
+        held: carry.fonts.held,
+      ),
+    ];
     if (boundFile == null || left.isEmpty) {
       return carry;
     }
@@ -738,6 +779,7 @@ class ProjectFileDoor {
       project: carry.project,
       mediaToStore: carry.mediaToStore,
       conforms: carry.conforms,
+      fonts: carry.fonts,
       onProgress: report == null
           ? null
           : (done) => report(share + (1 - share) * done),
@@ -768,6 +810,7 @@ class ProjectFileDoor {
     filePath: filePath,
     mediaToStore: carry.mediaToStore,
     conforms: carry.conforms,
+    fonts: carry.fonts,
     sessionFields: AnicelSessionFields(
       grants: _grants.grantsToStore(),
       mediaCrcs: _fingerprints.crcsToStore(),
@@ -823,7 +866,17 @@ class ProjectFileDoor {
     layerId: _selection.activeLayerId,
     frameIndex: _selection.currentFrameIndex,
     tools: toolChoice?.read() ?? const {},
-    playbackQuality: _playback.playbackQuality,
+    playbackMode: _playback.playbackMode,
+    timelineZoom: _timelineZoom.byCut,
+    storyboardZoom: switch (_panelViews.storyboardPixelsPerFrame.value) {
+      PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
+      final zoom => zoom,
+    },
+    frameAxisOffsets: {
+      for (final MapEntry(key: rail, value: offset)
+          in _panelViews.frameAxisOffsets.entries)
+        if (offset.value > 0) rail: offset.value,
+    },
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -910,10 +963,16 @@ class ProjectFileDoor {
     for (final carry in mediaToStore.keys) {
       _staging.retire(carry);
     }
+    // And the room's copy of a font goes the same way, for the same
+    // sentence: one a save took out of the file and an undo brought back is
+    // in the file again, and the copy that waited for that undo is a second
+    // one from here on.
+    fontNamesStored(carry.fonts).forEach(_staging.retireNamed);
     final left = _file.path;
     _file.bindToSavedFile(
       filePath,
       mediaInFile: {...mediaEntryNamesFor(mediaToStore).values},
+      fontsInFile: carry.fonts.held,
       cleanAsOf: cleanAsOf,
     );
     _letGoOfTheFileItLeft(left, filePath);
@@ -1007,6 +1066,10 @@ class ProjectFileDoor {
       // asset is carried is its own `carriedAs`, not whether it is here: a
       // carry the file does not hold reads its staged copy, or its original.
       mediaInFile: {...result.mediaEntryNames.values},
+      // The font entries, as the project's own list says them: a font the
+      // list names and the file does not hold is looked for and not found,
+      // which costs nothing (`fontsLeftBehind`).
+      fontsInFile: projectFontEntryNames(read.project),
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
       // mismatched cels, where memory no longer matches the file (R7q2).
@@ -1065,10 +1128,25 @@ class ProjectFileDoor {
     // what a file itself shuts — a folder — is not the view's to open.
     _keepStandingShown();
     _resumeTools(resume.tools);
-    // A file that says nothing previews as a new project does.
-    _playback.setPlaybackQuality(
-      resume.playbackQuality ?? defaultPlaybackQuality,
-    );
+    // A file that says nothing plays as a new project does.
+    _playback.setPlaybackMode(resume.playbackMode ?? defaultPlaybackMode);
+    // Each cut at the zoom it was left at — a cut that is gone is no cut to
+    // show at one.
+    for (final MapEntry(key: cut, value: zoom)
+        in resume.timelineZoom.entries) {
+      if (cutPositionOf(project, cut) != null) {
+        _timelineZoom.remember(cut, zoom);
+      }
+    }
+    // The conte at the zoom it was left at, and each panel scrolled where it
+    // was — set before any panel is built, so each is born there (F-267).
+    if (resume.storyboardZoom case final zoom?) {
+      _panelViews.storyboardPixelsPerFrame.value = zoom;
+    }
+    for (final MapEntry(key: rail, value: offset)
+        in resume.frameAxisOffsets.entries) {
+      _panelViews.frameAxisOffsets[rail]?.value = offset;
+    }
   }
 }
 

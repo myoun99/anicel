@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
     show breakdownMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
 
@@ -58,25 +60,37 @@ void main() {
     );
   });
 
-  testWidgets('initial layer starts with a blank exposure at frame 1', (
+  // F-211 (유저 2026-09-28): 「프로젝트 실행 초기값은 … A라는 레이어 있는상태로
+  // ok. 다만 여기서 1번인덱스에 프레임도 만들어서 키자마자 그리는게
+  // 가능하도록」. ↩️「initial layer starts with a blank exposure at frame 1」:
+  // the app opened on an empty row, whose first cell read X.
+  testWidgets('the app opens with layer A\'s first cel on frame 1', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    expectCellText('default-layer-1', 0, 'X');
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
+    expect(
+      rowPainter('default-layer-1').cellModelAt(0).semanticsLabel,
+      'drawing start',
+    );
     expect(
       find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
       findsNothing,
     );
-    // Paper-sheet style: only the FIRST cell of the empty run reads X.
-    expectNoCellText('default-layer-1', 1, 'X');
-    expect(rowPainter('default-layer-1').cellModelAt(0).semanticsLabel, isNull);
+    // One comma: the empty run starts on frame 2. Paper-sheet style, only
+    // its FIRST cell reads X.
+    expectCellText('default-layer-1', 1, 'X');
+    expectNoCellText('default-layer-1', 2, 'X');
   });
 
   testWidgets(
     'selected cell state updates for blank, drawing, name, and mark',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const AnicelApp());
+      // From an EMPTY row: the bare project (the app opens on a cel, F-211).
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
 
       expectActiveLayerName('A');
       expectCurrentFrame(tester, 1);
@@ -127,7 +141,10 @@ void main() {
   testWidgets('selection status and toolbar state distinguish held cells', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    // From an EMPTY row: the bare project (the app opens on a cel, F-211).
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
 
     // delete/rename live in the Frame ▾ flyout now; enablement reads open
     // the menu themselves.
@@ -299,7 +316,10 @@ void main() {
   testWidgets(
     'frame editing toolbar buttons, rename dialog, and delete cell work',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const AnicelApp());
+      // From an EMPTY row: the bare project (the app opens on a cel, F-211).
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
 
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),

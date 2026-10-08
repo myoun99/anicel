@@ -11,8 +11,9 @@ import 'text/app_strings.dart';
 /// with them, as one undo. With nothing to hold it lands at once, inside
 /// this call.
 ///
-/// ONE door for every paste entrance that can bring media: the frame
-/// pill's button and its key, and the layer menu's paste.
+/// ONE door for every paste entrance that can bring media: the shared
+/// pill's paste and its key, whichever board is in hand — frames or rows
+/// (I-77; ↩️the rows' paste was the layer menu's).
 Future<void> pasteWithItsMedia(
   BuildContext context, {
   required String title,

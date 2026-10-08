@@ -128,7 +128,10 @@ class _LinkCommands {
             repository: _coordinator.repository,
             cutId: targetCutId,
             canvasSize: originCut.canvasSize,
-            anchor: CanvasResizeAnchor.center,
+            contentOffset: CanvasResizeAnchor.center.contentOffset(
+              from: targetCut.canvasSize,
+              to: originCut.canvasSize,
+            ),
             brushFrameStore: store,
           ),
         ConvertToLinkedCutCommand(
@@ -160,8 +163,13 @@ class _LinkCommands {
 
   /// 링크 복제 (L2): duplicates [layerId]'s whole attach group as a free
   /// group sharing the originals' cel banks (same FrameIds — the store's
-  /// canonical resolution makes the pictures one). One undo step.
-  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) {
+  /// canonical resolution makes the pictures one), aimed at the stack seat
+  /// [insertionIndex]. One undo step. Answers [layerId]'s own copy.
+  LayerId linkDuplicateLayer({
+    required CutId cutId,
+    required LayerId layerId,
+    required int insertionIndex,
+  }) {
     final project = _coordinator.repository.requireProject();
     final cut = requireCut(project, cutId);
     _coordinator._requireLayer(cutId: cutId, layerId: layerId);
@@ -176,10 +184,12 @@ class _LinkCommands {
         repository: _coordinator.repository,
         cutId: cutId,
         sourceLayerId: layerId,
+        insertionIndex: insertionIndex,
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
       ),
     );
+    return plan.layerIdMap[layerId]!;
   }
 
   /// Every (cut, row) the same shared row reaches: this cut, plus the 겸용

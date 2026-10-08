@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/transform_track.dart';
 import '../../models/layer.dart';
@@ -36,6 +35,7 @@ import '../timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeysInterpolated,
         transformTrackWithLaneRangeNamed,
         transformTrackWithLaneValueEdited;
+import '../timeline/scale_lane_form.dart' show scaleLaneFormOf;
 import '../timeline/se_name_tag_lane_editing.dart'
     show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
 import '../timeline/se_name_tag_lane_policy.dart'
@@ -420,6 +420,10 @@ class LaneVerbs {
   ///
   /// It ends a scrub: the value [previewLaneValueAt] was showing is dropped
   /// in the same call that writes it, so no frame shows neither.
+  ///
+  /// [scaleLinked]: whether the Scale lane's chain is on — the transform
+  /// tool's 「배율 연동」, the one switch (`ScaleLaneForm.typed`). Asked of
+  /// every caller: a default here would be a second switch.
   void setLaneValueAt(
     LayerId layerId,
     String laneId,
@@ -427,13 +431,14 @@ class LaneVerbs {
     String input, {
     required bool frameIsGlobal,
     required String description,
+    required bool scaleLinked,
   }) => _commitLaneEdit(
     _laneEditAt(
       layerId,
       laneId,
       frameIndex,
       frameIsGlobal: frameIsGlobal,
-      edits: _valueEdits(laneId, input),
+      edits: _valueEdits(laneId, input, scaleLinked: scaleLinked),
     ),
     description: description,
   );
@@ -452,13 +457,14 @@ class LaneVerbs {
     int frameIndex,
     String input, {
     required bool frameIsGlobal,
+    required bool scaleLinked,
   }) => _previewLaneEdit(
     _laneEditAt(
       layerId,
       laneId,
       frameIndex,
       frameIsGlobal: frameIsGlobal,
-      edits: _valueEdits(laneId, input),
+      edits: _valueEdits(laneId, input, scaleLinked: scaleLinked),
     ),
   );
 
@@ -478,7 +484,11 @@ class LaneVerbs {
   }
 
   /// [input] written into [laneId] — of whichever family [laneId] names.
-  _LaneEdits _valueEdits(String laneId, String input) => (
+  _LaneEdits _valueEdits(
+    String laneId,
+    String input, {
+    required bool scaleLinked,
+  }) => (
     nameTag: (tag, frame) => seNameTagWithLaneValueEdited(
       tag,
       laneId: laneId,
@@ -496,6 +506,8 @@ class LaneVerbs {
       laneId: laneId,
       frameIndex: frame,
       input: input,
+      scaleForm: scaleLaneFormOf(layer),
+      scaleLinked: scaleLinked,
     ),
   );
 
@@ -899,7 +911,7 @@ class LaneVerbs {
   /// not live on the camera pseudo-layer — its own transform track is
   /// permanently empty — so reading [_timeline.layerPoseAtFrame] there froze the
   /// canvas-centre identity pose and snapped the camera mid-move.
-  CameraPose _laneResolvedPose(Layer layer, int frameIndex) {
+  TransformPose _laneResolvedPose(Layer layer, int frameIndex) {
     if (layer.kind != LayerKind.camera) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
@@ -907,10 +919,12 @@ class LaneVerbs {
     if (cut == null) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
-    return resolveCameraPoseAt(
-      camera: cut.camera,
-      canvasSize: cut.canvasSize,
-      frameIndex: frameIndex,
+    return TransformPose.ofCamera(
+      resolveCameraPoseAt(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
     );
   }
 

@@ -84,6 +84,8 @@ class AppWindow extends StatelessWidget {
     this.tabs = const <AppWindowTab>[],
     this.selectedTab = 0,
     this.actions = const <AppWindowAction>[],
+    this.leadingActions = const <AppWindowAction>[],
+    this.footerBetween,
     this.footerNote,
     this.onClose,
     this.width,
@@ -108,6 +110,22 @@ class AppWindow extends StatelessWidget {
   /// Left to right. The confirm action goes last, the way the platform
   /// reads.
   final List<AppWindowAction> actions;
+
+  /// Actions that hold the footer's LEFT end. With them the footer is a
+  /// SPREAD: these at the left and [actions] at the right, each at its own
+  /// width, and [footerBetween] filling what lies between.
+  ///
+  /// 🗣️F-289 (유저 2026-10-06), of the export window's footer: 「큐에 추가를
+  /// 왼쪽정렬로 왼쪽에 붙이고, 내보내기는 지금위치로하고 그 왼쪽에 붙여서
+  /// 위치 지정하고 출력합니다라는 텍스트. 오른쪽정렬로해서 내보내기에
+  /// 붙어있도록」. ⚠️A window handed none keeps the even split: a small pair
+  /// right-aligned against dead space is still what a window does not do,
+  /// and these two ends were named by the user for a window as wide as the
+  /// screen.
+  final List<AppWindowAction> leadingActions;
+
+  /// What fills a spread footer between its two ends ([leadingActions]).
+  final Widget? footerBetween;
 
   /// A status line ABOVE the action row (export progress, a warning).
   /// It gets its own row because the actions own the footer's full width —
@@ -157,7 +175,10 @@ class AppWindow extends StatelessWidget {
                 Flexible(child: _scrolled(body))
               else
                 Flexible(child: body),
-              if (actions.isNotEmpty || footerNote != null) _footer(theme),
+              if (actions.isNotEmpty ||
+                  leadingActions.isNotEmpty ||
+                  footerNote != null)
+                _footer(theme),
             ],
           ),
         ),
@@ -280,7 +301,9 @@ class AppWindow extends StatelessWidget {
             footerNote,
             if (actions.isNotEmpty) const SizedBox(height: 8),
           ],
-          if (actions.isNotEmpty)
+          if (leadingActions.isNotEmpty)
+            _spreadActions(theme)
+          else if (actions.isNotEmpty)
             Row(
               children: [
                 for (var i = 0; i < actions.length; i++) ...[
@@ -293,6 +316,22 @@ class AppWindow extends StatelessWidget {
       ),
     );
   }
+
+  /// The spread footer ([leadingActions]): the left end, what lies between,
+  /// the right end.
+  Widget _spreadActions(ThemeData theme) => Row(
+    children: [
+      for (final action in leadingActions) ...[
+        _actionButton(theme, action),
+        const SizedBox(width: 8),
+      ],
+      Expanded(child: footerBetween ?? const SizedBox.shrink()),
+      for (final action in actions) ...[
+        const SizedBox(width: 8),
+        _actionButton(theme, action),
+      ],
+    ],
+  );
 
   Widget _actionButton(ThemeData theme, AppWindowAction action) {
     final hint = action.tooltip;

@@ -55,6 +55,7 @@ class AppProgressDialog extends StatelessWidget {
     this.windowKey,
     this.runningStatus,
     this.onCancel,
+    this.cancelLive,
   });
 
   final String title;
@@ -82,6 +83,14 @@ class AppProgressDialog extends StatelessWidget {
   /// leaves the app exactly where it was. Null keeps the old shape.
   final VoidCallback? onCancel;
 
+  /// Whether [onCancel] can be pressed NOW — for work whose stretches are
+  /// not all waits: an import is honest to stop while a file is on its way
+  /// and not while it places what came (F-282-Q1, 2026-10-08). The button
+  /// stands for the window's whole life either way and only goes grey: a
+  /// control that came and went would read as the window jumping
+  /// (「없다가 생기는 UI 금지」). Null keeps it live throughout.
+  final ValueListenable<bool>? cancelLive;
+
   final ValueListenable<AppProgress> progress;
   final Key? windowKey;
 
@@ -89,6 +98,17 @@ class AppProgressDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final live = cancelLive;
+    return live == null
+        ? _window(context, cancellable: true)
+        : ValueListenableBuilder<bool>(
+            valueListenable: live,
+            builder: (context, cancellable, _) =>
+                _window(context, cancellable: cancellable),
+          );
+  }
+
+  Widget _window(BuildContext context, {required bool cancellable}) {
     final theme = Theme.of(context);
     return AppWindow(
       windowKey: windowKey,
@@ -101,7 +121,7 @@ class AppProgressDialog extends StatelessWidget {
           AppWindowAction(
             label: AppText.strings.commonCancel,
             actionKey: const ValueKey<String>('app-progress-cancel'),
-            onPressed: cancel,
+            onPressed: cancellable ? cancel : null,
           ),
       ],
       body: ValueListenableBuilder<AppProgress>(
@@ -215,6 +235,7 @@ Future<T> runWithAppProgress<T>({
   Duration doneLinger = appProgressDoneLinger,
   ValueListenable<String>? runningStatus,
   VoidCallback? onCancel,
+  ValueListenable<bool>? cancelLive,
 }) async {
   final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
   return _awaitBehindWindow(
@@ -228,6 +249,7 @@ Future<T> runWithAppProgress<T>({
     progress: progress,
     runningStatus: runningStatus,
     onCancel: onCancel,
+    cancelLive: cancelLive,
     // The window has to be BUILT before the work starts. A failure that
     // lands in the same turn as the call would otherwise beat the first
     // frame, and the close would find no context — leaving a window up
@@ -242,6 +264,15 @@ Future<T> runWithAppProgress<T>({
 
 /// The window half: the window goes up, and the work starts after the
 /// first frame.
+///
+/// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이 멈추고,
+/// 그 상태에서 시간 지나면 저장창 뜨는데 … 멈추는게 아니라 뭔가 하고있다
+/// 라는걸 제대로 표시하기위해」. So the window comes up WHOLE on its first
+/// frame, with no fade: a dialog fades in from nothing, and the work starts
+/// right after that first frame — so it started under a window drawn at
+/// opacity 0, and work that holds the main isolate from its first line (a
+/// save gathering a heavy session's cels) froze the screen with nothing on
+/// it until it let go.
 Future<T> _awaitBehindWindow<T>({
   required BuildContext context,
   required String title,
@@ -253,6 +284,7 @@ Future<T> _awaitBehindWindow<T>({
   required ValueNotifier<AppProgress> progress,
   required ValueListenable<String>? runningStatus,
   required VoidCallback? onCancel,
+  required ValueListenable<bool>? cancelLive,
   required Future<T> Function() start,
 }) async {
   BuildContext? windowContext;
@@ -260,6 +292,7 @@ Future<T> _awaitBehindWindow<T>({
     context: context,
     barrierDismissible: false,
     useRootNavigator: true,
+    animationStyle: AnimationStyle.noAnimation,
     builder: (dialogContext) {
       windowContext = dialogContext;
       return PopScope(
@@ -273,6 +306,7 @@ Future<T> _awaitBehindWindow<T>({
           windowKey: windowKey,
           runningStatus: runningStatus,
           onCancel: onCancel,
+          cancelLive: cancelLive,
         ),
       );
     },

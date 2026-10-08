@@ -4,6 +4,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/key_range_move.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
@@ -39,7 +40,11 @@ void main() {
     }
     if (scale != null) {
       track = track.copyWith(
-        scale: PropertyTrack<double>().withKey(4, 2, interpolation: scale),
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          4,
+          uniformScale(2),
+          interpolation: scale,
+        ),
       );
     }
     if (rotation != null) {
@@ -136,6 +141,7 @@ void main() {
         'with', () {
       final lanes = transformPropertyLanes(
         trackWith(position: hold, scale: smooth),
+        scaleForm: const TwoScales(),
       );
       for (final lane in lanes.where((lane) => !lane.isGroupHeader)) {
         expect(

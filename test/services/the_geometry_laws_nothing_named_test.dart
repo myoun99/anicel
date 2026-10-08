@@ -2,13 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4, Vector3;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/tiles_covering.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/services/viewport_transform_matrix.dart';
 
@@ -83,12 +83,16 @@ void main() {
 
   group('the layer pose matrix', () {
     const canvas = CanvasSize(width: 100, height: 60);
-    CameraPose poseAt(double x, double y, {double zoom = 1, double turn = 0}) =>
-        CameraPose(
-          center: CanvasPoint(x: x, y: y),
-          zoom: zoom,
-          rotationDegrees: turn,
-        );
+    TransformPose poseAt(
+      double x,
+      double y, {
+      double zoom = 1,
+      double turn = 0,
+    }) => TransformPose.uniform(
+      center: CanvasPoint(x: x, y: y),
+      zoom: zoom,
+      rotationDegrees: turn,
+    );
 
     test('the identity pose is the identity matrix, by construction', () {
       _expectMatrix(
@@ -128,13 +132,100 @@ void main() {
       expect(_apply(matrix, 60, 30), _point(50, 40));
     });
 
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+    // 반전)」.
+    test('a scale an axis stretches THAT axis alone, about the anchor', () {
+      final matrix = layerPoseMatrix(
+        TransformPose(
+          center: CanvasPoint(x: 50, y: 30),
+          scaleX: 3,
+          scaleY: 0.5,
+        ),
+        canvas,
+      );
+      expect(_apply(matrix, 50, 30), _point(50, 30));
+      expect(_apply(matrix, 60, 30), _point(80, 30));
+      expect(_apply(matrix, 50, 40), _point(50, 35));
+    });
+
+    test('a negative scale mirrors its own axis and leaves the other', () {
+      final matrix = layerPoseMatrix(
+        TransformPose(center: CanvasPoint(x: 50, y: 30), scaleX: -1),
+        canvas,
+      );
+      expect(_apply(matrix, 60, 37), _point(40, 37));
+    });
+
+    test('the scale runs along the LAYER\'s axes: it is applied before the '
+        'turn, as After Effects does', () {
+      final matrix = layerPoseMatrix(
+        TransformPose(
+          center: CanvasPoint(x: 50, y: 30),
+          scaleX: 2,
+          rotationDegrees: 90,
+        ),
+        canvas,
+      );
+      // Ten to the anchor's right is stretched to twenty along the layer's
+      // own x and THEN turned a quarter clockwise: twenty below. Turned
+      // first, the stretch would have found nothing along x to double.
+      expect(_apply(matrix, 60, 30), _point(50, 50));
+      expect(_apply(matrix, 50, 40), _point(40, 30));
+    });
+
+    test('a quarter turn is placed EXACTLY — by the table the transform '
+        'box turns by, not the library\'s sine', () {
+      final quarter = layerPoseMatrix(poseAt(50, 30, turn: 90), canvas);
+      expect(
+        [
+          quarter.entry(0, 0),
+          quarter.entry(0, 1),
+          quarter.entry(1, 0),
+          quarter.entry(1, 1),
+        ],
+        [0, -1, 1, 0],
+      );
+      final half = layerPoseMatrix(poseAt(50, 30, turn: 180), canvas);
+      expect(
+        [
+          half.entry(0, 0),
+          half.entry(0, 1),
+          half.entry(1, 0),
+          half.entry(1, 1),
+        ],
+        [-1, 0, 0, -1],
+      );
+    });
+
+    test('a placement is run backwards by ONE inverse, and a collapsed one '
+        'has no way back', () {
+      final placement = placementOf((
+        pose: TransformPose(
+          center: CanvasPoint(x: 60, y: 34),
+          scaleX: 2,
+          scaleY: -0.5,
+          rotationDegrees: 30,
+        ),
+        anchorPoint: CanvasPoint(x: 7, y: 9),
+      ), canvas);
+      final back = canvasToArtwork(placement)!;
+      for (final (x, y) in [(0.0, 0.0), (17.0, -5.0), (99.5, 59.25)]) {
+        final there = placement.apply(CanvasPoint(x: x, y: y));
+        final again = back.apply(there);
+        expect(_point(_rounded(again.x), _rounded(again.y)), _point(x, y));
+      }
+      expect(canvasToArtwork(const LayerPlacement(2, 0, 4, 0, 5, 5)), isNull);
+    });
+
     test('rasterScale restates the SAME pose in a scaled raster', () {
       // The playback quality tiers render at half size and must land the
       // same picture: every canvas-space coordinate simply halves.
       final full = layerPoseMatrix(poseAt(60, 34, zoom: 2), canvas);
-      final half = layerPoseMatrix(
-        poseAt(60, 34, zoom: 2),
-        canvas,
+      final half = placementMatrix(
+        placementOf((
+          pose: poseAt(60, 34, zoom: 2),
+          anchorPoint: null,
+        ), canvas),
         rasterScale: 0.5,
       );
       final fullPoint = _apply(full, 20, 10);

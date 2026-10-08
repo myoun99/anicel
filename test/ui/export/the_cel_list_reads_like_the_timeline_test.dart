@@ -19,6 +19,9 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+
+import '../../helpers/export_cels_alone.dart';
+import '../../helpers/export_cels_board_probe.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
 /// F-144 (유저 2026-09-16): 「셀 출력의 왼쪽 출력될 셀 리스트, 타임라인은
@@ -33,7 +36,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 /// the namer's de-dup suffix rides on it, so re-walking it to fix a list
 /// would rename exported files.
 void main() {
-  setUp(() => AppExport.settings.value = AppExportSettings());
+  setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
   const cutId = CutId('cut');
@@ -96,16 +99,8 @@ void main() {
     await tester.pump();
   }
 
-  /// The bundle rows in the order they are DRAWN, read off the widget tree.
-  List<String> listedIds(WidgetTester tester) => [
-    for (final key in tester
-        .widgetList<InkWell>(find.byType(InkWell))
-        .map((ink) => ink.key)
-        .whereType<ValueKey<String>>()
-        .map((key) => key.value)
-        .where((value) => value.startsWith('export-cels-bundle-')))
-      key.substring('export-cels-bundle-'.length),
-  ];
+  /// The list's rows in the order they are DRAWN.
+  List<String> listedIds(WidgetTester tester) => tester.celsBoardRowIds;
 
   testWidgets('🎯the cels that will be written are listed the way the '
       'timeline draws the stack', (tester) async {
@@ -115,9 +110,12 @@ void main() {
 
     await pumpCels(tester, session);
 
+    // 미술 is a kind that is on from the start (F-289, 유저 2026-10-06:
+    // 「기본값은 셀/미술/시트 체크」), so its row is listed too — at the
+    // bottom, where the timeline draws it.
     expect(
       listedIds(tester),
-      const ['c', 'b', 'a'],
+      const ['c', 'b', 'a', 'art'],
       reason: 'top of the timeline first — it listed a · b · c before F-144',
     );
   });

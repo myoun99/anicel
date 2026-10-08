@@ -281,7 +281,14 @@ class BlockNaming {
         layer,
         names,
       );
-      joinLines.addAll(drawingPlaceLines(project, layer.id, joins.keys));
+      joinLines.addAll(
+        drawingPlaceLines(
+          project,
+          layer.id,
+          joins.keys,
+          framePlace: _project.framePlaceLabel,
+        ),
+      );
       for (final row in bank) {
         planned.add((layerId: row.layerId, names: names, joins: joins));
       }

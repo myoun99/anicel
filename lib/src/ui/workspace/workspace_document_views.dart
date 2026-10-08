@@ -24,6 +24,12 @@ class _WorkspaceDocumentViews {
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
 
+  /// What the next text set with the text tool starts as (R9-rest) — the
+  /// tool settings write it, the canvas reads it when a text is begun.
+  final ValueNotifier<TextToolOptions> _textToolOptions = ValueNotifier(
+    TextToolOptions.defaults,
+  );
+
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
   /// user's default is "pick what you SEE".
   final ValueNotifier<CanvasReadSource> _eyedropperSource =
@@ -34,11 +40,9 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<double> _cameraDimOpacity = ValueNotifier(0.5);
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, the page
-  /// read in page view (F-201), the sheet viewport (zoom/pan) and the
-  /// brush switch — owned here so they survive tab switches.
-  final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
-
+  /// Timesheet tab view state: the page read (F-201), the sheet viewport
+  /// (zoom/pan) and the brush switch — owned here so they survive tab
+  /// switches.
   final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
 
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
@@ -93,10 +97,7 @@ class _WorkspaceDocumentViews {
   /// door for the project coming on screen.
   void bindSession(EditorSessionManager session) {
     final caches = session.renderCaches;
-    _timesheetInk = TimesheetInkController(
-      stripStore: caches.timesheetInkStripStore,
-      pageStore: caches.timesheetInkPageStore,
-    );
+    _timesheetInk = TimesheetInkController(store: caches.timesheetInkStore);
     _conteInk = ConteInkController(rowStore: caches.conteInkRowStore);
     _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
@@ -116,10 +117,10 @@ class _WorkspaceDocumentViews {
   void dispose() {
     _fillOptions.dispose();
     _selectionMaskOptions.dispose();
+    _textToolOptions.dispose();
     _eyedropperSource.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
-    _timesheetContinuous.dispose();
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetBrushAllowed.dispose();

@@ -77,6 +77,7 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
       );
     },
     onTapClear: (_) => rangeHooks.onClear(),
+    rowHolds: rangeMove.holdsRow,
     // A lane row begins the move of the layer it belongs to — the
     // fallback [LaneRowAddress] documents. Refusing here is what made
     // "grab the band on an fx row" do nothing at all.

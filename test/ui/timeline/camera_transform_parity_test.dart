@@ -226,7 +226,9 @@ void main() {
         tester,
         _project(
           camera: CutCamera(keyframes: {0: _pose(0)}),
-          drawTransform: TransformTrack(keyframes: {0: _pose(0)}),
+          drawTransform: TransformTrack(
+            keyframes: {0: TransformPose.ofCamera(_pose(0))},
+          ),
         ),
       );
       // The fx header's union shows on the collapsed Transform header once
@@ -297,7 +299,9 @@ void main() {
         position: PropertyTrack<CanvasPoint>()
             .withKey(4, CanvasPoint(x: 40, y: 0))
             .withKeyName(4, 'A'),
-        scale: PropertyTrack<double>().withKey(4, 1.5).withKeyName(4, 'A'),
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(4, uniformScale(1.5))
+            .withKeyName(4, 'A'),
         rotation: PropertyTrack<double>().withKey(4, 0).withKeyName(4, 'A'),
       );
       await _pump(tester, _project(camera: CutCamera.fromTrack(named)));

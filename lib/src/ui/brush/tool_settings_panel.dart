@@ -8,25 +8,33 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/shape_tool_options.dart';
+import '../../models/transform_values.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/transform_box_law.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
+import 'text_tool_options.dart';
+import 'text_tool_settings.dart';
 import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'brush_stroke_live_preview.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../text/imported_fonts.dart';
 import '../text/model_vocabulary.dart';
 import '../text/trimmed_decimal.dart';
 import '../widgets/empty_state_text.dart';
@@ -51,6 +59,9 @@ class ToolSettingsPanel extends StatelessWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
     this.selectionCommands,
+    this.textOptions,
+    this.textCommands,
+    this.textFonts,
     this.canvasSize,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
@@ -114,6 +125,15 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// The text tool's own (R9-rest): the next text's values, and the channel
+  /// to the text the canvas holds. Null in a host that owns neither.
+  final ValueNotifier<TextToolOptions>? textOptions;
+  final CelTextCommands? textCommands;
+
+  /// The fonts this device was brought, for the text tool's faces. Null in
+  /// a host that keeps none.
+  final ImportedFonts? textFonts;
 
   /// The canvas on screen, whose pasteboard wall the selection tool's
   /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
@@ -228,6 +248,14 @@ class ToolSettingsPanel extends StatelessWidget {
           shapeKind: state.activeShapeKind,
           selectionCommands: selectionCommands,
         ),
+        // I-69: what the shape tool lays and what lays its line. A line of
+        // the brush type is drawn by the brush in hand — its size and
+        // opacity are the strip's, the rest the brush's own panel's; the
+        // tool's own values are the strip's too, wherever it draws by them.
+        CanvasTool.shape => _ShapeToolSettings(
+          state: state,
+          onChanged: onChanged,
+        ),
         // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
         CanvasTool.eyedropper => _EyedropperSettings(
           source: eyedropperSource,
@@ -260,6 +288,13 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           options: transformOptions,
           onOptionsChanged: onTransformOptionsChanged,
+        ),
+        CanvasTool.text => TextToolSettings(
+          options: textOptions,
+          commands: textCommands,
+          // The brush's colour, for the colour window's 「현재 색 반영」.
+          currentColorOf: () => state.color,
+          fonts: textFonts,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.
@@ -330,6 +365,127 @@ class _ShapeFillSettings extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The SHAPE tool's settings (I-69, 유저 답 Q1 · Q5 · Q7 · Q8 · Q9 —
+/// 2026-10-08).
+///
+/// Five rows, always there (「없다가 생기는 UI 금지」). A row that means
+/// nothing for what is chosen keeps its place and loses its tap:
+///
+/// - 「채움」 has no line, so the type and the corners are off (Q9: 「채움은
+///   타입과 무관하다」);
+/// - the corners are the PLAIN line's (Q8), and so is the edge switch —
+///   with the fill's. A line of the brush type has the brush's own edge;
+/// - under the line tile there is no inside to fill: that answer is off,
+///   and the line is what is lit, whatever was chosen for the other shapes.
+///
+/// ⛔No size and no opacity here: those are the strip's for every tool
+/// (`BrushToolState.activeSize`, `activeOpacity`).
+class _ShapeToolSettings extends StatelessWidget {
+  const _ShapeToolSettings({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  void _set(ShapeToolOptions options) =>
+      onChanged(state.copyWith(shapeOptions: options));
+
+  ShapeToolOptions get _options => state.shapeOptions;
+
+  /// Whether what is chosen lays a LINE — and whether that line is the
+  /// tool's own plain one.
+  bool get _laysLine => state.shapePart == ShapePart.line;
+  bool get _laysPlainLine => _laysLine && _options.type == ShapeLineType.plain;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    return ToolSettingsSection(
+      tool: 'shape',
+      title: strings.toolShape,
+      children: [
+        _partRow(strings),
+        _typeRow(strings),
+        _cornersRow(strings),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
+          label: strings.brAntiAlias,
+          value: _options.antiAlias,
+          onChanged: state.shapeDrawsWithTheBrush
+              ? null
+              : (value) => _set(_options.copyWith(antiAlias: value)),
+        ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('shape-tool-ratio-lock-switch'),
+          label: strings.shapeToolRatioLock,
+          value: _options.ratioLock,
+          onChanged: (value) => _set(_options.copyWith(ratioLock: value)),
+        ),
+      ],
+    );
+  }
+
+  /// 「그리기」: the line, or the inside. Under the line tile there is no
+  /// inside to fill, and that answer takes no press.
+  Widget _partRow(AppStrings strings) {
+    final hasInside = canvasShapeEncloses(state.drawShape);
+    return ToolSettingChoiceRow<ShapePart>(
+      tool: 'shape-tool',
+      name: 'part',
+      label: strings.shapeToolDraws,
+      current: state.shapePart,
+      answers: [
+        (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
+        (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+      ],
+      onPick: (part) => part == ShapePart.fill && !hasInside
+          ? null
+          : () => _set(_options.copyWith(part: part)),
+    );
+  }
+
+  /// 「타입」: what lays the line — it takes a press only where a line is
+  /// laid.
+  Widget _typeRow(AppStrings strings) => ToolSettingChoiceRow<ShapeLineType>(
+    tool: 'shape-tool',
+    name: 'type',
+    label: strings.shapeToolType,
+    current: _options.type,
+    answers: [
+      (value: ShapeLineType.brush, key: 'brush', label: strings.toolBrush),
+      (
+        value: ShapeLineType.plain,
+        key: 'plain',
+        label: strings.shapeToolTypePlain,
+      ),
+    ],
+    onPick: (type) =>
+        _laysLine ? () => _set(_options.copyWith(type: type)) : null,
+  );
+
+  /// 「모서리」: the plain line's alone.
+  Widget _cornersRow(AppStrings strings) => ToolSettingChoiceRow<ShapeCorners>(
+    tool: 'shape-tool',
+    name: 'corners',
+    label: strings.shapeToolCorners,
+    current: _options.corners,
+    answers: [
+      (
+        value: ShapeCorners.sharp,
+        key: 'sharp',
+        label: strings.shapeToolCornersSharp,
+      ),
+      (
+        value: ShapeCorners.round,
+        key: 'round',
+        label: strings.shapeToolCornersRound,
+      ),
+    ],
+    onPick: (corners) => _laysPlainLine
+        ? () => _set(_options.copyWith(corners: corners))
+        : null,
+  );
 }
 
 class _CutGrabSettings extends StatelessWidget {
@@ -685,10 +841,38 @@ class _SelectionModeRow extends StatelessWidget {
   }
 }
 
+/// One of the transform box's values as the tool settings show it: how it
+/// is read off the values, how another is put in its place, and what the
+/// readout calls it.
+class _BoxValue {
+  const _BoxValue({
+    required this.read,
+    required this.write,
+    this.unit = '',
+    this.perUnit = 1,
+  });
+
+  final double Function(TransformValues values) read;
+
+  /// [now] with this value replaced — and nothing else restated.
+  final TransformValues Function(TransformValues now, double value) write;
+
+  final String unit;
+
+  /// What one unit of the readout is worth in the value: a scale is held
+  /// as a ratio and read as a percentage.
+  final double perUnit;
+
+  String shown(TransformValues values) =>
+      '${formatTrimmedDecimal(read(values) / perUnit, fractionDigits: 2)}'
+      '$unit';
+}
+
 /// The Move/Transform tool's numeric inputs (R17-U 유저 채택 설계:
-/// 좌표/각도 수치 입력): X/Y offset, angle and scale of the LIVE
-/// transform box, applied on submit through the selection channel. The
-/// channel notifies on session changes so the fields track handle drags.
+/// 좌표/각도 수치 입력): the LIVE transform box's move, angle, scales and
+/// anchor, each written through the selection channel as it is scrubbed or
+/// typed. The channel notifies on session changes so the fields track
+/// handle drags.
 class _MoveSettings extends StatefulWidget {
   const _MoveSettings({
     required this.selectionCommands,
@@ -709,15 +893,18 @@ class _MoveSettings extends StatefulWidget {
 }
 
 class _MoveSettingsState extends State<_MoveSettings> {
-  // The live channel values, synced from the session at rest and owned
-  // locally during a label drag (R26 #14: the deferred session ping must
-  // not eat drag steps).
-  double _tx = 0;
-  double _ty = 0;
-  double _angleDeg = 0;
-  double _scalePct = 100;
-  double _anchorX = 0;
-  double _anchorY = 0;
+  /// What the box holds, as the session last said — the digits at rest.
+  ///
+  /// ↩️It was six doubles of this panel's own, one per channel, that a
+  /// scrub added to and then wrote back ALL of (R26 #14, so that the
+  /// deferred session ping could not eat drag steps). Its copy of the scale
+  /// was one number, so a scrub on X restated a scale the box did not have
+  /// (F-265 · F-256). A channel adds to what the box holds NOW instead
+  /// ([_write]), which has no step for a late ping to eat.
+  TransformValues _values = TransformValues.identity;
+
+  /// The most a typed or scrubbed scale reaches, as a ratio (3200%).
+  static const double _scaleCeiling = 32;
 
   @override
   void initState() {
@@ -748,33 +935,64 @@ class _MoveSettingsState extends State<_MoveSettings> {
     if (!mounted) {
       return;
     }
-    final values = widget.selectionCommands?.transformValues;
     setState(() {
-      _tx = values?.tx ?? 0;
-      _ty = values?.ty ?? 0;
-      _angleDeg = values?.rotationDegrees ?? 0;
-      _scalePct = (values?.scale ?? 1) * 100;
-      _anchorX = values?.anchorX ?? 0;
-      _anchorY = values?.anchorY ?? 0;
+      _values =
+          widget.selectionCommands?.transformValues ??
+          TransformValues.identity;
     });
   }
 
-  /// Writes the four channels through the selection channel — with no
-  /// session open this OPENS one (Ctrl+T semantics; R26 #13: with no
-  /// selection the box opens on the whole picture).
-  void _apply() {
-    widget.selectionCommands?.setTransformValues(
-      tx: _tx,
-      ty: _ty,
-      rotationDegrees: _angleDeg,
-      scale: _scalePct.clamp(1.0, 3200.0) / 100,
-    );
+  /// One channel's write through the selection channel: [change] is handed
+  /// what the box holds NOW and names the one value it means
+  /// ([CanvasSelectionCommands.editTransformValues]). With no session open
+  /// this OPENS one (Ctrl+T semantics; R26 #13: with no selection the box
+  /// opens on the whole picture).
+  void _write(TransformValues Function(TransformValues now) change) =>
+      widget.selectionCommands?.editTransformValues(change);
+
+  /// A typed or scrubbed scale as the box keeps one: off zero WITH ITS
+  /// SIGN — the law a dragged handle keeps ([TransformBoxLaw.clampScale]),
+  /// so a number taken through zero mirrors as a handle taken through the
+  /// centre does — and under this panel's ceiling.
+  static double _scaleWithin(double ratio) {
+    final kept = TransformBoxLaw.clampScale(ratio);
+    return kept.abs() > _scaleCeiling ? _scaleCeiling * kept.sign : kept;
   }
 
-  /// The anchor's own write — see [CanvasSelectionCommands.
-  /// setTransformAnchor] for why it is not folded into [_apply].
-  void _applyAnchor() {
-    widget.selectionCommands?.setTransformAnchor(x: _anchorX, y: _anchorY);
+  /// What a scale row's write leaves in the box: linked, the write carried
+  /// the other axis along, and what it was carried to is held to
+  /// [_scaleWithin] like any scale the box keeps.
+  ///
+  /// ⛔Unlinked, the other axis is NOT restated — not even to clamp it. A
+  /// row names its own value and no other ([_write]); a handle can leave a
+  /// scale past this panel's ceiling, and a number typed beside it must not
+  /// pull it back.
+  TransformValues _linkedWithin(TransformValues written) =>
+      widget.options.scaleLinked
+      ? written.copyWith(
+          sx: _scaleWithin(written.sx),
+          sy: _scaleWithin(written.sy),
+        )
+      : written;
+
+  /// One of the box's values as a channel: a scrub adds to what the box
+  /// holds now, a typed number replaces it, and neither names another value.
+  Widget _valueChannel({
+    required String keyValue,
+    required String label,
+    required _BoxValue value,
+  }) {
+    return _channel(
+      keyValue: keyValue,
+      label: label,
+      text: value.shown(_values),
+      live: (values) => value.shown(values ?? _values),
+      onDrag: (units) => _write(
+        (now) => value.write(now, value.read(now) + units * value.perUnit),
+      ),
+      onSubmit: (typed) =>
+          _write((now) => value.write(now, typed * value.perUnit)),
+    );
   }
 
   /// One transform channel as the shared DRAG VALUE READOUT (R26 #14 —
@@ -800,7 +1018,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     /// `setState` on the channel's ping — rebuilds every row of every
     /// section on every pointer sample, which is the one thing the user
     /// ruled out in the same sentence they asked for the numbers.
-    String Function(SelectionTransformValues? values)? live,
+    String Function(TransformValues? values)? live,
   }) {
     final theme = Theme.of(context);
     final notifier = widget.selectionCommands?.liveTransformValues;
@@ -840,7 +1058,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         if (live == null || notifier == null)
           readout(text)
         else
-          ValueListenableBuilder<SelectionTransformValues?>(
+          ValueListenableBuilder<TransformValues?>(
             valueListenable: notifier,
             builder: (context, values, _) => readout(live(values)),
           ),
@@ -885,106 +1103,104 @@ class _MoveSettingsState extends State<_MoveSettings> {
       title: AppText.strings.toolTransform,
       children: [
         const SizedBox(height: 8),
-        _channel(
+        _valueChannel(
           keyValue: 'move-x-field',
           label: 'X',
-          text: formatTrimmedDecimal(_tx, fractionDigits: 2),
-          live: (v) => formatTrimmedDecimal(v?.tx ?? _tx, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _tx += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _tx = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.tx,
+            write: (now, tx) => now.copyWith(tx: tx),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-y-field',
           label: 'Y',
-          text: formatTrimmedDecimal(_ty, fractionDigits: 2),
-          live: (v) => formatTrimmedDecimal(v?.ty ?? _ty, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _ty += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _ty = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.ty,
+            write: (now, ty) => now.copyWith(ty: ty),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-angle-field',
           label: AppText.strings.brAngle,
-          text: '${formatTrimmedDecimal(_angleDeg, fractionDigits: 2)}°',
-          live: (v) =>
-              '${formatTrimmedDecimal(v?.rotationDegrees ?? _angleDeg, fractionDigits: 2)}°',
-          onDrag: (units) {
-            setState(() => _angleDeg += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _angleDeg = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.rotationDegrees,
+            write: (now, degrees) => now.copyWith(rotationDegrees: degrees),
+            unit: '°',
+          ),
+        ),
+        // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
+        // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
+        // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
+        // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
+        // held two; this row showed the horizontal one as 「배율」 and wrote
+        // it to both. An edge middle's stretch reads on its own row now, and
+        // a mirror reads as the minus it is.
+        //
+        // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
+        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each row still names its own
+        // axis; linked, the write carries the other along by the same ratio
+        // and leaves its sign alone (`TransformValues.withScaleX`).
+        const SizedBox(height: 4),
+        _valueChannel(
+          keyValue: 'move-scale-x-field',
+          label: AppText.strings.trScaleX,
+          value: _BoxValue(
+            read: (values) => values.sx,
+            write: (now, sx) => _linkedWithin(
+              now.withScaleX(_scaleWithin(sx), linked: options.scaleLinked),
+            ),
+            unit: '%',
+            perUnit: 0.01,
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
-          keyValue: 'move-scale-field',
-          label: AppText.strings.brScale,
-          text: '${formatTrimmedDecimal(_scalePct, fractionDigits: 2)}%',
-          live: (v) =>
-              '${formatTrimmedDecimal((v?.scale ?? _scalePct / 100) * 100, fractionDigits: 2)}%',
-          onDrag: (units) {
-            setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _scalePct = value.clamp(1.0, 3200.0));
-            _apply();
-          },
+        _valueChannel(
+          keyValue: 'move-scale-y-field',
+          label: AppText.strings.trScaleY,
+          value: _BoxValue(
+            read: (values) => values.sy,
+            write: (now, sy) => _linkedWithin(
+              now.withScaleY(_scaleWithin(sy), linked: options.scaleLinked),
+            ),
+            unit: '%',
+            perUnit: 0.01,
+          ),
+        ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('move-scale-link-switch'),
+          label: AppText.strings.trScaleLink,
+          value: options.scaleLinked,
+          onChanged: onOptions == null
+              ? null
+              : (value) => onOptions(options.copyWith(scaleLinked: value)),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
-        // beside the other digits, because it is one of them to read even
-        // though it is not one of them to write ([_applyAnchor]).
+        // beside the other digits, and written the way they are: each row
+        // names its own value and restates none ([_write]).
         //
         // ⚠️Always here, never mode-gated: the rotation the anchor serves
         // works in every mode (outside the box is the rotation), so a row
         // that appeared and vanished would be inventing a rule the
         // rotation does not have — and 「없다가 생기는 UI 금지」 besides.
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-anchor-x-field',
           label: AppText.strings.trAnchorPointX,
-          text: formatTrimmedDecimal(_anchorX, fractionDigits: 2),
-          live: (v) =>
-              formatTrimmedDecimal(v?.anchorX ?? _anchorX, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _anchorX += units);
-            _applyAnchor();
-          },
-          onSubmit: (value) {
-            setState(() => _anchorX = value);
-            _applyAnchor();
-          },
+          value: _BoxValue(
+            read: (values) => values.anchorX,
+            write: (now, anchorX) => now.copyWith(anchorX: anchorX),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-anchor-y-field',
           label: AppText.strings.trAnchorPointY,
-          text: formatTrimmedDecimal(_anchorY, fractionDigits: 2),
-          live: (v) =>
-              formatTrimmedDecimal(v?.anchorY ?? _anchorY, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _anchorY += units);
-            _applyAnchor();
-          },
-          onSubmit: (value) {
-            setState(() => _anchorY = value);
-            _applyAnchor();
-          },
+          value: _BoxValue(
+            read: (values) => values.anchorY,
+            write: (now, anchorY) => now.copyWith(anchorY: anchorY),
+          ),
         ),
         // The mesh's density, shown as numbers because that is what it is
         // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). Only in 메쉬

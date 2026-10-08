@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
@@ -207,5 +208,114 @@ void main() {
         reason: 'the rows beside it stay as they were',
       );
     }
+  });
+
+  // 🗣️F-283-Q1 (유저 2026-10-07): 「코마 = 끝 트림」 — 「서 있든 선택했든, 참조
+  // 동영상 블록에 코마를 누르면 끝 엣지를 그 길이까지 끈 것과 같아집니다」.
+  //
+  // ⚠️Past the file's end included (30 of a file that has 20 left): that is
+  // what the end edge does today, and whether BOTH should stop there is
+  // asked on F-283-Q2 — these hold either way, because they say 「the same
+  // as the edge」 and not where the edge stops.
+  group('F-283-Q1: the comma is the block\'s END TRIM', () {
+    /// What a row's blocks and its file's in point are — all a trim changes.
+    /// (A list, so the matcher compares the map inside by what it holds.)
+    List<Object> shapeOf(Layer row) => [
+      {for (final entry in row.timeline.entries) entry.key: entry.value.length},
+      row.mediaReference!.frameOffset,
+    ];
+
+    /// The row as its END EDGE, dragged to [length], leaves it.
+    Future<List<Object>> draggedTo(int length) async {
+      final (s, before) = await placed();
+      drag(
+        s,
+        before,
+        blockStart: 0,
+        edge: TimelineBlockEdge.end,
+        delta: length - before.timeline[0]!.length!,
+      );
+      return shapeOf(movieRow(s));
+    }
+
+    for (final length in [3, 30]) {
+      test('stood on the block, comma $length leaves the row its end edge '
+          'dragged to $length leaves', () async {
+        final byTheEdge = await draggedTo(length);
+        final (s, layer) = await placed();
+        s.selectLayer(layer.id);
+        s.selectFrameIndex(3);
+        expect(s.storyboardCursor.canSetCommaForTimelineCursor, isTrue);
+        final steps = s.historyManager.undoCount;
+
+        s.edgeDrag.setCommaForTimelineCursor(length);
+
+        expect(movieRow(s).timeline[0]!.length, length, reason: 'LIVENESS');
+        expect(shapeOf(movieRow(s)), byTheEdge);
+        expect(s.historyManager.undoCount, steps + 1, reason: 'ONE step');
+      });
+
+      test('SELECTED, comma $length leaves the same row — and the selection '
+          'follows the block', () async {
+        final byTheEdge = await draggedTo(length);
+        final (s, layer) = await placed();
+        s.selectLayer(layer.id);
+        s.frameRangeSelection.value = TimelineFrameRangeSelection(
+          layerId: layer.id,
+          startIndex: 0,
+          endIndexExclusive: 20,
+        );
+        expect(
+          s.storyboardCursor.canSetCommaForTimelineCursor,
+          isTrue,
+          reason: '↩️the buttons were dark over a selected movie block',
+        );
+        final steps = s.historyManager.undoCount;
+
+        s.edgeDrag.setCommaForTimelineCursor(length);
+
+        expect(movieRow(s).timeline[0]!.length, length, reason: 'LIVENESS');
+        expect(shapeOf(movieRow(s)), byTheEdge);
+        expect(s.historyManager.undoCount, steps + 1, reason: 'ONE step');
+        final band = s.frameRangeSelection.value;
+        expect(
+          (band?.startIndex, band?.endIndexExclusive),
+          (0, length),
+          reason: 'the next press lands on the same block',
+        );
+      });
+    }
+
+    test('selected beside a cel row, each row\'s block takes the '
+        'comma', () async {
+      final (s, movie) = await placed();
+      final cel = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation && layer.id != movie.id,
+      );
+      s.selectLayer(cel.id);
+      s.selectFrameIndex(0);
+      s.createDrawingAtCurrentFrame();
+      s.edgeDrag.setCommaForTimelineCursor(6);
+      expect(
+        s.layerById(cel.id)!.timeline[0]!.length,
+        6,
+        reason: 'fixture: a cel block of six beside the movie\'s twenty',
+      );
+      s.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: movie.id,
+        startIndex: 0,
+        endIndexExclusive: 20,
+        layerIds: [movie.id, cel.id],
+      );
+
+      s.edgeDrag.setCommaForTimelineCursor(2);
+
+      expect(s.layerById(cel.id)!.timeline[0]!.length, 2);
+      expect(
+        movieRow(s).timeline[0]!.length,
+        2,
+        reason: '↩️the band re-timed the cel row and passed the movie over',
+      );
+    });
   });
 }

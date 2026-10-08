@@ -6,13 +6,12 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/playback/playback_cache_budget.dart'
-    show defaultPlaybackQuality;
+import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../../helpers/opened_session.dart';
@@ -203,20 +202,37 @@ void main() {
     expect(opened.activeCutId, firstCut.id);
     expect(opened.activeLayerId, firstCut.layers.first.id);
     expect(opened.currentFrameIndex, 0);
-    expect(opened.playbackRig.playbackQuality, defaultPlaybackQuality);
+    expect(opened.playbackRig.playbackMode, defaultPlaybackMode);
     opened.dispose();
   });
 
-  test('🚨the playback quality comes back with the file — and picking it is '
-      'no edit: no undo step, no unsaved mark (유저 답 '
-      'playback-quality-undo-Q1 「언두 안 됨 — 보기 설정처럼(저장은 됨)」)',
-      () async {
-    final s = EditorSessionManager(initialProject: twoCuts());
-    final picked = PlaybackQuality.values.firstWhere(
-      (quality) => quality != defaultPlaybackQuality,
+  test('a file that says nothing of the playback mode plays as a new '
+      'project does — whatever the session played by before', () async {
+    File(projectPath).writeAsBytesSync(
+      buildAnicelArchiveBytes(project: twoCuts(), cels: const []),
     );
 
-    s.playbackRig.setPlaybackQuality(picked);
+    final opened = await openedSession(
+      projectPath,
+      before: (session) => session.playbackRig.setPlaybackMode(
+        PlaybackMode.values.firstWhere((mode) => mode != defaultPlaybackMode),
+      ),
+    );
+
+    expect(opened.playbackRig.playbackMode, defaultPlaybackMode);
+    opened.dispose();
+  });
+
+  test('🚨the playback mode comes back with the file — and picking it is no '
+      'edit: no undo step, no unsaved mark (유저 답 playback-quality-undo-Q1 '
+      '「언두 안 됨 — 보기 설정처럼(저장은 됨)」, of the setting whose seat it '
+      'took)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final picked = PlaybackMode.values.firstWhere(
+      (mode) => mode != defaultPlaybackMode,
+    );
+
+    s.playbackRig.setPlaybackMode(picked);
 
     expect(s.historyManager.canUndo, isFalse);
     expect(s.projectFile.hasUnsavedChanges, isFalse);
@@ -227,7 +243,108 @@ void main() {
     s.dispose();
 
     final reopened = await openedSession(projectPath);
-    expect(reopened.playbackRig.playbackQuality, picked);
+    expect(reopened.playbackRig.playbackMode, picked);
+    reopened.dispose();
+  });
+
+  test('🚨each cut comes back at the timeline zoom it was left at — through '
+      'the append too — and a cut nobody zoomed is handed none (F-253 → '
+      'F-267, 유저 2026-10-01: 「프로젝트와 같이 저장되도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final first = s.activeCutId!;
+    s.timelineZoom.remember(const CutId('c2'), 37.5);
+    // A cut deleted since it was zoomed: the memory keeps no list of cuts.
+    s.timelineZoom.remember(const CutId('gone'), 9);
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'zooming is no edit — the zoom rides beside the project',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.timelineZoom.remember(const CutId('c2'), 12);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.timelineZoom.zoomOf(const CutId('c2')), 12);
+    expect(
+      reopened.timelineZoom.zoomOf(first),
+      isNull,
+      reason: 'it opens at the default, not at another cut\'s zoom',
+    );
+    expect(
+      reopened.timelineZoom.byCut.keys,
+      [const CutId('c2')],
+      reason: 'a cut the project no longer has falls back alone, as the '
+          'cut a resume names does',
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
+
+  test('🚨the conte comes back at its zoom and each panel scrolled where it '
+      'was — through the append too — and none of it is an edit (F-267, '
+      '유저 2026-10-01: 「다시 열면 그대로 열리도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final views = s.panelViews;
+    views.storyboardPixelsPerFrame.value = 3.5;
+    views.frameAxisOffsets['timeline']!.value = 480;
+    views.frameAxisOffsets['storyboard']!.value = 96;
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'zooming and scrolling are no edit — they ride beside the '
+          'project',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    views.frameAxisOffsets['timeline']!.value = 640;
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    final back = reopened.panelViews;
+    expect(back.storyboardPixelsPerFrame.value, 3.5);
+    expect(back.frameAxisOffsets['timeline']!.value, 640);
+    expect(back.frameAxisOffsets['storyboard']!.value, 96);
+    expect(
+      back.frameAxisOffsets['xsheet']!.value,
+      0,
+      reason: 'a panel left at its start opens at its start',
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
+
+  test('a file that says nothing of the panels opens them as a new project '
+      'does — the conte at its default zoom, each panel at its start',
+      () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(
+      reopened.panelViews.storyboardPixelsPerFrame.value,
+      PanelViewMemory.defaultStoryboardPixelsPerFrame,
+    );
+    for (final offset in reopened.panelViews.frameAxisOffsets.values) {
+      expect(offset.value, 0);
+    }
     reopened.dispose();
   });
 }

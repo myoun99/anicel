@@ -1,7 +1,11 @@
 import 'dart:io';
 
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/dart_sources.dart';
 
@@ -10,10 +14,104 @@ import '../../helpers/dart_sources.dart';
 /// + 한글 **나눔고딕**. 그 전까지는 폰트가 없어서 OS 가 주는 것을 입었다.
 void main() {
   _noWidgetNamesItsOwnFace();
+  _noThemeSlotSpellsABareStyle();
+
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
 
   test('테마가 앱 폰트를 들고 있다 — OS 에 맡기지 않는다', () {
     final theme = buildAppTheme();
     expect(theme.textTheme.bodyMedium?.fontFamily, isNotNull);
+  });
+
+  /// 🚨★★★**THE WORDS A THEME SLOT PRINTS ARE IN THE APP'S FACE TOO**
+  /// (buttons-print-in-the-os-face, found 2026-10-01 making the guide's
+  /// screenshots).
+  ///
+  /// `ThemeData.fontFamily` reaches the TEXT THEME. A slot that takes a
+  /// whole text style — a button's, a tooltip's — REPLACES the text theme's
+  /// style instead of merging into it, so a style written there with a
+  /// size and no face printed in the machine's own: a window's 취소 · 확인,
+  /// the timeline bar's 1 · 2 · 3 · 4 · N and every tooltip. On screen it
+  /// was the OS's UI font; in a test that loads only the app's faces, a
+  /// Korean label was boxes — which is how it was seen.
+  ///
+  /// 🧪Measured slot by slot (2026-10-06), fixing one at a time: both
+  /// buttons and the tooltip named no face. A menu's row did — it reads the
+  /// text theme's label style — and stands here as the control that says
+  /// the reading can come out right.
+  ///
+  /// ⛔Read off the PARAGRAPH that paints the word, not off the theme: the
+  /// question is what the user's eye gets, and a style that reads right in
+  /// the theme and is dropped on the way down is the bug.
+  testWidgets('🚨a window\'s buttons, a menu\'s rows and a tooltip print in '
+      'the app\'s face — in the language the app speaks', (tester) async {
+    for (final language in const [AppLanguage.ko, AppLanguage.ja]) {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      final family = AppTypography.familyFor(language);
+      final fallback = AppTypography.fallbackFor(language);
+      expect(family, isNotNull, reason: '⛔전제: $language 는 앱 글꼴로 말한다');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Column(
+              children: [
+                TextButton(onPressed: () {}, child: const Text('취소')),
+                FilledButton(onPressed: () {}, child: const Text('확인')),
+                PopupMenuButton<int>(
+                  key: const ValueKey<String>('menu'),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem<int>(value: 1, child: Text('메뉴 항목')),
+                  ],
+                ),
+                const Tooltip(
+                  message: '안내',
+                  child: SizedBox(
+                    key: ValueKey<String>('hint'),
+                    width: 40,
+                    height: 40,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      void printsInTheAppFace(String word) {
+        final style = tester
+            .renderObject<RenderParagraph>(find.text(word))
+            .text
+            .style;
+        expect(style?.fontFamily, family, reason: '$language · $word');
+        expect(
+          style?.fontFamilyFallback,
+          fallback,
+          reason: '$language · $word — 한글은 뒤의 글꼴이 그린다',
+        );
+      }
+
+      printsInTheAppFace('취소');
+      printsInTheAppFace('확인');
+
+      // ⚠️One summoned surface at a time: a menu is a route, and its
+      // barrier takes the hover the tooltip is waiting for.
+      await tester.tap(find.byKey(const ValueKey<String>('menu')));
+      await tester.pumpAndSettle();
+      printsInTheAppFace('메뉴 항목');
+      await tester.tap(find.text('메뉴 항목'));
+      await tester.pumpAndSettle();
+
+      final hover = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await hover.addPointer(location: Offset.zero);
+      await hover.moveTo(
+        tester.getCenter(find.byKey(const ValueKey<String>('hint'))),
+      );
+      await tester.pumpAndSettle();
+      printsInTheAppFace('안내');
+      await hover.removePointer();
+    }
   });
 
   test('🚨순서가 법이다 — 일본어가 앞, 한글이 뒤', () {
@@ -104,6 +202,40 @@ void main() {
     for (final path in assets) {
       expect(File(path).existsSync(), isTrue, reason: path);
     }
+  });
+}
+
+/// ⛔**테마의 자리가 글꼴 없는 글자 스타일을 직접 적지 못한다** (소스 스캔
+/// 래칫) — 위의 핀은 지금 있는 자리를 재고, 이것은 다음에 생길 자리를
+/// 막는다. 테마 파일 안의 `textStyle:` 은 전부 [AppTypography.inTheAppFace]
+/// 를 지난다.
+void _noThemeSlotSpellsABareStyle() {
+  test('테마 파일의 textStyle 은 전부 앱 글꼴을 입고 나간다', () {
+    final lines = File(
+      'lib/src/ui/theme/app_theme.dart',
+    ).readAsLinesSync();
+    final slots = <String>[];
+    final bare = <String>[];
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (line.trimLeft().startsWith('//') || !line.contains('textStyle:')) {
+        continue;
+      }
+      slots.add('${i + 1}');
+      if (!line.contains('AppTypography.inTheAppFace(')) {
+        bare.add('app_theme.dart:${i + 1} — ${line.trim()}');
+      }
+    }
+    // 🚨계측기를 먼저 의심한다: 자리를 하나도 못 찾았으면 「위반 없음」이 공짜다.
+    expect(slots.length, greaterThanOrEqualTo(3), reason: '⛔빈 것을 쟀다');
+    expect(
+      bare,
+      isEmpty,
+      reason:
+          '글자 스타일을 통째로 받는 테마 자리는 ThemeData.fontFamily 를 '
+          '못 받는다 — AppTypography.inTheAppFace 로 감쌀 것:\n'
+          '${bare.join('\n')}',
+    );
   });
 }
 

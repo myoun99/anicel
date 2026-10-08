@@ -280,6 +280,159 @@ class ProjectImportDoors {
     return true;
   }
 
+  /// A NUMBERED RUN of pictures — `A1` · `A2` · `A3` … of one folder
+  /// (`celRunOf`) — as ONE layer's frames, the way an animated picture comes
+  /// in ([planSequenceLayer]): a picture the one before it already showed
+  /// folds into that one's exposure. [files] are in the run's order, each
+  /// with its cel's label, which names its frame as the cut folder names
+  /// its cels; the layer is [name].
+  ///
+  /// 🗣️I-76 (유저 2026-10-06 · I-76-Q1 10-08): 「A1-A3 이렇게 한 레이어의 세
+  /// 프레임으로 인식하는 느낌」.
+  ///
+  /// Always baked: a layer's reference names ONE file, and these are many
+  /// — the cut folder's law, which always bakes. Each file registers on its
+  /// own (유저 2026-09-11: 「구워도 풀에 남음」): a pooled `A1.png` is one
+  /// picture, not a sequence of three.
+  ///
+  /// One file is decoded at a time — to fold, then again to bake — so a run
+  /// of full-page scans never sits in memory whole.
+  Future<bool> importPictureRun({
+    required List<({String path, String label})> files,
+    required String name,
+    required ImportFileSettings settings,
+    ImportLayerSpot? spot,
+    void Function(int done, int total)? onRenderProgress,
+    void Function(int position)? onCelFailed,
+  }) async {
+    if (files.isEmpty) {
+      return false;
+    }
+    final gate = _landing.arriveAt(
+      settings.into,
+      path: files.first.path,
+      spot: spot,
+    );
+    if (gate == null) {
+      return false;
+    }
+    final sources = [for (final file in files) normalizedMediaPath(file.path)];
+    final fold = await _foldRun(sources);
+    if (fold == null) {
+      return false;
+    }
+    // A NEW cut is made at the first picture's size, as a still's is.
+    final arrival = gate.targetCut == null
+        ? gate.withCanvasSize(fold.firstSize)
+        : gate;
+    final plan = planSequenceLayer(
+      sourceFiles: sources,
+      frameFingerprints: fold.fingerprints,
+      displayName: name,
+      cutId: arrival.cutId,
+      fit: settings.fit,
+      rasterize: true,
+      mint: arrival.mint,
+      frameNames: [for (final file in files) file.label],
+    );
+    final assets = _eachRegistered(sources, settings);
+    await _pool.holdCarriedBytes(assets);
+    if (!_landing.land(
+      [plan.layer],
+      arrival: arrival,
+      duration: _sequenceLength(plan.layer),
+      assets: assets,
+    )) {
+      return false;
+    }
+    await _bakeLandedCels(
+      arrival.cutId,
+      plan.layer,
+      plan.bakes,
+      rowId: _rowOf(spot),
+      pictureOf: (bake, _) => _ownedStillOf(bake.sourceFile),
+      onProgress: onRenderProgress,
+      onFailed: onCelFailed == null
+          ? null
+          : (bake) => onCelFailed(bake.sourceFrameIndex),
+    );
+    return true;
+  }
+
+  /// Each of [sources] as the pool's own picture, kept as [settings] say.
+  List<MediaAsset> _eachRegistered(
+    List<String> sources,
+    ImportFileSettings settings,
+  ) => [
+    for (final source in sources)
+      importedMediaAsset(
+        path: source,
+        kind: MediaAssetKind.image,
+        fit: settings.fit,
+        identity: readMediaIdentity(source),
+        carried: settings.mode == ImportFileMode.keepInside,
+      ),
+  ];
+
+  /// What the fold reads of each of [sources]' pictures ([_foldBytes]), and
+  /// the first one's size — one file decoded at a time; null when one does
+  /// not read. Each one's bytes are fingerprinted on the way: they were read
+  /// anyway, and the ledger takes a path not registered yet.
+  Future<({List<Object?> fingerprints, CanvasSize firstSize})?> _foldRun(
+    List<String> sources,
+  ) async {
+    final fingerprints = <Object?>[];
+    CanvasSize? firstSize;
+    for (final source in sources) {
+      final still = await _stillOf(source);
+      if (still == null) {
+        return null;
+      }
+      _fingerprints.rememberMediaFingerprint(source, still.bytes);
+      try {
+        firstSize ??= CanvasSize(
+          width: still.image.width,
+          height: still.image.height,
+        );
+        final data = await still.image.toByteData(
+          format: ui.ImageByteFormat.rawStraightRgba,
+        );
+        fingerprints.add(data == null ? null : _foldBytes(data));
+      } finally {
+        still.image.dispose();
+      }
+    }
+    return (fingerprints: fingerprints, firstSize: firstSize!);
+  }
+
+  /// A cel's picture to bake, read again: the fold let go of it.
+  Future<({ui.Image image, bool owned})> _ownedStillOf(String path) async {
+    final still = await _stillOf(path);
+    if (still == null) {
+      throw StateError('$path no longer reads');
+    }
+    return (image: still.image, owned: true);
+  }
+
+  /// [path]'s picture — the first frame of what it decodes to, a run's cel
+  /// being a still — with the bytes it was read from; null when it does not
+  /// read or decode.
+  Future<({ui.Image image, Uint8List bytes})?> _stillOf(String path) async {
+    try {
+      final bytes = await readHeldMediaBytes(_holdBytes, path);
+      final frames = await decodeImageFrames(bytes);
+      if (frames.isEmpty) {
+        return null;
+      }
+      for (final extra in frames.skip(1)) {
+        extra.image.dispose();
+      }
+      return (image: frames.first.image, bytes: bytes);
+    } on Object {
+      return null;
+    }
+  }
+
   /// EXPAND: a Photoshop stack becomes ours — ONE folder named after the
   /// file, holding its layers with their groups, names, opacity, blend and
   /// eye intact.

@@ -1,8 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -14,6 +14,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
+import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -21,9 +23,14 @@ import 'package:anicel/src/ui/session/cell_verbs.dart';
 import 'package:anicel/src/ui/session/cut_verbs.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨I-45 — THE LINK-INDEPENDENT BUTTON ASKS THE SHARED PILL'S ONE LADDER.
 ///
@@ -228,7 +235,7 @@ void main() {
       final layers = layersOf(s);
       drawnAndLinked(s, [5]);
       final original = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       final copy = s.layers
           .firstWhere(
             (layer) => layer.id != original && layers.isLayerLinked(layer.id),
@@ -254,10 +261,10 @@ void main() {
       final s = session();
       final layers = layersOf(s);
       final first = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       s.layerStack.addLayerOfKind(LayerKind.animation);
       final second = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(first));
       s.rowSelectionVerbs.rowSelection.value = [
         LayerRowAddress(first),
@@ -413,7 +420,11 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    // The bare project, as [session] above: [drawnAndLinked] draws the
+    // row's ONE cel (the app itself opens on a cel — F-211).
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
     await tester.pumpAndSettle();
     final s = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -432,5 +443,143 @@ void main() {
       isFalse,
       reason: 'nothing left to separate — the button dims',
     );
+  });
+
+  /// 🗣️유저 2026-09-13: 「버튼이면 왠만해선 숏컷 지정 가능하게 리스트로
+  /// 올리는걸 기본으로 두고 싶어」 — 링크 독립 is a row of the shortcut list
+  /// like its neighbours on the pill. Nobody named a key for it, so it ships
+  /// with none, and each test here records one the way the settings window
+  /// does.
+  group('the key', () {
+    const button = ValueKey<String>('shared-unlink-button');
+    const key = LogicalKeyboardKey.keyU;
+
+    Future<EditorSessionManager> appWithTheKeyRecorded(
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // The bare project, as [session] above (see the test before).
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      EditorShortcutScope.peek(
+        tester.element(find.byType(EditorCanvasArea)),
+      )!.setActivators(EditorActionIds.editUnlink, const [
+        SingleActivator(key),
+      ]);
+      await tester.pumpAndSettle();
+      return tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+    }
+
+    Future<void> pressTheKey(WidgetTester tester) async {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+    }
+
+    test('it is one row of the shortcut list, and ships with no key', () {
+      final definition = editorActionDefinitions.singleWhere(
+        (it) => it.id == EditorActionIds.editUnlink,
+      );
+      expect(definition.defaultActivators, isEmpty);
+    });
+
+    test('its name is the user\'s own word for it — 「링크 독립」', () {
+      expect(
+        AppStrings.of(
+          AppLanguage.ko,
+        ).shortcutLabel(EditorActionIds.editUnlink, 'unnamed'),
+        '링크 독립',
+      );
+    });
+
+    testWidgets('the button names the recorded key, and the key does what '
+        'the button does as ONE step — nothing once the button is dim', (
+      tester,
+    ) async {
+      final s = await appWithTheKeyRecorded(tester);
+      expect(
+        tester.widget<AppIconButtonFace>(find.byKey(button)).tooltip,
+        'Make independent (U)',
+        reason: 'the action\'s name and its live key (I-19)',
+      );
+      final a = drawnAndLinked(s, [5]);
+      s.selectFrameIndex(5);
+      await tester.pumpAndSettle();
+      expect(
+        await isActionButtonEnabled(tester, button),
+        isTrue,
+        reason: '⛔전제: the button would press',
+      );
+      final entries = s.historyManager.undoCount;
+
+      await pressTheKey(tester);
+
+      expect(
+        shownAt(s, 5),
+        allOf(isNotNull, isNot(a)),
+        reason: 'this block shows a cel of its own now — not an empty cell',
+      );
+      expect(shownAt(s, 0), a, reason: 'the other showing keeps A');
+      expect(s.historyManager.undoCount, entries + 1, reason: 'ONE step');
+
+      expect(await isActionButtonEnabled(tester, button), isFalse);
+      await pressTheKey(tester);
+      expect(
+        s.historyManager.undoCount,
+        entries + 1,
+        reason: 'nothing left to separate — the key is as dim as the button',
+      );
+    });
+
+    testWidgets('the key is the button of the panel being worked in: on the '
+        'storyboard it forks the CUT, which the timeline never reaches for', (
+      tester,
+    ) async {
+      final s = await appWithTheKeyRecorded(tester);
+      final cuts = cutsOf(s);
+      cuts.createLinkedCutFromActiveCut();
+      final linked = s.activeCutId!;
+      s.selectTrackRow(s.selectedTrackId);
+      expect(cuts.cutIsLinked(linked), isTrue, reason: '⛔전제');
+      Future<void> workIn(WorkingPanel panel) async {
+        await tester.tap(
+          find.byKey(
+            ValueKey<String>(switch (panel) {
+              WorkingPanel.timeline => 'timeline-mode-timeline-button',
+              WorkingPanel.storyboard => 'timeline-mode-storyboard-button',
+            }),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(s.workingPanel, panel, reason: '⛔전제');
+      }
+
+      await workIn(WorkingPanel.timeline);
+      expect(
+        await isActionButtonEnabled(tester, button),
+        isFalse,
+        reason: '⛔전제: the timeline\'s button names no cut',
+      );
+      await pressTheKey(tester);
+      expect(cuts.cutIsLinked(linked), isTrue, reason: 'nor does its key');
+
+      await workIn(WorkingPanel.storyboard);
+      expect(
+        await isActionButtonEnabled(tester, button),
+        isTrue,
+        reason: '⛔전제: the storyboard\'s button would press',
+      );
+      await pressTheKey(tester);
+      expect(cuts.cutIsLinked(linked), isFalse);
+      expect(
+        s.repository.requireProject().tracks.first.cuts.map((cut) => cut.id),
+        contains(linked),
+        reason: 'the cut stays where it was — only its links are gone',
+      );
+    });
   });
 }

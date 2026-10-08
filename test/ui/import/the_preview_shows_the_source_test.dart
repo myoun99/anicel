@@ -75,23 +75,22 @@ void main() {
     expect(box.aspectRatio, 16 / 9);
   });
 
-  testWidgets('⛔a source with ONE frame shows no IN/OUT ends — a range '
-      'that changes nothing is a control that lies', (tester) async {
+  testWidgets('⛔a source with ONE frame keeps its IN/OUT row, OFF — a range '
+      'that changes nothing is a control that lies, and a row that came and '
+      'went with the file would move the picture over it', (tester) async {
     await pump(tester);
 
-    expect(
-      tester.widget<TransportBar>(find.byType(TransportBar)).showRange,
-      isFalse,
-    );
+    final range = tester.widget<TransportBar>(find.byType(TransportBar)).range;
+    expect(range, isNotNull, reason: 'the window trims, so the row is here');
+    expect(range!.onChanged, isNull, reason: 'and here it acts on nothing');
   });
 
-  testWidgets('⛔and neither does one that is not being PLACED', (tester) async {
+  testWidgets('⛔and so does one that is not being PLACED', (tester) async {
     await pump(tester, rangeEditable: false);
 
-    expect(
-      tester.widget<TransportBar>(find.byType(TransportBar)).showRange,
-      isFalse,
-    );
+    final range = tester.widget<TransportBar>(find.byType(TransportBar)).range;
+    expect(range, isNotNull);
+    expect(range!.onChanged, isNull);
   });
 
   testWidgets('the bar is the SHARED transport — a video will need nothing '

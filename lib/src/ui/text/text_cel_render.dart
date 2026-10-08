@@ -4,13 +4,16 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
-import '../theme/app_theme.dart' show AppTypography;
+import 'canvas_letter_passes.dart';
+import 'canvas_letter_style.dart';
 
 /// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
 /// over the picture. ↩️The TEXT LAYER baked it into cels until F-154
 /// removed the kind — the text tool the user plans for ordinary layers
-/// writes with this same machinery. Engine text in the app's BUNDLED faces
-/// ([AppTypography.bundledFamily], 유저 2026-09-25: 「글꼴 앱에서 정한거
+/// writes with this same machinery. ✅It does, since 2026-10-06: the
+/// letters' recipe is `canvasLetterTextStyle`, which a text on a cel
+/// (`layoutCelText`) is set with too. Engine text in the app's BUNDLED
+/// faces (`AppTypography.bundledFamily`, 유저 2026-09-25: 「글꼴 앱에서 정한거
 /// 통일」) — declared in `pubspec.yaml`, so the engine has them from the
 /// first frame and a picture prints the same letters on every machine.
 /// ↩️A text with no chosen face used to print in the OS's, with the conte's
@@ -26,13 +29,11 @@ class TextCelLayout {
   TextCelLayout._({
     required this.inkBounds,
     required this.topLeft,
-    required TextPainter fill,
-    required TextPainter? stroke,
+    required CanvasLetterPasses<TextPainter> letters,
     required this.style,
     required this.pad,
     required this.textSize,
-  }) : _fill = fill,
-       _stroke = stroke;
+  }) : _letters = letters;
 
   /// The block's painted extent in canvas coordinates — text bounds plus
   /// the background box / outline, snapped to whole pixels so a bake's
@@ -50,37 +51,42 @@ class TextCelLayout {
   /// The text block's laid-out size.
   final ui.Size textSize;
 
-  final TextPainter _fill;
-  final TextPainter? _stroke;
+  /// The letters, set for drawing — stroke under fill, smooth or hard
+  /// (the passes a text on a cel is drawn in too).
+  final CanvasLetterPasses<TextPainter> _letters;
 
   /// Draws at the layout's canvas coordinates — the caller sets up any
   /// viewport/camera transform first.
   void paint(ui.Canvas canvas) {
-    final backgroundColor = style.backgroundColorValue;
-    if (backgroundColor != null) {
+    final background = style.backgroundColor;
+    if (background != null) {
       // The アフレコ box: text bounds plus breathing room, the SE red-box
       // vocabulary.
-      canvas.drawRect(
+      _letters.paintBoxBehind(
+        canvas,
         ui.Rect.fromLTWH(
           topLeft.dx - pad,
           topLeft.dy - pad,
           textSize.width + pad * 2,
           textSize.height + pad * 2,
         ),
-        ui.Paint()..color = backgroundColor,
+        background,
       );
     }
-    // Stroke under fill — the timeline glyph outline recipe (#15: one
-    // rule on every surface).
-    _stroke?.paint(canvas, topLeft);
-    _fill.paint(canvas, topLeft);
+    // ⚠️A letter's size past the ink the layout counts: that box is the
+    // lines' own, and a glyph reaches out of its line.
+    _letters.paintAt(
+      canvas,
+      topLeft,
+      within: inkBounds.inflate(style.fontSize),
+    );
   }
 
-  void dispose() {
-    _fill.dispose();
-    _stroke?.dispose();
-  }
+  void dispose() => _letters.dispose();
 }
+
+/// A tag line's pitch, as a multiple of its letters' size.
+const double _tagLineHeight = 1.25;
 
 /// Lays [content] out against [canvas]'s geometry. Cheap enough to call
 /// per frame from a painter; dispose the result when done.
@@ -99,76 +105,56 @@ TextCelLayout layoutTextCel({
 }) {
   final style = content.style;
 
-  TextPainter build(Color color, {Paint? foreground, double? fontSize}) =>
-      TextPainter(
-        text: TextSpan(
-          text: content.text,
-          style: TextStyle(
-            color: foreground == null ? color : null,
-            foreground: foreground,
-            fontSize: fontSize ?? style.fontSize,
-            fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
-            letterSpacing: style.letterSpacing == 0
-                ? null
-                : style.letterSpacing,
-            fontFamily: style.fontFamily ?? AppTypography.bundledFamily,
-            // CJK safety on every family choice: the app's bundled faces
-            // catch what a chosen face misses, in the app's own order.
-            fontFamilyFallback: const [
-              AppTypography.bundledFamily,
-              ...AppTypography.bundledFallback,
-            ],
-            height: 1.25,
-          ),
-        ),
-        textAlign: switch (style.align) {
-          TextCelAlign.left => TextAlign.left,
-          TextCelAlign.center => TextAlign.center,
-          TextCelAlign.right => TextAlign.right,
-        },
-        textDirection: TextDirection.ltr,
-      )..layout();
+  // The letters' recipe is [canvasLetterTextStyle] — the one a text on a
+  // cel is set with too (R9-rest, 2026-10-06).
+  TextPainter build({ui.Paint? foreground, double? fontSize}) => TextPainter(
+    text: TextSpan(
+      text: content.text,
+      style: canvasLetterTextStyle(
+        style,
+        lineHeight: _tagLineHeight,
+        fontSize: fontSize,
+        foreground: foreground,
+      ),
+    ),
+    textAlign: canvasTextAlign(style.align),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
-  var fill = build(style.colorValue);
+  var fill = build();
   var drawnSize = style.fontSize;
   if (maxWidth != null && maxWidth > 0 && fill.width > maxWidth) {
     // ONE re-measure at the scale that fits — the tag stays a single
     // line, so the stacked rows keep their pitch.
     drawnSize = style.fontSize * (maxWidth / fill.width);
     fill.dispose();
-    fill = build(style.colorValue, fontSize: drawnSize);
+    fill = build(fontSize: drawnSize);
   }
-  final outlineColor = style.outlineColorValue;
-  final stroke = outlineColor != null && style.outlineWidth > 0
-      ? build(
-          outlineColor,
-          fontSize: drawnSize,
-          foreground: ui.Paint()
-            ..style = ui.PaintingStyle.stroke
-            ..strokeWidth = style.outlineWidth
-            ..strokeJoin = ui.StrokeJoin.round
-            ..color = outlineColor,
-        )
-      : null;
+  final textSize = ui.Size(fill.width, fill.height);
+  final outlined = canvasLetterOutlinePaint(style) != null;
+  // The tag is one run in one style. What was set to measure it is its
+  // fill pass, where its letters are smooth — the tag is set every frame.
+  final passes = canvasLetterPainterPasses(
+    [style],
+    (pass) => build(fontSize: drawnSize, foreground: pass.paintOf(style)),
+    measured: fill,
+  );
 
   final anchor =
       content.position ??
-      ui.Offset(canvas.width / 2, (canvas.height - fill.height) / 2);
+      ui.Offset(canvas.width / 2, (canvas.height - textSize.height) / 2);
   final topLeft = ui.Offset(switch (style.align) {
     TextCelAlign.left => anchor.dx,
-    TextCelAlign.center => anchor.dx - fill.width / 2,
-    TextCelAlign.right => anchor.dx - fill.width,
+    TextCelAlign.center => anchor.dx - textSize.width / 2,
+    TextCelAlign.right => anchor.dx - textSize.width,
   }, anchor.dy);
 
   // The pad follows the DRAWN size, so a shrunk tag keeps its proportions.
   final pad = style.backgroundColor == null ? 0.0 : drawnSize * 0.25;
-  final outlineInflate = stroke == null ? 0.0 : style.outlineWidth / 2;
-  final ink = ui.Rect.fromLTWH(
-    topLeft.dx,
-    topLeft.dy,
-    fill.width,
-    fill.height,
-  ).inflate(pad > outlineInflate ? pad : outlineInflate);
+  final outlineInflate = outlined ? style.outlineWidth / 2 : 0.0;
+  final ink = (topLeft & textSize).inflate(
+    pad > outlineInflate ? pad : outlineInflate,
+  );
 
   return TextCelLayout._(
     inkBounds: ui.Rect.fromLTRB(
@@ -178,10 +164,9 @@ TextCelLayout layoutTextCel({
       ink.bottom.ceilToDouble(),
     ),
     topLeft: topLeft,
-    fill: fill,
-    stroke: stroke,
+    letters: passes,
     style: style,
     pad: pad,
-    textSize: ui.Size(fill.width, fill.height),
+    textSize: textSize,
   );
 }

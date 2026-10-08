@@ -108,6 +108,56 @@ Project _groupProject() {
   );
 }
 
+/// F-312's scene: two attach groups FACING each other, a loose row on each
+/// side. Rail top-down: Camera, P, B2, B2-1, B1+1, B1, Q.
+Project _facingGroupsProject() {
+  return Project(
+    id: const ProjectId('drag-project'),
+    name: 'Drag Project',
+    createdAt: DateTime.utc(2026, 10, 7),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              Layer(id: const LayerId('q'), name: 'Q', frames: const []),
+              Layer(id: const LayerId('b1'), name: 'B1', frames: const []),
+              Layer(
+                id: const LayerId('b1up'),
+                name: 'B1+1',
+                frames: const [],
+                attachedToLayerId: const LayerId('b1'),
+              ),
+              Layer(
+                id: const LayerId('b2down'),
+                name: 'B2-1',
+                frames: const [],
+                attachedToLayerId: const LayerId('b2'),
+                attachedPlacement: AttachedPlacement.below,
+              ),
+              Layer(id: const LayerId('b2'), name: 'B2', frames: const []),
+              Layer(id: const LayerId('p'), name: 'P', frames: const []),
+              Layer(
+                id: const LayerId('cam'),
+                name: 'Camera',
+                kind: LayerKind.camera,
+                frames: const [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 EditorSessionManager _sessionOf(WidgetTester tester) =>
     tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 
@@ -621,6 +671,20 @@ void main() {
       findsOneWidget,
       reason: 'A carries a transform the mount would throw away',
     );
+    // F-303: and it says WHICH rows, in the shared list under its sentence
+    // — closed, since here the sentence is the point.
+    expect(
+      find.text('${AppText.strings.tlAttachDropsFxRows} (1)'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey<String>('app-notice-details-list')),
+        findsNothing);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'a heading wider than its window wraps; it does not run off '
+          'the edge (in this font it is wider)',
+    );
     expect(
       _layerOf(session, 'a').attachedToLayerId,
       isNull,
@@ -665,6 +729,104 @@ void main() {
     final mounted = _layerOf(session, 'c');
     expect(mounted.attachedToLayerId, const LayerId('b'));
     expect(mounted.attachedPlacement, AttachedPlacement.above);
+  });
+
+  /// P, held at its row's middle and carried to [row]'s — or [rowsPast]
+  /// rows further down the rail: a half is the line under that row.
+  Future<TestGesture> carryP(
+    WidgetTester tester, {
+    required String row,
+    double rowsPast = 0,
+  }) async {
+    final grip = _railRowGrip('p');
+    await tester.ensureVisible(grip);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, grip);
+    final from = Offset(
+      tester.getCenter(grip).dx,
+      tester.getCenter(_railRow('p')).dy,
+    );
+    final pitch = tester.getSize(_railRow('p')).height;
+    final gesture = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(
+      Offset(
+        0,
+        tester.getCenter(_railRow(row)).dy - from.dy + rowsPast * pitch,
+      ),
+    );
+    await tester.pump();
+    return gesture;
+  }
+
+  testWidgets('🚨F-312: a row dropped ON a group\'s last attach row becomes '
+      'its last attach — 「어태치의 마지막」', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+
+    // P comes from ABOVE the group, over its base: the seat under B2-1 is
+    // still the one it takes. ⛔Until F-312 this drop was refused (an
+    // attach row carries no riders) and fell back to the nearest line.
+    final gesture = await carryP(tester, row: 'b2down');
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b2down')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        AppText.strings.tlDropAttachSyncedTemplate.replaceAll('{name}', 'B2'),
+      ),
+      findsOneWidget,
+      reason: 'the row says whose attach it will be before the release',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['q', 'b1', 'b1up', 'p', 'b2down', 'b2']);
+    final joined = _layerOf(session, 'p');
+    expect(joined.attachedToLayerId, const LayerId('b2'));
+    expect(joined.attachedPlacement, AttachedPlacement.below);
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
+    expect(_layerOf(session, 'p').attachedToLayerId, isNull);
+  });
+
+  testWidgets('🚨F-312: the LINE under that row is still 「사이」 — the same '
+      'seat, nobody\'s attach', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+
+    final gesture = await carryP(tester, row: 'b2down', rowsPast: 0.5);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['q', 'b1', 'b1up', 'p', 'b2down', 'b2']);
+    expect(_layerOf(session, 'p').attachedToLayerId, isNull);
+  });
+
+  testWidgets('🚨F-312: beside FOLDED groups the line is 「사이」 too — not '
+      'the inside of a group nobody can see', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+    session.railView.collapsedAttachBaseIds.value = {
+      const LayerId('b1'),
+      const LayerId('b2'),
+    };
+    await tester.pumpAndSettle();
+    expect(_railRow('b2down'), findsNothing, reason: '⛔전제: folded');
+    expect(_railRow('b1up'), findsNothing, reason: '⛔전제: folded');
+
+    // The line between the two bases. ↩️It dropped P between B2-1 and B2,
+    // as B2's attach: 「접혀있을땐 사이에 두는게 안되고 어태치에 넣는거밖에
+    // 안됨」.
+    final gesture = await carryP(tester, row: 'b2', rowsPast: 0.5);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['q', 'b1', 'b1up', 'p', 'b2down', 'b2']);
+    expect(_layerOf(session, 'p').attachedToLayerId, isNull);
   });
 
   testWidgets('dragging an attach row clear of its group detaches it', (

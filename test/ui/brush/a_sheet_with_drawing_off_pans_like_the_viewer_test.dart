@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
@@ -48,7 +47,7 @@ void main() {
             height: 300,
             child: SheetCanvasPanel(
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              canvasSize: const CanvasSize(width: 600, height: 800),
+              sheetSize: const Size(600, 800),
               viewLimit: null,
               viewport: CanvasViewport(),
               onViewportChanged: emitted.add,

@@ -125,6 +125,13 @@ class _TimelineRetime {
   /// in the same command that first points at them; [bornSounds] are the
   /// sounds those new instances carry (F-115), joining in the same command
   /// for the same reason.
+  ///
+  /// [riders] are rows that RIDE a spliced row and keep no timeline of their
+  /// own — a synced attach row gaining the mirrors of its base's new cels
+  /// (F-275). They join in the same undo step, and BEFORE the rows they
+  /// ride: undone last-in-first-out, the base lets go of its new cels before
+  /// the rider lets go of their mirrors, so the settle never finds a base
+  /// cel unmirrored and mints an empty one in between.
   void spliceRunsForLayers({
     required List<
       ({
@@ -138,8 +145,11 @@ class _TimelineRetime {
     >
     runs,
     required String description,
+    List<SpliceRider> riders = const [],
   }) {
-    final commands = <Command>[];
+    final commands = <Command>[
+      for (final rider in riders) _riderEdit(rider),
+    ];
     for (final run in runs) {
       final before = _controller._requireLayer(run.layerId);
       // 🚨F-134: the splice plans on the GHOST-FREE row, the base every
@@ -187,6 +197,18 @@ class _TimelineRetime {
       }
     }
     _controller._executeCommands(commands, description: description);
+  }
+
+  /// [rider] gaining its born cels and the base links that name them.
+  Command _riderEdit(SpliceRider rider) {
+    final before = _controller._requireLayer(rider.layerId);
+    return _controller._layerEditCommand(
+      before: before,
+      after: before.copyWith(
+        frames: [...before.frames, ...rider.bornFrames],
+        baseFrameLinks: {...before.baseFrameLinks, ...rider.bornBaseLinks},
+      ),
+    );
   }
 }
 

@@ -94,9 +94,9 @@ void main() {
     await press(LogicalKeyboardKey.f4);
     expect(tool().blendMode, eraserBlend);
 
-    // A tool that composites nothing picks nothing — the lasso select, on Z
-    // since F-261.
-    await press(LogicalKeyboardKey.keyZ);
+    // A tool that composites nothing picks nothing — the lasso select, on X
+    // since I-63 (Z since F-261).
+    await press(LogicalKeyboardKey.keyX);
     expect(tool().tool, CanvasTool.select);
     final carried = tool().blendMode;
     await press(LogicalKeyboardKey.f4);

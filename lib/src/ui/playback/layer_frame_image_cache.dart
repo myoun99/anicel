@@ -14,6 +14,7 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
+import '../../services/cel_surface_as_shown.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
@@ -173,8 +174,8 @@ class LayerFrameImageCache {
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
   /// the frame has no drawn content — or, with [shouldAbort] (the warm path,
   /// R13-4), when the build was abandoned mid-way: aborts cache nothing and
-  /// the abort checks bracket the two big slices (the display-cache replay
-  /// and each tile decode via [composePositionedSurfaceImage]).
+  /// the abort checks bracket the two big slices (the cel's thaw and each
+  /// tile picture [composePositionedSurfaceImage] makes).
   ///
   /// [inkSuffices] is whether the route draws this row exactly from its ink
   /// alone (`inkCropDrawsTheSame`): an image is stored as its ink only then,
@@ -233,9 +234,13 @@ class LayerFrameImageCache {
     }
     final revision = drawing.sourceRevision;
 
-    // The display-cache replay is the one monolithic CPU slice on this
-    // path (it grows with the cel's stroke count) — never START it when
-    // the editor just went hot.
+    // The cel's thaw is the one slice on this path nothing can stand down:
+    // a cel still cold, or still in the file, is read and inflated inside
+    // this call (🔬1.4–17 ms a cel on the Windows app, 2026-10-07 — board
+    // F-296) — never START it when the editor just went hot.
+    // 🪦It said 「the display-cache replay … grows with the cel's stroke
+    // count」 until then; no stroke has been replayed since the baked raster
+    // became the cel (R19 P3b, `BrushFrameDisplayCacheService`).
     if (shouldAbort?.call() ?? false) {
       return null;
     }
@@ -258,8 +263,9 @@ class LayerFrameImageCache {
     // cache for an image by frame key. Both call the SAME function, so the
     // two routes cannot mean different things by "keyed"; missing this one
     // is what would have made a color key visible in playback and invisible
-    // on the canvas you draw on.
-    final preview = celSurfaceWithSourceEffects(
+    // on the canvas you draw on. The cel's texts are laid in the same call,
+    // for the same reason ([celSurfaceAsShown]).
+    final preview = celSurfaceAsShown(
       previewCache.previewSurface,
       sourceEffects,
     );
@@ -283,11 +289,29 @@ class LayerFrameImageCache {
     // decoded in the shared cache, so the post-stroke rebuild draws existing
     // tile images instead of assembling + uploading the whole canvas — cost
     // follows the CHANGED tiles, not the canvas.
+    //
+    // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the full level the compose
+    // is the first step of a chain — whole, halved, halved again, cut — and
+    // only the chain's LAST step is the snapshot that is kept: every step
+    // before it is rastered deferred and drawn straight into the next, the
+    // way the synchronous road has always chained them ([_composedNow]).
+    // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
+    // waits for a half image and four for a quarter, the first of them the
+    // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
+    // 무거워지는거같은데 맞나?」).
+    // 🔬The Windows app (Impeller, debug build), 2026-10-07, a cut of 35
+    // pictures of the user's: the SAME BYTES over 184 layer images and 70
+    // bakes, each made both ways; a whole warm at a half 1.68 → 1.52 s and
+    // 2.67 → 2.51 s, at a quarter 1.86 → 1.36 s and 2.74 → 2.60 s (two
+    // runs, the machine busy with other work both times). What it sheds is
+    // the waiting — the pixels drawn are the same, so a level below the
+    // full one still costs more to prepare than the full one does.
     final positioned = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
       shouldAbort: shouldAbort,
       over: inkAtFull,
+      deferred: quality.level > 0,
     );
     if (positioned == null) {
       return null;
@@ -305,7 +329,12 @@ class LayerFrameImageCache {
     // on one engine and not the other.
     var image = positioned.image;
     for (var i = 0; i < quality.level; i += 1) {
-      final halved = await _halved(image);
+      // The last step when nothing is cut out after it.
+      final kept = texels == null && i == quality.level - 1;
+      final halved = kept
+          ? await _halved(image)
+          : _halvedNow(image, snapshot: false).deferred;
+      // The halving keeps what it drew; only the handle is ours to drop.
       image.dispose();
       image = halved;
     }
@@ -439,7 +468,7 @@ class LayerFrameImageCache {
     // The sync twin keys too — see the async path. A handoff that skipped
     // this would flash the unkeyed cel for exactly one layer switch, which
     // is the hardest kind of wrong to catch.
-    final preview = celSurfaceWithSourceEffects(
+    final preview = celSurfaceAsShown(
       previewCache.previewSurface,
       sourceEffects,
     );
@@ -793,7 +822,8 @@ ui.Rect _worldRectOfTexels(ui.Rect whole, ui.Rect texels, int level) {
 Future<ui.Image> _cutOut(ui.Image whole, ui.Rect texels) async {
   final picture = recordInkCutOut(whole, texels).endRecording();
   try {
-    return await picture.toImage(
+    return await waitedSnapshot(
+      picture,
       texels.width.round(),
       texels.height.round(),
     );
@@ -838,7 +868,7 @@ Future<ui.Image> _halved(ui.Image source) async {
   final size = halvedSize(source.width, source.height);
   final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
   try {
-    return await picture.toImage(size.width, size.height);
+    return await waitedSnapshot(picture, size.width, size.height);
   } finally {
     picture.dispose();
   }

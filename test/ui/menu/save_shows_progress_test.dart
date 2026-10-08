@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🔑 THE WIRING — the part the user actually presses.
@@ -111,6 +114,81 @@ void main() {
       findsNothing,
       reason: 'the window does not outstay the save',
     );
+  });
+
+  testWidgets('🗣️F-304: the save\'s window says it is PREPARING until the '
+      'write first counts — then that it is saving (「저장준비중 이라는 창을 '
+      '띄우는게 좋을듯」)', (tester) async {
+    final s = session();
+    // Cels for the save to write, so it has something to count.
+    for (var i = 0; i < 3; i += 1) {
+      s.cutVerbs.createCut();
+      drawOnCurrentFrame(s);
+    }
+    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
+    final labels = <String>[];
+    final lines = <String>[];
+    var listening = false;
+    var done = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                await saveProjectShowingProgress(context, s, path);
+                done = true;
+              },
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.runAsync(() async {
+      await tester.tap(find.text('go'));
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (!done && DateTime.now().isBefore(deadline)) {
+        await tester.pump();
+        final window = find.byType(AppProgressDialog);
+        if (window.evaluate().isNotEmpty) {
+          if (!listening) {
+            // Every change of the window's line, frames or none.
+            listening = true;
+            final line = tester
+                .widget<AppProgressDialog>(window)
+                .runningStatus!;
+            line.addListener(() => lines.add(line.value));
+          }
+          final label = tester
+              .widget<Text>(
+                find.byKey(const ValueKey<String>('app-progress-label')),
+              )
+              .data!;
+          if (labels.isEmpty || labels.last != label) {
+            labels.add(label);
+          }
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(done, isTrue, reason: 'the save never came back');
+    expect(
+      labels.first,
+      AppText.strings.savePrepareRunning,
+      reason: 'what the window says the moment it is up',
+    );
+    expect(
+      lines,
+      contains(''),
+      reason: 'the first count hands the line back to the running label',
+    );
+    s.dispose();
+    await tester.pump();
   });
 
   testWidgets('🗣️I-19: THE Save — File menu, Ctrl+S and the exit prompt ask '

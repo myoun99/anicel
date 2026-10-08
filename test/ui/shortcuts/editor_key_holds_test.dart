@@ -152,39 +152,42 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
-  testWidgets('Alt over the brush, the eraser and the bucket IS the '
-      'eyedropper while held; letting go returns the tool it replaced', (
-    tester,
-  ) async {
+  /// 🗣️F-299 (유저 2026-10-05): 「채우기 도구인상태에서 스포이드 단축키로 도구
+  /// 안바뀜. **어떤 도구 들고있던 규칙 만들지말고 법 통일해서 작동하도록**」.
+  /// ↩️The hold took only over the brush, the eraser and the bucket.
+  testWidgets('🚨Alt IS the eyedropper while held, whatever tool is in hand; '
+      'letting go returns the tool it replaced', (tester) async {
+    expect(
+      {..._whereAltIsTheEyedropper, ..._whereAltIsTheToolsOwn},
+      CanvasTool.values.toSet(),
+      reason: 'a new tool has to say where its Alt goes',
+    );
     await pumpRoad(tester);
-    for (final drawing in _drawingTools) {
-      tool.value = tool.value.copyWith(tool: drawing);
+    for (final inHand in _whereAltIsTheEyedropper) {
+      tool.value = tool.value.copyWith(tool: inHand);
       expect(
         await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft),
         isFalse,
         reason: 'Alt passes on — it still modifies what it is held with',
       );
-      expect(tool.value.tool, CanvasTool.eyedropper, reason: '$drawing');
+      expect(tool.value.tool, CanvasTool.eyedropper, reason: '$inHand');
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-      expect(tool.value.tool, drawing);
+      expect(tool.value.tool, inHand);
       expect(memory.sprangFrom, isNull);
     }
   });
 
-  testWidgets('every other tool keeps its own Alt — the selection subtracts '
-      'with it, the transform scales about the centre', (tester) async {
-    expect(
-      {..._drawingTools, ..._otherTools},
-      CanvasTool.values.toSet(),
-      reason: 'a new tool has to say where its Alt goes',
-    );
+  testWidgets('the two tools whose own drag reads Alt keep it — the '
+      'selection subtracts with it, the transform scales about the far '
+      'corner (F-299-Q1)', (tester) async {
     await pumpRoad(tester);
-    for (final other in _otherTools) {
-      tool.value = tool.value.copyWith(tool: other);
+    for (final own in _whereAltIsTheToolsOwn) {
+      tool.value = tool.value.copyWith(tool: own);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-      expect(tool.value.tool, other);
+      expect(tool.value.tool, own);
+      expect(memory.sprangFrom, isNull, reason: 'no hold was taken');
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-      expect(tool.value.tool, other);
+      expect(tool.value.tool, own);
     }
   });
 
@@ -365,19 +368,24 @@ void main() {
   });
 }
 
-/// The tools the drawing view presses for — where a held pen button stands
-/// in for a tool, and so where Alt does.
-const _drawingTools = [CanvasTool.brush, CanvasTool.eraser, CanvasTool.fill];
-
-const _otherTools = [
+/// Every tool but the two below — spelled out, so that a tool added later
+/// is in neither list until someone has said which it belongs in.
+const _whereAltIsTheEyedropper = [
+  CanvasTool.brush,
+  CanvasTool.eraser,
   CanvasTool.eyedropper,
+  CanvasTool.fill,
   CanvasTool.fillShape,
-  CanvasTool.select,
-  CanvasTool.move,
   CanvasTool.guide,
   CanvasTool.cut,
   CanvasTool.cutStamp,
+  CanvasTool.text,
+  CanvasTool.shape,
 ];
+
+/// The tools whose own drag reads Alt: the selection (subtract; with Shift,
+/// intersect) and the transform (scale about the far corner).
+const _whereAltIsTheToolsOwn = [CanvasTool.select, CanvasTool.move];
 
 /// What the canvas panel does on the way out: a mid-stroke teardown lets
 /// go of the stroke.

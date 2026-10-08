@@ -6,18 +6,22 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_layer_policy.dart'
+    show storyboardLayerForCut;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
 import '../../helpers/conte_book.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/home_page_probes.dart';
+import '../storyboard_conte_row_probe.dart';
 
 /// 🗣️F-187 (유저 2026-09-26) — WHERE THE STORYBOARD STANDS, THE TIMELINE
 /// STANDS:
@@ -28,6 +32,12 @@ import '../../helpers/home_page_probes.dart';
 /// > 안하고. 콘티패널에서 s1행선택하고 컷선택하면 마지막선택한행인 s1행에만
 /// > 서있으면됨」
 ///
+/// ↩️I-73 (유저 2026-10-08): 「컷에 설때는 예전처럼 마지막에 섯던 행에
+/// 서있는채로 그대로. 콘티행에 서야 콘티행에 서도록」 — the conte blocks
+/// left the cut block for a row of their own, and 「콘티레이어에 서도록」
+/// went with them: a CUT keeps the layer you stood on, whether or not it has
+/// a conte layer, and the CONTE row stands on the cut's conte layer.
+///
 /// Through the app: the storyboard's doors that change where it stands — a
 /// cell's press, a label's, the ↑/↓ walk — and where the TIMELINE stands
 /// after each (its row, and the layer it draws on). [conteTrackProject]:
@@ -37,6 +47,7 @@ void main() {
   const conteId = LayerId('cut-1-conte');
   const cut1 = CutId('cut-1');
   const cut2 = CutId('cut-2');
+  final conteRow = LayerRowAddress(trackConteRowId(conteTrackId));
 
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
@@ -57,17 +68,27 @@ void main() {
     return session;
   }
 
+  double pixelsPerFrame(WidgetTester tester) => tester
+      .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+      .pixelsPerFrame;
+
   /// A point on S1's cells over [globalFrame].
   Offset sRowPoint(WidgetTester tester, int globalFrame) {
     final row = find.byKey(const ValueKey<String>('storyboard-se-row-0-1'));
-    final pixelsPerFrame = tester
-        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
-        .pixelsPerFrame;
     return tester.getTopLeft(row) +
         Offset(
-          (globalFrame + 0.5) * pixelsPerFrame,
+          (globalFrame + 0.5) * pixelsPerFrame(tester),
           tester.getSize(row).height / 2,
         );
+  }
+
+  /// A point on the track's CONTE row over [globalFrame].
+  Offset conteRowPoint(WidgetTester tester, int globalFrame) {
+    final row = conteRowRect(tester, conteTrackId.value);
+    return Offset(
+      row.left + (globalFrame + 0.5) * pixelsPerFrame(tester),
+      row.center.dy,
+    );
   }
 
   Future<void> press(WidgetTester tester, Offset at) async {
@@ -156,42 +177,30 @@ void main() {
   });
 
   group('a cut', () {
-    testWidgets('with a conte row, pressed, stands the timeline on its conte '
-        'row', (tester) async {
-      final session = await pumpStoryboard(tester);
-      await standOnS1ByItsLabel(tester);
+    for (final (cut, cutId) in const [('cut-1', cut1), ('cut-2', cut2)]) {
+      testWidgets('pressed, keeps the layer you stood on — S1, which it '
+          'shows too ($cut)', (tester) async {
+        final session = await pumpStoryboard(tester);
+        await standOnS1ByItsLabel(tester);
 
-      await tapStoryboardCutBlock(tester, 'cut-1');
+        await tapStoryboardCutBlock(tester, cut);
 
-      expect(
-        session.storyboardStandingRow,
-        const TrackRowAddress(conteTrackId),
-      );
-      expectTimelineOn(
-        session,
-        conteId,
-        reason: '「컷에서면 콘티레이어가 있다면 콘티레이어에 서도록」',
-      );
-    });
+        expect(session.activeCutId, cutId, reason: 'premise');
+        expect(
+          session.storyboardStandingRow,
+          const TrackRowAddress(conteTrackId),
+        );
+        expectTimelineOn(
+          session,
+          conteSeId,
+          reason: '「컷에 설때는 예전처럼 마지막에 섯던 행에 서있는채로 '
+              '그대로」 — ↩️cut-1 stood the timeline on its conte row',
+        );
+      });
+    }
 
-    testWidgets('with NO conte row, pressed, keeps the layer you stood on — '
-        'S1, which it shows too', (tester) async {
-      final session = await pumpStoryboard(tester);
-      await standOnS1ByItsLabel(tester);
-
-      await tapStoryboardCutBlock(tester, 'cut-2');
-
-      expect(session.activeCutId, cut2, reason: 'premise');
-      expectTimelineOn(
-        session,
-        conteSeId,
-        reason: '「s1행선택하고 컷선택하면 마지막선택한행인 s1행에만 '
-            '서있으면됨」',
-      );
-    });
-
-    testWidgets('with NO conte row and not the layer you stood on — nothing '
-        'is done, and the cut lands where a cut switch lands', (tester) async {
+    testWidgets('that does not show the layer you stood on — nothing is '
+        'done, and the cut lands where a cut switch lands', (tester) async {
       final session = await pumpStoryboard(tester);
       final reference = EditorSessionManager(
         initialProject: conteTrackProject(),
@@ -226,8 +235,76 @@ void main() {
       );
       expectTimelineOn(
         session,
+        conteSeId,
+        reason: 'the V label names the cut the playhead is in, and a cut '
+            'keeps the layer you stood on',
+      );
+    });
+  });
+
+  group('the conte row', () {
+    testWidgets('pressed over a cut with a conte layer stands the timeline '
+        'on it', (tester) async {
+      final session = await pumpStoryboard(tester);
+      await standOnS1ByItsLabel(tester);
+
+      await press(tester, conteRowPoint(tester, 2));
+
+      expect(session.storyboardStandingRow, conteRow);
+      expectTimelineOn(
+        session,
         conteId,
-        reason: 'the V label names the cut the playhead is in',
+        reason: '「콘티행에 서야 콘티행에 서도록」',
+      );
+      expect(session.workingPanel, WorkingPanel.storyboard);
+    });
+
+    testWidgets('stood on by its label is the same stand', (tester) async {
+      final session = await pumpStoryboard(tester);
+      await standOnS1ByItsLabel(tester);
+
+      await tapKeyed(tester, 'storyboard-conte-label-${conteTrackId.value}');
+
+      expect(session.storyboardStandingRow, conteRow);
+      expectTimelineOn(
+        session,
+        conteId,
+        reason: 'the label names the row in the cut the playhead is in',
+      );
+    });
+
+    testWidgets('pressed over a cut with none makes its conte layer, and '
+        'the timeline stands on it', (tester) async {
+      final session = await pumpStoryboard(tester);
+      await standOnS1ByItsLabel(tester);
+
+      await press(tester, conteRowPoint(tester, 20));
+
+      expect(session.activeCutId, cut2, reason: 'premise');
+      final made = storyboardLayerForCut(session.activeCutOrNull!);
+      expect(made, isNotNull, reason: 'the press is the row\'s ＋');
+      expect(session.storyboardStandingRow, conteRow);
+      expectTimelineOn(session, made!.id, reason: 'the layer it made');
+    });
+
+    testWidgets('pressed in the GAP parks, and seats nothing — no cut is '
+        'there to have a conte layer', (tester) async {
+      final session = await pumpStoryboard(tester);
+      final parked = EditorSessionManager(initialProject: conteTrackProject());
+      addTearDown(parked.dispose);
+      parked
+        ..selectCut(cut1)
+        ..selectLayer(conteCelId)
+        ..selectGlobalFrame(13);
+
+      await press(tester, conteRowPoint(tester, 13));
+
+      expect(session.activeCutOrNull, isNull, reason: 'the gap parks');
+      expect(session.storyboardStandingRow, conteRow);
+      expect(
+        session.activeLayerId,
+        parked.activeLayerId,
+        reason: 'where a plain park leaves the layer',
       );
     });
   });
@@ -235,7 +312,7 @@ void main() {
   testWidgets('the ↑/↓ walk is standing too', (tester) async {
     final session = await pumpStoryboard(tester);
     await tapStoryboardCutBlock(tester, 'cut-1');
-    expectTimelineOn(session, conteId, reason: 'premise');
+    expectTimelineOn(session, conteCelId, reason: 'premise: a cut seats none');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pumpAndSettle();
@@ -248,10 +325,28 @@ void main() {
       session.storyboardStandingRow,
       const TrackRowAddress(conteTrackId),
     );
-    expectTimelineOn(session, conteId, reason: 'back on the cut: its conte row');
+    expectTimelineOn(
+      session,
+      conteSeId,
+      reason: 'back on the cut: it keeps the layer you stood on',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(session.storyboardStandingRow, conteRow);
+    expectTimelineOn(session, conteId, reason: 'down onto the conte row');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(
+      session.storyboardStandingRow,
+      const TrackRowAddress(conteTrackId),
+    );
+    expectTimelineOn(session, conteId, reason: 'and the cut keeps that too');
   });
 
-  group('the conte preview\'s cells stand on a cut by the same answer', () {
+  group('the conte preview\'s cells stand on a cut\'s conte by the conte '
+      'row\'s answer', () {
     Future<EditorSessionManager> pumpConte(WidgetTester tester) async {
       final session = EditorSessionManager(
         initialProject: conteTrackProject(),
@@ -309,8 +404,8 @@ void main() {
       expectTimelineOn(
         session,
         conteSeId,
-        reason: 'the storyboard\'s V row answers so, and this is the same '
-            'stand on a cut',
+        reason: 'the storyboard\'s conte row answers so, and this is the '
+            'same stand on a conte cell',
       );
     });
 

@@ -163,18 +163,39 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
   /// copies overlap — the lift would then punch a hole exactly where [hits]
   /// says the point is in. One copy (nearly every region) hands back its
   /// crossings untouched.
+  ///
+  /// ⚠️Only the copies the scanline CROSSES are asked. One act can be
+  /// hundreds of copies — the shape tool's plain line round a big ellipse
+  /// is a box and a corner for every side of it (I-69) — and a row meets a
+  /// handful of them. 🔬That line round a 2000×1500 ellipse, 200 pieces:
+  /// 71–97 ms of mask with every copy asked on every row, 4–9 ms with
+  /// the ones it crosses (the VM on the desktop, 2026-10-08).
   @override
   List<double> _spansOn(double scanY) {
-    var union = _crossingsOn(shapes.first, scanY);
-    for (final shape in shapes.skip(1)) {
-      union = _combineSpans(
-        union,
-        _crossingsOn(shape, scanY),
-        SelectionCombineMode.add,
-      );
+    List<double>? union;
+    for (var i = 0; i < shapes.length; i += 1) {
+      final box = _boxes[i];
+      if (scanY < box.top || scanY >= box.bottom) {
+        continue;
+      }
+      final crossings = _crossingsOn(shapes[i], scanY);
+      union = union == null
+          ? crossings
+          : _combineSpans(union, crossings, SelectionCombineMode.add);
     }
-    return union;
+    return union ?? const <double>[];
   }
+
+  /// Each copy's box. Its top and bottom are the rows the copy has: an
+  /// edge is crossed on `top ≤ y < bottom`
+  /// ([CanvasSelectionShape.edgeStraddles]), so a scanline outside them
+  /// meets nothing of the copy.
+  late final List<ui.Rect> _boxes = [
+    for (final shape in shapes)
+      pointsBounds([
+        for (final point in shape.points) ui.Offset(point.x, point.y),
+      ]),
+  ];
 
   /// Copies UNION into one outline before the mode applies — one
   /// `addPolygon` per copy would even-odd them and punch a hole wherever

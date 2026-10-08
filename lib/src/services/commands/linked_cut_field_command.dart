@@ -57,3 +57,22 @@ class LinkedCutFieldCommand<T> extends MirroredFieldCommand<CutId, T> {
 /// A repository setter for one cut field.
 typedef CutFieldWrite<T> =
     void Function(ProjectRepository repository, CutId cutId, T value);
+
+/// [cut] carrying [sibling]'s value of every field a 겸용 pair shares — each
+/// field a [LinkedCutFieldCommand] writes onto the pair as one: the drawing
+/// guides (`SetCutGuidesCommand`), the colour label (`UpdateCutMarkCommand`),
+/// the sheet it prints on (`UpdateCutSheetKindCommand`) and its staff
+/// (`UpdateCutStaffNameCommand`). A cut made 겸용 of another starts with
+/// them, so the pair is one answer from its first frame.
+///
+/// ↩️A new 겸용 cut started with none of them — no guides, no label, the
+/// 6-second sheet, nobody's name — while the first edit of any of them
+/// wrote both cuts (found 2026-10-08 with F-291's per-cut staff).
+Cut withLinkedCutFieldsOf(Cut cut, Cut sibling) => cut.copyWith(
+  guides: sibling.guides,
+  metadata: cut.metadata.copyWith(
+    mark: sibling.metadata.mark,
+    sheetKind: sibling.metadata.sheetKind,
+    staff: sibling.metadata.staff,
+  ),
+);

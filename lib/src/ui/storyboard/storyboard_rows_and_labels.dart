@@ -165,8 +165,12 @@ class _StoryboardRowsAndLabels {
   /// creates on an empty frame.
   Widget transitionLabelRow(Track track) {
     final layer = track.transitionLayer;
-    return _StoryboardTransitionLabel(
+    return _StoryboardLayerRowLabel(
       track: track,
+      rowId: layer.id,
+      kind: LayerKind.transition,
+      keyName: 'transition',
+      name: layer.name,
       layer: layer,
       active: _state.widget.selectedRow == LayerRowAddress(layer.id),
       height: _state._rowHeights.transition,
@@ -175,6 +179,28 @@ class _StoryboardRowsAndLabels {
       onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
       onLayerMarkSelected: _state.widget.onLayerMarkSelected,
       onToggleLayerTimesheet: _state.widget.onToggleLayerTimesheet,
+    );
+  }
+
+  /// The CONTE row's rail label: the row's glyph and its name
+  /// ([trackConteRowName]). A press picks the ROW ([trackConteRowId]), which
+  /// the session lands on the conte layer of the cut it stands in.
+  ///
+  /// Its control slots are reserved and empty: the head is to be the
+  /// timeline's own, one for every cut (I-73 ③ — see
+  /// [_StoryboardLayerRowLabel]).
+  Widget conteLabelRow(Track track) {
+    final rowId = trackConteRowId(track.id);
+    return _StoryboardLayerRowLabel(
+      track: track,
+      rowId: rowId,
+      kind: LayerKind.storyboard,
+      keyName: 'conte',
+      name: trackConteRowName(track.cuts),
+      layer: null,
+      active: _state.widget.selectedRow == LayerRowAddress(rowId),
+      height: _state._rowHeights.conte,
+      onSelectLayer: _state.widget.onSelectLayer,
     );
   }
 

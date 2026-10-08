@@ -10,8 +10,10 @@
 // two inputs:
 //
 //   1. a records file (JSONL) -- one line per fact, append-only, later lines
-//      win. It lives beside the memory notes: recording a fact and updating
-//      the board are the same act.
+//      win. Recording a fact and updating the board are the same act. (It
+//      lived beside the memory notes until 2026-10-07; the notes moved to a
+//      folder two machines see, and the records stayed on this one, in its
+//      board folder.)
 //   2. `gh` -- pull requests, live. Anything GitHub already knows is never
 //      written down: an open PR IS an in-flight item, a merged PR IS a landed
 //      one, and neither needs a record to exist.
@@ -37,16 +39,25 @@
 //     empty board that looks like "nothing to do".
 //
 //   dart run tool/board_server.dart --records <file.jsonl> [--port 4321]
+//       [--open-to lan --token-file <file>]
 //
-// Localhost only, on purpose: the board is not published anywhere and the
-// records file is not in this repository, because the repository is public.
+// ↩️Until 2026-10-07 this said: 「Localhost only, on purpose: the board is
+// not published anywhere and the records file is not in this repository,
+// because the repository is public.」 The second half stands. The first was
+// reversed by 유저 that day (card the-board-is-one-server-for-both-machines,
+// 답 「집 네트워크에서 보드 서버를 연다」): a second machine at home reads and
+// writes the same board, through this server, behind a secret. What may come
+// in, and why open-and-unlocked cannot be launched, is [board_door.dart].
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 // 🚨The card model lives in ONE place — see [board_model.dart]. The gate
 // reads the same file, so it cannot judge the board by different rules.
+import 'board_check.dart';
+import 'board_door.dart';
 import 'board_model.dart';
+import 'board_say.dart';
 
 const _repo = 'myoun99/anicel';
 const _ghCacheSeconds = 20;
@@ -71,6 +82,17 @@ late final String _recordsPath;
 String _shotsDir = '';
 late final String _ghPath;
 late final String _gitRoot;
+
+/// Where this server listens and whom it lets in — see [board_door.dart].
+BoardDoor _door = const LoopbackDoor();
+
+/// Whether a request comes from the machine the records are on.
+/// ⚠️Only a test hands [boardIs] another answer: one process cannot make
+/// a socket arrive from a second machine, and the door has to be tried from
+/// outside.
+bool Function(InternetAddress from) _isThisMachine = _loopback;
+
+bool _loopback(InternetAddress from) => from.isLoopback;
 
 /// 🚨★★★THE BOARD REPLACES ITSELF WHEN ITS OWN SOURCE CHANGES.
 ///
@@ -129,8 +151,10 @@ List<File> sourcesOfEntry(File entry) {
 /// 🚨★★★A NEW FILE NAME, and that is the whole point. `.src` held a COPY OF
 /// THE ENTRY FILE; this holds the concatenation of every source. Those two
 /// answers to 「what is this exe made of」 cannot both live in one path,
-/// because the writer (`board_up.sh`, in the memory folder) and the reader
-/// (this file, in the repo) **cannot land in the same instant**.
+/// because the writer (`board_up.sh`, in the memory folder then — in the
+/// repository since 2026-10-07, which changes nothing here: a running exe
+/// is still the old reader) and the reader (this file, in the repo)
+/// **cannot land in the same instant**.
 ///
 /// 🧪2026-08-31, and I did it to the live board: I patched the shell first,
 /// the Stop hook ran it, and the running server — still comparing the entry
@@ -186,12 +210,17 @@ bool _sourceMoved() {
 /// ⛔The rule for WHEN to rebuild is not repeated here. `board_up.sh` owns it,
 /// the Stop hook calls the same script, and a second copy of the test is how
 /// this bug happened the first time.
+///
+/// ↩️Until 2026-10-07 the script was looked for BESIDE THE RECORDS: the
+/// hooks sat in that folder. They are in the repository now
+/// (`tool/session_hooks/`, so a second machine runs the same ones), and the
+/// folder the records are in is what the script is handed.
 Never _relaunch() {
-  final up = File('${File(_recordsPath).parent.path}/board_up.sh');
+  final up = File('$_gitRoot/tool/session_hooks/board_up.sh');
   if (up.existsSync()) {
     unawaited(Process.start(
       'bash',
-      [up.path],
+      [up.path, File(_recordsPath).parent.path],
       mode: ProcessStartMode.detached,
       runInShell: true,
     ));
@@ -230,23 +259,32 @@ setInterval(function(){
 ''';
 
 Future<void> main(List<String> args) async {
-  _recordsPath = _flag(args, '--records') ?? '';
-  _ghPath = _flag(args, '--gh') ?? 'gh';
-  _gitRoot = _flag(args, '--git') ?? Directory.current.path;
+  final records = _flag(args, '--records') ?? '';
   final port = int.tryParse(_flag(args, '--port') ?? '4321') ?? 4321;
 
-  if (_recordsPath.isEmpty || !File(_recordsPath).existsSync()) {
+  if (records.isEmpty || !File(records).existsSync()) {
     stderr.writeln('records file not found. '
         'usage: dart run tool/board_server.dart --records <file.jsonl>');
     exit(2);
   }
-  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
-  Directory(_shotsDir).createSync(recursive: true);
-  _findOwnSource();
+  final asked = doorAsked(
+    _flag(args, '--open-to'),
+    _flag(args, '--token-file'),
+  );
+  if (asked.complaint case final complaint?) {
+    stderr.writeln('board: $complaint');
+  }
 
+  boardIs(
+    records: records,
+    gh: _flag(args, '--gh') ?? 'gh',
+    gitRoot: _flag(args, '--git') ?? Directory.current.path,
+    door: asked.door,
+  );
   HttpServer server;
   try {
-    server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+    // ⚠️The address is the door's and is worked out nowhere else.
+    server = await HttpServer.bind(doorListensOn(asked.door), port);
   } on SocketException catch (e) {
     stderr.writeln('port $port is not available (${e.osError?.message}). '
         'Another board server is probably already running.');
@@ -254,9 +292,43 @@ Future<void> main(List<String> args) async {
   }
 
   stdout.writeln('board  ->  http://localhost:$port');
+  if (asked.door is LanDoor) {
+    stdout.writeln('door:      the home network, behind its secret');
+  }
   stdout.writeln('records:   $_recordsPath');
   stdout.writeln('shots:     $_shotsDir');
 
+  await answerAll(server);
+}
+
+/// Makes this isolate the server of the board in [records], behind [door].
+///
+/// ⚠️It does not listen — [main] binds, at the address the door names. A
+/// test binds its own socket on loopback and hands it to [answerAll]: a test
+/// that listened on the whole network would have the firewall ask the
+/// person at the machine whether a test runner may accept connections.
+void boardIs({
+  required String records,
+  required String gh,
+  required String gitRoot,
+  required BoardDoor door,
+  bool Function(InternetAddress from)? isThisMachine,
+}) {
+  _recordsPath = records;
+  _ghPath = gh;
+  _gitRoot = gitRoot;
+  _door = door;
+  _isThisMachine = isThisMachine ?? _loopback;
+  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
+  Directory(_shotsDir).createSync(recursive: true);
+  _findOwnSource();
+}
+
+/// Answers [server]'s requests, one at a time and in the order they came.
+///
+/// ⚠️ONE AT A TIME is why a record written here cannot land inside another:
+/// each request is answered whole before the next is taken.
+Future<void> answerAll(HttpServer server) async {
   await for (final request in server) {
     try {
       await _handle(request);
@@ -277,16 +349,82 @@ String? _flag(List<String> args, String name) {
 
 Future<void> _handle(HttpRequest req) async {
   final path = req.uri.path;
+  // Before the door, and for every write there is: a page of another site
+  // is not asked for a secret when it speaks through this machine's own
+  // browser — see [asksFromTheBoardItself].
+  if (req.method == 'POST' &&
+      !asksFromTheBoardItself(
+        fetchSite: req.headers.value('sec-fetch-site'),
+        origin: req.headers.value('origin'),
+        host: req.headers.value(HttpHeaders.hostHeader),
+      )) {
+    req.response.statusCode = HttpStatus.forbidden;
+    await req.response.close();
+    return;
+  }
+  if (!await _letIn(req, path)) return;
 
   if (path.startsWith('/shot/') && req.method == 'GET') {
-    final file = File('$_shotsDir/${Uri.decodeComponent(path.substring(6))}');
-    if (!file.existsSync() || !file.path.endsWith('.png')) {
+    final name = Uri.decodeComponent(path.substring(6));
+    final file = File('$_shotsDir/$name');
+    // A shot is a file IN the shots folder: a name that climbs out of it
+    // (`..`, a separator) names somebody else's file.
+    if (name.contains(RegExp(r'[\\/]|\.\.')) ||
+        !file.existsSync() ||
+        !file.path.endsWith('.png')) {
       req.response.statusCode = 404;
       await req.response.close();
       return;
     }
     req.response.headers.contentType = ContentType('image', 'png');
     await req.response.addStream(file.openRead());
+    await req.response.close();
+    return;
+  }
+
+  // 🆕WHAT A SESSION SAYS, through the server (유저 2026-10-07: the board
+  // is one file on one machine, and a session on another machine has no file
+  // to append to). The body is what `board_say` is handed as its lines file,
+  // and what becomes of it is the very function `board_say` runs on this
+  // machine — refused whole or written whole, stamped by THIS machine's
+  // clock, so two machines cannot disagree about the order of the story.
+  if (req.method == 'POST' && path == '/say') {
+    final said = sayToRecords(
+      File(_recordsPath),
+      const LineSplitter().convert(await utf8.decoder.bind(req).join()),
+      DateTime.now(),
+    );
+    req.response
+      ..statusCode = said.refusal == null
+          ? HttpStatus.ok
+          : HttpStatus.badRequest
+      ..headers.contentType = ContentType.json
+      ..write(jsonEncode({
+        'refusal': ?said.refusal,
+        'lines': said.lines,
+        'at': said.at,
+        'warnings': said.warnings,
+      }));
+    await req.response.close();
+    return;
+  }
+
+  // 🆕WHAT WAITS FOR A SESSION, TAKEN (유저 2026-10-07,
+  // the-board-is-one-server-for-both-machines-Q2): the letters left for the
+  // 담당 named in `to`, as the text its hook puts in front of it — and marked
+  // read by the same request ([takeLetters] says why it is one act). A POST:
+  // it writes. Nothing waits → an empty body, which is what a hook prints
+  // nothing for.
+  if (req.method == 'POST' && path == '/letters/take') {
+    final taken = takeLetters(
+      File(_recordsPath),
+      req.uri.queryParameters['to'] ?? '',
+      DateTime.now(),
+    );
+    req.response
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(taken);
     await req.response.close();
     return;
   }
@@ -568,6 +706,30 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     return;
   }
+  // The gate's judgement and the records themselves, for a machine that
+  // has no file to run `board_check` on or to read.
+  if (path == '/api/check') {
+    req.response
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(boardCheckComplaints(File(_recordsPath)));
+    await req.response.close();
+    return;
+  }
+  if (path == '/api/records') {
+    final asked = recordsAsked(
+      File(_recordsPath).readAsLinesSync(),
+      id: req.uri.queryParameters['id'],
+      since: req.uri.queryParameters['since'],
+    );
+    req.response
+      ..statusCode = asked == null ? HttpStatus.badRequest : HttpStatus.ok
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(asked ?? 'id= 나 since= 가 있어야 합니다\n');
+    await req.response.close();
+    return;
+  }
   if (path == '/card') {
     final html = _detail(
       _board(),
@@ -622,6 +784,95 @@ Future<void> _handle(HttpRequest req) async {
     ..headers.set('Cache-Control', 'no-store')
     ..write(_shell(boot));
   await req.response.close();
+}
+
+/// Lets a request in, or answers it at the door and says no.
+///
+/// The one thing heard from an outsider who has not shown the secret is the
+/// secret itself: a browser posts it to `/enter` once and is handed the
+/// cookie that carries it from then on.
+Future<bool> _letIn(HttpRequest req, String path) async {
+  final from = req.connectionInfo?.remoteAddress;
+  final here = from != null && _isThisMachine(from);
+  if (doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
+    return true;
+  }
+  if (req.method == 'POST' && path == '/enter') {
+    final shown = (await utf8.decoder.bind(req).join()).trim();
+    if (doorAdmits(_door, fromThisMachine: false, shown: shown)) {
+      req.response
+        ..cookies.add(doorCookie(shown))
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({'ok': true}));
+      await req.response.close();
+      return false;
+    }
+  }
+  req.response
+    ..statusCode = HttpStatus.unauthorized
+    ..headers.set('Cache-Control', 'no-store');
+  if (req.method == 'GET' && path == '/') {
+    req.response
+      ..headers.contentType = ContentType.html
+      ..write(_doorPage());
+  }
+  await req.response.close();
+  return false;
+}
+
+/// What a browser from another machine sees until it has shown the secret.
+/// ⚠️Self-contained, like the rebuilding page: nothing of the board — not
+/// its script, not its style — is handed to somebody who is not in yet.
+String _doorPage() => """
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보드</title>
+<style>
+body{margin:0;display:grid;place-items:center;height:100vh;
+  font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
+  background:#14161a;color:#e6e8ec}
+form{display:flex;gap:8px}
+input,button{font:inherit;padding:8px 12px;border-radius:6px;
+  border:1px solid #3a3f4a;background:#1c1f25;color:inherit}
+input{width:22em}
+</style></head><body>
+<form id="door">
+<input id="secret" type="password" autocomplete="current-password"
+  aria-label="비밀값" autofocus>
+<button>들어가기</button>
+</form>
+<script>
+document.getElementById('door').addEventListener('submit', function(e){
+  e.preventDefault();
+  var secret = document.getElementById('secret').value;
+  fetch('/enter', {method:'POST', body: secret})
+    .then(function(r){ if (r.ok) location.reload(); });
+});
+</script>
+</body></html>
+""";
+
+/// The records a tool asked for, as the lines they are: one card's (its
+/// questions with it) by [id], or everything stamped at or after [since].
+/// Null when it asked for neither — the whole file is not an answer.
+String? recordsAsked(Iterable<String> lines, {String? id, String? since}) {
+  if (id == null && since == null) return null;
+  final out = StringBuffer();
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) continue;
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(trimmed) as Map<String, dynamic>;
+    } on Object catch (_) {
+      continue;
+    }
+    final lineId = '${json['id'] ?? ''}';
+    if (id != null && lineId != id && !lineId.startsWith('$id-Q')) continue;
+    if (since != null && '${json['ts'] ?? ''}'.compareTo(since) < 0) continue;
+    out.writeln(trimmed);
+  }
+  return out.toString();
 }
 
 /// The commit master is at now, short — what a build marks.
@@ -1256,6 +1507,10 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
     ],
     'checks': waiting.length,
     'since': waiting.isEmpty ? '' : waiting.first,
+    // A check is waiting while the card's own status is not 검증: one part
+    // landed and another is still to do. The list words it for where the
+    // row stands (`flagsOf` in the page's script).
+    'workLeft': waiting.isNotEmpty && status != BoardStatus.verify,
     'user': turn.user,
     'me': turn.me,
     'arrival': _arrivalOf(e),
@@ -1352,7 +1607,59 @@ Future<Map<String, Object?>> _boardJson() async {
     ],
     'ghOk': gh.ok,
     'bad': badLines,
+    'letters': lettersShown(entries, DateTime.now()),
   };
+}
+
+/// What the 「전달」 view reads: every letter still waiting for the 담당 it
+/// names, and the others of the last two weeks.
+///
+/// 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2): 「「전달」
+/// 보기는 그것을 모아 보여 주기만 한다」 — so this is READ OFF THE CARDS each
+/// time the board is drawn, and the view keeps nothing of its own. A row
+/// names the card whose story the letter stands in, and opens it.
+///
+/// ⚠️A notice to everyone is never 「waiting」 here: who everyone is, is not
+/// something the board knows. Its readers are listed instead.
+List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
+  final since = now.subtract(_doneShows);
+  return [
+    for (final letter in lettersOf(entries))
+      if (_letterShows(letter.entry, since))
+        {
+          'card': letter.card.foldedInto ?? letter.card.id,
+          'title': letter.card.title,
+          'ts': letter.entry.ts,
+          'to': letter.entry.to,
+          'from': letter.entry.from,
+          'text': letter.entry.text,
+          'waits': _letterWaits(letter.entry),
+          'readBy': [
+            for (final reader in letter.entry.readBy.entries)
+              {'who': reader.key, 'ts': reader.value},
+          ],
+        },
+  ];
+}
+
+bool _letterWaits(BoardLog letter) =>
+    letter.to != kEveryone && !letter.readBy.containsKey(letter.to);
+
+bool _letterShows(BoardLog letter, DateTime since) {
+  if (_letterWaits(letter)) return true;
+  final at = DateTime.tryParse(letter.ts);
+  return at != null && !at.isBefore(since);
+}
+
+/// A letter's two chips in its card's story: whom it is for and who wrote
+/// it, and whether it has been read.
+String _letterChips(BoardLog letter) {
+  final readers = letter.readBy.length;
+  final (word, cls) = letter.to == kEveryone
+      ? (readers == 0 ? '안 읽음' : '읽음 $readers', readers == 0 ? 'run' : 'ok')
+      : (_letterWaits(letter) ? ('안 읽음', 'run') : ('읽음', 'ok'));
+  return '<span class="chip">${_esc(letter.to)} ← ${_esc(letter.from)}</span>'
+      '<span class="chip $cls">$word</span>';
 }
 
 /// Finished cards older than the 완료 list, found by search — the list stays
@@ -1911,10 +2218,16 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
           '${answered ? '답함' : '대기'}</span>'}'
       '${!check ? '' : '<span class="chip ${checked ? 'ok' : 'run'}">'
           '${checked ? '확인함' : '대기'}</span>'}'
+      '${!entry.isLetter ? '' : _letterChips(entry)}'
       '${entry.pr == null ? '' : _prChip(entry.pr!)}'
       '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
   if (ask == null) {
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    // A letter says who has read it, and when — the mark each reader left.
+    for (final reader in entry.readBy.entries) {
+      b.writeln('<p class="d">읽음 — ${_esc(reader.key)} · '
+          '${_esc(_day(reader.value))}</p>');
+    }
   } else {
     // 🚨★★★AN ENTRY WITH A TITLE OF ITS OWN KEEPS IT WHEN OPENED (유저
     // 2026-08-31: 「질문 항목처럼 타이틀이 별개로 있는 건 **펼친다고 해서
@@ -2072,7 +2385,8 @@ var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 �
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
 var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
   ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
-  ['known','알려진 문제'], ['done','완료'], ['system','시스템']];
+  ['known','알려진 문제'], ['done','완료'], ['letters','전달'],
+  ['system','시스템']];
 var PAGE = 60;
 
 function esc(s){
@@ -2155,7 +2469,7 @@ function groupsFor(view){
     var checks = pool.filter(function(c){ return live(c) && !c.q.length && c.checks > 0; }).sort(oldest('since'));
     var out = [{t:'결정 필요', rows: decide, skip: ['decide']}];
     verifyGroups(checks).forEach(function(x){
-      x.t = '검증 · ' + x.t; x.pick = true; x.skip = ['check']; out.push(x);
+      x.t = '검증 · ' + x.t; x.pick = true; out.push(x);
     });
     return out;
   }
@@ -2198,6 +2512,8 @@ function groupsFor(view){
 
 function countFor(view){
   if (view === 'system') return DATA.checkouts.length;
+  // What still waits for the session it was left for.
+  if (view === 'letters') return DATA.letters.filter(function(l){ return l.waits; }).length;
   var seen = {};
   groupsFor(view).forEach(function(g){ g.rows.forEach(function(c){ seen[c.id] = 1; }); });
   return Object.keys(seen).length;
@@ -2209,10 +2525,17 @@ function countFor(view){
 // 🆕The 실기 대기 chip (유저 2026-10-02: 「실기확인 눈에 안띄니까 질문처럼 답함
 // 대기 이런 태그 붙이고싶어」): a check still waiting on a card that has moved
 // on is folded inside its story, so the row says so.
-function flagsOf(c){
+// 🆕ONE FACT, WORDED FOR WHERE THE ROW STANDS (유저 2026-10-08, on F-283:
+// 「이 카드 왜 검증에있지? 작업끝난건가?」 — and, asked, 「그 줄에 칩 하나 —
+// 작업 남음」). The 검증 groups hold every card that waits on a check,
+// whatever its status, and skipped this chip as their own name repeated; so
+// a card with one part landed and another still to do read there exactly
+// like a finished one. The fact is the head's (`workLeft`): in the card's
+// own list the news is the check, in the 검증 list it is the work.
+function flagsOf(c, g){
   var f = [];
   if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
-  if (c.checks && c.status !== 'verify') f.push(['check', '실기 대기', 'run']);
+  if (c.workLeft) f.push(['check', g && g.pick ? '작업 남음' : '실기 대기', 'run']);
   if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
   if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
   if (c.gap) f.push(['gap', '카드 없음', 'bad']);
@@ -2221,7 +2544,8 @@ function flagsOf(c){
 
 function rowHtml(c, g){
   var skip = g.skip || [];
-  var chips = flagsOf(c).filter(function(f){ return skip.indexOf(f[0]) < 0; })
+  var chips = flagsOf(c, g)
+    .filter(function(f){ return skip.indexOf(f[0]) < 0; })
     .map(function(f){ return '<span class="chip ' + f[2] + '">' + esc(f[1]) + '</span>'; }).join('');
   var when = c.checks ? c.since : c.updated;
   var a = age(when);
@@ -2279,6 +2603,7 @@ function pickControls(g, i){
 function renderList(){
   var list = document.getElementById('list');
   if (S.view === 'system' && !S.q) { list.innerHTML = systemHtml(); return; }
+  if (S.view === 'letters' && !S.q) { list.innerHTML = lettersHtml(); return; }
   var groups = groupsFor(S.view);
   var title = S.q ? '찾기 — 「' + esc(S.q) + '」' : VIEWS.filter(function(v){ return v[0] === S.view; })[0][1];
   var html = '<div class="vhead"><h2>' + title + '</h2>';
@@ -2305,6 +2630,41 @@ function renderList(){
   });
   list.innerHTML = html;
   list._groups = groups;
+}
+
+// 「전달」 — what one session left for another (유저 2026-10-07: 「글은 카드의
+// 흐름에 적고, 「전달」 보기는 그것을 모아 보여 주기만 한다」). Every row is
+// an entry of some card's story, gathered here by the 담당 it was left for;
+// nothing is kept in this view, and a row opens the card it stands in.
+function lettersHtml(){
+  var by = {};
+  DATA.letters.slice().sort(newest('ts')).forEach(function(l){
+    (by[l.to] = by[l.to] || []).push(l);
+  });
+  var names = Object.keys(by).sort();
+  var h = '<div class="vhead"><h2>전달</h2><span class="state"></span></div>';
+  if (!names.length) h += '<section class="grp"><p class="none">없음</p></section>';
+  names.forEach(function(n){
+    var rows = by[n];
+    var waiting = rows.filter(function(l){ return l.waits; }).length;
+    h += '<section class="grp"><div class="gh"><span class="gt">' + esc(n) + ' 앞</span>' +
+      '<span class="gn">' + rows.length + '</span>' +
+      (waiting ? '<span class="note warn">안 읽음 ' + waiting + '</span>' : '') + '</div>';
+    h += rows.map(function(l){
+      var readers = l.readBy.map(function(r){ return r.who; }).join(' · ');
+      var chip = l.waits ? '<span class="chip run">안 읽음</span>'
+        : (readers ? '<span class="chip ok">읽음 · ' + esc(readers) + '</span>' : '');
+      var a = age(l.ts);
+      return '<div class="row" tabindex="0" data-id="' + esc(l.card) + '" aria-selected="' + (S.sel === l.card) + '">' +
+        '<span class="dot s-' + (l.waits ? 'doing' : 'done') + '"></span>' +
+        '<span class="rid">' + esc(l.card) + '</span>' +
+        '<span class="rt"><span class="tt">' + esc(l.text.split('\n')[0]) + '</span>' + chip + '</span>' +
+        '<span class="rm"><span class="own">' + esc(l.from) + '</span>' +
+        '<span class="age" title="' + esc(l.ts) + '">' + day(l.ts) + ' · ' + (a === null ? '-' : a) + '일</span></span></div>';
+    }).join('');
+    h += '</section>';
+  });
+  return h;
 }
 
 function systemHtml(){
@@ -2704,6 +3064,7 @@ font-variant-numeric:tabular-nums}
 .s-doing{background:var(--live)}.s-verify{background:var(--run)}
 .s-known{background:var(--bad)}.s-done{background:var(--ok)}
 .s-canceled{background:var(--line2)}.s-system{background:var(--line2)}
+.s-letters{background:var(--live)}
 .facet h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--ink3);font-weight:600}
 .facet .chips{display:flex;flex-wrap:wrap;gap:4px}
 .fchip{border:1px solid var(--line2);background:var(--card);border-radius:999px;

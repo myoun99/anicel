@@ -193,19 +193,12 @@ class ProjectFrameRate {
     'countingBase': countingBase,
   };
 
-  factory ProjectFrameRate.fromJson(Map<String, dynamic> json) {
-    final numerator = json['numerator'] as int;
-    final denominator = json['denominator'] as int;
-    return ProjectFrameRate(
-      numerator: numerator,
-      denominator: denominator,
-      // A hand-edited or older file may carry the fraction alone; the
-      // counting base of every real-world rate is the fraction rounded.
-      countingBase:
-          (json['countingBase'] as int?) ??
-          (denominator <= 0 ? 24 : (numerator / denominator).round()),
-    );
-  }
+  factory ProjectFrameRate.fromJson(Map<String, dynamic> json) =>
+      ProjectFrameRate(
+        numerator: json['numerator'] as int,
+        denominator: json['denominator'] as int,
+        countingBase: json['countingBase'] as int,
+      );
 
   @override
   bool operator ==(Object other) =>

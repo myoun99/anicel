@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../core/set_toggle.dart';
@@ -20,6 +20,8 @@ import '../models/cut_id.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
+import '../models/project_font_file.dart';
+import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset, mediaFileName;
@@ -27,6 +29,7 @@ import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
+import '../services/font_library_service.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -36,6 +39,8 @@ import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/arrange_brush_library_command.dart';
+import 'brush/brush_library_keys.dart';
+import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
@@ -48,6 +53,8 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
+import 'brush/text_tool_options.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
 import 'brush/transform_tool_options.dart';
@@ -67,6 +74,7 @@ import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'menu/project_open_door.dart' show opensAsProject;
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
@@ -77,7 +85,6 @@ import 'media/media_viewer_tab_host.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';
-import '../services/brush_pack_file.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
@@ -137,8 +144,7 @@ import 'timeline/property_lane_model.dart'
     show
         TimelineDisplayRow,
         buildTimelineDisplayRows,
-        indexOfDisplayRow,
-        parseLaneGroupKey;
+        indexOfDisplayRow;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
@@ -148,11 +154,11 @@ import 'panels/onion_skin_panel.dart';
 import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
-import 'storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
+import 'text/imported_fonts.dart';
 import 'text/place_lines.dart' show mediaAssetUseLine;
 import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
@@ -167,6 +173,7 @@ part 'workspace/workspace_rail.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
 part 'workspace/workspace_brush_groups.dart';
+part 'workspace/workspace_brush_keys.dart';
 part 'workspace/workspace_document_views.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
@@ -188,8 +195,11 @@ class EditorWorkspace extends StatefulWidget {
   const EditorWorkspace({
     super.key,
     required this.session,
+    required this.onProjectFilesDropped,
     this.presetFileService,
     this.tipLibraryService,
+    this.fontLibraryService,
+    this.keepFontFiles,
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
@@ -200,6 +210,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.canvasTextCommands,
     this.lastStroke,
     this.toolHold,
     this.confirm,
@@ -207,9 +218,15 @@ class EditorWorkspace extends StatefulWidget {
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
+    this.brushKeys,
   });
 
   final EditorSessionManager session;
+
+  /// Project files dropped on the window (F-247), handed to the shell's
+  /// Open door — the shell holds the tabs a project opens into. The
+  /// workspace only tells them from the rest ([opensAsProject]).
+  final void Function(List<String> paths) onProjectFilesDropped;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -243,6 +260,10 @@ class EditorWorkspace extends StatefulWidget {
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
 
+  /// The shell-owned text channel (R9-rest): the canvas binds the text it
+  /// holds, and the tool settings show and change it.
+  final CelTextCommands? canvasTextCommands;
+
   /// The last drawing action (shell-owned — it outlives a project),
   /// forwarded to the canvas that records and lays it down.
   final LastStrokeSlot? lastStroke;
@@ -273,11 +294,25 @@ class EditorWorkspace extends StatefulWidget {
   /// ↑/↓ walk's are.
   final FlipHudController? flipHud;
 
+  /// The brush library as the shell's keys reach it (I-56): this state says
+  /// what the library holds and lends its two presses.
+  final BrushLibraryKeys? brushKeys;
+
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
 
   /// Injectable tip-library storage; defaults to the app-data tip folder.
   final BrushTipLibraryService? tipLibraryService;
+
+  /// Injectable storage of the fonts this device was brought; defaults to
+  /// the app-data font folder (its own sandbox under a test).
+  final FontLibraryService? fontLibraryService;
+
+  /// Waited for before this device's font library lets go of files (named
+  /// by the names they are kept under): the shell has every open project
+  /// that carries one take its bytes first (`ProjectFonts.holdBytesOf`).
+  /// Null where no project is open beside this window's.
+  final Future<void> Function(Set<String> files)? keepFontFiles;
 
   /// Injectable workspace-layout persistence; defaults to the app-data
   /// layout file outside tests (`FLUTTER_TEST` disables it so widget tests
@@ -768,6 +803,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // groups.dart) — beside the presets, which take the brush up.
   late final _WorkspaceBrushGroups _brushGroups = _WorkspaceBrushGroups(this);
 
+  // What the library lends to the shell's keys (I-56, workspace/workspace_
+  // brush_keys.dart).
+  late final _WorkspaceBrushKeys _brushKeys = _WorkspaceBrushKeys(this);
+
   // The document views' state (Round 6): what each panel shows and how.
   late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews();
 
@@ -779,6 +818,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final BrushPresetLibrary _presetLibrary;
   late final BrushTipLibrary _tipLibrary;
 
+  /// The fonts this device was brought — the text tool's faces beside the
+  /// app's own. It stands as the run's faces from here
+  /// (`CanvasLetterFaces.current`), so it is made before any canvas is.
+  late final ImportedFonts _fonts;
+
   final ValueNotifier<TimelineOrientation> _timelineOrientation = ValueNotifier(
     TimelineOrientation.horizontal,
   );
@@ -788,7 +832,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
     TimelinePanel.defaultPixelsPerFrame,
   );
-  final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
+
+  /// The conte's zoom — the PROJECT's, held by the session and saved beside
+  /// its file (`PanelViewMemory`, F-267). ↩️It was the window's, one for
+  /// every tab.
+  ValueNotifier<double> get _storyboardPixelsPerFrame =>
+      widget.session.panelViews.storyboardPixelsPerFrame;
 
   /// The cut [_timelinePixelsPerFrame] was last set for (F-253) — a notify
   /// that leaves the active cut where it was leaves the zoom alone.
@@ -847,8 +896,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ceiling: _storyboardLaneCeiling(context),
       );
 
-  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
-  final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
+  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation) —
+  /// the app's ([EditorAppSettings.showSecondsDisplay]).
+  ValueNotifier<bool> get _showSecondsDisplay =>
+      widget.session.appSettings.showSecondsDisplay;
 
   /// Each frame panel's layer-rail WINDOW size, set by its splitter.
   ///
@@ -860,8 +911,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   };
 
   /// Where each frame grid's FRAME axis is scrolled to, in pixels at that
-  /// grid's own zoom — kept here, beside the rail windows, so it outlives a
-  /// FOLD the way the zoom outlives a tab switch.
+  /// grid's own zoom — held above the grids, so it outlives a FOLD the way
+  /// the zoom outlives a tab switch.
   ///
   /// 🚨F-143 (유저 2026-09-16): 「간편 오버레이가 타임라인의 스크롤을
   /// 그대로 안받음. 꽤 오른쪽으로 스크롤한채로 접으면 간편오버레이는 첫
@@ -873,15 +924,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// already reads the rail's window「by construction rather than by
   /// agreement」.
   ///
-  /// ⚠️Session-only, unlike the rail windows: those ride the layout file
-  /// because 유저 asked for them to survive a restart. Nobody asked that of
-  /// a scroll position.
+  /// ↩️It was session-only, the window's: 「Nobody asked that of a scroll
+  /// position」 — until F-267 (유저 2026-10-01): 「콘티패널,타임라인패널
+  /// 스크롤상태 … 프로젝트 파일에 기록해서 다시 열면 그대로 열리도록」. So the
+  /// PROJECT holds it (`PanelViewMemory`), and a save writes it beside the
+  /// file; the rail windows still ride the layout file, being the device's.
   ///
   /// One per rail, like [_railExtents]: the timeline, the sheet and the
   /// storyboard each fold, and each had its own offset die with it.
-  final Map<String, ValueNotifier<double>> _frameAxisOffsets = {
-    for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
-  };
+  Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
+      widget.session.panelViews.frameAxisOffsets;
 
   // The lane twirl and the group fold are pressed through
   // `SessionRowButtonPresses` — a press inside the row selection folds every
@@ -1016,6 +1068,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void initState() {
     super.initState();
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
+    // Only the index is read here — which families there are. A face is
+    // read when letters are first asked for in it.
+    _fonts = ImportedFonts(
+      service: widget.fontLibraryService,
+      beforeLettingGo: (files) async => widget.keepFontFiles?.call(files),
+    );
+    unawaited(_fonts.load());
+    // R9-rest: a text lands WITH the faces it is set in — whoever lands
+    // one asks here, where the fonts and the project on screen are both
+    // in hand ([ProjectFonts.landingWith]).
+    widget.canvasTextCommands?.landingWith = _landingWithItsFaces;
     // H25: what the hand last set on each brush, from the last session — and
     // H36: a painting tool taken up holding no brush opens on one.
     _brushTool.addListener(_brushPresets.followBrushTool);
@@ -1025,6 +1088,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       tipLibrary: _tipLibrary,
       handSettingsPort: _brushPresets._handSettingsPort,
     );
+    // 🗣️I-56: the library's groups and brushes are shortcut rows, and a key
+    // presses what the tab or the brush row does.
+    _brushKeys.attach();
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read. And the bank
     // before the opening brush is taken up, so that brush wears what the
@@ -1174,7 +1240,56 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _followTimelineZoomToCut();
     session.addListener(_followTimelineZoomToCut);
     session.addListener(_syncViewersWithProject);
+    _showFontsOf(session);
   }
+
+  /// R9-rest: the fonts THIS project carries are what its families are set
+  /// with while it is on screen. Stands [session]'s over this device's now
+  /// — it is the project coming on screen — and again whenever its list of
+  /// them is another ([_followProjectFonts]).
+  void _showFontsOf(EditorSessionManager session) {
+    _projectFontsShown = null;
+    _followProjectFonts();
+    session.addListener(_followProjectFonts);
+  }
+
+  /// The project on screen's list of fonts as the faces were last told of
+  /// it ([_followProjectFonts]) — null: of no project yet.
+  List<ProjectFontFile>? _projectFontsShown;
+
+  /// Stands the fonts the project on screen carries over this device's
+  /// ([ImportedFonts.showCarried]) when its list of them is another than
+  /// the one last said. A step of history that registers a font, or takes
+  /// one back out, is such a change; so is another project coming on
+  /// screen ([_bindSession]).
+  void _followProjectFonts() {
+    final session = widget.session;
+    final fonts = session.repository.requireProject().fonts;
+    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. A project is made
+    // anew at every edit and builds its lists anew with it (`Project`'s
+    // constructor), so 「is it the same list」 is no at every stroke — and
+    // saying the fonts again reads the project file's directory. The
+    // session tells of every edit; this hears all of them.
+    if (listEquals(fonts, _projectFontsShown)) {
+      return;
+    }
+    _projectFontsShown = fonts;
+    final ofTheProject = session.projectFonts;
+    _fonts.showCarried((
+      files: () => ofTheProject.letterFaceFiles,
+      families: () => ofTheProject.families,
+      takeOut: ofTheProject.takeOut,
+    ));
+  }
+
+  /// [landing] — a text set on a cel — with the registering of the faces
+  /// its letters are written in ([families]), as one step: the files each
+  /// family is set with now, handed to the project on screen
+  /// ([ProjectFonts.landingWith]).
+  Command _landingWithItsFaces(Command landing, Set<String> families) =>
+      widget.session.projectFonts.landingWith(landing, [
+        for (final family in families) ..._fonts.filesSetWith(family),
+      ]);
 
   /// The panel pictures [session]'s storyboard and conte draw — rendered
   /// through its camera, never past the camera frame's own size.
@@ -1234,6 +1349,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
+    session.removeListener(_followProjectFonts);
   }
 
   // ── the flip HUD: its own object, in its own file ───────────────────
@@ -1475,6 +1591,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ),
         title: strings.tlAttachDropsFxTitle,
         message: strings.tlAttachDropsFxBody,
+        // F-303: WHICH rows — the request has always carried their names,
+        // and the window never showed them.
+        details: request.rowNames,
+        detailsHeading: strings.tlAttachDropsFxRows,
       ),
       accept: ConfirmChoice(strings.commonApply),
     );
@@ -1503,8 +1623,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushPresets._brushHandSettingsSave!.cancel();
       _brushPresets.saveHandSettings();
     }
+    _brushKeys.detach();
+    _brushGroups.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
+    if (widget.canvasTextCommands?.landingWith == _landingWithItsFaces) {
+      widget.canvasTextCommands?.landingWith = null;
+    }
+    _fonts.dispose();
     _cutPieceSlot
       ..removeListener(_brushPresets.armStampOnFreshCut)
       // Its bytes are counted while it lives (CutPieceSlot.allPieceBytes),
@@ -1514,9 +1640,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.dispose();
     _timelineOrientation.dispose();
     _timelinePixelsPerFrame.dispose();
-    _storyboardPixelsPerFrame.dispose();
     _storyboardTrackLaneHeight.dispose();
-    _showSecondsDisplay.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {
@@ -1540,9 +1664,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       extent
         ..removeListener(_layoutPersistence.scheduleLayoutSave)
         ..dispose();
-    }
-    for (final offset in _frameAxisOffsets.values) {
-      offset.dispose();
     }
     _layout.dispose();
     super.dispose();
@@ -1841,12 +1962,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
   /// import/placement window opens with the dropped paths — never an
   /// instant import. Folders drop too (the cut-folder parser's entrance).
+  ///
+  /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
+  /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
+  /// through that door ([EditorWorkspace.onProjectFilesDropped]), each in a
+  /// tab of its own. Everything else still comes in through the window.
+  /// When one drop holds both, the window comes first — its files go into
+  /// the project the drop landed on, which an open would take off the
+  /// screen — and the projects open once it is closed.
   void _onOsFilesDropped(DropDoneDetails details) {
     final paths = [for (final file in details.files) file.path];
-    if (paths.isEmpty) {
+    final projects = [for (final path in paths) if (opensAsProject(path)) path];
+    final rest = [for (final path in paths) if (!opensAsProject(path)) path];
+    void openProjects() {
+      if (projects.isNotEmpty) {
+        widget.onProjectFilesDropped(projects);
+      }
+    }
+
+    if (rest.isEmpty) {
+      openProjects();
       return;
     }
-    _openImportWindow(initialPaths: paths);
+    _openImportWindow(initialPaths: rest, onClosed: openProjects);
   }
 
   /// A reference row shows [path] instead of its file (I-47) — no window:
@@ -1873,12 +2011,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// [poolOnly] is the media pool's ＋: it starts on the pool because
   /// registering for later is what that panel is for, and the other
   /// destinations stay on offer because it is the same window. [spot] is
-  /// where a drop put the file — the window shows it locked.
+  /// where a drop put the file — the window shows it locked. [onClosed] runs
+  /// once the window is gone: an OS drop that also held project files opens
+  /// them then (F-247).
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,
     bool placeOnly = false,
     ImportLayerSpot? spot,
+    VoidCallback? onClosed,
   }) {
     unawaited(
       showDialog<void>(
@@ -1890,7 +2031,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           placeOnly: placeOnly,
           spot: spot,
         ),
-      ),
+      ).then((_) => onClosed?.call()),
     );
   }
 
@@ -1901,7 +2042,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // THE STAGE'S OUTER SURFACES, SAID ONCE (유저, R4 #2). Every canvas
       // panel in the app is somewhere under here — the drawing floor, the
       // timesheet, the conte, the cut envelope, the media viewer — so this
-      // is the one place the room's colours have to be right.
+      // is the one place the room's colours have to be right. ↩️Since F-272
+      // only the floor reads them: the others lie on black.
       //
       // ★The workspace rides through as a `child:`. The listenable is the
       // session, which notifies constantly, and the only thing that must

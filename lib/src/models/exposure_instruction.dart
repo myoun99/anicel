@@ -1,7 +1,7 @@
 /// The instruction attached to one EXPOSURE — the block, not the drawing:
-/// what a direction row's span SAYS (the vocabulary mark, its writing, the
-/// sheet's A → B values and the memo), apart from where it sits and how long
-/// it holds, which are the block's own start and length.
+/// what a direction row's span SAYS (the vocabulary mark, its writing and
+/// the sheet's A → B values), apart from where it sits and how long it
+/// holds, which are the block's own start and length.
 ///
 /// 🚨R27 (유저 2026-09-12, Q1): 「**블록 = 스팬, 스팬마다 제 그림 한 장**」.
 /// A direction row's block IS its span, so the span lives where the block
@@ -20,13 +20,16 @@
 /// ⚠️NO LENGTH HERE, on purpose: a span's length is its block's. Two fields
 /// answering one question drift; `InstructionEvent.of` is the one place the
 /// two meet.
+///
+/// ↩️It carried a free memo too, whose one use was the line a new span wrote
+/// into the timesheet's memo band — a behaviour deleted, remnants and all
+/// (I-72, 유저 2026-10-05). A file that still holds one is read without it.
 class ExposureInstruction {
   const ExposureInstruction({
     required this.instructionId,
     this.text,
     this.valueA,
     this.valueB,
-    this.memo,
   });
 
   /// See `InstructionEvent.instructionId`.
@@ -41,9 +44,6 @@ class ExposureInstruction {
   /// See `InstructionEvent.valueB`.
   final String? valueB;
 
-  /// See `InstructionEvent.memo`.
-  final String? memo;
-
   /// The keys a span writes beside its length — ONE spelling of them, which
   /// `InstructionEvent.toJson` spreads too.
   Map<String, dynamic> toJson() => {
@@ -51,7 +51,6 @@ class ExposureInstruction {
     if (text != null) 'text': text,
     if (valueA != null) 'valueA': valueA,
     if (valueB != null) 'valueB': valueB,
-    if (memo != null) 'memo': memo,
   };
 
   factory ExposureInstruction.fromJson(Map<String, dynamic> json) =>
@@ -60,7 +59,6 @@ class ExposureInstruction {
         text: json['text'] as String?,
         valueA: json['valueA'] as String?,
         valueB: json['valueB'] as String?,
-        memo: json['memo'] as String?,
       );
 
   @override
@@ -70,14 +68,13 @@ class ExposureInstruction {
           other.instructionId == instructionId &&
           other.text == text &&
           other.valueA == valueA &&
-          other.valueB == valueB &&
-          other.memo == memo;
+          other.valueB == valueB;
 
   @override
-  int get hashCode => Object.hash(instructionId, text, valueA, valueB, memo);
+  int get hashCode => Object.hash(instructionId, text, valueA, valueB);
 
   @override
   String toString() =>
       'ExposureInstruction($instructionId, text: $text, '
-      'valueA: $valueA, valueB: $valueB, memo: $memo)';
+      'valueA: $valueA, valueB: $valueB)';
 }

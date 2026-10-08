@@ -1,86 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/key_range_move.dart';
 import 'package:anicel/src/models/key_range_shift.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
-/// P3b-2 (#2 second half): camera keys and instruction spans shift with a
-/// range selection — rigid, all-or-nothing.
+/// P3b-2 (#2 second half): instruction spans shift with a range selection
+/// — rigid, all-or-nothing.
+///
+/// ↩️The camera's keys were shifted here too, as a map of whole poses
+/// (`shiftCameraKeysInRange`). They ride as the track they are now, by the
+/// lanes' own range move (F-309) — pinned where that law lives
+/// (`property_track_edits_test`) and where the camera row rides it
+/// (`editor_session_manager_range_move_test`).
 void main() {
-  final pose = CameraPose(center: CanvasPoint(x: 0, y: 0));
-
-  group('shiftCameraKeysInRange', () {
-    final keys = {2: pose, 4: pose, 9: pose};
-
-    test('shifts exactly the keys in range; the rest stay', () {
-      final shifted = shiftCameraKeysInRange(
-        keyframes: keys,
-        rangeStartIndex: 2,
-        rangeEndIndexExclusive: 5,
-        frameDelta: 3,
-      );
-      expect(shifted!.keys.toSet(), {5, 7, 9});
-    });
-
-    test('a landing on an UNSHIFTED key voids the plan', () {
-      expect(
-        shiftCameraKeysInRange(
-          keyframes: keys,
-          rangeStartIndex: 2,
-          rangeEndIndexExclusive: 3,
-          frameDelta: 2,
-        ),
-        isNull,
-        reason: '2+2 lands on the unmoved 4',
-      );
-    });
-
-    test('negative landings, empty ranges and zero deltas void', () {
-      expect(
-        shiftCameraKeysInRange(
-          keyframes: keys,
-          rangeStartIndex: 2,
-          rangeEndIndexExclusive: 5,
-          frameDelta: -3,
-        ),
-        isNull,
-        reason: '2-3 dips below 0',
-      );
-      expect(
-        shiftCameraKeysInRange(
-          keyframes: keys,
-          rangeStartIndex: 6,
-          rangeEndIndexExclusive: 8,
-          frameDelta: 2,
-        ),
-        isNull,
-        reason: 'no keys in range',
-      );
-      expect(
-        shiftCameraKeysInRange(
-          keyframes: keys,
-          rangeStartIndex: 2,
-          rangeEndIndexExclusive: 5,
-          frameDelta: 0,
-        ),
-        isNull,
-      );
-    });
-
-    test('keys within the moved set may swap places freely', () {
-      final shifted = shiftCameraKeysInRange(
-        keyframes: {2: pose, 3: pose},
-        rangeStartIndex: 2,
-        rangeEndIndexExclusive: 4,
-        frameDelta: 1,
-      );
-      expect(shifted!.keys.toSet(), {3, 4}, reason: '3 vacates before 2 lands');
-    });
-  });
-
   group('transform tracks (P3c #13)', () {
     TransformTrack track() => TransformTrack.properties(
       anchorPoint: PropertyTrack.empty(),
@@ -88,7 +22,7 @@ void main() {
         2,
         CanvasPoint(x: 1, y: 1),
       ),
-      scale: PropertyTrack<double>().withKey(4, 1.5),
+      scale: PropertyTrack<CanvasPoint>().withKey(4, uniformScale(1.5)),
       rotation: PropertyTrack.empty(),
       opacity: PropertyTrack<double>().withKey(2, 0.5).withKey(9, 1.0),
     );
@@ -153,10 +87,13 @@ void main() {
             ),
         },
       ),
-      scale: PropertyTrack<double>(
+      scale: PropertyTrack<CanvasPoint>(
         keys: {
           for (final entry in scale.entries)
-            entry.key: PropertyKey<double>(1, name: entry.value),
+            entry.key: PropertyKey<CanvasPoint>(
+              uniformScale(1),
+              name: entry.value,
+            ),
         },
       ),
       rotation: PropertyTrack.empty(),

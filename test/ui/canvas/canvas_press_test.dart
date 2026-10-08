@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
@@ -42,6 +44,112 @@ void main() {
   );
 
   const tipAndBarrel = kPrimaryButton | kSecondaryButton;
+
+  group("whose a press is — the tool in hand's, or not", () {
+    /// The raw pen service saying which end of the pen is down — each
+    /// call a new report.
+    var reports = 0;
+    void penIs({required bool turnedOver}) {
+      final raw = RawPenInputService.instance;
+      if (reports == 0) {
+        addTearDown(() {
+          raw.debugReset();
+          reports = 0;
+        });
+        RawPenInputService.debugClockOverride = () => DateTime(2024);
+        raw.debugPollOverride = () => null;
+        raw.start();
+      }
+      reports += 1;
+      raw.debugInjectState(
+        QaPenRawState(flags: turnedOver ? 0x08 : 0, sequence: reports),
+      );
+    }
+
+    void tailIs(CanvasPointerAction action) =>
+        AppInput.settings.value = AppInput.settings.value.copyWith(
+          canvasPenTail: CanvasPointerMapping(action: action),
+        );
+
+    bool isTheTools(
+      int buttons, {
+      PointerDeviceKind kind = PointerDeviceKind.stylus,
+      bool Function(CanvasPointerAction tail)? tailsToolInHand,
+    }) => canvasPressIsTheTools(
+      PointerDownEvent(kind: kind, buttons: buttons),
+      tailsToolInHand: tailsToolInHand ?? (_) => false,
+    );
+
+    test('the plain primary contact is; a press with a mapped button down '
+        'is that button\'s', () {
+      expect(isTheTools(kPrimaryButton), isTrue);
+      expect(isTheTools(tipAndBarrel), isFalse);
+      expect(isTheTools(kSecondaryButton), isFalse);
+      expect(
+        isTheTools(kSecondaryMouseButton, kind: PointerDeviceKind.mouse),
+        isFalse,
+      );
+      expect(
+        isTheTools(kPrimaryButton, kind: PointerDeviceKind.mouse),
+        isTrue,
+      );
+    });
+
+    test('a finger has no buttons to map and no tail: it is', () {
+      penIs(turnedOver: true);
+      expect(isTheTools(kPrimaryButton, kind: PointerDeviceKind.touch), isTrue);
+    });
+
+    test('🚨a pen turned TAIL-DOWN presses with the tail\'s tool: its contact '
+        'is the layer\'s only where that is the tool in hand', () {
+      penIs(turnedOver: true);
+      expect(canvasPenTailAction(), CanvasPointerAction.eraser);
+      expect(isTheTools(kPrimaryButton), isFalse);
+
+      tailIs(CanvasPointerAction.eyedropper);
+      expect(canvasPenTailAction(), CanvasPointerAction.eyedropper);
+      expect(
+        isTheTools(
+          kPrimaryButton,
+          tailsToolInHand: (tail) => tail == CanvasPointerAction.eyedropper,
+        ),
+        isTrue,
+        reason: 'the eyedropper in hand IS the tail\'s tool',
+      );
+      expect(
+        isTheTools(
+          kPrimaryButton,
+          tailsToolInHand: (tail) => tail == CanvasPointerAction.eraser,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a tail mapped to nothing a contact makes is not a tail here, and '
+        'neither is a pen held upright', () {
+      penIs(turnedOver: true);
+      for (final action in [
+        CanvasPointerAction.none,
+        CanvasPointerAction.pan,
+        CanvasPointerAction.undo,
+        CanvasPointerAction.redo,
+      ]) {
+        tailIs(action);
+        expect(canvasPenTailAction(), isNull, reason: action.name);
+        expect(isTheTools(kPrimaryButton), isTrue, reason: action.name);
+      }
+
+      tailIs(CanvasPointerAction.eraser);
+      penIs(turnedOver: false);
+      expect(canvasPenTailAction(), isNull);
+      expect(isTheTools(kPrimaryButton), isTrue);
+    });
+
+    test('with no driver to say which end is down, a pen is upright', () {
+      expect(canvasPenTailAction(), isNull);
+      expect(isTheTools(kPrimaryButton), isTrue);
+    });
+  });
 
   test('the primary button pans only while the 「이동」 key is held', () {
     expect(canvasPressPans(kPrimaryButton), isFalse);

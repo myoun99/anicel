@@ -1,6 +1,7 @@
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/shape_tool_options.dart';
 import 'brush_tool_state.dart';
 import 'paint_tool_state_notifier.dart';
 
@@ -29,8 +30,11 @@ class ToolChoice {
     this.selectShape,
     this.cutShape,
     this.fillShape,
+    this.drawShape,
     this.fillBlendMode,
     this.cutStampBlendMode,
+    this.shapeBlendMode,
+    this.shapeOptions,
     this.fillOpacity,
     this.cutStampOpacity,
   });
@@ -46,8 +50,11 @@ class ToolChoice {
   final CanvasShapeKind? selectShape;
   final CanvasShapeKind? cutShape;
   final CanvasShapeKind? fillShape;
+  final CanvasShapeKind? drawShape;
   final BrushBlendMode? fillBlendMode;
   final BrushBlendMode? cutStampBlendMode;
+  final BrushBlendMode? shapeBlendMode;
+  final ShapeToolOptions? shapeOptions;
   final double? fillOpacity;
   final double? cutStampOpacity;
 
@@ -66,9 +73,12 @@ class ToolChoice {
     if (selectShape != null) 'selectShape': selectShape!.name,
     if (cutShape != null) 'cutShape': cutShape!.name,
     if (fillShape != null) 'fillShape': fillShape!.name,
+    if (drawShape != null) 'drawShape': drawShape!.name,
     if (fillBlendMode != null) 'fillBlendMode': fillBlendMode!.name,
     if (cutStampBlendMode != null)
       'cutStampBlendMode': cutStampBlendMode!.name,
+    if (shapeBlendMode != null) 'shapeBlendMode': shapeBlendMode!.name,
+    if (shapeOptions != null) 'shapeOptions': shapeOptions!.toJson(),
     if (fillOpacity != null) 'fillOpacity': fillOpacity,
     if (cutStampOpacity != null) 'cutStampOpacity': cutStampOpacity,
   };
@@ -86,13 +96,16 @@ class ToolChoice {
       for (final entry in _entries(json['railTiles']))
         ?_toolNamed(entry.key): ?_toolNamed(entry.value),
     },
-    selectShape: _shapeNamed(json['selectShape']),
-    cutShape: _shapeNamed(json['cutShape']),
-    fillShape: _shapeNamed(json['fillShape']),
+    selectShape: _shapeNamed(json['selectShape'], of: CanvasTool.select),
+    cutShape: _shapeNamed(json['cutShape'], of: CanvasTool.cut),
+    fillShape: _shapeNamed(json['fillShape'], of: CanvasTool.fillShape),
+    drawShape: _shapeNamed(json['drawShape'], of: CanvasTool.shape),
     fillBlendMode: BrushBlendMode.named(_string(json['fillBlendMode'])),
     cutStampBlendMode: BrushBlendMode.named(
       _string(json['cutStampBlendMode']),
     ),
+    shapeBlendMode: BrushBlendMode.named(_string(json['shapeBlendMode'])),
+    shapeOptions: ShapeToolOptions.fromJson(json['shapeOptions']),
     fillOpacity: _opacity(json['fillOpacity']),
     cutStampOpacity: _opacity(json['cutStampOpacity']),
   );
@@ -103,8 +116,13 @@ String? _string(Object? json) => json is String ? json : null;
 CanvasTool? _toolNamed(Object? json) =>
     CanvasTool.values.asNameMap()[_string(json)];
 
-CanvasShapeKind? _shapeNamed(Object? json) =>
-    CanvasShapeKind.values.asNameMap()[_string(json)];
+/// The shape [json] names, when it is one [of] speaks
+/// ([canvasToolShapes]) — a line written for the selection is a name this
+/// verb does not know, and reads as absent like any other.
+CanvasShapeKind? _shapeNamed(Object? json, {required CanvasTool of}) {
+  final shape = CanvasShapeKind.values.asNameMap()[_string(json)];
+  return canvasToolShapes(of).contains(shape) ? shape : null;
+}
 
 /// An opacity as written, or null when it is not one (a number from 0 to 1).
 double? _opacity(Object? json) =>
@@ -138,8 +156,11 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
     selectShape: live.selectShape,
     cutShape: live.cutShape,
     fillShape: live.fillShape,
+    drawShape: live.drawShape,
     fillBlendMode: live.fillBlendMode,
     cutStampBlendMode: live.cutStampBlendMode,
+    shapeBlendMode: live.shapeBlendMode,
+    shapeOptions: live.shapeOptions,
     fillOpacity: live.fillOpacity,
     cutStampOpacity: live.cutStampOpacity,
   );
@@ -171,8 +192,11 @@ void resumeToolChoice(
     selectShape: choice.selectShape,
     cutShape: choice.cutShape,
     fillShape: choice.fillShape,
+    drawShape: choice.drawShape,
     fillBlendMode: choice.fillBlendMode,
     cutStampBlendMode: choice.cutStampBlendMode,
+    shapeBlendMode: choice.shapeBlendMode,
+    shapeOptions: choice.shapeOptions,
     fillOpacity: choice.fillOpacity,
     cutStampOpacity: choice.cutStampOpacity,
   );

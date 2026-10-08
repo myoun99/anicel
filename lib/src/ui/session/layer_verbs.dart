@@ -6,6 +6,7 @@ import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
@@ -13,7 +14,6 @@ import '../../models/timeline_row_address.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
-import 'active_cut_edits.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
 import 'render_caches.dart';
@@ -35,13 +35,11 @@ class LayerVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required ActiveCutEdits activeCut,
     required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _activeCutEdits = activeCut,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
@@ -52,31 +50,67 @@ class LayerVerbs {
   /// Where a duplicate's pictures are.
   final RenderCaches _renderCaches;
 
-  /// The active-row cut-command envelope — the session's one instance,
-  /// handed in (see [ActiveCutEdits]).
-  final ActiveCutEdits _activeCutEdits;
-
   /// The selected rows that name a LAYER this cut may delete (⑨).
   ///
   /// A row's kind decides what the edit DOES, never whether the row could
   /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
-  List<LayerId> deletableSelectedLayerIds() =>
-      selectedLayerIdsWhere(canDeleteLayer);
+  ///
+  /// A row inside a folder that is selected too is that folder's: the folder
+  /// alone is deleted, and takes it along (F-305, 유저 2026-10-06:
+  /// 「폴더/내용물 선택하고 삭제하는건 알아서 폴더만 삭제되도록 하는게
+  /// 로직적으로 깔끔」).
+  List<LayerId> deletableSelectedLayerIds() {
+    final ids = selectedLayerIdsWhere(canDeleteLayer);
+    final rows = _project.layers;
+    return [
+      for (final id in ids)
+        if (!ids.any(
+          (other) => rows.isInsideFolder(rows.byId(id)?.folderId, other),
+        ))
+          id,
+    ];
+  }
+
+  /// What a delete of [ids] takes BESIDES them, as the rail lists them —
+  /// top first: every row a folder among them holds (F-305: 「내용물도
+  /// 삭제리스트에 보여지게」), and the attach rows and organizer folders that
+  /// go with a base (the coordinator's cascade — 「neither can stand
+  /// alone」). A row named by [ids] itself is not repeated.
+  ///
+  /// ↩️A base's attach rows were left out until F-303: the window listed
+  /// only what a FOLDER held, so a base went and took rows the list never
+  /// showed — and the hand-off stood on one of them ([_standAfterDeleting]).
+  List<Layer> rowsHeldBy(Iterable<LayerId> ids) {
+    final named = ids.toSet();
+    final rows = _project.layers;
+    final going = {
+      ...named,
+      for (final row in rows)
+        if (named.any((id) => rows.isInsideFolder(row.folderId, id))) row.id,
+    };
+    bool ridesOneThatGoes(Layer row) =>
+        going.contains(
+          row.attachedToLayerId ?? attachOrganizerBaseOf(row, rows),
+        );
+    return [
+      for (final row in rows.reversed)
+        if (!named.contains(row.id) &&
+            (going.contains(row.id) || ridesOneThatGoes(row)))
+          row,
+    ];
+  }
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
-  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
-  /// predicates rather than restated: a track-owned SE row has no clipboard
-  /// shape, a per-cut singleton cannot have a second, and an attach row's
-  /// copy would double-link its base's cels.
-  List<LayerId> duplicatableSelectedLayerIds() => selectedLayerIdsWhere(
-    (layer) =>
-        layer.kind.isClipboardCopyable &&
-        !layer.kind.isSingletonPerCut &&
-        !isAttachedLayer(layer),
-  );
+  /// The stand-downs are [duplicateActiveLayer]'s, read off the same
+  /// predicate rather than restated ([layerTakesACopyBesideIt]): a
+  /// track-owned SE row has no clipboard shape, a per-cut singleton cannot
+  /// have a second, and an attach row's copy would double-link its base's
+  /// cels.
+  List<LayerId> duplicatableSelectedLayerIds() =>
+      selectedLayerIdsWhere(layerTakesACopyBesideIt);
 
   /// The selected rows whose NAME may be edited (⑨).
   ///
@@ -164,8 +198,8 @@ class LayerVerbs {
       // 허용"). The global track is the thing that has to exist, not any
       // particular row inside a cut, and every drawing path already
       // handles "no editable cel" (that is the R26 #35 refusal notice).
-      // A folder row deletes by DISSOLVING (the coordinator routes it) —
-      // its members are rows of their own and survive.
+      // A folder row goes WITH what it holds (F-305, the coordinator
+      // routes it) — ↩️it used to dissolve, its members surviving.
       // An ADJUSTMENT row has no floor either: deleting it just stops the
       // stack below being filtered.
       LayerKind.animation ||
@@ -253,13 +287,10 @@ class LayerVerbs {
     }
     final activeLayer = _selection.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
-    // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
-    // double-link the same base cels).
-    if (activeLayer == null ||
-        !activeLayer.kind.isClipboardCopyable ||
-        // R9 #7: the copy lands in the same cut — always the second one.
-        activeLayer.kind.isSingletonPerCut ||
-        isAttachedLayer(activeLayer)) {
+    // reason as the board's copy); attach rows too (v1 — a duplicate would
+    // double-link the same base cels); and R9 #7: the copy lands in the
+    // same cut — always the second one.
+    if (activeLayer == null || !layerTakesACopyBesideIt(activeLayer)) {
       return;
     }
 
@@ -301,25 +332,11 @@ class LayerVerbs {
     );
   }
 
-  bool get canLinkDuplicateActiveLayer {
-    final activeLayer = _selection.activeLayer;
-    // Same stand-downs as plain duplication; an attach row's LINK
-    // duplicate is reached through its base (the group goes whole).
-    return activeLayer != null &&
-        activeLayer.kind.isClipboardCopyable &&
-        // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
-        // copy would always be the second one.
-        !activeLayer.kind.isSingletonPerCut &&
-        !isAttachedLayer(activeLayer);
-  }
-
-  /// 링크 복제: duplicates the active layer's whole attach group SHARING
-  /// the originals' pictures (the store routes both to one cel bank).
-  void linkDuplicateActiveLayer() => _activeCutEdits.onActiveLayer(
-    when: canLinkDuplicateActiveLayer,
-    command: (cutId, layerId) => _project.cutCommandCoordinator
-        .linkDuplicateLayer(cutId: cutId, layerId: layerId),
-  );
+  // ↩️「링크 복제」 of the ACTIVE row stood here (`linkDuplicateActiveLayer`),
+  // behind the layer menu's 「링크해서 복제」. 🗣️I-77 (유저 2026-10-06):
+  // 「링크해서 복제도 필요없어지니 삭제」 — the shared pill's copy and its
+  // linked paste make that copy now, of every selected row
+  // (`LayerClipboard.pasteRowsLinked`).
 
   /// Whether [layer]'s attach group shares its pictures through a link —
   /// the one question 독립시키기 answers, from the layer menu and from the
@@ -395,6 +412,26 @@ class LayerVerbs {
         ).isNotEmpty;
   }
 
+  /// Where to stand once [ids] — top first, as they are deleted — are gone
+  /// with what they hold: [stableLayerIdAfterDeleting]'s hand-off from the
+  /// LOWEST of them, over the rows that stay.
+  ///
+  /// ↩️The hand-off was made over the whole stack, as if that one row were
+  /// all that went. A folder takes its rows along now (F-305), and the row
+  /// next to it in the stack is one of them.
+  LayerId? _standAfterDeleting(List<LayerId> ids) {
+    final from = ids.last;
+    final gone = {...ids, for (final row in rowsHeldBy(ids)) row.id}
+      ..remove(from);
+    return stableLayerIdAfterDeleting(
+      beforeLayers: [
+        for (final layer in _project.requireActiveCut.layers)
+          if (!gone.contains(layer.id)) layer,
+      ],
+      deletedLayerId: from,
+    );
+  }
+
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
   void deleteActiveLayer() {
@@ -424,11 +461,7 @@ class LayerVerbs {
       return;
     }
 
-    final beforeLayers = List<Layer>.of(_project.requireActiveCut.layers);
-    final nextActiveLayerId = stableLayerIdAfterDeleting(
-      beforeLayers: beforeLayers,
-      deletedLayerId: activeLayer.id,
-    );
+    final nextActiveLayerId = _standAfterDeleting([activeLayer.id]);
 
     _project.cutCommandCoordinator.deleteLayer(
       cutId: _project.requireActiveCut.id,
@@ -465,10 +498,7 @@ class LayerVerbs {
     };
     final ordered = [...ids]
       ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
-    final nextActiveLayerId = stableLayerIdAfterDeleting(
-      beforeLayers: List<Layer>.of(cut.layers),
-      deletedLayerId: ordered.last,
-    );
+    final nextActiveLayerId = _standAfterDeleting(ordered);
     _project.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
         _project.cutCommandCoordinator.deleteLayer(

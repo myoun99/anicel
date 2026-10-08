@@ -61,7 +61,7 @@ void main() {
 
   Future<void> press(WidgetTester tester) async {
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
   }

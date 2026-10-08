@@ -53,12 +53,18 @@ jobs:
       # audioplayers_linux (gstreamer, -app and -audio), and for the launch
       # below a virtual screen, Mesa's software GL and a way to find a
       # window by its title.
+      #
+      # ⚠️libunwind-dev IS NAMED ON PURPOSE. The 22.04 runner image ships
+      # LLVM's libunwind-14-dev, which conflicts with the libunwind-dev that
+      # libgstreamer1.0-dev depends on; left to pull it in as a dependency
+      # apt refuses the whole install ("you have held broken packages" —
+      # the first run, 2026-10-04). Asked for by name, apt swaps the two.
       - name: Linux build packages
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             xvfb xdotool libgl1-mesa-dri
       - run: flutter pub get
 

@@ -88,10 +88,12 @@ abstract final class TransformBoxLaw {
   /// on 09-22 — the modifier got a TOUCH entrance instead — so the setting
   /// went and the default is the one they named.
   ///
-  /// [uniform] keeps both axes one scale. The aspect ratio is locked by the
-  /// MODE, not by a modifier: 일반변형 preserves it by definition, and Shift
-  /// no longer locks anything — 유저 08-13, once 일반 became the default:
-  /// 「어차피 일반변형이 종횡비 유지해서 수정자 기능 필요없을거같은데」.
+  /// [uniform] scales both axes by one factor, so a corner keeps the
+  /// proportions the box has — whatever an edge middle or a mirror made
+  /// them. The aspect ratio is locked by the MODE, not by a modifier:
+  /// 일반변형 preserves it by definition, and Shift no longer locks anything
+  /// — 유저 08-13, once 일반 became the default: 「어차피 일반변형이 종횡비
+  /// 유지해서 수정자 기능 필요없을거같은데」.
   ///
   /// ⚠️「Non-uniform scaling lives on 퍼스's edge handles」 is no longer
   /// true (F-42): in 퍼스 an edge handle carries the edge's two quad corners,
@@ -131,9 +133,9 @@ abstract final class TransformBoxLaw {
       sy = vy / (grabbed.y - anchorLocal.y);
     }
     if (uniform && grabbed.x != anchorLocal.x && grabbed.y != anchorLocal.y) {
-      // One scale for both axes, chosen as the least-squares projection of
-      // the pointer onto the anchor→handle diagonal: the s that puts the
-      // handle as close to the pointer as a uniform scale can.
+      // One factor for both axes, chosen as the least-squares projection of
+      // the pointer onto the anchor→handle diagonal: the one that puts the
+      // handle as close to the pointer as scaling both axes alike can.
       //
       // It used to take max(|sx|, |sy|), which is the LARGER axis rather
       // than the closest fit — so a drag that was not exactly along the
@@ -149,11 +151,22 @@ abstract final class TransformBoxLaw {
       // hand, and the cost follows the box. Signs need no special case
       // either — dragging past the anchor makes the projection negative
       // on its own, which is the mirror it should be.
-      final gx = grabbed.x - anchorLocal.x;
-      final gy = grabbed.y - anchorLocal.y;
-      final projected = (vx * gx + vy * gy) / (gx * gx + gy * gy);
-      sx = projected;
-      sy = projected;
+      //
+      // 🚨★★★**ONE FACTOR FOR BOTH AXES, NOT ONE SCALE.** The handle stands
+      // at `S·g` from the anchor, and the fit is onto THAT diagonal, so the
+      // box keeps the proportions it has. ↩️It projected onto `g` and wrote
+      // the result to both axes, which is the same thing only while the two
+      // scales agree — and 일반변형 has had edge middles since 09-22 and a
+      // mirror since 08-13. Measured 2026-10-06 (F-256 · F-265): touching a
+      // corner after an edge had stretched one axis snapped the box to one
+      // scale (75×50 → 64.5×64.5), and after a 좌우반전 it projected a
+      // mirrored handle onto an unmirrored diagonal and collapsed the
+      // picture to 1%.
+      final hx = start.sx * (grabbed.x - anchorLocal.x);
+      final hy = start.sy * (grabbed.y - anchorLocal.y);
+      final factor = (vx * hx + vy * hy) / (hx * hx + hy * hy);
+      sx = start.sx * factor;
+      sy = start.sy * factor;
     }
     sx = clampScale(sx);
     sy = clampScale(sy);

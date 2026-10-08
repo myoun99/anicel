@@ -75,7 +75,7 @@ void main() {
       title: 'T',
       episode: 'E',
       logoAssetPath: 'logo.png',
-    ).withStaffName(const LayerMark(process: LayerProcess.key), '원화');
+    ).withStaffName(const LayerMark(process: LayerProcess.conte), '콘티');
     TimesheetInfo? after;
     await _openWindow(tester, before, (r) => after = r);
 

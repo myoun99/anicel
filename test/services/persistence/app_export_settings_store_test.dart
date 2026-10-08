@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/export_preset.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_support_path.dart';
 import '../../helpers/temp_dir.dart';
 
 void main() {
@@ -43,46 +43,73 @@ void main() {
       lastSpecs: const ExportTabSpecs().withSpec(
         const SequenceExportSpec(inFrame: 23, outFrame: 94),
       ),
-      lastDestination: const ExportIntoFolder(
-        GrantedDirectory(
-          path: 'D:/deliver/ep03/rush',
-          bookmark: 'Ym9va21hcms=',
-        ),
-      ),
+      lastFolder: 'D:/deliver/ep03/rush',
       presetsDrawerOpen: false,
     );
     await store.save(settings);
     final restored = await store.load();
     expect(restored, settings);
     expect(restored!.presetsFor(ExportTab.sequence), hasLength(1));
-    // An older build's bare-string spelling still reads (token-less).
-    expect(
-      AppExportSettings.fromJson(const {
-        'lastLocation': 'D:/deliver/legacy',
-      }).lastDestination,
-      const ExportIntoFolder(GrantedDirectory(path: 'D:/deliver/legacy')),
-    );
     expect(restored.presetsFor(ExportTab.cels).single.name, '납품 셀');
   });
 
-  test('「끝나면 고르기」 round-trips as a destination of its own — never a '
-      'folder beside it', () async {
-    final store = AppExportSettingsStore(filePath: pathIn('hand-over'));
-    final settings = AppExportSettings(lastDestination: const ExportHandOver());
-    await store.save(settings);
-    expect(await store.load(), settings);
-    expect(settings.toJson().containsKey('lastLocation'), isFalse);
+  test('the remembered folder is written and read as a bare path', () {
     expect(
-      AppExportSettings(
-        lastDestination: const ExportIntoFolder(GrantedDirectory(path: 'D:/o')),
-      ).toJson().containsKey('handOver'),
-      isFalse,
+      AppExportSettings(lastFolder: 'D:/o').toJson()['lastLocation'],
+      'D:/o',
     );
-    expect(AppExportSettings().lastDestination, isNull);
     expect(
-      const ExportIntoFolder(GrantedDirectory(path: 'D:/a')),
-      isNot(const ExportIntoFolder(GrantedDirectory(path: 'D:/b'))),
+      AppExportSettings.fromJson(const {
+        'lastLocation': 'D:/deliver/rush',
+      }).lastFolder,
+      'D:/deliver/rush',
     );
+  });
+
+  test('what a build wrote while the place was chosen AHEAD reads as nothing '
+      'remembered — the folder beside its token, and 「끝나면 고르기」', () {
+    expect(
+      AppExportSettings.fromJson(const {
+        'lastLocation': {'path': 'D:/deliver/granted', 'bookmark': 'Ym9v'},
+      }).lastFolder,
+      isNull,
+    );
+    expect(
+      AppExportSettings.fromJson(const {'handOver': true}).lastFolder,
+      isNull,
+    );
+    expect(
+      AppExportSettings.fromJson(const {'lastLocation': ''}).lastFolder,
+      isNull,
+    );
+  });
+
+  test('nothing remembered is nothing written, and one folder is not '
+      'another', () {
+    expect(AppExportSettings().lastFolder, isNull);
+    expect(AppExportSettings().toJson().containsKey('lastLocation'), isFalse);
+    expect(
+      AppExportSettings(lastFolder: 'D:/o').copyWith(lastFolder: null),
+      AppExportSettings(),
+    );
+    // The live settings are a ValueNotifier: one that compared equal to the
+    // last would be dropped, and the folder with it.
+    expect(
+      AppExportSettings(lastFolder: 'D:/a'),
+      isNot(AppExportSettings(lastFolder: 'D:/b')),
+    );
+  });
+
+  test('a place stands in a folder: the folder itself, or the one its lone '
+      'file is in', () {
+    const folder = ExportIntoFolder('D:/out');
+    const file = ExportToFile('D:/out/shot.mp4');
+    expect(folder.folderPath, 'D:/out');
+    expect(file.folderPath, 'D:/out');
+    expect(file, const ExportToFile('D:/out/shot.mp4'));
+    expect(file, isNot(const ExportToFile('D:/out/other.mp4')));
+    expect(folder, isNot(const ExportIntoFolder('D:/b')));
+    expect(const ExportHandOver(), const ExportHandOver());
   });
 
   test('corrupt JSON loads as null', () async {
@@ -109,7 +136,7 @@ void main() {
     // must never read or write the user's real settings file.
     expect(
       AppExportSettingsStore.defaultFilePath(),
-      contains('qa_test_export_settings_'),
+      startsWith('${testContainerFolder()}/'),
     );
     expect(
       AppExportSettingsStore.defaultFilePath(),

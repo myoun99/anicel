@@ -1,6 +1,6 @@
 // THE CANVAS AREA STACKS ITS OVERLAYS ONLY WHEN THERE IS SOMETHING TO SHOW:
-// A GUIDE PUTS THE GUIDE OVERLAY UP, A DIMMED TRACK PUTS THE FADE WASH UP,
-// AND NEITHER IS THERE BEFORE.
+// A GUIDE PUTS THE GUIDE OVERLAY UP, A CUT AN O.L THINS PUTS THE FADE WASH
+// UP, AND NEITHER IS THERE BEFORE.
 //
 // Two mutants of the interactive-canvas build cut (2026-09-03) survived
 // every test that pumps the editor: the overlay builder replaced by null,
@@ -10,9 +10,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
+import 'package:anicel/src/ui/editor_canvas_area.dart' show backdropShareUnder;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -65,16 +68,48 @@ void main() {
     expect(_guideOverlays(), findsOneWidget);
   });
 
-  testWidgets('a dimmed track puts the fade wash over the canvas', (
+  // ↩️A dimmed TRACK put it up: the V row's static opacity was the other
+  // thing that thinned a cut, until it left with its bar (I-73, 10-08).
+  testWidgets('a cut an O.L thins puts the fade wash over the canvas', (
     tester,
   ) async {
     await _pump(tester);
     final session = _sessionOf(tester);
-    expect(_fadeWashes(), findsNothing, reason: 'full opacity: no wash');
+    expect(_fadeWashes(), findsNothing, reason: 'no transition: no wash');
 
-    final trackId = session.repository.requireProject().tracks.first.id;
-    session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
+    // An O.L over the cut's last six frames, and the playhead inside it.
+    final duration = session.activeCutOrNull!.duration;
+    session.transitions.updateTransitionInstructions({
+      duration - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+    });
+    session.selectFrameIndex(duration - 3);
     await tester.pumpAndSettle();
     expect(_fadeWashes(), findsOneWidget);
+  });
+
+  // How strong that wash is: what the live cut and the O.L's other cuts
+  // leave of the frame is the backdrop's (F-227). ↩️Each share was its ramp
+  // times its track's opacity until the V row lost it (I-73), which is when
+  // the sum first stood with nothing pinning it.
+  test('the wash is what the live cut and its partners leave', () {
+    expect(
+      backdropShareUnder(0.75, const []),
+      0.25,
+      reason: 'no partner: 1 − fade, the wash as it always was',
+    );
+    expect(
+      backdropShareUnder(0.5, const [0.5]),
+      0,
+      reason: 'an O.L\'s two halves are the whole frame',
+    );
+    expect(
+      backdropShareUnder(0.1, const [0.25, 0.5]),
+      closeTo(0.6, 1e-9),
+      reason:
+          'the partners\' shares ADD (0.75): for the live cut to keep 0.1 '
+          'of the frame out of the quarter they leave, the wash under them '
+          'is 0.6',
+    );
+    expect(backdropShareUnder(0.5, const [1]), 0, reason: 'nothing is left');
   });
 }

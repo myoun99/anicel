@@ -247,8 +247,8 @@ void main() {
       reason: 'the unselected active row must not lose its drawing',
     );
 
-    expect(s.exposureVerbs.canSetCommaForSelectionOrCurrent, isFalse);
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    expect(s.storyboardCursor.canSetCommaForTimelineCursor, isFalse);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     expect(
       celRow().timeline[0]!.length,
       1,
@@ -318,7 +318,7 @@ void main() {
 
     expect(s.cells.cellSelectionClaimsSubject, isTrue);
     expect(
-      s.exposureVerbs.canSetCommaForSelectionOrCurrent,
+      s.storyboardCursor.canSetCommaForTimelineCursor,
       isFalse,
       reason:
           'the delete gate answers true here for the LANE KEYS, which '
@@ -330,37 +330,19 @@ void main() {
         .firstWhere((layer) => layer.id == celId)
         .timeline[0]!
         .length;
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     expect(
       s.layers.firstWhere((layer) => layer.id == celId).timeline[0]!.length,
       before,
     );
   });
 
-  test('잘라내기 stands down on the image row too — COPY stays lit, since '
-      'it never claims to remove the picture', () {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    s.layerStack.addLayerOfKind(LayerKind.image);
-
-    for (final frameIndex in [0, 5]) {
-      s.selectFrameIndex(frameIndex);
-      expect(
-        s.clipboard.canCutRunAtCurrentFrame,
-        isFalse,
-        // ↩️The reason was the delete gate's — 「the lift is rebuilt by the
-        // same write」. The delete is lit since F-98; the cut still waits.
-        reason:
-            'at index $frameIndex: what is cut has to be able to come '
-            'back, and no paste lands on an image row',
-      );
-      expect(
-        s.canCopyFrameAtCurrentFrame,
-        isTrue,
-        reason: 'copy is honest on a picture row',
-      );
-    }
-  });
+  // ↩️A pin stood here: 「잘라내기 stands down on the image row too — COPY
+  // stays lit, since it never claims to remove the picture」, dark at 0 and
+  // at 5 because 「what is cut has to be able to come back, and no paste
+  // lands on an image row」. One lands now on a row standing empty
+  // (image-row-cut-paste, 유저 2026-10-04), so the cut is lit — pinned with
+  // the pastes in `session/a_picture_rows_picture_is_cut_and_pasted_test.dart`.
 
   test('the WHOLE shared-pill family reads the band\'s claim, not just '
       'Delete: Edit Instance and the storyboard comma answer with it', () {
@@ -434,7 +416,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     // A real HOLD, so X-here has something to blank — without this the
     // gate is already false and the pin would pass for the wrong reason.
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     s.selectFrameIndex(2);
     expect(
       s.exposureVerbs.canBlankExposureAtCurrentFrame,
@@ -477,7 +459,7 @@ void main() {
     s.selectLayer(rowA);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
 
     // A SECOND drawing row, with a block of its own — so the band holds
     // real blocks and the collector answers non-null. That is exactly

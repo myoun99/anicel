@@ -105,6 +105,48 @@ CanvasPointerMapping? canvasMappingFor(
   );
 }
 
+/// What a pen turned TAIL-DOWN presses with right now — the eraser, or the
+/// pick — or null: the pen is upright, no driver says which end is down, or
+/// the tail is mapped to nothing a contact makes.
+CanvasPointerAction? canvasPenTailAction() {
+  if (PenSidecars.freshInverted() != true) {
+    return null;
+  }
+  final action = AppInput.settings.value.canvasPenTail.action;
+  return switch (action) {
+    CanvasPointerAction.eraser || CanvasPointerAction.eyedropper => action,
+    _ => null,
+  };
+}
+
+/// Whether [event] is the press of the tool IN HAND — the plain primary
+/// contact — and so the layer that tool mounts' to act on.
+///
+/// A press with a mapped button down is that button's: the pan, the pick,
+/// the eraser, a history verb. And a pen turned tail-down presses with the
+/// tail's tool, which is this layer's only when that IS the tool in hand
+/// ([tailsToolInHand] — the layer knows its tool). On a pen that reports
+/// the flip in the air the tool has changed by the time the tail touches;
+/// on one that does not, its first report is the contact, and that contact
+/// is not a marquee or a stamp.
+///
+/// ↩️The tap layer and the selection layer each wrote 「the primary button
+/// and nothing else」 for themselves, and neither asked which end of the
+/// pen was down.
+bool canvasPressIsTheTools(
+  PointerDownEvent event, {
+  required bool Function(CanvasPointerAction tail) tailsToolInHand,
+}) {
+  if (event.kind == PointerDeviceKind.touch) {
+    return true;
+  }
+  if (event.buttons != kPrimaryButton) {
+    return false;
+  }
+  final tail = canvasPenTailAction();
+  return tail == null || tailsToolInHand(tail);
+}
+
 /// Whether a press a mapped button claims for [action] still DRAWS: the
 /// eraser hold's is a stroke — it follows with the erase settings — while
 /// the pan, the pick, the history verbs and 「none」 eat the press.

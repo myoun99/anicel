@@ -24,11 +24,18 @@ class ToggleIdInSetCommand implements Command {
   ToggleIdInSetCommand({
     required this.notifier,
     required this.layerId,
+    this.alongWith = const [],
     required this.debugLabel,
   });
 
   final ValueNotifier<Set<LayerId>> notifier;
   final LayerId layerId;
+
+  /// The rows that take [layerId]'s new membership WITH it — the other uses
+  /// of a linked row, which twirls and folds as one (F-302, 유저
+  /// 2026-10-05: 「겸용컷 … 펼친 상태 접힌 상태 공유하라는것. 법통일」). Each
+  /// is put back to its OWN membership on undo, as [layerId] is.
+  final List<LayerId> alongWith;
 
   /// 🚨A DEBUG LINE, NOT A LABEL — and the name mattered. `Command.description`
   /// is read by no UI in this repo (grepped 2026-08-31); it exists for a
@@ -38,7 +45,8 @@ class ToggleIdInSetCommand implements Command {
   /// that changes with the reading language is a diagnostic nobody can grep.
   final String debugLabel;
 
-  bool? _wasMember;
+  /// What each row this command writes was, before it wrote.
+  Map<LayerId, bool>? _was;
 
   @override
   String get description => '$debugLabel $layerId';
@@ -48,25 +56,31 @@ class ToggleIdInSetCommand implements Command {
     // ⛔CAPTURED ONCE, like every other display command: redo re-runs this,
     // and re-reading membership then would record the state redo is about
     // to overwrite.
-    _wasMember ??= notifier.value.contains(layerId);
-    _apply(!_wasMember!);
+    final was = _was ??= {
+      for (final id in {layerId, ...alongWith})
+        id: notifier.value.contains(id),
+    };
+    final member = !was[layerId]!;
+    _apply({for (final id in was.keys) id: member});
   }
 
   @override
   void undo() {
-    final was = _wasMember;
+    final was = _was;
     if (was == null) {
       throw StateError('Command has not been executed.');
     }
     _apply(was);
   }
 
-  void _apply(bool member) {
+  void _apply(Map<LayerId, bool> membership) {
     final next = Set<LayerId>.of(notifier.value);
-    if (member) {
-      next.add(layerId);
-    } else {
-      next.remove(layerId);
+    for (final MapEntry(key: id, value: member) in membership.entries) {
+      if (member) {
+        next.add(id);
+      } else {
+        next.remove(id);
+      }
     }
     notifier.value = next;
   }

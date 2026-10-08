@@ -5,23 +5,10 @@ import 'package:flutter/foundation.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/transform_values.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
-
-/// The live transform box's numeric state (R17-U tool settings inputs).
-typedef SelectionTransformValues = ({
-  double tx,
-  double ty,
-  double rotationDegrees,
-  double scale,
-
-  /// The rotation centre, as a displacement from the box centre in
-  /// absolute canvas units — 유저 2026-09-20: 「기본값 상자안의 자리에서
-  /// **얼마나 이동됬나**」, and 「**편집값은 절대값이야**」.
-  double anchorX,
-  double anchorY,
-});
 
 /// ONE PROJECT's selection on its canvas: the marquee (or the box a tool
 /// made) and an open polygon trace. The channel below shows the one of the
@@ -254,15 +241,9 @@ class CanvasSelectionCommands extends ChangeNotifier {
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
   VoidCallback? _revertPendingMove;
-  SelectionTransformValues? Function()? _transformValues;
-  void Function({
-    required double tx,
-    required double ty,
-    required double rotationDegrees,
-    required double scale,
-  })?
-  _setTransformValues;
-  void Function({required double x, required double y})? _setTransformAnchor;
+  TransformValues? Function()? _transformValues;
+  void Function(TransformValues Function(TransformValues now) change)?
+  _editTransformValues;
   bool Function()? _undoTransformStep;
   bool Function()? _canUndoTransformStep;
   VoidCallback? _beginTransformStep;
@@ -289,15 +270,9 @@ class CanvasSelectionCommands extends ChangeNotifier {
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
     VoidCallback? revertPendingMove,
-    SelectionTransformValues? Function()? transformValues,
-    void Function({
-      required double tx,
-      required double ty,
-      required double rotationDegrees,
-      required double scale,
-    })?
-    setTransformValues,
-    void Function({required double x, required double y})? setTransformAnchor,
+    TransformValues? Function()? transformValues,
+    void Function(TransformValues Function(TransformValues now) change)?
+    editTransformValues,
     bool Function()? undoTransformStep,
     bool Function()? canUndoTransformStep,
     VoidCallback? beginTransformStep,
@@ -324,8 +299,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _confirmPendingMove = confirmPendingMove;
     _revertPendingMove = revertPendingMove;
     _transformValues = transformValues;
-    _setTransformValues = setTransformValues;
-    _setTransformAnchor = setTransformAnchor;
+    _editTransformValues = editTransformValues;
     _undoTransformStep = undoTransformStep;
     _canUndoTransformStep = canUndoTransformStep;
     _beginTransformStep = beginTransformStep;
@@ -348,8 +322,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _confirmPendingMove = null;
     _revertPendingMove = null;
     _transformValues = null;
-    _setTransformValues = null;
-    _setTransformAnchor = null;
+    _editTransformValues = null;
     _undoTransformStep = null;
     _canUndoTransformStep = null;
     _beginTransformStep = null;
@@ -481,9 +454,9 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// entry. The "되돌리기" choice in the R17-① confirm prompt.
   void revertPendingMove() => _revertPendingMove?.call();
 
-  /// The open transform box's numeric state, or null when no box is up
-  /// (the settings fields then show the identity).
-  SelectionTransformValues? get transformValues => _transformValues?.call();
+  /// The open transform box's values, or null when no box is up (the
+  /// settings fields then show the identity).
+  TransformValues? get transformValues => _transformValues?.call();
 
   /// 🚨★★★**THE SAME NUMBERS, LIVE — and a notifier so that only the DIGITS
   /// rebuild.**
@@ -500,11 +473,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
   ///
   /// ⚠️Same source as [transformValues], never a second computation: the
   /// layer publishes here with the value it would answer with.
-  final ValueNotifier<SelectionTransformValues?> liveTransformValues =
-      ValueNotifier<SelectionTransformValues?>(null);
+  final ValueNotifier<TransformValues?> liveTransformValues =
+      ValueNotifier<TransformValues?>(null);
 
   /// The layer publishing what the box is showing right now.
-  void publishTransformValues(SelectionTransformValues? values) {
+  void publishTransformValues(TransformValues? values) {
     final current = liveTransformValues.value;
     if (current == values) {
       return;
@@ -512,32 +485,28 @@ class CanvasSelectionCommands extends ChangeNotifier {
     liveTransformValues.value = values;
   }
 
-  /// Applies numeric transform values to the live selection (R17-U): the
-  /// layer opens a session if none is up, sets the affine, and shows the
-  /// result on the float — Enter confirms, Escape reverts, as always.
-  void setTransformValues({
-    required double tx,
-    required double ty,
-    required double rotationDegrees,
-    required double scale,
-  }) => _setTransformValues?.call(
-    tx: tx,
-    ty: ty,
-    rotationDegrees: rotationDegrees,
-    scale: scale,
-  );
-
-  /// Moves the rotation centre — the cross — to a displacement from the box
-  /// centre, in absolute canvas units.
+  /// Changes the open box's values (R17-U, the tool settings' numbers):
+  /// [change] is handed what the box holds NOW and answers what it should
+  /// hold. The layer opens a session if none is up, sets the affine, and
+  /// shows the result on the float — Enter confirms, Escape reverts, as
+  /// always.
   ///
-  /// ⛔**ITS OWN VERB, and the reason is the question it answers.** The four
-  /// above are the EDIT; the anchor is where the next turn happens, which
-  /// `SelectionAffine.isIdentity` already says out loud by leaving it out.
-  /// Folding it into that call would force every caller who only wanted to
-  /// type an X to restate the anchor — and the version of that with a
-  /// default would silently put the cross back in the middle.
-  void setTransformAnchor({required double x, required double y}) =>
-      _setTransformAnchor?.call(x: x, y: y);
+  /// 🚨★★★**A WRITER NAMES THE ONE VALUE IT MEANS, AND RESTATES NONE.**
+  /// ↩️This was `setTransformValues(tx, ty, rotationDegrees, scale)`: every
+  /// write restated all four from the writer's own copy, and the scale it
+  /// restated was ONE number. So a scrub on X after a 상하반전 put the
+  /// picture back upright, and after a 좌우반전 clamped the −100% it had
+  /// read to 1% (F-265 · F-256, measured 2026-10-06).
+  ///
+  /// ↩️The anchor had a verb of its own for exactly that reason, written
+  /// down on 2026-09-22: folding it into the four 「would force every caller
+  /// who only wanted to type an X to restate the anchor — and the version of
+  /// that with a default would silently put the cross back in the middle」.
+  /// That was true of every value, not only the anchor; with nothing to
+  /// restate, the cross is written through this door like the rest.
+  void editTransformValues(
+    TransformValues Function(TransformValues now) change,
+  ) => _editTransformValues?.call(change);
 
   /// Takes ONE operation back inside an open transform box.
   ///

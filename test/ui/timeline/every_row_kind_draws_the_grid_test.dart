@@ -245,7 +245,8 @@ void main() {
   });
 }
 
-/// Every filled box a painter asks for — rects and rounded rects alike.
+/// Every filled box a painter asks for — rects and rounded rects alike, a
+/// mark aside ([isInbetweenMarkShape]).
 class _BoxSpy implements Canvas {
   final boxes = <Rect>[];
 
@@ -253,7 +254,11 @@ class _BoxSpy implements Canvas {
   void drawRect(Rect rect, Paint paint) => boxes.add(rect);
 
   @override
-  void drawRRect(RRect rrect, Paint paint) => boxes.add(rrect.outerRect);
+  void drawRRect(RRect rrect, Paint paint) {
+    if (!isInbetweenMarkShape(rrect)) {
+      boxes.add(rrect.outerRect);
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

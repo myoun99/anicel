@@ -127,8 +127,45 @@ bool controlOwnsTap(int pointer) =>
 /// what 「the deepest control wins」 needs and nothing else.
 bool pressIsSpokenFor(int pointer) => _tapHeld.contains(pointer);
 
+/// Pointers an EDIT DRAG has carried through a STEP — a third fact about a
+/// pointer that only the code under it knows.
+///
+/// 🚨「DID IT TRAVEL」 STOPPED TELLING A TAP FROM A DRAG. A release that
+/// stayed inside a tap's slop was a tap (`InstantTapRegion`) — true while a
+/// drag needed 18px to begin. F-238 (유저 2026-09-29: 「블록선택하고 이동,
+/// 1코마만 움직일려해도 안되고 … 1콤마만 바로바로 움직이는게 불가능함」) let
+/// a drag take its first step as soon as it changes something, which on a
+/// cell narrower than the slop is INSIDE it. Measured on the timeline at
+/// 8px a cell (2026-10-07): a selection moved one frame was dropped by the
+/// very release that had moved it — the release still read as a tap, and a
+/// tap clears (T10). At 24px a cell the same move kept its selection.
+///
+/// Whether a drag has CHANGED anything is its owner's to say
+/// (`EagerPanGestureRecognizer.draggedAStep`); that it has is recorded
+/// here, where a tap can ask. ⛔Not 「the pan won the arena」: a mouse's pan
+/// wins at one pixel, and a click that wobbles is still a click (H24) — it
+/// clears like any other.
+final Set<int> _dragStepped = <int>{};
+
+/// Records that an edit drag on [pointer] changed something.
+void markPointerDragStepped(int pointer) {
+  _dragStepped.add(pointer);
+}
+
+/// Forgets [pointer]'s drag: its recogniser has let the pointer go. A
+/// pointer's listeners hear its up BEFORE its recognisers do, so a tap
+/// asked on the release still reads the mark.
+void forgetPointerDragStep(int pointer) {
+  _dragStepped.remove(pointer);
+}
+
+/// Whether an edit drag on [pointer] took a step — the press is a DRAG,
+/// however short its travel.
+bool pointerDragTookAStep(int pointer) => _dragStepped.contains(pointer);
+
 /// Test-only: drops every claim.
 void debugClearValueControlPointers() {
   _held.clear();
   _tapHeld.clear();
+  _dragStepped.clear();
 }

@@ -291,6 +291,7 @@ class StrapIconButton extends StatefulWidget {
     this.menuKey,
     this.entriesBuilder,
     this.accent = false,
+    this.shortcuts = const [],
   }) : assert(
          (menuKey == null) == (entriesBuilder == null),
          'a band needs both a key and a list',
@@ -302,6 +303,10 @@ class StrapIconButton extends StatefulWidget {
   final String tooltip;
   final VoidCallback? onPressed;
   final List<PanelFlyoutEntry> Function()? entriesBuilder;
+
+  /// The actions the BODY presses — its tooltip shows their live keys
+  /// (I-19), as an [AppIconButton]'s does.
+  final List<String> shortcuts;
 
   /// The ADD affordance, and the ONLY place the accent is allowed on this
   /// bar (유저 확정): the GLYPH goes accent — never the border, never the
@@ -324,6 +329,7 @@ class _StrapIconButtonState extends State<StrapIconButton> {
     final button = AppIconButton(
       keyValue: widget.buttonKey,
       tooltip: widget.tooltip,
+      shortcuts: widget.shortcuts,
       onPressed: widget.onPressed,
       icon: Icon(
         widget.icon,

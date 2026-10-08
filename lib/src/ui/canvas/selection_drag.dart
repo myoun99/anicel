@@ -4,6 +4,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/shape_ratio_lock.dart';
 
 /// ONE in-flight selection drag, as its own object — begun by CONSTRUCTING
 /// it, closed by exactly one of a commit or a cancel, then discarded.
@@ -35,6 +36,10 @@ sealed class SelectionDrag {
   final int pointer;
 }
 
+/// What a verb that DRAWS a traced shape strokes: its [points] in order,
+/// and whether the stroke comes back to the first of them.
+typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
+
 /// The marquee/lasso drag: the tools that TRACE a new outline.
 ///
 /// Rect, ellipse and lasso are one drag with one geometry rule — the shape
@@ -47,6 +52,7 @@ final class MarqueeDrag extends SelectionDrag {
     required this.shapeKind,
     required this.before,
     required CanvasPoint at,
+    this.byTouch = false,
   }) : start = at,
        _current = at,
        _traced = tracesPointerPath(shapeKind) ? [at] : const [];
@@ -65,6 +71,18 @@ final class MarqueeDrag extends SelectionDrag {
   /// Where the drag went down, in canvas space.
   final CanvasPoint start;
 
+  /// Whether a FINGER drags it, and how far the hand has gone across the
+  /// screen — what a finger laid down beside it is read by.
+  ///
+  /// 🚨Fingers cannot land together (유저 2026-08-27: 「손가락이 동시에
+  /// 착지하는게 불가능하니까」), so a finger's drag is not yet a gesture of
+  /// its own when it starts: a second finger before it has gone the touch
+  /// commit slop makes the pair a screen gesture, and only after that does
+  /// it find a drag to be the modifier of. A pen's or a mouse's is its own
+  /// from the press.
+  final bool byTouch;
+  double screenTravel = 0;
+
   CanvasPoint _current;
   List<CanvasPoint> _traced;
 
@@ -78,17 +96,44 @@ final class MarqueeDrag extends SelectionDrag {
     CanvasShapeKind.ellipse => false,
     CanvasShapeKind.lasso => true,
     CanvasShapeKind.polygon => false,
+    CanvasShapeKind.line => false,
   };
 
-  void update(CanvasPoint at) {
-    _current = at;
+  /// The hand has moved to [at]. With [keepsRatio] the shape ends where
+  /// its ratio is kept instead ([ratioKeptEnd]) — asked at every move, so
+  /// it can come and go under the hand; a shape that is the hand's own
+  /// path has none to keep.
+  void update(CanvasPoint at, {bool keepsRatio = false}) {
+    _current = keepsRatio
+        ? ratioKeptEnd(from: start, to: at, shape: shapeKind)
+        : at;
     if (tracesPointerPath(shapeKind)) {
       _traced = [..._traced, at];
+    } else if (shapeKind == CanvasShapeKind.line) {
+      // The line has no outline for the ants to walk; what they draw while
+      // it is dragged is the line itself, end to end.
+      _traced = [start, _current];
     }
   }
 
+  /// Whether the two corners are too close to have meant a shape — a
+  /// click, or a drag that never left it.
+  bool get _degenerate =>
+      (_current.x - start.x).abs() < 2 && (_current.y - start.y).abs() < 2;
+
+  /// What a verb that DRAWS this shape strokes: the outline, closed — or
+  /// the line's two ends. Null while there is nothing to draw.
+  DrawnShapePath? path() {
+    if (shapeKind == CanvasShapeKind.line) {
+      return _degenerate ? null : (points: [start, _current], closed: false);
+    }
+    final outline = shape();
+    return outline == null ? null : (points: outline.points, closed: true);
+  }
+
   /// The path traced so far, for the ants to draw while the drag runs.
-  /// Empty for the shapes that are read from their corners instead.
+  /// Empty for the shapes that are read from their corners instead — but
+  /// for the line, whose two ends are all there is to draw.
   List<CanvasPoint> get openTrail => _traced;
 
   /// The in-progress or final marquee polygon; null while degenerate.
@@ -106,13 +151,15 @@ final class MarqueeDrag extends SelectionDrag {
         // Tapped out, not dragged: its outline is the channel's open trace
         // and it is built when the trace CLOSES, not while a drag runs.
         return null;
+      case CanvasShapeKind.line:
+        // Two ends and no inside: there is no outline ([path] has it).
+        return null;
       case CanvasShapeKind.rect:
       case CanvasShapeKind.ellipse:
         // A click (or a drag too small to have meant one) is degenerate for
         // both box shapes — an ellipse in a 1px box is not a thinner
         // ellipse, it is nothing.
-        if ((_current.x - start.x).abs() < 2 &&
-            (_current.y - start.y).abs() < 2) {
+        if (_degenerate) {
           return null;
         }
         return shapeKind == CanvasShapeKind.ellipse

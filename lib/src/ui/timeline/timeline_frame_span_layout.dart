@@ -19,6 +19,7 @@ class TimelineFrameSpanPlacement {
     this.crossInset = 0,
     this.crossExtent,
     this.fitsIn,
+    this.atMost,
   }) : assert(
          endIndexExclusive != null || mainExtent != null,
          'a placement needs a span end or a fixed extent',
@@ -50,10 +51,22 @@ class TimelineFrameSpanPlacement {
 
   /// The frames a fixed [mainExtent] has to fit in. While they are at least
   /// that long the child keeps its size at every zoom; when they are
-  /// shorter it takes ONE CELL instead — a block edge's grip in a block too
-  /// short to hold it (유저 2026-09-26: 「1코마처럼 공간 부족하면 … 그냥
-  /// 가로 1칸 차지하도록」).
+  /// shorter it takes ONE CELL instead — a run's buttons BESIDE a run too
+  /// short to hold them (`timelineRunClusterRect`).
+  ///
+  /// ↩️A block edge's grip asked this too (유저 2026-09-26: 「1코마처럼 공간
+  /// 부족하면 … 그냥 가로 1칸 차지하도록」) until F-295 gave it [atMost]: a
+  /// grip stands INSIDE its block, and one cell of a block three cells long
+  /// was two cells smaller than it had to be.
   final ({int startIndex, int endIndexExclusive})? fitsIn;
+
+  /// The frames a fixed [mainExtent] may not outgrow: the child keeps its
+  /// size while they hold it and takes ALL of them when they do not — a
+  /// block edge's grip in a block shorter than the grip (F-295, 유저
+  /// 2026-10-05: 「지금 엄청 작은거있는데 최대한 크기 유지하도록. 띠의
+  /// 앞부분/끝부분 닿아도 아무문제없으니 그냥 닿게해서 최대한 크기
+  /// 유지하도록」).
+  final ({int startIndex, int endIndexExclusive})? atMost;
 
   @override
   bool operator ==(Object other) =>
@@ -65,7 +78,8 @@ class TimelineFrameSpanPlacement {
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
       other.crossInset == crossInset &&
       other.crossExtent == crossExtent &&
-      other.fitsIn == fitsIn;
+      other.fitsIn == fitsIn &&
+      other.atMost == atMost;
 
   @override
   int get hashCode => Object.hash(
@@ -77,6 +91,7 @@ class TimelineFrameSpanPlacement {
     crossInset,
     crossExtent,
     fitsIn,
+    atMost,
   );
 }
 
@@ -111,6 +126,13 @@ Rect timelineFrameSpanRect(
         ? placement.startIndex - 1
         : placement.startIndex;
     mainExtent = frames.edgeAt(cell + 1) - frames.edgeAt(cell);
+  }
+  if (placement.atMost case final room?) {
+    final most =
+        frames.edgeAt(room.endIndexExclusive) - frames.edgeAt(room.startIndex);
+    if (most < mainExtent) {
+      mainExtent = most;
+    }
   }
   if (mainExtent < 0) {
     mainExtent = 0;

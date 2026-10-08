@@ -64,8 +64,8 @@ void main() {
     expect(outOf.valueB, 'c302');
   });
 
-  test('what was typed into a transition is not its writing: a fade keeps '
-      'its memo and goes by its term', () {
+  test('what was typed into a transition is not its writing: a fade goes by '
+      'its term', () {
     final event = named({
       2: const InstructionEvent(
         instructionId: 'fo',
@@ -73,13 +73,11 @@ void main() {
         text: 'typed',
         valueA: 'A',
         valueB: 'B',
-        memo: 'slow',
       ),
     }).instructions[2]!;
     expect(event.text, isNull);
     expect(event.valueA, isNull);
     expect(event.valueB, isNull);
-    expect(event.memo, 'slow');
     expect(
       event.displayLabel(CameraInstructionSet.standard.defById('fo')),
       'FO',

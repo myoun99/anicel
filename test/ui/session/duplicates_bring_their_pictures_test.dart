@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// A copy that mints its cels afresh has to bring their pictures: a picture
 /// lives in the store under its cel's key, so a new id with nothing moved
@@ -87,9 +88,9 @@ void main() {
   });
 
   test('a row copied and pasted shows the drawing it was copied from', () {
-    session.layerClipboard.copyActiveLayer();
+    copyRowsWithThePill(session);
     final before = rowsNow();
-    session.layerClipboard.pasteLayerFromClipboard();
+    pasteWithThePill(session);
     expect(pictureOf(session.requireActiveCut, theNewRow(before)), [
       same(picture),
     ]);

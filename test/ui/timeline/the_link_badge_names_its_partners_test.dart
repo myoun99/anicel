@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 void main() {
   Widget row(List<String> partners) => MaterialApp(
@@ -75,7 +76,7 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final name = s.activeLayer!.name;
-    s.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(s);
     await tester.pumpAndSettle();
     return [
       AppText.strings.tlLinkedWith,

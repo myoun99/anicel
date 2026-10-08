@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 /// R8 — the fx switches are ONE persisted family.
 ///
@@ -139,8 +140,8 @@ void main() {
       session.effectsAndFx.toggleLayerFx(row.id);
       expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.off);
 
-      session.layerClipboard.copyActiveLayer();
-      session.layerClipboard.pasteLayerFromClipboard();
+      copyRowsWithThePill(session);
+      pasteWithThePill(session);
       final pastedId = session.activeLayer!.id;
       expect(pastedId, isNot(row.id));
       expect(

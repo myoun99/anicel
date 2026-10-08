@@ -154,8 +154,9 @@ void main() {
     // ↓2026-09-30, F-230: the nine framework dropdowns became the shared
     // flyout's button, which claims — audio settings 3, input settings 3,
     // the linked cut, the instruction and the language dialogs → gone.
-    'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
-    'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
+    // ↓2026-10-08, I-79: the canvas size's preset chips became that
+    // flyout too — canvas size 1 → gone. I-80: the camera size's after
+    // them — camera size 1 → gone.
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,

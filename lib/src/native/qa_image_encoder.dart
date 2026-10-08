@@ -22,12 +22,21 @@ final class QaImageEncoder {
   static QaImageEncoder? _instance;
   static bool _tried = false;
 
+  /// Test hook: answer as a machine with no encoder does, even when a
+  /// binary loads — what a row that needs one shows there is otherwise
+  /// out of reach wherever the engine is built. (Where the binary IS lives
+  /// in [debugQaEngineLibraryPathOverride] — one switch for every loader.)
+  static bool debugForceAbsent = false;
+
   static void debugResetForTests() {
     _instance = null;
     _tried = false;
   }
 
   static QaImageEncoder? get instance {
+    if (debugForceAbsent) {
+      return null;
+    }
     if (!_tried) {
       _tried = true;
       final library = openQaEngineLibrary();

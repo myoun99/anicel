@@ -442,8 +442,10 @@ void main() {
     });
   });
 
-  test('run edge marks round-trip through Layer JSON; the retired spec lists '
-      'and the ghosts saved before F-134 are dropped', () {
+  // ↩️It also read the retired spec lists and the ghosts saved before
+  // F-134 out of a file; only formats refused by their number hold them
+  // (the save law, 유저 2026-10-06).
+  test('run edge marks round-trip through Layer JSON', () {
     final layer = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2, end: repeatBoundMark)}),
       drawnFrameCount: 6,
@@ -453,40 +455,6 @@ void main() {
     final restored = Layer.fromJson(layer.toJson());
     expect(restored, layer);
     expect(restored.timeline[0]!.endEdge, repeatBoundMark);
-
-    final legacyJson = _layer(timeline: {0: _draw('a', 2)}).toJson();
-    legacyJson['repeatRegions'] = [
-      {
-        'id': 'r1',
-        'anchor': {'value': 'a'},
-        'sourceSpanFrames': 2,
-        'frameCount': 4,
-      },
-    ];
-    legacyJson['runBehaviors'] = [
-      {
-        'anchor': {'value': 'a'},
-        'side': 'end',
-        'mode': 'hold',
-      },
-    ];
-    (legacyJson['timeline'] as List).add({
-      'index': 2,
-      'exposure': {
-        'type': 'drawing',
-        'frameId': {'value': 'a'},
-        'length': 4,
-        'ghost': true,
-        'ghostOwner': 'a:end',
-      },
-    });
-    final legacy = Layer.fromJson(legacyJson);
-    expect(
-      legacy.timeline.keys,
-      [0],
-      reason: 'a pre-F-134 ghost must not read back as an AUTHORED block',
-    );
-    expect(legacy.timeline[0]!.endEdge.isNone, isTrue);
   });
 
   test('runEdgeBehaviorAt resolves the edge through the LIVE run', () {

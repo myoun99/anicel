@@ -7,7 +7,7 @@ import '../../core/page_stack.dart';
 ///
 /// 🗣️유저 2026-09-27 (F-201): 「pdf리더같은거 밑으로 쭉 존재하잖아. 별개로
 /// 왼쪽 알약인 페이지 넘기는 버튼은 동시존재해서 그거로 다음페이지 스냅?
-/// 해서 넘길수있게」 — the conte, the timesheet's page view
+/// 해서 넘길수있게」 — the conte, the timesheet
 /// (F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도 쌓는다」) and the
 /// viewer's PDFs read by this one law.
 ///

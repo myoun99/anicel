@@ -27,6 +27,8 @@ import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, timelineDragPreviewLayerFor;
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
@@ -49,6 +51,7 @@ class LayerStack {
     required FolderBands folderBands,
     required RenderCaches renderCaches,
     required ValueNotifier<bool> brushInputActive,
+    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -59,7 +62,8 @@ class LayerStack {
        _standing = standing,
        _folderBands = folderBands,
        _renderCaches = renderCaches,
-       _brushInputActive = brushInputActive;
+       _brushInputActive = brushInputActive,
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -72,6 +76,10 @@ class LayerStack {
   final FolderBands _folderBands;
   final RenderCaches _renderCaches;
   final ValueNotifier<bool> _brushInputActive;
+
+  /// The drag in flight: a folder's band asks its rows where the drag has
+  /// them ([celHasContentForLayer]).
+  final ValueListenable<TimelineDragPreview?> _dragPreview;
 
   /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
   /// kind, inserted directly above it, named by its section's own scheme
@@ -239,10 +247,35 @@ class LayerStack {
       // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
       // the drawing-section branch, resolves no frame of its own and
       // answers `true` — the union grey would vanish silently.
+      //
+      // ↩️F-311 (유저 2026-10-06): 「일반 폴더의 블록, 왜 이 경우 일부만
+      // 회색인지? 폴더 블록이 그림 없는구간 회색하는건 아이디어 좋다고 하니
+      // 개선해서 채용」. It asked each member this very question, whose
+      // 「no tint」 for a cell with NO block reads as 「drew there」: where
+      // one member's empty block stood beside another's bare cells, the
+      // bare cells turned the folder white. Grey is where no member holds a
+      // PICTURE ([_blockIsDrawnAt]) — each member read where a drag in
+      // flight has it, as the band itself is (`folderBandsFollowing`).
+      final preview = _dragPreview.value;
       return _folderBands
           .folderBandMembersOf(layer.id)
-          .any((member) => celHasContentForLayer(member, frameIndex));
+          .any(
+            (member) =>
+                _blockIsDrawnAt(
+                  timelineDragPreviewLayerFor(preview, member.id) ?? member,
+                  frameIndex,
+                ) ??
+                false,
+          );
     }
+    return _blockIsDrawnAt(layer, frameIndex) ?? true;
+  }
+
+  /// Whether the block [layer] stands at [frameIndex] holds a picture —
+  /// null where it stands no block that could: a row that holds no cels, or
+  /// a bare cell. The row's own tint reads null as 「nothing to tint」, and a
+  /// folder's union as 「nothing drawn」.
+  bool? _blockIsDrawnAt(Layer layer, int frameIndex) {
     // 🚨THE QUESTION IS 「CAN THIS ROW HOLD A PICTURE」, not 「is it in the
     // drawing SECTION」 (유저 2026-08-27, R27 #16: 「추가로 **없으면 블록을
     // 회색으로**. 로직은 통일」). The direction row is a camera-section row
@@ -253,11 +286,11 @@ class LayerStack {
     // happened to sit in the drawing section, which is the same trap R27
     // #16 found in `LayerKind.carriesInstructions`.
     if (!layer.kind.isDrawingCel) {
-      return true;
+      return null;
     }
     final cut = _project.activeCutOrNull;
     if (cut == null) {
-      return true;
+      return null;
     }
     final frame = _controllers.timelineController.resolveFrameForLayer(
       layer: layer,
@@ -271,7 +304,7 @@ class LayerStack {
       // to see exactly that state (「추가로 **없으면 블록을 회색으로**」).
       // Since R27 every span is a block on a cel of its own, so that grey
       // comes from the unworked-cel rule below, like any empty cel's.
-      return true;
+      return null;
     }
     // A LIVE stroke already counts. The store only learns about pixels at
     // commit (`markCelEdited` on pen-up), so waiting for it left the block

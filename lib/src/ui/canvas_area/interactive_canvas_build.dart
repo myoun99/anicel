@@ -33,7 +33,7 @@ class _InteractiveCanvasBuild {
   })
   _layerStack;
   late final BrushEditorSelection? _selection;
-  late final LayerPoseSample? _interactivePose;
+  late final LayerPlacement? _interactivePose;
   late final CanvasSize _canvasSize;
   late final Layer? _activeLayer;
   late final bool _canPoseActiveLayer;
@@ -43,7 +43,7 @@ class _InteractiveCanvasBuild {
   /// asked by the build and by the area's drag slice
   /// (`_EditorCanvasAreaState._panelShows`), so the two cannot disagree
   /// about what the panel is handed.
-  static ({BrushEditorSelection? selection, LayerPoseSample? pose})
+  static ({BrushEditorSelection? selection, LayerPlacement? pose})
   standingOf(
     EditorSessionManager session, {
     required bool inGap,
@@ -308,6 +308,9 @@ class _InteractiveCanvasBuild {
       // …each through its OWN row's placement, the one the pixel verbs
       // restate an outline through (a-marquee-on-a-posed-row ④).
       cellPlacementOf: session.pixelVerbs.placementOf,
+      // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
+      // ground is read by the one that reads it for the paste.
+      pieceGround: session.pixelVerbs.pieceGround,
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,
@@ -355,6 +358,8 @@ class _InteractiveCanvasBuild {
       unframedFit: playbackFraming,
       viewCommands: _state.widget.canvasViewCommands,
       selectionCommands: _state.widget.canvasSelectionCommands,
+      textCommands: _state.widget.canvasTextCommands,
+      textToolOptions: _state.widget.textToolOptions,
       cutPieceSlot: _state.widget.cutPieceSlot,
       lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
@@ -425,6 +430,8 @@ class _InteractiveCanvasBuild {
       // says it once for all of them (유저, R4 #2). The COMMIT
       // handlers stay — this is still where the pill's swatches are
       // wired, and writing is not the same question as reading.
+      // ↩️F-272 put those panels back on black — on purpose, in one
+      // place (`BrushCanvasPanel.canvasBase`).
       paperColor: session.projectSettings.projectBackground.argb,
       // F-114: a pick is a plane that is there; 「없음」 takes it away and
       // keeps its colour for the next pick.
@@ -457,7 +464,7 @@ class _InteractiveCanvasBuild {
       // (this widget owns the tool state channel).
       onInvokeAction: _state.widget.onInvokeAction,
       onBrushSizeDragStart: () => _state._brushSizeDragStartSize =
-          _state.widget.brushToolState.value.size,
+          _state.widget.brushToolState.value.activeSize,
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
@@ -710,11 +717,59 @@ class _InteractiveCanvasBuild {
   /// camera row is active, an SE row's name tag, or the active layer's while
   /// its standing lane declares one. It follows a drag itself
   /// ([_followingTheDrag]), as the overlay does.
+  ///
+  /// ⚠️What is adjusted on the canvas — its canvas (I-79) or the camera's
+  /// frame (I-80) — stands in the row's box's place while it is open: its
+  /// handles are the edges then, and a row's box under them would take the
+  /// presses that are theirs.
   Widget _controls(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
-  ) => _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame));
+  ) => ListenableBuilder(
+    listenable: frame.session.canvasAdjust,
+    builder: (context, _) =>
+        _canvasAdjust(context, viewport, frame) ??
+        _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame)),
+  );
+
+  /// What is adjusted on the canvas, when it is open on the cut this canvas
+  /// shows — the camera's frame where the camera stands at this frame — and
+  /// a canvas left open on a cut the canvas no longer shows is let go of.
+  Widget? _canvasAdjust(
+    BuildContext context,
+    CanvasViewport viewport,
+    _HostFrame frame,
+  ) {
+    final session = frame.session;
+    final adjust = session.canvasAdjust;
+    if (!adjust.isOpen) {
+      return null;
+    }
+    if (!adjust.isOpenOn(session.activeCutOrNull?.id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => adjust.end());
+      return null;
+    }
+    void land() => landCanvasAdjust(context, session);
+    return switch (adjust.draft) {
+      CameraSizeDraft() => _state._atTheCameraPose(
+        session,
+        (pose) => CameraAdjustLayer(
+          adjust: adjust,
+          pose: pose,
+          viewport: viewport,
+          canvasSize: _canvasSize,
+          onLand: land,
+        ),
+      ),
+      _ => CanvasAdjustLayer(
+        adjust: adjust,
+        viewport: viewport,
+        canvasSize: _canvasSize,
+        onLand: land,
+      ),
+    };
+  }
 
   Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
     if (frame.isCameraLayerActive && _cameraOverlayVisible) {

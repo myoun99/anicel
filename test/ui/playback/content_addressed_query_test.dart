@@ -11,7 +11,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -106,7 +105,6 @@ void main() {
       await r.cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
 
       for (var frame = 1; frame < 4; frame += 1) {
@@ -114,7 +112,6 @@ void main() {
           r.cache.validCompositeOrNull(
             cut: cut(),
             frameIndex: frame,
-            quality: PlaybackQuality.full,
           ),
           isNotNull,
           reason: 'frame $frame shares frame 0\'s signature — the image is '
@@ -133,38 +130,34 @@ void main() {
       await r.cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
-      // The query on frame 2 adopts (cut, 2, full) into the entry's keys.
+      // The query on frame 2 adopts (cut, 2) into the entry's keys.
       expect(
         r.cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 2,
-          quality: PlaybackQuality.full,
         ),
         isNotNull,
       );
 
-      r.cache.retainPin((const CutId('cut'), 2, PlaybackQuality.full));
+      r.cache.retainPin((const CutId('cut'), 2));
       r.cache.enforceBudget(maxBytes: 0);
       expect(
         r.cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 2,
-          quality: PlaybackQuality.full,
         ),
         isNotNull,
         reason: 'pins test the entry\'s filed keys — adoption is '
             'load-bearing, an unfiled frame is an unprotectable frame',
       );
 
-      r.cache.releasePin((const CutId('cut'), 2, PlaybackQuality.full));
+      r.cache.releasePin((const CutId('cut'), 2));
       r.cache.enforceBudget(maxBytes: 0);
       expect(
         r.cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 2,
-          quality: PlaybackQuality.full,
         ),
         isNull,
         reason: 'released, the entry evicts as usual',
@@ -181,7 +174,6 @@ void main() {
       await r.cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       r.coordinator.commitSourceStroke(
         sourceDabs: [dab(sequence: 1, x: 5, color: 0xFFFF0000)],
@@ -191,7 +183,6 @@ void main() {
         r.cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 1,
-          quality: PlaybackQuality.full,
         ),
         isNull,
         reason: 'the fresh signature carries the new revision, and no '

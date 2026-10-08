@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 
-/// ③ playback-follow reframing: the panel reframes the viewport exactly
-/// once per [CanvasAutoFrameRequest.token] change — Fit-style, or a
-/// zoom-preserving reveal pan in panOnly mode. The viewport stays fully
-/// user-owned while the request is null or its token is stable.
+/// Host-driven reframing: the panel fits the viewport onto the request's
+/// rect exactly once per [CanvasAutoFrameRequest.token] change. The
+/// viewport stays fully user-owned while the request is null or its token
+/// is stable.
 void main() {
   const canvasSize = CanvasSize(width: 2000, height: 12000);
 
@@ -94,53 +93,5 @@ void main() {
     );
     await tester.pump();
     expect(changes, hasLength(2));
-  });
-
-  testWidgets('panOnly reveals the rect without touching the zoom', (
-    tester,
-  ) async {
-    final changes = <CanvasViewport>[];
-    var viewport = seedFromRender(tester, CanvasViewport(zoom: 2.0));
-    void onChanged(CanvasViewport next) {
-      viewport = next;
-      changes.add(renderOf(tester, next));
-    }
-
-    await pumpPanel(tester, viewport: viewport, onViewportChanged: onChanged);
-
-    // A row band far below the visible area → the reveal pans up.
-    await pumpPanel(
-      tester,
-      viewport: viewport,
-      onViewportChanged: onChanged,
-      autoFrame: const CanvasAutoFrameRequest(
-        token: 'row-500',
-        rect: Rect.fromLTWH(0, 5000, 500, 18),
-        panOnly: true,
-      ),
-    );
-    await tester.pump();
-
-    expect(changes, hasLength(1));
-    expect(changes.single.zoom, 2.0);
-    expect(changes.single.panY, lessThan(0));
-
-    // A rect already in view is a no-op — no viewport churn per tick. In
-    // view is inside the reveal's 24px margin under the window's top, which
-    // is the pill's band's bottom (유저 2026-09-30: 「판정을 알약까지 포함해서」).
-    final settled = changes.single;
-    final visibleTop = (pillBandOf(tester) + 24 - settled.panY) / settled.zoom;
-    await pumpPanel(
-      tester,
-      viewport: viewport,
-      onViewportChanged: onChanged,
-      autoFrame: CanvasAutoFrameRequest(
-        token: 'row-501',
-        rect: Rect.fromLTWH(0, visibleTop + 10, 100, 18),
-        panOnly: true,
-      ),
-    );
-    await tester.pump();
-    expect(changes, hasLength(1));
   });
 }

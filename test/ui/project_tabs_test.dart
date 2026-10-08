@@ -8,9 +8,11 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
@@ -28,8 +30,6 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
-    show TimesheetInkPlane;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/app_icon_button_probe.dart';
@@ -182,6 +182,27 @@ void main() {
     expect(find.text(untitled(2)), findsOneWidget);
   });
 
+  // 🗣️F-211 (유저 2026-09-28): 「… 1번인덱스에 프레임도 만들어서 키자마자
+  // 그리는게 가능하도록」 — of a NEW project, whichever door makes it. (The
+  // app's own opening is `the_app_opens_on_a_cel_to_draw_on_test`.)
+  testWidgets('F-211: a new project has layer A\'s first cel — from the menu, '
+      'and where the last tab closed', (tester) async {
+    final projects = await pumpApp(tester);
+    List<int> celsOnTheDrawingRows() => [
+      for (final layer in projects.active.requireActiveCut.layers)
+        if (layer.kind == LayerKind.animation) layer.frames.length,
+    ];
+    expect(celsOnTheDrawingRows(), [0], reason: 'premise: the bare project');
+
+    await newProject(tester);
+    expect(celsOnTheDrawingRows(), [1], reason: 'File ▸ New');
+
+    await tapKey(tester, 'project-tab-close-1');
+    await tapKey(tester, 'project-tab-close-0');
+    expect(projects.sessions, hasLength(1));
+    expect(celsOnTheDrawingRows(), [1], reason: 'the last tab closed');
+  });
+
   testWidgets('the marquee is the PROJECT\'s: a selection made in one tab is '
       'not in the next, and is there again when it comes back', (
     tester,
@@ -236,7 +257,12 @@ void main() {
     final path = '${folder.path.replaceAll(r'\', '/')}/Taken.anicel';
     final projects = await pumpApp(tester);
     final first = projects.active;
-    first.projectFile.bindToSavedFile(path, mediaInFile: {}, cleanAsOf: 0);
+    first.projectFile.bindToSavedFile(
+      path,
+      mediaInFile: {},
+      fontsInFile: {},
+      cleanAsOf: 0,
+    );
     await newProject(tester);
     final second = projects.active;
     FolderPicker.debugSaveDestinationPicker = ({
@@ -249,6 +275,7 @@ void main() {
     );
 
     await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
     await tapKey(tester, 'menu-file-save-as');
 
     expect(
@@ -258,6 +285,40 @@ void main() {
     expect(find.text(AppText.strings.fileOpenInAnotherTab), findsOneWidget);
     expect(second.projectFile.path, isNull, reason: 'no second writer');
     expect(File(path).existsSync(), isFalse, reason: 'not a byte written');
+  });
+
+  testWidgets('Save As opens its window beside the project\'s file — and in '
+      'the app\'s documents for a project never saved', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final beside = folder.path.replaceAll(r'\', '/');
+    // The save window is the desktops'; a scoped runner takes another road.
+    FolderPicker.debugOperatingSystem = 'windows';
+    addTearDown(() => FolderPicker.debugOperatingSystem = null);
+    final openedAt = <String?>[];
+    FolderPicker.debugSaveDestinationPicker = ({
+      required String suggestedName,
+      String? initialDirectory,
+    }) async {
+      openedAt.add(initialDirectory);
+      return const FolderGrant.cancelled();
+    };
+    final projects = await pumpApp(tester);
+
+    await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
+    await tapKey(tester, 'menu-file-save-as');
+    projects.active.projectFile.bindToSavedFile(
+      '$beside/Saved.anicel',
+      mediaInFile: {},
+      fontsInFile: const {},
+      cleanAsOf: 0,
+    );
+    await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
+    await tapKey(tester, 'menu-file-save-as');
+
+    expect(openedAt, [appDocumentsDirectory(), beside]);
   });
 
   test('the census adds up EVERY open project, and what the app holds once '
@@ -678,13 +739,13 @@ void main() {
         drawn.frameId,
       ),
     )!;
-    final key = timesheetInkStripKey(first.requireActiveCut.id, 0);
-    first.renderCaches.timesheetInkStripStore.storeBakedSurface(key, ink);
+    final key = timesheetInkPageKey(first.requireActiveCut.id, 0);
+    first.renderCaches.timesheetInkStore.storeBakedSurface(key, ink);
     await tester.pump();
     bool sheetShowsMemo() => tester
         .widget<TimesheetTabHost>(find.byType(TimesheetTabHost))
         .inkController!
-        .hasInkFor(TimesheetInkPlane.strip, key);
+        .hasInkFor(null, key);
     expect(sheetShowsMemo(), isTrue, reason: 'CONTROL: its own sheet');
 
     await newProject(tester);
@@ -763,6 +824,7 @@ void main() {
     projects.active.projectFile.bindToSavedFile(
       '${folder.path.replaceAll(r'\', '/')}/Gone.anicel',
       mediaInFile: {},
+      fontsInFile: {},
       cleanAsOf: 0,
     );
     await newProject(tester);

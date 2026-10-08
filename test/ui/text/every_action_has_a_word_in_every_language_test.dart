@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/brush/tool_press.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
 /// 🚨F-37 — EVERY SHORTCUT ACTION HAS A ROW IN EVERY LANGUAGE.
@@ -36,12 +35,12 @@ void main() {
   // (`app_strings_keys_test`), so no table is asked for a row — and a row
   // for one is reported below as a row nothing reads. A blend action's name
   // is composed the same way, from the blend's own (`blendModeActionLabel`,
-  // I-31).
+  // I-31), and so are an add-layer kind's and an add-effect kind's (I-40).
+  // ↩️The families were listed here by what they press; a family says it is
+  // composed itself now (`EditorActionDefinition.composedName`).
   final composedIds = {
     for (final definition in editorActionDefinitions)
-      if (definition.toolPress is ShapeTilePress ||
-          definition.blendMode != null)
-        definition.id,
+      if (definition.composedName != null) definition.id,
   };
   final registryIds = editorActionDefinitions
       .map((definition) => definition.id)

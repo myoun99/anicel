@@ -95,10 +95,11 @@ Future<PsdExpansion?> readPsdExpansion({
     if (pixels == null) {
       continue;
     }
+    final crop = placement.crop;
     final image = await decodeStraightRgbaImage(
-      rgba: pixels,
-      width: source.width,
-      height: source.height,
+      rgba: _croppedTo(crop, pixels, source.width),
+      width: crop.width,
+      height: crop.height,
     );
     try {
       cels.add(
@@ -129,4 +130,22 @@ Future<PsdExpansion?> readPsdExpansion({
     warnings: plan.warnings,
     canvas: laidOn,
   );
+}
+
+/// [rgba], a picture [width] wide, cut down to [crop] — the same bytes
+/// when [crop] is all of it.
+Uint8List _croppedTo(PsdLayerCrop crop, Uint8List rgba, int width) {
+  final row = crop.width * 4;
+  if (crop.left == 0 &&
+      crop.top == 0 &&
+      crop.width == width &&
+      rgba.length == row * crop.height) {
+    return rgba;
+  }
+  final out = Uint8List(row * crop.height);
+  for (var y = 0; y < crop.height; y += 1) {
+    final from = ((crop.top + y) * width + crop.left) * 4;
+    out.setRange(y * row, (y + 1) * row, rgba, from);
+  }
+  return out;
 }

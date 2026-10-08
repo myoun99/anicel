@@ -16,6 +16,7 @@ import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart';
 import '../dialogs/app_progress_dialog.dart';
+import '../dialogs/cloud_wait.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -26,7 +27,6 @@ import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
 import '../widgets/settings_rows.dart';
-import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart';
 import '../widgets/pill_strip.dart';
 
@@ -94,6 +94,25 @@ class _ImportTally {
   final List<String> done = [];
 }
 
+/// [done] of [total] as the share the wait window counts — all of it when
+/// there was nothing to count.
+double _share(int done, int total) => total <= 0 ? 1 : done / total;
+
+/// What one file's door tells back while it runs: how far it is, and the
+/// pages or frames it could not render. The two go down the same doors
+/// together, so they are handed down as one.
+class _FileReport {
+  _FileReport(this._within);
+
+  final void Function(double) _within;
+
+  /// The pages (a PDF) or frames (a movie) that would not render.
+  final List<int> failed = [];
+
+  /// [done] of the file's [total] pieces rendered.
+  void rendered(int done, int total) => _within(_share(done, total));
+}
+
 /// The Into answer a SOUND gives: the track's SE rows, by their own rule.
 final class _SoundOnSeRows {
   const _SoundOnSeRows();
@@ -159,6 +178,7 @@ class _ImportDialogState extends State<ImportDialog> {
       hasActiveCut: widget.session.activeCutOrNull != null,
       lasting: _lasting(path),
       spot: widget.spot,
+      inRun: _runOf(path) != null,
     );
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -195,6 +215,51 @@ class _ImportDialogState extends State<ImportDialog> {
   /// pressing Bake on a movie also turned its Link into Keep — one column
   /// changed under a press in another.
   ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
+
+  /// The folders the picked pictures live in, each read ONCE, as the
+  /// preview reads a dropped folder ([_folderEntries]) — under the parse
+  /// config they were read with ([_runConfig]).
+  final Map<String, CutFolderParseResult?> _runFolders = {};
+  CutFolderParseConfig? _runConfig;
+
+  /// The numbered run [path] is part of (`celRunOf`), when the window is
+  /// placing it — null for a file in none.
+  ///
+  /// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서」 —
+  /// the folder is read with the cut folder's own grammar and knobs
+  /// ([_parseConfig]), so a run is what the folder import would call that
+  /// picture's layer.
+  ParsedCelLayer? _runOf(String path) {
+    if (!_placing || mediaAssetKindForPath(path) != MediaAssetKind.image) {
+      return null;
+    }
+    if (_runConfig != _parseConfig) {
+      _runFolders.clear();
+      _runConfig = _parseConfig;
+    }
+    final folder = File(path).parent.path;
+    final parsed = _runFolders.putIfAbsent(folder, () {
+      try {
+        return parseCutFolderAt(
+          folder,
+          entries: cutFolderEntriesFrom(folder, Directory(folder).listSync()),
+          config: _parseConfig,
+        );
+      } on FileSystemException {
+        return null;
+      }
+    });
+    return parsed == null ? null : celRunOf(mediaFileName(path), parsed);
+  }
+
+  /// [path]'s run when its row brings the run in — the 「연번」 column's
+  /// 「함께」.
+  ParsedCelLayer? _togetherRunOf(String path) {
+    final run = _runOf(path);
+    return run != null && _settingsFor(path).run == NumberedRun.together
+        ? run
+        : null;
+  }
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
   /// conform answers, and the 「소리」 column asks only of a movie with one.
@@ -268,6 +333,8 @@ class _ImportDialogState extends State<ImportDialog> {
   @override
   void initState() {
     super.initState();
+    _wait.status.addListener(_waitChanged);
+    _wait.waiting.addListener(_waitChanged);
     if (widget.poolOnly) {
       _destination = null;
     }
@@ -296,7 +363,10 @@ class _ImportDialogState extends State<ImportDialog> {
   @override
   void dispose() {
     // A copy still on its way is stopped: nothing is left to take it.
-    _stopWaiting = true;
+    _wait.cancel();
+    _wait.status.removeListener(_waitChanged);
+    _wait.waiting.removeListener(_waitChanged);
+    _wait.dispose();
     _intakeCopies.forEach(ProviderDocuments.letGo);
     super.dispose();
   }
@@ -477,13 +547,25 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// Importing, or waiting on a document's bytes after a pick — either way
   /// the sources are not to be changed or run from under it.
-  bool get _busy => _running || _waitingForFile;
+  bool get _busy => _running || _wait.waiting.value;
 
-  /// True while the import is WAITING on somebody else's bytes rather
-  /// than doing its own work — which is the only stretch of a run that
-  /// can honestly be cancelled.
-  bool _waitingForFile = false;
-  bool _stopWaiting = false;
+  /// The wait for somebody else's bytes ([_readableForImport]) — after a
+  /// pick, said on this window's status line with its Cancel as the stop;
+  /// during a run, said on the wait window the run stands behind, with
+  /// ITS Cancel (F-282-Q1). Waiting is the only stretch of a run that can
+  /// honestly be stopped, and a stop gives up the one file waited for.
+  final CloudWait _wait = CloudWait();
+
+  void _waitChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// The window's status line: a wait's own while there is one, else what
+  /// the window last had to say.
+  String get _statusLine =>
+      _wait.status.value.isNotEmpty ? _wait.status.value : _status;
 
   /// The ONE law, applied where a picked file is about to be READ.
   ///
@@ -492,10 +574,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// spending their line for them, for bytes it does not need. A
   /// placement reads, so a placement waits.
   ///
-  /// Said in this window's own status line rather than behind the open
-  /// door's progress window — this surface is already the thing telling
-  /// the user what the import is doing, and a second window over it
-  /// would be two answers to one question.
+  /// ↩️It was said on this window's own status line during a run too, on
+  /// the premise that a second window over it would be two answers to one
+  /// question — until the whole run stood behind the app's wait window
+  /// (유저 2026-10-08, F-282-Q1: 「클라우드 파일을 기다리는 줄과 「그만」도
+  /// 이 창으로 옮긴다」), which is then the one answer.
   ///
   /// ⛔The staged copy is refused here even though the materialiser can
   /// still produce one: an import names the asset after its file, so a
@@ -503,23 +586,17 @@ class _ImportDialogState extends State<ImportDialog> {
   /// for the PICK to read is the only outcome this door can use.
   /// Answers null when the file never arrives or the user stops it.
   Future<String?> _readableForImport(String path) async {
-    setState(() {
-      _waitingForFile = true;
-      _stopWaiting = false;
-    });
+    _wait.begin();
     try {
       final source = await FolderPicker.materializeOpenedFile(
         path,
         within: null,
         onWaiting: (waited, arrival) {
-          if (!mounted) {
-            return;
+          if (mounted) {
+            _wait.report(waited, arrival);
           }
-          // The sentence is [cloudWaitLine]'s, here and in the top strip's
-          // open window (F-141) — one law, one place.
-          setState(() => _status = cloudWaitLine(waited, arrival));
         },
-        isCancelled: () => _stopWaiting,
+        isCancelled: _wait.isCancelled,
       );
       if (source.staged) {
         unawaited(
@@ -534,7 +611,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return null;
     } finally {
       if (mounted) {
-        setState(() => _waitingForFile = false);
+        _wait.ended();
       }
     }
   }
@@ -553,11 +630,27 @@ class _ImportDialogState extends State<ImportDialog> {
     // which is every desktop import and every drop.
     widget.session.mediaGrants.rememberMediaGrants(_pickedGrants);
     final tally = _ImportTally();
-    if (!await _importAll(tally)) {
+    // 🗣️유저 2026-10-08 (F-282-Q1, 「굽기 · 저장과 같은 기다림 창에」): the
+    // whole run stands behind the app's one wait window. Its % counts the
+    // files, and the one being placed as far as that one says (a movie's
+    // frames, a PDF's pages, a folder's scans); a cloud file's wait is its
+    // status line, and its Cancel gives that file up. ↩️Only a movie that
+    // baked stood behind one — a window of its own for every movie — and
+    // the rest said 「임포트하는 중…」 on this window's status line.
+    final finished = await runWithAppProgress<bool>(
+      context: context,
+      title: AppText.strings.imImport,
+      titleIcon: Icons.download_outlined,
+      runningLabel: AppText.strings.imStatusImporting,
+      doneLabel: AppText.strings.imStatusDone,
+      windowKey: const ValueKey<String>('import-progress-dialog'),
+      runningStatus: _wait.status,
+      onCancel: _wait.cancel,
+      cancelLive: _wait.waiting,
+      task: (report) => _importAll(tally, report),
+    );
+    if (!finished || !mounted) {
       return; // the dialog went away part-way through the batch
-    }
-    if (!mounted) {
-      return;
     }
     if (tally.imported > 0 && tally.warnings.isEmpty) {
       Navigator.of(context).pop();
@@ -574,29 +667,33 @@ class _ImportDialogState extends State<ImportDialog> {
     });
   }
 
-  /// Runs the picked import, whichever door it goes through. Answers
-  /// FALSE when the dialog went away part-way.
+  /// Runs the picked import, whichever door it goes through, telling
+  /// [report] how far it is (0–1). Answers FALSE when the dialog went away
+  /// part-way.
   ///
   /// ⛔ONE catch for the whole run: a batch that throws part-way KEEPS
   /// what already landed (the tally fills as it goes) and the error
   /// becomes a warning, so the dialog says what happened rather than
   /// leaving a dead spinner behind an unhandled error.
-  Future<bool> _importAll(_ImportTally tally) async {
+  Future<bool> _importAll(
+    _ImportTally tally,
+    void Function(double) report,
+  ) async {
     try {
       final folder = _folder;
       if (folder != null) {
-        await _importCutFolder(folder, tally);
+        await _importCutFolder(folder, tally, report);
       } else if (_destination == null) {
         // The pool: every kind registers, movies included. Two batches
         // rather than one, because carrying is now a per-file answer and
         // the registration verb takes one flag for the batch it is given.
-        await _registerFiles(tally);
+        await _registerFiles(tally, report);
       } else {
         // ⛔The `await` is NOT redundant: `return _placeFiles(tally)`
         // hands the future to the caller and this try never sees it
         // fail, so a throw part-way through the batch would escape as an
         // unhandled async error and leave the spinner running forever.
-        return await _placeFiles(tally);
+        return await _placeFiles(tally, report);
       }
     } on Object catch (error) {
       tally.warnings.add('$error');
@@ -604,12 +701,17 @@ class _ImportDialogState extends State<ImportDialog> {
     return true;
   }
 
-  Future<void> _importCutFolder(String folder, _ImportTally tally) async {
+  Future<void> _importCutFolder(
+    String folder,
+    _ImportTally tally,
+    void Function(double) report,
+  ) async {
     final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
       config: _parseConfig,
       fit: _fit,
       copyIntoProject: _copyIntoProject,
+      onProgress: (baked, total) => report(_share(baked, total)),
     );
     if (folderWarnings == null) {
       tally.warnings.add(AppText.strings.imCutFolderUnreadable);
@@ -622,16 +724,42 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// Places every picked file — a picture where the window says, a sound on
-  /// the track's SE rows. Answers FALSE when the dialog went away part-way —
-  /// the caller must not touch its state after that.
-  Future<bool> _placeFiles(_ImportTally tally) async {
-    for (final path in _files) {
+  /// the track's SE rows — telling [report] the files before the one being
+  /// placed and that one as far as it says. Answers FALSE when the dialog
+  /// went away part-way — the caller must not touch its state after that.
+  Future<bool> _placeFiles(
+    _ImportTally tally,
+    void Function(double) report,
+  ) async {
+    final count = _files.length;
+    // A run two of its own pictures were picked from comes in once — the
+    // second row is already in it.
+    final runsPlaced = <ParsedCelLayer>{};
+    for (final (index, path) in _files.indexed) {
+      void within(double fraction) =>
+          report((index + fraction.clamp(0, 1)) / count);
+      within(0);
+      final run = _togetherRunOf(path);
+      if (run != null && runsPlaced.contains(run)) {
+        tally
+          ..imported += 1
+          ..done.add(path);
+        continue;
+      }
       final kind = mediaAssetKindForPath(path);
       // A PLACEMENT reads the file, so this is where the picked path
       // has to become a path that reads — the same law the two open
       // doors go through. A cloud file arrives here as a placeholder
       // and would otherwise fail as if it were corrupt.
-      if (await _readableForImport(path) == null) {
+      //
+      // 🐞F-282 ④ (유저 2026-10-04: 「동영상을 잘라내서 임포트시,
+      // 미디어풀에 등록되는데, 그걸 다시 타임라인에 배치하려하면 파일을
+      // 읽지 못했다고 뜸」): bytes the PROJECT holds are not read from the
+      // file — every door reads the carry first — so there is no file to
+      // wait for. A piece cut on import and a voice take never had one; a
+      // carried file's original may be gone.
+      if (!widget.session.projectFile.projectHoldsMediaBytes(path) &&
+          await _readableForImport(path) == null) {
         tally.warnings.add(
           AppText.strings.imUnreadable(mediaFileName(path)),
         );
@@ -640,35 +768,42 @@ class _ImportDialogState extends State<ImportDialog> {
       if (!mounted) {
         return false;
       }
-      await _placeOneFile(path, kind, tally);
+      await _placeOneFile(path, kind, tally, within);
+      if (run != null) {
+        runsPlaced.add(run);
+      }
     }
+    report(1);
     return true;
   }
 
-  /// One file through its door. ⛔A file that fails does NOT abort the
-  /// batch: it leaves a named warning and the loop moves on (the image
-  /// path's per-file contract).
+  /// One file through its door, telling [within] how far it is. ⛔A file
+  /// that fails does NOT abort the batch: it leaves a named warning and the
+  /// loop moves on (the image path's per-file contract).
   Future<void> _placeOneFile(
     String path,
     MediaAssetKind? kind,
     _ImportTally tally,
+    void Function(double) within,
   ) async {
-    final failedPages = <int>[];
+    final fileReport = _FileReport(within);
     final bool ok;
     try {
-      ok = await _placeCarryingOnlyTheSpan(path, kind, tally, failedPages);
+      ok = await _placeCarryingOnlyTheSpan(path, kind, tally, fileReport);
     } on Object {
       tally.warnings.add(
         AppText.strings.imCorrupt(mediaFileName(path)),
       );
       return;
     }
-    if (failedPages.isNotEmpty) {
+    final failed = fileReport.failed.length;
+    if (failed > 0) {
       final name = mediaFileName(path);
+      // A PDF's are pages; a movie's — and a numbered run's — are frames.
       tally.warnings.add(
-        kind == MediaAssetKind.video
-            ? AppText.strings.imFramesFailed(name, failedPages.length)
-            : AppText.strings.imPagesFailed(name, failedPages.length),
+        kind == MediaAssetKind.pdf
+            ? AppText.strings.imPagesFailed(name, failed)
+            : AppText.strings.imFramesFailed(name, failed),
       );
     }
     if (ok) {
@@ -706,11 +841,11 @@ class _ImportDialogState extends State<ImportDialog> {
     String path,
     MediaAssetKind? kind,
     _ImportTally tally,
-    List<int> failedPages,
+    _FileReport fileReport,
   ) async {
     final settings = _settingsFor(path);
     if (kind == null || !_comesInAsAPiece(path, settings)) {
-      return _placeThrough(path, kind, tally, failedPages, settings);
+      return _placeThrough(path, kind, tally, settings, fileReport);
     }
     final pieces = widget.session.trimmedPieces;
     final piece = await pieces.cut(
@@ -728,8 +863,8 @@ class _ImportDialogState extends State<ImportDialog> {
         piece.path,
         kind,
         tally,
-        failedPages,
         settings.copyWith(inFrame: 0, outFrame: piece.frames - 1),
+        fileReport,
         sourcePath: path,
       );
     } finally {
@@ -743,13 +878,14 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// Which door this file goes through: an expanded PSD, the PDF
-  /// renderer, or the ordinary image path.
+  /// renderer, or the ordinary image path — the doors that count their
+  /// work telling [fileReport] how far it is.
   Future<bool> _placeThrough(
     String path,
     MediaAssetKind? kind,
     _ImportTally tally,
-    List<int> failedPages,
-    ImportFileSettings settings, {
+    ImportFileSettings settings,
+    _FileReport fileReport, {
     String? sourcePath,
   }) {
     final carry = settings.mode == ImportFileMode.keepInside;
@@ -765,10 +901,13 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     }
     if (kind == MediaAssetKind.video) {
-      return _placeMovie(path, settings, failedPages, sourcePath: sourcePath);
+      return _placeMovie(path, settings, fileReport, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
+    }
+    if (_togetherRunOf(path) case final run?) {
+      return _placeRun(path, run, tally, fileReport);
     }
     if (kind == MediaAssetKind.pdf) {
       return widget.session.importDoors.importPdfFile(
@@ -779,16 +918,10 @@ class _ImportDialogState extends State<ImportDialog> {
         copyIntoProject: carry,
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
-        // A 100-page conte renders for seconds — the footer says where
-        // it is instead of looking hung.
-        onRenderProgress: (rendered, total) {
-          if (mounted) {
-            setState(
-              () => _status = AppText.strings.imRenderingPdf(rendered, total),
-            );
-          }
-        },
-        onPageRenderFailed: failedPages.add,
+        // A 100-page conte renders for seconds — the wait window's % says
+        // where it is instead of looking hung.
+        onRenderProgress: fileReport.rendered,
+        onPageRenderFailed: fileReport.failed.add,
         spot: widget.spot,
         sourcePath: sourcePath,
       );
@@ -811,40 +944,59 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the sound alone, which is also what an SE row's empty cell takes
   /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
   /// [importMovieParts] — the cell used to be answered HERE, straight to a
-  /// sound's door). A picture that bakes lands behind the app's one wait
-  /// window, because a bake is hundreds of cels (「이런 무거움이 예상되는
-  /// 로직은 로딩 ui 띄우도록」).
+  /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
+  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
+  /// counts for it — under the run's one wait window ([_runImport]).
+  /// ↩️It stood behind a wait window of its own, one for every movie.
+  /// [path]'s numbered [run] through the run's door
+  /// (`ProjectImportDoors.importPictureRun`), every picture of it waited for
+  /// as the picked one is — one that never arrives is named and left out.
+  Future<bool> _placeRun(
+    String path,
+    ParsedCelLayer run,
+    _ImportTally tally,
+    _FileReport fileReport,
+  ) async {
+    final folder = File(path).parent.path;
+    final files = <({String path, String label})>[];
+    for (final cel in run.cells) {
+      final file = '$folder/${cel.file}';
+      // Every picture of the run reads before it is placed, the law the
+      // picked one already went through ([_placeFiles]).
+      if (!mounted) {
+        return false;
+      }
+      if (mediaFileName(file) != mediaFileName(path) &&
+          !widget.session.projectFile.projectHoldsMediaBytes(file) &&
+          await _readableForImport(file) == null) {
+        tally.warnings.add(AppText.strings.imUnreadable(mediaFileName(file)));
+        continue;
+      }
+      files.add((path: file, label: cel.label));
+    }
+    return widget.session.importDoors.importPictureRun(
+      files: files,
+      name: run.symbol,
+      settings: _settingsFor(path),
+      spot: widget.spot,
+      onRenderProgress: fileReport.rendered,
+      onCelFailed: fileReport.failed.add,
+    );
+  }
+
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
-    List<int> failedFrames, {
+    _FileReport fileReport, {
     String? sourcePath,
-  }) {
-    final doors = widget.session.importDoors;
-    Future<bool> place(void Function(int rendered, int total)? progress) =>
-        doors.importVideoFile(
-          path: path,
-          settings: settings,
-          onRenderProgress: progress,
-          onFrameRenderFailed: failedFrames.add,
-          spot: widget.spot,
-          sourcePath: sourcePath,
-        );
-    if (!settings.bake) {
-      return place(null);
-    }
-    return runWithAppProgress<bool>(
-      context: context,
-      title: mediaFileName(path),
-      titleIcon: Icons.movie_outlined,
-      runningLabel: AppText.strings.bakeProgressRunning,
-      doneLabel: AppText.strings.bakeProgressDone,
-      windowKey: const ValueKey<String>('movie-bake-progress'),
-      task: (report) => place(
-        (rendered, total) => report(total <= 0 ? 1 : rendered / total),
-      ),
-    );
-  }
+  }) => widget.session.importDoors.importVideoFile(
+    path: path,
+    settings: settings,
+    onRenderProgress: fileReport.rendered,
+    onFrameRenderFailed: fileReport.failed.add,
+    spot: widget.spot,
+    sourcePath: sourcePath,
+  );
 
   /// Why a placement that ran and answered `false` did not land: a build
   /// with no PDF renderer says so, anything else could not be imported.
@@ -869,9 +1021,15 @@ class _ImportDialogState extends State<ImportDialog> {
   /// (import-place round, 2026-08-14 — 「In/Out 잘라 넣기 = 실제로 잘라서
   /// 품기」) and waited for a trimmer, which the placements got on
   /// 2026-09-23.
-  Future<void> _registerFiles(_ImportTally tally) async {
+  ///
+  /// [report] counts the files the batches have landed.
+  Future<void> _registerFiles(
+    _ImportTally tally,
+    void Function(double) report,
+  ) async {
     final pool = widget.session.mediaPool;
     final pieces = widget.session.trimmedPieces;
+    report(0);
     // What the pool is handed — a piece in place of the file it was cut
     // from — and the picked file each one stands for.
     final carried = <String, String>{};
@@ -917,10 +1075,12 @@ class _ImportDialogState extends State<ImportDialog> {
     tally
       ..imported += carried.length
       ..done.addAll(carried.values);
+    report(_share(carried.length, _files.length));
     await pool.importMediaFiles(referenced, copyIntoProject: false);
     tally
       ..imported += referenced.length
       ..done.addAll(referenced);
+    report(1);
   }
 
   /// EXPAND, which reports its outcome as warnings-or-null rather than a
@@ -965,10 +1125,10 @@ class _ImportDialogState extends State<ImportDialog> {
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
-      footerNote: _status.isEmpty
+      footerNote: _statusLine.isEmpty
           ? null
           : Text(
-              _status,
+              _statusLine,
               key: const ValueKey<String>('import-status'),
               style: Theme.of(context).textTheme.labelSmall,
               overflow: TextOverflow.ellipsis,
@@ -980,11 +1140,12 @@ class _ImportDialogState extends State<ImportDialog> {
           emphasis: AppWindowActionEmphasis.quiet,
           // Dead while the import is doing its OWN work — stopping a
           // half-written import would be the lie the progress window
-          // refuses for saves. Alive again while it is WAITING on
-          // somebody else's bytes: nothing has been applied to that file
-          // yet, so letting go costs nothing.
-          onPressed: _waitingForFile
-              ? () => setState(() => _stopWaiting = true)
+          // refuses for saves. Alive again while a pick WAITS on somebody
+          // else's bytes: nothing has been applied to that file yet, so
+          // letting go costs nothing. (A run's wait is stopped from the
+          // wait window it stands behind.)
+          onPressed: _wait.waiting.value
+              ? _wait.cancel
               : (_running ? null : () => Navigator.of(context).pop()),
         ),
         AppWindowAction(
@@ -1258,6 +1419,8 @@ class _ImportDialogState extends State<ImportDialog> {
       if (placing && any(_mayPlacePicture)) _fitColumn(placing),
       // 「PSD가 아닌파일은 PSD열 삭제」.
       if (placing && any(importPathIsPsd)) _psdColumn(placing),
+      // I-76-Q1: 「파일 표에 칸이 하나 는다(형제가 없는 줄은 「—」)」.
+      if (any((path) => _runOf(path) != null)) _runColumn(),
     ];
   }
 
@@ -1328,6 +1491,7 @@ class _ImportDialogState extends State<ImportDialog> {
           placing: placing,
           psd: _settingsFor(path).psd,
           spot: widget.spot,
+          together: _togetherRunOf(path) != null,
         ),
     onPick: (paths, value) => _setSettings(
       paths,
@@ -1431,6 +1595,32 @@ class _ImportDialogState extends State<ImportDialog> {
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => settings.copyWith(fit: value! as MediaFitMode),
+    ),
+  );
+
+  /// What of a picture's numbered run comes in: the run as one layer's
+  /// frames, or the file alone. The cell names the run it would bring
+  /// (🗣️I-76-Q1: 「「A1–A3 (3장)」처럼 이어지는 그림의 수가 보이고, 그 칸에서
+  /// 「함께 · 이 파일만」을 고른다」).
+  ImportColumn<Object?> _runColumn() => ImportColumn<Object?>(
+    id: 'run',
+    label: AppText.strings.imRun,
+    values: NumberedRun.values,
+    labelOf: (value) => importRunLabel(value! as NumberedRun),
+    wordOf: (path, value) => switch ((_runOf(path), value)) {
+      (final run?, NumberedRun.together) => AppText.strings.imRunSpan(
+        '${run.symbol}${run.cells.first.label}',
+        '${run.symbol}${run.cells.last.label}',
+        run.cells.length,
+      ),
+      _ => null,
+    },
+    valueOf: (path) => _settingsFor(path).run,
+    appliesTo: (path) => _runOf(path) != null,
+    enabledFor: (path, value) => true,
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(run: value! as NumberedRun),
     ),
   );
 

@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sheet_paper.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/track.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
+import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
@@ -28,16 +30,20 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 /// 🚨A BRUSH AT 100% DRAWS ON EVERY SHEET AS IT DOES ON THE CANVAS.
 ///
 /// 유저 2026-09-26 (one-paper-brush-width-Q2): 「해상도를 캔버스처럼
-/// 낮추기」 — the sheets' handwriting at the canvas's grade, so a brush of a
-/// size at 100% is as wide on the sheet as on the canvas. Read through the
-/// mapping the brush itself draws by — each ink window's view of its
-/// surface under the panel's viewport — on the three sheets: the ink view
-/// of a window at the panel's 100% is a 100% view.
+/// 낮추기」 — a brush of a size at 100% is as wide on the sheet as on the
+/// canvas. Read through the mapping the brush itself draws by — each ink
+/// window's view of its surface under the panel's viewport — on the three
+/// sheets: the ink view of a window at the panel's 100% is a 100% view.
+///
+/// The panel's 100% is a pixel of the PAPER to a pixel of the screen (F-294,
+/// 유저 2026-10-05: 「타임시트 용지패널 용지크기 너무 작음」 — the paper has
+/// a resolution of its own, and the handwriting is kept at it): the view
+/// the sheet's units read at their paper's scale ([sheetUnitsView]).
 ///
 /// The envelope's ink is the FORM's, whatever paper it prints on, so its
-/// grade holds where the form prints on the default shooting frame.
+/// grade holds where the form prints on the envelope's own paper — the
+/// panel's.
 void main() {
-  final atHundred = CanvasViewport(zoom: 1);
   const cutId = CutId('39');
 
   Cut cut(int duration) => Cut(
@@ -70,7 +76,11 @@ void main() {
     ],
   );
 
-  void expectCanvasGrade(Iterable<SheetInkWindow> windows) {
+  void expectCanvasGrade(
+    Iterable<SheetInkWindow> windows, {
+    required double paperScale,
+  }) {
+    final atHundred = sheetUnitsView(CanvasViewport(zoom: 1), paperScale);
     expect(windows, isNotEmpty, reason: 'fixture: the sheet has windows');
     for (final window in windows) {
       expect(
@@ -88,8 +98,10 @@ void main() {
       fps: 24,
     );
     final layout = TimesheetDocumentLayout(document: document);
+    expect(layout.paperScale, greaterThan(1), reason: 'fixture: a paper');
     expectCanvasGrade(
-      timesheetInkWindows(layout: layout, pagedLayout: layout, cutId: cutId),
+      timesheetInkWindows(layout: layout, cutId: cutId),
+      paperScale: layout.paperScale,
     );
   });
 
@@ -106,20 +118,27 @@ void main() {
       buildConteSheetSource(project),
     ).where((page) => page.kind == ContePageKind.body);
     expect(body, isNotEmpty, reason: 'fixture: a body page');
-    expectCanvasGrade([for (final page in body) ...conteInkWindows(page)]);
+    final paperScale = body.first.metrics.paperScale;
+    expect(paperScale, greaterThan(1), reason: 'fixture: a paper');
+    expectCanvasGrade([
+      for (final page in body) ...conteInkWindows(page),
+    ], paperScale: paperScale);
   });
 
   for (final form in CutEnvelopePresets.all) {
-    test('the envelope (${form.id}): every box, on the default frame', () {
+    test('the envelope (${form.id}): every box, on its own paper', () {
+      final paper = SheetPaper.envelope.extent;
       expectCanvasGrade(
         envelopeInkWindows(
           CutEnvelopeLayout.fit(
             form: form,
-            paperWidth: defaultProjectCameraSize.width.toDouble(),
-            paperHeight: defaultProjectCameraSize.height.toDouble(),
+            paperWidth: paper.width,
+            paperHeight: paper.height,
           ),
           cutId,
         ),
+        // The form is ruled straight onto the paper's pixels.
+        paperScale: 1,
       );
     });
   }

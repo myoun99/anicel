@@ -63,18 +63,19 @@ void main() {
 
   // 🚨유저 2026-09-26: 「블록 이름 텍스트가 칸 넘어서 크기 지키는거마냥 크기
   // 최대한 지키게 … 1코마처럼 공간 부족하면 … 그냥 가로 1칸」 — the length
-  // along the frame axis is 100%'s third of a cell (24px / 3) at every zoom,
-  // and ONE CELL in a block too short for it.
+  // along the frame axis is 100%'s third of a cell (24px / 3) at every zoom.
+  //
+  // 🚨F-295 (유저 2026-10-05): 「지금 엄청 작은거있는데 최대한 크기
+  // 유지하도록. 띠의 앞부분/끝부분 닿아도 아무문제없으니 그냥 닿게해서
+  // 최대한 크기 유지하도록. 이는 프레임블록도 똑같이 법 통일」 — and as much
+  // of that as the block has, in a block shorter than it. ↩️ONE CELL, until
+  // then: of a block three cells long, a third of what it could have had.
   const grip = 8.0;
   double at(double cell, int frame) => timelineFrameEdge(frame, cell);
-  // 🚨F-220: the block is the law's span, and the one cell a short block
-  // gives the grip is the cell the law laid at that edge.
-  double alongFor(double cell, int length, TimelineBlockEdge edge) {
-    if (at(cell, start + length) - at(cell, start) >= grip) {
-      return grip;
-    }
-    final first = edge == TimelineBlockEdge.start ? start : start + length - 1;
-    return at(cell, first + 1) - at(cell, first);
+  // 🚨F-220: the block is the law's span.
+  double alongFor(double cell, int length) {
+    final block = at(cell, start + length) - at(cell, start);
+    return block >= grip ? grip : block;
   }
 
   Path triangle(
@@ -101,15 +102,15 @@ void main() {
     return overlap.width <= 0 || overlap.height <= 0;
   }
 
-  test('the box is 100%\'s size along — one cell in a block too short for '
-      'it — and half the row across, in the block corner — the start edge '
-      'far, the end edge near, on both axes', () {
+  test('the box is 100%\'s size along — the whole block in a block shorter '
+      'than it — and half the row across, in the block corner — the start '
+      'edge far, the end edge near, on both axes', () {
     for (final cell in cells) {
       for (final length in blockLengths) {
         final blockStart = at(cell, start);
         final blockEnd = at(cell, start + length);
-        final alongLead = alongFor(cell, length, TimelineBlockEdge.start);
-        final alongTail = alongFor(cell, length, TimelineBlockEdge.end);
+        final alongLead = alongFor(cell, length);
+        final alongTail = alongFor(cell, length);
         final why = 'cell $cell × $length frames';
         final lead = gripBox(
           TimelineBlockEdge.start,
@@ -153,6 +154,25 @@ void main() {
         expect(tailV.left, 0, reason: why);
       }
     }
+  });
+
+  test('a block of another length is another placement — a grip laid out '
+      'as a widget is laid out again when its block grows to hold it', () {
+    TimelineFrameSpanPlacement placed(int length) =>
+        timelineBlockEdgeGripPlacement(
+          edge: TimelineBlockEdge.start,
+          block: (startIndex: start, endIndexExclusive: start + length),
+          crossAxisExtent: paper,
+        );
+
+    expect(placed(5), placed(5));
+    expect(
+      placed(1),
+      isNot(placed(5)),
+      reason: 'the start edge\'s anchor and size are the same for both: '
+          'what differs is how much of that size the block has (F-295), '
+          'and a placement that compared equal would keep the old box',
+    );
   });
 
   test('the drawn triangle never leaves its box and fills its corner half — '

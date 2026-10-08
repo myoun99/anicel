@@ -244,7 +244,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.exposureVerbs.canSetCommaForSelectionOrCurrent,
+      session.storyboardCursor.canSetCommaForTimelineCursor,
       isTrue,
       reason: 'the state moved',
     );

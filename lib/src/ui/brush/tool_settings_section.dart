@@ -85,6 +85,51 @@ class ToolSettingsSection extends StatelessWidget {
   }
 }
 
+/// The header of a GROUP of settings inside a section — the CSP category
+/// rule: a small header over each group, a hairline separating it from the
+/// group above.
+///
+/// The brush's settings wrote it; the text tool's are grouped the same way
+/// (글자 · 상자, the layout 유저 took on 2026-10-06), so it stands beside the
+/// shell the sections share rather than in the brush's own file.
+class ToolSettingsGroupHeader extends StatelessWidget {
+  const ToolSettingsGroupHeader(this.label, {super.key, this.first = false});
+
+  final String label;
+
+  /// Whether nothing stands above it: the first group wears no hairline.
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.only(top: first ? 0 : 8, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!first)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: theme.colorScheme.outlineVariant,
+              ),
+            ),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// THE preview at the top of the tool settings panel — one box, one size,
 /// whichever tool is showing.
 ///

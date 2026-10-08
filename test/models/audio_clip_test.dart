@@ -97,21 +97,6 @@ void main() {
     expect(restored.audioClips.single.frameId, const FrameId('se-frame'));
   });
 
-  test('legacy free-floating clips migrate onto their covering block', () {
-    final layer = seLayer();
-    final json = layer.toJson();
-    json['audioClips'] = [
-      {'file': 'covered.wav', 'start': 6}, // inside the 4..10 block
-      {'file': 'orphan.wav', 'start': 12}, // empty cell → drops
-    ];
-
-    final restored = Layer.fromJson(json);
-
-    expect(restored.audioClips, hasLength(1));
-    expect(restored.audioClips.single.filePath, 'covered.wav');
-    expect(restored.audioClips.single.frameId, const FrameId('se-frame'));
-  });
-
   test('seAudioSpans windows the sound per carrying block (linked reuse)', () {
     final layer = seLayer().copyWith(
       audioClips: [

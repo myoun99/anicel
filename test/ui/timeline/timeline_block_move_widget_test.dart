@@ -1,7 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -13,6 +12,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -116,6 +116,7 @@ metrics: metrics,
           },
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
+        holds: (_) => false,
         onBegin: onMoveBegin == null ? (_) => true : (_) => onMoveBegin(),
         onUpdate: onMoveUpdate ?? ({required frameDelta, targetLayerId}) {},
         onEnd: onMoveEnd ?? () {},
@@ -535,6 +536,7 @@ rangeHooks: TimelineFrameRangeHooks(
                   (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
+                holds: (_) => false,
                 onBegin: (_) => true,
                 // The session's row-change preview: the SOURCE row loses
                 // its blocks — its SE overlays (labels/marks) vanish, so
@@ -1844,7 +1846,10 @@ metrics: const TimelineGridMetrics(
       transformTrack: TransformTrack(
         keyframes: {
           for (final frame in keyFrames)
-            frame: CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 1),
+            frame: TransformPose.uniform(
+              center: CanvasPoint(x: 0, y: 0),
+              zoom: 1,
+            ),
         },
       ),
     );
@@ -1880,6 +1885,7 @@ onLayerMarkSelected: (_, _) {},
 expandedLaneLayerIds: {const LayerId('layer-a')},
 lanesForLayer: (layer) => transformPropertyLanes(
                 layer.transformTrack,
+                scaleForm: scaleLaneFormOf(layer),
               ).where((lane) => lane.laneId == 'position').toList(),),
 layers: [committed],
 metrics: const TimelineGridMetrics(

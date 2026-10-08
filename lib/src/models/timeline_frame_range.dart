@@ -85,6 +85,28 @@ class TimelineFrameRangeSelection {
   bool contains(int frameIndex) =>
       frameIndex >= startIndex && frameIndex < endIndexExclusive;
 
+  /// This selection [delta] frames along — the same rows, the cells the
+  /// blocks it covered were shoved to (F-264). The axis starts at 0.
+  TimelineFrameRangeSelection shiftedBy(int delta) =>
+      TimelineFrameRangeSelection(
+        layerId: layerId,
+        layerIds: layerIds,
+        rows: rows,
+        startIndex: math.max(0, startIndex + delta),
+        endIndexExclusive: endIndexExclusive + delta,
+      );
+
+  /// This selection ending at [endExclusive] — the same rows from the same
+  /// start, over the cels a retime made longer or shorter.
+  TimelineFrameRangeSelection endingAt(int endExclusive) =>
+      TimelineFrameRangeSelection(
+        layerId: layerId,
+        layerIds: layerIds,
+        rows: rows,
+        startIndex: startIndex,
+        endIndexExclusive: endExclusive,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -255,12 +277,7 @@ TimelineFrameRangeSelection? snapFrameRangeToBlocks({
   List<({int start, int endExclusive})> aggregateRuns = const [],
 }) {
   final span = snapSpanToBlocks(
-    lanes: [
-      (index) => exposureBlockAt(layer, index),
-      (index) => instructionBlockAt(layer, index),
-      if (aggregateRuns.isNotEmpty)
-        (index) => aggregateRunBlockAt(aggregateRuns, index),
-    ],
+    lanes: _blockLanesOf(layer, aggregateRuns),
     anchorIndex: anchorIndex,
     headIndex: headIndex,
   );
@@ -274,3 +291,22 @@ TimelineFrameRangeSelection? snapFrameRangeToBlocks({
     endIndexExclusive: span.endIndexExclusive,
   );
 }
+
+/// The unit the cell [frameIndex] stands for on [layer]'s row, and whether
+/// it is a block ([standingUnitAt]) — read off the lanes a drag on that row
+/// snaps to, so what you stand on and what a click there selects are one
+/// answer.
+StandingUnit standingUnitOnRow(Layer layer, int frameIndex) =>
+    standingUnitAt(lanes: _blockLanesOf(layer, const []), index: frameIndex);
+
+/// [layer]'s lanes of blocks: its exposures, its instruction events, and —
+/// the folder case — the runs its members make ([aggregateRunBlockAt]).
+List<RangeBlockAt> _blockLanesOf(
+  Layer layer,
+  List<({int start, int endExclusive})> aggregateRuns,
+) => [
+  (index) => exposureBlockAt(layer, index),
+  (index) => instructionBlockAt(layer, index),
+  if (aggregateRuns.isNotEmpty)
+    (index) => aggregateRunBlockAt(aggregateRuns, index),
+];

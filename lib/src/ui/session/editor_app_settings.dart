@@ -157,6 +157,18 @@ class EditorAppSettings {
   final ValueNotifier<OnionSkinSettings> onionSkinSettings =
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
+  /// The frames↔seconds DISPLAY toggle (초 표시): how a frame's place and a
+  /// length are written — the rulers, the block words, and every list that
+  /// names a frame (`ProjectAccess.framePlaceLabel`). View state: not
+  /// restored, not persisted.
+  ///
+  /// ↩️It stood on the workspace's state until F-284 (유저 2026-10-04:
+  /// 「이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법 통일」). The lists
+  /// that name a frame are written by the session's verbs, which could not
+  /// read it there. Its reach is what it was — one for the window, shared by
+  /// every open project — which is this object's.
+  final ValueNotifier<bool> showSecondsDisplay = ValueNotifier<bool>(false);
+
   Future<void> _restoreOnionSkinSettings() async {
     _restored(onionSkinSettings, await _onionSkinSettingsStore?.load());
   }
@@ -397,5 +409,6 @@ class EditorAppSettings {
   void dispose() {
     audioSyncSettings.dispose();
     onionSkinSettings.dispose();
+    showSecondsDisplay.dispose();
   }
 }

@@ -1,4 +1,3 @@
-import '../editing/cut_insertion_room.dart';
 import '../editing/default_cut_helpers.dart';
 import '../editing/default_layer_helpers.dart';
 import '../editing/editing_session_state.dart';
@@ -16,6 +15,8 @@ import '../command.dart';
 import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
+import 'cut_insertion.dart';
+import 'linked_cut_field_command.dart' show withLinkedCutFieldsOf;
 import 'transitions_ride_the_cuts.dart';
 
 /// 겸용컷 생성 (L2): a NEW cut whose drawing layers are linked copies of
@@ -45,8 +46,11 @@ import 'transitions_ride_the_cuts.dart';
 /// - It is as long as a new cut, not as its source: 「겸용컷 만든다고 해서
 ///   현재 컷이랑 컷길이 똑같이 하지않음. 새 컷만드는거랑 똑같은 컷길이로.
 ///   하드코딩하지말고」.
-/// - It takes its room the way every cut landing in front of others does
-///   ([followerGapsAfterInsert]) — it used to push every cut behind it.
+/// - It takes its room the way every cut landing in front of others does —
+///   THE one insertion ([projectWithCutInserted]), made part of this
+///   command's own write so the registry lands with the cut it names. It
+///   used to push every cut behind it, and then to spell the insertion's
+///   arithmetic out a second time here.
 /// - A row BORN WITH A FRAME — the conte row — is born covering the cut
 ///   with a fresh panel, the way a new conte row is: 「콘티레이어
 ///   생성시 기본적으로 프레임 생성되는데 그 법 그대로 재사용/통일」. The panel
@@ -113,19 +117,22 @@ class CreateLinkedCutCommand implements Command {
           if (layerIdMap.containsKey(layer.id))
             _linkedCopyOf(layer, cutDuration: duration),
       ];
-      final newCut = Cut(
-        id: newCutId,
-        name: newName,
-        // A fresh direction row — the per-use fixture — around the linked
-        // rows.
-        layers: withEnsuredSectionLayers(newCutId, linkedLayers),
-        duration: duration,
-        canvasSize: source.canvasSize,
-        // The camera row came across linked; its lanes come across COPIED.
-        // The immutable track is shared as the plain duplicate shares it: a
-        // pose-view round-trip would resynchronize independently keyed
-        // properties.
-        camera: CutCamera.fromTrack(source.camera.track),
+      final newCut = withLinkedCutFieldsOf(
+        Cut(
+          id: newCutId,
+          name: newName,
+          // A fresh direction row — the per-use fixture — around the linked
+          // rows.
+          layers: withEnsuredSectionLayers(newCutId, linkedLayers),
+          duration: duration,
+          canvasSize: source.canvasSize,
+          // The camera row came across linked; its lanes come across COPIED.
+          // The immutable track is shared as the plain duplicate shares it:
+          // a pose-view round-trip would resynchronize independently keyed
+          // properties.
+          camera: CutCamera.fromTrack(source.camera.track),
+        ),
+        source,
       );
 
       _registryBefore = project.linkRegistry;
@@ -151,38 +158,15 @@ class CreateLinkedCutCommand implements Command {
       }
       final registry = LayerLinkRegistry(groups: groups);
 
-      final sourceIndex = track.cuts.indexWhere(
-        (cut) => cut.id == sourceCutId,
+      final inserted = projectWithCutInserted(
+        project,
+        trackId: track.id,
+        cut: newCut,
+        // Directly behind its source.
+        index: track.cuts.indexWhere((cut) => cut.id == sourceCutId) + 1,
       );
-      final gaps = followerGapsAfterInsert(
-        track.cuts,
-        index: sourceIndex + 1,
-        leadingGap: newCut.leadingGapFrames,
-        duration: newCut.duration,
-      );
-      _gapsBefore = {
-        for (final cut in track.cuts)
-          if (gaps.containsKey(cut.id)) cut.id: cut.leadingGapFrames,
-      };
-      var next = project
-          .copyWith(
-            tracks: [
-              for (final projectTrack in project.tracks)
-                if (projectTrack.id == track.id)
-                  projectTrack.copyWith(
-                    cuts: [
-                      for (final cut in projectTrack.cuts)
-                        if (gaps.containsKey(cut.id))
-                          cut.copyWith(leadingGapFrames: gaps[cut.id])
-                        else
-                          cut,
-                    ]..insert(sourceIndex + 1, newCut),
-                  )
-                else
-                  projectTrack,
-            ],
-          )
-          .copyWith(linkRegistry: registry);
+      _gapsBefore = inserted.gapsBefore;
+      var next = inserted.project.copyWith(linkRegistry: registry);
 
       // F-99: a fresh panel joins the SHARED bank — every member of a linked
       // row holds the same frame list, the invariant
@@ -227,19 +211,11 @@ class CreateLinkedCutCommand implements Command {
       throw StateError('Command has not been executed.');
     }
     void remove() => repository.updateProject((project) {
-      var next = removeCutAnywhere(
+      var next = projectWithCutTakenOut(
         project,
-        newCutId,
-      ).project.copyWith(linkRegistry: registryBefore);
-      for (final MapEntry(key: cutId, value: gap) in _gapsBefore.entries) {
-        next =
-            updateCutAnywhere(
-              next,
-              cutId,
-              (cut) => cut.copyWith(leadingGapFrames: gap),
-            ) ??
-            next;
-      }
+        cutId: newCutId,
+        gapsBefore: _gapsBefore,
+      ).copyWith(linkRegistry: registryBefore);
       for (final MapEntry(key: layerId, value: frames)
           in _banksBefore.entries) {
         next =

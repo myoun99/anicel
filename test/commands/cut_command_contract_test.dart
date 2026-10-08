@@ -36,7 +36,6 @@ void main() {
           editingSession: editingSession,
           trackId: _trackId,
           cutId: const CutId('cut-created'),
-          layerId: const LayerId('layer-created'),
           name: 'Created Cut',
         ).execute();
 
@@ -164,7 +163,6 @@ void main() {
             editingSession: editingSession,
             trackId: _trackId,
             cutId: const CutId('cut-created'),
-            layerId: const LayerId('layer-created'),
             name: 'Created Cut',
           ),
         );
@@ -275,7 +273,6 @@ void main() {
             editingSession: editingSession,
             trackId: _trackId,
             cutId: const CutId('cut-created'),
-            layerId: const LayerId('layer-created'),
             name: 'Created Cut',
           ),
         );

@@ -5,6 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -183,14 +184,15 @@ void main() {
       cellExtent: () => 10.0,
     );
     var opened = 0;
+    TimelineRowAddress rowOf(String? lane) => lane == null
+        ? const LayerRowAddress(layerId)
+        : LaneRowAddress(layerId, lane);
     void press({String? lane}) => timelineCellDoubleTapRecord(
-      layerId: layerId,
-      laneId: lane,
+      row: rowOf(lane),
       cells: cells,
     )(Offset.zero);
     void pressAgain({String? lane}) => timelineCellDoubleTapActivation(
-      layerId: layerId,
-      laneId: lane,
+      row: rowOf(lane),
       cells: cells,
       onActivate: (_) => opened += 1,
     )(TapDownDetails());

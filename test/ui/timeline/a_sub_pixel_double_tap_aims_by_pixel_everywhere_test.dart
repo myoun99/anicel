@@ -23,10 +23,17 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 
+import '../storyboard_conte_row_probe.dart';
+
 /// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q2, 「1px 보다 좁은 칸은 같은
 /// 픽셀이면 같은 칸」) on every surface that mounts the double-tap gate —
 /// the rows have their own pin beside the gate's; these are the lane bands
-/// and the storyboard's transition and SE rows.
+/// and the storyboard's transition and SE rows, and — since F-255 — its cut
+/// row's two papers and its conte row's blocks.
+const _band = 'the cut\'s band';
+const _pictures = 'the cut\'s pictures';
+const _conteBlock = 'a conte block';
+
 void main() {
   const eighth = 1 / 8;
 
@@ -262,5 +269,114 @@ void main() {
     testWidgets('two taps a pixel apart are two seeks', (tester) async {
       expect(await editsAt(tester, 20.8, 21.2), isEmpty);
     });
+  });
+
+  // F-255 (유저 2026-10-01: 「이름변경 입구 확대 … 콘티블록이나 컷블록에도
+  // 통일적용」): the cut blocks and the conte blocks ride the gate too — the
+  // cut block on the V row, band and pictures alike, and the conte block on
+  // the conte row under it (I-73; ↩️in the cut block's middle).
+  group('the storyboard\'s cut and conte rows', () {
+    const trackId = TrackId('t');
+
+    Future<({List<int> cuts, List<int> contes})> editsAt(
+      WidgetTester tester,
+      double first,
+      double second, {
+      required String paper,
+    }) async {
+      final cuts = <int>[];
+      final contes = <int>[];
+      await tester.binding.setSurfaceSize(const Size(1200, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryboardPanel(
+              project: Project(
+                id: const ProjectId('p'),
+                name: 'P',
+                createdAt: DateTime.utc(2026, 10, 7),
+                tracks: [
+                  Track(
+                    id: trackId,
+                    name: 'V',
+                    cuts: [
+                      // Four hundred frames, fifty pixels, one conte block.
+                      Cut(
+                        id: const CutId('C1'),
+                        name: 'C1',
+                        duration: 400,
+                        canvasSize: const CanvasSize(width: 640, height: 360),
+                        layers: [
+                          Layer(
+                            id: const LayerId('sb'),
+                            name: 'SB',
+                            kind: LayerKind.storyboard,
+                            frames: [
+                              Frame(
+                                id: const FrameId('panel'),
+                                duration: 1,
+                                strokes: const [],
+                              ),
+                            ],
+                            timeline: {
+                              0: const TimelineExposure.drawing(
+                                FrameId('panel'),
+                                length: 400,
+                              ),
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              activeCutId: const CutId('C1'),
+              pixelsPerFrame: eighth,
+              thumbnails: null,
+              onEditCutBlock: (_, frame) => cuts.add(frame),
+              onEditConteBlock: (_, _, frame) => contes.add(frame),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        ValueKey<String>('storyboard-track-timeline-area-${trackId.value}'),
+      );
+      expect(row, findsOneWidget, reason: 'the premise: the row is there');
+      // The cut's own band is the V row's first thirteen pixels and its
+      // pictures its middle; the conte blocks are the row under it.
+      final origin = switch (paper) {
+        _band => tester.getTopLeft(row),
+        _pictures =>
+          tester.getTopLeft(row) + Offset(0, tester.getSize(row).height / 2),
+        _ => conteRowRect(tester, trackId.value).topLeft,
+      };
+      await doubleTapAt(tester, origin, first, second);
+      return (cuts: cuts, contes: contes);
+    }
+
+    for (final paper in const [_band, _pictures, _conteBlock]) {
+      final onTheConteBlock = paper == _conteBlock;
+
+      testWidgets('two taps in one pixel of $paper open the block there', (
+        tester,
+      ) async {
+        // 20.1 and 20.8 are frames 160 and 166; the pixel's middle is 164.
+        final edits = await editsAt(tester, 20.1, 20.8, paper: paper);
+        expect(edits.cuts, onTheConteBlock ? isEmpty : <int>[164]);
+        expect(edits.contes, onTheConteBlock ? <int>[164] : isEmpty);
+      });
+
+      testWidgets('two taps a pixel apart on $paper are two seeks', (
+        tester,
+      ) async {
+        final edits = await editsAt(tester, 20.8, 21.2, paper: paper);
+        expect(edits.cuts, isEmpty);
+        expect(edits.contes, isEmpty);
+      });
+    }
   });
 }

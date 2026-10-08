@@ -5,6 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 typedef _CelInBothCuts = ({
   CutId cut1,
@@ -326,7 +327,7 @@ void main() {
       session.createDrawingAtCurrentFrame();
       final cel = rowIn(cut, row).timeline[0]!.frameId!;
       session.clipboard.copyFrameAtCurrentFrame();
-      session.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(session);
       final twin = memberIn(cut, of: cut, row: row);
       if (rowIn(cut, twin).timeline[0]?.frameId != cel) {
         session.selectLayer(twin);

@@ -8,7 +8,6 @@ import '../../services/straight_rgba_image.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/cut_piece.dart';
 import '../canvas/blends_in_place.dart';
-import '../canvas/paper_background.dart' show paintAlphaCheckerboard;
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
@@ -214,12 +213,16 @@ void paintCutPiece(
   });
 }
 
-/// The held piece, drawn over a checker.
+/// The held piece, drawn on white.
 ///
-/// The checker is not decoration: a cut piece has transparency, and on a
-/// plain panel background a transparent region and a white one look
-/// identical — which on a transparent-background animation cel is exactly
-/// the confusion worth avoiding.
+/// 🗣️유저 2026-10-03 (F-271): 「잘라내기도구의 스탬프 서브도구, 도구설정의
+/// 프리뷰의 배경이 투명(격자무늬)인데 투명인건 맞는데 배경 그냥 흰색으로.」
+///
+/// ↩️It stood on the transparency checker, on the reasoning that a cut
+/// piece has transparency and 「on a plain panel background a transparent
+/// region and a white one look identical」. That is true and the user chose
+/// the plain ground anyway: the piece is read against the paper it will be
+/// stamped on.
 class CutPiecePreview extends StatelessWidget {
   const CutPiecePreview({super.key, required this.piece});
 
@@ -247,12 +250,11 @@ class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final bounds = Offset.zero & size;
-    // The app's ONE transparency checker. This painter drew its own — 6px
-    // cells in the panel's colours, the same algorithm a second time. The
-    // rule for open alpha is the checker that already exists (유저
-    // 2026-09-09: 「투명이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」;
-    // 2026-09-11, for the import preview: 「그대로 공용화해서 재사용하도록」).
-    paintAlphaCheckerboard(canvas, bounds);
+    // ↩️The app's one transparency checker was painted here (유저 2026-09-09:
+    // 「투명이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」) — and before
+    // that a checker of this painter's own. White since F-271, by the same
+    // user: 「투명인건 맞는데 배경 그냥 흰색으로」.
+    canvas.drawRect(bounds, Paint()..color = const Color(0xFFFFFFFF));
     paintCutPiece(canvas, bounds, piece, image);
   }
 

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// **F-22 ②③ — a unit is not a value, and a pair is not a sentence.**
@@ -74,12 +75,25 @@ void main() {
     test('transform lanes', () {
       final pose = TransformPose(
         center: CanvasPoint(x: 120, y: 45.5),
-        zoom: 0.85,
+        scaleX: 0.85,
+        scaleY: -1.2,
         rotationDegrees: -30,
       );
-      for (final laneId in ['position', 'scale', 'rotation']) {
+      for (final laneId in ['position', 'rotation']) {
         roundTrips(formatTransformLaneValue(laneId, pose));
       }
+      // Scale in both its forms: a camera's one zoom, a layer's two.
+      roundTrips(const OneZoom().label(uniformScale(0.85)));
+      roundTrips(const TwoScales().label(pose.scale));
+    });
+
+    test("a layer's Scale is edited as TWO numbers, the percent worn once", () {
+      expect(
+        propertyLaneValueParts(
+          const TwoScales().label(CanvasPoint(x: 0.85, y: -1.2)),
+        ),
+        [(number: '85', unit: ''), (number: '-120', unit: '%')],
+      );
     });
 
     test('effect lanes, every unit', () {
@@ -117,9 +131,30 @@ void main() {
       ]);
       expect(rejoined, '200%');
       expect(
-        scrubTransformLaneValue('scale', rejoined, Offset.zero),
-        '200%',
+        const OneZoom().typed(
+          rejoined,
+          current: uniformScale(1),
+          linked: false,
+        ),
+        uniformScale(2),
         reason: 'the lane reads it exactly as it reads its own readout',
+      );
+    });
+
+    test("a layer's two scales typed as two bare numbers parse as the "
+        'pair', () {
+      final rejoined = joinPropertyLaneValueParts([
+        (number: '200', unit: ''),
+        (number: '-50', unit: '%'),
+      ]);
+      expect(rejoined, '200, -50%');
+      expect(
+        const TwoScales().typed(
+          rejoined,
+          current: uniformScale(1),
+          linked: false,
+        ),
+        CanvasPoint(x: 2, y: -0.5),
       );
     });
 

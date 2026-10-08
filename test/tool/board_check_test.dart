@@ -150,6 +150,26 @@ void main() {
       expect(complaintsFor([card('A', at_: '나중에', rest: '')]), isEmpty);
     });
 
+    // 2026-10-07: the letters landed with their fold, their server and
+    // their hook tested, and nothing had asked the GATE. The first mark a
+    // hook wrote was an unknown word to it, and every session's turn end
+    // was held by a line nobody could have written differently.
+    test('⛔a letter and the mark its reader leaves are words the gate '
+        'knows — a board that holds them is clean', () {
+      expect(
+        complaintsFor([
+          card('A', at_: '나중에', rest: ''),
+          '{"id":"A","to":"저장","from":"보드/통합","note":"x",'
+              '"ts":"${at('09:10')}"}',
+          '{"id":"A","at":"$kLetterStage","to":"관제","from":"보드/통합",'
+              '"note":"y","ts":"${at('09:20')}"}',
+          '{"id":"A","at":"$kReadMark","ref":"${at('09:10')}",'
+              '"from":"저장","ts":"${at('09:30')}"}',
+        ]),
+        isEmpty,
+      );
+    });
+
     test('🚨writing `state` by hand is itself the defect now', () {
       final out = complaintsFor([
         '{"kind":"item","id":"A","at":"남은 것","rest":"남음","state":"queue",'

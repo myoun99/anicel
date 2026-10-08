@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 
+import '../../models/app_input_settings.dart';
 import '../../models/layer_effect.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
@@ -13,6 +14,7 @@ import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/canvas_press.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -24,12 +26,15 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../../services/piece_landing.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../../services/layer_pose_paint.dart';
 import 'brush_canvas_panel.dart';
 import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
+import 'text_tool_options.dart';
 import 'transform_tool_options.dart';
 import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
@@ -97,6 +102,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.transformOptions,
     this.viewCommands,
     this.selectionCommands,
+    this.textCommands,
+    this.textToolOptions,
     this.cutPieceSlot,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
@@ -110,6 +117,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.pieceGround,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -189,7 +197,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the active layer's pose sample (the
   /// draw-through wrap; null = identity).
-  final LayerPoseSample? interactiveContentPose;
+  final LayerPlacement? interactiveContentPose;
 
   /// The CPU half of the ACTIVE row's effect chain — the colour keys the
   /// live surface has to be drawn THROUGH.
@@ -293,6 +301,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// Forwarded to [BrushCanvasPanel] (R9-rest): the text tool's channel and
+  /// the next text's values.
+  final CelTextCommands? textCommands;
+  final ValueListenable<TextToolOptions>? textToolOptions;
+
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
 
@@ -373,7 +386,11 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Where each of those cels' rows stands on the canvas — passed straight
   /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
-  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
+  final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
+
+  /// Where the cut tool's stamp lands (F-293) — passed straight through to
+  /// the panel ([BrushCanvasPanel.pieceGround]).
+  final PieceGround Function()? pieceGround;
 
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
@@ -525,7 +542,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onPointerCancel: widget.onAutoFrameSettled == null
           ? null
           : (_) => widget.onAutoFrameSettled!(),
-      child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
+      // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100% 넘어서 확대하지
+      // 못하게 락」 — and, asked where it holds (I-27-Q1): 「그리기 캔버스만」.
+      // This host IS the drawing canvas, so it is the one place that says
+      // the lock to the view under it; the sheets and the viewers build the
+      // same panel and say nothing.
+      child: ValueListenableBuilder<AppInputSettings>(
+        valueListenable: AppInput.settings,
+        builder: (context, settings, panel) =>
+            CanvasZoomCeiling(percent: settings.zoomCeiling, child: panel!),
+        child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
+      ),
     );
   }
 
@@ -553,6 +580,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,
+      pieceGround: widget.pieceGround,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
       guides: widget.guides,
@@ -604,6 +632,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
+      textCommands: widget.textCommands,
+      textToolOptions: widget.textToolOptions,
       cutPieceSlot: widget.cutPieceSlot,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,

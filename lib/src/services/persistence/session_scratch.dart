@@ -96,16 +96,19 @@ class SessionScratch {
   /// handed back whole after each save (`ProviderDocuments`). This run's
   /// only, like everything else in the room: the next launch opens the
   /// document again, not the copy.
+  ///
+  /// And the last-resort copy of a pick that would not read in place
+  /// (`FolderPicker.materializeOpenedFile`, 2026-10-08), which a session
+  /// opened from it goes on reading its cels out of.
   static String openedFolder() {
     ensureThisRunsFolder();
     return '${thisRunsFolder()}/Opened';
   }
 
-  /// Where an export that hands its outputs over when it is done
-  /// (「끝나면 고르기」, drive-folder-windows-Q1) writes them first — until
-  /// the picker takes them, or for as long as another app offered them may
-  /// still be reading (Android's share sheet). This run's only, like
-  /// everything else in the room.
+  /// Where an export whose place can only be asked of what is made
+  /// (drive-folder-windows-Q1 · F-221) writes its outputs first — until the
+  /// window that takes them has answered. This run's only, like everything
+  /// else in the room.
   static String outboxFolder() {
     ensureThisRunsFolder();
     return '${thisRunsFolder()}/Outbox';

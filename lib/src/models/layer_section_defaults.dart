@@ -98,11 +98,14 @@ Layer createInstructionLayer({required CutId cutId, String? name}) {
 /// The first name [nameForIndex] makes that no layer in [layers] already
 /// wears, counting up from [firstIndex].
 ///
-/// ⛔FOUR ROW KINDS NAME THEMSELVES THIS WAY — direction rows,
-/// fx rows, SE rows and cels. "Skip the names already in use" is the whole
-/// of it, and each wrote its own `while (true)`: the one that stopped
-/// skipping hands two rows the same name, which the timesheet then prints
-/// twice with nothing to tell them apart.
+/// ⛔FIVE ROW KINDS NAME THEMSELVES THIS WAY — direction rows, fx rows, SE
+/// rows, cels, and attach rows (`nextAttachedLayerName`). "Skip the names
+/// already in use" is the whole of it, and each wrote its own
+/// `while (true)`: the one that stopped skipping hands two rows the same
+/// name, which the timesheet then prints twice with nothing to tell them
+/// apart. ↩️Attach rows were the one that never skipped at all — they
+/// counted (F-292, 유저 2026-10-05: 「A랑 A-2만 있을때 추가하면 A-2가
+/// 만들어짐」).
 String firstUnusedLayerName(
   List<Layer> layers,
   String Function(int index) nameForIndex, {

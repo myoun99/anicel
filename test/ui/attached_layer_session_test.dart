@@ -16,6 +16,7 @@ import 'package:anicel/src/models/timeline_repeat.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 /// W5 attach layers through the session: creation/placement, the attach
 /// cel flow (Create Drawing = cel + link), edit guards and the cascade
@@ -647,7 +648,7 @@ void main() {
         anchorIndex: 0,
         headIndex: 0,
       );
-      expect(s.exposureVerbs.canSetCommaForSelectionOrCurrent, isFalse);
+      expect(s.storyboardCursor.canSetCommaForTimelineCursor, isFalse);
     });
 
     test('독립시키기 from a BELOW attach row unlinks the whole group '
@@ -658,7 +659,7 @@ void main() {
       final belowId = s.activeLayer!.id;
 
       s.selectLayer(base.id);
-      s.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       s.selectLayer(belowId);
       expect(s.layerVerbs.isLayerLinked(belowId), isTrue);
 
@@ -926,7 +927,7 @@ void main() {
           .folderId!;
 
       s.selectLayer(base.id);
-      s.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
 
       final layers = cutLayers(s);
       final copiedOrganizers = [

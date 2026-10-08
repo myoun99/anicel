@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../core/identity_memo.dart';
 import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
 import '../../models/conte/conte_sheet_layout.dart';
@@ -34,6 +33,7 @@ import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
+import '../widgets/panel_flyout.dart' show PanelFlyoutEntry, PanelFlyoutItem;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -158,10 +158,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
       0,
       pages.indexWhere((page) => page.kind == ContePageKind.body),
     );
-    final view = _view.value;
-    if (view == null) {
+    final kept = _view.value;
+    if (kept == null) {
       return firstBody;
     }
+    // The view is kept in the paper's pixels; the book is laid in points.
+    final view = sheetUnitsView(kept, _metricsOf(pages).paperScale);
     final top = -view.panY / view.zoom;
     return pageReadAt(
       _stackOf(pages),
@@ -170,6 +172,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
       bottom: top,
     );
   }
+
+  /// The measurements [pages] are laid by — every page shares one — or,
+  /// for a book with no page yet, the ones its pages will have.
+  static ConteSheetMetrics _metricsOf(List<ContePageLayout> pages) =>
+      pages.isEmpty ? const ConteSheetMetrics() : pages.first.metrics;
 
   // The book one page under another (F-201), memoized with the pages it
   // lays.
@@ -288,9 +295,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// design's "칸 클릭 = selectCut + selectLayer + selectFrameIndex".
   ///
   /// ↩️F-187 (유저 2026-09-26): the row is what every door that stands on a
-  /// cut seats ([Standing.layerACutStandSeats]) — its storyboard row, or,
-  /// when it has none, the layer you stood on if the cut shows it
-  /// (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥 그대로둠」).
+  /// conte cell seats ([Standing.layerAConteStandSeats]) — the cut's
+  /// storyboard row, or, when it has none, the layer you stood on if the
+  /// cut shows it (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
+  /// 그대로둠」).
   void _selectCell(ContePlacedCell cell) {
     final cutId = CutId(cell.cutId);
     final before = _session.activeLayerId;
@@ -306,7 +314,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // law asks whether you are landing inside the current selection, and
     // asking that about the frame you are LEAVING answers the wrong
     // question.
-    final seat = _session.standing.layerACutStandSeats(before: before);
+    final seat = _session.standing.layerAConteStandSeats(before: before);
     if (seat != null) {
       _session.standOnRow(
         LayerRowAddress(seat),
@@ -425,6 +433,32 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// The book's front in the panel's settings (I-59: 「콘티 용지패널의
+  /// 설정버튼안에」), kept with the work — and printed as shown, since the
+  /// export lays the same book.
+  List<PanelFlyoutEntry> _frontSettings(ConteSheetSource source) => [
+    PanelFlyoutItem(
+      keyValue: 'conte-cover-toggle',
+      label: AppText.strings.conteCoverPage,
+      checked: source.cover,
+      onSelected: () => _setFront(cover: !source.cover),
+    ),
+    PanelFlyoutItem(
+      keyValue: 'conte-blank-page-toggle',
+      label: AppText.strings.conteBlankPage,
+      checked: source.blankPage,
+      onSelected: () => _setFront(blankPage: !source.blankPage),
+    ),
+  ];
+
+  /// The book's front as the work keeps it — one undo step.
+  void _setFront({bool? cover, bool? blankPage}) {
+    final info = _session.timesheetInfo;
+    _session.updateTimesheetInfo(
+      info.copyWith(conteCover: cover, conteBlankPage: blankPage),
+    );
+  }
+
   /// The book on the canvas panel, every page one under another (F-201),
   /// the page strip reading and turning the page the view is on.
   Widget _panel(ConteSheetSource source, List<ContePageLayout> pages) {
@@ -432,16 +466,15 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final book = CanvasBook(pages: stack, reading: _reading);
     final pageIndex = book.page;
     final onBrushAllowedChanged = widget.onBrushAllowedChanged;
+    final metrics = _metricsOf(pages);
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
-      canvasSize: pages.isEmpty
-          // The empty-project stand-in matches the real page's PORTRAIT
-          // A4 so the stage geometry holds when pages appear.
-          ? const CanvasSize(width: 596, height: 842)
-          : CanvasSize(
-              width: stack.size.width.ceil(),
-              height: stack.size.height.ceil(),
-            ),
+      sheetSize: pages.isEmpty
+          // The empty-project stand-in is the real page — PORTRAIT A4 — so
+          // the stage geometry holds when pages appear.
+          ? ui.Size(metrics.pageWidth, metrics.pageHeight)
+          : stack.size,
+      paperScale: metrics.paperScale,
       viewport: null,
       viewportController: _view,
       onViewportChanged: widget.onViewportChanged,
@@ -458,7 +491,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,
       ),
-      bottomBarHostToken: (pageIndex, pages.length),
+      bottomBarSettings: _frontSettings(source),
+      bottomBarHostToken: (
+        pageIndex,
+        pages.length,
+        source.cover,
+        source.blankPage,
+      ),
       unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
       // The book's paper: where the view stops (F-201).
       viewLimit: pages.isEmpty ? null : stack.paper,

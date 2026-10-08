@@ -28,17 +28,17 @@ class ExportEnvelopeTask {
 }
 
 /// Renders one cut envelope offscreen with the panel's own renderer
-/// ([CutEnvelopePainter], fit-to-size path) — what the Envelope tab shows
-/// is what exports, the timesheet render's rule.
+/// ([CutEnvelopePainter], fit-to-size path) — what the envelope panel shows
+/// is what exports, the timesheet render's rule — the sheet WHOLE: its
+/// paper, its form, what is filled in and what is written over it.
 ///
-/// [layers] names the strata to draw; null draws all four. A separate call
-/// per layer is how the PSD-style layered output ships as PNGs, and each
-/// one lines up with the others because they share this one layout.
+/// 🪦It could draw a chosen few of the strata, a call a layer — how the
+/// export's 「레이어마다 한 장」 shipped. 유저 2026-10-05: 「레이어 항목
+/// 버튼? 용지 서식 내용 선화 고르는거 싹 다 필요없어보이니 삭제」.
 Future<ui.Image> renderCutEnvelopeImage({
   required CutEnvelopeLayout layout,
   required CutEnvelopeSource source,
   required TextStyle face,
-  Set<SheetPaintLayer>? layers,
   ui.Image? Function(String assetPath)? imageFor,
   CutId? inkOwner,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
@@ -59,7 +59,6 @@ Future<ui.Image> renderCutEnvelopeImage({
       layout: layout,
       source: source,
       face: face,
-      layers: layers,
       imageFor: imageFor,
       inkOwner: inkOwner,
       inkImageFor: inkImageFor,

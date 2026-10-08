@@ -273,7 +273,11 @@ void main() {
 /// device pixels and drawn back onto them: the 1:1 blit class, owning
 /// `FilterQuality.low` on its own Paint for the frames a zoom draws it from
 /// the bake of the narrowing before.
-const int _knownRawDraws = 31;
+/// **30** on 2026-10-07 (board `F-289`, the video export's speed): −1 in
+/// export/export_frame_renderer — a canvas-size video frame drew its baked
+/// cut in one place and each cut of a mixed frame in another, the same
+/// draw written twice; it is one function now (`_paintCutInFrame`).
+const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

@@ -71,7 +71,7 @@ void main() {
 
     test('preserves metadata through execute', () {
       final sourceCut = _sourceCut().copyWith(
-        metadata: const CutMetadata(note: 'FX-heavy cut.'),
+        metadata: const CutMetadata(pageNotes: ['FX-heavy cut.']),
       );
       final repository = ProjectRepository(
         initialProject: _project(

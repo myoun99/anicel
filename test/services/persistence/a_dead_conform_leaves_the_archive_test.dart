@@ -393,6 +393,7 @@ void main() {
       session.projectFile.bindToOpenedFile(
         path,
         mediaInFile: const {},
+        fontsInFile: const {},
         unsaved: false,
       );
 

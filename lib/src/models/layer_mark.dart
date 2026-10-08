@@ -224,10 +224,40 @@ Map<String, String> staffWithName(
   return next;
 }
 
-/// A staff map as a file holds it: a value that is not a name (a file from
-/// before the labels vocabulary kept a name-and-stamp object) drops
-/// silently.
+/// Who keeps the names of the people doing a stage's work.
+enum StaffHolder {
+  /// The work (작품 설정): the conte — one book for the whole work.
+  work,
+
+  /// Each cut (컷 설정): every other stage, whose people change from cut
+  /// to cut.
+  cut,
+}
+
+/// Who keeps [process]'s staff — null for 用紙, which is nobody's work
+/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」).
+///
+/// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
+/// 공통적인 부분인 제목/화수/회사로고/표지그림등만 남겨두고, 스태프는 콘티만
+/// 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」. ↩️The work kept every
+/// stage's name and a cut's own name stood over it (09-25: 작품 설정에는
+/// 기본값, 컷 설정에는 컷별 이름).
+StaffHolder? staffHolderOf(LayerProcess process) => switch (process) {
+  LayerProcess.paper => null,
+  LayerProcess.conte => StaffHolder.work,
+  _ => StaffHolder.cut,
+};
+
+/// A staff map as a file holds it: each stage's name by its key
+/// ([LayerMark.keySlug]).
+///
+/// ↩️It dropped two older shapes here — a value that was a name-and-stamp
+/// object (from before the labels vocabulary), and a stage its holder no
+/// longer keeps (from before F-291-Q1 gave every stage but the conte to the
+/// cut). Only files of formats refused by their number now hold either (the
+/// save law, 유저 2026-10-06).
 Map<String, String> staffFromJson(Object? json) => {
-  for (final entry in (json as Map<String, dynamic>? ?? const {}).entries)
-    if (entry.value case final String name) entry.key: name,
+  for (final MapEntry(:key, :value)
+      in (json as Map<String, dynamic>? ?? const {}).entries)
+    key: value as String,
 };

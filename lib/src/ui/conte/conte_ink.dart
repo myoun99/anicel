@@ -55,7 +55,8 @@ class ConteInkController extends SheetInkController<Null> {
 
   final InkPlaneSlot _row;
 
-  /// One cell surface, at [conteInkScale]: the page BODY's size for every
+  /// One cell surface, at the paper's grade
+  /// ([ConteSheetMetrics.paperScale]): the page BODY's size for every
   /// cell (the coordinator shares one geometry per plane). A cell's window
   /// exposes only its own band's slice — the tile-sparse store makes the
   /// unused remainder free, and a cell that GROWS (rowSpan) simply reveals
@@ -65,10 +66,11 @@ class ConteInkController extends SheetInkController<Null> {
   /// Adopts the sheet geometry (every page shares one metrics). Never
   /// notifies: callers run this during build.
   void syncGeometry(ConteSheetMetrics metrics) {
+    final scale = metrics.paperScale;
     _row.syncTo(
       CanvasSize(
-        width: (metrics.bodyWidth * conteInkScale).ceil(),
-        height: (metrics.bodyHeight * conteInkScale).ceil(),
+        width: (metrics.bodyWidth * scale).ceil(),
+        height: (metrics.bodyHeight * scale).ceil(),
       ),
     );
   }

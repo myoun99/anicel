@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
@@ -9,13 +9,13 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/cut_id.dart';
+import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
-import '../../models/timeline_coverage.dart';
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
@@ -42,7 +42,12 @@ import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
+import '../../services/se_name_tag_plan.dart';
+import '../timeline/memo_token.dart';
 import 'export_plan.dart';
+import 'held_pictures.dart';
+import 'held_rows.dart';
 import 'offscreen_raster.dart';
 
 /// The ground a frame is rendered on unless a caller names another — what
@@ -53,8 +58,8 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 /// Where a cel stands in the project: its cut, its row, its drawing.
 typedef _CelAt = (CutId, LayerId, FrameId);
 
-/// Renders export output at full quality straight from the brush store, so
-/// exports never depend on the playback quality setting or its caches.
+/// Renders export output straight from the brush store, every cel at its
+/// own pixels, so exports never depend on the playback caches.
 ///
 /// It reads the store as a LOOK ([CelRead.look]) and holds only what the
 /// frame it draws and the one before it read ([_startFrame]).
@@ -66,6 +71,28 @@ class ExportFrameRenderer {
     ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
+
+  /// A renderer for a run written in [format], on the ground its files are
+  /// made on: none where the file keeps its alpha — a still asked for RGBA,
+  /// a video with an alpha channel ([alphaVideo]) — the format's colour
+  /// under any other still, and white under a video.
+  ///
+  /// ↩️The export window spelled this for itself; it lives here since
+  /// 「다른 이름으로 저장」 writes the image tab's picture (backlog-21-Q7).
+  ExportFrameRenderer.forFormat({
+    required EditorSessionManager session,
+    required ExportFormatSelection format,
+    required bool applyLayerFx,
+    bool alphaVideo = false,
+  }) : this(
+         session: session,
+         applyLayerFx: applyLayerFx,
+         background: (alphaVideo || (format.isStill && format.wantsAlpha))
+             ? const ui.Color(0x00000000)
+             : format.isStill
+             ? ui.Color(format.backgroundArgb)
+             : const ui.Color(0xFFFFFFFF),
+       );
 
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
@@ -88,6 +115,43 @@ class ExportFrameRenderer {
   var _thisFrame = <_CelAt, BitmapSurface?>{};
   var _frameBefore = <_CelAt, BitmapSurface?>{};
 
+  /// The pictures the VIDEO frame being drawn is made of and the ones the
+  /// frame before it was made of, each under what it was made of: a cut's
+  /// whole picture in its own canvas space, and the finished frame. Held
+  /// for one more frame like the cels above ([HeldPictures]), and GPU
+  /// pictures, so let go by hand ([dispose]).
+  ///
+  /// 🚨A CUT'S PICTURE IS KEYED BY ITS SIGNATURE
+  /// ([computeCutFrameCompositeSignature]) — the law the playback cache is
+  /// addressed by. A drawing held across a run of frames is composited once
+  /// for the run, however the camera moves over it.
+  ///
+  /// ↩️Every frame composited every row again, and read the result back
+  /// (F-289, measured 2026-10-07 on the user's own film: of its 1,857
+  /// frames 1,687 show the composite the frame before them showed, and
+  /// 1,483 are that frame's picture, camera and all).
+  late final HeldPictures _pictures = HeldPictures(onLetGo: _rows.letGoOf);
+
+  /// The rows the cut pictures in [_pictures] are made of, each held while
+  /// a picture made of it is — so the picture a frame changes on composes
+  /// only the rows that changed (F-289-Q21). Their room is lent by
+  /// playback's line of the memory allowance, whose caches give way to
+  /// them while the run goes.
+  late final HeldRows _rows = HeldRows(
+    room: () => session.playbackRig.playbackCache.lendableBytes,
+    onHeld: session.playbackRig.playbackCache.lend,
+  );
+
+  /// How many pictures this renderer has had to make (test hook) — a frame
+  /// that is the picture before it makes none.
+  @visibleForTesting
+  int get debugPicturesMade => _pictures.made;
+
+  /// How many row pictures this renderer has composed (test hook) — a row a
+  /// held picture is made of composes once.
+  @visibleForTesting
+  int get debugRowsMade => _rows.made;
+
   /// Starts the next frame: what the frame before the last one read is let
   /// go, and what the last one read is kept for one more.
   ///
@@ -96,6 +160,27 @@ class ExportFrameRenderer {
   void _startFrame() {
     _frameBefore = _thisFrame;
     _thisFrame = {};
+    _pictures.nextFrame();
+    _rows.fitRoom();
+  }
+
+  /// Lets go of the pictures a video run held — and with them the rows they
+  /// were made of, which are held under nothing else. The run's to call
+  /// when its last frame is out.
+  void dispose() => _pictures.dispose();
+
+  /// Keeps the cels [signature]'s picture is made of for one more frame.
+  ///
+  /// A held picture reads no cel, so the cels under it would be let go
+  /// while it stands — and the frame ONE row changes on would read every
+  /// row of the cut again.
+  void _carryCelsOf(CutId cut, CutFrameCompositeSignature signature) {
+    for (final layer in signature.layers) {
+      final at = (cut, layer.layerId, layer.frameId);
+      if (!_thisFrame.containsKey(at) && _frameBefore.containsKey(at)) {
+        _thisFrame[at] = _frameBefore[at];
+      }
+    }
   }
 
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
@@ -189,19 +274,16 @@ class ExportFrameRenderer {
     );
   }
 
-  /// Each contribution's UNIT ALPHA: its own share of the frame times its
-  /// track's static opacity and fade.
+  /// Each contribution's UNIT ALPHA: its own share of the frame. (↩️Times
+  /// its track's static opacity, until the V row lost it — I-73,
+  /// 2026-10-08.)
   ///
   /// ⚠️Both bakes below need exactly this before they can weigh anything,
   /// and they weigh it differently afterwards ([sourceOverWeights] within
   /// one canvas, [trackGroupSourceOverWeights] across tracks). The half
   /// they share is here; the half they don't stays at the call site.
   List<double> _unitAlphas(List<({Cut cut, double opacity})> contributions) {
-    return [
-      for (final contribution in contributions)
-        contribution.opacity *
-            session.opacityVerbs.trackStaticOpacityForCut(contribution.cut.id),
-    ];
+    return [for (final contribution in contributions) contribution.opacity];
   }
 
   /// Canvas-space composites for the stack bake: TRANSPARENT backing, so
@@ -245,7 +327,9 @@ class ExportFrameRenderer {
       task,
       _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
-      withNameTags: withNameTags,
+      nameTags: withNameTags
+          ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
+          : const [],
     );
   }
 
@@ -288,12 +372,16 @@ class ExportFrameRenderer {
       };
 
   /// [renderComposite] inside a frame that has already started, through
-  /// [view].
+  /// [view], with [nameTags] drawn over the picture — handed in resolved,
+  /// so a caller that keys the picture ([_canvasPicture]) keys it by the
+  /// very tags that are drawn — and its rows from [rows] when a held
+  /// picture keeps them ([_cutPicture]).
   Future<ui.Image> _composite(
     ExportFrameTask task,
     CameraView view, {
     CanvasSize? outputSize,
-    bool withNameTags = false,
+    List<ResolvedSeNameTag> nameTags = const [],
+    RowPictures? rows,
   }) async {
     final cut = task.cut;
     await _hydrate(cut, task.frameIndex);
@@ -302,18 +390,14 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
-      overlayPass: !withNameTags
+      rows: rows,
+      overlayPass: nameTags.isEmpty
           ? null
-          : (canvas) {
-              final tags = session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex);
-              if (tags.isNotEmpty) {
-                paintSeNameTags(
-                  canvas,
-                  tags: tags,
-                  canvasSize: cut.canvasSize,
-                );
-              }
-            },
+          : (canvas) => paintSeNameTags(
+              canvas,
+              tags: nameTags,
+              canvasSize: cut.canvasSize,
+            ),
     );
   }
 
@@ -330,8 +414,8 @@ class ExportFrameRenderer {
     surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
   );
 
-  /// The BACKDROP ground (R3b) under a video frame — and nothing at all
-  /// when [preserveAlpha].
+  /// The BACKDROP ground (R3b) under a video frame — null when nothing is
+  /// laid down at all, which is what [preserveAlpha] asks for.
   ///
   /// ⛔THE GROUND IS THE VIDEO'S FLOOR AND THE GUARD IS THE MASTER'S. An
   /// opaque codec bakes the stage's floor everywhere the picture leaves
@@ -339,19 +423,97 @@ class ExportFrameRenderer {
   /// the stack away — while an alpha master must stay transparent. Four
   /// renders wrote the pair out, and one that forgot the guard bakes an
   /// opaque floor into a master somebody asked to keep clear.
-  void _paintBackdropGround(
-    ui.Canvas canvas,
-    ui.Rect bounds, {
-    required bool preserveAlpha,
-  }) {
+  ///
+  /// A VALUE, read once into what the frame is made of ([_frameOf]).
+  ui.Color? _backdropGround({required bool preserveAlpha}) {
     final project = session.repository.requireProject();
     // A backdrop that is NONE (F-114) prints nothing, the way an alpha
     // master leaves it out: the plane is not there.
     if (preserveAlpha || project.backdropNone) {
-      return;
+      return null;
     }
-    canvas.drawRect(bounds, ui.Paint()..color = ui.Color(project.backdropArgb));
+    return ui.Color(project.backdropArgb);
   }
+
+  /// A video FRAME that is made of [made] and of nothing else: the one held
+  /// under it, as a picture of the caller's own to dispose.
+  ///
+  /// 🚨A FRAME MADE OF WHAT THE FRAME BEFORE IT WAS MADE OF IS THAT FRAME'S
+  /// PICTURE — not one like it: the same image, handed again
+  /// (`ui.Image.isCloneOf`). So whoever takes the frames can tell without
+  /// looking at a pixel that it has these already, and a hold costs what
+  /// the encoder charges to see a frame twice.
+  ///
+  /// ⚠️[paint] is handed [made] AND NO MORE — a function of this library's
+  /// top level, with no renderer to read from — so what a frame is keyed by
+  /// is all it can be drawn from. A value that reached the paint and not
+  /// the key would be a held frame shown where the picture moved.
+  Future<ui.Image> _frameOf<T extends Object>(
+    T made, {
+    required int width,
+    required int height,
+    required void Function(ui.Canvas canvas, T made) paint,
+  }) async => (await _pictures.of(
+    (T, made),
+    () => rasterizeOffscreen(
+      width: width,
+      height: height,
+      paint: (canvas) => paint(canvas, made),
+    ),
+  )).clone();
+
+  /// What [cut]'s picture at [frameIndex] is made of — the playback cache's
+  /// own identity of it, of the cut as this render sees it
+  /// ([_cutForRender]).
+  CutFrameCompositeSignature _signatureOf(Cut cut, int frameIndex) =>
+      computeCutFrameCompositeSignature(
+        cut: _cutForRender(cut),
+        frameIndex: frameIndex,
+        revisionOf: (layerId, frameId) =>
+            session.renderCaches.brushFrameStore
+                .frameOrNull(session.brushFrameKeyForCut(cut, layerId, frameId))
+                ?.sourceRevision ??
+            0,
+      );
+
+  /// [cut]'s whole picture at [frameIndex] as [route] draws it, held
+  /// ([_pictures]) under the signature of what it is made of — and the
+  /// cels it is made of kept with it ([_carryCelsOf]), and the row
+  /// pictures [render] made it of ([_rows]). The renderer's own: nobody it
+  /// is handed to disposes it.
+  ///
+  /// [route] is whatever of [render] the signature does not say: which of
+  /// the two canvas-space renders it is, and what is drawn over it.
+  Future<ui.Image> _cutPicture(
+    Cut cut,
+    int frameIndex, {
+    required Object route,
+    required Future<ui.Image> Function(RowPictures rows) render,
+  }) {
+    final signature = _signatureOf(cut, frameIndex);
+    _carryCelsOf(cut.id, signature);
+    final key = (route, signature);
+    return _pictures.of(key, () => _rows.during(key, render));
+  }
+
+  /// [cut]'s picture at [frameIndex] over its whole canvas, on this
+  /// renderer's ground, under [nameTags] — a canvas-size video frame's
+  /// picture.
+  Future<ui.Image> _canvasPicture(
+    Cut cut,
+    int frameIndex,
+    List<ResolvedSeNameTag> nameTags,
+  ) => _cutPicture(
+    cut,
+    frameIndex,
+    route: ('canvas', seNameTagSignature(nameTags)),
+    render: (rows) => _composite(
+      ExportFrameTask(cut: cut, frameIndex: frameIndex),
+      _viewFor(cut, frameIndex, ExportSizeMode.canvas),
+      nameTags: nameTags,
+      rows: rows,
+    ),
+  );
 
   /// [renderComposite] with the cut-level pose and fade baked in for VIDEO
   /// frames — MP4 carries no alpha (yuv420p drops the channel without
@@ -380,6 +542,9 @@ class ExportFrameRenderer {
   /// [preserveAlpha] (ProRes 4444 α): gap frames and the uncovered ground
   /// stay TRANSPARENT instead of baking an opaque backing — the fade
   /// still paints toward its target color (a fade IS opaque paint).
+  ///
+  /// A frame that is the picture the frame before it was comes back as
+  /// that picture ([_frameOf]).
   Future<ui.Image> renderCompositeForVideo(
     ExportFrameTask task,
     ExportSizeMode mode, {
@@ -389,21 +554,17 @@ class ExportFrameRenderer {
     if (mode == ExportSizeMode.camera) {
       return _renderTrackStackForVideo(task, preserveAlpha: preserveAlpha);
     }
+    final ground = _backdropGround(preserveAlpha: preserveAlpha);
     if (task.isGap) {
       // A leading-gap frame: nothing plays — the BACKDROP (R3b), exactly
       // what playback shows in the gap. Opaque codecs bake the floor; an
       // alpha master keeps the gap transparent.
-      final size = mode == ExportSizeMode.camera
-          ? session.camera.cameraFrameSize
-          : task.cut.canvasSize;
-      return rasterizeOffscreen(
+      final size = task.cut.canvasSize;
+      return _frameOf<_GapFrame>(
+        (size: size, ground: ground),
         width: size.width,
         height: size.height,
-        paint: (canvas) => _paintBackdropGround(
-          canvas,
-          size.canvasRect,
-          preserveAlpha: preserveAlpha,
-        ),
+        paint: _paintGapFrame,
       );
     }
     // A transition reaching across this frame's boundary puts a SECOND cut
@@ -411,36 +572,32 @@ class ExportFrameRenderer {
     // size — which two cuts of one track normally do. Only differing sizes
     // keep the single-cut bake, because then there is no shared space to mix
     // in (the camera frame is that space, and that is the camera path above).
-    final overlap = await _canvasSpaceTransitionFrame(
-      task,
-      preserveAlpha: preserveAlpha,
-    );
+    final overlap = await _canvasSpaceTransitionFrame(task, ground: ground);
     if (overlap != null) {
       return overlap;
     }
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
-    final image = await _composite(
-      task,
-      _viewFor(task.cut, task.frameIndex, mode),
-      withNameTags: true,
+    final cut = task.cut;
+    final image = await _canvasPicture(
+      cut,
+      task.frameIndex,
+      session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex),
     );
     // The V effects are TRACK data on the global axis (R4).
     final trackFrame = session.rowSpans.trackGlobalFrameOf(
-      task.cut.id,
+      cut.id,
       task.frameIndex,
     );
     // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
     // R8 ("a bypass that vanished on reload while a per-effect bypass
-    // survived" is exactly what R8 refused). It gates the effect chain —
-    // never the STATIC opacity, which is a compositing property and not an fx
-    // (R9 #21).
-    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(task.cut.id);
-    // No animated track fade any more; the transition row's ramp lands in
-    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers.
-    final fade = session.opacityVerbs.trackStaticOpacityForCut(task.cut.id);
+    // survived" is exactly what R8 refused). It gates the effect chain.
+    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
+    // No track fade: the transition row's ramp lands in
+    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
+    // and the track's static opacity went with the V row's bar (I-73).
     final trackEffects = trackEffectsAt(
-      session.effectsAndFx.trackEffectsForCut(task.cut.id),
+      session.effectsAndFx.trackEffectsForCut(cut.id),
       trackFrame,
       enabled: trackFxEnabled,
     );
@@ -448,56 +605,24 @@ class ExportFrameRenderer {
     // the transition mix above — ↩️its fade was simply missing from a
     // canvas-size export. Its screen lands here, on this one frame.
     final veils = _veilsOf(task);
-    if (fade >= 1 && trackEffects.isEmpty && veils.isEmpty) {
-      return image;
+    if (trackEffects.isEmpty && veils.isEmpty) {
+      return image.clone();
     }
-    final bounds = ui.Rect.fromLTWH(
-      0,
-      0,
-      image.width.toDouble(),
-      image.height.toDouble(),
+    return _frameOf<_BakedFrame>(
+      (
+        ground: ground,
+        cut: (
+          picture: ByIdentity(image),
+          weight: 1,
+          chain: ByList(trackEffects),
+          veils: ByList(veils),
+          canvasExtent: cut.canvasSize.width.toDouble(),
+        ),
+      ),
+      width: image.width,
+      height: image.height,
+      paint: _paintBakedFrame,
     );
-    try {
-      return await rasterizeOffscreen(
-        width: image.width,
-        height: image.height,
-        paint: (canvas) {
-          // The BACKDROP ground (R3b): a fade thins the frame down to it.
-          // An alpha master leaves it transparent instead.
-          _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
-          // The fade is transparency (R3b): the frame thins as one layer
-          // over the ground; no target-color wash.
-          if (fade < 1) {
-            canvas.saveLayer(bounds, ui.Paint()..color = alphaOnly(fade));
-          }
-          final framePaint = ui.Paint();
-          // The chain filters the cut's finished picture, under the fade —
-          // the same order the screen draws it in.
-          //
-          // 🚨AND A KEY IN IT NEEDS ITS OWN RASTER. `image` is the cut's
-          // finished picture at its own size and the export draws it 1:1,
-          // so the steps run at scale 1 — the one route where the ratio is
-          // not a question.
-          final plan = resolveCompositeEffectPlan(trackEffects);
-          plan.finalPaint.applyTo(framePaint);
-          final stepped = steppedForChain(
-            image: image,
-            plan: plan,
-            canvasExtent: task.cut.canvasSize.width.toDouble(),
-          );
-          canvas.drawImage(stepped, ui.Offset.zero, framePaint);
-          if (!identical(stepped, image)) {
-            stepped.dispose();
-          }
-          paintTransitionVeils(canvas, bounds, veils);
-          if (fade < 1) {
-            canvas.restore();
-          }
-        },
-      );
-    } finally {
-      image.dispose();
-    }
   }
 
   /// The screens one-sided transitions lay over [task]'s cut at its frame
@@ -575,80 +700,55 @@ class ExportFrameRenderer {
   /// rules, in canvas space instead of the camera frame.
   Future<ui.Image?> _canvasSpaceTransitionFrame(
     ExportFrameTask task, {
-    required bool preserveAlpha,
+    required ui.Color? ground,
   }) async {
     final shared = _sharedTransitionSpace(task);
     if (shared == null) {
       return null;
     }
-    final contributions = shared.contributions;
     final size = shared.size;
-    final weights = shared.weights;
-    final globalFrame = shared.globalFrame;
-
-    final bounds = size.canvasRect;
-    final images = <ui.Image>[];
-    try {
-      return await rasterizeOffscreen(
-        width: size.width,
-        height: size.height,
-        paint: (canvas) async {
-          _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
-          for (var i = 0; i < contributions.length; i += 1) {
-            final contribution = contributions[i];
-            final cut = contribution.cut;
-            final image = await _composite(
-              ExportFrameTask(
-                cut: cut,
-                frameIndex: contribution.localFrameIndex,
+    return _frameOf<_MixedFrame>(
+      (
+        size: size,
+        ground: ground,
+        cuts: ByList([
+          for (final (i, contribution) in shared.contributions.indexed)
+            (
+              picture: ByIdentity(
+                await _canvasPicture(
+                  contribution.cut,
+                  contribution.localFrameIndex,
+                  session.seEntries.seNameTagsForCutFrame(
+                    contribution.cut,
+                    contribution.localFrameIndex,
+                  ),
+                ),
               ),
-              _viewFor(
-                cut,
-                contribution.localFrameIndex,
-                ExportSizeMode.canvas,
+              weight: shared.weights[i].clamp(0.0, 1.0),
+              // The V row's chain on this contribution, keys included — the
+              // dissolve weights what the chain made, not what it started
+              // from.
+              chain: ByList(
+                trackEffectsAt(
+                  session.effectsAndFx.trackEffectsForCut(contribution.cut.id),
+                  shared.globalFrame,
+                  enabled: session.effectsAndFx.isCutFxEnabled(
+                    contribution.cut.id,
+                  ),
+                ),
               ),
-              withNameTags: true,
-            );
-            images.add(image);
-            final weight = weights[i].clamp(0.0, 1.0);
-            if (weight < 1) {
-              canvas.saveLayer(bounds, ui.Paint()..color = alphaOnly(weight));
-            }
-            final framePaint = ui.Paint();
-            // The V row's chain on this contribution, keys included — the
-            // dissolve weights what the chain made, not what it started
-            // from.
-            final dissolvePlan = resolveCompositeEffectPlan(
-              trackEffectsAt(
-                session.effectsAndFx.trackEffectsForCut(cut.id),
-                globalFrame,
-                enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
-              ),
-            );
-            dissolvePlan.finalPaint.applyTo(framePaint);
-            final steppedFrame = steppedForChain(
-              image: image,
-              plan: dissolvePlan,
-              canvasExtent: cut.canvasSize.width.toDouble(),
-            );
-            canvas.drawImage(steppedFrame, ui.Offset.zero, framePaint);
-            if (!identical(steppedFrame, image)) {
-              steppedFrame.dispose();
-            }
-            // F-192: a one-sided transition's own screen, inside this
-            // contribution's weight — the painter's unit, in canvas space.
-            paintTransitionVeils(canvas, bounds, contribution.veils);
-            if (weight < 1) {
-              canvas.restore();
-            }
-          }
-        },
-      );
-    } finally {
-      for (final image in images) {
-        image.dispose();
-      }
-    }
+              // F-192: a one-sided transition's own screen, inside this
+              // contribution's weight — the painter's unit, in canvas
+              // space.
+              veils: ByList(contribution.veils),
+              canvasExtent: contribution.cut.canvasSize.width.toDouble(),
+            ),
+        ]),
+      ),
+      width: size.width,
+      height: size.height,
+      paint: _paintMixedFrame,
+    );
   }
 
   /// The camera-frame video frame as the display's track stack (R3a).
@@ -660,6 +760,9 @@ class ExportFrameRenderer {
   /// [PlaybackFramePainter] with the stack's own rules — paper on the
   /// bottom covered track only, full-frame fade wash there, upper tracks
   /// thinning their own contribution. One painter for screen and bake.
+  ///
+  /// The frame is made of its painters, and two stacks of painters are one
+  /// picture by the painters' own word ([_StackPainters]).
   Future<ui.Image> _renderTrackStackForVideo(
     ExportFrameTask task, {
     required bool preserveAlpha,
@@ -680,119 +783,115 @@ class ExportFrameRenderer {
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
     final size = session.camera.cameraFrameSize;
-    final images = <ui.Image>[];
-    try {
-      return await rasterizeOffscreen(
-        width: size.width,
-        height: size.height,
-        paint: (canvas) => _paintTrackStack(
-          canvas,
-          size: size,
-          positions: positions,
-          weights: weights,
-          images: images,
-          preserveAlpha: preserveAlpha,
-        ),
-      );
-    } finally {
-      for (final image in images) {
-        image.dispose();
-      }
-    }
+    return _frameOf<_StackFrame>(
+      (
+        size: size,
+        // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
+        // frames, a posed stage sliding off, a fade thinning the stack
+        // away.
+        ground: _backdropGround(preserveAlpha: preserveAlpha),
+        stack: _StackPainters([
+          for (final (i, position) in positions.indexed)
+            await _stackPainter(
+              position,
+              weights[i],
+              size: size,
+              preserveAlpha: preserveAlpha,
+            ),
+        ]),
+      ),
+      width: size.width,
+      height: size.height,
+      paint: _paintStackFrame,
+    );
   }
 
-  /// The track stack painted onto [canvas], each position loaded as it is
-  /// drawn — every picture it loads goes into [images] so the caller can
-  /// dispose them once the raster has read them.
-  Future<void> _paintTrackStack(
-    ui.Canvas canvas, {
+  /// The painter of one position of the track stack: its cut's picture,
+  /// held ([_cutPicture]), under everything the stack lays on it at
+  /// [weight].
+  Future<PlaybackFramePainter> _stackPainter(
+    TrackStackContribution position,
+    double weight, {
     required CanvasSize size,
-    required List<TrackStackContribution> positions,
-    required List<double> weights,
-    required List<ui.Image> images,
     required bool preserveAlpha,
   }) async {
-    // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
-    // frames, a posed stage sliding off, a fade thinning the stack away.
-    _paintBackdropGround(
-      canvas,
-      size.canvasRect,
-      preserveAlpha: preserveAlpha,
-    );
-    for (var i = 0; i < positions.length; i += 1) {
-      final position = positions[i];
-      final cut = position.cut;
-      await _hydrate(cut, position.localFrameIndex);
-      final image = await _stackRenderService.renderThroughCamera(
-        nodes: planCutFrameCompositeTree(
-          cut: _cutForRender(cut),
-          frameIndex: position.localFrameIndex,
-          surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-        ),
-        // The IDENTITY camera: a canvas-space composite, exactly what
-        // the playback cache holds — the painter below projects it
-        // through the cut's real camera, so the camera is never baked
-        // into the composite itself (playback's own rule).
-        pose: CameraPose(
-          center: CanvasPoint(
-            x: cut.canvasSize.width / 2,
-            y: cut.canvasSize.height / 2,
+    final cut = position.cut;
+    final image = await _cutPicture(
+      cut,
+      position.localFrameIndex,
+      route: 'stack',
+      render: (rows) async {
+        await _hydrate(cut, position.localFrameIndex);
+        return _stackRenderService.renderThroughCamera(
+          rows: rows,
+          nodes: planCutFrameCompositeTree(
+            cut: _cutForRender(cut),
+            frameIndex: position.localFrameIndex,
+            surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
           ),
-        ),
-        cameraFrameSize: cut.canvasSize,
-      );
-      images.add(image);
-      // Track effects at the frame's GLOBAL position (R4) — the stack's
-      // own axis — with the row's fx master gating them (R8's rule; the
-      // static opacity is not an fx and stays).
-      final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
-      final weight = weights[i];
-      // The stage belongs to the bottom covered TRACK, and to every
-      // contribution of it: an O.L is a 場面転換, so the arriving cut brings
-      // its own paper and the weights cross-fade the whole screen. Keyed to
-      // the bottom CONTRIBUTION this baked a superimpose.
-      final isStage = position.isBottomTrack;
-      PlaybackFramePainter(
-        image: image,
-        canvasSize: cut.canvasSize,
-        // The multitrack video path projects here, so the tags ride
-        // this painter instead of the identity-camera composite above —
-        // one draw, in the same canvas space as every other surface.
-        seNameTags: session.seEntries.seNameTagsForCutFrame(
-          cut,
-          position.localFrameIndex,
-        ),
-        cameraPose: session.camera.cameraPoseForCut(cut, position.localFrameIndex),
-        cameraFrameSize: size,
-        // No cutPose/cutAnchorPoint: the V row has no transform.
-        cutEffects: trackEffectsAt(
-          session.effectsAndFx.trackEffectsForCut(cut.id),
-          position.globalFrameIndex,
-          enabled: trackFxEnabled,
-        ),
-        paperBackground: session.projectSettings.projectBackground,
-        paintPaper: isStage,
-        // The alpha matrix (user 2026-07-29): alpha masters exclude the
-        // backdrop AND the pasteboard — they are compositing sources,
-        // and the paper carries its own alpha. A pasteboard that is NONE
-        // (F-114) prints nothing either: the plane is not there.
-        pasteboardColor:
-            isStage &&
-                !preserveAlpha &&
-                !session.repository.requireProject().pasteboardNone
-            ? ui.Color(session.repository.requireProject().pasteboardArgb)
-            : null,
-        // The output IS the camera frame — there is no outside to
-        // letterbox, and an alpha master needs the ground transparent.
-        paintLetterbox: false,
-        fadeOpacity: isStage ? weight : 1,
-        imageOpacity: isStage ? 1 : weight,
-        veils: position.veils,
-      ).paint(
-        canvas,
-        ui.Size(size.width.toDouble(), size.height.toDouble()),
-      );
-    }
+          // The IDENTITY camera: a canvas-space composite, exactly what
+          // the playback cache holds — the painter below projects it
+          // through the cut's real camera, so the camera is never baked
+          // into the composite itself (playback's own rule).
+          pose: CameraPose(
+            center: CanvasPoint(
+              x: cut.canvasSize.width / 2,
+              y: cut.canvasSize.height / 2,
+            ),
+          ),
+          cameraFrameSize: cut.canvasSize,
+        );
+      },
+    );
+    // Track effects at the frame's GLOBAL position (R4) — the stack's
+    // own axis — with the row's fx master gating them (R8's rule; the
+    // static opacity is not an fx and stays).
+    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
+    // The stage belongs to the bottom covered TRACK, and to every
+    // contribution of it: an O.L is a 場面転換, so the arriving cut brings
+    // its own paper and the weights cross-fade the whole screen. Keyed to
+    // the bottom CONTRIBUTION this baked a superimpose.
+    final isStage = position.isBottomTrack;
+    return PlaybackFramePainter(
+      image: image,
+      canvasSize: cut.canvasSize,
+      // The multitrack video path projects here, so the tags ride
+      // this painter instead of the identity-camera composite above —
+      // one draw, in the same canvas space as every other surface.
+      seNameTags: session.seEntries.seNameTagsForCutFrame(
+        cut,
+        position.localFrameIndex,
+      ),
+      cameraPose: session.camera.cameraPoseForCut(
+        cut,
+        position.localFrameIndex,
+      ),
+      cameraFrameSize: size,
+      // No cutPose/cutAnchorPoint: the V row has no transform.
+      cutEffects: trackEffectsAt(
+        session.effectsAndFx.trackEffectsForCut(cut.id),
+        position.globalFrameIndex,
+        enabled: trackFxEnabled,
+      ),
+      paperBackground: session.projectSettings.projectBackground,
+      paintPaper: isStage,
+      // The alpha matrix (user 2026-07-29): alpha masters exclude the
+      // backdrop AND the pasteboard — they are compositing sources,
+      // and the paper carries its own alpha. A pasteboard that is NONE
+      // (F-114) prints nothing either: the plane is not there.
+      pasteboardColor:
+          isStage &&
+              !preserveAlpha &&
+              !session.repository.requireProject().pasteboardNone
+          ? ui.Color(session.repository.requireProject().pasteboardArgb)
+          : null,
+      // The output IS the camera frame — there is no outside to
+      // letterbox, and an alpha master needs the ground transparent.
+      paintLetterbox: false,
+      fadeOpacity: isStage ? weight : 1,
+      imageOpacity: isStage ? 1 : weight,
+      veils: position.veils,
+    );
   }
 
   /// One LABEL-GROUP cel (EX5): the gated members' frames composited
@@ -809,28 +908,20 @@ class ExportFrameRenderer {
   }) async {
     _startFrame();
     // A cel has no time of its own, so the group's FX sample at the base
-    // cel's FIRST exposure — the same honest frame the camera pose uses.
-    var firstExposure = 0;
-    for (final block in drawingBlocks(task.baseLayer.timeline)) {
-      if (block.frameId == task.baseFrame.id) {
-        firstExposure = block.startIndex;
-        break;
-      }
-    }
+    // cel's FIRST exposure — the same honest frame the camera pose uses,
+    // in the cut that shows the cel ([ExportCelGroupTask.cut], F-300).
+    final firstExposure = celGroupFirstExposure(task);
     final layers = <CutFrameCompositeLayer>[];
-    for (var i = 0; i < task.members.length; i += 1) {
-      final frame = task.memberFrames[i];
-      if (frame == null) {
-        continue;
-      }
-      final surface = _surfaceFor(task.cut, task.members[i], frame);
+    // One picture of the stack: [layer]'s [frame] as [cut] holds it.
+    void lay(Cut cut, Layer layer, Frame? frame) {
+      final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
       if (surface == null) {
-        continue;
+        return;
       }
       layers.add(
         CutFrameCompositeLayer(
           surface: surface,
-          opacity: task.members[i].opacity,
+          opacity: layer.opacity,
           // R26 #30: the delivery cel is the stack as composited — the
           // members' blends apply. R6: their EFFECTS ride the same fx
           // gates every other route uses — the dialog's master toggle and
@@ -842,19 +933,28 @@ class ExportFrameRenderer {
           // wants raw line art back turns it off, which is what the other
           // tabs always allowed. Blend and static opacity are display
           // properties and stay either way.
-          blendMode: task.members[i].blendMode,
+          blendMode: layer.blendMode,
           effects: applyLayerFx
               ? resolveLayerEffectsAt(
                   // Each effect's own switch (R8) gates it from here.
-                  effects: task.members[i].effects,
+                  effects: layer.effects,
                   frameIndex: firstExposure,
                 )
               : const [],
         ),
       );
     }
+
+    for (var i = 0; i < task.members.length; i += 1) {
+      lay(task.cut, task.members[i], task.memberFrames[i]);
+    }
     if (layers.isEmpty) {
       return null;
+    }
+    // What is laid over the cel goes on top of all of it — and over a cel
+    // with no artwork there is nothing to lay it on (the null above).
+    for (final over in task.overlays) {
+      lay(over.cut, over.layer, over.frame);
     }
     final view = _viewFor(task.cut, firstExposure, mode);
     return renderService.renderThroughCamera(
@@ -865,4 +965,138 @@ class ExportFrameRenderer {
     );
   }
 
+}
+
+// --- what a video frame is made of ------------------------------------------
+//
+// Each is a VALUE that says when two frames are one picture, and the one
+// thing its paint is handed (`ExportFrameRenderer._frameOf`). The paints are
+// down here, out of the renderer, so that they have nothing else to read.
+
+/// A frame nothing plays in: the ground alone.
+typedef _GapFrame = ({CanvasSize size, ui.Color? ground});
+
+/// One cut's finished [picture] as a canvas-size frame takes it: thinned to
+/// [weight], through the V row's [chain], under its own [veils].
+typedef _CutInFrame = ({
+  ByIdentity<ui.Image> picture,
+  double weight,
+  ByList<ResolvedLayerEffect> chain,
+  ByList<TransitionVeil> veils,
+  double canvasExtent,
+});
+
+/// A canvas-size frame of one cut, baked over the ground.
+typedef _BakedFrame = ({ui.Color? ground, _CutInFrame cut});
+
+/// A canvas-size frame a transition mixes from two cuts, leaving cut first.
+typedef _MixedFrame = ({
+  CanvasSize size,
+  ui.Color? ground,
+  ByList<_CutInFrame> cuts,
+});
+
+/// The camera frame as its track stack.
+typedef _StackFrame = ({
+  CanvasSize size,
+  ui.Color? ground,
+  _StackPainters stack,
+});
+
+/// The painters of one camera frame's track stack, bottom up.
+///
+/// Two stacks are ONE picture when each painter paints what its fellow
+/// painted — by the painter's own word for it ([RepaintOnProps.props]:
+/// every input its pixels depend on, the law the screen repaints by).
+final class _StackPainters {
+  _StackPainters(this.all);
+
+  final List<PlaybackFramePainter> all;
+
+  late final List<Object> _props = [for (final painter in all) painter.props];
+
+  @override
+  bool operator ==(Object other) =>
+      other is _StackPainters && listEquals(other._props, _props);
+
+  @override
+  int get hashCode => Object.hashAll(_props);
+}
+
+void _paintGround(ui.Canvas canvas, ui.Rect bounds, ui.Color? ground) {
+  if (ground != null) {
+    canvas.drawRect(bounds, ui.Paint()..color = ground);
+  }
+}
+
+void _paintGapFrame(ui.Canvas canvas, _GapFrame made) =>
+    _paintGround(canvas, made.size.canvasRect, made.ground);
+
+void _paintBakedFrame(ui.Canvas canvas, _BakedFrame made) {
+  final picture = made.cut.picture.value;
+  final bounds = ui.Rect.fromLTWH(
+    0,
+    0,
+    picture.width.toDouble(),
+    picture.height.toDouble(),
+  );
+  // The BACKDROP ground (R3b): a fade thins the frame down to it. An alpha
+  // master leaves it transparent instead.
+  _paintGround(canvas, bounds, made.ground);
+  _paintCutInFrame(canvas, bounds, made.cut);
+}
+
+void _paintMixedFrame(ui.Canvas canvas, _MixedFrame made) {
+  final bounds = made.size.canvasRect;
+  _paintGround(canvas, bounds, made.ground);
+  for (final cut in made.cuts.value) {
+    _paintCutInFrame(canvas, bounds, cut);
+  }
+}
+
+void _paintStackFrame(ui.Canvas canvas, _StackFrame made) {
+  _paintGround(canvas, made.size.canvasRect, made.ground);
+  final extent = ui.Size(
+    made.size.width.toDouble(),
+    made.size.height.toDouble(),
+  );
+  for (final painter in made.stack.all) {
+    painter.paint(canvas, extent);
+  }
+}
+
+/// ONE cut laid into a canvas-size frame — the baked frame's only cut, and
+/// each cut of a mixed one.
+///
+/// ↩️The two routes each wrote this out, a fade's weight in one and a
+/// dissolve's in the other.
+void _paintCutInFrame(ui.Canvas canvas, ui.Rect bounds, _CutInFrame cut) {
+  // The fade is transparency (R3b): the frame thins as one layer over the
+  // ground; no target-color wash.
+  if (cut.weight < 1) {
+    canvas.saveLayer(bounds, ui.Paint()..color = alphaOnly(cut.weight));
+  }
+  final framePaint = ui.Paint();
+  // The chain filters the cut's finished picture, under the fade — the same
+  // order the screen draws it in.
+  //
+  // 🚨AND A KEY IN IT NEEDS ITS OWN RASTER. The picture is the cut's
+  // finished one at its own size and the export draws it 1:1, so the steps
+  // run at scale 1 — the one route where the ratio is not a question.
+  final picture = cut.picture.value;
+  final plan = resolveCompositeEffectPlan(cut.chain.value);
+  plan.finalPaint.applyTo(framePaint);
+  final stepped = steppedForChain(
+    image: picture,
+    plan: plan,
+    canvasExtent: cut.canvasExtent,
+  );
+  canvas.drawImage(stepped, ui.Offset.zero, framePaint);
+  if (!identical(stepped, picture)) {
+    stepped.dispose();
+  }
+  paintTransitionVeils(canvas, bounds, cut.veils.value);
+  if (cut.weight < 1) {
+    canvas.restore();
+  }
 }

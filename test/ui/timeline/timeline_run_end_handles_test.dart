@@ -396,8 +396,10 @@ void main() {
     );
   });
 
-  testWidgets('ghosts render TEXT-ONLY (UI-R10 #11): repeat ghosts print '
-      'cel names on plain cells, hold ghosts string ㅡ dashes', (tester) async {
+  testWidgets('ghosts wear NO PAPER (UI-R10 #11): repeat ghosts print cel '
+      'names on plain cells, every cell of a hold ghost reads ㅡ', (
+    tester,
+  ) async {
     final holdLayer = rederiveRunBehaviors(
       Layer(
         id: const LayerId('layer-h'),
@@ -436,7 +438,9 @@ void main() {
       reason: 'ghost cells carry no block visual',
     );
 
-    // Hold ghosts: ㅡ dashes through the whole span.
+    // Hold ghosts: ㅡ through the whole span — the value a hold's cell
+    // reads by; what is drawn there is the hold's one line
+    // (`a_hold_is_one_line_test`).
     for (var frame = 2; frame < 6; frame += 1) {
       expect(
         timelineCellModel(tester, 'layer-h', frame).glyph,

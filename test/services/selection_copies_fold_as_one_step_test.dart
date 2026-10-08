@@ -106,6 +106,44 @@ void main() {
     final overlapA = rect(2, 2, 10, 12);
     final overlapB = rect(6, 2, 14, 12);
 
+    // A row of the mask asks only the copies it crosses, so each copy has
+    // to be whole on the rows that are its own — the first of them and the
+    // last, whichever copy comes first in the list and wherever its
+    // neighbours are.
+    test('copies that share no rows, and copies that share some, are each '
+        'whole from their first row to their last', () {
+      // The second starts exactly ON a scanline (pixel centres are at .5),
+      // the third ends on one, and the last two overlap the rows between.
+      final copies = [
+        rect(2, 20, 8, 26),
+        rect(10, 2.5, 16, 9),
+        rect(18, 4, 24, 11.5),
+        rect(1, 13, 12, 18),
+        rect(9, 15.5, 22, 22),
+      ];
+      for (final order in [copies, copies.reversed.toList()]) {
+        final region = CanvasSelectionRegion.combineCopies(
+          null,
+          order,
+          SelectionCombineMode.replace,
+        )!;
+        final mask = region.maskFor(left: 0, top: 0, width: 28, height: 28);
+        for (var y = 0; y < 28; y += 1) {
+          for (var x = 0; x < 28; x += 1) {
+            expect(
+              mask[y * 28 + x] != 0,
+              region.containsPoint(at(x + 0.5, y + 0.5)),
+              reason: 'pixel ($x, $y)',
+            );
+          }
+        }
+        expect(mask[2 * 28 + 12], 255, reason: 'a row that starts a copy');
+        expect(mask[11 * 28 + 20], 0, reason: 'and the row that ends one');
+        expect(mask[10 * 28 + 20], 255);
+        expect(mask[0], 0, reason: 'a row no copy crosses');
+      }
+    });
+
     test('the mask agrees with containsPoint over overlapping copies', () {
       final region = CanvasSelectionRegion.combineCopies(
         null,

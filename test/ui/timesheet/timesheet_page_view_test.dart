@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_book.dart';
+import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/sheet_paper_view.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
 /// 유저 2026-09-27 F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
@@ -33,7 +35,6 @@ import '../../helpers/device_viewport.dart';
 const _twoPageDuration = 150;
 
 const _dataModeKey = ValueKey<String>('timesheet-data-mode-toggle-button');
-const _pageModeKey = ValueKey<String>('timesheet-page-mode-toggle-button');
 const _prevKey = ValueKey<String>('timesheet-previous-page-button');
 const _nextKey = ValueKey<String>('timesheet-next-page-button');
 const _pageLabelKey = ValueKey<String>('timesheet-page-readout');
@@ -74,7 +75,7 @@ void main() {
       final layout = TimesheetDocumentLayout(document: document);
       expect(document.pages, hasLength(2), reason: '⛔전제');
 
-      expect(layout.visiblePageIndexes, [0, 1]);
+      expect(layout.pageIndexes, [0, 1]);
       expect(layout.pageRect(1).top, greaterThan(layout.pageRect(0).bottom));
       expect(layout.pageRect(0), layout.pageStack.pageRect(0));
       expect(layout.pageRect(1), layout.pageStack.pageRect(1));
@@ -95,16 +96,6 @@ void main() {
       expect(layout.pageLabel(book.page), '2/2');
     });
 
-    test('continuous view is one strip — no sheets', () {
-      final layout = TimesheetDocumentLayout(
-        document: _document(),
-        continuous: true,
-      );
-
-      expect(layout.visiblePageIndexes, [0]);
-      expect(layout.pageLabel(0), '1/1');
-    });
-
     test('ink windows are laid for the pages asked — every page when none '
         'are named', () {
       final document = _document();
@@ -112,23 +103,17 @@ void main() {
 
       final second = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: const CutId('cut-1'),
         pages: const [1],
       );
-      expect(second.map((window) => window.id), [
-        'page-1',
-        'strip-1-h0',
-        'strip-1-h1',
-      ]);
+      expect(second.map((window) => window.id), ['page-1']);
       expect(second.first.documentRect, layout.pageRect(1));
 
       final all = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: const CutId('cut-1'),
       );
-      expect(all, hasLength(6));
+      expect(all.map((window) => window.id), ['page-0', 'page-1']);
     });
   });
 
@@ -136,11 +121,15 @@ void main() {
     late EditorSessionManager session;
     late ValueNotifier<int> reading;
 
-    Future<void> pumpHost(
-      WidgetTester tester, {
-      bool continuous = false,
-      CanvasViewport? render,
-    }) async {
+    TimesheetDocumentLayout layoutOf() => TimesheetDocumentLayout(
+      document: TimesheetDocument.fromCut(
+        cut: session.activeCutOrNull!,
+        projectName: session.repository.requireProject().name,
+        fps: session.projectSettings.projectFps,
+      ),
+    );
+
+    Future<void> pumpHost(WidgetTester tester, {CanvasViewport? render}) async {
       session = EditorSessionManager(initialProject: _twoPageProject());
       addTearDown(session.dispose);
       final inkController = TimesheetInkController();
@@ -153,27 +142,29 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      var isContinuous = continuous;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) => TimesheetTabHost(
-                session: session,
-                continuous: isContinuous,
-                onContinuousChanged: (next) =>
-                    setState(() => isContinuous = next),
-                reading: reading,
-                viewport: seedFromRender(tester, render ?? CanvasViewport()),
-                onViewportChanged: (_) {},
-                inkController: inkController,
-                brushToolState: brushTool,
-                // Drawing ON: the sheet's ink windows are what follow the
-                // pages on screen (the brush switch starts off since
-                // 2026-09-25).
-                brushAllowed: true,
-                onBrushAllowedChanged: (_) {},
+            body: TimesheetTabHost(
+              session: session,
+              reading: reading,
+              // [render] is said in the sheet's units; the host keeps its
+              // view in the paper's pixels (F-294).
+              viewport: seedFromRender(
+                tester,
+                paperViewShowing(
+                  render ?? CanvasViewport(),
+                  layoutOf().paperScale,
+                ),
               ),
+              onViewportChanged: (_) {},
+              inkController: inkController,
+              brushToolState: brushTool,
+              // Drawing ON: the sheet's ink windows are what follow the
+              // pages on screen (the brush switch starts off since
+              // 2026-09-25).
+              brushAllowed: true,
+              onBrushAllowedChanged: (_) {},
             ),
           ),
         ),
@@ -193,19 +184,15 @@ void main() {
     bool enabled(WidgetTester tester, Key key) =>
         tester.appIconButton(find.byKey(key)).onPressed != null;
 
-    /// The view the panel paints and hit-tests with.
-    CanvasViewport painted(WidgetTester tester) => tester
-        .widget<CanvasViewportGestureLayer>(
-          find.byType(CanvasViewportGestureLayer),
-        )
-        .viewport;
-
-    TimesheetDocumentLayout layoutOf() => TimesheetDocumentLayout(
-      document: TimesheetDocument.fromCut(
-        cut: session.activeCutOrNull!,
-        projectName: session.repository.requireProject().name,
-        fps: session.projectSettings.projectFps,
-      ),
+    /// The view the panel paints and hit-tests with — kept in the paper's
+    /// pixels (F-294) — as the sheet's units read it.
+    CanvasViewport painted(WidgetTester tester) => sheetUnitsView(
+      tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport,
+      layoutOf().paperScale,
     );
 
     /// Where [page]'s top stands on screen, down from the panel's top.
@@ -221,7 +208,7 @@ void main() {
         pillBandOf(tester) +
         layoutOf().pageStack.gap / 2 * painted(tester).zoom;
 
-    testWidgets('the MODES stay in the pill and the PAGES stand on the left '
+    testWidgets('the MODE stays in the pill and the PAGES stand on the left '
         'edge, above / n-N / below', (tester) async {
       // 유저 확정 ⑥ (2026-08-13) split what used to be one row. The two mode
       // toggles are things you press while reading and stayed in the pill;
@@ -231,19 +218,15 @@ void main() {
       // them on was losing the lot.
       await pumpHost(tester);
 
-      final xs = <Key, double>{
-        for (final key in [_dataModeKey, _pageModeKey])
-          key: tester.getCenter(find.byKey(key)).dx,
-      };
       // R2 #13: the panbar is its own capsule on the top edge now, so what
-      // the cluster is left of is FIT — the head of the view controls it
+      // the mode is left of is FIT — the head of the view controls it
       // shares the pill with.
       final fitX = tester
           .getCenter(find.byKey(const ValueKey<String>('canvas-viewport-fit')))
           .dx;
 
-      expect(xs[_dataModeKey], lessThan(xs[_pageModeKey]!));
-      expect(xs[_pageModeKey], lessThan(fitX));
+      final modeX = tester.getCenter(find.byKey(_dataModeKey)).dx;
+      expect(modeX, lessThan(fitX));
 
       // The page cluster reads DOWNWARD in its own capsule, and the whole
       // capsule sits left of the pill it left.
@@ -278,7 +261,7 @@ void main() {
               ),
             )
             .dx,
-        lessThan(xs[_dataModeKey]!),
+        lessThan(modeX),
       );
     });
 
@@ -335,26 +318,15 @@ void main() {
       expect(reading.value, 0);
     });
 
-    testWidgets('continuous view keeps the cluster mounted but inert (one '
-        'strip has no pages to turn)', (tester) async {
-      await pumpHost(tester, continuous: true);
-
-      expect(find.byKey(_prevKey), findsOneWidget);
-      expect(find.byKey(_nextKey), findsOneWidget);
-      expect(enabled(tester, _prevKey), isFalse);
-      expect(enabled(tester, _nextKey), isFalse);
-      expect(pageText(tester), '1/1');
-    });
-
     testWidgets('the ink windows are the pages\' on screen: scrolling to the '
         'next sheet brings its own, and back takes it away', (tester) async {
       await pumpHost(tester, render: CanvasViewport());
       final second = find.byKey(
-        const ValueKey<String>('timesheet-ink-strip-1-h0'),
+        const ValueKey<String>('timesheet-ink-page-1'),
       );
 
       expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+        find.byKey(const ValueKey<String>('timesheet-ink-page-0')),
         findsOneWidget,
       );
       expect(
@@ -373,6 +345,27 @@ void main() {
       await tester.tap(find.byKey(_prevKey));
       await tester.pumpAndSettle();
       expect(second, findsNothing);
+    });
+
+    testWidgets('playback started while the reader is on another sheet takes '
+        'the reader to the playhead\'s at once — before the playhead leaves '
+        'its sheet', (tester) async {
+      await pumpHost(tester, render: CanvasViewport());
+      await tester.tap(find.byKey(_nextKey));
+      await tester.pumpAndSettle();
+      expect(reading.value, 1, reason: '⛔전제: reading the second sheet');
+
+      session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
+      await tester.pump();
+      await tester.pump();
+
+      expect(reading.value, 0);
+      expect(pageText(tester), '1/2');
+
+      session.playbackRig.playback.stop();
+      session.playbackRig.prerenderScheduler.cancel();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('playback crossing into the next sheet moves the view to it '

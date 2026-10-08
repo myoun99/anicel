@@ -224,6 +224,50 @@ void main() {
         const Rect.fromLTWH(7, 9, 0, 0),
       );
     });
+
+    test('the side a picture fills is the slot\'s own measure, to the bit — '
+        'multiplied back out of the scale it comes back a rounding short, '
+        'and that is a margin nobody asked for (F-294)', () {
+      expect(
+        7 * (115 / 7),
+        isNot(115),
+        reason: 'fixture: the product misses',
+      );
+
+      final across = containRect(
+        const Size(7, 1),
+        const Rect.fromLTWH(0, 0, 115, 1000),
+      );
+      expect(across.width, 115);
+      expect(across.left, 0);
+
+      final down = containRect(
+        const Size(1, 7),
+        const Rect.fromLTWH(0, 0, 1000, 115),
+      );
+      expect(down.height, 115);
+      expect(down.top, 0);
+    });
+  });
+
+  group('containFit — the one contain every fit goes through', () {
+    test('says the scale, and the side of the slot the content fills', () {
+      expect(
+        containFit(const Size(200, 100), const Size(100, 100)),
+        (scale: 0.5, fillsWidth: true),
+      );
+      expect(
+        containFit(const Size(100, 200), const Size(100, 100)),
+        (scale: 0.5, fillsWidth: false),
+      );
+    });
+
+    test('a content of the slot\'s own shape fills its width', () {
+      expect(
+        containFit(const Size(64, 32), const Size(128, 64)),
+        (scale: 2.0, fillsWidth: true),
+      );
+    });
   });
 
   group('insertedAt', () {

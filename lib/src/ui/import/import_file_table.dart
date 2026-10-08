@@ -44,6 +44,7 @@ class ImportColumn<T> {
     required this.enabledFor,
     required this.onPick,
     this.style = ImportColumnStyle.choice,
+    this.wordOf,
   });
 
   /// What the keys are built from — the same in every language, which the
@@ -72,6 +73,18 @@ class ImportColumn<T> {
   final bool Function(String path, T value) enabledFor;
 
   final void Function(Iterable<String> paths, T value) onPick;
+
+  /// What a row's cell says for its answer when the row has more to say
+  /// than the answer's [labelOf] — null where it has not. 🗣️I-76-Q1: the
+  /// 「연번」 cell names the run it brings, 「A1–A3 (3장)」, and its popup
+  /// still answers 「함께 · 이 파일만」.
+  final String? Function(String path, T value)? wordOf;
+
+  /// The word [path]'s cell shows.
+  String cellWordOf(String path) {
+    final value = valueOf(path);
+    return wordOf?.call(path, value) ?? labelOf(value);
+  }
 }
 
 class ImportFileRow {
@@ -192,17 +205,19 @@ class _ImportTableMetrics {
           gap,
       columnWidths: [
         for (final column in columns)
-          math.max(
-                text.size(column.label).width,
-                column.style == ImportColumnStyle.toggle
-                    ? dotSize +
-                          dotGap +
-                          text.widest(column.values.map(column.labelOf))
-                    : text.widest(column.values.map(column.labelOf)) +
-                          2 * chipPadH +
-                          2 * chipBorder,
-              ) +
-              gap,
+          if (text.widest([
+                ...column.values.map(column.labelOf),
+                for (final row in rows)
+                  if (column.appliesTo(row.path)) column.cellWordOf(row.path),
+              ])
+              case final word)
+            math.max(
+                  text.size(column.label).width,
+                  column.style == ImportColumnStyle.toggle
+                      ? dotSize + dotGap + word
+                      : word + 2 * chipPadH + 2 * chipBorder,
+                ) +
+                gap,
       ],
       // The row is the chip plus its own padding, so the chip is never
       // cut: the row used to be a fixed 22px and its bordered chips lost
@@ -593,7 +608,7 @@ class _OptionCell extends StatelessWidget {
                       size: _ImportTableMetrics.dotSize,
                     ),
                     const SizedBox(width: _ImportTableMetrics.dotGap),
-                    Text(column.labelOf(value), style: wordStyle),
+                    Text(column.cellWordOf(path), style: wordStyle),
                   ],
                 )
               : Container(
@@ -612,7 +627,7 @@ class _OptionCell extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    column.labelOf(value),
+                    column.cellWordOf(path),
                     maxLines: 1,
                     style: wordStyle,
                   ),

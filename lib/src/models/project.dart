@@ -7,6 +7,7 @@ import 'layer_link_registry.dart';
 import 'media_asset.dart';
 import 'media_viewer_bookmark.dart';
 import 'project_background.dart';
+import 'project_font_file.dart';
 import 'project_frame_rate.dart';
 import 'project_id.dart';
 import 'timesheet_info.dart';
@@ -72,7 +73,9 @@ class Project {
     int audioSpeedDenominator = 1,
     ExportProjectOverrides? exportOverrides,
     MediaViewerBookmarks mediaViewerBookmarks = const {},
+    List<ProjectFontFile> fonts = const [],
   }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
+       fonts = List.unmodifiable(fonts),
        tracks = List.unmodifiable(tracks),
        exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
@@ -149,9 +152,20 @@ class Project {
   final CameraInstructionSet cameraInstructions;
 
   /// The media pool the browser panel lists, keyed by absolute path.
-  /// Loading reconciles it against every clip reference, so legacy projects
-  /// (and hand-edited files) always open with a complete pool.
+  /// Loading reconciles it against every clip reference, so a project
+  /// always opens with a complete pool.
   final List<MediaAsset> mediaAssets;
+
+  /// The font files REGISTERED with this project — the ones it carries
+  /// inside its own file, so that its texts are set in the same letters on
+  /// a machine that was never brought those fonts ([ProjectFontFile]).
+  ///
+  /// 🗣️유저 2026-10-06: 「뺄때까지 두는게 맞지않나 싶은데. 글꼴을 사실상
+  /// 등록하는거잖아」 — it grows when a font is registered and shrinks when
+  /// a person takes one out, and by nothing else. ⛔Never set right on the
+  /// way in: a list tidied as a project opens is a project that is edited
+  /// by being opened.
+  final List<ProjectFontFile> fonts;
 
   /// The film's layer link table ("이름이 같으면 같은 그림"): groups of
   /// layers sharing one cel bank. Empty on projects that never link.
@@ -232,6 +246,7 @@ class Project {
     int? audioSpeedNumerator,
     int? audioSpeedDenominator,
     ExportProjectOverrides? exportOverrides,
+    List<ProjectFontFile>? fonts,
   }) {
     return Project(
       id: id ?? this.id,
@@ -257,6 +272,7 @@ class Project {
       exportOverrides: exportOverrides ?? this.exportOverrides,
       mediaViewerBookmarks:
           mediaViewerBookmarks ?? this.mediaViewerBookmarks,
+      fonts: fonts ?? this.fonts,
     );
   }
 
@@ -265,10 +281,9 @@ class Project {
     'name': name,
     'tracks': tracks.map((track) => track.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
-    // `fps` stays the counting base so a file written today still opens
-    // in a build that predates the fraction; `frameRate` carries the
-    // exact rate and wins on read.
-    'fps': fps,
+    // ↩️`fps` rode beside this so a build that predated the fraction could
+    // still open the file. Every build that opens this format reads the
+    // fraction, and an older one refuses it by number.
     'frameRate': frameRate.toJson(),
     'cameraSize': cameraSize.toJson(),
     if (background != ProjectBackground.defaultBackground)
@@ -283,6 +298,10 @@ class Project {
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
+    // Omitted when empty: a project that carries no font keeps the JSON it
+    // had before fonts could be carried.
+    if (fonts.isNotEmpty)
+      'fonts': [for (final font in fonts) font.toJson()],
     if (trailingFrames != 0) 'trailingFrames': trailingFrames,
     // Omitted when empty: unlinked projects keep their exact legacy JSON.
     if (linkRegistry.isNotEmpty) 'linkRegistry': linkRegistry.toJson(),
@@ -321,11 +340,9 @@ class Project {
       name: json['name'] as String,
       tracks: tracks,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      frameRate: json['frameRate'] == null
-          ? ProjectFrameRate.integer(json['fps'] as int)
-          : ProjectFrameRate.fromJson(
-              json['frameRate'] as Map<String, dynamic>,
-            ),
+      frameRate: ProjectFrameRate.fromJson(
+        json['frameRate'] as Map<String, dynamic>,
+      ),
       cameraSize: json['cameraSize'] == null
           ? defaultProjectCameraSize
           : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),
@@ -369,6 +386,11 @@ class Project {
       mediaViewerBookmarks: mediaViewerBookmarksFromJson(
         json['mediaViewerBookmarks'],
       ),
+      // As written. ⛔Not reconciled against anything — see [fonts].
+      fonts: [
+        for (final font in json['fonts'] as List<dynamic>? ?? const [])
+          ProjectFontFile.fromJson(font as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -392,7 +414,8 @@ class Project {
           other.audioSpeedNumerator == audioSpeedNumerator &&
           other.audioSpeedDenominator == audioSpeedDenominator &&
           other.exportOverrides == exportOverrides &&
-          mapEquals(other.mediaViewerBookmarks, mediaViewerBookmarks);
+          mapEquals(other.mediaViewerBookmarks, mediaViewerBookmarks) &&
+          listEquals(other.fonts, fonts);
 
   @override
   int get hashCode => Object.hash(
@@ -412,6 +435,7 @@ class Project {
     audioSpeedNumerator,
     audioSpeedDenominator,
     exportOverrides,
+    Object.hashAll(fonts),
     Object.hashAll([
       for (final entry in mediaViewerBookmarks.entries) (entry.key, entry.value),
     ]),

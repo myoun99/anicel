@@ -174,9 +174,16 @@ const _notCensused = <String, String>{
       'census reads',
 
   // — Budgets, not holdings. A ceiling is not memory in use.
+  'lib/src/ui/playback/cut_frame_composite_cache.dart → lastComposeLayerBytes':
+      'a size to leave room for — what the picture composed last was made '
+      'of — not a holding: the layer images themselves are '
+      'LayerFrameImageCache.estimatedBytes, which the census reads',
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
       'a CEILING. What is actually held is counted by the two playback '
       'caches the census already reads',
+  'lib/src/ui/session/playback_cache_budget.dart → lendableBytes':
+      'a CEILING — how much an export run may hold on playback\'s line; '
+      'what it holds is lentBytes, which the census reads',
 
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':
@@ -250,9 +257,6 @@ const _imageHolders = <String, String>{
       'a handful of decoded logos, cover pictures and stamps, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '
       'the day it holds cels',
-  'lib/src/ui/export/export_preview_engine.dart → _cache':
-      'the export window preview: an LRU of at most `capacity` frames, owned '
-      'by the window State and gone when the window closes',
   'lib/src/ui/playback/canvas_track_stack_view.dart → _heldFrames':
       'clones of the composites on screen, one per covered cut; each is '
       'pinned in the composite cache (`_heldPins`), which the census reads '

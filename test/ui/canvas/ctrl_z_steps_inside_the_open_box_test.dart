@@ -216,12 +216,13 @@ void main() {
         reason: '⛔전제: the grab opened it',
       );
       final moved = commands.transformValues!;
-      // ⚠️WHICHEVER grip the press found. The box frames a stroke about 50
-      // screen px across, and nine 16px targets do not fit on that — so this
-      // asks 「it is no longer as it opened」 rather than naming one channel.
+      // ⚠️WHICHEVER part of the box the press found — a grip, the inside,
+      // the turn outside it. The box frames a stroke about 50 screen px
+      // across, so this asks 「it is no longer as it opened」 rather than
+      // naming one channel.
       expect(
-        moved.scale != 1 || moved.tx != 0 || moved.rotationDegrees != 0,
-        isTrue,
+        moved.isIdentity,
+        isFalse,
         reason: '⛔전제: the drag really changed the box — $moved',
       );
 
@@ -229,7 +230,7 @@ void main() {
 
       final back = commands.transformValues;
       expect(
-        back?.scale == 1 && back?.tx == 0 && back?.rotationDegrees == 0,
+        back?.isIdentity,
         isTrue,
         reason: '$door took the step — 유저: 「조작마다 언두 기록」 ($back)',
       );

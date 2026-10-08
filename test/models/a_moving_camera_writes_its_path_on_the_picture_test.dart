@@ -522,10 +522,13 @@ void main() {
     );
     expect(total.slot.top, greaterThanOrEqualTo(metrics.rowTop(1)));
     final picture = sheet.marks.whereType<SheetPicture>().single;
+    // ↩️The fixture's picture reached INTO the time column; it stops where
+    // that column begins now (F-310), and the length still goes down with
+    // the words it stands beside (「내려갈땐 다 같이 내려가도록하자」).
     expect(
       picture.slot.right,
-      greaterThan(metrics.timeLeft),
-      reason: 'fixture: the picture reaches into the time column',
+      greaterThan(metrics.dialogueLeft),
+      reason: 'fixture: the picture has taken the words\' columns',
     );
   });
 
@@ -534,14 +537,26 @@ void main() {
     SheetPicture pictureOf(ConteCellSource cell) =>
         printed([cell]).marks.whereType<SheetPicture>().single;
     expect(contePictureRenderWidth(pictureOf(still()), metrics, 1920), 1920);
+    // ↩️The pan was nine tenths of a screen: it stands in the time column at
+    // a screen a window, and is laid smaller to stop before it now (F-310).
+    expect(
+      contePictureRenderWidth(
+        pictureOf(moving(conteCameraPan(across: 0.5))),
+        metrics,
+        1920,
+      ),
+      (1920 * 1.5).round(),
+      reason: 'a screen and a half, at a screen a window',
+    );
     expect(
       contePictureRenderWidth(
         pictureOf(moving(conteCameraPan(across: 0.9))),
         metrics,
         1920,
       ),
-      (1920 * 1.9).round(),
-      reason: 'a screen and nine tenths, at a screen a window',
+      lessThan((1920 * 1.9).round()),
+      reason: 'laid smaller to stay out of the time column, it takes less '
+          'paper a screen',
     );
     final far = pictureOf(moving(conteCameraPan(down: 6)));
     expect(

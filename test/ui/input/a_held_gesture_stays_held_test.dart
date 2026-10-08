@@ -241,5 +241,42 @@ void main() {
         'the key\'s repeats', (tester) async {
       await spacePanThroughRepeats(tester, kind);
     });
+
+    // 🚨the-pan-key-then-an-instant-press-draws (found 2026-10-08 by the
+    // 타임라인/콘티 session): the tools stand down for the pan through a gate
+    // that takes effect a REBUILD after the key — so a press in the same
+    // frame as the key still reached the drawing view. Over an empty cel
+    // that view asked the press whether it draws and the pan said no; over
+    // a cel it asked nothing about the key, and a stroke began (one undo
+    // step) where the user was told a press would pan.
+    testWidgets('🚨the 「이동」 key and a ${kind.name} press in the SAME frame '
+        'pan over a cel too — nothing is drawn', (tester) async {
+      final area = await pumpHome(tester);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      final centre = onTheCanvas(tester, area);
+      final before = live();
+      final steps = session.historyManager.undoCount;
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+      // ⛔No pump here: that is the race.
+      final hand = await tester.startGesture(
+        centre,
+        kind: kind,
+        buttons: kPrimaryButton,
+      );
+      await hand.moveBy(const Offset(40, 0));
+      await tester.pump();
+      expect(live(), isNot(before), reason: 'the press pans');
+
+      await hand.up();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(
+        session.historyManager.undoCount,
+        steps,
+        reason: 'and it drew nothing',
+      );
+    });
   }
 }

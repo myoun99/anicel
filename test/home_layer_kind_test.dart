@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 
 import 'helpers/vertical_text_finder.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
@@ -22,7 +23,8 @@ void main() {
     expect(find.text('B'), findsNothing);
     await expectCutsNamed(tester, 'New Cut', 0);
     expect(find.text('A'), findsWidgets);
-    expectCellText('default-layer-1', 0, 'X');
+    // F-211: layer A opens with its first cel (↩️an empty row, reading X).
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
     expect(
       find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-1')),
       findsOneWidget,

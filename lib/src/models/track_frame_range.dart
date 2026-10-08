@@ -55,6 +55,27 @@ class TrackFrameRangeSelection {
   bool overlaps(int start, int endExclusive) =>
       frameRangesOverlap(startFrame, endFrameExclusive, start, endExclusive);
 
+  /// This selection [delta] frames along — the same rows, the frames the
+  /// blocks it covered were shoved to (F-264). The axis starts at 0.
+  TrackFrameRangeSelection shiftedBy(int delta) => TrackFrameRangeSelection(
+    trackId: trackId,
+    anchorRow: anchorRow,
+    rows: rows,
+    startFrame: startFrame + delta < 0 ? 0 : startFrame + delta,
+    endFrameExclusive: endFrameExclusive + delta,
+  );
+
+  /// This selection ending at [endExclusive] — the same rows from the same
+  /// start, over the blocks a retime made longer or shorter.
+  TrackFrameRangeSelection endingAt(int endExclusive) =>
+      TrackFrameRangeSelection(
+        trackId: trackId,
+        anchorRow: anchorRow,
+        rows: rows,
+        startFrame: startFrame,
+        endFrameExclusive: endExclusive,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

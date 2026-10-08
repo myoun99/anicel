@@ -16,7 +16,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
+import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -24,9 +24,10 @@ import '../playback/audio_device_transport.dart';
 import '../playback/audio_playback_sync.dart';
 import '../playback/audio_scrubber.dart';
 import '../playback/audioplayers_clip_player.dart';
+import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/playback/playback_picture_wait.dart';
 import '../playback/canvas_playback_controller.dart';
-import '../playback/playback_cache_budget.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
@@ -101,8 +102,8 @@ class PlaybackRig implements PlaybackRun {
   // ── the playback cache budget: its own object ───────────────────────
   //
   // A collaborator (session/playback_cache_budget.dart). It reads the
-  // transport and the quality off this rig, which is why the rig builds
-  // it rather than being handed one.
+  // transport off this rig, which is why the rig builds it rather than
+  // being handed one.
   late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(
     project: _project,
     renderCaches: _renderCaches,
@@ -113,6 +114,7 @@ class PlaybackRig implements PlaybackRun {
       PlaybackPrerenderScheduler(
         composites: _renderCaches.cutFrameCompositeCache,
         resolveCut: _project.cutById,
+        room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
         // quiet-window polls otherwise leave a pending gate timer at
         // teardown (the session's tearDown dispose runs AFTER the
@@ -121,7 +123,8 @@ class PlaybackRig implements PlaybackRun {
         //
         // Production: 1200ms (R13-4) — during an active work session the
         // warmer resumes only in REAL pauses; per-tile abort granularity
-        // covers whatever still collides at the resume boundary.
+        // covers whatever still collides at the resume boundary. A run
+        // that PLAYS does not wait it out ([FrameDemand.yieldsToEditing]).
         //
         // ⚠️MUTANT SURVIVES, wrong axis (2026-09-08): swapping the two
         // branches leaves every suite green. What the DELAY does is pinned
@@ -137,17 +140,54 @@ class PlaybackRig implements PlaybackRun {
         beforeCompose: _movieCels.hydrate,
       );
 
-  /// Playback preview quality (Premiere/AE monitor resolution analogue).
   @override
-  PlaybackQuality playbackQuality = defaultPlaybackQuality;
+  FrameDemand? get demand => prerenderScheduler.demand;
 
-  void setPlaybackQuality(PlaybackQuality quality) {
-    if (playbackQuality == quality) {
+  /// What a run does at a frame whose picture is not made yet
+  /// ([PlaybackMode]).
+  ///
+  /// A project setting kept beside the project and not in it, as the
+  /// playback quality whose seat it took was (유저 답
+  /// playback-quality-undo-Q1 「언두 안 됨 — 보기 설정처럼(저장은 됨)」):
+  /// picking one is no edit.
+  PlaybackMode get playbackMode => _playbackMode;
+  PlaybackMode _playbackMode = defaultPlaybackMode;
+
+  void setPlaybackMode(PlaybackMode mode) {
+    if (_playbackMode == mode) {
       return;
     }
-    playbackQuality = quality;
-    _changes.warmActiveCut();
+    _playbackMode = mode;
+    // A run that waits under the old mode may not wait under the new one.
+    playback.lookAgain();
     _changes.notifyChanged();
+  }
+
+  /// Whether a run's clock waits for its picture: the mode, read against
+  /// what the warmer has made of the run it follows.
+  late final PlaybackPictureWait _pictureWait = PlaybackPictureWait(
+    mode: () => playbackMode,
+    pictureIsThere: (playlistFrame) {
+      final wanted = prerenderScheduler.demand;
+      return wanted is PlayingDemand
+          ? prerenderScheduler.has(wanted.picturesOf(playlistFrame))
+          : null;
+    },
+    aheadIsFilled: () => prerenderScheduler.isResting,
+  );
+
+  /// The question the run's clock asks of every frame it would stand on
+  /// ([CanvasPlaybackController.waitsOn]).
+  bool _waitsOn(int playlistFrame, {required bool placed}) {
+    if (placed) {
+      // A run put somewhere has the warmer look at that place — awake or at
+      // rest, it comes to rest again and says so, which is what a run that
+      // fills before it goes waits to hear. The playhead moving wakes it
+      // too, but a run dragged onto the frame it already stands on moves
+      // nothing.
+      prerenderScheduler.wake();
+    }
+    return _pictureWait.holds(playlistFrame, placed: placed);
   }
 
   /// Canvas playback state machine; only the playback view and transport
@@ -161,7 +201,7 @@ class PlaybackRig implements PlaybackRun {
     onStopped: _onStopped,
     onStoppedInGap: _onStoppedInGap,
     onPlaylistWarmRequested: _onPlaylistWarmRequested,
-  );
+  )..waitsOn = _waitsOn;
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.
@@ -246,6 +286,23 @@ class PlaybackRig implements PlaybackRun {
   void attach() {
     audioDeviceTransport.attach();
     audioPlaybackSync.attach();
+    // The warmer rests once what is wanted is made, or no more fits; a
+    // playhead that moves on is what it looks again for.
+    playback.globalFrameIndexListenable.addListener(prerenderScheduler.wake);
+    playback.isActiveListenable.addListener(_onRunToggled);
+    // A run that waits looks again whenever the warmer says the answer
+    // may have changed: a picture landed, one was given up on, or it has
+    // come to rest — which is what a run that renders first waits for.
+    prerenderScheduler.changes.addListener(playback.lookAgain);
+  }
+
+  /// A run that ends is followed no further. What is wanted next is the
+  /// session's to say — its warm of the cut the playhead lands on — and
+  /// until it does nothing is.
+  void _onRunToggled() {
+    if (!playback.isActive) {
+      prerenderScheduler.cancel();
+    }
   }
 
   /// ⚠️The ORDER is the same one the session's `dispose` used to spell:
@@ -255,6 +312,11 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    prerenderScheduler.changes.removeListener(playback.lookAgain);
+    playback.isActiveListenable.removeListener(_onRunToggled);
+    playback.globalFrameIndexListenable.removeListener(
+      prerenderScheduler.wake,
+    );
     transports.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();

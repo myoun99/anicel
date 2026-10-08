@@ -40,8 +40,7 @@ class _TimesheetSePass {
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);
       if (spec.crossesCutEnd &&
           frameCount >= 1 &&
-          frameCount <= _painter.document.rowCount &&
-          _painter.layout.visiblePageIndexes.contains(endLine.page)) {
+          frameCount <= _painter.document.rowCount) {
         final left =
             _painter.layout.halfLeft(endLine.page, endLine.half) +
             _painter.layout.columnLeftInHalf(column);
@@ -54,8 +53,7 @@ class _TimesheetSePass {
           centeredAtX: true,
         );
       }
-      if (spec.spillsInAtStart &&
-          _painter.layout.visiblePageIndexes.contains(startPosition.page)) {
+      if (spec.spillsInAtStart) {
         final left =
             _painter.layout.halfLeft(startPosition.page, startPosition.half) +
             _painter.layout.columnLeftInHalf(column);

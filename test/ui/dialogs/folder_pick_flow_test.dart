@@ -109,26 +109,51 @@ void main() {
     }
   });
 
-  test('finished outputs reach the user by the window each OS has — iOS\'s '
-      'export picker takes any number, Android places one file and shares '
-      'several, the desktops move them into a folder', () {
+  test('finished outputs reach the user by the window their OS has: iOS — '
+      'the export picker, any number; Android — the save window for one '
+      'file, a folder window for several', () {
     for (final oneFile in const [true, false]) {
       expect(
         handOverRoadFor('ios', oneFile: oneFile),
         HandOverRoad.exportPicker,
       );
-      for (final os in const ['macos', 'windows', 'linux']) {
-        expect(
-          handOverRoadFor(os, oneFile: oneFile),
-          HandOverRoad.folderWindow,
-          reason: os,
-        );
-      }
     }
     expect(handOverRoadFor('android', oneFile: true), HandOverRoad.saveWindow);
     expect(
       handOverRoadFor('android', oneFile: false),
-      HandOverRoad.shareSheet,
+      HandOverRoad.folderWindow,
     );
+  });
+
+  test('⛔a desktop has no road for finished outputs — it is asked before '
+      'anything is made, so nothing waits for a window there', () {
+    for (final os in const ['macos', 'windows', 'linux']) {
+      for (final oneFile in const [true, false]) {
+        expect(
+          outputsAskedTheirPlaceFirst(os, oneFile: oneFile),
+          isTrue,
+          reason: os,
+        );
+        expect(
+          () => handOverRoadFor(os, oneFile: oneFile),
+          throwsStateError,
+          reason: os,
+        );
+      }
+    }
+  });
+
+  test('the ORDER is the OS\'s. ONE file is asked first where a save window '
+      'answers with a path — the desktops, macOS among them — and SEVERAL '
+      'everywhere but iOS', () {
+    for (final os in const ['windows', 'linux', 'macos']) {
+      expect(outputsAskedTheirPlaceFirst(os, oneFile: true), isTrue);
+      expect(outputsAskedTheirPlaceFirst(os, oneFile: false), isTrue);
+    }
+    expect(outputsAskedTheirPlaceFirst('android', oneFile: false), isTrue);
+    expect(outputsAskedTheirPlaceFirst('android', oneFile: true), isFalse);
+    for (final oneFile in const [true, false]) {
+      expect(outputsAskedTheirPlaceFirst('ios', oneFile: oneFile), isFalse);
+    }
   });
 }

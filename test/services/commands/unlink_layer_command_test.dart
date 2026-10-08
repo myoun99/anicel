@@ -32,6 +32,7 @@ void main() {
       repository: repository,
       cutId: cut.id,
       sourceLayerId: source.id,
+      insertionIndex: 1,
       layerIdMap: {source.id: copyId},
       newGroupIdBySource: {source.id: 'group-under-test'},
     ).execute();

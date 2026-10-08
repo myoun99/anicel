@@ -34,8 +34,13 @@ class ExportPreset {
     'spec': spec.toJson(),
   };
 
-  factory ExportPreset.fromJson(Map<String, dynamic> json) {
-    final tab = ExportTab.fromJson(json['tab']);
+  /// The preset [json] holds, or null when it was saved for a tab that is
+  /// one no longer ([ExportTab.fromJsonOrNull]).
+  static ExportPreset? fromJson(Map<String, dynamic> json) {
+    final tab = ExportTab.fromJsonOrNull(json['tab']);
+    if (tab == null) {
+      return null;
+    }
     return ExportPreset(
       id: ExportPresetId.fromJson(json['id'] as Map<String, dynamic>),
       name: json['name'] as String,

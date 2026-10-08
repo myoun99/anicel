@@ -38,13 +38,14 @@ void main() {
       UpdateCutNoteCommand(
         repository: repository,
         cutId: targetCut.id,
+        page: 0,
         note: 'General note',
       ).execute();
 
       final updatedCut = requireCut(repository.requireProject(), targetCut.id);
       expect(
         updatedCut,
-        targetCut.copyWith(metadata: const CutMetadata(note: 'General note')),
+        targetCut.copyWith(metadata: const CutMetadata(pageNotes: ['General note'])),
       );
       expect(updatedCut.id, targetCut.id);
       expect(updatedCut.name, targetCut.name);
@@ -76,6 +77,7 @@ void main() {
         UpdateCutNoteCommand(
           repository: repository,
           cutId: targetCut.id,
+          page: 0,
           note: 'General note',
         ),
       );
@@ -101,6 +103,7 @@ void main() {
         UpdateCutNoteCommand(
           repository: repository,
           cutId: targetCut.id,
+          page: 0,
           note: 'General note',
         ),
       );
@@ -108,7 +111,7 @@ void main() {
       historyManager.redo();
 
       expect(
-        requireCut(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.noteOf(0),
         'General note',
       );
       expect(editingSession.activeCutId, targetCut.id);
@@ -118,7 +121,7 @@ void main() {
       final targetCut = _cut(
         id: 'cut-target',
         name: 'Target',
-        metadata: const CutMetadata(note: 'Old note'),
+        metadata: const CutMetadata(pageNotes: ['Old note']),
       );
       final repository = ProjectRepository(
         initialProject: _project(
@@ -133,19 +136,20 @@ void main() {
         UpdateCutNoteCommand(
           repository: repository,
           cutId: targetCut.id,
+          page: 0,
           note: 'New note',
         ),
       );
 
       expect(
-        requireCut(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.noteOf(0),
         'New note',
       );
 
       historyManager.undo();
 
       expect(
-        requireCut(repository.requireProject(), targetCut.id).metadata.note,
+        requireCut(repository.requireProject(), targetCut.id).metadata.noteOf(0),
         'Old note',
       );
     });
@@ -162,6 +166,7 @@ void main() {
       final command = UpdateCutNoteCommand(
         repository: repository,
         cutId: const CutId('missing'),
+        page: 0,
         note: 'General note',
       );
       final beforeJson = repository.requireProject().toJson();

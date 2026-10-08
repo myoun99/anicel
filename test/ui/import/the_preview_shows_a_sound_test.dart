@@ -78,7 +78,7 @@ void main() {
     await pump(tester);
 
     expect(bar(tester).frameCount, 48);
-    expect(bar(tester).showRange, isTrue);
+    expect(bar(tester).range!.onChanged, isNotNull);
   });
 
   testWidgets('🎯a MOVIE that brings its sound alone shows the sound it '
@@ -195,7 +195,7 @@ void main() {
     expect(wash.left - band.left, closeTo(12 * perFrame, 0.01));
     expect(wash.width, closeTo(12 * perFrame, 0.01));
     expect(
-      (bar(tester).inFrame, bar(tester).outFrame),
+      (bar(tester).range!.inFrame, bar(tester).range!.outFrame),
       (12, 23),
       reason: 'the wash and the transport read one span',
     );

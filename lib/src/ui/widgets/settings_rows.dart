@@ -49,6 +49,7 @@ class SettingsSwitchRow extends StatelessWidget {
     this.help,
     required this.value,
     required this.onChanged,
+    this.mixed = false,
     this.inPickOneGroup = false,
   });
 
@@ -61,6 +62,10 @@ class SettingsSwitchRow extends StatelessWidget {
 
   final bool value;
   final ValueChanged<bool>? onChanged;
+
+  /// See [BooleanDot.mixed] — [value] is false with it, so a press hands
+  /// [onChanged] true.
+  final bool mixed;
 
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
@@ -90,6 +95,7 @@ class SettingsSwitchRow extends StatelessWidget {
           title: Text(label),
           trailing: BooleanDot(
             value: value,
+            mixed: mixed,
             inPickOneGroup: inPickOneGroup,
             enabled: enabled,
           ),

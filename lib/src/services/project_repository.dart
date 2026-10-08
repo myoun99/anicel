@@ -30,6 +30,7 @@ import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/reordered_by_ids.dart';
 import '../models/project_background.dart';
+import '../models/project_font_file.dart';
 import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
@@ -628,19 +629,15 @@ class ProjectRepository {
     _mutate(_track, trackId, (track) => track.copyWith(effects: effects));
   }
 
-  /// The V track's DISPLAY properties (R9 #21): its static opacity and its
-  /// fx master. Both persist — R8's rule that an fx switch is model state,
-  /// applied to the one row that still kept its switch in the session.
+  /// The V track's DISPLAY property (R9 #21): its fx master. It persists —
+  /// R8's rule that an fx switch is model state, applied to the one row
+  /// that still kept its switch in the session. (↩️Its static opacity was
+  /// the other, until I-73.)
   void updateTrackDisplay({
     required TrackId trackId,
-    double? opacity,
-    bool? fxEnabled,
+    required bool fxEnabled,
   }) {
-    _mutate(
-      _track,
-      trackId,
-      (track) => track.copyWith(opacity: opacity, fxEnabled: fxEnabled),
-    );
+    _mutate(_track, trackId, (track) => track.copyWith(fxEnabled: fxEnabled));
   }
 
   void updateCutMetadata({
@@ -849,6 +846,11 @@ class ProjectRepository {
 
   void updateMediaAssets(List<MediaAsset> mediaAssets) {
     updateProject((project) => project.copyWith(mediaAssets: mediaAssets));
+  }
+
+  /// The font files registered with the project are [fonts] from here on.
+  void updateFonts(List<ProjectFontFile> fonts) {
+    updateProject((project) => project.copyWith(fonts: fonts));
   }
 
   void updateLayerTransformTrack({

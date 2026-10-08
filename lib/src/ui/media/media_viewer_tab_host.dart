@@ -26,9 +26,11 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import '../canvas/viewport_pages_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/canvas_book.dart';
+import '../brush/canvas_floor_insets.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
@@ -47,12 +49,12 @@ import 'viewer_sound.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/transport_bar.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../repaint_props.dart';
-import '../timeline/memo_token.dart' show ByList;
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -99,6 +101,17 @@ class MediaViewerSlot {
   /// what survives, so the slot is what remembers.
   final ValueNotifier<Object?> framedFor = ValueNotifier(null);
 
+  /// How loud this viewer plays ([MediaViewerTabHost.loudness]) — up here
+  /// for the reason the page is: a rail group folded away unmounts the
+  /// panel, and coming back to a sound at full that was turned down is not
+  /// 「where I was」.
+  ///
+  /// ⚠️The viewer's, not the file's: a swap carries each file's page across
+  /// and leaves each viewer its own level ([swapWith]).
+  final ValueNotifier<ViewerLoudness> loudness = ValueNotifier(
+    const ViewerLoudness(),
+  );
+
   /// Points this viewer at a document. The position goes back to the
   /// start, because "page 37" of the file you just left means nothing in
   /// the one you just opened.
@@ -141,6 +154,7 @@ class MediaViewerSlot {
     position.dispose();
     viewport.dispose();
     framedFor.dispose();
+    loudness.dispose();
   }
 }
 
@@ -171,6 +185,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.framedFor,
+    this.loudness,
     this.filePicker,
     this.sound,
     this.brushTool,
@@ -248,6 +263,11 @@ class MediaViewerTabHost extends StatefulWidget {
   /// is the old behaviour and correct when there is nothing to preserve.
   final ValueNotifier<Object?>? framedFor;
   final ValueChanged<CanvasViewport>? onViewportChanged;
+
+  /// [MediaViewerSlot.loudness] — how loud this viewer plays its sound.
+  /// Null in hosts that own no slot: the panel keeps a level of its own for
+  /// as long as it is mounted.
+  final ValueNotifier<ViewerLoudness>? loudness;
 
   /// Injectable loose-file picker (tests).
   final Future<String?> Function()? filePicker;
@@ -821,6 +841,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   String? get soundPath => _soundPath;
 
+  @override
+  ViewerLoudness get loudness => widget.loudness?.value ?? _ownLoudness;
+
+  /// The level of a host that handed none ([MediaViewerTabHost.loudness]).
+  ViewerLoudness _ownLoudness = const ViewerLoudness();
+
+  void _setLoudness(ViewerLoudness next) => setState(() {
+    final held = widget.loudness;
+    if (held == null) {
+      _ownLoudness = next;
+    } else {
+      held.value = next;
+    }
+  });
+
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
   /// can be playing, so the actuation gate stops it with the same law it
   /// stops the canvas with (유저 09-07 `exclusive`, both directions).
@@ -887,31 +922,51 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// up sharing a key with the first.
   String _key(String suffix) => '${widget.viewerId}-$suffix';
 
-  /// The page cluster, STACKED for the left strip (유저 확정 ⑥) — and empty
-  /// unless there is more than one page, because a still image has no pages
-  /// to turn and a strip standing there for it would be a permanent
-  /// disabled promise.
-  List<Widget> _pageStrip(int pageIndex, int pageCount) {
-    final strings = AppText.strings;
-    return pageTurnStrip(
-      keyPrefix: widget.viewerId,
-      page: viewerPage(pageIndex, pageCount),
-      onTurnTo: _turnToPage,
-      leading: [
-        // 🚨PLAY sits with the page controls, not in a strip of its own:
-        // playing IS turning pages, and the user asked for 「최대한 통일」.
-        // ⛔It is present only when the document turns its own pages — the
-        // same rule this whole strip already follows (유저 확정 ⑥: a still
-        // image gets no strip rather than a permanently disabled one).
-        if (_run.canPlay)
-          AppIconButton(
-            keyValue: _key('play-button'),
-            tooltip: _run.playing ? strings.menuPause : strings.menuPlay,
-            icon: Icon(_run.playing ? Icons.pause : Icons.play_arrow),
-            size: AppIconButtonSize.strip,
-            onPressed: _run.toggle,
-          ),
-      ],
+  /// 🚨★★★**THE PANEL WEARS WHAT ITS DOCUMENT IS** (F-289, 유저 2026-10-06:
+  /// 「이 캔버스 베이스패널은 형식에 따라 나누기로하자. 뷰어패널이라도 pdf면
+  /// 타임시트나 콘티용지패널이랑 같은 알약쓰고, 한장짜리면 그 알약조차
+  /// 없애고, 동영상같은거면 아래에 재생ui 넣고」): a document that RUNS — its
+  /// pages advance by themselves, or it sounds ([MediaRun.canPlay]) — gets
+  /// the transport under it ([_transport]); a book gets the page cluster on
+  /// the left ([_pageStrip]); a single picture gets neither.
+  ///
+  /// ↩️Every document wore the left strip, and one that ran had PLAY at the
+  /// head of it — a movie turned its frames by the page chevrons.
+  bool get _runs => _run.canPlay;
+
+  /// The page cluster, STACKED for the left strip (유저 확정 ⑥) — a book's,
+  /// and empty unless there is more than one page, because a still image
+  /// has no pages to turn and a strip standing there for it would be a
+  /// permanent disabled promise.
+  List<Widget> _pageStrip(int pageIndex, int pageCount) => _runs
+      ? const []
+      : pageTurnStrip(
+          keyPrefix: widget.viewerId,
+          page: viewerPage(pageIndex, pageCount),
+          onTurnTo: _turnToPage,
+        );
+
+  /// The transport under a document that runs, or null for one that does
+  /// not. What it counts is the run's ([MediaRun.frameCount]): a movie's
+  /// own frames, and a sound's length in the project's frames — the frames
+  /// the import window counts the same sound in.
+  CanvasTransportBand? _transport(BuildContext context) {
+    if (!_runs) {
+      return null;
+    }
+    final rate = widget.session.projectSettings.projectFrameRate;
+    final frameCount = _run.frameCount(rate);
+    return CanvasTransportBand(
+      height: TransportBar.heightIn(context, range: false),
+      child: TransportBar(
+        keyPrefix: _key('transport'),
+        frameCount: frameCount,
+        currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
+        playing: _run.playing,
+        onSeek: (frame) => _run.seekToFrame(frame, rate),
+        onPlayPause: _run.toggle,
+        sound: _run.soundCell(onChanged: _setLoudness),
+      ),
     );
   }
 
@@ -1200,8 +1255,18 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       });
     }
 
+    // Zero unless this viewer is the one lying on the app's floor — the
+    // tree answers it, as it answers the canvas (`MainCanvasBrushHost`): a
+    // viewer in a rail is not under the provider. ↩️The floor's viewer was
+    // handed none, so its bars stood under the panels lying on it.
+    final floor = CanvasFloorInsets.maybeOf(context);
+    final transport = _transport(context);
+
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
+      floorCover: floor?.insets ?? EdgeInsets.zero,
+      floorRailBand: floor?.rightRailBand,
+      floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -1230,8 +1295,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       runsTheSelectedTool: tool != null,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
-      // F-201 names it one — so its paper lies on the panel's backdrop.
-      hasPasteboard: false,
+      // F-201 names it one.
+      canvasBase: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
@@ -1249,6 +1314,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
           ),
       ],
       pageStrip: _pageStrip(pageIndex, pageCount),
+      transport: transport,
+      documentName: request?.displayName,
       bottomBarSettings: [
         // Both keep their retired button's key string — the flyout's own
         // convention, so every test that pressed them gains a menu-open
@@ -1304,7 +1371,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                   debugLabel: _key('page'),
                   child: CustomPaint(
                     key: ValueKey<String>(_key('page')),
-                    painter: _MediaPagePainter(
+                    painter: ViewportPagesPainter(
                       pages: _pagesShown(
                         context,
                         viewport,
@@ -1314,7 +1381,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                       // PDF paper is opaque white; a transparent image
                       // shows the checker-free paper too — the viewer is
                       // a light table, not a compositor.
-                      paperFill: document != null,
+                      ground: document != null
+                          ? ViewportPageGround.paper
+                          : ViewportPageGround.none,
                       viewport: viewport,
                       effectiveRatio: EffectiveDevicePixelRatio.of(context),
                     ),
@@ -1395,55 +1464,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ],
     );
   }
-}
-
-class _MediaPagePainter extends CustomPainter with RepaintOnProps {
-  const _MediaPagePainter({
-    required this.pages,
-    required this.paperFill,
-    required this.viewport,
-    required this.effectiveRatio,
-  });
-
-  /// The pages on screen, each where it lies in document space with its
-  /// raster — null draws the paper alone (a page still rendering). A
-  /// raster draws scaled INTO its rect, so a higher-tier render stays
-  /// sharp under zoom.
-  final List<({Rect rect, ui.Image? image})> pages;
-
-  final bool paperFill;
-  final CanvasViewport viewport;
-
-  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap.
-  final double effectiveRatio;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    // P8's ONE transform. ⛔The snap already happened at the host, so the
-    // ratio here keeps the helper's own snap idempotent.
-    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
-    for (final (:rect, :image) in pages) {
-      if (paperFill) {
-        canvas.drawRect(rect, Paint()..color = const Color(0xFFFFFFFF));
-      }
-      if (image != null) {
-        canvas.drawImageRect(
-          image,
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          rect,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..isAntiAlias = true,
-        );
-      }
-    }
-    canvas.restore();
-  }
-
-  /// ⚠️The pages by their CONTENTS: the list is built afresh every build.
-  @override
-  Object get props => (ByList(pages), paperFill, viewport, effectiveRatio);
 }
 
 /// The line that says where in the sound you are.

@@ -48,6 +48,41 @@ void main() {
         isNull,
       );
     });
+
+    test('keys of the moved set may land where another of them stood', () {
+      final track = _track({
+        2: const PropertyKey(1.0),
+        3: const PropertyKey(2.0),
+      });
+      final shifted = track.withRangedKeysShifted(
+        rangeStartIndex: 2,
+        rangeEndIndexExclusive: 4,
+        frameDelta: 1,
+      )!;
+      expect(shifted.keys.keys.toSet(), {3, 4}, reason: '3 vacates first');
+      expect(shifted.keyAt(3)!.value, 1.0);
+      expect(shifted.keyAt(4)!.value, 2.0);
+    });
+
+    test('a key rides WHOLE — its hold and its name with it — and a key '
+        'outside the range stays', () {
+      const held = PropertyKey(
+        1.0,
+        interpolation: PropertyKeyInterpolation.hold,
+        name: 'in',
+      );
+      final track = _track({2: held, 9: const PropertyKey(3.0)});
+      final shifted = track.withRangedKeysShifted(
+        rangeStartIndex: 2,
+        rangeEndIndexExclusive: 3,
+        frameDelta: 4,
+      )!;
+      expect(shifted.keys.keys.toSet(), {6, 9});
+      expect(shifted.keyAt(6)!.value, 1.0);
+      expect(shifted.keyAt(6)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(shifted.keyAt(6)!.name, 'in');
+      expect(shifted.keyAt(9)!.value, 3.0);
+    });
   });
 
   group('named values', () {

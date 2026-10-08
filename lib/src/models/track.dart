@@ -4,7 +4,6 @@ import 'layer.dart';
 import 'layer_effect.dart';
 import 'layer_section_defaults.dart';
 import 'track_id.dart';
-import 'track_se_migration.dart';
 
 enum TrackType { video, audio }
 
@@ -17,7 +16,6 @@ class Track {
     Layer? transitionLayer,
     List<LayerEffect> effects = const [],
     this.type = TrackType.video,
-    this.opacity = 1.0,
     this.fxEnabled = true,
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
@@ -84,16 +82,11 @@ class Track {
 
   final TrackType type;
 
-  /// The V track's STATIC opacity (R9 #21) — the resting value the
-  /// animated fade lane multiplies, exactly as a layer's static opacity
-  /// carries its animated one ([resolveOpacityTrackAt]'s contract). The
-  /// track had only the animated lane, so "make this whole track 50%"
-  /// meant authoring keys.
-  ///
-  /// Unlike the fade, this is NOT an fx: a layer's static opacity is not
-  /// gated by its fx switch either, so [fxEnabled] off still composites
-  /// at this value.
-  final double opacity;
+  // ↩️A track HAD a static opacity of its own (R9 #21) — the resting value
+  // its fade lane multiplied, set by a bar on the V row's head. The fade
+  // lane went with the transform (above), and the bar and the value went
+  // on 2026-10-08 (I-73, 유저: 「V행의 불투명도랑 비지블 필요없어보여서
+  // 삭제하고싶은데 어때」 · 「5. 값도지움」): a track is not seen through.
 
   /// The track's fx MASTER (R9 #21), persisted like every fx switch since
   /// R8. False bypasses the track's whole cut-level fx work — the pose, the
@@ -110,7 +103,6 @@ class Track {
     Layer? transitionLayer,
     List<LayerEffect>? effects,
     TrackType? type,
-    double? opacity,
     bool? fxEnabled,
   }) {
     return Track(
@@ -121,7 +113,6 @@ class Track {
       transitionLayer: transitionLayer ?? this.transitionLayer,
       effects: effects ?? this.effects,
       type: type ?? this.type,
-      opacity: opacity ?? this.opacity,
       fxEnabled: fxEnabled ?? this.fxEnabled,
     );
   }
@@ -136,15 +127,10 @@ class Track {
     // that never used one keeps exactly the shape it had.
     if (transitionLayer != createTrackTransitionLayer(id))
       'transition': transitionLayer.toJson(),
-    // No 'transform' key any more: the V row has no transform. A file that
-    // carries one still LOADS — the key is read and dropped — so an old
-    // project opens one row lighter rather than failing.
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     'type': type.name,
-    // R8's rule: a default is silence. Files written before R9 carry
-    // neither key and open at 1.0 / on, which is what they always were.
-    if (opacity != 1.0) 'opacity': opacity,
+    // R8's rule: a default is silence — a switch that is on writes no key.
     if (!fxEnabled) 'fxEnabled': false,
   };
 
@@ -152,55 +138,29 @@ class Track {
     final id = TrackId.fromJson(json['id'] as Map<String, dynamic>);
     final cutsJson = (json['cuts'] as List<dynamic>).cast<Map<String, dynamic>>();
     final cuts = cutsJson.map(Cut.fromJson).toList();
-    // A 'transform' key written before the teardown is read and DROPPED, as is
-    // the per-cut transform an even older file kept: there is nothing to load
-    // them into. Old projects open, one row lighter.
-    // Missing key = a file written before the transition row existed: it
-    // backfills a fresh empty one, so nothing downstream sees an absence.
+    // No key = an untouched transition row, which the writer leaves out: a
+    // fresh empty one, so nothing downstream sees an absence.
     final transitionJson = json['transition'];
     final transitionLayer = transitionJson is Map<String, dynamic>
         ? Layer.fromJson(transitionJson)
         : createTrackTransitionLayer(id);
-    final opacity = (json['opacity'] as num?)?.toDouble() ?? 1.0;
     final fxEnabled = json['fxEnabled'] as bool? ?? true;
     final effectsJson = json['effects'] as List<dynamic>?;
     final effects = <LayerEffect>[
       for (final effect in effectsJson ?? const [])
         LayerEffect.fromJson(effect as Map<String, dynamic>),
     ];
-    final seLayersJson = json['seLayers'] as List<dynamic>?;
-    if (seLayersJson != null) {
-      return Track(
-        id: id,
-        name: json['name'] as String,
-        cuts: cuts,
-        seLayers: withEnsuredTrackSeLayers(
-          id,
-          seLayersJson
-              .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
-              .toList(),
-        ),
-        transitionLayer: transitionLayer,
-        effects: effects,
-        type: TrackType.values.byName(json['type'] as String),
-        opacity: opacity,
-        fxEnabled: fxEnabled,
-      );
-    }
-
-    // Legacy shape (no seLayers key): SE rows lived on each cut — lift
-    // them onto the track's global axis (shape-based migration, the
-    // codebase's convention).
-    final lifted = liftCutSeLayersToTrack(id, cuts);
     return Track(
       id: id,
       name: json['name'] as String,
-      cuts: lifted.cuts,
-      seLayers: lifted.seLayers,
+      cuts: cuts,
+      seLayers: withEnsuredTrackSeLayers(id, [
+        for (final layer in json['seLayers'] as List<dynamic>)
+          Layer.fromJson(layer as Map<String, dynamic>),
+      ]),
       transitionLayer: transitionLayer,
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
-      opacity: opacity,
       fxEnabled: fxEnabled,
     );
   }
@@ -216,7 +176,6 @@ class Track {
           other.transitionLayer == transitionLayer &&
           listEquals(other.effects, effects) &&
           other.type == type &&
-          other.opacity == opacity &&
           other.fxEnabled == fxEnabled;
 
   @override
@@ -228,7 +187,6 @@ class Track {
     transitionLayer,
     Object.hashAll(effects),
     type,
-    opacity,
     fxEnabled,
   );
 

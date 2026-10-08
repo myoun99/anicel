@@ -98,12 +98,12 @@ final class EditorKeyHolds {
     return KeyEventResult.ignored;
   }
 
-  /// The eyedropper takes hold over the tools the drawing view presses
-  /// for — where a held pen button stands in for a tool too. A second Alt
-  /// joins the hold already in force.
+  /// The eyedropper takes hold whatever tool is in hand (F-299) — but for
+  /// the tools whose own drag reads Alt ([canvasToolReadsAlt]), which keep
+  /// it. A second Alt joins the hold already in force.
   void _holdEyedropper(LogicalKeyboardKey key) {
     final joining = _held.containsValue(_KeyHold.eyedropper);
-    if (!joining && !canvasToolTakesDrawingPress(tool.value.tool)) {
+    if (!joining && canvasToolReadsAlt(tool.value.tool)) {
       return;
     }
     _held[key] = _KeyHold.eyedropper;

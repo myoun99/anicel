@@ -11,7 +11,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -113,7 +112,6 @@ void main() {
       await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       expect(
         InputInspector.notes['cmp'],
@@ -121,14 +119,11 @@ void main() {
         reason: 'a hidden inspector must cost and say nothing',
       );
 
-      // Visible: one fresh compose (other quality tier — the FULL one
-      // above is already cached), one note carrying both halves.
+      // Visible: one fresh compose (another picture — the frame past the
+      // held drawing; the one above is already cached), one note carrying
+      // both halves.
       InputInspector.visible.value = true;
-      await cache.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-        quality: PlaybackQuality.half,
-      );
+      await cache.prepareComposite(cut: cut(), frameIndex: 2);
       final note =
           InputInspector.notes['cmp'] ??
           fail('the compose under the inspector emits its note');

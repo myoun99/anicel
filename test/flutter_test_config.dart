@@ -8,6 +8,8 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
+import 'package:anicel/src/services/persistence/app_support_path.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -51,21 +53,33 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // ⚠️`??=`, so `QA_ENGINE_PATH` still wins: CI sets it, and a run that
   // wants to measure the NO-engine world can too.
   debugQaEngineLibraryPathOverride ??= nativeEngineLibraryPathOrNull();
+  // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
+  // (2026-10-08). FIRST, before anything below asks for a temp path: from
+  // here on `Directory.systemTemp` answers a folder of this file's own —
+  // see `giveTheRunItsOwnTemp` — and the last `tearDownAll` at the bottom
+  // asks what is still in it.
+  final temp = giveTheRunItsOwnTemp();
   AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   // The program/notation languages live app-wide too (AppText), so a file
   // that flips them cannot leak into the next one. Tests that flip them
   // WITHIN a file reset per-test themselves.
   AppText.settings.value = const AppLanguageSettings();
   // The app documents home resolves through the channel override, pointed
-  // at a per-run temp sandbox so no test ever writes into the REAL user
-  // Documents. 🪦It said 「and with it the Recordings take shelf」 until the
-  // shelf was deleted (2026-09-08); what is left here is the PICKER's
+  // at a sandbox in the run's temp so no test ever writes into the REAL
+  // user Documents. 🪦It said 「and with it the Recordings take shelf」 until
+  // the shelf was deleted (2026-09-08); what is left here is the PICKER's
   // starting hint, and a sandbox is still what keeps a test from creating
   // `Documents/Anicel` on the developer's machine.
   // Tests that override the path themselves must tearDown-restore the
   // previous value, never null (null falls back to the real home).
-  final sandbox = Directory.systemTemp.createTempSync('qa_test_docs_');
-  AppStorage.channelDocumentsPath = sandbox.path.replaceAll('\\', '/');
+  //
+  // ⚠️A PATH, made by whatever first asks the home to exist
+  // (`ensuredAppDocumentsDirectory`). ↩️It was a folder made here and
+  // deleted in a `finally` after `testMain` — which returns once the tests
+  // are DECLARED, before one of them has run — so every file that went on
+  // to ask for the home made it again, and left it (2026-10-08).
+  final documents = '${temp.path.replaceAll('\\', '/')}/qa_test_docs';
+  AppStorage.channelDocumentsPath = documents;
   // PICK-2: the folder-picker seam is a static, so a file that installs one
   // and forgets to remove it would hand its fake to every file after it.
   // Cleared here rather than trusted to each suite's tearDown.
@@ -75,7 +89,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // the file), so a leaked seam here does more than return a wrong path.
   FolderPicker.debugFileExporter = null;
   FolderPicker.debugFilesExporter = null;
-  FolderPicker.debugFileSharer = null;
   FolderPicker.debugSaveDestinationPicker = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
@@ -94,6 +107,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugCoordinatedReader = null;
   FolderPicker.debugDownloadRequester = null;
   FolderPicker.debugArrival = null;
+  FolderPicker.debugWaitClock = null;
   FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
   FolderPicker.debugCoordinatedToucher = (_) async => true;
   // PICK-7: the provider seam and the documents a run has been handed — a
@@ -161,9 +175,37 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
-  try {
-    await testMain();
-  } finally {
-    deleteTempQuietly(sandbox);
-  }
+  // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
+  // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
+  // single test, so it is the root group's LAST `tearDownAll` — package:test
+  // runs them in reverse — and every cleanup a file wrote has run by then.
+  //
+  // First the run lets go the way the app does on a normal exit: the
+  // project file, then this run's room in the container
+  // (`SessionScratch.deleteThisRunsFolder` — its lock file is held open for
+  // the whole run, and Windows will not delete a folder with an open file
+  // in it). Then the two stand-ins this run made for the user's own folders
+  // go: the Documents home above, and the container
+  // (`testContainerFolder`). Whatever is still in the run's temp after that
+  // was left behind by a test or by the code it drove, and the file is red
+  // for it — after the folder is removed anyway, so a red run does not
+  // leave it on the machine either.
+  tearDownAll(() async {
+    OpenProjectFile.instance.releaseAll();
+    SessionScratch.deleteThisRunsFolder();
+    deleteTempQuietly(Directory(documents));
+    deleteTempQuietly(Directory(testContainerFolder()));
+    final left = await whatTheRunLeftIn(temp);
+    deleteTempQuietly(temp);
+    expect(
+      left,
+      isEmpty,
+      reason:
+          'whatever this file — or the code its tests drive — makes under '
+          'Directory.systemTemp has to be gone when its tests are: delete '
+          'it with deleteTempQuietly or deleteAfterSessionEnds, and let go '
+          'of what still holds it first',
+    );
+  });
+  await testMain();
 }

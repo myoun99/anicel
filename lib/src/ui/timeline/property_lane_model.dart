@@ -1,10 +1,13 @@
 import 'dart:ui' show Offset, VoidCallback;
 
+import 'package:flutter/foundation.dart' show Listenable;
+
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_row_address.dart';
+import '../../models/timeline_run_behavior.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -150,6 +153,7 @@ class PropertyLaneRow {
     this.valueKind = PropertyLaneValueKind.number,
     this.colorCanBeNone = false,
     this.scrubValue,
+    this.linkable = false,
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
     this.groupExpanded = false,
@@ -235,6 +239,14 @@ class PropertyLaneRow {
   /// Generic like [valueLabel] — each lane provider decides which drag axis
   /// drives which component. Null (or a null return) disables scrubbing.
   final String? Function(String currentLabel, Offset dragDelta)? scrubValue;
+
+  /// Whether this lane's value is two numbers a CHAIN can link — a layer's
+  /// Scale. The label cell wears the chain beside the value when the rail
+  /// hands it one ([PropertyLaneEditCallbacks.valueLink]).
+  ///
+  /// ⛔The lane carries it, as it carries [colorCanBeNone]: nothing
+  /// downstream switches on a lane id to find out.
+  final bool linkable;
 
   /// Whether the label cell shows the keyframe navigator (◀ ◆ ▶). Lanes
   /// without key semantics (the SE audio lane) hide it.
@@ -366,6 +378,16 @@ int indexOfDisplayRow(
       : indexOfLayerRow(rows, activeLayerId);
 }
 
+/// THE CHAIN a [PropertyLaneRow.linkable] lane wears: whether it is on,
+/// what says so changed — the switch is flipped from elsewhere too — the
+/// press that flips it, and the name it answers to.
+typedef PropertyLaneValueLink = ({
+  Listenable changes,
+  bool Function() isOn,
+  VoidCallback toggle,
+  String tooltip,
+});
+
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
 /// into its transform track today, and every layer (and FX property) plugs
 /// into the same signatures with the layer-transform work.
@@ -375,6 +397,7 @@ class PropertyLaneEditCallbacks {
     this.onSetValue,
     this.onPreviewValue,
     this.onEndPreview,
+    this.valueLink,
   });
 
   /// Adds a key (freezing the property's current value, AE-style) or
@@ -421,22 +444,109 @@ class PropertyLaneEditCallbacks {
   /// A scrub that went away without a release: what [onPreviewValue]
   /// showed is dropped.
   final VoidCallback? onEndPreview;
+
+  /// The chain of the lanes whose value is a linked pair — null leaves it
+  /// off their rows.
+  final PropertyLaneValueLink? valueLink;
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
-/// the subtree members' exposure intervals merged into runs. Pure display
-/// — nameless, no comma edits, no moves.
+/// the subtree members' BLOCKS merged into runs. Nameless, and no comma
+/// edits.
+///
+/// ↩️F-311 (유저 2026-10-06): it was 「pure display … no moves」, and the
+/// union took every entry a member's timeline holds.
+///  · 「폴더의 블록 드래그로 이동할 수 있게. 내부 전체적으로 이동하는 느낌」 —
+///    a run is what a drag on the folder's row carries now: the rows the
+///    folder holds ride it (`rowsHeldByFolderRowsOf`).
+///  · 「지금 성질 홀드로하면 폴더에서 콘티블록마냥 블록 꽉 채워지는데, 그거말고
+///    홀드면 홀드 점선 그대로 사용하도록. 왜냐하면 홀드면 사실 뒤가 빈공간인데
+///    블록 드래그 이동하기 번거로우니까. 그래서 실제 존재하는 블록만 제대로
+///    하고싶은것. 리피트의 고스트프레임도 마찬가지」 — a GHOST is an entry of
+///    the timeline and no block of the row: merged in like one, a hold ran
+///    the folder's block to the end of the cut. What the members project
+///    there is [folderGhostRuns].
 List<({int start, int endExclusive})> folderAggregateRuns(
   Iterable<Layer> members,
+) => _mergedRuns([
+  for (final member in members)
+    for (final entry in member.timeline.entries)
+      if (entry.value.length != null && !entry.value.ghost)
+        (start: entry.key, endExclusive: entry.key + entry.value.length!),
+]);
+
+/// What a folder's band shows where none of its rows stands a block and
+/// one projects a ghost — beside [runs], its blocks: a hold's stretch, then
+/// a repeat's where no hold reaches (the order the rows' own rederive lays
+/// them in).
+List<({int start, int endExclusive, TimelineRunEdgeMode mode})>
+folderGhostRuns(
+  Iterable<Layer> members,
+  List<({int start, int endExclusive})> runs,
 ) {
-  final intervals = <({int start, int endExclusive})>[
-    for (final member in members)
-      for (final entry in member.timeline.entries)
-        if (entry.value.length != null)
-          (start: entry.key, endExclusive: entry.key + entry.value.length!),
-  ]..sort((a, b) => a.start.compareTo(b.start));
+  List<({int start, int endExclusive})> projected(TimelineRunEdgeMode mode) =>
+      _mergedRuns([
+        for (final member in members)
+          for (final entry in member.timeline.entries)
+            if (entry.value.ghostOf?.mode == mode)
+              (start: entry.key, endExclusive: entry.key + entry.value.length!),
+      ]);
+  final holds = _runsOutside(projected(TimelineRunEdgeMode.hold), runs);
+  final repeats = _runsOutside(
+    projected(TimelineRunEdgeMode.repeat),
+    _mergedRuns([...runs, ...holds]),
+  );
+  return [
+    for (final (:start, :endExclusive) in holds)
+      (
+        start: start,
+        endExclusive: endExclusive,
+        mode: TimelineRunEdgeMode.hold,
+      ),
+    for (final (:start, :endExclusive) in repeats)
+      (
+        start: start,
+        endExclusive: endExclusive,
+        mode: TimelineRunEdgeMode.repeat,
+      ),
+  ];
+}
+
+/// The stretches of [runs] that [taken] leaves free — each list in order,
+/// no two of its runs meeting.
+List<({int start, int endExclusive})> _runsOutside(
+  List<({int start, int endExclusive})> runs,
+  List<({int start, int endExclusive})> taken,
+) {
+  final free = <({int start, int endExclusive})>[];
+  for (final run in runs) {
+    var from = run.start;
+    for (final other in taken) {
+      if (other.endExclusive <= from) {
+        continue;
+      }
+      if (other.start >= run.endExclusive) {
+        break;
+      }
+      if (other.start > from) {
+        free.add((start: from, endExclusive: other.start));
+      }
+      from = other.endExclusive;
+    }
+    if (from < run.endExclusive) {
+      free.add((start: from, endExclusive: run.endExclusive));
+    }
+  }
+  return free;
+}
+
+/// [intervals] as runs: in order, every two that meet or overlap made one.
+List<({int start, int endExclusive})> _mergedRuns(
+  Iterable<({int start, int endExclusive})> intervals,
+) {
+  final inOrder = [...intervals]..sort((a, b) => a.start.compareTo(b.start));
   final runs = <({int start, int endExclusive})>[];
-  for (final interval in intervals) {
+  for (final interval in inOrder) {
     if (runs.isNotEmpty && interval.start <= runs.last.endExclusive) {
       if (interval.endExclusive > runs.last.endExclusive) {
         runs[runs.length - 1] = (

@@ -6,19 +6,26 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show SelectionMaskOptions;
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPoseSample;
+import 'package:anicel/src/services/piece_landing.dart';
 import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -27,6 +34,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/placement_reading.dart';
 
 /// The cut tool driven through real pointer input.
 ///
@@ -58,6 +66,7 @@ void main() {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
         double? stampOpacity,
+        bool rowTakesStrokes,
       })
       setTool,
     })
@@ -69,7 +78,14 @@ void main() {
     // a-marquee-on-a-posed-row: where the row stands on the canvas. Null =
     // unposed.
     LayerPoseSample? placement,
+    // The selection's softness, as the tool settings would set it.
+    SelectionMaskOptions maskOptions = SelectionMaskOptions.none,
+    // Where a stamp lands, as the session would read it. Null = the cel
+    // the panel stands on.
+    PieceGround Function()? pieceGround,
   }) async {
+    final softness = ValueNotifier(maskOptions);
+    addTearDown(softness.dispose);
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -83,6 +99,8 @@ void main() {
       CanvasShapeKind? shape,
       BrushBlendMode? stampBlend,
       double? stampOpacity,
+      // False = standing on a row that takes no strokes (a property lane).
+      bool rowTakesStrokes = true,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -103,8 +121,14 @@ void main() {
                 cutStampOpacity: stampOpacity,
               )),
               selectionCommands: commands,
+              selectionMaskOptions: softness,
+              pieceGround: pieceGround,
               cutPieceSlot: slot,
-              interactiveContentPose: placement,
+              rowAcceptsStrokes: rowTakesStrokes,
+              interactiveContentPose: placementOfSample(
+                placement,
+                BrushCanvasFixture.canvasSize,
+              ),
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork pixel per DEVICE
@@ -292,8 +316,8 @@ void main() {
     // Passing the mode alone sends the stamp down the ordinary path with
     // the flag false, and the piece gets PAINTED where it should have cut a
     // hole. That has now been the same mistake in three places (bucket,
-    // shape fill, stamp), which is why all three stamp routes go through
-    // one commit method.
+    // shape fill, stamp), which is why every road a piece lands by passes
+    // the one line that sets it (`pieceLandings`).
     final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
@@ -477,6 +501,210 @@ void main() {
     );
   });
 
+  testWidgets('a press on the canvas presses at the stamp tool\'s opacity '
+      'too', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    final canvas = find.byType(BrushCanvasPanel);
+    int alphaAt(int x, int y) =>
+        (surfacePixelRgba(
+              env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+              x,
+              y,
+            ) ??
+            0) &
+        0xFF;
+
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 0.5);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+    await tester.pump();
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 1);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 200));
+    await tester.pump();
+
+    final half = alphaAt(50, 140);
+    final full = alphaAt(50, 200);
+    expect(full, greaterThan(0), reason: '⛔premise: the press stamps');
+    expect(half, closeTo(full / 2, 2));
+  });
+
+  testWidgets('a stamp lands through the selection, at its softness', (
+    tester,
+  ) async {
+    final env = await pumpPanel(
+      tester,
+      tool: CanvasTool.cut,
+      maskOptions: const SelectionMaskOptions(featherPx: 4),
+    );
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    // A selection whose right edge runs down the middle of the stamp.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 100, right: 50, bottom: 200),
+      ),
+    );
+    await env.setTool(CanvasTool.cutStamp);
+    final canvas = find.byType(BrushCanvasPanel);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+    await tester.pump();
+
+    int alphaAt(int x) =>
+        (surfacePixelRgba(
+              env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+              x,
+              140,
+            ) ??
+            0) &
+        0xFF;
+    expect(alphaAt(25), 255, reason: 'deep inside it lands whole');
+    expect(
+      alphaAt(49),
+      allOf(greaterThan(0), lessThan(255)),
+      reason: 'just inside the edge it lands in part — the feather',
+    );
+    expect(alphaAt(60), 0, reason: 'past the outline nothing lands');
+  });
+
+  /// 🗣️유저 08-12 (C5): 「같은게 두개인곳에 붙여넣으면 한번만 발리도록」 — the
+  /// same picture in two places is a LINK: a second row that is a window
+  /// onto the first one's cel. ⛔A cel held across frames is one KEY named
+  /// twice, which any map folds; only a link asks the store which cel a key
+  /// means.
+  group('a second row that is a window onto the SAME cel', () {
+    final standing = BrushCanvasFixture.createFrameKeys().first;
+    final window = BrushFrameKey(
+      projectId: standing.projectId,
+      trackId: standing.trackId,
+      cutId: standing.cutId,
+      layerId: const LayerId('a-window-onto-the-standing-row'),
+      frameId: standing.frameId,
+    );
+
+    /// A panel holding a cut piece, whose stamps land on [cels].
+    Future<BrushFrameEditingCoordinator> pumpLinked(
+      WidgetTester tester, {
+      required List<BrushFrameKey> cels,
+      LayerPoseSample? Function(BrushFrameKey key)? placementOf,
+      double stampOpacity = 1,
+    }) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        pieceGround: () => PieceGround(
+          cels: cels,
+          placementOf: (key) => placementOfSample(
+            placementOf?.call(key),
+            BrushCanvasFixture.canvasSize,
+          ),
+        ),
+      );
+      env.coordinator.frameStore.setLinkResolver(
+        (key) => key == window ? standing : key,
+      );
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      expect(env.slot.isNotEmpty, isTrue, reason: '⛔premise: a piece is held');
+      await env.setTool(CanvasTool.cutStamp, stampOpacity: stampOpacity);
+      return env.coordinator;
+    }
+
+    int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
+        (surfacePixelRgba(
+              coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+              x,
+              y,
+            ) ??
+            0) &
+        0xFF;
+
+    testWidgets('🚨the piece lands on it ONCE', (tester) async {
+      // The window is named first: its key is not the cel's own, so a
+      // landing filed under the key it was asked by would not be found
+      // when the cel's own row asks.
+      final coordinator = await pumpLinked(
+        tester,
+        cels: [window, standing],
+        // Half-pressed, so a second landing on the cel would show.
+        stampOpacity: 0.5,
+      );
+
+      final canvas = find.byType(BrushCanvasPanel);
+      await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+      await tester.pump();
+
+      expect(
+        alphaAt(coordinator, 50, 140),
+        closeTo(128, 2),
+        reason: 'twice would have laid half over half — 191',
+      );
+    });
+
+    testWidgets('🚨…through the FIRST row\'s reading — stack order is the '
+        'tiebreak', (tester) async {
+      // The window stands 100 to the right, so the one press means another
+      // place of the cel through it.
+      final coordinator = await pumpLinked(
+        tester,
+        cels: [standing, window],
+        placementOf: (key) => key == window
+            ? (
+                pose: TransformPose(center: CanvasPoint(x: 100, y: 0)),
+                anchorPoint: CanvasPoint(x: 0, y: 0),
+              )
+            : null,
+      );
+
+      final canvas = find.byType(BrushCanvasPanel);
+      await tester.tapAt(tester.getTopLeft(canvas) + const Offset(150, 140));
+      await tester.pump();
+
+      expect(
+        alphaAt(coordinator, 150, 140),
+        isNot(0),
+        reason: 'where the standing row — named first — shows the press',
+      );
+      expect(
+        alphaAt(coordinator, 50, 140),
+        0,
+        reason: 'where the window shows it; the cel was already landed on',
+      );
+    });
+  });
+
+  testWidgets('paste at origin lands nothing on a row that takes no strokes', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    int inkOnTheBar() =>
+        surfacePixelRgba(
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+          50,
+          40,
+        ) ??
+        0;
+
+    // Standing on a property lane: the cel shows, and nothing may write it.
+    // With the stamp set to ERASE, a landing would clear the bar it was cut
+    // from.
+    await env.setTool(
+      CanvasTool.cutStamp,
+      stampBlend: BrushBlendMode.erase,
+      rowTakesStrokes: false,
+    );
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    expect(inkOnTheBar(), isNot(0), reason: 'the lane refused it');
+
+    // CONTROL: the same press on the row itself does land.
+    await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.erase);
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    expect(inkOnTheBar(), 0);
+  });
+
   testWidgets('paste at origin presses at the STAMP tool\'s opacity', (
     tester,
   ) async {
@@ -508,8 +736,8 @@ void main() {
     //
     // 🚨`erase` rides the DAB, not the blend mode — passing the mode alone
     // PAINTS the dabs instead of clearing with them, which is the trap the
-    // three stamp routes share one funnel to avoid. Here it would have made
-    // the reading below meaningless.
+    // piece door sets the flag to close. Here it would have made the
+    // reading below meaningless.
     Future<void> wipe() async {
       env.coordinator.commitSourceStroke(
         sourceDabs: [
@@ -872,6 +1100,55 @@ void main() {
         reason: 'pressed at canvas (130,140), which the row shows (30,140) at',
       );
       expect(inkAt(130, 140), 0);
+    });
+
+    testWidgets('a drag\'s trail lands where it is dragged on the canvas', (
+      tester,
+    ) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        placement: placedRight,
+      );
+      await dragOnLayer(tester, const Offset(106, 30), const Offset(194, 50));
+      expect(env.slot.isNotEmpty, isTrue);
+      // The trail is spaced a whole piece apart.
+      final piece = env.slot.piece!.image.width;
+      expect(piece, inInclusiveRange(70, 95), reason: '⛔premise: the bar');
+
+      await env.setTool(CanvasTool.cutStamp);
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      final gesture = await tester.startGesture(
+        origin + const Offset(130, 150),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (var x = 150; x <= 330; x += 20) {
+        await gesture.moveTo(origin + Offset(x.toDouble(), 150));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      int inkAt(int x, int y) =>
+          surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            x,
+            y,
+          ) ??
+          0;
+      expect(inkAt(30, 150), isNot(0), reason: 'the press: canvas 130');
+      expect(
+        inkAt(30 + 2 * piece, 150),
+        isNot(0),
+        reason: 'two pieces on, dragged to canvas 330 — the row\'s 230',
+      );
+      expect(
+        inkAt(30 + 3 * piece, 150),
+        0,
+        reason: 'and no further: the trail is laid on the row\'s own artwork',
+      );
     });
   });
 }

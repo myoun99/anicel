@@ -17,7 +17,6 @@ class InstructionEventDialogResult {
     this.text,
     this.valueA,
     this.valueB,
-    this.memo,
     this.delete = false,
   });
 
@@ -28,16 +27,14 @@ class InstructionEventDialogResult {
   final String? text;
   final String? valueA;
   final String? valueB;
-
-  /// Free memo, printed into the timesheet's memo band.
-  final String? memo;
   final bool delete;
 }
 
 /// The instruction layer's instance editor in the shared shell: the sheet's
 /// start/end instance names (A/B), the mark (vocabulary pick — the def
-/// carries bar/O.L), the free instruction name, the timesheet memo and the
-/// live paper-block preview. New events are created ONE frame long like
+/// carries bar/O.L), the free instruction name and the live paper-block
+/// preview. ↩️A memo field fed the line a new span wrote into the
+/// timesheet's memo band; that behaviour went, remnants and all (I-72). New events are created ONE frame long like
 /// drawing cels — the grips own the length afterwards (the R3 length input
 /// is retired). Blank fields simply don't display. Editing an existing
 /// event offers Delete.
@@ -49,7 +46,6 @@ class InstructionEventDialog extends StatefulWidget {
     this.initialText,
     this.initialValueA,
     this.initialValueB,
-    this.initialMemo,
     this.editing = false,
     this.onEditInstructionSet,
     this.previewAxis = Axis.horizontal,
@@ -68,7 +64,6 @@ class InstructionEventDialog extends StatefulWidget {
   final String? initialText;
   final String? initialValueA;
   final String? initialValueB;
-  final String? initialMemo;
 
   /// Whether an existing event is being edited (shows Delete).
   final bool editing;
@@ -100,9 +95,6 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   late final TextEditingController _valueBController = TextEditingController(
     text: widget.initialValueB ?? '',
   );
-  late final TextEditingController _memoController = TextEditingController(
-    text: widget.initialMemo ?? '',
-  );
 
   @override
   void initState() {
@@ -120,7 +112,6 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
     _textController.dispose();
     _valueAController.dispose();
     _valueBController.dispose();
-    _memoController.dispose();
     super.dispose();
   }
 
@@ -141,7 +132,6 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
         text: written ? _trimmedOrNull(_textController) : null,
         valueA: written ? _trimmedOrNull(_valueAController) : null,
         valueB: written ? _trimmedOrNull(_valueBController) : null,
-        memo: _trimmedOrNull(_memoController),
       ),
     );
   }
@@ -230,14 +220,6 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               ],
             ),
           ],
-          const SizedBox(height: 12),
-          AppWindowField(
-            label: strings.instructionMemoLabel,
-            child: TextField(
-              key: const ValueKey<String>('instruction-memo-field'),
-              controller: _memoController,
-            ),
-          ),
           if (widget.onEditInstructionSet != null) ...[
             const SizedBox(height: 8),
             Align(

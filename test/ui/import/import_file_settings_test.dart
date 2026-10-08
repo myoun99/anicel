@@ -259,6 +259,13 @@ void main() {
       expect(importPsdLocked(const AboveActiveLayerSpot()), isFalse);
     });
 
+    test('a PSD row starts on expand — merge stays a choice (F-306-Q1, '
+        '유저 2026-10-07: 「psd는 기본값 펼치기. 합치기 남김」)', () {
+      expect(const ImportFileSettings().psd, PsdPlaceMode.expand);
+      expect(seedImportSettings().psd, PsdPlaceMode.expand);
+      expect(PsdPlaceMode.values, contains(PsdPlaceMode.merge));
+    });
+
     test('expanding locks BAKE on — the stack is its pixels — and leaves the '
         'carry answer alone: the file still registers', () {
       final resolved = resolve(
@@ -274,6 +281,35 @@ void main() {
         importBakeLocked(isPsd: true, placing: true, psd: PsdPlaceMode.expand),
         isTrue,
       );
+    });
+
+    // I-76: a run's layer stands for many files, and a layer's reference
+    // names one — so the run is baked, as the cut folder it comes from is.
+    test('a picture whose run comes in together is baked; alone, its row '
+        'answers', () {
+      final together = resolvedImportSettings(
+        defaults,
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        lasting: true,
+        inRun: true,
+      );
+      expect(together.run, NumberedRun.together, reason: 'the default');
+      expect(together.bake, isTrue);
+
+      final alone = resolvedImportSettings(
+        defaults.copyWith(run: NumberedRun.alone),
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        lasting: true,
+        inRun: true,
+      );
+      expect(alone.bake, isFalse);
+      expect(resolve(defaults).bake, isFalse, reason: 'no run, no lock');
     });
 
     test('merging leaves bake open', () {

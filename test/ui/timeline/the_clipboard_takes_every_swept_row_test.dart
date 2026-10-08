@@ -201,14 +201,16 @@ void main() {
     sweep(session, const [rowA, rowB], from: 5, toExclusive: 8);
     session.pasteLinkedFrameAtCurrentFrame();
 
-    for (final id in const [rowA, rowB]) {
-      final layer = session.layers.firstWhere((l) => l.id == id);
-      expect(
-        layer.timeline[5]?.frameId,
-        const FrameId('cel-a'),
-        reason: '$id receives the single banked row — 「모든 행에 같은 것을」',
-      );
-    }
+    Layer layerOf(LayerId id) => session.layers.firstWhere((l) => l.id == id);
+    expect(layerOf(rowA).timeline[5]?.frameId, const FrameId('cel-a'));
+    // ↩️I-71: every row receives the single banked row — 「모든 행에 같은
+    // 것을」 — and a row it was not copied from receives it as a drawing of
+    // its OWN (by name, where the copy has one). It expected A's cel id on B
+    // too: a cel of another row's, with no picture behind it.
+    final onB = layerOf(rowB).timeline[5]?.frameId;
+    expect(onB, isNotNull, reason: 'B receives the single banked row');
+    expect(onB, isNot(const FrameId('cel-a')));
+    expect(layerOf(rowB).frames.any((frame) => frame.id == onB), isTrue);
   });
 
   test('with no band at all, copy banks exactly one row and cut lifts one',

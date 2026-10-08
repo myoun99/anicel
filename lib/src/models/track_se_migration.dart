@@ -9,14 +9,19 @@ import 'layer_section_defaults.dart';
 import 'timeline_exposure.dart';
 import 'track_id.dart';
 
-/// The result of lifting a legacy track's per-cut SE layers onto the
-/// track: the cuts with their SE layers removed, and the merged
-/// track-global SE layers (timeline keys on the track's GLOBAL frame
-/// axis).
+/// The result of lifting a track's per-cut SE layers onto the track: the
+/// cuts with their SE layers removed, and the merged track-global SE
+/// layers (timeline keys on the track's GLOBAL frame axis).
 typedef TrackSeLift = ({List<Cut> cuts, List<Layer> seLayers});
 
-/// Migrates the legacy per-cut SE model (pre-`Track.seLayers` files) onto
-/// the track's global frame axis.
+/// Lifts per-cut SE layers onto the track's global frame axis — the shape
+/// a converted file's cuts arrive in (the .tvpp and .clip doors build each
+/// cut's sound as its own SE rows, the way those programs store it).
+///
+/// ↩️It was born as the migration of the per-cut SE model of files from
+/// before `Track.seLayers`, and `Track.fromJson` called it for a track with
+/// no such key. Those files are refused by their format number now (the
+/// save law, 유저 2026-10-06), so the doors are what is left of its callers.
 ///
 /// Slot-merged: track SE layer *k* is the union of every cut's *k*-th SE
 /// layer (the per-cut layer-list order — exactly the positional slots the

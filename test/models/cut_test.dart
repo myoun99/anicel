@@ -70,11 +70,13 @@ void main() {
   });
 
   group('CutMetadata scope', () {
-    test('CutMetadata remains note-only', () {
-      const metadata = CutMetadata(note: 'General note');
+    test('CutMetadata holds memos by page, and none of the old memo kinds', () {
+      const metadata = CutMetadata(pageNotes: ['General note']);
 
-      expect(metadata.toJson(), {'note': 'General note'});
-      expect(metadata.toString(), contains('note: General note'));
+      expect(metadata.toJson(), {
+        'pageNotes': ['General note'],
+      });
+      expect(metadata.toString(), contains('pageNotes: [General note]'));
       expect(metadata.toJson().containsKey('actionMemo'), isFalse);
       expect(metadata.toJson().containsKey('dialogueMemo'), isFalse);
     });

@@ -26,6 +26,9 @@ class GuideTransform {
   bool get isIdentity =>
       a == 1 && b == 0 && c == 0 && d == 1 && tx == 0 && ty == 0;
 
+  /// Nothing but a move: every direction is left as it is.
+  bool get isPureTranslation => a == 1 && b == 0 && c == 0 && d == 1;
+
   /// Whether this copy is a REFLECTION rather than a rotation — the sign of
   /// the determinant. Asymmetric brush tips read this to know they are
   /// drawing left-handed.
@@ -133,7 +136,79 @@ class GuideTransform {
   String toString() => 'GuideTransform([$a $c $tx; $b $d $ty])';
 }
 
-/// Every copy a symmetry guide makes of one stroke, the ORIGINAL first.
+/// WHERE A STROKE'S OWN SPACE LIES ON THE CANVAS — a row's placement, both
+/// ways — for everything a guide MEASURES.
+///
+/// A guide is a thing of the canvas: its axis, its vanishing points and its
+/// eye level stand where the user put them on the picture they are looking
+/// at. A row carrying a transform is drawn through its placement and its
+/// strokes record in its own artwork (the draw-through wrap), so a guide's
+/// answer makes the trip: out to the canvas, measured there, and back.
+///
+/// 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+/// 반전)」. ↩️The GUIDES used to be carried into the artwork (`mapGuides`)
+/// and measured there: a mirror was a rigid reflection about the carried
+/// axis, a snap the nearest ray by the artwork's own angles. That is the
+/// same answer while a placement only moves, turns and scales evenly — a
+/// rigid map stays rigid under a similarity, which keeps angles — and a
+/// different one the moment a row is stretched along one axis: the mirror
+/// copy lands off the mirror line the canvas shows, and the snap chooses by
+/// angles nobody sees.
+class GuideSpace {
+  const GuideSpace({required this.toCanvas, required this.toStroke});
+
+  /// The canvas itself: an unposed row's space, and that of every surface
+  /// that is not a posed row.
+  static const GuideSpace canvas = GuideSpace(
+    toCanvas: GuideTransform.identity(),
+    toStroke: GuideTransform.identity(),
+  );
+
+  /// The stroke's space → the canvas.
+  final GuideTransform toCanvas;
+
+  /// The canvas → the stroke's space: [toCanvas] run backwards.
+  final GuideTransform toStroke;
+
+  bool get isCanvas => toCanvas.isIdentity;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GuideSpace &&
+          other.toCanvas == toCanvas &&
+          other.toStroke == toStroke;
+
+  @override
+  int get hashCode => Object.hash(toCanvas, toStroke);
+}
+
+/// Every copy a symmetry guide makes of a stroke drawn in [space], the
+/// ORIGINAL first: the canvas's own copies ([symmetryTransforms]), each
+/// taken out to the canvas, copied there, and brought back.
+///
+/// The original stays the identity EXACTLY, and on the canvas itself the
+/// copies are the canvas's own — an unposed row runs the numbers it always
+/// did.
+///
+/// ⚠️In a row that is stretched or sheared a copy is not rigid in the row's
+/// own pixels, and it must not be: it is rigid where the user SEES it. A
+/// dab's centre and its tip's direction make the trip; its size is the
+/// row's own, as the dab that was drawn is.
+List<GuideTransform> symmetryCopiesIn(GuideSpace space, SymmetryShape shape) {
+  final copies = symmetryTransforms(shape);
+  if (space.isCanvas) return copies;
+  return [
+    for (final copy in copies)
+      if (copy.isIdentity)
+        copy
+      else
+        space.toStroke.compose(copy).compose(space.toCanvas),
+  ];
+}
+
+/// Every copy a symmetry guide makes of one stroke ON THE CANVAS, the
+/// ORIGINAL first.
 ///
 /// The list is exactly `shape.lineCount` long — that is what the count
 /// counts, so the ceiling on it is a direct ceiling on stroke cost.
@@ -292,49 +367,8 @@ CanvasPoint projectOntoAxis(GuideAxis axis, CanvasPoint point) {
   );
 }
 
-/// [guides] carried through [transform] — every axis, vanishing point and
-/// defining line.
-///
-/// Guides are stored in CANVAS space, but a layer carrying a transform is
-/// drawn through it and its strokes record in the layer's own ARTWORK
-/// coordinates ("draw-through"). Feeding the canvas-space guide to that
-/// stroke path unchanged would put the axis somewhere the pen is not. The
-/// transform to pass is the layer pose's inverse.
-///
-/// Poses are similarities, so a mapped axis is still a straight line and a
-/// mapped direction is still a direction — nothing here has to cope with
-/// shear.
-CutGuides mapGuides(CutGuides guides, GuideTransform transform) {
-  if (transform.isIdentity || guides.isEmpty) return guides;
-  return CutGuides(
-    guides: [
-      for (final guide in guides.guides)
-        guide.copyWith(shape: _mapShape(guide.shape, transform)),
-    ],
-    activeSymmetryId: guides.activeSymmetryId,
-  );
-}
-
-GuideShape _mapShape(GuideShape shape, GuideTransform transform) {
-  return switch (shape) {
-    SymmetryShape() => shape.copyWith(
-      axis: _mapAxis(shape.axis, transform),
-    ),
-    PerspectiveShape() => shape.copyWith(
-      vanishingPoints: [
-        for (final point in shape.vanishingPoints)
-          _mapVanishingPoint(point, transform),
-      ],
-      eyeLevel: _mapAxis(shape.eyeLevel, transform),
-    ),
-  };
-}
-
-GuideAxis _mapAxis(GuideAxis axis, GuideTransform transform) => GuideAxis(
-  origin: transform.apply(axis.origin),
-  angleDegrees: transform.mapAxisAngleDegrees(axis.angleDegrees),
-);
-
+/// A vanishing point carried through a RIGID [transform] — how an eye level
+/// that moves takes its points with it ([movedEyeLevel]).
 VanishingPoint _mapVanishingPoint(
   VanishingPoint point,
   GuideTransform transform,
@@ -388,9 +422,9 @@ CanvasPoint constrainedVanishingPointTarget(
 /// the horizon's. ⚠️Every mover of the eye level goes through HERE — an
 /// adjustment per handle is how the two ends of one rule drift apart.
 ///
-/// The carry is the RIGID motion from the old axis to the new one, applied
-/// through [mapGuides]' own vanishing-point map: a two-line definition
-/// arrives as two moved lines and a direction as a turned direction.
+/// The carry is the RIGID motion from the old axis to the new one: a
+/// two-line definition arrives as two moved lines and a direction as a
+/// turned direction.
 /// Nothing is flattened to a bare point — see
 /// [constrainedVanishingPointTarget] for why that would throw away the
 /// lines the user drew.

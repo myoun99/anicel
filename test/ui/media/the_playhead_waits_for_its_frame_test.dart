@@ -119,7 +119,7 @@ void main() {
 
     fake.holdRender(1);
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-next-page-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-step-forward')),
     );
     await tester.pump();
 
@@ -149,7 +149,7 @@ void main() {
       fake.holdRender(page);
     }
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
     final parkedAt = slot.position.value;
@@ -196,7 +196,7 @@ void main() {
       fake.holdRender(page);
     }
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
     // Parked first: a frame that is ready before the first tick is simply

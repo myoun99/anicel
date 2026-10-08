@@ -91,7 +91,7 @@ void main() {
   Widget sheet(ValueChanged<CanvasViewport> onViewportChanged) =>
       SheetCanvasPanel(
         cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-        canvasSize: const CanvasSize(width: 600, height: 800),
+        sheetSize: const Size(600, 800),
         viewLimit: null,
         viewport: CanvasViewport(),
         onViewportChanged: onViewportChanged,

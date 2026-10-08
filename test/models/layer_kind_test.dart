@@ -18,11 +18,6 @@ void main() {
       expect(LayerKind.fromJson('camera'), LayerKind.camera);
     });
 
-    test('the retired ART kind loads as animation (it always behaved as '
-        'one — only the icon differed)', () {
-      expect(LayerKind.fromJson('art'), LayerKind.animation);
-    });
-
     test('throws for invalid JSON values', () {
       expect(() => LayerKind.fromJson('panel'), throwsArgumentError);
       expect(() => LayerKind.fromJson(0), throwsArgumentError);
@@ -44,17 +39,6 @@ void main() {
       for (final kind in [LayerKind.camera, LayerKind.folder]) {
         expect(kind.acceptsRepeatRegions, isFalse, reason: '$kind');
       }
-    });
-
-    test('the retired TEXT kind loads as animation (F-154): its pictures '
-        'were ordinary baked cels, which is all rasterizing one ever left',
-        () {
-      expect(LayerKind.fromJson('text'), LayerKind.animation);
-      expect(
-        [for (final kind in LayerKind.values) kind.jsonValue],
-        isNot(contains('text')),
-        reason: 'the alias is for reading old files; no kind writes it',
-      );
     });
 
     test('the IMAGE row: one cel by definition, no timesheet column, an '

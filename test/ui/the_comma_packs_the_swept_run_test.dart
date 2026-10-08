@@ -31,7 +31,7 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    commaVerbsOf(s).setCommaForSelectionOrCurrent(2);
+    commaVerbsOf(s).setCommaForSelection(2);
 
     expect(
       _blocks(s),
@@ -41,7 +41,7 @@ void main() {
 
     // No new sweep: the selection followed the retimed span, so the same
     // three cels answer the next press.
-    commaVerbsOf(s).setCommaForSelectionOrCurrent(1);
+    commaVerbsOf(s).setCommaForSelection(1);
 
     expect(
       _blocks(s),

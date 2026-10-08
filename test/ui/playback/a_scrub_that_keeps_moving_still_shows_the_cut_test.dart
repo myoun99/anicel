@@ -11,7 +11,6 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
@@ -64,8 +63,9 @@ void main() {
   Future<void> pumpView(
     WidgetTester tester,
     _ComposesHeldBack composites,
-    ValueNotifier<int?> frame,
-  ) => tester.pumpWidget(
+    ValueNotifier<int?> frame, {
+    Listenable? picturesLanded,
+  }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: CanvasTrackStackView(
@@ -76,7 +76,7 @@ void main() {
             globalFrameIndex: globalFrame,
           ),
           compositeCache: composites,
-          qualityOf: () => PlaybackQuality.full,
+          picturesLanded: picturesLanded,
           cameraFrameSize: const CanvasSize(width: 4, height: 2),
           cameraViewEnabled: false,
           cameraPoseOf: (cut, frameIndex) =>
@@ -146,6 +146,42 @@ void main() {
 
     expect(composites.finishOldest(picture), isFalse);
   });
+
+  /// 유저 2026-10-08, the playback rework (「통일할거 통일하면서 권장대로
+  /// 가자」): a run has ONE maker of its pictures — the warmer, which follows
+  /// it from the frame under the playhead. ↩️The stack composed that frame
+  /// itself, beside a warmer baking the playlist from wherever play had
+  /// been pressed.
+  testWidgets('🚨a run that plays through the stack leaves its pictures to '
+      'the warmer: it composes none itself, and shows one when it is told '
+      'it landed', (tester) async {
+    final composites = _ComposesHeldBack();
+    final frame = ValueNotifier<int?>(1);
+    final landed = ValueNotifier<int>(0);
+    addTearDown(frame.dispose);
+    addTearDown(landed.dispose);
+    await pumpView(tester, composites, frame, picturesLanded: landed);
+    expect(
+      composites.asked,
+      isEmpty,
+      reason: 'a second maker at the playhead is the same picture made twice',
+    );
+
+    frame.value = 2;
+    await tester.pump();
+    expect(composites.asked, isEmpty, reason: 'nor as the playhead moves');
+    expect(shown(tester), isNull, reason: '⛔premise: nothing is there yet');
+
+    final picture = (await tester.runAsync(
+      () => createTestImage(width: 8, height: 8),
+    ))!;
+    addTearDown(picture.dispose);
+    composites.land(2, picture);
+    landed.value += 1;
+    await tester.pump();
+
+    expect(shown(tester), isNotNull, reason: 'the landing repaints the stack');
+  });
 }
 
 /// A composite cache whose composes finish only when the test says so, and
@@ -174,6 +210,9 @@ class _ComposesHeldBack extends CutFrameCompositeCache {
       <({int frame, bool Function() abort, Completer<ui.Image?> done})>[];
   final _landed = <int, ui.Image>{};
 
+  /// [picture] is there for [frame], as if the warmer had made it.
+  void land(int frame, ui.Image picture) => _landed[frame] = picture;
+
   /// The frames whose composes are in flight, oldest first.
   List<int> get asked => [for (final request in _pending) request.frame];
 
@@ -193,14 +232,12 @@ class _ComposesHeldBack extends CutFrameCompositeCache {
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
   }) => _landed[frameIndex];
 
   @override
   Future<ui.Image?> prepareCompositeInterruptible({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
     required bool Function() shouldAbort,
   }) {
     final done = Completer<ui.Image?>();

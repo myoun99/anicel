@@ -69,7 +69,18 @@ class _CanvasPanelSelection {
     // of the drag loop and only rebuilds when the ants this panel owns
     // actually change.
     final next = idleSelectionRegion;
-    if (next == _state._paintedIdleRegion) {
+    // 🚨The panel builds a SECOND thing from the region: the clip the
+    // drawing view lays a stroke through (R26 #18). Under a painting tool
+    // the two change together — no layer is mounted, so the idle ants ARE
+    // the region. The shape tool (I-69) is the one that draws its strokes
+    // with the layer mounted: the ants this panel owns never change, and a
+    // region changed by a command while it is in hand (select all,
+    // deselect, invert) still has to reach the view, or the next shape is
+    // clipped to a selection that is no longer there.
+    final clipIsStale =
+        canvasToolDrawsShapes(_state._brush.tool) &&
+        _state.widget.selectionCommands?.region != _state._strokeClipAsBuilt;
+    if (next == _state._paintedIdleRegion && !clipIsStale) {
       return;
     }
     _state._rebuild(_state._syncIdleAnts);
@@ -105,16 +116,11 @@ class _CanvasPanelSelection {
   /// as the row's own coordinates, so on a row placed 100 to the right they
   /// all acted 100 to the left of what the user drew around.
   ///
-  /// Null when the placement is singular — a backstop, since no pose the
-  /// model can hold collapses a row.
+  /// Null when the placement has collapsed the row — it shows nothing, so
+  /// there is nothing under the outline to act on.
   CanvasSelectionRegion? regionOnTheRow(CanvasSelectionRegion region) {
     final placement = _state.widget.interactiveContentPose;
-    return regionInArtworkSpace(
-      region: region,
-      pose: placement?.pose,
-      anchorPoint: placement?.anchorPoint,
-      canvasSize: _state.widget.canvasSize,
-    );
+    return regionInArtworkSpace(region: region, placement: placement);
   }
 
   /// [shape] on the active row's artwork — [regionOnTheRow] for one outline.
@@ -124,13 +130,22 @@ class _CanvasPanelSelection {
   /// A canvas point on the active row's artwork — where a press on the
   /// canvas lands on a posed row (a stamp's), the same inverse the eyedropper
   /// and the guides ask ([canvasToArtwork]).
-  CanvasPoint? pointOnTheRow(CanvasPoint point) {
-    final placement = _state.widget.interactiveContentPose;
+  CanvasPoint? pointOnTheRow(CanvasPoint point) =>
+      pointOnARow(point, _state.widget.interactiveContentPose);
+
+  /// [pointOnTheRow] for a row standing at [placement] — any row a range
+  /// names, each of which shows the press somewhere of its own (F-293).
+  CanvasPoint? pointOnARow(CanvasPoint point, LayerPlacement? placement) {
     if (placement == null) {
       return point;
     }
-    return canvasToArtwork(placement, _state.widget.canvasSize)?.apply(point);
+    return canvasToArtwork(placement)?.apply(point);
   }
+
+  /// [pointOnTheRow] run backwards: a point of the active row's artwork,
+  /// where the canvas shows it.
+  CanvasPoint pointOnTheCanvas(CanvasPoint onTheRow) =>
+      _state.widget.interactiveContentPose?.apply(onTheRow) ?? onTheRow;
 
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the stamp
   /// comes back to float and the cel it came from shows the hole — **while
@@ -185,7 +200,6 @@ class _CanvasPanelSelection {
     // it shows ([regionOnTheRow]), and the lifted stamp comes out on the
     // canvas, where the box that moves it lives ([stampOnCanvas]).
     final placement = _state.widget.interactiveContentPose;
-    final canvasSize = _state.widget.canvasSize;
     final inArtwork = regionOnTheRow(region);
     if (inArtwork == null) {
       return null;
@@ -223,7 +237,7 @@ class _CanvasPanelSelection {
     _state._rebuild(() {});
     return (
       liftToken: token,
-      stampDab: stampOnCanvas(lift.stampDab, placement, canvasSize),
+      stampDab: stampOnCanvas(lift.stampDab, placement),
     );
   }
 

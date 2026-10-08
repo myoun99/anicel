@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'frame_id.dart';
 import 'timeline_exposure.dart';
 
@@ -26,10 +28,33 @@ import 'timeline_exposure.dart';
 /// each ask "is this cel still spoken for by something a person wrote";
 /// a ghost is never that.
 bool laneExposesFrame(Map<int, TimelineExposure> lane, FrameId frameId) =>
-    lane.values.any(
-      (exposure) =>
-          exposure.isDrawing && !exposure.ghost && exposure.frameId == frameId,
-    );
+    lane.values.any((exposure) => _authoredCelOf(exposure) == frameId);
+
+/// The cel [exposure] shows as something a person WROTE; null for a ghost
+/// — [laneExposesFrame]'s filter, stated once for the two questions asked
+/// through it: whether a cel is exposed, and where ([laneBlockStarts]).
+FrameId? _authoredCelOf(TimelineExposure exposure) =>
+    exposure.isDrawing && !exposure.ghost ? exposure.frameId : null;
+
+/// WHERE each cel of [lane] stands as a block a person wrote: the frames
+/// its authored exposures start on, in order — [laneExposesFrame]'s
+/// question asked of every cel at once, for the lists that send a person to
+/// a block (F-284).
+///
+/// ⛔Authored only, and for [laneExposesFrame]'s reason: a ghost is what a
+/// hold or a repeat projects from the block that owns it and it goes when
+/// that block goes — the block is the place.
+Map<FrameId, List<int>> laneBlockStarts(
+  SplayTreeMap<int, TimelineExposure> lane,
+) {
+  final starts = <FrameId, List<int>>{};
+  for (final MapEntry(key: start, value: exposure) in lane.entries) {
+    if (_authoredCelOf(exposure) case final frameId?) {
+      (starts[frameId] ??= []).add(start);
+    }
+  }
+  return starts;
+}
 
 /// The lanes ONE cel bank is exposed through, besides the row being edited.
 ///

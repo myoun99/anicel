@@ -128,12 +128,12 @@ Future<void> tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
       greaterThan(0),
       reason: 'no visible part of $cutId to tap',
     );
-    // ⚠️A QUARTER IN, not the middle (H13, 2026-08-22). A layerless cut now
-    // wears its create '+' whether or not it is the active one, and that
-    // square is centred in the strip — so the geometric centre is a button,
-    // and tapping it here would author a storyboard layer instead of
-    // selecting. A hand aiming at "this cut" has the whole rest of the
-    // block; this helper takes the same room.
+    // A QUARTER IN, not the middle: the frame under this tap is where every
+    // caller's playhead lands, and their premises count from it.
+    // ↩️It was chosen to miss the create '+' (H13, 2026-08-22), a square
+    // centred in a layerless cut's strip that would have authored a
+    // storyboard layer instead of selecting. The '+' is the conte row's
+    // since I-73, and a cut block is the cut's wherever it is touched.
     await tester.tapAt(
       Offset(visible.left + visible.width * 0.25, visible.center.dy),
     );
@@ -147,6 +147,26 @@ Future<void> tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
 Future<String> createSecondCut(WidgetTester tester) async {
   await tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
   return (await activeCutIdOf(tester)).value;
+}
+
+/// The id of the drawing row [createSecondCutWithADrawingRow] makes: the
+/// second drawing row the session mints.
+const secondCutRowId = 'default-layer-2';
+
+/// [createSecondCut], and a drawing row in it — made the way a user makes
+/// one, with the layer pill's ＋ (it is named 「A」 there, and stood on).
+///
+/// F-211 (유저 2026-09-28): 「새 컷 생성의 초기값은 프레임도 없고 나아가서
+/// A라는 기본 레이어도 존재안하도록」. ↩️A new cut was born with a blank layer
+/// A (`layer-1`), and the tests that edit cells in their second cut stood
+/// on it.
+Future<String> createSecondCutWithADrawingRow(WidgetTester tester) async {
+  final cutId = await createSecondCut(tester);
+  await tapToolbarButton(
+    tester,
+    const ValueKey<String>('timeline-toolbar-add-layer-button'),
+  );
+  return cutId;
 }
 
 Future<void> expectCutName(

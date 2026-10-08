@@ -57,11 +57,21 @@ typedef TimelineRowSubstrate = ({
   List<({Rect rect, Color color})> lines,
 });
 
-/// The hold ghost's dash glyph — the probe VALUE tests read from
-/// [TimelineTileRasterSource.cellModelAt]. paint() renders it as an
-/// axis-aligned line (UI-R12 #18), never as text; the tile emitter (T3)
-/// keys the same value to bake it as a capsule.
-const String timelineHoldDashGlyph = 'ㅡ';
+/// The hold ghost's glyph — the probe VALUE tests read from
+/// [TimelineTileRasterSource.cellModelAt]. It is never written as text: a
+/// hold is drawn as its line ([TimelineTileRasterSource.holdLinesIn]).
+const String timelineHoldGlyph = 'ㅡ';
+
+/// One hold's line over a stretch of a row, row-local: the [box] it fills —
+/// as long as the line, as thick as it — and whether each end of it is the
+/// hold's OWN end — rounded, and stood in from the cell's edge — or only
+/// where the stretch asked for stops, the line running on past it.
+typedef TimelineHoldLine = ({
+  Rect box,
+  bool startsHere,
+  bool endsHere,
+  Color ink,
+});
 
 /// WHAT A SUBSTRATE TILE IS RASTERED FROM — the row's geometry, its look
 /// identity, and the ink answers the emitter must reproduce exactly.
@@ -168,19 +178,24 @@ abstract interface class TimelineTileRasterSource {
   );
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
-  /// and how large it is. The tile emitter bakes the mark exactly here, in
+  /// and the box it fills. The tile emitter bakes the mark exactly here, in
   /// the cell's [foregroundInkFor].
-  ({Offset center, double radius}) inbetweenMarkLayoutFor(int frameIndex);
+  ({Offset center, Size size}) inbetweenMarkLayoutFor(int frameIndex);
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null — the
   /// word that may grow into [frameIndex]'s cell from before it (F-96). A
   /// tile lays it at its first cell, as the classic pass does at a window's.
   int? wordCellBefore(int frameIndex);
 
-  /// The cells of [from, to) that write — a word, a mark or a hold dash — in
-  /// order. The tile emitter bakes exactly these, as the classic pass inks
-  /// exactly these.
+  /// The cells of [from, to) that write — a word or a mark — in order. The
+  /// tile emitter bakes exactly these, as the classic pass inks exactly
+  /// these. A hold writes in no cell: it is [holdLinesIn].
   Iterable<int> writingCellsIn(int from, int to);
+
+  /// The holds' lines over [from, to), in order — ONE line a hold, however
+  /// many cells it runs through. The tile emitter bakes exactly these, as
+  /// the classic pass draws exactly these.
+  Iterable<TimelineHoldLine> holdLinesIn(int from, int to);
 }
 
 /// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the

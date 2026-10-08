@@ -11,6 +11,9 @@ import 'package:anicel/src/models/layer.dart';
 /// The reader was split into its raw-items pass and its length resolution
 /// during the audit (2026-09-05); these are the refusals that pass caught,
 /// and the duplicate one had no test before.
+///
+/// Every entry below is a whole drawing but for the one thing its test is
+/// about — so each refusal is the one it names, not a neighbour's.
 void main() {
   Layer readWith(Object? timeline) => Layer.fromJson({
     'id': {'value': 'l'},
@@ -22,10 +25,10 @@ void main() {
     'timeline': timeline,
   });
 
-  Map<String, dynamic> drawing(String frameId, {int? length}) => {
+  Map<String, dynamic> drawing(String frameId, {int length = 1}) => {
     'type': 'drawing',
     'frameId': {'value': frameId},
-    'length': ?length,
+    'length': length,
   };
 
   test('🚨an index that appears TWICE is refused — one of the two would '
@@ -54,16 +57,26 @@ void main() {
     );
   });
 
-  test('⛔an unknown exposure type is refused rather than guessed at', () {
-    expect(
-      () => readWith([
-        {
-          'index': 0,
-          'exposure': {'type': 'somethingelse'},
-        },
-      ]),
-      throwsA(isA<FormatException>()),
-    );
+  test('⛔an unknown exposure type is refused rather than guessed at — a '
+      '`blank` too, which only formats refused by their number wrote', () {
+    for (final type in ['somethingelse', 'blank']) {
+      expect(
+        () => readWith([
+          {
+            'index': 0,
+            'exposure': {...drawing('a'), 'type': type},
+          },
+        ]),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('type'),
+          ),
+        ),
+        reason: type,
+      );
+    }
   });
 
   test('⛔a drawing with no frameId is refused — there is no cel to show', () {
@@ -71,27 +84,52 @@ void main() {
       () => readWith([
         {
           'index': 0,
-          'exposure': {'type': 'drawing'},
+          'exposure': {'type': 'drawing', 'length': 1},
         },
       ]),
-      throwsA(isA<FormatException>()),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('frameId'),
+        ),
+      ),
     );
   });
 
-  test('⛔a BLANK carrying a frameId is refused — it would claim a cel it '
-      'does not show', () {
-    expect(
-      () => readWith([
-        {
-          'index': 0,
-          'exposure': {
-            'type': 'blank',
-            'frameId': {'value': 'a'},
+  test('⛔a drawing with no length, or one that is not a whole number of '
+      'frames, is refused — every build this format opens wrote one', () {
+    for (final length in [null, 0, -2, 2.5, '3']) {
+      expect(
+        () => readWith([
+          {
+            'index': 0,
+            'exposure': {...drawing('a'), 'length': length},
           },
-        },
-      ]),
-      throwsA(isA<FormatException>()),
-    );
+        ]),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('length'),
+          ),
+        ),
+        reason: '$length',
+      );
+    }
+  });
+
+  test('a length that runs into the next drawing is MENDED, not refused: '
+      'the block ends where the next begins', () {
+    // The one thing the reader mends — the invariant outranks the file
+    // (the unified model, 2026-07-07).
+    final layer = readWith([
+      {'index': 0, 'exposure': drawing('a', length: 9)},
+      {'index': 2, 'exposure': drawing('b')},
+    ]);
+
+    expect(layer.timeline[0]!.length, 2);
+    expect(layer.timeline[2]!.length, 1);
   });
 
   test('⛔a timeline that is neither a list nor an object is refused', () {

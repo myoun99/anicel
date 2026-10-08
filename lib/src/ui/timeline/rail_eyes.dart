@@ -19,6 +19,13 @@ import 'layer_rail_columns.dart' show layerRailEyeIsOn;
 /// of a hidden base is not dimmed.
 typedef RailEye = ({bool on, bool hiddenAbove});
 
+/// Whether the row is SHOWN — its own eye on, and no folder above hiding it.
+/// The ONE answer everything on the row that dims with the eye wears: the
+/// colour label (F-56, F-185) and the name (I-62).
+extension RailEyeShown on RailEye {
+  bool get shown => on && !hiddenAbove;
+}
+
 /// What every rail row's EYE shows, handed down past the row memo — so an
 /// eye can change without the row it stands in being built again.
 ///

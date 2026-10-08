@@ -15,6 +15,11 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart';
+
+import '../helpers/awaited_uploads.dart';
+
+import '../helpers/placement_reading.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -81,7 +86,10 @@ void main() {
             opacity: 1,
             // The anchor is the canvas centre (4,4), so this translates the
             // layer +2 in x: world (-1,2) lands on (1,2).
-            pose: TransformPose(center: CanvasPoint(x: 6, y: 4)),
+            placement: placedBy(
+              TransformPose(center: CanvasPoint(x: 6, y: 4)),
+              canvasSize,
+            ),
           ),
         ],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
@@ -187,7 +195,10 @@ void main() {
             opacity: 1,
             // The layer's anchor (canvas center 4,4) lands at (6,5):
             // content translates by (+2, +1).
-            pose: CameraPose(center: CanvasPoint(x: 6, y: 5)),
+            placement: placedBy(
+              TransformPose(center: CanvasPoint(x: 6, y: 5)),
+              canvasSize,
+            ),
           ),
         ],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
@@ -397,6 +408,26 @@ void main() {
       expect(image.height, 4);
       // Canvas pixel (2..3) maps to output (1..1.5): probe (1,1).
       expect(await pixelAt(image, 1, 1), isNot(const Color(0xFFFFFFFF)));
+      image.dispose();
+    });
+  });
+
+  testWidgets('🚨a render through the camera waits no decode round for a '
+      'tile — somebody is waiting for the render itself', (tester) async {
+    await tester.runAsync(() async {
+      final awaited = countAwaitedUploads();
+      final surface = surfaceWithRedPixelAt(1, 2);
+
+      (await uploadRawRgba(Uint8List(4), width: 1, height: 1)).dispose();
+      expect(awaited(), 1, reason: 'LIVENESS: an awaited upload is counted');
+
+      final image = await service.renderThroughCamera(
+        layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+      expect(awaited(), 1, reason: 'not one more');
+      expect(await pixelAt(image, 1, 2), const Color(0xFFFF0000));
       image.dispose();
     });
   });

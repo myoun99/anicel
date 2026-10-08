@@ -2,13 +2,12 @@ import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import 'brush/brush_canvas_panel.dart'
-    show BrushCanvasPanel, CanvasAutoFrameRequest;
+import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
@@ -33,14 +32,11 @@ import 'timesheet/timesheet_strata.dart';
 /// so navigation feels exactly like the drawing canvas — wheel zoom,
 /// middle-drag/two-finger pan, panbars, Fit. With an [inkController] and
 /// [brushToolState] the sheet takes freehand ink memos with the current
-/// brush/eraser (S2): frame-anchored strip ink over the column grid,
-/// paper-anchored page ink everywhere else.
+/// brush/eraser (S2): ink on the paper, one surface per page (F-252).
 class TimesheetTabHost extends StatefulWidget {
   const TimesheetTabHost({
     super.key,
     required this.session,
-    required this.continuous,
-    required this.onContinuousChanged,
     this.reading,
     this.viewport,
     this.viewportController,
@@ -53,16 +49,11 @@ class TimesheetTabHost extends StatefulWidget {
 
   final EditorSessionManager session;
 
-  /// Page-split (false, paper default) ⟷ continuous view.
-  final bool continuous;
-  final ValueChanged<bool> onContinuousChanged;
-
-  /// The page the reader is on in page view, the sheets lying one under
-  /// another (F-201) — owned above the tab group with the viewport, so a
-  /// tab switch doesn't lose the reader's place. The panel keeps it true
-  /// to the view ([CanvasBook]); a write to it is a turn — the strip's
-  /// ▲▼, and playback crossing into a page. Ignored in continuous view
-  /// (one strip). Null keeps one of the host's own.
+  /// The page the reader is on, the sheets lying one under another
+  /// (F-201) — owned above the tab group with the viewport, so a tab
+  /// switch doesn't lose the reader's place. The panel keeps it true to the
+  /// view ([CanvasBook]); a write to it is a turn — the strip's ▲▼, and
+  /// playback crossing into a page. Null keeps one of the host's own.
   final ValueNotifier<int>? reading;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
@@ -101,13 +92,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
-  // Memoized sheet document + layouts: building them is the expensive part
+  // Memoized sheet document + layout: building them is the expensive part
   // of this host's rebuild, and most session notifies (fx toggles, waveform
   // loads, selections, committed seeks) change none of their inputs — the
   // model objects are immutable, so identity is the staleness check.
   TimesheetDocument? _document;
   TimesheetDocumentLayout? _layout;
-  TimesheetDocumentLayout? _pagedLayout;
   Cut? _documentCut;
   Object? _documentInfo;
   Object? _documentInstructionSet;
@@ -117,7 +107,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   String? _documentProjectName;
   int? _documentFps;
   bool? _documentDataSheet;
-  bool? _layoutContinuous;
 
   /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
   /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
@@ -180,20 +169,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         dataSheet: _dataSheet,
       );
       _layout = null;
-      _pagedLayout = null;
     }
-    if (_layout == null || _layoutContinuous != widget.continuous) {
-      _layoutContinuous = widget.continuous;
-      final paged = TimesheetDocumentLayout(document: _document!);
-      _layout = widget.continuous
-          ? TimesheetDocumentLayout(document: _document!, continuous: true)
-          : paged;
-      // The ink geometry reference is the paged form in both views:
-      // surfaces are sized per page/band, so the toggle must not resize
-      // them.
-      _pagedLayout = paged;
-    }
-    return _layout!;
+    return _layout ??= TimesheetDocumentLayout(document: _document!);
   }
 
   late final ValueNotifier<int> _ownReading = ValueNotifier(0);
@@ -201,16 +178,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// [TimesheetTabHost.reading], or the host's own.
   ValueNotifier<int> get _reading => widget.reading ?? _ownReading;
 
-  /// The page view's book (F-201): the sheets one under another and the
-  /// page the reader is on.
+  /// The sheet's book (F-201): the sheets one under another and the page
+  /// the reader is on.
   CanvasBook _bookOf(TimesheetDocumentLayout layout) =>
       CanvasBook(pages: layout.pageStack, reading: _reading);
-
-  /// The page the reader is on — inside the document (a shorter cut must
-  /// not strand the reader past the last sheet); the strip's one page in
-  /// continuous view.
-  int _visiblePage(TimesheetDocumentLayout layout) =>
-      layout.continuous ? 0 : _bookOf(layout).page;
 
   late final SheetStrokeHold _strokeHold = SheetStrokeHold(
     brushInput: (live) => widget.session.setBrushInputActive(live),
@@ -293,16 +264,19 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     ];
   }
 
-  /// R26 #41 — the sheet's two MODE toggles, at the far left of the pill:
+  /// R26 #41 — the sheet's MODE toggle, at the far left of the pill:
   ///
-  ///   [notation/data] [page/continuous] │ ═══ the view controls ═══
+  ///   [notation/data] │ ═══ the view controls ═══
+  ///
+  /// ↩️[page/continuous] stood beside it until the continuous view was
+  /// deleted (F-252-Q1, 2026-10-08).
   ///
   /// ⛔The page cluster used to follow them here. It moved to the panel's
   /// left edge (유저 확정 ⑥ 2026-08-13, [_pageStrip]) because three controls
   /// at 44px of budget each were most of what the pill had to spend, and a
   /// rail-width sheet was shedding the lot — turning pages and reading the
   /// page competing for the same row.
-  List<Widget> _bottomBarLeading(TimesheetDocumentLayout? layout) {
+  List<Widget> _bottomBarLeading() {
     return [
       // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
       // labels (ghost chains verbatim, exactly what XDTS/TDTS write) so
@@ -316,43 +290,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         isSelected: _dataSheet,
         onPressed: () => setState(() => _dataSheet = !_dataSheet),
       ),
-      AppIconButton(
-        keyValue: 'timesheet-page-mode-toggle-button',
-        tooltip: widget.continuous
-            ? AppText.strings.sheetViewPage
-            : AppText.strings.sheetViewContinuous,
-        icon: Icon(
-          widget.continuous
-              ? Icons.auto_stories_outlined
-              : Icons.view_agenda_outlined,
-        ),
-        isSelected: !widget.continuous,
-        onPressed: () => widget.onContinuousChanged(!widget.continuous),
-      ),
     ];
   }
 
   /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
   /// 2026-08-13) rather than in the pill.
-  ///
-  /// ⚠️It stays MOUNTED-but-disabled in continuous view, as it always has:
-  /// a cluster that vanished with the view toggle read as a layout jump.
-  /// What it will not do is stand there for a sheet that HAS no second
-  /// page — that is not a mode, it is nothing to turn.
-  List<Widget> _pageStrip(TimesheetDocumentLayout? layout) {
-    final pageCount = layout?.document.pages.length ?? 0;
-    final page = layout == null ? 0 : _visiblePage(layout);
+  List<Widget> _pageStrip(TimesheetDocumentLayout layout) {
+    final book = _bookOf(layout);
     return pageTurnStrip(
       keyPrefix: 'timesheet',
       page: (
-        index: page,
-        count: pageCount,
+        index: book.page,
+        count: layout.document.pages.length,
         // '1/2' — the spelling shared with the printed ページ header (R26 #41).
-        readout: layout?.pageLabel(page) ?? '-',
+        readout: layout.pageLabel(book.page),
       ),
-      onTurnTo: layout == null || layout.continuous
-          ? null
-          : _bookOf(layout).turnTo,
+      onTurnTo: book.turnTo,
     );
   }
 
@@ -386,7 +339,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           // empties out.
           return SheetCanvasPanel(
             cacheInvalidationSink: _cacheInvalidationSink,
-            canvasSize: const CanvasSize(width: 780, height: 1080),
+            // The stage a sheet will stand on: its paper, bare.
+            sheetSize: SheetPaper.timesheet.extent,
             // The GAP state has no cut, so there is no ink and no tool to
             // run: a press moves the page (F-80), which is what this panel
             // already did.
@@ -395,9 +349,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
             brushSwitch: _brushSwitch(),
-            bottomBarLeading: [..._panelActions(), ..._bottomBarLeading(null)],
-            pageStrip: _pageStrip(null),
-            bottomBarHostToken: (widget.continuous, _dataSheet, 0, 0),
+            bottomBarLeading: [..._panelActions(), ..._bottomBarLeading()],
+            bottomBarHostToken: (_dataSheet, 0, 0),
             // No cut, no paper: nothing for the view to stop at.
             viewLimit: null,
             // F-179: the backdrop shows through — no fill of the sheet's own.
@@ -411,9 +364,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           );
         }
         final document = _document!;
-        final pagedLayout = _pagedLayout!;
-        inkController?.syncGeometry(pagedLayout);
-        final documentSize = layout.documentSize;
+        inkController?.syncGeometry(layout);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -421,7 +372,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             Expanded(
               child: _TimesheetPlayheadScope(
                 session: session,
-                continuous: widget.continuous,
                 pageFrameCount: document.pageFrameCount,
                 pageCount: document.pages.length,
                 builder: (context, playheadFrame, playbackGlobalFrame) {
@@ -431,16 +381,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         document.pages.length - 1,
                       );
                   final book = _bookOf(layout);
-                  final visiblePage = _visiblePage(layout);
-                  // Playback follows the sheet (③): page view TURNS TO
-                  // the playhead's page — the view moves to it, the
-                  // sheets lying one under another (F-201; ↩️R26 #41
-                  // swapped the paper under a view that never moved);
-                  // continuous view scrolls the playhead row into view
-                  // without touching the zoom. Idle keeps both the
+                  final visiblePage = book.page;
+                  // Playback follows the sheet (③): the sheet TURNS TO the
+                  // playhead's page — the view moves to it, the sheets
+                  // lying one under another (F-201; ↩️R26 #41 swapped the
+                  // paper under a view that never moved). Idle keeps the
                   // viewport and the page user-owned.
                   if (playbackGlobalFrame != null &&
-                      !widget.continuous &&
                       playheadPage != visiblePage) {
                     // Out of build: the turn writes the page notifier that
                     // this very subtree reads.
@@ -450,51 +397,26 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       }
                     });
                   }
-                  final autoFrame =
-                      playbackGlobalFrame == null || !widget.continuous
-                      ? null
-                      : CanvasAutoFrameRequest(
-                          token: (
-                            'timesheet-reveal',
-                            _documentCut!.id,
-                            playheadFrame,
-                          ),
-                          rect: Rect.fromLTWH(
-                            layout.paperLeft,
-                            layout.frameRowTop(playheadFrame),
-                            layout.paperWidth,
-                            TimesheetDocumentLayout.rowHeight,
-                          ),
-                          panOnly: true,
-                        );
                   return SheetCanvasPanel(
                     cacheInvalidationSink: _cacheInvalidationSink,
-                    canvasSize: CanvasSize(
-                      width: documentSize.width.ceil(),
-                      height: documentSize.height.ceil(),
-                    ),
+                    sheetSize: layout.documentSize,
+                    paperScale: layout.paperScale,
                     viewport: widget.viewport,
                     viewportController: widget.viewportController,
                     onViewportChanged: widget.onViewportChanged,
                     brushSwitch: _brushSwitch(),
                     bottomBarLeading: [
                       ..._panelActions(),
-                      ..._bottomBarLeading(layout),
+                      ..._bottomBarLeading(),
                     ],
                     pageStrip: _pageStrip(layout),
                     bottomBarHostToken: (
-                      widget.continuous,
                       _dataSheet,
                       visiblePage,
                       document.pages.length,
                     ),
-                    // Fit frames the page read — the book's, in page view.
-                    fitFocusRect: layout.continuous
-                        ? layout.pageRect(visiblePage)
-                        : null,
                     viewLimit: layout.paper,
-                    book: layout.continuous ? null : book,
-                    autoFrame: autoFrame,
+                    book: book,
                     drawingOn: ink != null,
                     strokeHold: _strokeHold,
                     content: (context, viewport) {
@@ -517,7 +439,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           Positioned.fill(
                             child: TimesheetStrata(
                               layout: layout,
-                              pagedLayout: pagedLayout,
                               viewport: viewport,
                               words: timesheetWordsIn(
                                 session.languageSettings.value.notationLanguage,
@@ -533,10 +454,55 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     ),
                             ),
                           ),
+                          // Under the ink windows: reachable exactly when the
+                          // brush is off (the switch doubles as the edit-mode
+                          // switch).
+                          Positioned.fill(
+                            child: TimesheetHeaderEditLayer(
+                              key: const ValueKey<String>(
+                                'timesheet-header-edit-layer',
+                              ),
+                              layout: layout,
+                              viewport: viewport,
+                              onMemoCommitted: (page, memo) => session.cutVerbs
+                                  .updateActiveCutNote(page: page, note: memo),
+                            ),
+                          ),
+                          if (ink != null)
+                            Positioned.fill(
+                              // The tool-state boundary (R18 UI-3): the brush
+                              // reaches only this small overlay — the sheet
+                              // document above never rebuilds for it — and
+                              // since H40 ② (2026-09-24) not even the overlay
+                              // does: its windows read the brush when a
+                              // stroke starts.
+                              child: TimesheetInkLayer(
+                                key: const ValueKey<String>(
+                                  'timesheet-ink-layer',
+                                ),
+                                controller: ink.controller,
+                                layout: layout,
+                                cutId: _documentCut!.id,
+                                brushToolState: ink.tool,
+                                historyManager: session.historyManager,
+                                viewport: viewport,
+                                strokeActive: _strokeHold,
+                                cacheInvalidationSink: _cacheInvalidationSink,
+                              ),
+                            ),
                           // The playhead row highlight repaints ALONE (R13-2):
                           // cursor moves, seeks and playback ticks drive this
                           // thin layer through its repaint listenable — the
                           // sheet painter above never rebuilds for them.
+                          //
+                          // 🚨OVER EVERYTHING, the live ink windows included
+                          // (board: timesheet-playhead-row-over-ink). It lay
+                          // over the printed ink and under the live windows,
+                          // so writing on the playhead's row was tinted with
+                          // the brush off and not with it on — and the brush
+                          // switch changes nothing on a sheet (F-215, 유저
+                          // 2026-09-28: 「on하든off하든 바뀌는게 없어야」). It
+                          // takes no input, so the pen goes through it.
                           Positioned.fill(
                             child: IgnorePointer(
                               child: RepaintBoundary(
@@ -569,43 +535,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               ),
                             ),
                           ),
-                          // Under the ink windows: reachable exactly when the
-                          // brush is off (the switch doubles as the edit-mode
-                          // switch).
-                          Positioned.fill(
-                            child: TimesheetHeaderEditLayer(
-                              key: const ValueKey<String>(
-                                'timesheet-header-edit-layer',
-                              ),
-                              layout: layout,
-                              viewport: viewport,
-                              onMemoCommitted:
-                                  session.cutVerbs.updateActiveCutNote,
-                            ),
-                          ),
-                          if (ink != null)
-                            Positioned.fill(
-                              // The tool-state boundary (R18 UI-3): the brush
-                              // reaches only this small overlay — the sheet
-                              // document above never rebuilds for it — and
-                              // since H40 ② (2026-09-24) not even the overlay
-                              // does: its windows read the brush when a
-                              // stroke starts.
-                              child: TimesheetInkLayer(
-                                key: const ValueKey<String>(
-                                  'timesheet-ink-layer',
-                                ),
-                                controller: ink.controller,
-                                layout: layout,
-                                pagedLayout: pagedLayout,
-                                cutId: _documentCut!.id,
-                                brushToolState: ink.tool,
-                                historyManager: session.historyManager,
-                                viewport: viewport,
-                                strokeActive: _strokeHold,
-                                cacheInvalidationSink: _cacheInvalidationSink,
-                              ),
-                            ),
                         ],
                       );
                     },
@@ -626,25 +555,20 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 int _resolvePlayheadFrame(EditorSessionManager session) =>
     session.cutUnderPlayhead.localFrame;
 
-/// Token-gated host for the sheet panel's PLAYHEAD-derived facts (R13-2):
-/// the auto page turn, the Fit target page and the frame label need the
-/// playhead, but rebuilding the whole panel per cursor move was the
-/// timesheet's share of the frame-flip hitch. This scope listens to the
-/// playhead signals and rebuilds ONLY when its derived token changes —
-/// page-granular while editing and in paged playback, per-frame only for
-/// the continuous-mode playback reveal (which pans every frame by
-/// design).
+/// Token-gated host for the sheet panel's PLAYHEAD-derived fact (R13-2):
+/// the auto page turn needs the playhead, but rebuilding the whole panel
+/// per cursor move was the timesheet's share of the frame-flip hitch. This
+/// scope listens to the playhead signals and rebuilds ONLY when its derived
+/// token changes — the playhead's page, and whether playback runs.
 class _TimesheetPlayheadScope extends StatefulWidget {
   const _TimesheetPlayheadScope({
     required this.session,
-    required this.continuous,
     required this.pageFrameCount,
     required this.pageCount,
     required this.builder,
   });
 
   final EditorSessionManager session;
-  final bool continuous;
   final int pageFrameCount;
   final int pageCount;
 
@@ -663,7 +587,12 @@ class _TimesheetPlayheadScope extends StatefulWidget {
 }
 
 class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
-  late Object _token = _deriveToken();
+  /// 🚨Taken at MOUNT ([initState]). It was a lazy `late` initializer, so
+  /// the first signal derived the token it was compared against from the
+  /// state that signal brought — equal by construction, and swallowed:
+  /// playback started on another sheet turned nothing until the playhead
+  /// crossed a page.
+  late Object _token;
 
   Object _deriveToken() {
     final session = widget.session;
@@ -676,13 +605,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
             0,
             widget.pageCount - 1,
           );
-    // Continuous-mode playback reveals the playhead row per frame; every
-    // other mode only cares which PAGE the playhead is on.
-    return (
-      page,
-      playbackGlobalFrame != null,
-      playbackGlobalFrame != null && widget.continuous ? playheadFrame : null,
-    );
+    return (page, playbackGlobalFrame != null);
   }
 
   void _handlePlayheadSignal() {
@@ -696,6 +619,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
   @override
   void initState() {
     super.initState();
+    _token = _deriveToken();
     final session = widget.session;
     session.editingFrameCursor.addListener(_handlePlayheadSignal);
     session.frameSeekCommitted.addListener(_handlePlayheadSignal);

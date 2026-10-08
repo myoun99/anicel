@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:io' show File, FileSystemException;
+import 'dart:io' show File;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../controllers/default_project_helpers.dart'
     show newUntitledProject;
 import '../../core/path_names.dart';
-import '../../services/audio/audio_conform_pipeline.dart'
-    show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/cel_places.dart';
@@ -26,9 +25,9 @@ import '../../models/brush_shape.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
+import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
-import '../../models/import/import_warning.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
@@ -52,16 +51,21 @@ import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
-import '../export/export_plan.dart' show sanitizeExportFileComponent;
+import '../export/export_format_availability.dart' show stillFormatWritable;
+import '../export/export_plan.dart'
+    show ExportSizeMode, sanitizeExportFileComponent;
+import '../export/frame_image_file.dart';
+import '../../models/export_format_selection.dart';
+import '../../models/export_spec.dart' show ImageExportSpec;
 import '../panels/workspace_panels_menu.dart';
+import 'project_open_door.dart';
 import 'project_settings_menu.dart';
 import '../session/project_file_door.dart'
-    show SaveAsked, StagedArchive, readProjectFile;
-import '../session/tvpp_import_door.dart' show readTvppProject;
+    show SaveAsked, StagedArchive;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
+import '../shortcuts/panel_actions.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
-import '../text/cloud_wait_line.dart';
 import '../theme/app_theme.dart';
 
 /// The editor's top strip: two icon buttons and the work's name, the way
@@ -161,6 +165,22 @@ class EditorTopStrip extends StatelessWidget {
     submenuBuilder: submenuBuilder,
   );
 
+  /// Every row of the strip's two menus as they would open right now
+  /// ([flyoutRowsOf]) — what a KEY presses one of (I-40).
+  ///
+  /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
+  /// 열기 닫기같은거든 뭐든 모든 버튼」. ★A KEY AND ITS ROW ARE ONE PRESS: the
+  /// rows are built the way the menu builds them — a second level too — and
+  /// the one that names the action is pressed if the menu would let it be
+  /// ([pressFlyoutRow], which the shell runs over these and the timeline
+  /// bar's). So a row that is dim does nothing by key either, and a row
+  /// added to a menu with its action's name is reachable by key with no more
+  /// written. [context] is where a row's window opens: the shell's own.
+  List<PanelFlyoutItem> menuRows(BuildContext context) => flyoutRowsOf([
+    ..._projectEntries(context),
+    ..._settingsEntries(context),
+  ]).toList();
+
   // --- File -----------------------------------------------------------------
 
   Future<void> _openProject(BuildContext context) async {
@@ -168,278 +188,7 @@ class EditorTopStrip extends StatelessWidget {
     if (pick == null || !context.mounted) {
       return;
     }
-    await _openPickedProject(context, pick);
-  }
-
-  /// Opens [pick] in a tab of its own, from a staged copy if the file will
-  /// not read in place, and records it in Recents afterwards.
-  ///
-  /// Shared with the Recent-projects rows on purpose: opening from Recent is
-  /// the ONE-TAP common case PICK-4 exists to make, and every guard this
-  /// door has has to be on that path too.
-  ///
-  /// 🪦It offered autosave RECOVERY first until 2026-09-08, and that is the
-  /// whole of what it lost.
-  ///
-  /// 🪦And the UNSAVED-WORK GATE stood here while opening REPLACED the
-  /// project on screen — 「opening ANOTHER project closes this one as surely
-  /// as the window's X」. 유저 2026-09-26 (I-7): 「프로젝트 열기로 열면 지금
-  /// 프로젝트가 교체되는데 새로 여는걸로」. Opening closes nothing now, so
-  /// there is nothing to ask; the question went to the tab's ✕.
-  Future<void> _openPickedProject(
-    BuildContext context,
-    ProjectPick pick,
-  ) async {
-    final path = pick.path;
-    // By NAME: a provider document's URI says nothing of what it is (PICK-7).
-    if (ProviderDocuments.nameOf(path).toLowerCase().endsWith('.tvpp')) {
-      await _openTvppAsProject(context, path);
-      return;
-    }
-    // A file already open is SHOWN, not opened again: two sessions on one
-    // file would be two writers on one archive. A document's session is
-    // bound to its working copy.
-    if (projects.boundTo(ProviderDocuments.workingCopyOf(path) ?? path)
-        case final open?) {
-      projects.activate(open);
-      return;
-    }
-    final ({({EditorSessionManager session, bool staged}) value})? opened;
-    try {
-      opened = await _openBehindWindow<
-        ({EditorSessionManager session, bool staged})
-      >(context, (wait, _) => _readProject(path, wait));
-    } on Object catch (error) {
-      // The archive's own complaint — a file that would not parse.
-      if (context.mounted) {
-        showFileError(context, error);
-      }
-      return;
-    }
-    if (opened == null) {
-      return;
-    }
-    final session = opened.value.session;
-    if (!context.mounted) {
-      projects.discard(session);
-      return;
-    }
-    projects.adopt(session);
-    await _afterOpened(context, pick, staged: opened.value.staged);
-  }
-
-  /// The read itself, from wherever the bytes are, and the session born for
-  /// what it read — not in a tab yet, so a read that fails or a wait that is
-  /// cancelled leaves the tabs exactly as they were, with no session made.
-  ///
-  /// The same materializer every open uses: a File Provider pick can be a
-  /// placeholder a plain read refuses, and the archive reader needs random
-  /// access — so an unreadable pick opens from a staged local copy, and the
-  /// session is bound back to the real file so saves land there.
-  Future<({EditorSessionManager session, bool staged})> _readProject(
-    String path,
-    _CloudWait wait,
-  ) async {
-    final source = await FolderPicker.materializeOpenedFile(
-      path,
-      within: null,
-      onWaiting: wait.report,
-      isCancelled: wait.isCancelled,
-    );
-    // The bytes are here; the read that follows is the app's own.
-    wait.arrived();
-    final read = await readProjectFile(
-      source.path,
-      // Only when they differ: binding is what says「saves go back THERE」,
-      // and a session reading its own file has nowhere else.
-      bindTo: source.staged ? path : null,
-      isCancelled: wait.isCancelled,
-    );
-    final session = projects.prepare(read.project);
-    try {
-      session.projectDoor.settle(read);
-    } on Object {
-      projects.discard(session);
-      rethrow;
-    }
-    return (session: session, staged: source.staged);
-  }
-
-  /// The three things that follow a SUCCESSFUL open: Recents, the word
-  /// about a staged copy, the word about a legacy assets folder.
-  Future<void> _afterOpened(
-    BuildContext context,
-    ProjectPick pick, {
-    required bool staged,
-  }) async {
-    final path = pick.path;
-    // Recorded AFTER the open succeeds, not at pick time: a file that
-    // fails to parse has no business sitting at the top of the menu.
-    // `path` rather than the staged copy — reading out of a copy still
-    // means the user opened the project, not the copy.
-    recordRecentProject(
-      RecentProject(path: path, folderBookmark: pick.folderBookmark),
-    );
-    if (staged) {
-      // Said out loud on purpose (유저 2026-08-27): the wait is meant to
-      // make this road unreachable, so a build that still takes it must be
-      // visible rather than quietly slower. A copy also means every cel
-      // ref points into a temp file for the session — the one case where
-      // the user deserves to know before they draw.
-      await showAppNotice(
-        context,
-        windowKey: const ValueKey<String>('opened-from-staged-copy'),
-        title: AppText.strings.commonNotice,
-        message:
-            '제자리에서 읽지 못해 임시 사본으로 열었습니다 — '
-            '이 문구가 보이면 알려주세요.',
-      );
-      if (!context.mounted) {
-        return;
-      }
-    }
-    // A project from a build that kept its media in a sibling folder.
-    // Said AFTER the open, because a file that failed to parse has no
-    // media to absorb and the folder is still the only copy. A provider
-    // document (PICK-7) has no folder around it to hold one.
-    if (ProviderDocuments.isDocumentUri(path)) {
-      return;
-    }
-    final layout = ProjectAssetLayout(path);
-    if (layout.hasLegacyAssetsDirectory) {
-      final name = layout.assetsDirectory.split('/').last;
-      await showAppNotice(
-        context,
-        windowKey: const ValueKey<String>('legacy-assets-folder-notice'),
-        title: AppText.strings.commonNotice,
-        message: AppText.strings.projectLegacyAssetsFolder.replaceAll(
-          '{name}',
-          name,
-        ),
-      );
-    }
-  }
-
-  /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
-  /// several cuts), in a tab of its own like any open (I-7). No recents
-  /// entry — the result is a NEW unsaved project until its first save.
-  Future<void> _openTvppAsProject(BuildContext context, String path) async {
-    // Decoding and baking a whole project is a save-sized wait; a frozen
-    // screen before the cuts appear reads as a hang (hands-on, 288's 96
-    // frames × 19 layers).
-    final opened =
-        await _openBehindWindow<
-          ({EditorSessionManager session, List<ImportWarning> warnings})?
-        >(context, (wait, report) => _convertTvpp(path, wait, report));
-    if (opened == null) {
-      return;
-    }
-    final converted = opened.value;
-    if (converted == null) {
-      if (context.mounted) {
-        showFileError(context, AppText.strings.imNotTvpp);
-      }
-      return;
-    }
-    if (!context.mounted) {
-      projects.discard(converted.session);
-      return;
-    }
-    projects.adopt(converted.session);
-    if (converted.warnings.isNotEmpty) {
-      await showAppNotice(
-        context,
-        windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
-        title: AppText.strings.commonNotice,
-        message: converted.warnings
-            .take(6)
-            .map((warning) => warning.textFor(AppText.language))
-            .join('\n'),
-      );
-    }
-  }
-
-  /// The .tvpp read and converted, and the session born for the project it
-  /// became with every cel baked into it — not in a tab yet, the .anicel
-  /// open's reason. Null when the file is not a TVPaint project.
-  Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
-  _convertTvpp(
-    String path,
-    _CloudWait wait,
-    void Function(double) report,
-  ) async {
-    final read = await readTvppProject(
-      tvppPath: path,
-      onWaiting: wait.report,
-      isCancelled: wait.isCancelled,
-    );
-    if (read == null) {
-      return null;
-    }
-    final session = projects.prepare(read.project);
-    try {
-      final warnings = await session.tvppDoor.bake(
-        read,
-        onProgress: (fraction) {
-          // Baking has started, so the waiting line has nothing left to
-          // say.
-          wait.arrived();
-          report(fraction);
-        },
-      );
-      return (session: session, warnings: warnings);
-    } on Object {
-      projects.discard(session);
-      rethrow;
-    }
-  }
-
-  /// The ONE window every open stands behind, up from the first frame, for
-  /// a .anicel and a .tvpp alike.
-  ///
-  /// 🚨IT USED TO COVER ONLY THE WAIT FOR A PROVIDER'S BYTES and stay silent
-  /// for a local pick, on the premise that an open is instant. A 74MB
-  /// project on a cloud drive is not, and the person could not tell an open
-  /// from nothing (유저 2026-09-13: 「로딩창 안 떠서 여는 중인지 아닌지
-  /// 모르겠어」). F-53 had already said what a wait window does — it goes
-  /// up at once — and this is that law with its one exception removed. The
-  /// status line still says whose work a cloud wait is ([_CloudWait]); once
-  /// the bytes are here the rest is the app's own.
-  ///
-  /// The two answers every open can end in are given HERE: the user stopped
-  /// waiting (nothing was applied, the door closes without a word), or the
-  /// file could not be read (access, not format — the same file opens once
-  /// it is readable: a cloud placeholder mid-download, a provider signed
-  /// out). Null is either of those; anything else wraps [task]'s own answer,
-  /// so a task whose answer is itself null is not mistaken for a cancel.
-  Future<({T value})?> _openBehindWindow<T>(
-    BuildContext context,
-    Future<T> Function(_CloudWait wait, void Function(double) report) task,
-  ) async {
-    final wait = _CloudWait();
-    try {
-      final value = await runWithAppProgress<T>(
-        context: context,
-        title: AppText.strings.fileOpenTitle,
-        titleIcon: Icons.folder_open_outlined,
-        runningLabel: AppText.strings.openProgressRunning,
-        doneLabel: AppText.strings.openProgressDone,
-        windowKey: const ValueKey<String>('open-progress-dialog'),
-        runningStatus: wait.status,
-        onCancel: wait.cancel,
-        task: (report) => task(wait, report),
-      );
-      return (value: value);
-    } on MaterializeCancelled {
-      return null;
-    } on FileSystemException {
-      if (context.mounted) {
-        showFileError(context, AppText.strings.imFileUnreadable);
-      }
-      return null;
-    } finally {
-      wait.dispose();
-    }
+    await ProjectOpenDoor(projects).open(context, pick);
   }
 
   /// PICK-4: the recent projects — ONE row that opens them, or nothing at
@@ -520,7 +269,7 @@ class EditorTopStrip extends StatelessWidget {
         // mode Drive refuses. The resolved item's own name is the
         // discriminator.
         final resolved = grant.path!;
-        path = resolved.split('/').last == entry.name
+        path = fileNameOfPath(resolved) == entry.name
             ? resolved
             : '$resolved/${entry.name}';
         bookmark = grant.bookmark ?? bookmark;
@@ -572,7 +321,7 @@ class EditorTopStrip extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    await _openPickedProject(context, (
+    await ProjectOpenDoor(projects).open(context, (
       path: path,
       folderBookmark: bookmark,
       placed: false,
@@ -603,6 +352,12 @@ class EditorTopStrip extends StatelessWidget {
     );
   }
 
+  /// Whether the playhead stands in a cut — what the rows that write the
+  /// film's pictures out ask. The export dialog is cut-anchored, and so is
+  /// the picture Save As writes (its image tab's): off a cut, in the gap
+  /// state, they are dim (UI-R9 #3).
+  bool get _onACut => session.activeCutOrNull != null;
+
   /// The PROJECT popover: the file itself, and the two doors it has to the
   /// outside world. Export used to sit as its own icon in the strip; it is
   /// a once-a-session verb, so it belongs behind the same button as saving
@@ -612,13 +367,15 @@ class EditorTopStrip extends StatelessWidget {
     // 여는거야」 — a tab of its own beside the ones already open.
     _item(
       id: 'file-new',
-      label: AppText.strings.newProject,
+      label: editorActionLabel(EditorActionIds.fileNew),
+      shortcuts: const [EditorActionIds.fileNew],
       icon: Icons.note_add_outlined,
       onPressed: () => projects.open(newUntitledProject()),
     ),
     _item(
       id: 'file-open',
-      label: 'Open…',
+      label: editorActionLabel(EditorActionIds.fileOpen),
+      shortcuts: const [EditorActionIds.fileOpen],
       icon: Icons.folder_open_outlined,
       onPressed: () => unawaited(_openProject(context)),
     ),
@@ -631,12 +388,32 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.save_outlined,
       onPressed: () => unawaited(saveProject(context, session)),
     ),
+    // 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
+    // 프로젝트(.anicel) · PNG · JPG」. The format is chosen HERE, the same
+    // on every platform: Android's and iOS's save windows take one type
+    // before they open and offer no list. The first row is the Save As there
+    // always was, and Ctrl+Shift+S still presses it.
     _item(
-      id: 'file-save-as',
-      label: editorActionLabel(EditorActionIds.fileSaveAs),
-      shortcuts: const [EditorActionIds.fileSaveAs],
+      id: 'file-save-as-format',
+      label: AppText.strings.saveAsTitle,
       icon: Icons.save_as_outlined,
-      onPressed: () => unawaited(promptSaveProjectAs(context, session)),
+      submenuBuilder: () => [
+        _item(
+          id: 'file-save-as',
+          label: 'Project (.anicel)…',
+          shortcuts: const [EditorActionIds.fileSaveAs],
+          onPressed: () => unawaited(promptSaveProjectAs(context, session)),
+        ),
+        for (final format in saveAsImageFormats)
+          _item(
+            id: saveAsImageActionId(format),
+            label: '${format.label}…',
+            shortcuts: [saveAsImageActionId(format)],
+            onPressed: _onACut && stillFormatWritable(format)
+                ? () => unawaited(saveFrameAsImage(context, session, format))
+                : null,
+          ),
+      ],
     ),
     // 🗣️유저 2026-09-23: 「나중에 실패본에서 백업하기 … 해당파일
     // 지정해서」. Always in the list, off while this run holds no failed
@@ -644,7 +421,8 @@ class EditorTopStrip extends StatelessWidget {
     // pops into existence this app does not make.
     _item(
       id: 'file-back-up-failed-copy',
-      label: AppText.strings.failedCopyBackUp,
+      label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
+      shortcuts: const [EditorActionIds.fileBackUpFailedCopy],
       icon: Icons.backup_outlined,
       onPressed: session.failedSaveCopies.entries.isEmpty
           ? null
@@ -654,7 +432,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'file-import',
-      label: 'Import / Place…',
+      label: editorActionLabel(EditorActionIds.fileImport),
+      shortcuts: const [EditorActionIds.fileImport],
       icon: Icons.file_download_outlined,
       onPressed: () {
         unawaited(
@@ -667,11 +446,10 @@ class EditorTopStrip extends StatelessWidget {
     ),
     _item(
       id: 'file-export',
-      label: 'Export…',
+      label: editorActionLabel(EditorActionIds.fileExport),
+      shortcuts: const [EditorActionIds.fileExport],
       icon: Icons.save_alt,
-      // The export dialog is cut-anchored — disabled in the no-cut gap
-      // state (UI-R9 #3).
-      onPressed: session.activeCutOrNull == null
+      onPressed: !_onACut
           ? null
           : () {
               unawaited(
@@ -710,7 +488,8 @@ class EditorTopStrip extends StatelessWidget {
     // app's own settings.
     _item(
       id: 'work-settings',
-      label: 'Work settings…',
+      label: editorActionLabel(EditorActionIds.workSettings),
+      shortcuts: const [EditorActionIds.workSettings],
       icon: Icons.theaters_outlined,
       onPressed: () => unawaited(
         askThenCommit<TimesheetInfo>(
@@ -739,7 +518,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'edit-keyboard-shortcuts',
-      label: 'Keyboard shortcuts…',
+      label: editorActionLabel(EditorActionIds.keyboardShortcuts),
+      shortcuts: const [EditorActionIds.keyboardShortcuts],
       icon: Icons.keyboard_outlined,
       // The bindings arrive down the ONE scope every key label reads — a
       // second pipe for the same object is how a menu and its tooltips
@@ -761,7 +541,8 @@ class EditorTopStrip extends StatelessWidget {
     // wrappers around the same section widgets).
     _item(
       id: 'edit-preferences',
-      label: 'Preferences…',
+      label: editorActionLabel(EditorActionIds.preferences),
+      shortcuts: const [EditorActionIds.preferences],
       icon: Icons.tune,
       onPressed: () {
         unawaited(
@@ -803,6 +584,7 @@ class EditorTopStrip extends StatelessWidget {
           PanelFlyoutItem(
             keyValue: 'panels-menu-item-${entry.tabId}',
             label: entry.label,
+            shortcuts: [panelActionId(entry.tabId)],
             checked: entry.visible,
             onSelected: () => panelsMenu.toggle(entry.tabId),
           ),
@@ -812,7 +594,8 @@ class EditorTopStrip extends StatelessWidget {
         // half the people holding the stylus.
         _item(
           id: 'window-tool-rail-right',
-          label: 'Tool strip on the right',
+          label: editorActionLabel(EditorActionIds.toolRailOnRight),
+          shortcuts: const [EditorActionIds.toolRailOnRight],
           icon: Icons.flip,
           checked: panelsMenu.toolRailOnRight,
           onPressed: panelsMenu.canMoveToolRail
@@ -826,7 +609,8 @@ class EditorTopStrip extends StatelessWidget {
         // all of it.
         _item(
           id: 'window-region-on-top',
-          label: 'Timeline region on top',
+          label: editorActionLabel(EditorActionIds.regionOnTop),
+          shortcuts: const [EditorActionIds.regionOnTop],
           icon: Icons.vertical_align_top,
           checked: panelsMenu.regionOnTop,
           onPressed: panelsMenu.canMoveRegion
@@ -835,7 +619,8 @@ class EditorTopStrip extends StatelessWidget {
         ),
         _item(
           id: 'window-reset-layout',
-          label: 'Reset workspace layout',
+          label: editorActionLabel(EditorActionIds.resetLayout),
+          shortcuts: const [EditorActionIds.resetLayout],
           icon: Icons.restart_alt,
           onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
         ),
@@ -860,7 +645,8 @@ class EditorTopStrip extends StatelessWidget {
         // platform, the driver-vs-app separator.
         _item(
           id: 'edit-input-inspector',
-          label: 'Input Inspector',
+          label: editorActionLabel(EditorActionIds.inputInspector),
+          shortcuts: const [EditorActionIds.inputInspector],
           // ⛔Not the bug glyph: that one is the DEBUG row above, and a
           // child repeating its parent's mark says nothing. This one is
           // about the pointer.
@@ -876,7 +662,8 @@ class EditorTopStrip extends StatelessWidget {
         // --dart-define on a tablet costs a rebuild and an install.
         _item(
           id: 'edit-frame-timing-overlay',
-          label: 'Frame Timing Overlay',
+          label: editorActionLabel(EditorActionIds.frameTimingOverlay),
+          shortcuts: const [EditorActionIds.frameTimingOverlay],
           icon: Icons.speed_outlined,
           checked: MeasurementMode.frameTimingOverlay.value,
           onPressed: () {
@@ -893,7 +680,8 @@ class EditorTopStrip extends StatelessWidget {
         // frame inside the scene whose raster time they report.
         _item(
           id: 'edit-frame-stats',
-          label: 'Frame Stats',
+          label: editorActionLabel(EditorActionIds.frameStats),
+          shortcuts: const [EditorActionIds.frameStats],
           icon: Icons.query_stats_outlined,
           checked: MeasurementMode.frameStats.value,
           onPressed: () {
@@ -908,7 +696,8 @@ class EditorTopStrip extends StatelessWidget {
         // strobes as the pen moves is re-baking on your pointer.
         _item(
           id: 'edit-show-repaints',
-          label: 'Show Repaints',
+          label: editorActionLabel(EditorActionIds.showRepaints),
+          shortcuts: const [EditorActionIds.showRepaints],
           icon: Icons.flare_outlined,
           checked: MeasurementMode.showRepaints.value,
           onPressed: () {
@@ -926,7 +715,8 @@ class EditorTopStrip extends StatelessWidget {
         // debug affordance nobody can press is a debug affordance nobody has.
         _item(
           id: 'edit-bake-panels',
-          label: 'Bake Static Panels',
+          label: editorActionLabel(EditorActionIds.bakePanels),
+          shortcuts: const [EditorActionIds.bakePanels],
           icon: Icons.layers_outlined,
           checked: StaticRaster.globallyEnabled.value,
           onPressed: () {
@@ -939,7 +729,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'help-about',
-      label: 'About Anicel',
+      label: editorActionLabel(EditorActionIds.about),
+      shortcuts: const [EditorActionIds.about],
       icon: Icons.info_outline,
       onPressed: () =>
           showAboutDialog(context: context, applicationName: 'Anicel'),
@@ -970,25 +761,191 @@ class EditorTopStrip extends StatelessWidget {
         _FloorSwitch(panelsMenu: panelsMenu),
         const SizedBox(width: 6),
         Expanded(
-          child: _ProjectTabRow(projects: projects, onClose: onCloseProject),
+          child: _TabsAndBrushGroup(
+            tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
+            brushTool: brushTool,
+          ),
         ),
-        // 유저 확정 order, left to right: blend + its lock, a rule, then
-        // size and opacity each with their pressure curve, then the colour.
-        // The rule is what makes the first two read as one group rather
-        // than as a button that has wandered next to a slider.
-        if (brushTool != null) ...[
-          _BlendModeControl(brushTool: brushTool!),
-          const SizedBox(width: 6),
-          const _StripGroupRule(),
-          const SizedBox(width: 6),
-          _BrushValueBars(brushTool: brushTool!),
-          // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
-          // the one surface that opened DOWNWARD out of a strip; as a rail
-          // group it opens sideways like everything else, and the swatch
-          // goes with it — the rail button IS the pair now. 42px back.
-        ],
         const SizedBox(width: 3),
       ],
+    );
+  }
+}
+
+/// The strip's flexible stretch: the project tabs, then the brush's group at
+/// its end — and the ORDER THEY GIVE WAY IN when the window narrows.
+///
+/// 🗣️top-strip-narrow-overflow-Q1 (유저 2026-10-01): 「줄이지 않고 바로 ⋯
+/// 목록으로」, corrected a minute later — 「답변 정정. 막대 먼저 줄어들고 다음
+/// 목록으로」. The answer's own words: 「크기 · 불투명도 막대가 140px에서 이름과
+/// 숫자가 막대 안에 들어가는 최소 폭까지 줄어든다. 그래도 안 들어가면 오른쪽
+/// 브러시 묶음(혼합 모드 · 막대 · 필압 버튼)이 띠 끝의 ⋯ 버튼 하나로 들어가고,
+/// 누르면 그 묶음이 팝오버로 뜬다. 탭 목록 버튼 자리는 끝까지 남는다. 탭
+/// 줄이 이미 따르는 「줄이고 → 넘긴다」를 띠 전체에 같은 법으로」.
+///
+/// ⛔The group stood in the strip's row at its full width whatever the
+/// window was, so under 770px — an iPad mini held upright is 744 — the tabs'
+/// place fell below what one tab asks and the strip ran off its end
+/// (measured 2026-10-01: 10px over at 760, 70 at 700, 46 + 34 at 640).
+///
+/// So the tabs give way first, as they always have (their own law: names
+/// shorten, then tabs leave for the list button, which keeps its place);
+/// with the tabs down to that place the two bars narrow, each as far as its
+/// own writing allows ([FieldSlider.narrowestIn]); and past that the group
+/// is one button.
+///
+/// 🔬Measured 2026-10-07 in the app's faces at 1×, one project open: the
+/// bars stand at 140 down to a 770 window and narrow from there; the group
+/// is the button under 740 in English and in Japanese, under 727 in Korean,
+/// under 750 in French. An iPad mini held upright (744) leaves the two bars
+/// 254 between them, so it keeps its bars in the first three.
+///
+/// Each bar goes to its OWN narrowest for that reason, not only because the
+/// answer's words are each bar's: held to one width — the wider writing's,
+/// English 「Size … 2000.0 px」 at 127.6 — the pair would ask for 255.2 of
+/// those 254.
+class _TabsAndBrushGroup extends StatelessWidget {
+  const _TabsAndBrushGroup({required this.tabs, required this.brushTool});
+
+  final Widget tabs;
+  final ValueNotifier<BrushToolState>? brushTool;
+
+  @override
+  Widget build(BuildContext context) {
+    final tool = brushTool;
+    if (tool == null) {
+      return tabs;
+    }
+    final narrowest = _BrushValueBars.narrowestIn(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bars = _BrushValueBars.widthsIn(
+          // What the two bars may take between them once the tabs hold
+          // only their list button's place and the group's fixed parts
+          // stand.
+          constraints.maxWidth -
+              _ProjectTabRow._minTabWidth -
+              _BrushGroup.fixedWidth,
+          narrowest,
+        );
+        return Row(
+          children: [
+            Expanded(child: tabs),
+            if (bars != null)
+              _BrushGroup(brushTool: tool, bars: bars)
+            else
+              _BrushGroupButton(brushTool: tool),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// How wide the size bar and the opacity bar each stand.
+typedef _BarWidths = ({double size, double opacity});
+
+/// The brush's group as the strip shows it.
+class _BrushGroup extends StatelessWidget {
+  const _BrushGroup({required this.brushTool, required this.bars});
+
+  final ValueNotifier<BrushToolState> brushTool;
+  final _BarWidths bars;
+
+  static const double _gap = 6;
+
+  /// Everything of the group that is not a bar.
+  static const double fixedWidth =
+      _BlendModeControl._buttonWidth +
+      _gap +
+      _StripGroupRule.width +
+      _gap +
+      _BrushValueBars.fixedWidth;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // 유저 확정 order, left to right: blend + its lock, a rule, then
+      // size and opacity each with their pressure curve, then the colour.
+      // The rule is what makes the first two read as one group rather
+      // than as a button that has wandered next to a slider.
+      _BlendModeControl(brushTool: brushTool),
+      const SizedBox(width: _gap),
+      const _StripGroupRule(),
+      const SizedBox(width: _gap),
+      _BrushValueBars(brushTool: brushTool, widths: bars),
+      // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
+      // the one surface that opened DOWNWARD out of a strip; as a rail
+      // group it opens sideways like everything else, and the swatch
+      // goes with it — the rail button IS the pair now. 42px back.
+    ],
+  );
+}
+
+/// The brush's group as ONE button, for a strip with no room for the group:
+/// pressed, the same controls open under it, one to a line — a window this
+/// narrow has no width to lay them side by side in.
+///
+/// ⚠️The bars' own note stands (below): a popover closes on the first press
+/// outside it, so here a value is set by open → set → close → draw. That is
+/// the cost the answer was shown and took, for windows too narrow for the
+/// narrowed bars.
+class _BrushGroupButton extends StatelessWidget {
+  const _BrushGroupButton({required this.brushTool});
+
+  final ValueNotifier<BrushToolState> brushTool;
+
+  static const double _padding = 8;
+  static const double _lineGap = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    // The names of what is under it, in the words those controls wear —
+    // what the button says, and what its popover is called (the popover's
+    // name is read out, so it is words and not a key).
+    final name =
+        '${AppText.strings.brBlend} · ${AppText.strings.brSize} · '
+        '${AppText.strings.brOpacity}';
+    return RailButton(
+      keyValue: 'top-strip-brush-group-button',
+      tooltip: name,
+      icon: Icons.more_horiz,
+      selected: false,
+      onPressed: () => unawaited(
+        showAnchoredPopup<void>(
+          context,
+          label: name,
+          width:
+              _padding * 2 +
+              _BrushValueBars.fullBar +
+              _BrushValueBars._gap +
+              PressureCurveButton.slotWidth,
+          height:
+              _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.all(_padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: _BrushValueBars._barHeight,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _BlendModeControl(brushTool: brushTool),
+                  ),
+                ),
+                const SizedBox(height: _lineGap),
+                _BrushValueBars(
+                  brushTool: brushTool,
+                  widths: _BrushValueBars.full,
+                  axis: Axis.vertical,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1009,12 +966,109 @@ class EditorTopStrip extends StatelessWidget {
 /// Its own listener: a size drag must not rebuild the popover buttons or
 /// re-read the project name beside them.
 class _BrushValueBars extends StatelessWidget {
-  const _BrushValueBars({required this.brushTool});
+  const _BrushValueBars({
+    required this.brushTool,
+    required this.widths,
+    this.axis = Axis.horizontal,
+  });
 
   final ValueNotifier<BrushToolState> brushTool;
 
-  static const double _barWidth = 140;
+  /// How wide the two bars stand — [full] where there is room.
+  final _BarWidths widths;
+
+  /// Side by side in the strip; one over the other in the group's popover.
+  final Axis axis;
+
+  static const double fullBar = 140;
+  static const _BarWidths full = (size: fullBar, opacity: fullBar);
   static const double _barHeight = 42;
+  static const double _gap = 4;
+
+  /// Everything beside the two bars when they stand side by side: a
+  /// pressure button after each, and the gaps.
+  static const double fixedWidth =
+      _gap +
+      PressureCurveButton.slotWidth +
+      _gap +
+      _gap +
+      PressureCurveButton.slotWidth;
+
+  /// The size bar as the strip writes it — the one the strip shows, and the
+  /// one [narrowestIn] measures.
+  static FieldSlider _sizeBar({
+    required double value,
+    required ValueChanged<double>? onChanged,
+  }) => FieldSlider(
+    key: const ValueKey<String>('top-strip-size-bar'),
+    label: AppText.strings.brSize,
+    value: value,
+    min: BrushToolState.minSize,
+    max: BrushToolState.maxSize,
+    // Equal travel multiplies the value, so the left half covers the small
+    // sizes where a pixel matters.
+    scale: FieldSliderScale.exponential,
+    unit: ' px',
+    height: _barHeight,
+    onChanged: onChanged,
+  );
+
+  /// The opacity bar as the strip writes it — as [_sizeBar].
+  static FieldSlider _opacityBar({
+    required double value,
+    required ValueChanged<double>? onChanged,
+  }) => FieldSlider.opacity(
+    key: const ValueKey<String>('top-strip-opacity-bar'),
+    label: AppText.strings.brOpacity,
+    value: value,
+    height: _barHeight,
+    onChanged: onChanged,
+  );
+
+  /// The narrowest each bar goes: where it still writes its name and its
+  /// widest number whole ([FieldSlider.narrowestIn]).
+  ///
+  /// Each its OWN: the answer's words are 「이름과 숫자가 막대 안에 들어가는
+  /// 최소 폭」, and the two bars do not write the same words.
+  ///
+  /// Never past [fullBar]: where the writing asks for more than the full
+  /// bar (a long name under a large OS text size) there is nothing to
+  /// narrow, and the bar cuts its name short at 140 as it always has.
+  static _BarWidths narrowestIn(BuildContext context) {
+    double of(FieldSlider bar) =>
+        math.min(fullBar, bar.narrowestIn(context));
+    return (
+      size: of(_sizeBar(value: BrushToolState.maxSize, onChanged: null)),
+      opacity: of(_opacityBar(value: 1, onChanged: null)),
+    );
+  }
+
+  /// The two bars' widths where [room] is what they may take between them:
+  /// [full] where there is room; where there is not, each gives up the same
+  /// share of what it can spare, so both reach their [narrowest] together;
+  /// and null where even those do not fit.
+  ///
+  /// In whole pixels, rounded down — a bar's edge stays on the grid, and
+  /// the two never take more than [room]. (The pixel that rounding can take
+  /// from a bar at its narrowest comes out of the breath between its name
+  /// and its number, never out of either.)
+  static _BarWidths? widthsIn(double room, _BarWidths narrowest) {
+    final short = fullBar * 2 - room;
+    if (short <= 0) {
+      return full;
+    }
+    final spare = fullBar * 2 - narrowest.size - narrowest.opacity;
+    if (short > spare) {
+      return null;
+    }
+    final share = short / spare;
+    double narrowed(double least) =>
+        (fullBar - (fullBar - least) * share).floorToDouble();
+    return (
+      size: narrowed(narrowest.size),
+      opacity: narrowed(narrowest.opacity),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1035,7 +1089,7 @@ class _BrushValueBars extends StatelessWidget {
         state.supports(ToolParameter.size),
         state.supports(ToolParameter.opacity),
         state.supports(ToolParameter.pressure),
-        BrushToolState.clampSize(state.size),
+        BrushToolState.clampSize(state.activeSize),
         BrushToolState.clampOpacity(state.activeOpacity),
         state.shape.copyWith(color: 0),
       ),
@@ -1063,53 +1117,59 @@ class _BrushValueBars extends StatelessWidget {
           );
         }
 
-        return Row(
+        final sizeLine = [
+          SizedBox(
+            width: widths.size,
+            height: _barHeight,
+            child: _sizeBar(
+              // The ACTIVE tool's size, as the bar beside it is the active
+              // tool's opacity: the shape tool's plain line keeps its own.
+              value: BrushToolState.clampSize(state.activeSize),
+              onChanged: sizeOn
+                  ? (value) => brushTool.value = brushTool.value
+                        .withActiveSize(value)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: _gap),
+          pressure(BrushPressureTarget.size, AppText.strings.brSize),
+        ];
+        final opacityLine = [
+          SizedBox(
+            width: widths.opacity,
+            height: _barHeight,
+            child: _opacityBar(
+              // TP1: the ACTIVE tool's opacity — the fill and the stamp
+              // keep their own, so this bar stops being the brush's alone
+              // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
+              // 채워지게).
+              value: BrushToolState.clampOpacity(state.activeOpacity),
+              onChanged: opacityOn
+                  ? (value) => brushTool.value = brushTool.value
+                        .withActiveOpacity(value)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: _gap),
+          pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+        ];
+        if (axis == Axis.horizontal) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...sizeLine,
+              const SizedBox(width: _gap),
+              ...opacityLine,
+            ],
+          );
+        }
+        return Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: _barWidth,
-              height: _barHeight,
-              child: FieldSlider(
-                key: const ValueKey<String>('top-strip-size-bar'),
-                label: AppText.strings.brSize,
-                value: BrushToolState.clampSize(state.size),
-                min: BrushToolState.minSize,
-                max: BrushToolState.maxSize,
-                // Equal travel multiplies the value, so the left half covers
-                // the small sizes where a pixel matters.
-                scale: FieldSliderScale.exponential,
-                unit: ' px',
-                height: _barHeight,
-                onChanged: sizeOn
-                    ? (value) => brushTool.value = brushTool.value.copyWith(
-                        size: value,
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 4),
-            pressure(BrushPressureTarget.size, AppText.strings.brSize),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: _barWidth,
-              height: _barHeight,
-              child: FieldSlider.opacity(
-                key: const ValueKey<String>('top-strip-opacity-bar'),
-                label: AppText.strings.brOpacity,
-                // TP1: the ACTIVE tool's opacity — the fill and the stamp
-                // keep their own, so this bar stops being the brush's alone
-                // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
-                // 채워지게).
-                value: BrushToolState.clampOpacity(state.activeOpacity),
-                height: _barHeight,
-                onChanged: opacityOn
-                    ? (value) => brushTool.value = brushTool.value
-                          .withActiveOpacity(value)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 4),
-            pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+            Row(mainAxisSize: MainAxisSize.min, children: sizeLine),
+            const SizedBox(height: _BrushGroupButton._lineGap),
+            Row(mainAxisSize: MainAxisSize.min, children: opacityLine),
           ],
         );
       },
@@ -1122,10 +1182,12 @@ class _BrushValueBars extends StatelessWidget {
 class _StripGroupRule extends StatelessWidget {
   const _StripGroupRule();
 
+  static const double width = 1;
+
   @override
   Widget build(BuildContext context) {
     return VerticalDivider(
-      width: 1,
+      width: width,
       thickness: 1,
       indent: 6,
       endIndent: 6,
@@ -1240,10 +1302,15 @@ class _BlendModeControl extends StatelessWidget {
             // joining `toolHasBlendMode` is all it took: the eraser's
             // single-entry case is the `toolLocked` box above, so this
             // list needs no per-tool filter to obey that law.
-            entriesBuilder: () => BrushBlendMode.values.asFlyoutChoices(
+            entriesBuilder: () => BrushBlendMode.values.asFlyoutValueChoices(
               current: mode,
-              keyPrefix: 'brush-tool-blend-',
-              labelOf: (candidate) => candidate.labelFor(language),
+              // 🗣️I-31 made every mode an action (F1–F12); the row it is
+              // picked from says so, as every button does (I-40).
+              choiceOf: (candidate) => PanelFlyoutChoice(
+                key: 'brush-tool-blend-${candidate.name}',
+                label: candidate.labelFor(language),
+                shortcuts: [blendModeActionId(candidate)],
+              ),
               // Writes to whichever drawer the armed tool owns — the
               // BRUSH's is its own shape, so the mode picked here is
               // the mode that brush keeps and exports. The button
@@ -1525,48 +1592,6 @@ class _FloorSwitch extends StatelessWidget {
   }
 }
 
-/// What a door says while a file it did not write is on its way.
-///
-/// One object for the three things a wait needs — a line that changes, a
-/// stop, and the question 「were we stopped?」 — so both doors say the
-/// same thing with the same words rather than each inventing its own.
-///
-/// The line NAMES THE CLOUD (유저 2026-08-27: 「프로바이더가 로컬로
-/// 다운로드하는 걸 기다리고 있다고 명확히 표기하는 게 좋겠다」). 「여는 중」
-/// across a download makes the app look slow for work the provider is
-/// doing, and the person waiting cannot tell the two apart without being
-/// told which one it is.
-class _CloudWait {
-  final ValueNotifier<String> status = ValueNotifier<String>('');
-  final Completer<void> _started = Completer<void>();
-  bool _cancelled = false;
-
-
-  /// Completes the first time the work says it is WAITING — which is what
-  /// a door raises its window on. A pick that reads straight away never
-  /// completes it, and so never draws anything.
-  Future<void> get started => _started.future;
-
-  void report(Duration waited, FileArrival arrival) {
-    if (!_started.isCompleted) {
-      _started.complete();
-    }
-    // The sentence is [cloudWaitLine]'s, here and in the import window
-    // (F-141): this file used to spell the threshold and the two templates
-    // out for itself, and so did that one.
-    status.value = cloudWaitLine(waited, arrival);
-  }
-
-  /// The bytes are here; whatever comes next is the app's own work.
-  void arrived() => status.value = '';
-
-  void cancel() => _cancelled = true;
-
-  bool isCancelled() => _cancelled;
-
-  void dispose() => status.dispose();
-}
-
 class _StripPopoverButton extends StatelessWidget {
   const _StripPopoverButton({
     required this.keyValue,
@@ -1611,19 +1636,6 @@ class _StripPopoverButton extends StatelessWidget {
 // unblocks Google Drive: it declines folder mode outright but serves file
 // mode fine.
 
-/// A chosen project, plus the token that reopens it next launch.
-///
-/// The bookmark travels with the path because the recent-projects list is
-/// worthless without it on Apple platforms — a stored path outside the app
-/// container is refused after relaunch unless the app can produce the
-/// security scope it was granted.
-///
-/// [placed] says the archive is ALREADY there: the scoped picker moves a
-/// file the app wrote rather than handing back an empty destination, so
-/// the bytes at [path] are the ones just serialized and writing them a
-/// second time is at best waste — see [promptSaveProjectAs].
-typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
-
 /// Open: the project FILE itself, on every platform.
 ///
 /// PICK-6: the folder grant and the chooser it fed are both gone. A project
@@ -1636,15 +1648,9 @@ typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 @visibleForTesting
 Future<ProjectPick?> pickProjectToOpen(BuildContext context) => pickProjectFile(
   context,
-  // TVPaint projects open through the same door (the user's call: ONE
-  // entry, the Open button — the import pickers retire later). A .tvpp
-  // converts into cuts rather than loading as a project.
-  //
-  // 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
-  // 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
-  // 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
-  // 선택할수 있게」.
-  supportedExtensions: const [anicelProjectExtension, 'tvpp'],
+  // One list, which a dropped file is asked by too (F-247) — the decisions
+  // behind it went with it.
+  supportedExtensions: projectOpenExtensions,
   // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
   // never completes under the widget-test clock, and this is the first
   // line of the open flow.
@@ -1739,53 +1745,20 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
   String name,
   String initialDirectory,
 ) async {
-  final grant = await pickSaveDestinationForUser(
+  // [name] carries the suffix, and the save window's door answers for it:
+  // Windows shows the filter and never appends the extension, and the
+  // suffixed name is asked the replace question the window asked of the
+  // bare one (F-14 — [pickSaveFileForUser]).
+  final grant = await pickSaveFileForUser(
     context,
     suggestedName: name,
     initialDirectory: initialDirectory,
-    // The dialog filters to the project type; Windows shows the filter but
-    // never appends the extension itself, so the suffix answer below stays.
     acceptedTypeGroups: const [FileTypeGroups.anicelProject],
   );
   final picked = grant?.path;
-  if (picked == null || !context.mounted) {
-    return null;
-  }
-  if (picked.toLowerCase().endsWith(anicelProjectSuffix)) {
-    return (path: picked, folderBookmark: grant!.bookmark, placed: false);
-  }
-  // F-14: the suffix is the pick's answer. But appending it claims a
-  // DIFFERENT path than the one the dialog's replace prompt asked about —
-  // "type Foo over an existing Foo.anicel" was a silent overwrite — so
-  // when the real target is taken, the question is asked again about it.
-  final suffixed = '$picked$anicelProjectSuffix';
-  if (File(suffixed).existsSync()) {
-    final strings = AppText.strings;
-    final replace = await askConfirm(
-      context,
-      ConfirmQuestion(
-        keys: (
-          window: const ValueKey<String>('save-as-replace-dialog'),
-          decline: const ValueKey<String>('save-as-replace-cancel'),
-          accept: const ValueKey<String>('save-as-replace-confirm'),
-        ),
-        title: strings.replaceFileTitle,
-        titleIcon: Icons.save_as_outlined,
-        message: strings.replaceFileMessageTemplate.replaceAll(
-          '{name}',
-          suffixed.split('/').last,
-        ),
-      ),
-      accept: ConfirmChoice(
-        strings.commonReplace,
-        emphasis: AppWindowActionEmphasis.danger,
-      ),
-    );
-    if (replace != true || !context.mounted) {
-      return null;
-    }
-  }
-  return (path: suffixed, folderBookmark: grant!.bookmark, placed: false);
+  return picked == null
+      ? null
+      : (path: picked, folderBookmark: grant!.bookmark, placed: false);
 }
 
 Future<ProjectPick?> _pickScopedSaveTarget(
@@ -1993,6 +1966,12 @@ Future<bool> saveProjectShowingProgress(
   EditorSessionManager session,
   String path,
 ) async {
+  // 🗣️F-304 (유저 2026-10-06): 「…그게아니라 저장준비중 이라는 창을 띄우는게
+  // 좋을듯」. Until the write first counts, the save is gathering what it
+  // writes — on this isolate, and for a heavy session long — and the
+  // window's changing line says so; the first count hands the line back to
+  // the running label.
+  final preparing = ValueNotifier<String>(AppText.strings.savePrepareRunning);
   try {
     await runWithAppProgress<void>(
       context: context,
@@ -2001,11 +1980,15 @@ Future<bool> saveProjectShowingProgress(
       runningLabel: AppText.strings.saveProgressRunning,
       doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
+      runningStatus: preparing,
       task: (report) =>
           session.projectDoor.saveProjectToFile(
             path,
             asked: SaveAsked.byAPerson,
-            onProgress: report,
+            onProgress: (fraction) {
+              preparing.value = '';
+              report(fraction);
+            },
           ),
     );
     if (context.mounted) {
@@ -2022,6 +2005,8 @@ Future<bool> saveProjectShowingProgress(
       showFileError(context, error);
     }
     return false;
+  } finally {
+    preparing.dispose();
   }
 }
 
@@ -2058,7 +2043,7 @@ Future<void> showSaveFailure(
       detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
-          label: strings.failedCopyBackUp,
+          label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
           actionKey: const ValueKey<String>('save-failure-back-up'),
           onPressed: copy == null
               ? null
@@ -2137,13 +2122,11 @@ Future<void> backUpFailedCopy(
         session.projectDoor.backUpFailedCopy(chosen.copyPath, destination),
   );
   try {
-    final projectPath = chosen.projectPath.replaceAll(r'\', '/');
+    final beside = folderOfPath(chosen.projectPath);
     final pick = await pickProjectSaveTarget(
       context,
       _backupNameFor(chosen),
-      projectPath.contains('/')
-          ? projectPath.substring(0, projectPath.lastIndexOf('/'))
-          : ensuredAppDocumentsDirectorySync(),
+      beside.isEmpty ? ensuredAppDocumentsDirectorySync() : beside,
       stageArchive: (stagingPath) => backUpTo(
         stagingPath,
         running: strings.savePrepareRunning,
@@ -2294,7 +2277,7 @@ void _tellWhatTheSaveCouldNotCarry(
           session.repository.requireProject(),
           lost,
         ))
-          celPlaceLine(place),
+          celPlaceLine(place, framePlace: session.framePlaceLabel),
       ],
       detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),
@@ -2331,16 +2314,16 @@ Future<void> promptSaveProjectAs(
   final suggested =
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
-  final currentPath = session.projectFile.path?.replaceAll('\\', '/');
+  final beside = folderOfPath(session.projectFile.path ?? '');
   // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
   // asking one question one way. The async spelling stood here and it is
   // documented as unusable from a widget test: 「sync dart:io works under
   // the widget-test clock; async never completes there」. So the FIRST LINE
   // of the flow whose ordering F-57 is about could never be reached by a
   // test, whatever seam it was given.
-  final initialDirectory = currentPath != null && currentPath.contains('/')
-      ? currentPath.substring(0, currentPath.lastIndexOf('/'))
-      : ensuredAppDocumentsDirectorySync();
+  final initialDirectory = beside.isEmpty
+      ? ensuredAppDocumentsDirectorySync()
+      : beside;
   // What the staged archive holds, kept from the staging call to the
   // adoption below — the two are one decision ("this file is the project
   // now") split across the picker that sits between them.
@@ -2426,18 +2409,9 @@ Future<void> promptSaveProjectAs(
     // 🚨AND NOW it is saved — so now is when it says so. The staging window
     // above said 「Ready」; this is the other half of the order 유저
     // 2026-08-31 asked for, and the only moment at which the sentence is
-    // true. There is no work left to do, so the window is a confirmation
-    // and lingers exactly as long as any other save's does.
+    // true.
     if (context.mounted) {
-      await runWithAppProgress<void>(
-        context: context,
-        title: AppText.strings.commonSave,
-        titleIcon: Icons.save_outlined,
-        runningLabel: AppText.strings.saveProgressRunning,
-        doneLabel: AppText.strings.saveProgressDone,
-        windowKey: const ValueKey<String>('save-placed-dialog'),
-        task: (report) async => report(1),
-      );
+      await _saySavedOncePlaced(context);
     }
     if (context.mounted) {
       _tellWhatTheSaveCouldNotCarry(context, session);
@@ -2449,4 +2423,100 @@ Future<void> promptSaveProjectAs(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
   }
+}
+
+/// The picker PLACED what was saved, so it is saved now — and now is when
+/// it says so: the other half of the order Save As keeps (유저 2026-08-31).
+/// There is no work left to do, so the window is a confirmation and lingers
+/// exactly as long as any other save's does.
+Future<void> _saySavedOncePlaced(BuildContext context) =>
+    runWithAppProgress<void>(
+      context: context,
+      title: AppText.strings.commonSave,
+      titleIcon: Icons.save_outlined,
+      runningLabel: AppText.strings.saveProgressRunning,
+      doneLabel: AppText.strings.saveProgressDone,
+      windowKey: const ValueKey<String>('save-placed-dialog'),
+      task: (report) async => report(1),
+    );
+
+/// 「다른 이름으로 저장」's picture: the frame under the playhead as ONE
+/// [format] file at the canvas's size, where the person says — and the
+/// project stays the file it was. A copy, never where it saves from now on.
+///
+/// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
+/// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
+/// 클립하는건 당연」. What it takes is Q7's answer (09-30): 「내보내기
+/// 「이미지」와 같은 깨끗한 한 장」 — the image tab's picture at size =
+/// canvas ([writeFrameImage]): the layers as they show, none of the editing
+/// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
+/// settings are that tab's defaults, not the ones last used there: this is
+/// Save As, not the export window.
+Future<void> saveFrameAsImage(
+  BuildContext context,
+  EditorSessionManager session,
+  ExportStillFormat format,
+) async {
+  final task = frameUnderThePlayhead(session);
+  if (task == null) {
+    return;
+  }
+  final spec = ImageExportSpec(
+    format: ExportFormatSelection(
+      kind: ExportMediaKind.still,
+      stillFormat: format,
+    ),
+    sizeMode: ExportSizeMode.canvas,
+  );
+  final name = sanitizeExportFileComponent(
+    session.repository.requireProject().name,
+  );
+  final strings = AppText.strings;
+  // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
+  // into the app for a picker to place, the write ends 「Ready」, and
+  // 「Saved」 waits for the picker.
+  final staged = writtenFileIsStagedFirst;
+  try {
+    final placed = await handWrittenFileToUser(
+      context,
+      suggestedName: '$name.${format.fileExtension}',
+      write: (path) => runWithAppProgress<bool>(
+        context: context,
+        title: strings.commonSave,
+        titleIcon: Icons.save_outlined,
+        runningLabel: staged
+            ? strings.savePrepareRunning
+            : strings.saveProgressRunning,
+        doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
+        windowKey: const ValueKey<String>('save-progress-dialog'),
+        task: (report) async {
+          final written = await writeFrameImage(session, task, spec, (
+            directory: File(path).parent.path,
+            name: fileNameOfPath(path),
+            isCancelled: null,
+            onProgress: null,
+          ));
+          // ⛔Never 「Saved」 over no file: the throw takes the window down
+          // before it says so, and the notice below says why.
+          return written ? true : throw const _NothingWritten();
+        },
+      ),
+    );
+    if (placed != null && staged && context.mounted) {
+      await _saySavedOncePlaced(context);
+    }
+  } on Object catch (error) {
+    if (context.mounted) {
+      showFileError(context, error);
+    }
+  }
+}
+
+/// What a picture save that made no file says: the image tab's own sentence
+/// for the same outcome ([AppStrings.exNothingInFrame]).
+class _NothingWritten implements Exception {
+  const _NothingWritten();
+
+  @override
+  String toString() => AppText.strings.exNothingInFrame;
 }

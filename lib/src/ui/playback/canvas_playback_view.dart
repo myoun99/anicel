@@ -9,7 +9,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_effect.dart' show LayerEffect, ResolvedLayerEffect;
-import '../../models/playback_quality.dart';
 import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
@@ -21,30 +20,29 @@ import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
+import '../listenable_rebind.dart';
 
 /// The canvas panel's playback content: cached composite frames advancing
 /// with the controller's ticker, rendered INSIDE the panel viewport so the
 /// panel chrome (zoom buttons, panbars) keeps working during playback.
 ///
 /// Tapping anywhere cancels playback. Cache misses keep the last displayed
-/// frame on screen (the stale-frame policy the tile cache also uses) while a
-/// thin strip reports warming progress. With the camera view enabled the
-/// frame is projected through the cut's camera pose instead of shown in
-/// canvas space.
+/// frame on screen (the stale-frame policy the tile cache also uses) while
+/// the bar at its foot says how much of what the run wants is made. With
+/// the camera view enabled the frame is projected through the cut's camera
+/// pose instead of shown in canvas space.
 class CanvasPlaybackView extends StatefulWidget {
   const CanvasPlaybackView({
     super.key,
     required this.controller,
     required this.compositeCache,
-    required this.qualityOf,
     required this.prerenderProgress,
+    this.picturesLanded,
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
-    this.trackStaticOpacityOf,
-    this.cutPictureVisibleOf,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
@@ -57,8 +55,13 @@ class CanvasPlaybackView extends StatefulWidget {
 
   final CanvasPlaybackController controller;
   final CutFrameCompositeCache compositeCache;
-  final PlaybackQuality Function() qualityOf;
   final ValueListenable<PrerenderProgress> prerenderProgress;
+
+  /// Ticks when a picture of the run has landed
+  /// ([PlaybackPrerenderScheduler.landings]). The one under the playhead
+  /// may be among them, and while the playhead stands on it nothing else
+  /// says so: the controller speaks only when the frame changes.
+  final Listenable? picturesLanded;
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
@@ -67,17 +70,15 @@ class CanvasPlaybackView extends StatefulWidget {
   /// by the session, drawn over the composite in canvas space.
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf;
 
-  /// The storyboard V-row display gates (session view state, R9). FX off
-  /// bypasses the cut-level Transform group — pose AND fade — in this
-  /// display; the eye off hides the cut's PICTURE (the paper stays). Null
-  /// = always on. Display aids only: the MP4 bake and thumbnails never
-  /// consult these.
+  /// The storyboard V row's display gate (R9): FX off bypasses the
+  /// cut-level fx work in this display. Null = always on. A display aid
+  /// only: the MP4 bake and thumbnails never consult it.
+  ///
+  /// ↩️The V row had two more — an eye that hid a cut's PICTURE here (the
+  /// paper stayed) and the track's static opacity. Both left its head on
+  /// 2026-10-08 (I-73, 유저: 「V행의 불투명도랑 비지블 필요없어보여서
+  /// 삭제하고싶은데 어때」 · 「5. 값도지움」).
   final bool Function(CutId cutId)? cutFxEnabledOf;
-
-  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
-  /// while the V row's slider is in flight. Null keeps every track opaque.
-  final double Function(CutId cutId)? trackStaticOpacityOf;
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// The panel's live pan/zoom (canvas mode); identity when null.
   final CanvasViewport? viewport;
@@ -137,9 +138,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   /// for as long as the hold lasts — held pixels are declared pixels, so
   /// the budget stops evicting the very frame on screen and
   /// [CutFrameCompositeCache.pinnedBytes] can report it.
-  (CutId, int, PlaybackQuality)? _heldPin;
+  (CutId, int)? _heldPin;
 
-  void _swapHeldPin((CutId, int, PlaybackQuality)? next) {
+  void _swapHeldPin((CutId, int)? next) {
     final previous = _heldPin;
     if (previous != null) {
       widget.compositeCache.releasePin(previous);
@@ -155,10 +156,22 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     super.initState();
     widget.controller.attachTicker(this);
     widget.controller.addListener(_onPlaybackChanged);
+    widget.picturesLanded?.addListener(_onPlaybackChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant CanvasPlaybackView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    rebindListener(
+      oldWidget.picturesLanded,
+      widget.picturesLanded,
+      _onPlaybackChanged,
+    );
   }
 
   @override
   void dispose() {
+    widget.picturesLanded?.removeListener(_onPlaybackChanged);
     widget.controller.removeListener(_onPlaybackChanged);
     widget.controller.detachTicker();
     _swapHeldPin(null);
@@ -194,18 +207,13 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       final composite = widget.compositeCache.validCompositeOrNull(
         cut: position.cut,
         frameIndex: position.localFrameIndex,
-        quality: widget.qualityOf(),
       );
       if (composite != null && !identical(composite, _heldSource)) {
         _heldFrame?.dispose();
         _heldSource = composite;
         _heldFrame = composite.clone();
         _heldCanvasSize = position.cut.canvasSize;
-        _swapHeldPin((
-          position.cut.id,
-          position.localFrameIndex,
-          widget.qualityOf(),
-        ));
+        _swapHeldPin((position.cut.id, position.localFrameIndex));
       }
     }
 
@@ -222,13 +230,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         widget.controller.globalFrameIndexListenable.value != null &&
         position == null;
 
-    // The storyboard V-row display gates (R9): fx off bypasses the whole
-    // cut-level Transform group (pose + fade) in this display; the eye off
-    // drops the picture (paper only).
+    // The storyboard V row's display gate (R9): fx off bypasses the whole
+    // cut-level fx work in this display.
     final cutFxEnabled =
         cut == null || (widget.cutFxEnabledOf?.call(cut.id) ?? true);
-    final cutPictureVisible =
-        cut == null || (widget.cutPictureVisibleOf?.call(cut.id) ?? true);
 
     // No TRACK-level pose any more: the V row has no transform, so the camera
     // is the only thing that moves the picture on the stage.
@@ -264,8 +269,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
             // cycle, so the thing to watch here is a raster hitch right
             // after a drawing lands — not a hop.
             painter: PlaybackFramePainter(
-              image:
-                  !inGap && cutPictureVisible && _heldCanvasSize == canvasSize
+              image: !inGap && _heldCanvasSize == canvasSize
                   ? _heldFrame
                   : null,
               canvasSize: canvasSize,
@@ -279,11 +283,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)
                   : null,
-              // The cut-picture eye hides the tags too — the stack view's
-              // answer, and the defensible one: with the picture withheld
-              // the annotation names nothing.
-              seNameTags:
-                  inGap || cut == null || position == null || !cutPictureVisible
+              seNameTags: inGap || cut == null || position == null
                   ? const []
                   : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
                         const [],
@@ -313,14 +313,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               // here as on the editing canvas — on screen only.
               pasteboardNone: widget.pasteboardNone,
               checkersAbsentPlanes: true,
-              // R9 #21: the track's STATIC opacity, which is not an fx and so
-              // survives the bypass. The ANIMATED fade it used to carry is
-              // F.I/F.O spans on the transition row now — single-cut playback
-              // shows one cut and so cannot show a cross-boundary ramp; the
-              // all-cuts track stack is where a transition plays.
-              fadeOpacity: inGap || cut == null || position == null
-                  ? 1
-                  : (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0),
+              // No fade here: single-cut playback shows one cut and so
+              // cannot show a cross-boundary ramp — the all-cuts track
+              // stack is where a transition plays. ↩️The track's STATIC
+              // opacity thinned this unit (R9 #21) until I-73 took it off
+              // the V row.
             ),
           ),
           _prerenderProgressBar(context),
@@ -347,6 +344,12 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     ),
   );
 
+  /// How much of what the run wants ahead of its playhead is made: a bar
+  /// whose seat is always there (유저 답 F-296-Q5: 「자리를 늘 두는 막대로
+  /// 바꾼다」). While a run waits for its picture it is the one thing on the
+  /// canvas that moves. ↩️It was a strip that came with the English words
+  /// 「caching N/M」 while pictures were being made and went when they were
+  /// — 없다가 생기는 UI, and what it said the ruler's green bar said too.
   Widget _prerenderProgressBar(BuildContext context) {
     return Positioned(
       left: 0,
@@ -354,27 +357,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       bottom: 0,
       child: ValueListenableBuilder<PrerenderProgress>(
         valueListenable: widget.prerenderProgress,
-        builder: (context, progress, _) {
-          if (progress.total == 0 || progress.isComplete) {
-            return const SizedBox.shrink();
-          }
-          return Column(
-            key: const ValueKey<String>('canvas-playback-progress'),
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'caching ${progress.cached}/${progress.total}',
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              LinearProgressIndicator(
-                value: progress.cached / progress.total,
-                minHeight: 2,
-              ),
-            ],
-          );
-        },
+        builder: (context, progress, _) => LinearProgressIndicator(
+          key: const ValueKey<String>('canvas-playback-progress'),
+          // Nothing asked for is nothing left to make.
+          value: progress.total == 0
+              ? 1.0
+              : (progress.cached / progress.total).clamp(0.0, 1.0),
+          minHeight: 2,
+        ),
       ),
     );
   }

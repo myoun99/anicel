@@ -351,20 +351,25 @@ void main() {
     );
   });
 
-  test('the storyboard panel\'s comma asks the same law', () {
-    final source = File(
-      'lib/src/ui/storyboard_cut_blocks_painter.dart',
-    ).readAsStringSync();
+  // ↩️The storyboard's cut block printed each panel's comma itself, and this
+  // pin held that second printer to the law — `timelineBlockWordLayout`,
+  // growing back toward the block's start, as the run label does. The panels
+  // are the conte row's blocks now (I-73, 2026-10-08) and their lengths are
+  // that row's own run labels: the law's first reader, with no second
+  // printer left to be asked to follow it.
+  test('the storyboard panel\'s comma IS the row\'s run label', () {
     expect(
-      source,
+      File('lib/src/ui/storyboard_cut_blocks_painter.dart').readAsStringSync(),
       isNot(contains('lastCellCentre - glyph.width / 2')),
-      reason: 'the comma no longer centres on its last cell by hand',
+      reason: 'no comma is centred on its last cell by hand',
     );
-    expect(source, contains('timelineBlockWordLayout('));
     expect(
-      source,
-      contains('growth: TimelineBlockWordGrowth.towardBlockStart'),
-      reason: 'a count grows back into its panel, as the run label does',
+      File(
+        'lib/src/ui/storyboard/storyboard_conte_row.dart',
+      ).readAsStringSync(),
+      contains('_runLabels(context, shown)'),
+      reason: 'the conte row prints its panels\' lengths the way every row '
+          'prints a run\'s',
     );
   });
 }

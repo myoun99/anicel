@@ -77,10 +77,16 @@ void main() {
 
   test('the keys the user named are the defaults', () {
     // 「선택도구의 올가미 선택에 w로 두고싶어」 — ↩️F-261 (유저 2026-10-02):
-    // W walks up the sheet now, and 「올가미를 z」.
+    // W walks up the sheet now, and 「올가미를 z」. ↩️I-63 (유저
+    // 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록」.
     expectDefault(
       const ShapeTilePress(CanvasTool.select, CanvasShapeKind.lasso),
-      const SingleActivator(LogicalKeyboardKey.keyZ),
+      const SingleActivator(LogicalKeyboardKey.keyX),
+    );
+    // 🗣️I-63 ⑤ (유저 2026-10-04): 「올가미채우기를 y로」.
+    expectDefault(
+      const ShapeTilePress(CanvasTool.fillShape, CanvasShapeKind.lasso),
+      const SingleActivator(LogicalKeyboardKey.keyY),
     );
     // 🗣️I-53: 「잘라내기도구에서 올가미 잘라내기를 단축키 c로 두도록
     // 변경하고, 스탬프를 v로」. ↩️C was the cut tool's own (「잘라내기는
@@ -122,8 +128,8 @@ void main() {
     );
   });
 
-  test('🪦the retired keys are nobody\'s: M and L alone, V off the transform '
-      'tool, and Ctrl+Y as a second redo', () {
+  test('🪦the retired keys are nobody\'s: M, L and Z alone, V off the '
+      'transform tool, and Ctrl+Y as a second redo', () {
     // 「이동툴이라기보단 그냥 변형툴이잖아. v 삭제하고 v 관련 잔재있으면
     // 삭제」 took V off the tool; ↩️I-53 handed it to the stamp, so V alone
     // is someone's again — just never the transform tool's.
@@ -136,9 +142,13 @@ void main() {
           .defaultActivators,
       isEmpty,
     );
+    // 🗣️I-63 (유저 2026-10-03): 「z는 비워두도록. 언두 실수할때 z만
+    // 누르거나하니까」 — bare Z is emptied ON PURPOSE: a finger that lost
+    // Ctrl on an undo must press nothing. It was the lasso select's.
     for (final retired in const [
       SingleActivator(LogicalKeyboardKey.keyM),
       SingleActivator(LogicalKeyboardKey.keyL),
+      SingleActivator(LogicalKeyboardKey.keyZ),
     ]) {
       expect(
         [

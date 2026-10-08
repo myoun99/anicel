@@ -97,37 +97,41 @@ void main() {
   });
 
   group('production staff', () {
-    const key = LayerMark(process: LayerProcess.key);
-    const keyDirection = LayerMark(
-      process: LayerProcess.key,
-      revise: LayerRevise.direction,
+    // The stages the work keeps: the conte's (F-291-Q1).
+    const conte = LayerMark(process: LayerProcess.conte);
+    const conteDirector = LayerMark(
+      process: LayerProcess.conte,
+      revise: LayerRevise.director,
     );
 
     test('staffNameFor answers an empty name rather than null', () {
-      expect(TimesheetInfo.empty.staffNameFor(key), '');
+      expect(TimesheetInfo.empty.staffNameFor(conte), '');
     });
 
     test('a stage and its correction are two names, keyed by the label', () {
       // 유저 답 staff-roles-from-labels: 「공정별 묶음 — 작업자 + 그 공정의
       // 수정 담당」.
       final info = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(keyDirection, '清');
+          .withStaffName(conte, '大川')
+          .withStaffName(conteDirector, '清');
 
-      expect(info.staffNameFor(key), '大川');
-      expect(info.staffNameFor(keyDirection), '清');
-      expect(info.staff, {key.keySlug: '大川', keyDirection.keySlug: '清'});
+      expect(info.staffNameFor(conte), '大川');
+      expect(info.staffNameFor(conteDirector), '清');
+      expect(info.staff, {
+        conte.keySlug: '大川',
+        conteDirector.keySlug: '清',
+      });
     });
 
     test('the take is not part of whose work it is', () {
-      final info = TimesheetInfo.empty.withStaffName(key, '大川');
-      expect(info.staffNameFor(key.withTake(2)), '大川');
+      final info = TimesheetInfo.empty.withStaffName(conte, '大川');
+      expect(info.staffNameFor(conte.withTake(2)), '大川');
     });
 
     test('withStaffName DROPS a name when emptied', () {
       final cleared = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(key, '');
+          .withStaffName(conte, '大川')
+          .withStaffName(conte, '');
       expect(
         cleared.staff,
         isEmpty,
@@ -137,30 +141,23 @@ void main() {
 
     test('staff and logo round-trip through JSON', () {
       final info = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(keyDirection, '清')
+          .withStaffName(conte, '大川')
+          .withStaffName(conteDirector, '清')
           .copyWith(logoAssetPath: () => 'logos/studio.png');
 
       final restored = TimesheetInfo.fromJson(info.toJson());
 
       expect(restored, info);
-      expect(restored.staffNameFor(keyDirection), '清');
+      expect(restored.staffNameFor(conteDirector), '清');
       expect(restored.logoAssetPath, 'logos/studio.png');
     });
 
-    test('a staff entry that is not a name drops rather than throwing', () {
-      // A file from before the labels vocabulary kept a name-and-stamp
-      // object per role.
-      final restored = TimesheetInfo.fromJson({
-        'staff': {
-          'key': '大川',
-          'genga': {'name': '山田', 'stamp': 'stamps/y.png'},
-        },
-      });
-
-      expect(restored.staff, {'key': '大川'});
-    });
-
+    // ↩️Two pins stood here for what the reader dropped from a file: a staff
+    // value that was a name-and-stamp object (before the labels vocabulary),
+    // and a stage the work no longer keeps (before F-291-Q1, 유저 2026-10-08:
+    // 「스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」 — the
+    // rule itself lives on in `staffHolderOf`). Both shapes are only in
+    // formats refused by their number now (the save law, 유저 2026-10-06).
     test('an old file with no staff loads clean', () {
       final restored = TimesheetInfo.fromJson({'title': 'X'});
 
@@ -168,6 +165,11 @@ void main() {
       expect(restored.logoAssetPath, isNull);
       expect(restored.coverImagePath, isNull);
       expect(restored.envelopeFormId, CutEnvelopePresets.analogId);
+      expect(
+        (restored.conteCover, restored.conteBlankPage),
+        (true, true),
+        reason: 'a conte book has its cover and blank back unless taken out',
+      );
     });
   });
 
@@ -190,6 +192,35 @@ void main() {
         restored.copyWith(coverImagePath: () => null).coverImagePath,
         isNull,
         reason: 'a cover picture can be cleared',
+      );
+    });
+
+    test('the conte book\'s front travels with the work — each of its two '
+        'pages on its own — and a whole front writes nothing', () {
+      // 유저 2026-10-02 (I-59): 「1페이지 헤더 넣기/빼기, 2페이지 빈용지
+      // 넣기빼기 … 이게 내보내기시에도 연동」.
+      final whole = TimesheetInfo.empty.toJson();
+      expect(whole.containsKey('conteCover'), isFalse);
+      expect(whole.containsKey('conteBlankPage'), isFalse);
+      for (final (cover, blank) in [
+        (false, true),
+        (true, false),
+        (false, false),
+      ]) {
+        final info = TimesheetInfo.empty.copyWith(
+          conteCover: cover,
+          conteBlankPage: blank,
+        );
+
+        final restored = TimesheetInfo.fromJson(info.toJson());
+
+        expect(restored, info);
+        expect((restored.conteCover, restored.conteBlankPage), (cover, blank));
+      }
+      expect(
+        TimesheetInfo.empty.copyWith(conteCover: false),
+        isNot(TimesheetInfo.empty),
+        reason: 'a change of front is a change of the work — one undo step',
       );
     });
   });

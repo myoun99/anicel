@@ -4,6 +4,8 @@ import '../../models/kept_span.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_cel_naming.dart';
+import '../../models/export_overrides.dart';
+import '../../models/export_spec.dart' show ExportScopeKind;
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
@@ -71,6 +73,45 @@ List<Cut> resolveExportCuts({
     return activeTrack.cuts;
   }
   return location == null ? const [] : [location.cut];
+}
+
+/// The cuts a per-cut document tab — Cels, Timesheet, Envelope — writes
+/// under [scope]: the cut the window stands on, or the project's TICKED
+/// cuts in play order.
+///
+/// ★The cut checks ([ExportProjectOverrides.cutIncluded]) belong to the
+/// PROJECT scope. The grid that ticks them is shown under that scope alone,
+/// so under the cut scope a tick is a switch nobody can see — and the cut
+/// stood on is written whatever its tick says.
+///
+/// 🗣️유저 2026-10-05: 「출력은 정상적으로 됬는데 같은 겸용컷에서 타임시트랑
+/// 컷봉투 출력하려니 컷 없다고 뜨는데 이거뭐지?」 — measured across every
+/// tab, cut and scope: the cut was unticked in the grid, and three places
+/// each decided for themselves what that meant. The Cels plan had asked the
+/// tick under the project scope only since 2026-09-09; the Timesheet
+/// (2026-07-21) and the Envelope (2026-08-06) still asked it always and
+/// wrote nothing for the cut the window stood on.
+List<Cut> exportCutsInScope({
+  required Project project,
+  required CutId activeCutId,
+  required ExportScopeKind scope,
+  required ExportProjectOverrides? overrides,
+}) {
+  if (scope == ExportScopeKind.cut) {
+    return resolveExportCuts(
+      project: project,
+      activeCutId: activeCutId,
+      range: ExportRange.activeCut,
+    );
+  }
+  return [
+    for (final cut in resolveExportCuts(
+      project: project,
+      activeCutId: activeCutId,
+      range: ExportRange.allCuts,
+    ))
+      if (overrides == null || overrides.cutIncluded(cut.id)) cut,
+  ];
 }
 
 /// Ordered composite frames for the chosen range. Every cut plays at least
@@ -411,21 +452,63 @@ class ExportCelFileNamer {
     required String cutName,
     required String layerName,
     required String base,
-  }) {
+  }) => _unused(
+    _foldersOf(projectName, cutName, layerName),
+    base,
+    fileExtension,
+  );
+
+  /// A cut's DOCUMENT — its timesheet, its cut envelope — under the same
+  /// rule: behind the project's and the cut's folders (a document is no
+  /// layer's, so the layer's folder is not one of them), with the
+  /// [extension] its own format writes, and never a name a cel of the run
+  /// has taken.
+  String uniqueDocumentName({
+    required String projectName,
+    required String cutName,
+    required String base,
+    required String extension,
+  }) => _unused(_foldersOf(projectName, cutName), base, extension);
+
+  /// The folders the naming rule makes, as the path a file name starts
+  /// with.
+  String _foldersOf(String projectName, String cutName, [String? layerName]) {
     final folder = [
       if (naming.projectFolder) sanitizeExportFileComponent(projectName),
       if (naming.cutFolder) sanitizeExportFileComponent(cutName),
-      if (naming.layerFolder) sanitizeExportFileComponent(layerName),
+      if (naming.layerFolder && layerName != null)
+        sanitizeExportFileComponent(layerName),
     ].join('/');
-    final prefix = folder.isEmpty ? '' : '$folder/';
-    var fileName = '$prefix$base.$fileExtension';
+    return folder.isEmpty ? '' : '$folder/';
+  }
+
+  /// `[folders][base].[extension]`, bumped (`_2`, `_3`…) past every name
+  /// the run has handed out ([bumpedOutputName]).
+  String _unused(String folders, String base, String extension) {
+    final name = '$base.$extension';
+    var fileName = '$folders$name';
     var bump = 2;
     while (!_used.add(fileName)) {
-      fileName = '$prefix${base}_$bump.$fileExtension';
+      fileName = '$folders${bumpedOutputName(name, bump, isFolder: false)}';
       bump += 1;
     }
     return fileName;
   }
+}
+
+/// [name] as the [bump]-th output to wear it: `shot.png` becomes
+/// `shot_2.png`, and a folder `CUT1` becomes `CUT1_2` — a folder's name has
+/// no extension, whatever dots it holds ([isFolder]).
+///
+/// The ONE bump of the exports. A run gives it to the second file its own
+/// naming rule calls the same ([ExportCelFileNamer]); the export window
+/// gives it to the second output of one name among those that leave for one
+/// place together (several jobs of a queue, handed over in one window).
+String bumpedOutputName(String name, int bump, {required bool isFolder}) {
+  final dot = isFolder ? -1 : name.lastIndexOf('.');
+  return dot <= 0
+      ? '${name}_$bump'
+      : '${name.substring(0, dot)}_$bump${name.substring(dot)}';
 }
 
 /// Makes a cut/layer name safe as a file-name component: characters Windows

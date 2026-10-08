@@ -29,8 +29,6 @@ void main() {
             listenable: session,
             builder: (context, _) => TimesheetTabHost(
               session: session,
-              continuous: false,
-              onContinuousChanged: (_) {},
             ),
           ),
         ),

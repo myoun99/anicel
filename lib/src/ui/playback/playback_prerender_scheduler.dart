@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -6,19 +7,25 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
-import '../../models/playback_quality.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
+import '../../services/playback/frame_demand.dart';
 import '../../core/dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
 
-/// How much of the requested warm range is composited already.
+/// How much of what is wanted is composited already.
 @immutable
 class PrerenderProgress {
   const PrerenderProgress({required this.cached, required this.total});
 
   static const none = PrerenderProgress(cached: 0, total: 0);
 
+  /// The frames on from where the walk starts whose pictures are there.
   final int cached;
+
+  /// The frames the walk expects to get there: every one wanted, or — when
+  /// the allowance holds fewer — as many as fit. It is [cached] once the
+  /// walk has nothing left to make.
   final int total;
 
   bool get isComplete => cached >= total;
@@ -37,16 +44,43 @@ class PrerenderProgress {
   String toString() => 'PrerenderProgress($cached/$total)';
 }
 
-/// Background composite warming (the AE RAM-preview green bar analogue).
+/// The room playback's pictures have, asked by their maker before it makes
+/// one.
+abstract interface class PictureRoom {
+  /// The bytes pictures may hold now.
+  int get bytes;
+
+  /// Makes room for a picture of [bytes] that is wanted [step] steps on, by
+  /// letting go of pictures wanted LATER than it — never of one wanted
+  /// sooner, nor of one a screen shows. False when that leaves no room.
+  bool makeRoomFor({required int bytes, required int step});
+}
+
+/// The one maker of playback's pictures (the AE RAM-preview green bar
+/// analogue): it walks what is WANTED ([FrameDemand]) from the playhead on
+/// and composites the first picture that is not there — one at a time,
+/// yielding between them. A new demand replaces the one being followed
+/// (generation counter cancellation).
 ///
-/// One chunked async loop composites one frame per iteration and yields
-/// between frames; it stays paused until [idleDelay] has elapsed since the
-/// last [notifyEditActivity], so drawing never contends with warming. A new
-/// warm request replaces the queue (generation counter cancellation).
+/// Under the hand that draws it stays paused until [idleDelay] has elapsed
+/// since the last [notifyEditActivity], so drawing never contends with
+/// warming. 🚨A run that PLAYS is followed at once (유저 2026-10-08: 「1
+/// 재생누르면 바로 재생」) — ↩️it waited out the same quiet window, 1.2
+/// seconds from the last stroke or seek to the first picture, and nothing
+/// draws under a run.
+///
+/// 🚨IT RESTS WHEN NO MORE FITS (유저 2026-10-08: 「4 허용치도 해결」). A
+/// picture is made only when the allowance has room for it, or can be given
+/// room by letting go of pictures wanted LATER than it ([room]). When
+/// neither, what is held IS the window, and the walk rests until the
+/// playhead moves it on. ↩️It made every frame it was asked for and left the
+/// budget to evict behind it — and whatever the budget would not evict, it
+/// kept.
 class PlaybackPrerenderScheduler {
   PlaybackPrerenderScheduler({
     required this.composites,
     required this.resolveCut,
+    this.room,
     this.afterFrameCached,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
@@ -54,6 +88,9 @@ class PlaybackPrerenderScheduler {
 
   final CutFrameCompositeCache composites;
   final Cut? Function(CutId cutId) resolveCut;
+
+  /// Null = there is room for everything (a test that fills no budget).
+  final PictureRoom? room;
 
   /// Called after each composited frame (budget enforcement hook).
   final void Function()? afterFrameCached;
@@ -67,18 +104,16 @@ class PlaybackPrerenderScheduler {
   final Duration idleDelay;
 
   /// Frames whose composite threw, and the content signature they threw
-  /// at — the warm queue's half of the layer stack's `_failedRevisions`.
+  /// at — the warm's half of the layer stack's `_failedRevisions`.
   ///
-  /// A throwing compose caches nothing, so `alreadyValid` can never come
-  /// true for that frame; and the whole queue is rebuilt shortly after
-  /// every stroke. Without this, one unreachable cel is re-opened,
-  /// re-thrown and re-reported once per queued frame, on every stroke,
-  /// for the life of the session — a blocking file open each time, which
-  /// is the hot loop the sibling record exists to stop. The signature
-  /// comes from the composite cache so "has this frame changed" stays
-  /// one rule rather than two.
-  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature>
-  _failedSignatures = {};
+  /// A throwing compose caches nothing, so the frame can never read as
+  /// there; and the walk starts over shortly after every stroke. Without
+  /// this, one unreachable cel is re-opened, re-thrown and re-reported once
+  /// per walk, on every stroke, for the life of the session — a blocking
+  /// file open each time, which is the hot loop the sibling record exists to
+  /// stop. The signature comes from the composite cache so "has this frame
+  /// changed" stays one rule rather than two.
+  final Map<(CutId, int), CutFrameCompositeSignature> _failedSignatures = {};
 
   /// The store generation those records belong to. A project OPEN bumps
   /// it — the one moment a cel the filesystem refused can have become
@@ -100,38 +135,90 @@ class PlaybackPrerenderScheduler {
   );
   ValueListenable<PrerenderProgress> get progress => _progress;
 
+  final ValueNotifier<int> _landings = ValueNotifier<int>(0);
+
+  /// Ticks each time a picture lands — what a view that shows playback's
+  /// pictures repaints on.
+  Listenable get landings => _landings;
+
+  final ValueNotifier<int> _changes = ValueNotifier<int>(0);
+
+  /// Ticks whenever the answer a run that WAITS is waiting for may have
+  /// changed: a picture landed, a picture was given up on, or the walk came
+  /// to rest ([isResting]). ↩️A waiting run looked again on [landings] and
+  /// on [progress] — and progress is a value: a walk that rests on the same
+  /// count twice changes nothing and tells nobody, which is a run put on a
+  /// frame of a film that is all made.
+  Listenable get changes => _changes;
+
+  /// Whether the walk rests: everything wanted is there, or no more fits
+  /// and what is held is the window. False from the moment it is woken —
+  /// it has not looked yet.
+  bool get isResting => _resting != null;
+
+  FrameDemand? _demand;
+
+  /// What is being followed — the order the budget lets go against.
+  FrameDemand? get demand => _demand;
+
+  /// How long making a picture has been taking: a running mean over the
+  /// pictures that landed, zero before the first.
+  Duration get composeTime => _composeTime;
+  Duration _composeTime = Duration.zero;
+
   int _generation = 0;
   DateTime _lastActivity = DateTime.fromMillisecondsSinceEpoch(0);
-  Future<void> _current = Future<void>.value();
   bool _disposed = false;
 
-  /// Completes when the current warm run has finished or been cancelled
-  /// (test hook).
-  Future<void> get idle => _current;
+  /// Pending while a walk has something to do; null while it rests or
+  /// nothing is followed.
+  Completer<void>? _busy;
+
+  /// Completes when the walk rests — everything wanted is there, or no
+  /// more fits — or is cancelled (test hook).
+  Future<void> get idle => _busy?.future ?? Future<void>.value();
+
+  void _settle() {
+    final busy = _busy;
+    _busy = null;
+    busy?.complete();
+  }
+
+  /// Whether every one of [pictures] is there to show — or can never be: a
+  /// picture whose compose throws is not waited for.
+  bool has(List<DemandedPicture> pictures) => _firstMissing(pictures) == null;
+
+  DemandedPicture? _firstMissing(List<DemandedPicture> pictures) {
+    for (final picture in pictures) {
+      if (_imageOf(picture) == null && !_failed(picture)) {
+        return picture;
+      }
+    }
+    return null;
+  }
+
+  ui.Image? _imageOf(DemandedPicture picture) => composites.validCompositeOrNull(
+    cut: picture.cut,
+    frameIndex: picture.frameIndex,
+  );
+
+  /// Whether this exact content already threw. Nothing about it changed,
+  /// and the open blocks — so it is not paid for again.
+  bool _failed(DemandedPicture picture) {
+    final failed = _failedSignatures[(picture.cut.id, picture.frameIndex)];
+    return failed != null &&
+        failed ==
+            composites.signatureOf(
+              cut: picture.cut,
+              frameIndex: picture.frameIndex,
+            );
+  }
 
   /// Warms one cut, playhead-outward from [aroundFrameIndex] — and then,
-  /// when [followedByCutId] names a next cut, that cut start-to-end on
-  /// the same run (#31, 유저 확정 2026-08-16: 스토리보드 프로 따라서).
-  ///
-  /// The lookahead is Storyboard Pro's shape mapped onto this pipeline:
-  /// background, idle-gated, one direction (the cut you are about to
-  /// enter), and it rides BEHIND every active-cut frame in the order, so
-  /// the active cut always wins the budget and the thread. What it bakes
-  /// is the COMPOSITE — the one image per frame the readiness bar and
-  /// playback actually read — not per-layer intermediates; those pass
-  /// through the layer-image LRU and age out on their own. The run's
-  /// already-cached skip plus content-addressed adoption (C2) mean a
-  /// held or covering next cut costs its DISTINCT pictures, not its
-  /// frame count.
-  ///
-  /// Next-cut frames are deliberately NOT budget-protected: under
-  /// pressure the enforcer that runs after every baked frame reclaims
-  /// the lookahead first and the active cut keeps its range — standing
-  /// down is the correct order, and the waste is bounded by one warm
-  /// run per debounced restart.
+  /// when [followedByCutId] names a next cut, that cut start-to-end
+  /// ([StandingDemand], where the order and its reasons are).
   void requestWarmCut({
     required CutId cutId,
-    required PlaybackQuality quality,
     int aroundFrameIndex = 0,
     CutId? followedByCutId,
   }) {
@@ -139,46 +226,34 @@ class PlaybackPrerenderScheduler {
     if (cut == null) {
       return;
     }
-    // ⑯: the warm reaches what was AUTHORED, not just the conte length.
-    // The timeline's runway past the cut end takes drawings like any other
-    // frame, and a frame the warm never visits misses in the cache forever
-    // — which is how a drawing out there stayed invisible while scrubbing
-    // and appeared only on release. B1: the count is the SHARED law
-    // ([cutWarmFrameCount]) — budget protection derives from the same
-    // function now, so a runway frame this bakes can no longer be evicted
-    // as out-of-range by the enforcer that runs after every baked frame.
-    final frameCount = cutWarmFrameCount(cut);
-    final center = aroundFrameIndex.clamp(0, frameCount - 1);
-    final order = <(CutId, int)>[(cutId, center)];
-    for (var distance = 1; distance < frameCount; distance += 1) {
-      if (center + distance < frameCount) {
-        order.add((cutId, center + distance));
-      }
-      if (center - distance >= 0) {
-        order.add((cutId, center - distance));
-      }
-    }
     final next = followedByCutId == null
         ? null
         : resolveCut(followedByCutId);
-    if (next != null && followedByCutId != cutId) {
-      // Start-to-end, not playhead-outward: a next cut is entered at its
-      // first frame. The same warm law as the active cut (runway
-      // included) so the two never disagree about what "the cut" is.
-      final nextCount = cutWarmFrameCount(next);
-      for (var index = 0; index < nextCount; index += 1) {
-        order.add((followedByCutId!, index));
-      }
-    }
-    _restart(order, quality);
+    follow(
+      StandingDemand(
+        cutId: cutId,
+        // ⑯ / B1: the SHARED law ([cutWarmFrameCount]) — the warm reaches
+        // what was AUTHORED, not just the conte length, and the runway
+        // past the cut end takes drawings like any other frame.
+        frameCount: cutWarmFrameCount(cut),
+        around: aroundFrameIndex,
+        nextCutId: next == null ? null : followedByCutId,
+        nextFrameCount: next == null ? 0 : cutWarmFrameCount(next),
+        resolveCut: resolveCut,
+      ),
+    );
   }
 
-  /// Warms a multi-cut playlist sequentially (play-all).
-  void requestWarmFrames({
-    required List<(CutId, int)> frames,
-    required PlaybackQuality quality,
-  }) {
-    _restart(List.of(frames), quality);
+  /// Follows [demand] from here on, in place of whatever was followed.
+  void follow(FrameDemand demand) {
+    final generation = ++_generation;
+    _demand = demand;
+    _startOver = false;
+    _progress.value = PrerenderProgress(cached: 0, total: demand.length);
+    _busy ??= Completer<void>();
+    _flushPendingWaits();
+    wake();
+    unawaited(_run(generation, demand));
   }
 
   /// Restarts the idle debounce; warming stays paused while edits are hot.
@@ -210,10 +285,10 @@ class PlaybackPrerenderScheduler {
   bool _isQuietNow() =>
       _inputHolds == 0 && DateTime.now().difference(_lastActivity) >= idleDelay;
 
-  /// Outstanding gate/yield waits, cancellable as a group: [cancel] and
-  /// [dispose] flush them so a parked warm run resumes at once, sees its
-  /// stale generation and exits — no timer outlives the scheduler (widget
-  /// tests assert exactly that at teardown).
+  /// Outstanding gate/yield waits, cancellable as a group: [cancel],
+  /// [follow] and [dispose] flush them so a parked walk resumes at once,
+  /// sees its stale generation and exits — no timer outlives the scheduler
+  /// (widget tests assert exactly that at teardown).
   final Map<Timer, Completer<void>> _pendingWaits = {};
 
   Future<void> _wait(Duration duration) {
@@ -236,146 +311,268 @@ class PlaybackPrerenderScheduler {
     }
   }
 
+  /// A walk that rests — it has nothing to make, or no room to make it in —
+  /// waits here for something to change. No timer: a rest can last as long
+  /// as the playhead stands.
+  Completer<void>? _resting;
+
+  bool _startOver = false;
+
+  /// Something the walk rests on has moved — the playhead, a picture let
+  /// go, the room there is — so it looks again. [fromTheStart] when what it
+  /// had walked over may no longer be there: the pictures themselves
+  /// changed under it.
+  void wake({bool fromTheStart = false}) {
+    if (fromTheStart) {
+      _startOver = true;
+    }
+    final resting = _resting;
+    if (resting == null) {
+      return;
+    }
+    _resting = null;
+    // Busy from here, not from when the walk next runs: [idle] asked right
+    // after a wake waits for the walk it woke.
+    _busy ??= Completer<void>();
+    resting.complete();
+  }
+
+  Future<void> _rest(int generation) {
+    if (_isStale(generation)) {
+      return Future<void>.value();
+    }
+    _settle();
+    final resting = _resting = Completer<void>();
+    // Told once it rests in every sense: whoever hears it may wake it.
+    _changes.value += 1;
+    return resting.future;
+  }
+
   void cancel() {
     _generation += 1;
+    _demand = null;
     _progress.value = PrerenderProgress.none;
     _flushPendingWaits();
+    wake();
+    _settle();
   }
 
   void dispose() {
     _disposed = true;
     _generation += 1;
+    _demand = null;
     _flushPendingWaits();
+    wake();
+    _settle();
     _progress.dispose();
+    _landings.dispose();
+    _changes.dispose();
   }
 
-  void _restart(List<(CutId, int)> queue, PlaybackQuality quality) {
-    final generation = ++_generation;
-    _progress.value = PrerenderProgress(cached: 0, total: queue.length);
-    _current = _run(generation, queue, quality);
-  }
+  /// How many steps a walk passes over before it lets interactive work in:
+  /// a step that is already there costs a lookup, and a window is hundreds
+  /// of them.
+  static const int _walkBurst = 32;
 
-  Future<void> _run(
-    int generation,
-    List<(CutId, int)> queue,
-    PlaybackQuality quality,
-  ) async {
+  Future<void> _run(int generation, FrameDemand demand) async {
     _forgetStaleFailures();
-    var cached = 0;
-    for (final (cutId, frameIndex) in queue) {
-      var warmed = false;
-      // Retry loop: an input-interrupted composite is NOT skipped — the
-      // frame waits behind the idle gate and warms when quiet returns.
-      while (true) {
+    // How many frames, on from where the walk starts, are there.
+    var reached = 0;
+    // What the pictures of those frames weigh, one count a picture: what a
+    // window that is still filling is measured by.
+    var walkedBytes = 0;
+    ui.Image? walkedLast;
+    var startedAhead = 0;
+    while (true) {
+      if (demand.yieldsToEditing) {
         await _idleGate(generation);
-        if (_isStale(generation)) {
-          return;
-        }
-        final cut = resolveCut(cutId);
-        if (cut == null) {
-          break;
-        }
-        final alreadyValid =
-            composites.validCompositeOrNull(
-              cut: cut,
-              frameIndex: frameIndex,
-              quality: quality,
-            ) !=
-            null;
-        if (alreadyValid) {
-          break;
-        }
-        final indexKey = (cutId, frameIndex, quality);
-        final signature = composites.signatureOf(
-          cut: cut,
-          frameIndex: frameIndex,
-          quality: quality,
-        );
-        if (_failedSignatures[indexKey] == signature) {
-          // This exact content already threw. Nothing about it changed,
-          // and the open blocks — so do not pay it again just because a
-          // stroke rebuilt the queue.
-          break;
-        }
-        final watch = brushLabProfile ? (Stopwatch()..start()) : null;
-        // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
-        // STORAGE, so a cel whose bytes are unreachable throws from in
-        // here — and this future is nobody's to await, so a throw used to
-        // abandon the whole queue: progress froze where it stopped and
-        // every later frame was never warmed. Give up on the frame, keep
-        // the queue.
-        final ui.Image? image;
-        try {
-          await beforeCompose?.call(cut, frameIndex);
-          if (_isStale(generation)) {
-            return;
-          }
-          image = await composites.prepareCompositeInterruptible(
-            cut: cut,
-            frameIndex: frameIndex,
-            quality: quality,
-            shouldAbort: () => _isStale(generation) || !_isQuietNow(),
-          );
-        } catch (error, stack) {
-          _failedSignatures[indexKey] = signature;
-          // Skipping the frame is right; hiding WHY is not. The failure
-          // reaches the framework's error channel rather than vanishing,
-          // so a permanently unreachable cel is diagnosable instead of
-          // showing up only as a queue that never finishes warming. The
-          // record above is what keeps that report to once per content
-          // state instead of once per stroke.
-          FlutterError.reportError(
-            FlutterErrorDetails(
-              exception: error,
-              stack: stack,
-              library: 'playback prerender',
-              context: ErrorDescription(
-                'warming cut ${cutId.value} frame $frameIndex',
-              ),
-            ),
-          );
-          // Every other post-await exit in this loop re-checks staleness
-          // before it lets the caller touch `_progress`; skipping it here
-          // would let a cancelled or disposed run write its bar back over
-          // a live one.
-          if (_isStale(generation)) {
-            return;
-          }
-          break;
-        }
-        if (watch != null) {
-          // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
-          print(
-            '[lab-warm] f=$frameIndex ${watch.elapsedMilliseconds}ms'
-            '${image == null ? ' INTERRUPTED' : ''}',
-          );
-        }
-        if (_isStale(generation)) {
-          return;
-        }
-        if (image == null) {
-          continue;
-        }
-        afterFrameCached?.call();
-        warmed = true;
-        break;
       }
-      cached += 1;
-      // A frame that needed nothing cost a lookup: the run passes it with no
-      // report and no yield of its own, and tells the whole pass once. Every
-      // report re-reads the green bar over the window — at I-22's ten-minute
-      // floor every cut of the film — and a playhead crossing into a warmed
-      // cut queued it and the next again, a report a frame.
-      if (!warmed && cached < queue.length) {
-        continue;
-      }
-      _progress.value = PrerenderProgress(cached: cached, total: queue.length);
-      // Yield so interactive work interleaves between frames.
-      await _wait(Duration.zero);
       if (_isStale(generation)) {
         return;
       }
+      final length = demand.length;
+      if (length <= 0) {
+        _progress.value = PrerenderProgress.none;
+        await _rest(generation);
+        continue;
+      }
+      // Where the walk starts: the playhead, or — where the clock will not
+      // wait — as far ahead of it as a picture takes to make.
+      final lead = math.min(demand.leadFor(_composeTime), length - 1);
+      List<DemandedPicture>? at(int index) =>
+          index < length ? demand.picturesAt((lead + index) % length) : null;
+
+      final moved = demand.advanced();
+      if (moved > 0 && reached > 0) {
+        final left = math.max(0, reached - moved);
+        walkedBytes = walkedBytes * left ~/ reached;
+        reached = left;
+      }
+      // The frame the walk starts on is asked again every time: it is the
+      // one about to be shown, and a picture let go from under it (memory
+      // pressure, a borrowed line) must not be taken as still there. A walk
+      // that starts somewhere else has walked over other frames.
+      if (_startOver ||
+          lead != startedAhead ||
+          (reached > 0 && !has(at(0) ?? const []))) {
+        _startOver = false;
+        startedAhead = lead;
+        reached = 0;
+      }
+      if (reached == 0) {
+        walkedBytes = 0;
+        walkedLast = null;
+      }
+
+      DemandedPicture? missing;
+      var ended = false;
+      for (var burst = 0; burst < _walkBurst; burst += 1) {
+        final pictures = at(reached);
+        if (pictures == null) {
+          ended = true;
+          break;
+        }
+        missing = _firstMissing(pictures);
+        if (missing != null) {
+          break;
+        }
+        final shown = pictures.isEmpty ? null : _imageOf(pictures.first);
+        if (shown != null && !identical(shown, walkedLast)) {
+          walkedBytes += estimatedImageBytes(shown.width, shown.height);
+          walkedLast = shown;
+        }
+        reached += 1;
+      }
+      if (missing == null && !ended) {
+        // A burst's worth walked over: let interactive work in, walk on.
+        await _wait(Duration.zero);
+        continue;
+      }
+      if (missing == null) {
+        // Everything wanted is there.
+        _progress.value = PrerenderProgress(cached: reached, total: reached);
+        await _rest(generation);
+        continue;
+      }
+      final pictureBytes = estimatedImageBytes(
+        missing.cut.canvasSize.width,
+        missing.cut.canvasSize.height,
+      );
+      final step = (lead + reached) % length;
+      final madeRoom =
+          room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
+      // 🚨THE PICTURE UNDER THE PLAYHEAD IS MADE WHATEVER THE ROOM. It is the
+      // one a screen is about to show and the one a run that waits is
+      // waiting for: an allowance with no room for it — every picture held
+      // is on a screen — would stand that run for good. It is one picture.
+      if (!madeRoom && step != 0) {
+        // No more fits: what is held is the window.
+        _progress.value = PrerenderProgress(cached: reached, total: reached);
+        await _rest(generation);
+        continue;
+      }
+      _progress.value = PrerenderProgress(
+        cached: reached,
+        total: _expected(length, reached: reached, walkedBytes: walkedBytes),
+      );
+      final landed = await _compose(generation, demand, missing);
+      if (_isStale(generation)) {
+        return;
+      }
+      if (!landed) {
+        // Interrupted — the frame waits behind the idle gate and is made
+        // when quiet returns — or it threw, and the record passes it. The
+        // yield keeps a compose that keeps coming back empty from spinning.
+        // A picture that threw will not come: a run waiting for it goes on.
+        _changes.value += 1;
+        await _wait(Duration.zero);
+        continue;
+      }
+      afterFrameCached?.call();
+      _landings.value += 1;
+      _changes.value += 1;
+      // Yield so interactive work interleaves between pictures.
+      await _wait(Duration.zero);
     }
+  }
+
+  /// How many frames the walk expects to get there: all [length] of them,
+  /// or — going by what the ones walked so far weigh — as many as the room
+  /// holds.
+  int _expected(int length, {required int reached, required int walkedBytes}) {
+    final allowed = room?.bytes;
+    if (allowed == null || walkedBytes <= 0 || reached <= 0) {
+      return length;
+    }
+    final fitting = (reached * allowed) ~/ walkedBytes;
+    return math.min(length, math.max(fitting, reached + 1));
+  }
+
+  /// Composites [picture]; true when it landed. False when it was
+  /// interrupted or threw.
+  Future<bool> _compose(
+    int generation,
+    FrameDemand demand,
+    DemandedPicture picture,
+  ) async {
+    final cut = picture.cut;
+    final frameIndex = picture.frameIndex;
+    final watch = Stopwatch()..start();
+    // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
+    // STORAGE, so a cel whose bytes are unreachable throws from in here —
+    // and this future is nobody's to await, so a throw used to abandon the
+    // whole walk: progress froze where it stopped and every later frame was
+    // never warmed. Give up on the frame, keep the walk.
+    final ui.Image? image;
+    try {
+      await beforeCompose?.call(cut, frameIndex);
+      if (_isStale(generation)) {
+        return false;
+      }
+      image = await composites.prepareCompositeInterruptible(
+        cut: cut,
+        frameIndex: frameIndex,
+        shouldAbort: () =>
+            _isStale(generation) ||
+            (demand.yieldsToEditing && !_isQuietNow()),
+      );
+    } catch (error, stack) {
+      _failedSignatures[(cut.id, frameIndex)] = composites.signatureOf(
+        cut: cut,
+        frameIndex: frameIndex,
+      );
+      // Skipping the frame is right; hiding WHY is not. The failure reaches
+      // the framework's error channel rather than vanishing, so a
+      // permanently unreachable cel is diagnosable instead of showing up
+      // only as a walk that never finishes. The record above is what keeps
+      // that report to once per content state instead of once per stroke.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'playback prerender',
+          context: ErrorDescription(
+            'warming cut ${cut.id.value} frame $frameIndex',
+          ),
+        ),
+      );
+      return false;
+    }
+    if (brushLabProfile) {
+      // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
+      print(
+        '[lab-warm] f=$frameIndex ${watch.elapsedMilliseconds}ms'
+        '${image == null ? ' INTERRUPTED' : ''}',
+      );
+    }
+    if (image == null) {
+      return false;
+    }
+    final took = watch.elapsed;
+    _composeTime = _composeTime == Duration.zero
+        ? took
+        : (_composeTime * 3 + took) ~/ 4;
+    return true;
   }
 
   bool _isStale(int generation) => _disposed || generation != _generation;

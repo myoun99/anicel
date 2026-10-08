@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
+import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
 
 /// 🚨★★★**UNDO AND REDO — ONE verb each, and every door opens the same
 /// one.** Ctrl+Z / Ctrl+Y and whatever the user bound them to, the two- and
@@ -22,11 +24,15 @@ import 'canvas_selection_commands.dart';
 class HistoryVerbs {
   HistoryVerbs({
     required this.selection,
+    required this.text,
     required this.session,
     required this.contactIsDown,
   });
 
   final CanvasSelectionCommands selection;
+
+  /// The text the canvas holds (R9-rest).
+  final CelTextCommands text;
   final EditorSessionManager session;
 
   /// 🚨★★★**A VERB IN FLIGHT REFUSES UNDO AND REDO** — asked when a door
@@ -54,7 +60,8 @@ class HistoryVerbs {
   final bool Function() contactIsDown;
 
   /// Everything [canUndo] and [canRedo] depend on.
-  Listenable get changes => Listenable.merge([selection, session.historyManager]);
+  Listenable get changes =>
+      Listenable.merge([selection, text, session.historyManager]);
 
   bool get canUndo => _undo() != null;
 
@@ -62,6 +69,7 @@ class HistoryVerbs {
 
   void undo() {
     if (contactIsDown()) {
+      KeyTrace.refusedUnderAContact('undo');
       return;
     }
     _undo()?.call();
@@ -69,6 +77,7 @@ class HistoryVerbs {
 
   void redo() {
     if (contactIsDown()) {
+      KeyTrace.refusedUnderAContact('redo');
       return;
     }
     _redo()?.call();
@@ -102,6 +111,14 @@ class HistoryVerbs {
     if (selection.canUndoTransformStep) {
       return selection.undoTransformStep;
     }
+    // R9-rest: a text being TYPED answers the same way — a step back is a
+    // word, a letter taken out, a change of setting — and falls through
+    // once its letters stand as they were when the visit began. (Ctrl+Z
+    // itself never gets here while the field holds the keyboard; this is
+    // the rail's ↶ and the taps mapped to it, saying what the key says.)
+    if (text.canUndoLetters) {
+      return text.undoLetters;
+    }
     return session.canUndo ? session.undo : null;
   }
 
@@ -111,6 +128,9 @@ class HistoryVerbs {
   VoidCallback? _redo() {
     if (selection.canRedoPolygonPoint) {
       return selection.redoPolygonPoint;
+    }
+    if (text.canRedoLetters) {
+      return text.redoLetters;
     }
     return session.canRedo ? session.redo : null;
   }

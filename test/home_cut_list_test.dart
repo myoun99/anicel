@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
 
@@ -13,7 +15,10 @@ void main() {
   testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    // From an EMPTY row: the bare project (the app opens on a cel, F-211).
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
 
     // The old top chips bar is retired; cut switching lives in the
     // storyboard panel now.

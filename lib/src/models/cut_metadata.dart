@@ -4,7 +4,7 @@ import 'timesheet_sheet_kind.dart';
 
 class CutMetadata {
   const CutMetadata({
-    this.note = '',
+    this.pageNotes = const [],
     this.thumbnailFrameIndex,
     this.mark = LayerMark.none,
     this.staff = const {},
@@ -12,13 +12,37 @@ class CutMetadata {
   });
 
   const CutMetadata.empty()
-    : note = '',
+    : pageNotes = const [],
       thumbnailFrameIndex = null,
       mark = LayerMark.none,
       staff = const {},
       sheetKind = TimesheetSheetKind.sixSeconds;
 
-  final String note;
+  /// The memo written on each page of the cut's timesheet, by page —
+  /// trailing blanks left off ([withPageNote]).
+  ///
+  /// 🗣️F-301 (유저 2026-10-05): 「타임시트의 메모란은 페이지별로 다름 …
+  /// 페이지별로 독립」. ↩️It was one note per cut, printed on every page and
+  /// written by any of them. A page the cut no longer prints keeps its memo
+  /// and shows it again when it prints again — the sheet's ink's law
+  /// (F-252).
+  final List<String> pageNotes;
+
+  /// The memo on page [page] (0-based), empty where none is written.
+  String noteOf(int page) =>
+      page >= 0 && page < pageNotes.length ? pageNotes[page] : '';
+
+  /// [text] as page [page]'s memo, the others as they are.
+  CutMetadata withPageNote(int page, String text) {
+    final notes = [
+      for (var at = 0; at < pageNotes.length || at <= page; at += 1)
+        if (at == page) text else noteOf(at),
+    ];
+    while (notes.isNotEmpty && notes.last.isEmpty) {
+      notes.removeLast();
+    }
+    return copyWith(pageNotes: List.unmodifiable(notes));
+  }
 
   /// The cut-local frame the storyboard block's thumbnail shows; null means
   /// the first frame. Clamped to the playback range at render time, so a
@@ -35,11 +59,12 @@ class CutMetadata {
   /// label ([UpdateCutMarkCommand] writes every sibling).
   final LayerMark mark;
 
-  /// Who does each stage's work on THIS cut, where it is not the work's —
-  /// by the label's [LayerMark.keySlug], as the work's staff is
-  /// (`TimesheetInfo.staff`); a stage with no name here takes the work's
-  /// (`TimesheetInfo.staffForCut`). 🗣️유저 09-25: 작품 설정에는 기본값,
-  /// 컷 설정에는 컷별 이름 ([[project-settings-window]]).
+  /// Who does each stage's work on THIS cut — every stage but the conte's,
+  /// which is the work's ([StaffHolder.cut]) — by the label's
+  /// [LayerMark.keySlug], as the work's staff is (`TimesheetInfo.staff`).
+  /// ↩️A stage with no name here took the work's (유저 09-25: 작품 설정에는
+  /// 기본값, 컷 설정에는 컷별 이름) until the work kept the conte's alone
+  /// (F-291-Q1, 2026-10-08).
   final Map<String, String> staff;
 
   /// The paper this cut's timesheet prints on — the cut's own
@@ -48,25 +73,24 @@ class CutMetadata {
   /// whatever this says ([sheetKindFor]).
   final TimesheetSheetKind sheetKind;
 
-  /// [mark]'s name on this cut itself, or empty when it takes the work's.
+  /// [mark]'s name on this cut, or empty when nobody is set.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
-  /// [mark]'s name on this cut replaced ([staffWithName]) — an empty one
-  /// gives the stage back to the work's.
+  /// [mark]'s name on this cut replaced ([staffWithName]).
   CutMetadata withStaffName(LayerMark mark, String name) =>
       copyWith(staff: staffWithName(staff, mark, name));
 
   /// [thumbnailFrameIndex] passes as a closure so callers can CLEAR the pin
   /// (`() => null`) — the plain-nullable convention cannot express that.
   CutMetadata copyWith({
-    String? note,
+    List<String>? pageNotes,
     int? Function()? thumbnailFrameIndex,
     LayerMark? mark,
     Map<String, String>? staff,
     TimesheetSheetKind? sheetKind,
   }) {
     return CutMetadata(
-      note: note ?? this.note,
+      pageNotes: pageNotes ?? this.pageNotes,
       thumbnailFrameIndex: thumbnailFrameIndex == null
           ? this.thumbnailFrameIndex
           : thumbnailFrameIndex(),
@@ -77,7 +101,7 @@ class CutMetadata {
   }
 
   Map<String, dynamic> toJson() => {
-    'note': note,
+    if (pageNotes.isNotEmpty) 'pageNotes': [...pageNotes],
     if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
     if (!mark.isNone) 'mark': mark.toJson(),
     if (staff.isNotEmpty) 'staff': {...staff},
@@ -91,7 +115,9 @@ class CutMetadata {
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
     return CutMetadata(
-      note: json['note'] as String? ?? '',
+      pageNotes: List.unmodifiable([
+        for (final note in json['pageNotes'] as List? ?? const []) '$note',
+      ]),
       thumbnailFrameIndex: json['thumbnailFrame'] as int?,
       mark: LayerMark.fromJson(json['mark']),
       staff: staffFromJson(json['staff']),
@@ -103,7 +129,7 @@ class CutMetadata {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CutMetadata &&
-          other.note == note &&
+          listEquals(other.pageNotes, pageNotes) &&
           other.thumbnailFrameIndex == thumbnailFrameIndex &&
           other.mark == mark &&
           mapEquals(other.staff, staff) &&
@@ -111,7 +137,7 @@ class CutMetadata {
 
   @override
   int get hashCode => Object.hash(
-    note,
+    Object.hashAll(pageNotes),
     thumbnailFrameIndex,
     mark,
     Object.hashAllUnordered(
@@ -122,6 +148,7 @@ class CutMetadata {
 
   @override
   String toString() =>
-      'CutMetadata(note: $note, thumbnailFrame: $thumbnailFrameIndex, '
+      'CutMetadata(pageNotes: $pageNotes, '
+      'thumbnailFrame: $thumbnailFrameIndex, '
       'mark: $mark, staff: $staff, sheetKind: $sheetKind)';
 }

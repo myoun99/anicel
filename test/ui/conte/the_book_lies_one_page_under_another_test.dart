@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
@@ -32,6 +33,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/sheet_paper_view.dart';
 
 /// 🗣️F-201 (유저 2026-09-27): 「캔버스 베이스 패널, 뷰어든 콘티 프리뷰든
 /// pdf같은거 여러페이지 동시에 볼수있게 하고싶음. pdf리더같은거 밑으로 쭉
@@ -96,8 +98,12 @@ void main() {
       ui.Size(page.metrics.pageWidth, page.metrics.pageHeight),
   ]);
 
+  /// The paper's pixels a point of the book takes (F-294): the host keeps
+  /// its view in those pixels, and these pins reason in the page's points.
+  final paperScale = const ConteSheetMetrics().paperScale;
+
   /// The panel on [session] through a view the test owns, [seed] its first
-  /// value (render units; null leaves it unframed).
+  /// value (render units, in the page's points; null leaves it unframed).
   Future<ValueNotifier<CanvasViewport?>> pump(
     WidgetTester tester,
     EditorSessionManager session, {
@@ -106,7 +112,9 @@ void main() {
     Size surface = const Size(900, 900),
   }) async {
     final view = ValueNotifier<CanvasViewport?>(
-      seed == null ? null : seedFromRender(tester, seed),
+      seed == null
+          ? null
+          : seedFromRender(tester, paperViewShowing(seed, paperScale)),
     );
     addTearDown(view.dispose);
     final ink = ConteInkController();
@@ -148,11 +156,14 @@ void main() {
   /// The view the pages are printed through: the panel's — held to the
   /// paper (F-201) — snapped to the device grid as the sheet snaps it.
   CanvasViewport printedThrough(WidgetTester tester) => renderSnappedViewport(
-    tester
-        .widget<CanvasViewportGestureLayer>(
-          find.byType(CanvasViewportGestureLayer),
-        )
-        .viewport,
+    sheetUnitsView(
+      tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport,
+      paperScale,
+    ),
     tester.view.devicePixelRatio,
   );
 
@@ -223,7 +234,9 @@ void main() {
       surface: const Size(900, 360),
     );
     expect(readout(tester), '3 / 4', reason: 'the body\'s first page');
-    final zoom = view.value!.zoom;
+    // The stored view's device units to a point of the book.
+    final kept = view.value!.zoom;
+    final zoom = kept * paperScale;
     // The view's top is the window's, under the pill's band (유저
     // 2026-09-30: 「판정을 알약까지 포함해서」) — in the stored view's own
     // device units, as every pan below is.
@@ -236,7 +249,7 @@ void main() {
       find.byKey(const ValueKey<String>('conte-next-page-button')),
     );
     await tester.pumpAndSettle();
-    expect(view.value!.zoom, zoom, reason: 'a turn does not zoom');
+    expect(view.value!.zoom, kept, reason: 'a turn does not zoom');
     expect(
       view.value!.panY,
       closeTo(top - (stack.pageRect(3).top - stack.gap / 2) * zoom, 1e-6),
@@ -434,6 +447,44 @@ void main() {
     expect(window.zoom, closeTo(asPrinted.zoom, 1e-9));
     expect(window.panX, closeTo(asPrinted.panX, 1e-9));
     expect(window.panY, closeTo(asPrinted.panY, 1e-9));
+  });
+
+  testWidgets('a view left on a page opens reading that page — read off the '
+      'kept view, which is in the paper\'s pixels, before the panel has laid '
+      'its window out (F-294)', (tester) async {
+    final session = sessionOf();
+    final stack = stackOf(pagesOf(session));
+    // Left with the cover's blank back at the top of the view.
+    final view = ValueNotifier<CanvasViewport?>(
+      seedFromRender(
+        tester,
+        paperViewShowing(
+          CanvasViewport(panX: -stack.margin, panY: -stack.pageRect(1).top),
+          paperScale,
+        ),
+      ),
+    );
+    addTearDown(view.dispose);
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // ONE frame: the page the host opens on, before the panel reads the
+    // window and says for itself.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConteTabHost(
+            session: session,
+            thumbnails: null,
+            viewportController: view,
+          ),
+        ),
+      ),
+    );
+
+    expect(readout(tester), '2 / 4');
+    await tester.pumpAndSettle();
+    expect(readout(tester), '2 / 4', reason: 'and the panel reads the same');
   });
 
   testWidgets('a view nobody has moved opens fitted to the body\'s first page, '

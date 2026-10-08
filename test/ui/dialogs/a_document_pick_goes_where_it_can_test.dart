@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -162,6 +164,61 @@ void main() {
       expect(placed?.document, drive);
       expect(placed?.path, isNull);
       expect(ProviderDocuments.workingCopyOf(drive.uri), isNull);
+    });
+
+    group('on Android, where a real path asks All-Files access', () {
+      const grantNotice = ValueKey<String>('storage-grant-dialog');
+
+      setUp(() {
+        debugOperatingSystemOverride = 'android';
+        AppStorage.debugAllFilesAccessOverride = false;
+      });
+      tearDown(() {
+        debugOperatingSystemOverride = null;
+        AppStorage.debugAllFilesAccessOverride = null;
+      });
+
+      testWidgets('🎯an export asks for NO grant: it is poured where the '
+          'window says and never written again', (tester) async {
+        FolderGrant? placed;
+
+        await run(tester, (context) async {
+          placed = await placeStagedFileForUser(
+            context,
+            suggestedName: 'take.wav',
+            write: writeProject,
+          );
+        });
+
+        expect(find.byKey(grantNotice), findsNothing);
+        expect(poured, 'the project');
+        expect(placed?.document, drive);
+      });
+
+      testWidgets('Save As is asked for it before its window opens — the '
+          'saves that follow go through the file\'s real path', (tester) async {
+        FolderGrant? placed;
+        var answered = false;
+
+        await run(tester, (context) async {
+          placed = await placeStagedFileForUser(
+            context,
+            suggestedName: 'Cut.anicel',
+            write: writeProject,
+            keepsSavingThere: true,
+          );
+          answered = true;
+        });
+
+        expect(find.byKey(grantNotice), findsOneWidget);
+        expect(poured, isNull, reason: 'the window never opened');
+        await tester.tap(
+          find.byKey(const ValueKey<String>('storage-grant-cancel')),
+        );
+        await tester.pumpAndSettle();
+        expect(answered, isTrue);
+        expect(placed, isNull);
+      });
     });
   });
 

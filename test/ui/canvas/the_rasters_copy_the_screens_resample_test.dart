@@ -27,6 +27,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -37,6 +38,8 @@ import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/placement_reading.dart';
 
 /// 🚨★★★WHICH ROUTES COPY A LAYER IMAGE AND WHICH RESAMPLE IT (유저
 /// 2026-09-24 「통일해서」) — the four that draw one, each asked.
@@ -142,12 +145,15 @@ void main() {
                             opacity: 1,
                             // The identity: centred on the canvas, no zoom,
                             // no turn — the pose that moves nothing.
-                            pose: posed
-                                ? CameraPose(
-                                    center: CanvasPoint(
-                                      x: canvasSize.width / 2,
-                                      y: canvasSize.height / 2,
+                            placement: posed
+                                ? placedBy(
+                                    TransformPose(
+                                      center: CanvasPoint(
+                                        x: canvasSize.width / 2,
+                                        y: canvasSize.height / 2,
+                                      ),
                                     ),
+                                    canvasSize,
                                   )
                                 : null,
                           ),
@@ -225,7 +231,7 @@ void main() {
     });
   });
 
-  testWidgets('the playback composite copies each tier image', (
+  testWidgets('the playback composite copies each layer image', (
     tester,
   ) async {
     const canvasSize = CanvasSize(width: 8, height: 8);
@@ -284,23 +290,17 @@ void main() {
       ],
     );
     await tester.runAsync(() async {
-      for (final quality in [PlaybackQuality.full, PlaybackQuality.half]) {
-        final images = LayerFrameImageCache(frameStore: store);
-        final cache = CutFrameCompositeCache(
-          layerImages: images,
-          frameStore: store,
-          frameKeyOf: frameKey,
-        );
-        debugTexelCopies = 0;
-        await cache.prepareComposite(
-          cut: cut,
-          frameIndex: 0,
-          quality: quality,
-        );
-        expect(debugTexelCopies, greaterThan(0), reason: '$quality');
-        cache.dispose();
-        images.dispose();
-      }
+      final images = LayerFrameImageCache(frameStore: store);
+      final cache = CutFrameCompositeCache(
+        layerImages: images,
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      debugTexelCopies = 0;
+      await cache.prepareComposite(cut: cut, frameIndex: 0);
+      expect(debugTexelCopies, greaterThan(0));
+      cache.dispose();
+      images.dispose();
     });
   });
 

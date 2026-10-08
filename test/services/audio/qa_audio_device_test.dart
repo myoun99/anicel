@@ -377,6 +377,110 @@ void main() {
     }, skip: skip);
   });
 
+  // 유저 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로
+  // 어떻게 안되나」 — the device's count is a stair, and each callback now
+  // says WHEN it climbed, so a reader can draw the line through it.
+  group('each callback says when', () {
+    test('🚨the point stands at the stair, stamped on the clock\'s own time '
+        'and never after now', () async {
+      final device = openNull();
+      device.setSchedule(clips: const [], sources: const []);
+      expect(device.clockPoint, isNull, reason: 'nothing has played yet');
+
+      device.play(startSample: 0);
+      expect(
+        await waitFor(() => device.clockPoint != null),
+        isTrue,
+        reason: 'no callback spoke',
+      );
+
+      final clock = device.readClock();
+      final point = clock.point!;
+      expect(point.positionSamples, greaterThan(0));
+      expect(
+        clock.stairSamples,
+        greaterThanOrEqualTo(point.positionSamples),
+        reason: 'read after its point, the stair is at it or past it',
+      );
+      expect(clock.nowMicros, greaterThanOrEqualTo(point.atMicros));
+      expect(
+        clock.nowMicros - point.atMicros,
+        lessThan(Duration.microsecondsPerSecond),
+        reason: 'stamped on the clock that says now, a moment ago',
+      );
+    }, skip: skip);
+
+    test('the points move on with the stair, a step at a time', () async {
+      final device = openNull();
+      device.setSchedule(clips: const [], sources: const []);
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.clockPoint != null), isTrue);
+
+      final first = device.clockPoint!;
+      expect(
+        await waitFor(
+          () => device.clockPoint!.positionSamples > first.positionSamples,
+        ),
+        isTrue,
+      );
+      final next = device.clockPoint!;
+      expect(next.atMicros, greaterThan(first.atMicros));
+    }, skip: skip);
+
+    test('🚨an arm drops the old run\'s point: until the new arm\'s first '
+        'callback speaks there is only the stair', () async {
+      final device = openNull();
+      device.setSchedule(clips: const [], sources: const []);
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.clockPoint != null), isTrue);
+
+      // Armed again, far from where it was.
+      const start = 2400000;
+      device.play(startSample: start);
+      final atOnce = device.clockPoint;
+      expect(
+        atOnce == null || atOnce.positionSamples >= start,
+        isTrue,
+        reason: 'a point of the run before, read as this run\'s, would put '
+            'the picture 50 seconds back for a callback\'s time',
+      );
+      expect(
+        await waitFor(() => device.clockPoint != null),
+        isTrue,
+        reason: 'the new arm never spoke',
+      );
+      expect(device.clockPoint!.positionSamples, greaterThan(start));
+
+      device.seek(96000);
+      final afterSeek = device.clockPoint;
+      expect(
+        afterSeek == null || afterSeek.positionSamples < start,
+        isTrue,
+        reason: 'a seek is an arm too',
+      );
+
+      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      device.stop();
+      expect(
+        device.clockPoint,
+        isNull,
+        reason: 'a transport that was stopped has no run to have a point of',
+      );
+
+      // A device that is closed while it plays, and opened again.
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      device.close();
+      final again = openNull();
+      expect(
+        again.clockPoint,
+        isNull,
+        reason: 'a device just opened has no run: what the one before it '
+            'played is not its point',
+      );
+    }, skip: skip);
+  });
+
   group('the schedule handoff', () {
     test('a schedule can be set while stopped', () {
       final device = openNull();

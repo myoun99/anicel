@@ -60,8 +60,15 @@ void main() {
     );
   });
 
-  test('⛔the LINKED paste still refuses — a link means the SAME cel, and a '
-      'cel belongs to a layer', () {
+  // ↩️I-71 (유저 2026-10-05: 「다른레이어에 붙여넣을때 … 링크붙여넣기
+  // 가능하게. 동작은 말한대로 이름 유지되는붙여넣기」): a NAMED drawing does
+  // cross rows now, by its name
+  // (`session/a_linked_paste_keeps_its_names_across_rows_test`). What this
+  // pins still stands for the drawing copied here, which has no name: with
+  // none to keep, a linked paste would be the independent one under another
+  // button.
+  test('⛔the LINKED paste of an UNNAMED drawing still refuses — a link '
+      'means the SAME cel, a cel belongs to a layer, and no name crosses', () {
     final f = twoRows();
     f.session.selectLayer(f.from);
     f.session.selectFrameIndex(0);

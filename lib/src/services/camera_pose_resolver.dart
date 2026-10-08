@@ -2,6 +2,7 @@ import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut_camera.dart';
+import '../models/transform_pose.dart';
 
 /// The camera pose used when a cut has no keyframes: centered on the canvas,
 /// zoom 1, no rotation.
@@ -21,8 +22,10 @@ CameraPose resolveCameraPoseAt({
   required CanvasSize canvasSize,
   required int frameIndex,
 }) {
-  return camera.track.resolveAt(
-    frameIndex: frameIndex,
-    orElse: () => defaultCameraPoseFor(canvasSize),
-  );
+  return camera.track
+      .resolveAt(
+        frameIndex: frameIndex,
+        orElse: () => TransformPose.ofCamera(defaultCameraPoseFor(canvasSize)),
+      )
+      .toCameraPose();
 }

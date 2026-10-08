@@ -9,14 +9,16 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
+import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -96,9 +98,8 @@ void main() {
     required ValueNotifier<int?> frame,
     required List<StoryboardTimelineLayoutEntry> layout,
     bool Function(CutId cutId)? cutFxEnabledOf,
-    bool Function(CutId cutId)? cutPictureVisibleOf,
-    double Function(CutId cutId)? trackStaticOpacityOf,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
+    List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
     bool pasteboardNone = false,
@@ -114,14 +115,12 @@ void main() {
               globalFrameIndex: globalFrame,
             ),
             compositeCache: composites,
-            qualityOf: () => PlaybackQuality.full,
             cameraFrameSize: cameraFrameSize,
             cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
-            cutPictureVisibleOf: cutPictureVisibleOf,
-            trackStaticOpacityOf: trackStaticOpacityOf,
+            seNameTagsOf: seNameTagsOf,
             pasteboardArgb: 0xff123456,
             backdropNone: backdropNone,
             pasteboardNone: pasteboardNone,
@@ -159,7 +158,6 @@ void main() {
         await composites.prepareComposite(
           cut: cut,
           frameIndex: frameIndex,
-          quality: PlaybackQuality.full,
         );
       }
     });
@@ -190,6 +188,44 @@ void main() {
     expect(painters[1].cameraPose, isNotNull);
     expect(painters[1].paintPaper, isFalse, reason: 'stacks over the bottom');
     expect(painters[1].paintLetterbox, isFalse);
+
+    f.composites.dispose();
+  });
+
+  testWidgets('each unit carries the names its OWN cut speaks, at its own '
+      'frame', (tester) async {
+    final f = fixture();
+    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
+    ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
+      layerId: '${cut.id.value}@$frame',
+      widthBudget: 100,
+      content: TextCelContent(
+        text: cut.id.value,
+        style: SeNameTag.defaultStyle,
+        position: Offset.zero,
+      ),
+    );
+
+    f.frame.value = 3;
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+      seNameTagsOf: (cut, frame) => [tagOf(cut, frame)],
+    );
+
+    expect(
+      [
+        for (final painter in paintersOf(tester))
+          [for (final tag in painter.seNameTags) tag.layerId],
+      ],
+      [
+        ['cut-a@3'],
+        ['cut-c@1'],
+      ],
+      reason: 'resolved PER CUT (R5b): each covered track its own speakers',
+    );
 
     f.composites.dispose();
   });
@@ -300,64 +336,74 @@ void main() {
     f.composites.dispose();
   });
 
-  // The pose and animated-fade halves of the V-row display gates went with the
-  // V row's transform. The EYE is still a per-track gate.
-  testWidgets('the V-row eye drops THAT track\'s picture alone', (
-    tester,
-  ) async {
-    final posed = fixture();
-    await warm(tester, posed.composites, posed.layout, [
-      ('cut-a', 3),
-      ('cut-c', 1),
-    ]);
-    posed.frame.value = 3;
-    await pumpView(
-      tester,
-      composites: posed.composites,
-      frame: posed.frame,
-      layout: posed.layout,
-      cutPictureVisibleOf: (cutId) => cutId != const CutId('cut-a'),
+  // ↩️Two pins stood here for the V row's own gates, which left its head on
+  // 2026-10-08 (I-73): the EYE dropped one track's picture alone, and the
+  // track's STATIC opacity (0.5 on the bottom track, 0.25 on the one above)
+  // drove the split below. What thins a contribution now is a transition,
+  // and the split by stack position is unchanged — the bottom track's half
+  // is pinned in the O.L group under this, the upper track's here.
+  testWidgets('an O.L on an UPPER track thins its own pictures instead of '
+      'washing the stage below', (tester) async {
+    // track-1: cut-a [0,10) — the stage. track-2: cut-c [0,4) then cut-d
+    // [4,10), with the O.L over [2,6).
+    final store = BrushFrameStore();
+    final composites = CutFrameCompositeCache(
+      layerImages: LayerFrameImageCache(frameStore: store),
+      frameStore: store,
+      frameKeyOf: frameKey,
     );
-    expect(paintersOf(tester)[0].image, isNull, reason: 'eye off');
-    expect(paintersOf(tester)[1].image, isNotNull, reason: 'per track');
-
-    posed.composites.dispose();
-  });
-
-  testWidgets('opacity splits by stack position: the bottom track washes the '
-      'frame (playback parity), an upper track thins its own contribution '
-      'instead of blanking the stage below', (tester) async {
-    // The animated fade lane is gone; a track's STATIC opacity is what thins
-    // it now, and the stack-position split is unchanged.
-    final opacities = <CutId, double>{
-      const CutId('cut-a'): 0.5,
-      const CutId('cut-c'): 0.25,
-    };
-    final fading = fixture();
-    await warm(tester, fading.composites, fading.layout, [
-      ('cut-a', 3),
-      ('cut-c', 1),
-    ]);
-    fading.frame.value = 3;
+    final frame = ValueNotifier<int?>(3);
+    addTearDown(frame.dispose);
     await pumpView(
       tester,
-      composites: fading.composites,
-      frame: fading.frame,
-      layout: fading.layout,
-      trackStaticOpacityOf: (cutId) => opacities[cutId] ?? 1.0,
+      composites: composites,
+      frame: frame,
+      layout: buildStoryboardTimelineLayout(
+        Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: cameraFrameSize,
+          tracks: [
+            Track(
+              id: const TrackId('track-1'),
+              name: 'One',
+              cuts: [cutOf('cut-a', 10)],
+            ),
+            Track(
+              id: const TrackId('track-2'),
+              name: 'Two',
+              cuts: [cutOf('cut-c', 4), cutOf('cut-d', 6)],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      ),
+      spansOf: (trackId) => trackId == const TrackId('track-2')
+          ? const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)]
+          : const [],
     );
 
     final painters = paintersOf(tester);
-    expect(painters[0].fadeOpacity, 0.5, reason: 'bottom = the wash');
+    expect(painters, hasLength(3), reason: 'the stage, and the O.L\'s two');
+    expect(painters[0].fadeOpacity, 1);
     expect(painters[0].imageOpacity, 1);
+    for (final upper in painters.skip(1)) {
+      expect(
+        upper.fadeOpacity,
+        1,
+        reason: 'an upper wash would cover the whole frame below',
+      );
+    }
+    // Frame 3 = offset 1 of 4: the leaving cut opaque, the arriving one at
+    // the ramp's 1/3 — the bottom track's own two weights, on the picture.
+    expect(painters[1].imageOpacity, 1);
     expect(
-      painters[1].fadeOpacity,
-      1,
-      reason: 'an upper wash would cover the whole frame below',
+      painters[2].imageOpacity,
+      closeTo(1 / 3, 1e-9),
+      reason: 'its own picture thins',
     );
-    expect(painters[1].imageOpacity, 0.25, reason: 'its own picture thins');
 
-    fading.composites.dispose();
+    composites.dispose();
   });
 
   group('a cut-crossing O.L', () {

@@ -8,18 +8,27 @@ import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 
 import '../../helpers/temp_dir.dart';
 
-/// [handOverFilesForUser] on each road (drive-folder-windows-Q1): what the
-/// window answered becomes placed, offered or declined — and the answer
-/// is what decides whether the caller keeps the outputs for another app to
-/// read. Every road is reached from the Windows workstation through the OS
-/// seam.
+/// [handOverFilesForUser] on each road (drive-folder-windows-Q1 · F-221):
+/// which window a road opens, what that window needs before it can, and
+/// that what it placed stands where it said. Every road is reached from the
+/// Windows workstation through the OS seam.
+///
+/// A desktop has no road — it is asked before anything is made — and that
+/// is pinned where the roads are named (`folder_pick_flow_test.dart`). A
+/// window that is BACKED OUT OF is asked about on every road alike, and
+/// that law has its own file (`a_backed_out_hand_over_is_asked_about_test`)
+/// — iOS's road among them, which the export window drives besides
+/// (`finished_outputs_are_handed_over_test`). Here a backed-out window is
+/// only ever let go ([letGo]), to see what it left.
 void main() {
   late Directory temp;
+  late Directory picked;
   late String file;
   late String folder;
 
   setUp(() {
     temp = Directory.systemTemp.createTempSync('qa-hand-over-roads');
+    picked = Directory('${temp.path}/picked')..createSync();
     file = (File('${temp.path}/frame_0001.png')..writeAsStringSync('a')).path;
     folder = (Directory('${temp.path}/CUT001')..createSync()).path;
     File('$folder/0001.png').writeAsStringSync('b');
@@ -27,23 +36,27 @@ void main() {
 
   tearDown(() {
     debugOperatingSystemOverride = null;
+    debugDriveNoticeShown = false;
     AppStorage.debugAllFilesAccessOverride = null;
     FolderPicker.debugFolderPicker = null;
     FolderPicker.debugFileExporter = null;
     FolderPicker.debugFilesExporter = null;
-    FolderPicker.debugFileSharer = null;
     deleteTempQuietly(temp);
   });
 
+  /// What the hand-over answered, once it has — null while a window of its
+  /// own still waits for the user.
+  HandOver? handed;
+
   /// Hands [paths] over from a mounted context and answers what came of it.
   Future<HandOver?> handOver(WidgetTester tester, List<String> paths) async {
-    HandOver? result;
+    handed = null;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await handOverFilesForUser(context, paths: paths);
+              handed = await handOverFilesForUser(context, paths: paths);
             },
             child: const Text('hand over'),
           ),
@@ -52,73 +65,131 @@ void main() {
     );
     await tester.tap(find.text('hand over'));
     await tester.pumpAndSettle();
-    return result;
+    return handed;
   }
 
-  testWidgets('iOS: backing out of the export picker declines', (
-    tester,
-  ) async {
-    debugOperatingSystemOverride = 'ios';
-    FolderPicker.debugFilesExporter = (sourcePaths) async =>
-        const FolderGrant.cancelled();
+  /// Lets the outputs of a backed-out window go, at the question it is
+  /// asked.
+  Future<void> letGo(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('hand-over-pending-discard')),
+    );
+    await tester.pumpAndSettle();
+  }
 
-    expect(await handOver(tester, [file, folder]), HandOver.declined);
-  });
-
-  testWidgets('Android: backing out of the save window declines', (
-    tester,
-  ) async {
+  /// Android's windows, counted: the save window that takes one file, and
+  /// the folder window answering [picked] — or backed out of.
+  ({List<String> saved, List<String?> askedFolder}) androidWindows({
+    bool folderBackedOut = false,
+  }) {
     debugOperatingSystemOverride = 'android';
     AppStorage.debugAllFilesAccessOverride = true;
-    FolderPicker.debugFileExporter = ({
-      required String sourcePath,
-      String? suggestedName,
-    }) async => const FolderGrant.cancelled();
-
-    expect(await handOver(tester, [file]), HandOver.declined);
-  });
-
-  testWidgets('Android: a share sheet that never came up declines, one that '
-      'did offers', (tester) async {
-    debugOperatingSystemOverride = 'android';
-    var shows = false;
-    final offered = <List<String>>[];
-    FolderPicker.debugFileSharer = (paths) async {
-      offered.add(paths);
-      return shows;
-    };
-
-    expect(await handOver(tester, [file, folder]), HandOver.declined);
-    shows = true;
-    expect(await handOver(tester, [file, folder]), HandOver.offered);
-    expect(offered.last, [file, folder]);
-  });
-
-  testWidgets('Android: ONE folder is not one file — it is shared, not put '
-      'through the save window', (tester) async {
-    debugOperatingSystemOverride = 'android';
-    AppStorage.debugAllFilesAccessOverride = true;
-    var saved = 0;
+    final saved = <String>[];
+    final askedFolder = <String?>[];
     FolderPicker.debugFileExporter = ({
       required String sourcePath,
       String? suggestedName,
     }) async {
-      saved += 1;
-      return FolderGrant.granted(path: sourcePath);
+      saved.add(sourcePath);
+      return FolderGrant.granted(path: sourcePath, kind: GrantKind.file);
     };
-    FolderPicker.debugFileSharer = (paths) async => true;
+    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+      askedFolder.add(initialDirectory);
+      return folderBackedOut
+          ? const FolderGrant.cancelled()
+          : FolderGrant.granted(path: picked.path);
+    };
+    return (saved: saved, askedFolder: askedFolder);
+  }
 
-    expect(await handOver(tester, [folder]), HandOver.offered);
-    expect(saved, 0);
+  testWidgets('Android: ONE file goes through the save window', (
+    tester,
+  ) async {
+    final windows = androidWindows();
+
+    expect(await handOver(tester, [file]), HandOver.placed);
+    expect(windows.saved, [file]);
+    expect(windows.askedFolder, isEmpty, reason: 'one file asks no folder');
   });
 
-  testWidgets('the desktops: backing out of the folder window declines and '
-      'moves nothing', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        const FolderGrant.cancelled();
+  testWidgets('🎯Android: ONE file is handed over with NO All-Files grant — '
+      'it is poured where the save window says and never written again, so '
+      'nothing of it needs a real path', (tester) async {
+    final windows = androidWindows();
+    AppStorage.debugAllFilesAccessOverride = false;
 
-    expect(await handOver(tester, [file]), HandOver.declined);
+    expect(await handOver(tester, [file]), HandOver.placed);
+
+    expect(windows.saved, [file]);
+    expect(
+      find.byKey(const ValueKey<String>('storage-grant-dialog')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Android: SEVERAL outputs still need it — a folder is written '
+      'into through its real path — and are told so, not moved', (
+    tester,
+  ) async {
+    final windows = androidWindows();
+    AppStorage.debugAllFilesAccessOverride = false;
+
+    await handOver(tester, [file, folder]);
+
+    expect(
+      find.byKey(const ValueKey<String>('storage-grant-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('storage-grant-cancel')));
+    await tester.pumpAndSettle();
+    await letGo(tester);
+
+    expect(handed, HandOver.declined);
+    expect(windows.askedFolder, isEmpty, reason: 'the window never opened');
     expect(File(file).existsSync(), isTrue);
+  });
+
+  testWidgets('🎯Android: SEVERAL outputs are asked ONE folder window and '
+      'moved into the folder it answers — a folder among them whole', (
+    tester,
+  ) async {
+    final windows = androidWindows();
+
+    expect(await handOver(tester, [file, folder]), HandOver.placed);
+
+    expect(windows.askedFolder, hasLength(1));
+    expect(windows.saved, isEmpty, reason: 'the save window takes one file');
+    expect(File('${picked.path}/frame_0001.png').readAsStringSync(), 'a');
+    expect(File('${picked.path}/CUT001/0001.png').readAsStringSync(), 'b');
+    expect(File(file).existsSync(), isFalse, reason: 'moved, not copied');
+    expect(Directory(folder).existsSync(), isFalse);
+  });
+
+  testWidgets('Android: a folder window backed out of has moved nothing', (
+    tester,
+  ) async {
+    androidWindows(folderBackedOut: true);
+    // What a backed-out folder window says about Google Drive is said once
+    // a session, and is its own law's (`folder_pick_drive_notice_test`).
+    debugDriveNoticeShown = true;
+
+    await handOver(tester, [file, folder]);
+    await letGo(tester);
+
+    expect(handed, HandOver.declined);
+    expect(File(file).existsSync(), isTrue);
+    expect(File('$folder/0001.png').existsSync(), isTrue);
+    expect(picked.listSync(), isEmpty);
+  });
+
+  testWidgets('Android: ONE folder is not one file — it is asked the folder '
+      'window, not put through the save window', (tester) async {
+    final windows = androidWindows();
+
+    expect(await handOver(tester, [folder]), HandOver.placed);
+
+    expect(windows.saved, isEmpty);
+    expect(windows.askedFolder, hasLength(1));
+    expect(File('${picked.path}/CUT001/0001.png').readAsStringSync(), 'b');
   });
 }

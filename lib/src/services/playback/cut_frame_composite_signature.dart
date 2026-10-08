@@ -1,6 +1,5 @@
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
@@ -8,9 +7,8 @@ import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
-import '../../models/transform_track.dart';
 import '../cut_frame_composite_plan.dart';
+import '../layer_pose_matrix.dart' show LayerPlacement;
 
 /// Resolves the brush store's current source revision for a layer frame
 /// (0 when nothing has been drawn on it yet).
@@ -26,8 +24,7 @@ class CompositeLayerSignature {
     required this.opacity,
     required this.sourceRevision,
     this.blendMode = LayerBlendMode.normal,
-    this.pose,
-    this.anchorPoint,
+    this.placement,
     this.effects = const [],
   });
 
@@ -45,16 +42,13 @@ class CompositeLayerSignature {
 
   final int sourceRevision;
 
-  /// The layer's resolved transform at the frame (null = identity): a
-  /// transform edit — or a pose that varies across a held exposure — must
-  /// change the composite's identity, and the compose loop draws with
-  /// exactly this pose (the signature IS the compose input).
-  final TransformPose? pose;
-
-  /// The pose's anchor point (null = canvas center) — same rule as [pose].
-  /// Folder FX (L3) arrives already COMPOSED into [pose] by the shared
-  /// visit, so a folder FX edit changes the identity through it.
-  final CanvasPoint? anchorPoint;
+  /// Where the layer lies at the frame (null = identity): a transform edit
+  /// — or a pose that varies across a held exposure — must change the
+  /// composite's identity, and the compose loop draws with exactly this
+  /// placement (the signature IS the compose input). Folder FX (L3) arrives
+  /// already folded into it by the shared visit, so a folder FX edit
+  /// changes the identity through it.
+  final LayerPlacement? placement;
 
   /// The row's effect chain SAMPLED at the frame (R6) — an effect edit, or
   /// a parameter that varies across a held exposure, must change the
@@ -70,8 +64,7 @@ class CompositeLayerSignature {
           other.opacity == opacity &&
           other.sourceRevision == sourceRevision &&
           other.blendMode == blendMode &&
-          other.pose == pose &&
-          other.anchorPoint == anchorPoint &&
+          other.placement == placement &&
           listEquals(other.effects, effects);
 
   @override
@@ -81,16 +74,15 @@ class CompositeLayerSignature {
     opacity,
     sourceRevision,
     blendMode,
-    pose,
-    anchorPoint,
+    placement,
     Object.hashAll(effects),
   );
 
   @override
   String toString() =>
       'CompositeLayerSignature(layerId: $layerId, frameId: $frameId, '
-      'opacity: $opacity, sourceRevision: $sourceRevision, pose: $pose, '
-      'anchorPoint: $anchorPoint)';
+      'opacity: $opacity, sourceRevision: $sourceRevision, '
+      'placement: $placement)';
 }
 
 /// One node of a composited cut frame's identity: a layer's contribution,
@@ -216,12 +208,10 @@ final class CompositeAdjustmentSignature extends CompositeNodeSignature {
 class CutFrameCompositeSignature {
   CutFrameCompositeSignature({
     required this.canvasSize,
-    required this.quality,
     required List<CompositeNodeSignature> nodes,
   }) : nodes = List.unmodifiable(nodes);
 
   final CanvasSize canvasSize;
-  final PlaybackQuality quality;
 
   /// The composite TREE, bottom → top, matching
   /// [planCutFrameCompositeTree] order.
@@ -251,22 +241,16 @@ class CutFrameCompositeSignature {
           // any walk over the layer nodes.
           other.hashCode == hashCode &&
           other.canvasSize == canvasSize &&
-          other.quality == quality &&
           listEquals(other.nodes, nodes);
 
   /// Hashed once: a signature never changes, and the readiness bar looks
   /// the same held ones up on every signal.
   @override
-  late final int hashCode = Object.hash(
-    canvasSize,
-    quality,
-    Object.hashAll(nodes),
-  );
+  late final int hashCode = Object.hash(canvasSize, Object.hashAll(nodes));
 
   @override
   String toString() =>
-      'CutFrameCompositeSignature(canvasSize: $canvasSize, '
-      'quality: $quality, nodes: $nodes)';
+      'CutFrameCompositeSignature(canvasSize: $canvasSize, nodes: $nodes)';
 }
 
 /// Computes the signature of the cut's picture at [frameIndex] from the
@@ -278,7 +262,6 @@ class CutFrameCompositeSignature {
 CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
-  required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
 }) {
   List<CompositeNodeSignature> mapNodes(
@@ -306,8 +289,7 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
               opacity: entry.opacity,
               sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
               blendMode: entry.blendMode,
-              pose: entry.pose,
-              anchorPoint: entry.anchorPoint,
+              placement: entry.placement,
               effects: entry.effects,
             ),
           ),
@@ -334,7 +316,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
 
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
-    quality: quality,
     nodes: mapNodes(
       resolveCutFrameCompositeTree(
         cut: cut,

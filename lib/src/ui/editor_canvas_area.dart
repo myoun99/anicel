@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/layer_effect.dart';
+import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
 import '../models/pasteboard_bounds.dart';
@@ -28,6 +29,8 @@ import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
+import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
@@ -37,6 +40,10 @@ import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
+import 'canvas/camera_adjust_layer.dart';
+import 'canvas/canvas_adjust_layer.dart';
+import 'cut_command_group.dart' show landCanvasAdjust;
+import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/selection_float_overlay.dart';
 import 'canvas/flip_hud_controller.dart';
@@ -65,9 +72,10 @@ import 'timeline/timeline_drag_preview.dart'
 import '../models/layer.dart' show Layer;
 import '../models/layer_kind.dart';
 import '../services/layer_pose_matrix.dart'
-    show LayerPoseSample, artworkToCanvas, canvasToArtwork;
+    show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
-import '../models/transform_track.dart' show TransformPose, TransformTrack;
+import '../models/transform_track.dart'
+    show TransformPose, TransformTrack, uniformScale;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
@@ -84,14 +92,40 @@ part 'canvas_area/interactive_canvas_build.dart';
 
 /// What one mount of the track stack says of itself: the frame it follows,
 /// whose contributions it draws there, whether it lays its own floor,
-/// whether it crops to the camera, and the key it is found by.
+/// whether it crops to the camera, whose pictures it shows (a run's, made
+/// by the warmer — or its own, when null) and the key it is found by.
 typedef _TrackStackMount = ({
   ValueListenable<int?> globalFrame,
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
   bool paintsFloor,
   bool cameraView,
+  Listenable? picturesLanded,
   Key key,
 });
+
+/// The backdrop's share of the editing canvas over the live cut once the
+/// O.L's other cuts are laid above it: the live cut keeps [cutFadeOpacity],
+/// each partner its own share ([partnerShares] — its ramp, the unit alpha
+/// the track stack weighs it by), the backdrop the rest. `1 − fade` with no
+/// partner (the wash as it always was), nothing when an O.L's two halves
+/// are the whole frame.
+///
+/// ↩️Two statics of the canvas area's state spelled this, and each partner's
+/// share was its ramp times its track's own opacity until the V row lost it
+/// (I-73, 2026-10-08). One function, outside the state, so the sum can be
+/// pinned where it is cheapest.
+double backdropShareUnder(
+  double cutFadeOpacity,
+  Iterable<double> partnerShares,
+) {
+  var claimed = 0.0;
+  for (final share in partnerShares) {
+    claimed += share;
+  }
+  return claimed >= 1
+      ? 0
+      : (1 - cutFadeOpacity / (1 - claimed)).clamp(0.0, 1.0);
+}
 
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
@@ -112,6 +146,8 @@ class EditorCanvasArea extends StatefulWidget {
     this.canvasViewCommands,
     this.navigationRegionKey,
     this.canvasSelectionCommands,
+    this.canvasTextCommands,
+    this.textToolOptions,
     this.cutPieceSlot,
     this.lastStroke,
     this.toolHold,
@@ -154,6 +190,11 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level selection shortcut channel (P9: Ctrl+D, nudges),
   /// forwarded the same way.
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The app-level text channel and the next text's values (R9-rest),
+  /// forwarded to the canvas that holds texts.
+  final CelTextCommands? canvasTextCommands;
+  final ValueListenable<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — owned by the workspace so the piece
   /// outlives every project the canvas shows.
@@ -518,10 +559,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.
         session.opacityVerbs.dragPreview,
-        // …and the V row's, which the canvas READ (the editing fade, the
-        // track stack) and never heard: a track opacity drag reached the
-        // canvas only when something else happened to rebuild it.
-        session.opacityVerbs.trackDragPreview,
         // brushToolState is deliberately NOT here (R18 UI-2): nothing in
         // the area's derivations reads it — only the brush host consumes
         // it, through its own boundary builder below. Merging it here
@@ -591,23 +628,32 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// parked contentOverride, the scrub preview's gap branch (both on the gap
   /// parking) and ALL-CUTS playback (on the clock's global frame, R3a).
   ///
-  /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
+  /// 🚨The camera view is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
   /// camera frame drawn OVER it, and a storyboard ruler drag parks per move
   /// (`scrubGlobalFrame` parks the moment the frame belongs to another cut) —
   /// so cropping here made the drag look nothing like the state it started
-  /// from. Two mounts pass false and the answer is the same one the eye
-  /// already had: preview = canvas + overlay, playback = crop.
+  /// from. The parked mounts never crop, and the answer is the same one the
+  /// eye already had: preview = canvas + overlay, playback = crop.
+  ///
+  /// [ofTheRun] is the mount ALL-CUTS playback shows: it follows the run's
+  /// clock, answers the camera toggle, and leaves its pictures to the
+  /// warmer, repainting as they land. The parked mounts follow the gap
+  /// parking and make their own.
   Widget _buildTrackStackView(
     EditorSessionManager session,
     CanvasViewport viewport, {
-    ValueListenable<int?>? globalFrame,
-    bool cameraView = false,
+    bool ofTheRun = false,
   }) => _trackStack(session, viewport, (
-    globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
+    globalFrame: ofTheRun
+        ? session.playbackRig.playback.globalFrameIndexListenable
+        : session.editingSession.gapParkingListenable,
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
-    cameraView: cameraView,
+    cameraView: ofTheRun && widget.cameraViewEnabled.value,
+    picturesLanded: ofTheRun
+        ? session.playbackRig.prerenderScheduler.landings
+        : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
 
@@ -623,6 +669,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: (_) => partners,
     paintsFloor: false,
     cameraView: false,
+    picturesLanded: null,
     key: const ValueKey<String>('canvas-ol-partner'),
   ));
 
@@ -646,16 +693,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         positionsOf: mount.positionsOf,
         paintsFloor: mount.paintsFloor,
         compositeCache: session.renderCaches.cutFrameCompositeCache,
-        qualityOf: () => session.playbackRig.playbackQuality,
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-        trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-        cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
         onFrameCached:
             session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
+        picturesLanded: mount.picturesLanded,
         viewport: viewport,
         background: session.projectSettings.projectBackground,
         backdropArgb: project.backdropArgb,
@@ -762,7 +807,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       next = AppInput.snapToList(next, AppInput.settings.value.brushSizeSnaps);
     }
     widget.onBrushToolStateChanged?.call(
-      widget.brushToolState.value.copyWith(size: next),
+      widget.brushToolState.value.withActiveSize(next),
     );
   }
 
@@ -776,15 +821,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         CanvasPlaybackView(
           controller: session.playbackRig.playback,
           compositeCache: session.renderCaches.cutFrameCompositeCache,
-          qualityOf: () => session.playbackRig.playbackQuality,
           prerenderProgress: session.playbackRig.prerenderScheduler.progress,
+          picturesLanded: session.playbackRig.prerenderScheduler.landings,
           cameraViewEnabled: widget.cameraViewEnabled.value,
           cameraFrameSize: session.camera.cameraFrameSize,
           cameraPoseOf: session.camera.cameraPoseForCut,
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
           cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-          trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-          cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
@@ -799,15 +842,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // single-cut frame (the editing context).
           trackStack:
               session.playbackRig.playback.scope == PlaybackScope.allCuts
-              ? _buildTrackStackView(
-                  session,
-                  viewport,
-                  globalFrame:
-                      session.playbackRig.playback.globalFrameIndexListenable,
-                  // Playback is the one place the crop
-                  // belongs, and there it answers the toggle.
-                  cameraView: widget.cameraViewEnabled.value,
-                )
+              ? _buildTrackStackView(session, viewport, ofTheRun: true)
               : null,
         ),
         RecordingStreamerOverlay(session: session),
@@ -853,21 +888,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// crosshair 200 to the left of its picture, and under a 2× folder a drag
   /// moved the picture twice as far as the pointer (measured 2026-09-25).
   ({
-    LayerPoseSample? placement,
+    LayerPlacement? placement,
     CanvasPoint Function(CanvasPoint point) toCanvas,
     CanvasPoint Function(CanvasPoint point) fromCanvas,
   })
   _parentSpaceOf(EditorSessionManager session, Layer layer) {
     final placement = session.frameVerbs.layerParentPlacement(layer.id);
-    final cut = session.activeCutOrNull;
-    if (placement == null || cut == null) {
+    if (placement == null) {
       return (placement: null, toCanvas: (p) => p, fromCanvas: (p) => p);
     }
-    final out = artworkToCanvas(placement, cut.canvasSize);
-    final back = canvasToArtwork(placement, cut.canvasSize);
+    final back = canvasToArtwork(placement);
     return (
       placement: placement,
-      toCanvas: out.apply,
+      toCanvas: placement.apply,
       fromCanvas: (p) => back?.apply(p) ?? p,
     );
   }
@@ -935,21 +968,26 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final parent = _parentSpaceOf(session, activeLayer);
     // The box draws the row as the canvas SHOWS it — its own pose under the
     // folders' — and turns and scales about the row's anchor where that
-    // shows. It hands back the zoom and the turn it shows; the row's own
-    // are those less the parent's.
-    final parentZoom = parent.placement?.pose.zoom ?? 1;
-    final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
-    final pose = TransformPose(
-      center: parent.toCanvas(own.center),
-      zoom: parentZoom * own.zoom,
-      rotationDegrees: parentTurn + own.rotationDegrees,
-    );
+    // shows. The scale and the turn it stands on are the ROW'S OWN: a
+    // handle scales by a ratio and outside turns by an angle, and what
+    // comes back is the value the lane keys.
+    //
+    // ↩️It stood on the parent's zoom times the row's and the parent's turn
+    // plus the row's, and each landing took the parent's back off — a
+    // second fold of the folders beside the plan's, which only a parent
+    // that is a similarity has a zoom and a turn to give.
+    //
+    // The TURN is measured in the parent's space
+    // ([RowTransformBox.turnSpace]): the row's rotation lives there, and a
+    // folder may stretch or flip now.
+    final pose = own.copyWith(center: parent.toCanvas(own.center));
     final name = activeLayer.name;
     final box = frame.boxGrabbable;
-    final posed = artworkToCanvas((
-      pose: pose,
+    final ownPlacement = placementOf((
+      pose: own,
       anchorPoint: anchorPoint,
     ), canvasSize);
+    final shown = parent.placement?.compose(ownPlacement) ?? ownPlacement;
     return RowTransformBox(
       // The box frames the layer's PICTURE (the user chose that on the
       // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
@@ -961,7 +999,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 canvasSize,
                 frame.inkBounds,
               ).points)
-                posed.apply(point),
+                shown.apply(point),
             ]
           : const [],
       pose: pose,
@@ -983,18 +1021,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             )
           : null,
       scale: box
-          ? _handleLandings<double>(
-              session,
-              activeLayer.id,
-              (zoom) =>
-                  (track, frameIndex) => transformTrackWithScaleDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    zoom: zoom / parentZoom,
-                  ),
-              description: 'Scale $name',
+          ? RowBoxTwoScales(
+              _handleLandings<CanvasPoint>(
+                session,
+                activeLayer.id,
+                (scale) =>
+                    (track, frameIndex) => transformTrackWithScaleDragged(
+                      track,
+                      frameIndex: frameIndex,
+                      scale: scale,
+                    ),
+                description: 'Scale $name',
+              ),
             )
           : null,
+      turnSpace: parent.fromCanvas,
       turn: box
           ? _handleLandings<double>(
               session,
@@ -1003,7 +1044,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   (track, frameIndex) => transformTrackWithRotationDragged(
                     track,
                     frameIndex: frameIndex,
-                    rotationDegrees: degrees - parentTurn,
+                    rotationDegrees: degrees,
                   ),
               description: 'Rotate $name',
             )
@@ -1130,7 +1171,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           (track, frameIndex) => transformTrackWithScaleDragged(
             track,
             frameIndex: frameIndex,
-            zoom: zoom,
+            scale: uniformScale(zoom),
           ),
       description: 'Zoom camera $at',
     );
@@ -1164,23 +1205,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// The camera's frame — the dim outside it and its hairline — drawn for
   /// every row. It takes no press: on the camera row the frame's box does
-  /// ([_cameraBox]), over the tools.
+  /// ([_cameraBox]), over the tools. While its size is adjusted on the
+  /// canvas (I-80) it is the size being dragged, so the dim and the box
+  /// stand on one frame.
   Positioned _cameraOverlay(
     EditorSessionManager session,
     CanvasViewport viewport,
   ) {
     return Positioned.fill(
-      child: _atTheCameraPose(
-        session,
-        (pose) => CameraFrameOverlay(
-          pose: pose,
-          cameraFrameSize: session.camera.cameraFrameSize,
-          viewport: viewport,
-          // Dim belongs to camera-view mode; plain manipulation keeps the
-          // artwork undimmed.
-          dimOpacity: widget.cameraViewEnabled.value
-              ? widget.cameraDimOpacity.value
-              : 0,
+      child: ListenableBuilder(
+        listenable: session.canvasAdjust,
+        builder: (context, _) => _atTheCameraPose(
+          session,
+          (pose) => CameraFrameOverlay(
+            pose: pose,
+            cameraFrameSize:
+                session.canvasAdjust.cameraSizeShown ??
+                session.camera.cameraFrameSize,
+            viewport: viewport,
+            // Dim belongs to camera-view mode; plain manipulation keeps the
+            // artwork undimmed.
+            dimOpacity: widget.cameraViewEnabled.value
+                ? widget.cameraDimOpacity.value
+                : 0,
+          ),
         ),
       ),
     );
@@ -1199,7 +1247,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// pose read on the cursor alone stayed frozen on the cut being left.
   Widget _atTheCameraPose(
     EditorSessionManager session,
-    Widget Function(TransformPose pose) build,
+    Widget Function(CameraPose pose) build,
   ) => ListenableBuilder(
     listenable: session.editingFrameCursor,
     builder: (context, _) => ValueListenableBuilder<int?>(
@@ -1252,10 +1300,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 color: Color(
                   session.repository.requireProject().backdropArgb,
                 ).withValues(
-                  alpha: _backdropShare(
-                    cutFadeOpacity,
-                    partnerShare: _shareOf(session, partners),
-                  ),
+                  alpha: backdropShareUnder(cutFadeOpacity, [
+                    for (final partner in partners) partner.opacity,
+                  ]),
                 ),
                 devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               ),
@@ -1286,33 +1333,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           contribution,
     ];
   }
-
-  /// How much of the frame [partners] claim — each one's ramp times its
-  /// track's own opacity, the unit alpha the track stack weighs it by.
-  double _shareOf(
-    EditorSessionManager session,
-    List<TrackStackContribution> partners,
-  ) {
-    var share = 0.0;
-    for (final partner in partners) {
-      share +=
-          partner.opacity *
-          session.opacityVerbs.trackStaticOpacityForCut(partner.cutId);
-    }
-    return share;
-  }
-
-  /// The backdrop wash over the live cut once a partner claiming
-  /// [partnerShare] is laid above it: the live cut keeps [cutFadeOpacity],
-  /// the partner its share, the backdrop the rest — `1 − fade` with no
-  /// partner (the wash as it always was), nothing when an O.L's two halves
-  /// are the whole frame.
-  static double _backdropShare(
-    double cutFadeOpacity, {
-    required double partnerShare,
-  }) => partnerShare >= 1
-      ? 0
-      : (1 - cutFadeOpacity / (1 - partnerShare)).clamp(0.0, 1.0);
 
   Positioned _seNameTagOverlay(
     CanvasViewport viewport,

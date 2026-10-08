@@ -7,9 +7,12 @@
 //
 // Each case makes an unrelated edit FIRST, and the counter-assertion is
 // that it survives the one undo: a fold that reached one entry too far
-// would take it back too. The storyboard case starts on a V row's eye,
-// whose press writes NO step while the rows it crosses do — the case a
-// fold counted back from the sweep's own writes gets wrong.
+// would take it back too. ↩️The storyboard case started on a V row's eye,
+// whose press wrote NO step while the rows it crossed did — the case a
+// fold counted back from the sweep's own writes gets wrong. That eye left
+// the head on 2026-10-08 (I-73) and no column a rail sweeps mixes the two
+// any more, so the case is the storyboard rail's own sweep now: the fold
+// is still measured from the mark the press took.
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -74,8 +77,10 @@ void main() {
     expect(_row(s, earlier).onTimesheet, sheetWas);
   });
 
-  testWidgets('a sweep that starts on a storyboard V row\'s eye — a press '
-      'that writes no step — folds only what the sweep wrote', (tester) async {
+  testWidgets('a sweep down the storyboard rail\'s eyes is one undo too — '
+      'over the V rows, which have none — and folds only what it wrote', (
+    tester,
+  ) async {
     final s = await _storyboard(tester);
     const earlier = LayerId('t1-s1');
     final sheetWas = _row(s, earlier).onTimesheet;
@@ -85,16 +90,16 @@ void main() {
     await _sweep(
       tester,
       from: find.byKey(
-        const ValueKey<String>('storyboard-cut-visibility-t1-cut'),
+        const ValueKey<String>('storyboard-layer-visibility-t1-s1'),
       ),
       to: find.byKey(
-        const ValueKey<String>('storyboard-cut-visibility-t3-cut'),
+        const ValueKey<String>('storyboard-layer-visibility-t3-s1'),
       ),
     );
     expect(
-      _eyes(s, const ['t2-s1', 't3-s1']),
-      [false, false],
-      reason: 'the premise: the sweep crossed two tracks\' S rows',
+      _eyes(s, const ['t1-s1', 't2-s1', 't3-s1']),
+      [false, false, false],
+      reason: 'the premise: the sweep crossed three tracks\' S rows',
     );
     expect(
       s.historyManager.undoCount,
@@ -106,15 +111,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      _eyes(s, const ['t2-s1', 't3-s1']),
-      [true, true],
+      _eyes(s, const ['t1-s1', 't2-s1', 't3-s1']),
+      [true, true, true],
     );
     expect(
       _row(s, earlier).onTimesheet,
       !sheetWas,
       reason:
-          'the V row\'s eye wrote nothing, so a fold counting one step back '
-          'from the sweep would have swallowed this edit',
+          'a fold that reached one entry past the mark the press took would '
+          'have swallowed this edit',
     );
   });
 

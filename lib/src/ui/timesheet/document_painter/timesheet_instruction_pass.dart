@@ -20,6 +20,9 @@ class _TimesheetInstructionPass {
   /// column width; the A/B names center in the start/end cells like frame
   /// names and the writing centers on the SPAN's true center, drawn over
   /// the mark.
+  ///
+  /// [rows] are the top and the bottom of the grid this row is printed in —
+  /// its half page — which the writing stays on.
   void paintInstructionRow(
     Canvas canvas, {
     required TimesheetCell cell,
@@ -27,6 +30,7 @@ class _TimesheetInstructionPass {
     required double columnWidth,
     required double centerX,
     required double cellTop,
+    required ({double top, double bottom}) rows,
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
     final cellBottom = cellTop + rowHeight;
@@ -161,6 +165,7 @@ class _TimesheetInstructionPass {
         columnWidth: columnWidth,
         spanTop: cellTop - offset * rowHeight,
         spanLength: spanLength,
+        rows: rows,
       );
     }
   }
@@ -180,6 +185,16 @@ class _TimesheetInstructionPass {
   /// a three-row span at 2.4pt, which is the very failure sideways Latin
   /// was invented to avoid. Writing that runs past its span is what a hand
   /// does on paper anyway.
+  ///
+  /// 🚨BUT NEVER PAST THE GRID IT IS WRITTEN ON ([rows]) — F-286 (유저
+  /// 2026-10-04): 「6초 컷에서 6초만큼의 지시가 있을때 … 지시의 중앙에 생기는
+  /// 글자가 칸 밖으로 나가는데, 이런 경우 중앙 아니어도 되니까 칸 안으로
+  /// 들어가도록」. A span's middle can sit on the very edge of a half page —
+  /// a six-second span on a six-second page has it on the left half's last
+  /// line — and half of the name hung below the grid, off the paper as names
+  /// grow. So the name is pushed back inside the grid — as near the span's
+  /// middle as the grid lets it stand. Only a name longer than the whole
+  /// grid packs, to the grid's length.
   void _paintInstructionLabel(
     Canvas canvas,
     String label, {
@@ -187,6 +202,7 @@ class _TimesheetInstructionPass {
     required double columnWidth,
     required double spanTop,
     required int spanLength,
+    required ({double top, double bottom}) rows,
   }) {
     const fontSize = 9.0;
     const lineHeight = 1.15;
@@ -209,6 +225,9 @@ class _TimesheetInstructionPass {
     // "spill, never pack" is stated to a painter that only knows how to
     // pack.
     final needed = cellCount * naturalCellExtent;
+    final extent = math.min(needed, rows.bottom - rows.top);
+    final spanMiddle =
+        spanTop + spanLength * TimesheetDocumentLayout.rowHeight / 2;
     paintVerticalText(
       canvas,
       label,
@@ -219,11 +238,8 @@ class _TimesheetInstructionPass {
       ),
       centerX:
           columnLeft + columnWidth - instructionLabelInset - glyphWidth / 2,
-      top:
-          spanTop +
-          spanLength * TimesheetDocumentLayout.rowHeight / 2 -
-          needed / 2,
-      mainExtent: needed,
+      top: (spanMiddle - extent / 2).clamp(rows.top, rows.bottom - extent),
+      mainExtent: extent,
       naturalCellExtent: naturalCellExtent,
       setWord: paintScaledText,
       cellPadding: fontSize * (lineHeight - 1),

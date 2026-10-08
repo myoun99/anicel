@@ -132,7 +132,8 @@ class CameraFrameOverlay extends StatelessWidget {
 ///
 /// [zoom] lands the CAMERA's zoom. The frame's size is the output's over
 /// the zoom, so the box's own scale is the zoom's inverse — the corner
-/// dragged outward zooms out.
+/// dragged outward zooms out. ONE scale ([RowBoxOneScale]): the frame
+/// wears its corners alone.
 class CameraFrameBox extends StatelessWidget {
   const CameraFrameBox({
     super.key,
@@ -175,7 +176,7 @@ class CameraFrameBox extends StatelessWidget {
         ))
           CanvasPoint(x: corner.dx, y: corner.dy),
       ],
-      pose: TransformPose(
+      pose: TransformPose.uniform(
         center: pose.center,
         zoom: 1 / pose.zoom,
         rotationDegrees: pose.rotationDegrees,
@@ -189,10 +190,10 @@ class CameraFrameBox extends StatelessWidget {
       move: move,
       scale: zoom == null
           ? null
-          : (
+          : RowBoxOneScale((
               changed: (frameScale) => zoom.changed(_zoomOf(frameScale)),
               committed: (frameScale) => zoom.committed(_zoomOf(frameScale)),
-            ),
+            )),
       turn: turn,
     );
   }

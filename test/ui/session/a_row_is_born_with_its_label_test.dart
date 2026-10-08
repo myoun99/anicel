@@ -61,15 +61,20 @@ void main() {
     expect(session.activeLayer!.mark, LayerMark.none);
   });
 
-  test('F-76: a new cut\'s drawing row is born LO 소재', () {
+  test('F-76: the drawing row made in a new cut is born LO 소재', () {
+    // ↩️「a new cut's drawing row」: a new cut was born with a blank layer A.
+    // It is bare now (F-211), and the row is the one ＋ makes in it.
     final session = freshSession();
-
-    session.cutVerbs.createCut();
-
-    final drawingRows = [
+    List<Layer> drawingRowsNow() => [
       for (final layer in session.requireActiveCut.layers)
         if (layer.kind == LayerKind.animation) layer,
     ];
+
+    session.cutVerbs.createCut();
+    expect(drawingRowsNow(), isEmpty, reason: 'F-211: a new cut is bare');
+    session.layerStack.addLayerOfKind(LayerKind.animation);
+
+    final drawingRows = drawingRowsNow();
     expect(drawingRows, hasLength(1), reason: 'fixture');
     expect(
       drawingRows.single.mark,

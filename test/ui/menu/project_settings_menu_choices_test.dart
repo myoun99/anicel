@@ -7,16 +7,18 @@
 // body copied twice; G3 (2026-09-07) made them one `_editChoice` differing
 // only in values, and these are the pins that say the two branches still
 // behave. Without them the shared body could apply the wrong setting, or
-// the wrong preset, and nothing would say so.
+// the wrong preset, and nothing would say so. ↩️The playback quality left
+// with its option (2026-10-08); the playback MODE took its seat, and is the
+// second row pinned here.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
-import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
@@ -91,38 +93,73 @@ void main() {
     expect(session.projectAudio.projectAudioSampleRate, target);
   });
 
-  testWidgets('the quality row picks the quality the tapped preset says — the '
-      'SAME body, a different setting', (tester) async {
-    final before = session.playbackRig.playbackQuality;
+  testWidgets('the playback-mode row picks the mode the tapped preset says — '
+      'the SAME body, a different setting', (tester) async {
+    final before = session.playbackRig.playbackMode;
     final rateBefore = session.projectAudio.projectAudioSampleRate;
-    final target = PlaybackQuality.values.firstWhere(
+    final target = PlaybackMode.values.firstWhere(
       (preset) => preset != before,
     );
 
     await pumpMenu(tester);
-    await openRow(tester, 'project-settings-quality');
-
-    for (final preset in PlaybackQuality.values) {
-      expect(
-        find.byKey(ValueKey<String>('playback-quality-${preset.name}')),
-        findsOneWidget,
-      );
-      expect(
-        find.text(PlaybackTransportControls.qualityLabel(preset)),
-        findsOneWidget,
-      );
-    }
-
     await tester.tap(
-      find.byKey(ValueKey<String>('playback-quality-${target.name}')),
+      find.byKey(const ValueKey<String>('project-settings-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(ProjectSettingsMenu.playbackModeLabel(before)),
+      findsOneWidget,
+      reason: 'the row states the mode as it is',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-playback-mode')),
     );
     await tester.pumpAndSettle();
 
-    expect(session.playbackRig.playbackQuality, target);
+    // Every mode is a row, each in its own words.
+    for (final preset in PlaybackMode.values) {
+      expect(
+        find.byKey(ValueKey<String>('playback-mode-${preset.name}')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(ProjectSettingsMenu.playbackModeLabel(preset)),
+        findsOneWidget,
+        reason: preset.name,
+      );
+    }
+    expect(
+      {
+        for (final preset in PlaybackMode.values)
+          ProjectSettingsMenu.playbackModeLabel(preset),
+      },
+      hasLength(PlaybackMode.values.length),
+      reason: 'three modes, three names',
+    );
+    expect(
+      {
+        for (final preset in PlaybackMode.values)
+          preset: ProjectSettingsMenu.playbackModeLabel(preset),
+      },
+      {
+        PlaybackMode.skipFrames: AppText.strings.playbackModeSkipFrames,
+        PlaybackMode.everyPicture: AppText.strings.playbackModeEveryPicture,
+        PlaybackMode.renderFirst: AppText.strings.playbackModeRenderFirst,
+      },
+      reason: 'each under its own: swapped, a row picks one mode and says '
+          'another',
+    );
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('playback-mode-${target.name}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(session.playbackRig.playbackMode, target);
     expect(
       session.projectAudio.projectAudioSampleRate,
       rateBefore,
-      reason: 'the shared body applied the quality, not the sample rate',
+      reason: 'the shared body applied the mode, not the sample rate',
     );
   });
 
@@ -140,7 +177,7 @@ void main() {
       'project-settings-fps',
       'project-settings-audio-rate',
       'project-settings-camera-size',
-      'project-settings-quality',
+      'project-settings-playback-mode',
     ]) {
       expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
     }

@@ -15,23 +15,16 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
-import '../../models/cut_id.dart';
 import '../../models/import/tvpp_convert.dart';
 import '../../models/import/tvpp_parse.dart';
 import '../../models/project.dart';
 import '../../models/project_id.dart';
-import '../../models/tile_coord.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_migration.dart';
 import '../../services/diagnostics/memory_black_box.dart';
-import '../../services/editing/default_layer_helpers.dart'
-    show defaultLayerIdForSequence;
-import '../../services/editing/run_id_mint.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/import/tvp_import_planner.dart';
@@ -40,7 +33,6 @@ import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
-import 'import_landing.dart' show ImportLanding;
 import 'media_pool.dart';
 import 'project_file.dart';
 import 'project_file_door.dart';
@@ -174,20 +166,11 @@ class TvppImportDoor {
     if (tiles == null || tiles.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    bakeCelTiles(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
-      BitmapSurface(canvasSize: cut.canvasSize).putTiles([
-        for (final tile in tiles)
-          (
-            coord: TileCoord(x: tile.x, y: tile.y),
-            tile: BitmapTile(
-
-              size: defaultCelTileSize,
-              pixels: tile.pixels,
-            ),
-          ),
-      ]),
+      cut.canvasSize,
+      tiles,
     );
   }
 
@@ -457,8 +440,7 @@ Project _projectOf(
   ).replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
   // The planner still emits each clip's sound as a per-cut SE row (the
   // shape TVPaint stores); SE rows LIVE on the track's global axis now, so
-  // the same lift the legacy-file migration uses promotes them — one law
-  // for both doors.
+  // the lift promotes them — the one the .clip door's cuts go through too.
   final lifted = liftCutSeLayersToTrack(
     const TrackId('default-track'),
     [for (final (plan, _) in plans) plan.cut],
@@ -513,7 +495,7 @@ List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
   TvppParseResult parsed, {
   required List<ImportWarning> warnings,
 }) {
-  final mint = _newProjectIdMint();
+  final mint = ImportIdMint.forANewProject();
   final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
   for (var c = 0; c < parsed.clips.length; c++) {
     final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
@@ -528,20 +510,4 @@ List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
     plans.add((plan, conversion.slotsByFile));
   }
   return plans;
-}
-
-/// The ids of a project being MADE — before any session holds it, so there
-/// is nothing in it to step past: each id is the next of its kind, in the
-/// forms an import mints into a project that exists
-/// ([ImportLanding.idMint]). The drawings' come from the process's one mint
-/// ([mintFrameId]), which the session born for the project goes on counting
-/// from.
-ImportIdMint _newProjectIdMint() {
-  var layers = 0;
-  var cuts = 0;
-  return ImportIdMint(
-    nextLayerId: () => defaultLayerIdForSequence(layers += 1),
-    nextFrameId: mintFrameId,
-    nextCutId: () => CutId('import-cut-${cuts += 1}'),
-  );
 }

@@ -108,7 +108,6 @@ void main() {
       session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: first,
         frameIndex: 0,
-        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
       reason: 'the active cut warms first, as before',
@@ -117,7 +116,6 @@ void main() {
       session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: second,
         frameIndex: 0,
-        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
       reason: '#31: the next cut in storyboard order warms behind the '

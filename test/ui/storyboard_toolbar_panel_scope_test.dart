@@ -5,6 +5,7 @@ import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
@@ -48,6 +49,10 @@ void main() {
     await tester.pumpAndSettle();
     return manager;
   }
+
+  /// The active track's conte row — where a cut's panels are stood on.
+  LayerRowAddress conteRowOf(EditorSessionManager manager) =>
+      LayerRowAddress(trackConteRowId(manager.activeTrack.id));
 
   testWidgets('B8: EDIT on an SE-block cursor opens the SE dialog — the '
       'standing row dispatches, not the invisible active layer', (
@@ -157,23 +162,28 @@ void main() {
     expect(manager.activeCutOrNull!.duration, cut.duration);
   });
 
-  testWidgets('D28: with a storyboard layer on the cut, the comma press '
-      'retimes the PANEL under the cursor — the ripple moves the later '
-      'panels, never crushes the cut', (tester) async {
+  // 🗣️I-73 (유저 2026-10-08): 「v행에서는 콘티블록에 서있다거나 하는걸
+  // 안하도록 … v행 아래에 콘티행 만들어서 거기서」. ↩️D28 (2026-08-18,
+  // 「스토리보드레이어 존재 시 대상이 스토리보드레이어로」) handed the V row's
+  // press to the panel wherever the cut carried a storyboard layer; the
+  // panel is the conte row's block now, and the V row's is its cut again.
+  testWidgets('D28: on the conte row the comma press retimes the PANEL '
+      'under the cursor — the ripple moves the later panels, never crushes '
+      'the cut', (tester) async {
     final manager = await pumpStoryboard(tester);
     // Give the active cut a storyboard layer (born covering the cut) and
     // divide it: panels [0,3) and [3,duration).
     manager.layerStack.addLayerOfKind(LayerKind.storyboard);
     final cutBefore = manager.activeCutOrNull!;
-    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    manager.selectRow(conteRowOf(manager));
     manager.selectGlobalFrame(3);
     await tester.pumpAndSettle();
     manager.storyboardCursor.createStoryboardPanelAtCursor();
     await tester.pumpAndSettle();
 
     // Comma 4 on the FIRST panel: the panel takes length 4 and the later
-    // panel RIPPLES (+1) — the old law (「컷블록 위 4 = 컷길이 4」) would
-    // have crushed the whole cut to 4 instead.
+    // panel RIPPLES (+1) — the cut's own law (「컷블록 위 4 = 컷길이 4」)
+    // would have crushed the whole cut to 4 instead.
     manager.selectGlobalFrame(1);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('set-comma-4-button')));
@@ -197,11 +207,53 @@ void main() {
     expect(manager.activeCutOrNull!.duration, cutBefore.duration);
   });
 
-  testWidgets('D28: the frame ＋ DIVIDES the panel under the cursor, and '
-      'refuses at an existing division start', (tester) async {
+  testWidgets('I-73: on the V row the same press is the CUT\'s length, '
+      'storyboard layer or not — its last panel gives the frames up', (
+    tester,
+  ) async {
     final manager = await pumpStoryboard(tester);
     manager.layerStack.addLayerOfKind(LayerKind.storyboard);
+    final cutBefore = manager.activeCutOrNull!;
+    manager.selectRow(conteRowOf(manager));
+    manager.selectGlobalFrame(3);
+    await tester.pumpAndSettle();
+    manager.storyboardCursor.createStoryboardPanelAtCursor();
+    await tester.pumpAndSettle();
+    expect(cutBefore.duration, greaterThan(4), reason: '⛔전제');
+
+    // Over the FIRST panel, on the V row: the cut, not the panel.
     manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    manager.selectGlobalFrame(1);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('set-comma-4-button')));
+    await tester.pumpAndSettle();
+
+    final rowAfter = manager.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.storyboard,
+    );
+    expect(
+      manager.activeCutOrNull!.duration,
+      4,
+      reason: '「컷블록 위 4 = 컷길이 4」 — ↩️D28 retimed the panel here',
+    );
+    expect(rowAfter.timeline.keys.toList(), [0, 3]);
+    expect(rowAfter.timeline[0]!.length, 3, reason: 'the first is untouched');
+    expect(
+      rowAfter.timeline[3]!.length,
+      1,
+      reason: 'the cut\'s end is its last panel\'s (feedback #9)',
+    );
+
+    manager.undo();
+    await tester.pumpAndSettle();
+    expect(manager.activeCutOrNull!.duration, cutBefore.duration);
+  });
+
+  testWidgets('D28: on the conte row the frame ＋ DIVIDES the panel under '
+      'the cursor, and refuses at an existing division start', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    manager.layerStack.addLayerOfKind(LayerKind.storyboard);
+    manager.selectRow(conteRowOf(manager));
     manager.selectGlobalFrame(0);
     await tester.pumpAndSettle();
 
@@ -227,6 +279,25 @@ void main() {
       [0, 3],
       reason: 'the covering panel divided at the cursor',
     );
+  });
+
+  testWidgets('I-73: on the V row the frame ＋ divides nothing — a cut '
+      'block is not a panel, whatever its cut holds', (tester) async {
+    final manager = await pumpStoryboard(tester);
+    manager.layerStack.addLayerOfKind(LayerKind.storyboard);
+    manager.selectRow(TrackRowAddress(manager.activeTrack.id));
+    manager.selectGlobalFrame(3);
+    await tester.pumpAndSettle();
+
+    final panel = StoryboardToolbarPanelContext(manager);
+    expect(panel.canCreateInstance, isFalse);
+    panel.createInstance();
+    await tester.pumpAndSettle();
+
+    final row = manager.activeCutOrNull!.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.storyboard,
+    );
+    expect(row.timeline.keys.toList(), [0], reason: 'the panel is whole');
   });
 
   testWidgets('B8: the SAME comma press, said of an SE block and of a '
@@ -337,7 +408,7 @@ void main() {
     // lights blank/mark/copy over on the timeline panel.
     manager.selectFrameIndex(0);
     manager.createDrawingAtCurrentFrame();
-    manager.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    manager.edgeDrag.setCommaForTimelineCursor(4);
     manager.selectFrameIndex(1);
     await tester.pumpAndSettle();
     expect(manager.exposureVerbs.canBlankExposureAtCurrentFrame, isTrue,

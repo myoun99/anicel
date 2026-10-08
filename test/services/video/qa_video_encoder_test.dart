@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_pcm_scale.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
+import '../../ui/export/fake_ffmpeg_process.dart';
 
 /// The OS video encoder, driven for real (AUDIO-PRO R7). On this runner's
 /// OS the export goes through the system codec stack and produces an
@@ -262,6 +264,80 @@ void main() {
       sound!.samples.any((sample) => sample.abs() > 0.1),
       isTrue,
       reason: 'the mix\'s tone, not silence',
+    );
+  }, skip: skip);
+
+
+  test('🚨a job the OS refuses goes to ffmpeg with the frame the movie was '
+      'sized by — no frame is rendered twice', () async {
+    // Media Foundation writes no MOV; AVAssetWriter does, and takes the job.
+    if (!Platform.isWindows) {
+      return;
+    }
+    final ffmpeg = FakeFfmpegProcess();
+    final rendered = <int>[];
+    Future<ui.Image?> render(int index) {
+      rendered.add(index);
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(
+        recorder,
+      ).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
+      return recorder.endRecording().toImage(64, 48);
+    }
+
+    final service = VideoExportService(
+      encoderResolver: () => QaVideoEncoder.instance,
+      processStarter: (executable, arguments) async => ffmpeg,
+    );
+    final summary = await service.exportVideo(
+      count: 3,
+      renderImage: render,
+      outputFilePath: '${directory.path}/refused.mov',
+      frameRate: ProjectFrameRate.fps24,
+      container: ExportVideoContainer.mov,
+    );
+
+    expect(rendered, [0, 1, 2]);
+    expect(summary, (written: 3, processed: 3));
+    expect(ffmpeg.receivedFrameCount, 3);
+    expect(ffmpeg.collectedStdin.length, 3 * 64 * 48 * 4);
+  }, skip: skip);
+
+  test('🚨the OS encoder is handed a held frame again without its being '
+      'read back — twelve frames of one picture are one readback', () async {
+    if (!osHasEncoder) {
+      return;
+    }
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawColor(const ui.Color(0xFF336699), ui.BlendMode.src);
+    final held = await recorder.endRecording().toImage(64, 48);
+    addTearDown(held.dispose);
+    final service = VideoExportService(
+      encoderResolver: () => QaVideoEncoder.instance,
+    );
+    final outputPath = '${directory.path}/held.mp4';
+    final readBefore = VideoExportService.debugReadbacks;
+    final handed = <ui.Image>[];
+
+    final summary = await service.exportVideo(
+      count: 12,
+      renderImage: (_) async {
+        final again = held.clone();
+        handed.add(again);
+        return again;
+      },
+      outputFilePath: outputPath,
+      frameRate: ProjectFrameRate.fps24,
+    );
+
+    expect(summary, (written: 12, processed: 12));
+    expect(VideoExportService.debugReadbacks - readBefore, 1);
+    expect(looksLikeMp4(outputPath), isTrue);
+    expect(
+      handed.every((image) => image.debugDisposed),
+      isTrue,
+      reason: 'each picture handed is let go of — the one kept to tell the '
+          'next by, when the movie is finished',
     );
   }, skip: skip);
 }

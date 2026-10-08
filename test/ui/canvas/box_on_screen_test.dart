@@ -58,18 +58,22 @@ void main() {
     );
   });
 
-  test('a grid point is grabbed anywhere inside the hit slack, not only '
-      'dead on', () {
+  // F-262 (유저 2026-10-02: 「보이는 만큼 존재하도록」). ↩️A grid point was
+  // grabbed anywhere inside a 16px slack; it is the 9px square drawn for it.
+  test('a grid point is grabbed on the square drawn for it — off its '
+      'middle, and not beside it', () {
     final box = onScreen(mode: TransformMode.mesh, boxOpen: true);
-    final points = [CanvasPoint(x: 100, y: 100)];
+    final points = [
+      CanvasPoint(x: 100, y: 100),
+      CanvasPoint(x: 130, y: 100),
+    ];
 
-    expect(box.hitTestPlacedPoint(const Offset(110, 100), points), 0);
+    expect(box.hitTestPlacedPoint(const Offset(104, 97), points), 0);
+    expect(box.hitTestPlacedPoint(const Offset(126, 103), points), 1);
     expect(
-      box.hitTestPlacedPoint(
-        const Offset(100 + BoxOnScreen.handleHitRadius + 1, 100),
-        points,
-      ),
+      box.hitTestPlacedPoint(const Offset(110, 100), points),
       isNull,
+      reason: 'ten pixels off is between two points, and neither',
     );
   });
 }

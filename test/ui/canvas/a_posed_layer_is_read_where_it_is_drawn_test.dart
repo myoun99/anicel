@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -59,7 +60,10 @@ void main() {
     transformTrack: scale == null
         ? null
         : TransformTrack.empty().copyWith(
-            scale: PropertyTrack<double>.empty().withKey(0, scale),
+            scale: PropertyTrack<CanvasPoint>.empty().withKey(
+              0,
+              uniformScale(scale),
+            ),
           ),
   );
 

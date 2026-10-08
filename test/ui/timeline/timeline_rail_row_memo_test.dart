@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -57,6 +58,12 @@ void main() {
             ? AttachedPlacement.below
             : AttachedPlacement.above,
       ),
+      // F-308: the reference button stands on a row that stands on a file.
+      'mediaReference': (layer) => layer.copyWith(
+        mediaReference: layer.mediaReference == null
+            ? MediaReference(assetPath: '/clips/a.mp4')
+            : null,
+      ),
     };
 
     for (final entry in mutations.entries) {
@@ -81,6 +88,27 @@ void main() {
         reason: 'a solo flips most rows\' eyes at once, and with the eye in '
             'the token every one of those rows rebuilt all twelve slots — '
             '3,051 elements in one frame',
+      );
+    });
+
+    test('which file a reference row stands on is not shown — moving its '
+        'start keeps the row', () {
+      final reference = base.copyWith(
+        mediaReference: MediaReference(assetPath: '/clips/a.mp4'),
+      );
+      expect(
+        ControlsRowFace(reference) ==
+            ControlsRowFace(
+              reference.copyWith(
+                mediaReference: MediaReference(
+                  assetPath: '/clips/a.mp4',
+                  frameOffset: 12,
+                ),
+              ),
+            ),
+        isTrue,
+        reason: 'the button says only that there is a file; the popover '
+            'reads which',
       );
     });
 

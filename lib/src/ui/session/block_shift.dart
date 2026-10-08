@@ -5,10 +5,22 @@ import '../../models/layer_id.dart';
 import '../../models/row_block_shift.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart' show isTrackConteRow;
+import '../storyboard_layer_policy.dart' show conteLayerInHand;
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
+
+/// What a frame shove acts on: which layer rows shift, from where, which
+/// AXIS that anchor is stated in, and whether a SELECTION aimed it there —
+/// rather than the row and cell stood on.
+typedef FrameShiftScope = ({
+  List<LayerId> layerIds,
+  int anchorIndex,
+  bool anchorIsGlobal,
+  bool aimedBySelection,
+});
 
 /// THE SHOVE — push and pull, aimed at whatever is selected.
 ///
@@ -54,14 +66,14 @@ class BlockShift {
   final ActiveCutControllers _controllers;
   final CutShift _cutShift;
 
-  /// The frame-axis scope: which layer rows shift, from where, and which
-  /// AXIS that anchor is stated in.
+  /// The frame-axis scope ([FrameShiftScope]).
   ///
   /// A track-axis selection (the storyboard's S rows) arrives already in
   /// commit keys; a cut-local one has to be translated for those same rows.
-  /// Carrying the axis is what keeps the shove from translating twice.
-  ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
-  frameShiftScope({TimelineRowAddress? currentRow}) {
+  /// Carrying the axis is what keeps the shove from translating twice — and
+  /// with the aim, says which selection goes along with the blocks
+  /// ([_carryTheSelection]).
+  FrameShiftScope? frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = _selection.trackFrameRangeSelection.value;
     if (trackSelection != null) {
       final rows = <LayerId>[
@@ -77,6 +89,7 @@ class BlockShift {
           layerIds: rows,
           anchorIndex: trackSelection.startFrame,
           anchorIsGlobal: true,
+          aimedBySelection: true,
         );
       }
     }
@@ -96,18 +109,37 @@ class BlockShift {
               layerIds: rows,
               anchorIndex: selection.startIndex,
               anchorIsGlobal: false,
+              aimedBySelection: true,
             );
     }
-    // NO selection: the current row at the current cell — the timeline's
-    // rule, applied to whichever rail asked. The storyboard's current row
-    // is an S row on the global axis, so its anchor is the global playhead.
+    return _standingShiftScope(currentRow);
+  }
+
+  /// The scope with NO selection: the current row at the current cell — the
+  /// timeline's rule, applied to whichever rail asked. The storyboard's
+  /// current row is an S row on the global axis, so its anchor is the global
+  /// playhead.
+  FrameShiftScope? _standingShiftScope(TimelineRowAddress? currentRow) {
     if (currentRow is LayerRowAddress &&
         _project.trackSeGlobalLayerById(currentRow.layerId) != null) {
       return (
         layerIds: [currentRow.layerId],
         anchorIndex: _selection.editingGlobalFrame,
         anchorIsGlobal: true,
+        aimedBySelection: false,
       );
+    }
+    // The storyboard's conte row shoves its own panels — the conte layer it
+    // has in hand, which is the active row below — or nothing: over a cut
+    // with no conte layer the active row is some other row of the cut, and
+    // that one is not this rail's to shove (I-73).
+    if (isTrackConteRow(currentRow) &&
+        conteLayerInHand(
+              cut: _project.activeCutOrNull,
+              activeLayerId: _selection.activeLayerId,
+            ) ==
+            null) {
+      return null;
     }
     final layerId = _selection.activeLayerId;
     final index = _controllers.timelineController.currentFrameIndex;
@@ -117,7 +149,12 @@ class BlockShift {
         _project.rangeLayerById(layerId) == null) {
       return null;
     }
-    return (layerIds: [layerId], anchorIndex: index, anchorIsGlobal: false);
+    return (
+      layerIds: [layerId],
+      anchorIndex: index,
+      anchorIsGlobal: false,
+      aimedBySelection: false,
+    );
   }
 
   /// The layer a shift MEASURES against, in the axis the anchor will be
@@ -248,8 +285,30 @@ class BlockShift {
       return;
     }
     _controllers.timelineController.commitLayerTimelineDrags(edits);
-    _changes.refreshAfterCutCommand();
+    if (scope.aimedBySelection) {
+      _carryTheSelection(delta, onTrack: scope.anchorIsGlobal);
+    }
+    // A layer-timeline write, and what one owes — the comma edge's own
+    // ending (`ExposureEdgeDrag.commit`). ↩️It ran the CUT commands' tidy-up
+    // (`refreshAfterCutCommand`), which drops the frame selection: F-264
+    // (유저 2026-10-02) 「타임라인 버튼 밀기/당기기 작동시 선택범위로
+    // 여러행선택한거라던가 블록 선택범위 풀리는데 안풀리도록」. Nobody had
+    // asked for the drop — the shove was born beside the cut axis' half,
+    // which does owe that tidy-up, and took its ending along.
+    _changes.warmActiveCut();
     _changes.notifyChanged();
+  }
+
+  /// The selection that aimed a shove, carried the way its blocks went:
+  /// the track's for an S row's sounds
+  /// ([carryTrackSelectionWithTheShove], which says why), the cut's own for
+  /// its rows.
+  void _carryTheSelection(int delta, {required bool onTrack}) {
+    if (onTrack) {
+      carryTrackSelectionWithTheShove(_selection, delta);
+    } else if (_selection.frameRangeSelection.value case final inCut?) {
+      _selection.frameRangeSelection.value = inCut.shiftedBy(delta);
+    }
   }
 
   // --- ONE push / pull -----------------------------------------------------

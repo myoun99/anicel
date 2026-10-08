@@ -44,6 +44,7 @@ void main() {
     String blend = 'norm',
     String? adjustment,
     bool pixels = true,
+    bool effects = false,
   }) => PsdLayer(
     name: name,
     left: left,
@@ -57,23 +58,31 @@ void main() {
     role: PsdLayerRole.raster,
     pixels: pixels ? Uint8List((right - left) * (bottom - top) * 4) : null,
     adjustmentKey: adjustment,
+    hasLayerEffects: effects,
   );
 
-  PsdLayer bracket(PsdLayerRole role, {String name = 'G', String blend = 'pass'}) =>
-      PsdLayer(
-        name: name,
-        left: 0,
-        top: 0,
-        right: 0,
-        bottom: 0,
-        opacity: 255,
-        visible: true,
-        clipping: false,
-        blendKey: blend,
-        role: role,
-        pixels: null,
-        adjustmentKey: null,
-      );
+  PsdLayer bracket(
+    PsdLayerRole role, {
+    String name = 'G',
+    String blend = 'pass',
+    bool collapsed = false,
+    bool effects = false,
+  }) => PsdLayer(
+    name: name,
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 255,
+    visible: true,
+    clipping: false,
+    blendKey: blend,
+    role: role,
+    pixels: null,
+    adjustmentKey: null,
+    collapsed: collapsed,
+    hasLayerEffects: effects,
+  );
 
   PsdDocument document(
     List<PsdLayer> layers, {
@@ -150,6 +159,24 @@ void main() {
       expect(book.folderId, root.id);
       expect(result.layers[0].folderId, root.id);
       expect(result.layers[3].folderId, root.id);
+    });
+
+    test('a group shown closed comes in closed, an open one open — the '
+        'file\'s own folder stays open (F-306)', () {
+      final result = plan(
+        document([
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'closed', collapsed: true),
+          bracket(PsdLayerRole.groupClose),
+          raster('beside'),
+          bracket(PsdLayerRole.groupOpen, name: 'open'),
+        ]),
+      );
+      final byName = {for (final layer in result.layers) layer.name: layer};
+      expect(byName['closed']!.collapsed, isTrue);
+      expect(byName['open']!.collapsed, isFalse);
+      expect(byName['BG_a12.psd']!.collapsed, isFalse);
     });
 
     test('groups nest', () {
@@ -239,6 +266,29 @@ void main() {
       );
     });
 
+    test('layer effects are named — on a layer and on a group — and the '
+        'rows still come in (F-306)', () {
+      final result = plan(
+        document([
+          raster('plain'),
+          bracket(PsdLayerRole.groupClose),
+          raster('shadowed', effects: true),
+          bracket(PsdLayerRole.groupOpen, name: 'stroked', effects: true),
+        ]),
+      );
+      expect(
+        [
+          for (final warning in result.warnings)
+            if (warning.key == 'psdLayerEffects') warning.values['name'],
+        ],
+        ['shadowed', 'stroked'],
+      );
+      expect(
+        result.layers.map((layer) => layer.name),
+        containsAll(['plain', 'shadowed', 'stroked']),
+      );
+    });
+
     test('a clipping mask is kept as a layer but flagged', () {
       final result = plan(document([raster('colour', clipping: true)]));
       expect(result.layers.first.name, 'colour');
@@ -309,6 +359,46 @@ void main() {
       expect(first.width, 10);
       expect(second.left - first.left, 10);
       expect(first.top, second.top);
+    });
+
+    test('🎯F-307: only the part of a layer inside the document is drawn — '
+        'the part past an edge, which Photoshop never shows, is cut off', () {
+      final result = plan(
+        document(
+          // 20 past the left edge and 30 past the bottom of a 100x100.
+          [raster('frame', left: -20, top: 50, right: 60, bottom: 130)],
+          width: 100,
+          height: 100,
+        ),
+        canvas: const CanvasSize(width: 400, height: 200),
+        fit: MediaFitMode.contain,
+      );
+      final placement = result.placements.single;
+
+      expect(
+        placement.crop,
+        (left: 20, top: 0, width: 60, height: 50),
+        reason: 'the layer\'s own pixels 20 … 80 across, 0 … 50 down',
+      );
+      // Contain into 400x200 fits the document to 200x200 at x 100.
+      expect(placement.rect.left, closeTo(100 + 0 * 2, 0.001));
+      expect(placement.rect.top, closeTo(0 + 50 * 2, 0.001));
+      expect(placement.rect.width, closeTo(60 * 2, 0.001));
+      expect(placement.rect.height, closeTo(50 * 2, 0.001));
+    });
+
+    test('a layer wholly past the document keeps its row and asks for no '
+        'pixels, the way an empty one does', () {
+      final result = plan(
+        document(
+          [raster('away', left: 120, top: 0, right: 140, bottom: 10)],
+          width: 100,
+          height: 100,
+        ),
+      );
+
+      expect(result.layers.first.name, 'away');
+      expect(result.placements, isEmpty);
     });
 
     test('a placement points at the layer and cel it belongs to', () {

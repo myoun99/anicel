@@ -163,7 +163,88 @@ void main() {
   /// cross, handles, an inside, a stage) and whether it turns; a box with
   /// fewer passes fewer. 🔬The lane's scan against master (`25fdf5106`, at
   /// 385).
-  const wideSignatures = 383;
+  ///
+  /// ⚠️383 → 381 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// preview as a canvas-base panel): the window's
+  /// `_requestCompositePreview` (five) went with the preview loop it fed —
+  /// a tab's file is a document the panel asks a page of now — and the
+  /// string `exInOut` (five) with the line under the picture that said it.
+  /// 🔬The lane's scan against the tabs lane (`3eebdddec`, at 383) named
+  /// those two gone and nothing added.
+  ///
+  /// ⚠️381 → 380 on 2026-10-07, lowered as the rule asks (F-309, the camera
+  /// row's keys move on their lanes): `shiftKeysInRange` (five) went with
+  /// its last caller — the camera's keys shift by the lanes' own range move
+  /// now, and the instruction rows' spans enter the shared walk by the keys
+  /// they hold (`shiftKeysAt`). 🔬The lane's scan against master
+  /// (`6cd83353a`, at 381) named that one gone and nothing added.
+  ///
+  /// ⚠️380 → 381 on 2026-10-07, one named as the rule above asks (F-256, a
+  /// layer's Scale lane holds two numbers).
+  /// `transformTrackWithLaneValueEdited` (six) took how the row's Scale
+  /// reads what was typed: its form — a camera's one zoom, a layer's two
+  /// scales — and whether the chain is on. The other four are the lane
+  /// cell and the text, as they were. The two are asked apart because the
+  /// lane list prints and scrubs by the form alone, while the chain is the
+  /// transform tool's one switch, read where a value lands. 🔬The lane's
+  /// scan against master (`bdb2136ad`, at 380) named that one added and
+  /// nothing gone.
+  ///
+  /// ⚠️381 → 382 on 2026-10-07, one named as the rule above asks
+  /// (F-289-Q21, a video run holds the rows its held pictures are made
+  /// of): `ExportFrameRenderer._composite` (five) took `rows` — where a
+  /// held canvas-size picture's row pictures come from — beside the output
+  /// size and the name tags the picture route already passed. The other
+  /// route of that one render (`renderComposite`) hands none, so the one
+  /// body serves both rather than a second copy of it. 🔬The lane's scan
+  /// against master (`7916affa5`, at 381) named that one added and nothing
+  /// gone.
+  ///
+  /// ⚠️382 → 383 on 2026-10-08, one named as the rule above asks (F-282-Q1,
+  /// an import waits in the window a bake and a save wait in):
+  /// `CutFolderImportDoor.importCutFolder` (five) took `onProgress` — the
+  /// scans it bakes are what the window's % counts, and only the door knows
+  /// how many there are. The other four are the folder and the window's
+  /// three answers for it, as they were. The dialog's two that grew with it
+  /// (`_placeCarryingOnlyTheSpan`, `_placeMovie`) went back under: what a
+  /// door could not render and how far it is go down the same doors
+  /// together, and are handed down as one (`_FileReport`). 🔬The lane's
+  /// scan against its base (`4b6fa8ff5`, at 382) named that one added and
+  /// nothing gone.
+  ///
+  /// ⚠️383 → 384 on 2026-10-08, one named as the rule above asks (card
+  /// `csp-clip-import-analysis`, a CLIP STUDIO file planned as the project
+  /// it opens as): `planClipImport` (five) — a whole project's planner, as
+  /// `planTvpImport` (five) is a cut's. The document; the name the one cut
+  /// of a file with no timeline takes; the program language's word for the
+  /// folder hidden layers stand in (the planner is below the string
+  /// tables); the track its link members name, which the door builds; and
+  /// the id mint. 🔬The lane's scan against master (`94d72eef8`, at 383)
+  /// named that one added and nothing gone.
+  ///
+  /// ⚠️384 stays on 2026-10-08 with one more under it, named as the rule
+  /// above asks (I-73, one line joins a row's keys): master (`676b0fcd4`)
+  /// scanned at 383 under this ceiling, and `timelineUnionKeyMarkerSpans`
+  /// (five) took the row's `axis`. The camera row's summary lays the keys'
+  /// line along the row it sits in — across in the timeline, down in the
+  /// x-sheet — and the line cannot read that off the box it is laid out in:
+  /// two narrow cells are taller than they are long. The other four are the
+  /// marks', as they were. 🔬The lane's scan against master named that one
+  /// added and nothing gone.
+  ///
+  /// ⚠️384 → 386 on 2026-10-08, two named as the rule above asks (I-76, a
+  /// picture's numbered run comes in as one layer):
+  /// `ProjectImportDoors.importPictureRun` (six) is a door like its
+  /// neighbours — the run's files and its layer's name, the row's answers
+  /// as ONE (`settings`, as `importVideoFile` takes them), the drop's spot,
+  /// and the two the window's % and its failure count read, as the movie
+  /// and PDF doors take them. `importBakeLocked` (five) took `together`: a
+  /// run that comes in together is baked for the reason an expanded PSD
+  /// is, and the bake column asks this one function. The window's own
+  /// `_placeRun` stayed under (four: the row's answers are read inside).
+  /// 🔬The lane's scan against master (`1018781b8`, at 384) named those
+  /// two added and nothing gone.
+  const wideSignatures = 386;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -260,7 +341,68 @@ void main() {
   /// order) and the canvas area's `_layerBox` (116 — the row's pose under
   /// its folders and the four landings, each with the decision it
   /// carries). 🔬The lane's scan against master (`25fdf5106`, at 422).
-  const longBodies = 422;
+  ///
+  /// ⚠️422 → 421 on 2026-10-06, lowered as the rule asks (F-280, the one
+  /// fold): the selection layer's `_commitTransform` — three branches, one
+  /// per shape a box can be, each with its own copy of the landing — is
+  /// gone into `_foldOpenBox`, which every ending of a transform now takes.
+  /// 🔬The lane's scan against master (`973c69ed8`, at 422) named that one
+  /// and nothing added.
+  ///
+  /// ⚠️421 → 420 on 2026-10-06, lowered as the rule asks (F-289, the
+  /// viewer's transport): `pageTurnStrip` left the list with its leading
+  /// run — the media viewer's PLAY was its one tenant, and a document that
+  /// runs stands on the transport now. 🔬The lane's scan against master
+  /// (`5ebc1afe6`, at 421) named that one gone and nothing added.
+  ///
+  /// ⚠️420 → 419 on 2026-10-06, lowered as the rule asks (F-293, the piece
+  /// door): the pixel verbs' `_pastePixels` — the ladder walk, the selection
+  /// read a row, the cut and the landing in one body — is `pieceLandings`
+  /// and a reader of its selection, each under the line. 🔬The lane's scan
+  /// against master (`0b620fa9a`, at 420) named that one and nothing added.
+  ///
+  /// ⚠️419 → 418 on 2026-10-06, lowered as the rule asks (F-299, the mapped
+  /// buttons): the canvas tap's `toolTapHandler` — a tap per tool, with the
+  /// stamp's landing and the eyedropper's pick written out in its cases —
+  /// handed the stamp to `_stampAt` (F-293) and the pick to
+  /// `eyedropperPick`, which a held button asks too. 🔬The lane's scan
+  /// against master (`0b620fa9a`, at 420) named that one and the paste's,
+  /// and nothing added.
+  ///
+  /// ⚠️418 → 417 on 2026-10-06, lowered as the rule asks (F-289, the kinds
+  /// of the Cels tab): `paintInstructionCel` went with the renderer that
+  /// drew a direction block's WRITING — a direction row writes the pictures
+  /// drawn on it now, as every cel is written. 🔬The lane's scan against
+  /// master (`9683cd75e`, at 420) named that one gone and nothing added.
+  ///
+  /// ⚠️417 → 415 on 2026-10-06, lowered as the rule asks (F-289, the Cels
+  /// list under its preview): the window's `_previewZone` lost the list
+  /// that stood beside the preview, and `_celBundleItem` — a row of that
+  /// list — went with it. The board that took their place is cut into
+  /// named parts (`export_cels_board.dart`). 🔬The lane's scan against the
+  /// kinds lane (`0079de186`, at 419) named those two gone and nothing
+  /// added.
+  ///
+  /// ⚠️415 → 412 on 2026-10-06, lowered as the rule asks (F-289, the
+  /// timesheet and the cut envelope as kinds of the Cels tab): three
+  /// bodies of the export window went with the two tabs — `_envelopeModules`
+  /// (the strata picker and the layered files), and the envelope's and the
+  /// timesheet's arms of `_transportLine` and `_navBar`. 🔬The lane's scan
+  /// against the list lane (`4084bf788`, at 417) named those three gone and
+  /// nothing added.
+  ///
+  /// ⚠️412 → 411 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// preview as a canvas-base panel): the scrub bar's painter
+  /// (`_ExportScrubPainter.paint`) went with the bar — the preview's own
+  /// transport turns the picture. 🔬The lane's scan against the tabs lane
+  /// (`3eebdddec`, at 414) named that one gone and nothing added.
+  ///
+  /// ⚠️411 → 410 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// window without its name bar): `_nameBar` went — the name is a module
+  /// of the settings column and the place is asked when Export is pressed.
+  /// 🔬The lane's scan against its own preview commit (`8743ae700`, at 413)
+  /// named that one gone and nothing added.
+  const longBodies = 410;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -351,7 +493,36 @@ void main() {
   /// relative `'lib'` — the diff tool, handed an absolute root, read one
   /// class fewer on both trees — and `appDartFiles` answers for both now
   /// (ratchet-dev-exclusion-relative-root).
-  const longClasses = 59;
+  ///
+  /// ⚠️59 → 60 on 2026-10-07, ONE name: `CutFrameCompositeCache` crossed
+  /// (589 → 605) in F-289-Q21 — an export run borrows playback's line of the
+  /// memory allowance, and may hold no more than the caches will give back.
+  /// What the composites will not give back is what `enforceBudget` never
+  /// evicts, so its predicate came out of that method into one place
+  /// (`_isProtected`) that the eviction and the new count
+  /// (`protectedBytes`) both read — a second spelling of 「protected」 is the
+  /// thing the round would not write. 🔬`clean_code_diff` between master
+  /// and the lane names this one and no other class. ⛔Not split to fit:
+  /// the cache's eviction and what it holds back are one question.
+  ///
+  /// ⚠️60 → 61 on 2026-10-08, ONE name: `CutVerbs` crossed (590 → 603) in
+  /// I-79 D2b — a canvas resized on the canvas lands through
+  /// `placeActiveCutCanvas`, the active cut's canvas at a size with the
+  /// picture moved by an offset, beside `resizeActiveCutCanvas` that the
+  /// size window's anchors take. Both land through the coordinator's one
+  /// `placeCutCanvas`. 🔬`clean_code_diff` between master and the lane
+  /// names this one and no other class. ⛔Not split to fit: the active
+  /// cut's verbs are one conversation (its header says why), and folding
+  /// the anchor verb into the offset one would move the anchor's sum into
+  /// every caller that resizes about the middle.
+  ///
+  /// ⚠️61 → 60 on 2026-10-08, following one down (I-73, the conte row):
+  /// `_StoryboardTrackRow` left the count. Everything a conte PANEL answers
+  /// to — its press, its sweep, its edges, the button that makes a conte
+  /// layer — went to a row of its own (`_StoryboardConteRow`), and the cut
+  /// row kept what is the cut's. 🔬`clean_code_diff` between master and the
+  /// lane names that one gone and none added.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {

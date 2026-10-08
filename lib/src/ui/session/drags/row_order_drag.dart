@@ -381,10 +381,11 @@ class RowOrderDrag {
       return;
     }
     // THE RULE (user, 2026-08-09): ON a row is a STRUCTURAL drop — into the
-    // folder, or onto the base as its rider. BETWEEN rows is a move. That a
-    // full row of travel therefore stops being "nudge it past its
-    // neighbour" is not a collision, it is the point: the gap is where
-    // repositioning lives, and the gap is half a row away.
+    // folder, onto the base as its rider, or (F-312) into the group an
+    // attach row rides. BETWEEN rows is a move. That a full row of travel
+    // therefore stops being "nudge it past its neighbour" is not a
+    // collision, it is the point: the gap is where repositioning lives,
+    // and the gap is half a row away.
     //
     // The two read cleanly against the arithmetic already here — travelling
     // a whole number of rows preserves where in a row you grabbed, so a
@@ -400,9 +401,9 @@ class RowOrderDrag {
     );
     if (plan == null) {
       // Nothing there can swallow it — an SE row, a camera row, a base that
-      // already carries riders. The gap under the pointer is still a
-      // perfectly good landing, so the caret comes back rather than the drag
-      // going dead.
+      // already carries riders, an attach row of the run's own group. The
+      // gap under the pointer is still a perfectly good landing, so the
+      // caret comes back rather than the drag going dead.
       //
       // 🪦⑦ had ONE exception with a notice — a folder carrying a folder,
       // because an organizer was FLAT. 유저 2026-08-29 lifted that ban, so

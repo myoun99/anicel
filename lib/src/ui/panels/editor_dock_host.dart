@@ -53,6 +53,7 @@ class EditorDockHost extends StatelessWidget {
     this.compact = false,
     this.chromeless = false,
     this.stripAtBottom = false,
+    this.stripEdgeOutline = 0,
     this.trailing,
     this.collapsed = false,
   });
@@ -83,6 +84,10 @@ class EditorDockHost extends StatelessWidget {
   /// Moves the strip to the panel's bottom inner edge (the 문턱 of a
   /// floating region) — see [EditorPanelTabs.stripAtBottom].
   final bool stripAtBottom;
+
+  /// The width of an outline the region draws over the strip's outer edge —
+  /// see [EditorPanelTabs.stripEdgeOutline].
+  final double stripEdgeOutline;
 
   /// Controls belonging to the REGION rather than to a tab (collapse), put
   /// at the far end of the strip against the window frame.
@@ -128,6 +133,7 @@ class EditorDockHost extends StatelessWidget {
           compact: compact,
           chromeless: chromeless,
           stripAtBottom: stripAtBottom,
+          stripEdgeOutline: stripEdgeOutline,
           trailing: trailing,
           tabs: tabs,
           activeTabId: activeTabId,

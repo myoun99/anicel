@@ -124,6 +124,9 @@ class _PanelBuild {
             .memoizedHorizontalStripBar(),
         bottomBar: _state._shellBars.memoizedBottomBar(),
         pageStrip: _state.widget.pageStrip,
+        transport: _state.widget.transport,
+        documentName: _state.widget.documentName,
+        documentAbsent: _state.widget.documentAbsent,
         // The capsules float INSIDE what the panels left over.
         cover: _state.widget.floorCover,
         onFloor: _state._onFloor,
@@ -138,8 +141,23 @@ class _PanelBuild {
   /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
   /// deck takes no pointer at all, so every tool stands down for the pan at
   /// once, and the hand says what a press will do.
-  Widget _cursorDeck(BuildContext context) =>
-      PanHoldGate(child: _toolDeck(context));
+  ///
+  /// The mapped buttons are read INSIDE the gate, with the tools: what one
+  /// holds is a tool, and it stands down for the pan with the rest.
+  /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
+  /// layer took it — and after every control floating on the canvas has
+  /// claimed its own (pointer-down is dispatched deepest-first).
+  Widget _cursorDeck(BuildContext context) => PanHoldGate(
+    child: Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerHover: _state._mappedButtons.hover,
+      onPointerDown: _state._mappedButtons.down,
+      onPointerMove: _state._mappedButtons.move,
+      onPointerUp: _state._mappedButtons.up,
+      onPointerCancel: _state._mappedButtons.up,
+      child: _toolDeck(context),
+    ),
+  );
 
   /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
   /// the selection layer and the idle ants.
@@ -150,7 +168,13 @@ class _PanelBuild {
   /// sheets, which pass no underlay or overlay), and crossing it re-created
   /// the whole content — a sheet's every stratum re-recorded when its brush
   /// switch was touched.
-  Widget _toolDeck(BuildContext context) {
+  ///
+  /// Where every pill a tool raises may stand is given here, once, for
+  /// them all ([CanvasPillRoom]).
+  Widget _toolDeck(BuildContext context) =>
+      CanvasPillRoom(cover: _state._pillCover, child: _toolStack(context));
+
+  Widget _toolStack(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final controlsBuilder = _controlsBuilder;
     final underlayBuilder = _underlayBuilder;
@@ -209,6 +233,10 @@ class _PanelBuild {
         // strokes cannot start below the layer.
         if (_selectionLayerActive)
           _state._selectionLayer(underlayBuilder),
+        // R9-rest: the text tool owns the pointer while it is in hand — a
+        // press sets a text or takes hold of one, and no stroke starts
+        // below.
+        if (_state._text.layerMounted) _state._text.layer(),
         // R28-S: the selection is a DOCUMENT
         // fact, so its ants stay on screen under
         // every other tool too — that is what
@@ -253,8 +281,9 @@ class _PanelBuild {
       strokeActive: () =>
           _state._strokeActive ||
           _state._selectionDragActive ||
+          _state._textDragActive ||
           (_contentStrokeActive?.value ?? false),
-      touchLocked: () => _state._transformDragActive,
+      touchLocked: () => _state._modifierTouchDragActive,
       // Nothing drawn in the viewport (canvas, playback
       // frames, camera overlay) may paint outside the panel.
       child: ClipRect(
@@ -389,7 +418,7 @@ class _PanelBuild {
                   // it would be.
                   backdropNone: _state._stageBackdropNone,
                   pasteboardNone: _state._stagePasteboardNone,
-                  hasPasteboard: _state.widget.hasPasteboard,
+                  hasPasteboard: !_state.widget.canvasBase,
                   paperNone: _state.widget.paperNone,
                   canvasSize: _state.widget.canvasSize,
                   viewport: _state._viewportState._viewport,

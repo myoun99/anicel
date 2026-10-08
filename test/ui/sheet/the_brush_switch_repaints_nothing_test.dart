@@ -28,6 +28,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/track.dart';
@@ -42,6 +43,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -71,21 +73,23 @@ void main() {
   late ValueNotifier<bool> brushAllowed;
   late ValueNotifier<BrushToolState> brushTool;
 
-  BrushStrokeCommitData oneDab() => BrushStrokeCommitData(
-    sourceDabs: [
-      BrushDab(
-        center: CanvasPoint(x: 20, y: 20),
-        color: 0xFF000000,
-        size: 4,
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.round,
-        pressure: 1,
-        sequence: 0,
-      ),
-    ],
-  );
+  /// One dab at ([at], [down]) — [down] is [at] unless it is said.
+  BrushStrokeCommitData oneDab({double at = 20, double? down}) =>
+      BrushStrokeCommitData(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: at, y: down ?? at),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
 
   /// The screen, at [pixelRatio] image pixels to a logical one.
   Future<_Shot> shoot(WidgetTester tester, {double pixelRatio = 1}) async {
@@ -139,18 +143,43 @@ void main() {
             return (
               () => TimesheetTabHost(
                 session: session,
-                continuous: false,
-                onContinuousChanged: (_) {},
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
               ),
-              () => ink.commitStroke(
-                plane: TimesheetInkPlane.strip,
-                key: timesheetInkStripKey(session.requireActiveCut.id, 0),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
-              ),
+              () {
+                // On the sheet's FIRST row, where the playhead stands — 20
+                // of the sheet's units in from the strip's corner and half
+                // a row down, on the page's paper, in the ink's pixels (the
+                // paper's, F-294). Its
+                // highlight lies over the ink with the brush on as off
+                // (board: timesheet-playhead-row-over-ink): it lay over the
+                // print and under the live windows, and this dab sat on the
+                // second row to stay out of that question.
+                final cut = session.requireActiveCut;
+                final layout = TimesheetDocumentLayout(
+                  document: TimesheetDocument.fromCut(
+                    cut: cut,
+                    projectName: 'Switch',
+                    fps: session.projectSettings.projectFps,
+                  ),
+                );
+                final scale = layout.paperScale;
+                final corner =
+                    Offset(layout.halfLeft(0, 0), layout.halfRowsTop(0)) -
+                    layout.pageRect(0).topLeft;
+                ink.commitStroke(
+                  plane: null,
+                  key: timesheetInkPageKey(cut.id, 0),
+                  strokeData: oneDab(
+                    at: (corner.dx + 20) * scale,
+                    down:
+                        (corner.dy + TimesheetDocumentLayout.rowHeight / 2) *
+                        scale,
+                  ),
+                  historyManager: session.historyManager,
+                );
+              },
             );
           },
         ),

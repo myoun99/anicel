@@ -21,11 +21,12 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 컷 설정 — a cut names who does each stage's work where the work's staff
-/// is not the answer (유저 09-25: 작품 설정에는 기본값, 컷 설정에는 컷별
-/// 이름). A stage the cut does not name takes the work's; a 겸용 pair is one
-/// cut to the person naming it; and a pick for several cuts passes on the
-/// stages it changed, leaving every other stage as each cut has it.
+/// 컷 설정 — a cut names who does each stage's work but the conte's, the
+/// work's (유저 2026-10-08, F-291-Q1: 「원화 작업자나 시아게는 컷마다 다름 …
+/// 나머진 컷마다 스태프설정」). A 겸용 pair is one cut to the person naming
+/// it, and a pick for several cuts passes on the stages it changed, leaving
+/// every other stage as each cut has it. ↩️A stage the cut did not name took
+/// the work's (09-25: 작품 설정에는 기본값, 컷 설정에는 컷별 이름).
 void main() {
   const track = TrackId('track');
   const cut1 = CutId('cut-1');
@@ -33,6 +34,7 @@ void main() {
   const cut3 = CutId('cut-3');
   const key = LayerMark(process: LayerProcess.key);
   const layout = LayerMark(process: LayerProcess.layout);
+  const roughKey = LayerMark(process: LayerProcess.roughKey);
 
   Cut cut(
     CutId id,
@@ -48,7 +50,9 @@ void main() {
   );
 
   /// cut-1 and cut-2 are 겸용 (their one layer shares a cel bank), cut-2
-  /// naming its own 原画; cut-3 is on its own, naming its own layout.
+  /// naming its own 原画; cut-3 is on its own, naming its own layout. The
+  /// work holds a 原画 name in memory — what a file once held — that no cut
+  /// may print.
   ({
     ProjectRepository repository,
     CutCommandCoordinator cuts,
@@ -140,47 +144,55 @@ void main() {
     expect(staffOf(repository, cut3), {'layout': '清'});
   });
 
-  test('the sheets read the cut\'s name over the work\'s, and an empty name '
-      'gives the stage back to the work', () {
+  test('🎯the sheets read the cut\'s own names — the work\'s are no '
+      'fallback — and an emptied name prints nothing', () {
     final (:repository, :cuts, history: _) = fixture();
     Cut named(CutId id) => requireCut(repository.requireProject(), id);
-    final work = repository.requireProject().timesheetInfo;
+    String envelopeKey(CutId id) =>
+        buildCutEnvelopeSource(
+          project: repository.requireProject(),
+          cut: named(id),
+        ).staff['key'] ??
+        '';
+    String artist(CutId id) => TimesheetDocument.fromCut(
+      cut: named(id),
+      projectName: 'Project',
+      fps: 24,
+      info: repository.requireProject().timesheetInfo,
+    ).artist;
 
-    expect(work.staffNameForCut(named(cut1).metadata, key), '山田');
-    expect(work.staffNameForCut(named(cut2).metadata, key), '大川');
+    expect(envelopeKey(cut2), '大川', reason: 'the envelope prints its 原画');
     expect(
-      buildCutEnvelopeSource(
-        project: repository.requireProject(),
-        cut: named(cut2),
-      ).staff['key'],
-      '大川',
-      reason: 'the envelope prints the cut\'s 原画',
+      envelopeKey(cut3),
+      '',
+      reason: '⛔not the work\'s 山田 — a cut names its own',
     );
+
+    cuts.setCutStaffNames(cutIds: const [cut2], names: {roughKey: '林'});
     expect(
-      TimesheetDocument.fromCut(
-        cut: named(cut2),
-        projectName: 'Project',
-        fps: 24,
-        info: work,
-      ).artist,
-      '大川',
-      reason: 'the sheet\'s 作業者 is the cut\'s 原画',
+      artist(cut2),
+      '林',
+      reason: 'the sheet\'s 作業者 is the cut\'s 러프원화',
     );
+    expect(artist(cut3), '');
 
     cuts.setCutStaffNames(cutIds: const [cut2], names: {key: ''});
-
-    expect(staffOf(repository, cut2), isEmpty);
-    expect(work.staffNameForCut(named(cut2).metadata, key), '山田');
+    expect(staffOf(repository, cut2), {'rough-key': '林'});
+    expect(envelopeKey(cut2), '');
   });
 
+  // ↩️It also pinned that a conte's name in a cut's staff, as a file held
+  // it, was dropped on reading — what a file from before F-291-Q1 held
+  // (format 9). Those formats are refused by their number now (the save
+  // law, 유저 2026-10-06), and 컷 설정 offers only the stages a cut keeps.
   test('a cut\'s names travel with it through its file', () {
     final metadata = const CutMetadata(
-      note: 'n',
+      pageNotes: ['n'],
     ).withStaffName(key, '大川').withStaffName(layout, '清');
 
     expect(CutMetadata.fromJson(metadata.toJson()), metadata);
     expect(
-      CutMetadata.fromJson(const CutMetadata(note: 'n').toJson()).staff,
+      CutMetadata.fromJson(const CutMetadata(pageNotes: ['n']).toJson()).staff,
       isEmpty,
       reason: 'a cut naming no one writes nothing',
     );

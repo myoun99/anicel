@@ -4,7 +4,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 TransformPose _pose(double x, {double zoom = 1.0, double rotation = 0.0}) {
-  return TransformPose(
+  return TransformPose.uniform(
     center: CanvasPoint(x: x, y: x * 2),
     zoom: zoom,
     rotationDegrees: rotation,
@@ -68,7 +68,7 @@ void main() {
 
       expect(mid.center.x, 4.0);
       expect(mid.center.y, 8.0);
-      expect(mid.zoom, 2.0);
+      expect(mid.scale, uniformScale(2));
       // Rotation lerps as-is (no wrap): 0 → 360 passes through 180.
       expect(mid.rotationDegrees, 180.0);
     });
@@ -79,35 +79,6 @@ void main() {
       );
 
       expect(TransformTrack.fromJson(track.toJson()), track);
-    });
-
-    test('fromJson rejects duplicate keyframe indexes', () {
-      final pose = _pose(1).toJson();
-      expect(
-        () => TransformTrack.fromJson({
-          'keyframes': [
-            {'index': 3, 'pose': pose},
-            {'index': 3, 'pose': pose},
-          ],
-        }),
-        throwsFormatException,
-      );
-    });
-
-    test('legacy pose-keyed json migrates to synchronized property keys', () {
-      final legacy = {
-        'keyframes': [
-          {'index': 2, 'pose': _pose(10, zoom: 2, rotation: 45).toJson()},
-        ],
-      };
-
-      final track = TransformTrack.fromJson(legacy);
-
-      expect(track.position.keyAt(2)!.value, CanvasPoint(x: 10, y: 20));
-      expect(track.scale.keyAt(2)!.value, 2);
-      expect(track.rotation.keyAt(2)!.value, 45);
-      expect(track.anchorPoint.isEmpty, isTrue);
-      expect(track.opacity.isEmpty, isTrue);
     });
   });
 
@@ -130,7 +101,7 @@ void main() {
       // Position interpolates between ITS keys; scale falls back to the
       // default; rotation holds its single key.
       expect(mid.center.x, 50);
-      expect(mid.zoom, 3);
+      expect(mid.scale, uniformScale(3));
       expect(mid.rotationDegrees, 90);
     });
 
@@ -140,7 +111,7 @@ void main() {
           2,
           CanvasPoint(x: 5, y: 5),
         ),
-        scale: PropertyTrack<double>().withKey(8, 2),
+        scale: PropertyTrack<CanvasPoint>().withKey(8, uniformScale(2)),
       );
 
       expect(track.keyframes.keys, [2, 8]);
@@ -158,13 +129,15 @@ void main() {
               interpolation: PropertyKeyInterpolation.hold,
             )
             .withKey(10, CanvasPoint(x: 100, y: 0)),
-        scale: PropertyTrack<double>().withKey(0, 1).withKey(10, 3),
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(0, uniformScale(1))
+            .withKey(10, uniformScale(3)),
       );
 
       final mid = track.resolveAt(frameIndex: 5, orElse: () => _pose(0));
 
       expect(mid.center.x, 0, reason: 'position holds');
-      expect(mid.zoom, 2, reason: 'scale still lerps');
+      expect(mid.scale, uniformScale(2), reason: 'scale still lerps');
     });
 
     test('per-property json round-trips', () {
@@ -188,6 +161,87 @@ void main() {
         restored.position.keyAt(3)!.interpolation,
         PropertyKeyInterpolation.hold,
       );
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」.
+    test('the scale lane keys an axis apiece, and each lerps on its own', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 1, y: 4))
+            .withKey(10, CanvasPoint(x: 3, y: -2)),
+      );
+
+      final mid = track.resolveAt(frameIndex: 5, orElse: () => _pose(0));
+
+      expect(mid.scaleX, 2);
+      expect(mid.scaleY, 1);
+    });
+
+    test('a Scale keyed from 100 to −100 across resolves the frame between '
+        'them: nothing across, the whole way down', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>.empty()
+            .withKey(0, CanvasPoint(x: 1, y: 1))
+            .withKey(2, CanvasPoint(x: -1, y: 1)),
+      );
+
+      final halfway = track.resolveAt(frameIndex: 1, orElse: () => _pose(0));
+      expect(halfway.scaleX, 0);
+      expect(halfway.scaleY, 1);
+    });
+
+    test('an unkeyed scale lane takes BOTH of the default pose\'s scales', () {
+      final track = TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(0, 90),
+      );
+
+      final resolved = track.resolveAt(
+        frameIndex: 0,
+        orElse: () => TransformPose(
+          center: CanvasPoint(x: 0, y: 0),
+          scaleX: 2,
+          scaleY: -3,
+        ),
+      );
+
+      expect(resolved.scale, CanvasPoint(x: 2, y: -3));
+    });
+
+    test('a pose key writes its two scales and reads them back', () {
+      final pose = TransformPose(
+        center: CanvasPoint(x: 5, y: 6),
+        scaleX: 2,
+        scaleY: -1,
+        rotationDegrees: 15,
+      );
+
+      final track = TransformTrack.empty().withKeyframe(3, pose);
+
+      expect(track.scale.keyAt(3)!.value, CanvasPoint(x: 2, y: -1));
+      expect(track.keyframeAt(3), pose);
+      expect(track.keyframes, {3: pose});
+      expect(TransformTrack(keyframes: {3: pose}), track);
+    });
+
+    test('the two scales are saved as ONE two-number value, like Position', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          4,
+          CanvasPoint(x: 1.5, y: -0.5),
+          interpolation: PropertyKeyInterpolation.hold,
+        ),
+      );
+
+      final json = track.toJson();
+
+      expect(json['scale'], [
+        {
+          'index': 4,
+          'value': {'x': 1.5, 'y': -0.5},
+          'interpolation': 'hold',
+        },
+      ]);
+      expect(TransformTrack.fromJson(json), track);
     });
 
     test('pose-facade writes stay synchronized (camera compatibility)', () {

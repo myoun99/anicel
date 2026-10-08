@@ -10,9 +10,11 @@ import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
+import '../../models/track_conte_row.dart' show isTrackConteRow;
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
+import '../storyboard_layer_policy.dart' show conteLayerInHand;
 import '../timeline/timeline_row_span_resolver.dart'
     show resolveSelectionSpanRows;
 import '../timeline/timeline_section_policy.dart';
@@ -327,7 +329,7 @@ class RangeSelections {
   /// The comma edge and the frame-axis slide ask this one question; the
   /// delete/comma collector does NOT (it resolves the display form only
   /// and keeps a row whose commit form is null) — see
-  /// [cutLocalSelectionBlockStartsByLayer].
+  /// [selectionBlockStartsByLayer].
   List<({LayerId id, Layer display, Layer commit})> retimableSpanRows(
     TimelineFrameRangeSelection selection,
   ) {
@@ -835,12 +837,40 @@ class RangeSelections {
   /// the track-global one is already stated in commit keys. The two are
   /// mutually exclusive, so at most one answers.
   ///
-  /// The RESHAPING verbs' form (the comma set, the edge drags): a row whose
-  /// timing is not its own is passed over
-  /// ([RetimeLaw.standsDownFromRetime]).
+  /// THE COMMA's form: a row whose timing is not its own is passed over
+  /// ([cutRowWithTimingOfItsOwn]) — the answer the cursor's half of the
+  /// press reads too.
   Map<LayerId, List<int>>? selectionBlockStartsByLayer() =>
-      cutLocalSelectionBlockStartsByLayer() ??
+      _cutLocalBlockStartsByLayer(
+        passesOver: (id) => cutRowWithTimingOfItsOwn(id) == null,
+      ) ??
       trackSelectionBlockStartsByLayer();
+
+  /// [layerId]'s row in the cut, when its blocks are its own to give a
+  /// length: a SYNCED attach row owns no timing (a free one retimes like
+  /// any row), and an image row's one cel is pinned by the covering
+  /// normalization.
+  ///
+  /// ⛔Two of the retime law's three ([RetimeLaw.standsDownFromRetime]),
+  /// and the third is left out on purpose. A movie kept as a reference
+  /// reshapes never — no split, no gap, no squeeze — but a comma on its
+  /// one block is none of those: it is the END TRIM the video spec gives
+  /// that block.
+  ///
+  /// 🗣️F-283-Q1 (유저 2026-10-07): 「코마 = 끝 트림」 — 「서 있든 선택했든,
+  /// 참조 동영상 블록에 코마를 누르면 끝 엣지를 그 길이까지 끈 것과
+  /// 같아집니다」. ↩️The press's halves answered apart: the cursor's rung
+  /// asked this and gave the block its length, the selection's collector
+  /// asked the whole retime law and passed the block over, its buttons dark
+  /// (🧪measured 2026-10-06).
+  Layer? cutRowWithTimingOfItsOwn(LayerId layerId) {
+    final layer = _project.rangeLayerById(layerId);
+    return layer == null ||
+            isSyncedAttachedLayer(layer) ||
+            layer.kind.holdsSingleCel
+        ? null
+        : layer;
+  }
 
   /// The blocks a DELETE takes across the live selection — and the ones
   /// 링크 독립 reads its runs off.
@@ -864,9 +894,6 @@ class RangeSelections {
     return layer != null && isSyncedAttachedLayer(layer);
   }
 
-  Map<LayerId, List<int>>? cutLocalSelectionBlockStartsByLayer() =>
-      _cutLocalBlockStartsByLayer(passesOver: _retime.standsDownFromRetime);
-
   /// The cut-local selection's real block starts per row, in commit keys,
   /// over the rows [passesOver] does not name.
   Map<LayerId, List<int>>? _cutLocalBlockStartsByLayer({
@@ -881,9 +908,9 @@ class RangeSelections {
       // SYNCED attach rows hold no editable blocks of their own — their
       // mirror blocks are non-ghost now (the synced-block UI), so without
       // this gate a mirror-only selection would light up delete/comma
-      // verbs that then no-op against the stored-empty row. The reshaping
-      // verbs pass over the SINGLE-CEL (image) rows with them — see
-      // [EditorSessionManager.standsDownFromRetime].
+      // verbs that then no-op against the stored-empty row. The comma
+      // passes over the SINGLE-CEL (image) rows with them — see
+      // [cutRowWithTimingOfItsOwn].
       if (passesOver(id)) {
         continue;
       }
@@ -940,19 +967,57 @@ class RangeSelections {
     return byLayer.isEmpty ? null : byLayer;
   }
 
-  /// Re-snaps the selection to the SAME cels after a retime: each layer's
+  /// Re-snaps THE selection to the SAME cels after a retime: each layer's
   /// first retimed block kept its start; the span now ends where the last
   /// of its retimed blocks ends (max across layers).
-  void reselectRetimedSelection(
-    TimelineFrameRangeSelection selection,
-    Map<LayerId, List<int>> startsByLayer,
-  ) {
+  ///
+  /// [startsByLayer] is in COMMIT keys ([selectionBlockStartsByLayer]), so
+  /// each row is read in its commit form and its end brought back onto the
+  /// selection's own axis. ↩️It read the row the panel SHOWS: a track-owned
+  /// S row past the first cut holds no key as large as its commit starts
+  /// there, so nothing matched and the comma press let the selection go
+  /// (F-283, 🧪measured 2026-10-06 — the same axis the cursor's half missed).
+  ///
+  /// Whichever axis the selection is in, and over the rows it swept. ↩️A
+  /// band swept on the TRACK's axis was left where it stood, so the second
+  /// press found only the blocks still starting inside it (🧪measured the
+  /// same day: three sounds on ones, pressed 2 then 1, left the third on
+  /// twos); and the cut's band came back naming its layers alone, so a lane
+  /// it had swept was let go by the press.
+  void reselectRetimedSelection(Map<LayerId, List<int>> startsByLayer) {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      final end = _retimedEndOf(startsByLayer, behind: _project.rowAxisOffset);
+      _selection.frameRangeSelection.value = end == null
+          ? null
+          : inCut.endingAt(end);
+      return;
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack == null) {
+      return;
+    }
+    // The track's rows key the track's own axis: nothing lies behind it.
+    final end = _retimedEndOf(startsByLayer, behind: (_) => 0);
+    _selection.trackFrameRangeSelection.value = end == null
+        ? null
+        : onTrack.endingAt(end);
+  }
+
+  /// Where the last retimed block of [startsByLayer] ends now (max across
+  /// rows), each row's commit keys brought [behind] frames back onto the
+  /// axis asking. Null when no row answers.
+  int? _retimedEndOf(
+    Map<LayerId, List<int>> startsByLayer, {
+    required int Function(LayerId id) behind,
+  }) {
     int? end;
     for (final entry in startsByLayer.entries) {
-      final layer = _project.layerById(entry.key);
+      final layer = _project.commitLayerById(entry.key);
       if (layer == null) {
         continue;
       }
+      final offset = behind(entry.key);
       var remaining = entry.value.length;
       for (final timelineEntry in layer.timeline.entries) {
         if (timelineEntry.key < entry.value.first ||
@@ -960,7 +1025,8 @@ class RangeSelections {
             timelineEntry.value.ghost) {
           continue;
         }
-        final blockEnd = timelineEntry.key + timelineEntry.value.length!;
+        final blockEnd =
+            timelineEntry.key + timelineEntry.value.length! - offset;
         end = end == null ? blockEnd : math.max(end, blockEnd);
         remaining -= 1;
         if (remaining == 0) {
@@ -968,14 +1034,7 @@ class RangeSelections {
         }
       }
     }
-    _selection.frameRangeSelection.value = end == null
-        ? null
-        : TimelineFrameRangeSelection(
-            layerId: selection.layerId,
-            startIndex: selection.startIndex,
-            endIndexExclusive: end,
-            layerIds: selection.layerIds,
-          );
+    return end;
   }
 
   /// D40: whether the standing row has an authored span for
@@ -1010,6 +1069,12 @@ class RangeSelections {
   /// would select something (T25).
   ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
     final rowLayerId = switch (_currentRow()) {
+      // The storyboard's conte row is no cut's layer: it stands on the
+      // conte layer it has in hand, or on nothing (I-73).
+      final row when isTrackConteRow(row) => conteLayerInHand(
+        cut: _project.activeCutOrNull,
+        activeLayerId: _selection.activeLayerId,
+      )?.id,
       LayerRowAddress(:final layerId) => layerId,
       LaneRowAddress(:final layerId) => layerId,
       TrackRowAddress() => _selection.activeLayerId,

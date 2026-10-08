@@ -221,15 +221,16 @@ void main() {
   });
 
   testWidgets('유저 R4 #2: a canvas panel given NO stage colours takes the '
-      'shell\'s, so every canvas-based panel sits in the same room', (
-    tester,
-  ) async {
+      'shell\'s', (tester) async {
     // The drawing floor dug the project's colours out of the session and
     // passed them down; the timesheet, the conte, the cut envelope and the
     // media viewer construct `BrushCanvasPanel` without them and so sat on
     // the CONSTANT DEFAULT — four canvas panels on hard black while the
     // floor followed the project. Nothing about that was visible in a test,
     // because every colour test passed the colours in explicitly.
+    //
+    // ↩️F-272 (below) took those four back out of the room, onto black on
+    // purpose; the floor is who this pins now.
     //
     // ⚠️This test passes NONE, which is the whole point: it is the only
     // shape that can tell the scope apart from a default. Rip
@@ -346,6 +347,90 @@ void main() {
       (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2],
       own & 0xFFFFFF,
     );
+  });
+
+  testWidgets('🚨F-272: a canvas-base panel lies on BLACK — whatever the '
+      'room says, its absences, or a colour handed to the panel itself', (
+    tester,
+  ) async {
+    // 유저 2026-10-03: 「캔버스 베이스 패널들은 배경색 캔버스의 배경색
+    // 따라가는데, 그냥 검정색 고정/통일」. The stage of the tests above: the
+    // corner is backdrop, (438, 288) is where a pasteboard would be.
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+
+    Future<int Function(int x, int y)> capture({
+      bool canvasBase = true,
+      bool none = false,
+      int? own,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CanvasStageColors(
+              backdropArgb: 0xFF102030,
+              pasteboardArgb: 0xFF00A0FF,
+              backdropNone: none,
+              pasteboardNone: none,
+              child: RepaintBoundary(
+                key: const ValueKey<String>('canvas-base-capture'),
+                child: BrushCanvasPanel(
+                  coordinator: BrushCanvasFixture.createCoordinator(
+                    frameKeys: frameKeys,
+                  ),
+                  availableFrameKeys: frameKeys,
+                  cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                  canvasSize: BrushCanvasFixture.canvasSize,
+                  floorCover: EdgeInsets.zero,
+                  canvasBase: canvasBase,
+                  backdropArgb: own,
+                  viewport: seedFromRender(
+                    tester,
+                    CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey<String>('canvas-base-capture')),
+      );
+      final image = boundary.toImageSync();
+      late Uint8List bytes;
+      await tester.runAsync(() async {
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        bytes = data!.buffer.asUint8List();
+      });
+      image.dispose();
+      return (int x, int y) {
+        final i = (y * 900 + x) * 4;
+        return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      };
+    }
+
+    // The control: the same stage as the floor stands in the room — so the
+    // black below is the flag's doing, not a scope that never arrived. And
+    // the panel that turns canvas-base next is the same State, re-reading.
+    final floor = await capture(canvasBase: false);
+    expect(floor(2, 2), 0x102030, reason: 'the floor: the room\'s backdrop');
+    expect(floor(438, 288), 0x00A0FF, reason: 'the floor: its pasteboard');
+
+    for (final (said, rgbAt) in [
+      ('the room\'s colours', await capture()),
+      ('the room\'s planes absent', await capture(none: true)),
+      ('a backdrop of its own', await capture(own: 0xFF902010)),
+    ]) {
+      expect(rgbAt(2, 2), 0x000000, reason: 'the backdrop under $said');
+      expect(
+        rgbAt(438, 288),
+        0x000000,
+        reason: 'no pasteboard under $said — the stage is black there too',
+      );
+    }
   });
 
   testWidgets('R28 #9: both surface swatches mount right of the scrollbar, '

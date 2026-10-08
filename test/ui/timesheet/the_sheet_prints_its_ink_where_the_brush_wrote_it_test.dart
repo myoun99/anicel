@@ -17,10 +17,8 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 /// the windows the brush writes through ([timesheetInkWindows]), each
 /// window's surface laid by the one placement every sheet reads.
 ///
-/// A page's two halves share ONE band surface: the right half shows its
-/// lower rows. A printer that laid every surface from its window's corner
-/// would print a stroke written on the right half's 9th row nowhere at all
-/// — past the left window's foot, above the right window's head.
+/// A page's ink is that page's paper (F-252): a pixel of it prints on the
+/// paper where it was written, and on no other page.
 void main() {
   const cutId = CutId('c');
   final document = TimesheetDocument.fromCut(
@@ -28,45 +26,45 @@ void main() {
       id: cutId,
       name: '1',
       layers: const [],
-      duration: 144,
+      duration: 288,
       canvasSize: const CanvasSize(width: 1920, height: 1080),
     ),
     projectName: 'P',
     fps: 24,
   );
   final layout = TimesheetDocumentLayout(document: document);
-  const row = TimesheetDocumentLayout.rowHeight;
 
-  testWidgets('a stroke on the band\'s 81st row prints on the RIGHT half\'s '
-      '9th row, and nowhere on the left', (tester) async {
-    expect(document.halfFrameCount, 72, reason: 'fixture: two halves of 72');
-    // The band's surface down to frame 81, a stroke across frame 80's row.
-    const width = 40;
-    const height = (81 * row * timesheetInkScale) ~/ 1;
+  testWidgets('a stroke on a page prints where it was written on that '
+      'page, and nowhere on the next', (tester) async {
+    expect(layout.pageIndexes, [0, 1], reason: 'fixture: two pages');
+    // A square in the ink's pixels — the paper's
+    // ([TimesheetDocumentLayout.paperScale]) — 200 × 300 into the page.
+    const written = Offset(200, 300);
+    const side = 10.0;
+    final scale = layout.paperScale;
     final ink = (await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder).drawRect(
-        const Rect.fromLTWH(
-          0,
-          80 * row * timesheetInkScale,
-          width * 1.0,
-          row * timesheetInkScale,
+        Rect.fromLTWH(
+          written.dx * scale,
+          written.dy * scale,
+          side * scale,
+          side * scale,
         ),
         Paint()..color = const Color(0xFFFF0000),
       );
       final picture = recorder.endRecording();
-      final image = await picture.toImage(width, height);
+      final image = await picture.toImage(
+        ((written.dx + side) * scale).ceil(),
+        ((written.dy + side) * scale).ceil(),
+      );
       picture.dispose();
       return image;
     }))!;
     addTearDown(ink.dispose);
 
-    final band = timesheetInkStripKey(cutId, 0);
-    final windows = timesheetInkWindows(
-      layout: layout,
-      pagedLayout: layout,
-      cutId: cutId,
-    );
+    final first = timesheetInkPageKey(cutId, 0);
+    final windows = timesheetInkWindows(layout: layout, cutId: cutId);
     final size = layout.documentSize;
     final stride = size.width.ceil();
     // The red channel [at] on the sheet's ink stratum, with [live] keys
@@ -82,7 +80,7 @@ void main() {
         face: const TextStyle(),
         layers: const {SheetPaintLayer.ink},
         ink: [for (final window in windows) window.mark],
-        inkImageFor: (key) => key == band ? ink : null,
+        inkImageFor: (key) => key == first ? ink : null,
         liveInkKeys: live,
       ).paint(ui.Canvas(recorder), size);
       final drawn = recorder.endRecording();
@@ -99,21 +97,17 @@ void main() {
           pixels.getUint8((at.dy.round() * stride + at.dx.round()) * 4);
     }
 
-    final y = layout.halfRowsTop(0) + 8 * row + row / 2;
-    final right = Offset(layout.halfLeft(0, 1) + 5, y);
+    const middle = Offset(side / 2, side / 2);
+    final onFirst = layout.pageRect(0).topLeft + written + middle;
     final red = await printed();
+    expect(red(onFirst), 255, reason: 'where the brush wrote it');
     expect(
-      red(right),
-      255,
-      reason: 'the right half shows the band from its 73rd row',
-    );
-    expect(
-      red(Offset(layout.halfLeft(0, 0) + 5, y)),
+      red(layout.pageRect(1).topLeft + written + middle),
       0,
-      reason: 'the left half shows the band\'s first 72 rows',
+      reason: 'the next page\'s paper is its own',
     );
     expect(
-      (await printed(live: {band}))(right),
+      (await printed(live: {first}))(onFirst),
       0,
       reason: 'a window a live brush view shows is its own: the baked ink '
           'stands down, or translucent ink composites twice',

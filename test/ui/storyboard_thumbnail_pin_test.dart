@@ -24,15 +24,15 @@ ui.Size _original() => const ui.Size(1920, 1080);
 void main() {
   group('CutMetadata.thumbnailFrameIndex', () {
     test('serializes, omits null, and copyWith can CLEAR the pin', () {
-      const pinned = CutMetadata(note: 'memo', thumbnailFrameIndex: 7);
+      const pinned = CutMetadata(pageNotes: ['memo'], thumbnailFrameIndex: 7);
       expect(CutMetadata.fromJson(pinned.toJson()), pinned);
       expect(pinned.toJson()['thumbnailFrame'], 7);
 
-      const unpinned = CutMetadata(note: 'memo');
+      const unpinned = CutMetadata(pageNotes: ['memo']);
       expect(unpinned.toJson().containsKey('thumbnailFrame'), isFalse);
       expect(CutMetadata.fromJson(unpinned.toJson()), unpinned);
 
-      expect(pinned.copyWith(note: 'x').thumbnailFrameIndex, 7);
+      expect(pinned.withPageNote(0, 'x').thumbnailFrameIndex, 7);
       expect(pinned.copyWith(thumbnailFrameIndex: () => null), unpinned);
       expect(
         unpinned.copyWith(thumbnailFrameIndex: () => 3).thumbnailFrameIndex,

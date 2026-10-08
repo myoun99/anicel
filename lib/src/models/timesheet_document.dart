@@ -17,10 +17,12 @@ import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 
-/// The colour label whose worker a sheet's 作業者 box names — 원화. 유저
-/// 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의 원화
-/// 이름 인식하게하고」.
-const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.key);
+/// The colour label whose worker on the cut a sheet's 作業者 box names —
+/// 러프원화 (유저 2026-10-05, F-291: 「타임시트에 적히는 이름 기준이
+/// 원화이름인데, 그게아니라 레이아웃 아니면 러프원화의 이름임. 기본적으로
+/// 러프원화이름이면 될거같고」). ↩️It was the 원화 (09-25: 「…스태프의 원화
+/// 이름 인식하게하고」).
+const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.roughKey);
 
 /// How many paper pages [drawnFrameCount] rows fill at [pageFrameCount]
 /// rows a page — always at least one, and capped so junk data cannot ask
@@ -289,7 +291,7 @@ class TimesheetDocument {
     required this.title,
     required this.episode,
     required this.artist,
-    required this.memoText,
+    required this.pageMemos,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.seEmptyFill,
@@ -446,8 +448,8 @@ class TimesheetDocument {
     return TimesheetDocument._(
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
-      artist: info.staffNameForCut(cut.metadata, sheetArtistMark),
-      memoText: cut.metadata.note,
+      artist: cut.metadata.staffNameFor(sheetArtistMark),
+      pageMemos: cut.metadata.pageNotes,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
@@ -558,11 +560,15 @@ class TimesheetDocument {
   final String episode;
   final String artist;
 
-  /// The cut's Direction memo (the cut note) printed in the memo band —
-  /// per-cut data, editable in place on the sheet. Instruction shorthand
-  /// lines land HERE (auto-written once at creation, R5-⑥) instead of a
-  /// derived read-only list.
-  final String memoText;
+  /// The Direction memo printed in each page's memo band, by page
+  /// ([CutMetadata.pageNotes]) — editable in place on the sheet, the
+  /// person's alone. ↩️A new direction wrote its shorthand into it
+  /// (R5-⑥) until I-72 took that out.
+  final List<String> pageMemos;
+
+  /// The memo on page [page], empty where none is written (F-301).
+  String memoTextOf(int page) =>
+      page >= 0 && page < pageMemos.length ? pageMemos[page] : '';
 
   /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
   /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
@@ -753,27 +759,6 @@ class TimesheetDocument {
     }
     return cells;
   }
-}
-
-/// One memo-band line for an instruction event — the sheet shorthand the
-/// user writes by hand: `<A><mark><B> <name> <memo>`, e.g. 'A⋈ O.L' or
-/// 'C⋈D O.L カットO.L' (a single space before the memo — R4 dropped the
-/// parentheses). The mark glyph mirrors the def's markType (⋈ = the O.L
-/// bowtie, → = the bar); blank parts simply drop out.
-String timesheetMemoInstructionLine(
-  InstructionEvent event,
-  CameraInstructionDef? def,
-) {
-  final markGlyph =
-      (def?.markType ?? CameraInstructionMarkType.bar) ==
-          CameraInstructionMarkType.ol
-      ? '⋈'
-      : '→';
-  final endpoints = '${event.valueA ?? ''}$markGlyph${event.valueB ?? ''}';
-  final memo = event.memo;
-  final label =
-      '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : ' $memo'}';
-  return label.isEmpty ? endpoints : '$endpoints $label';
 }
 
 /// One layer's sheet-column cells, derived straight from the (possibly

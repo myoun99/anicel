@@ -36,7 +36,7 @@ final Project _project = Project(
 
 void main() {
   late CanvasPlaybackController controller;
-  AudioClockStatus? clock;
+  ClockReading? clock;
 
   setUp(() {
     clock = null;
@@ -55,17 +55,19 @@ void main() {
     controller.attachTicker(const TestVSync());
     controller.play(scope: PlaybackScope.activeCut);
 
-    clock = const AudioClockStatus(globalFrame: 2);
+    clock = const ClockReading(globalFrame: 2);
     // Five wall-clock seconds — the wall clock would be far past the end.
     await tester.pump(const Duration(seconds: 5));
     expect(controller.globalFrameIndexListenable.value, 2);
 
-    clock = const AudioClockStatus(globalFrame: 7);
+    clock = const ClockReading(globalFrame: 7);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.globalFrameIndexListenable.value, 7);
 
-    // Out-of-range readings clamp instead of tearing down playback.
-    clock = const AudioClockStatus(globalFrame: 99);
+    // Out-of-range readings clamp instead of tearing down playback. (97,
+    // not 99: taken round the end instead of clamped, 99 lands on the last
+    // frame as well.)
+    clock = const ClockReading(globalFrame: 97);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.globalFrameIndexListenable.value, 9);
     controller.stop();
@@ -76,14 +78,14 @@ void main() {
     controller.attachTicker(const TestVSync());
     controller.play(scope: PlaybackScope.activeCut);
 
-    clock = const AudioClockStatus(globalFrame: 0);
+    clock = const ClockReading(globalFrame: 0);
     await tester.pump(const Duration(milliseconds: 16));
-    clock = const AudioClockStatus(globalFrame: 4);
+    clock = const ClockReading(globalFrame: 4);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.droppedFrames, 3);
 
     // Wrap (the transport looped): a fresh pass starts clean.
-    clock = const AudioClockStatus(globalFrame: 0);
+    clock = const ClockReading(globalFrame: 0);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.droppedFrames, 0);
     controller.stop();
@@ -96,9 +98,22 @@ void main() {
     controller.loopMode = PlaybackLoopMode.once;
     controller.play(scope: PlaybackScope.activeCut);
 
-    clock = const AudioClockStatus(globalFrame: 9, ended: true);
+    clock = const ClockReading(globalFrame: 9, ended: true);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.isActive, isFalse, reason: 'the run should have stopped');
+  });
+
+  testWidgets('a clock that has NOT run out does not stop a play-once '
+      'run: the frame it says is shown', (tester) async {
+    controller.attachTicker(const TestVSync());
+    controller.loopMode = PlaybackLoopMode.once;
+    controller.play(scope: PlaybackScope.activeCut);
+
+    clock = const ClockReading(globalFrame: 4);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.isActive, isTrue);
+    expect(controller.globalFrameIndexListenable.value, 4);
+    controller.stop();
   });
 
   testWidgets('a null clock falls back to the wall-clock derivation', (

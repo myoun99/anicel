@@ -54,6 +54,9 @@ void main() {
   ProjectRepository repositoryWith(Project project) =>
       ProjectRepository(initialProject: project);
 
+  // ↩️The command carried the track's static opacity beside the switch, a
+  // null leaving either alone; the opacity went with the V row's bar (I-73,
+  // 2026-10-08) and the switch is what a track's display has left.
   group('UpdateTrackDisplayCommand', () {
     ProjectRepository open() => repositoryWith(
       projectWith(
@@ -66,83 +69,43 @@ void main() {
     Track trackOf(ProjectRepository repository) =>
         repository.requireProject().tracks.single;
 
-    test('opacity alone leaves the fx switch where it was', () {
+    UpdateTrackDisplayCommand bypass(
+      ProjectRepository repository, {
+      String description = 'Track fx',
+    }) => UpdateTrackDisplayCommand(
+      repository: repository,
+      trackId: const TrackId('t'),
+      description: description,
+      fxEnabled: false,
+    );
+
+    test('it writes the fx switch', () {
       final repository = open();
-      final before = trackOf(repository).fxEnabled;
+      expect(trackOf(repository).fxEnabled, isTrue, reason: 'premise');
 
-      UpdateTrackDisplayCommand(
-        repository: repository,
-        trackId: const TrackId('t'),
-        description: 'Track opacity',
-        opacity: 0.25,
-      ).execute();
+      bypass(repository).execute();
 
-      expect(trackOf(repository).opacity, 0.25);
-      expect(
-        trackOf(repository).fxEnabled,
-        before,
-        reason:
-            'null leaves that property alone — the opacity drag and the '
-            'fx switch share this command',
-      );
-    });
-
-    test('the fx switch alone leaves the opacity', () {
-      final repository = open();
-      UpdateTrackDisplayCommand(
-        repository: repository,
-        trackId: const TrackId('t'),
-        description: 'Track opacity',
-        opacity: 0.25,
-      ).execute();
-
-      UpdateTrackDisplayCommand(
-        repository: repository,
-        trackId: const TrackId('t'),
-        description: 'Track fx',
-        fxEnabled: false,
-      ).execute();
-
-      expect(trackOf(repository).opacity, 0.25);
       expect(trackOf(repository).fxEnabled, isFalse);
     });
 
     test('undo puts the whole previous project back', () {
       final repository = open();
-      final command = UpdateTrackDisplayCommand(
-        repository: repository,
-        trackId: const TrackId('t'),
-        description: 'Track opacity',
-        opacity: 0.25,
-      );
+      final command = bypass(repository);
 
       command.execute();
       command.undo();
 
-      expect(trackOf(repository).opacity, 1.0);
+      expect(trackOf(repository).fxEnabled, isTrue);
     });
 
     test('undo before execute is refused', () {
-      expect(
-        UpdateTrackDisplayCommand(
-          repository: open(),
-          trackId: const TrackId('t'),
-          description: 'Track opacity',
-          opacity: 0.25,
-        ).undo,
-        throwsStateError,
-      );
+      expect(bypass(open()).undo, throwsStateError);
     });
 
-    test('the description is the CALLER\'s — a drag says what it edited', () {
+    test('the description is the CALLER\'s — a press says what it did', () {
       expect(
-        UpdateTrackDisplayCommand(
-          repository: open(),
-          trackId: const TrackId('t'),
-          description: 'Drag the track opacity',
-          opacity: 0.25,
-        ).description,
-        'Drag the track opacity',
+        bypass(open(), description: 'Bypass track FX').description,
+        'Bypass track FX',
       );
     });
   });

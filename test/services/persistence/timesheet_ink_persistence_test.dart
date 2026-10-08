@@ -38,7 +38,7 @@ void main() {
   }
 
   test(
-    'timesheet ink round-trips through save/open, strip and page alike; a '
+    'timesheet ink round-trips through save/open, every page of it; a '
     'sheet whose CUT is gone prunes at LOAD; the main cel store never sees '
     'the namespace',
     () async {
@@ -53,18 +53,12 @@ void main() {
       final cut = session.requireActiveCut;
       final caches = session.renderCaches;
 
-      final band = timesheetInkStripKey(cut.id, 0);
+      final first = timesheetInkPageKey(cut.id, 0);
       final page = timesheetInkPageKey(cut.id, 1);
-      final gone = timesheetInkStripKey(const CutId('deleted-cut'), 0);
-      caches.timesheetInkStripStore.storeBakedSurface(band, inkSurface());
-      caches.timesheetInkPageStore.storeBakedSurface(
-        page,
-        inkSurface(seed: 2),
-      );
-      caches.timesheetInkStripStore.storeBakedSurface(
-        gone,
-        inkSurface(seed: 3),
-      );
+      final gone = timesheetInkPageKey(const CutId('deleted-cut'), 0);
+      caches.timesheetInkStore.storeBakedSurface(first, inkSurface());
+      caches.timesheetInkStore.storeBakedSurface(page, inkSurface(seed: 2));
+      caches.timesheetInkStore.storeBakedSurface(gone, inkSurface(seed: 3));
       await session.projectDoor.saveProjectToFile(
         path,
         asked: SaveAsked.byAPerson,
@@ -75,17 +69,17 @@ void main() {
       final opened = loaded.renderCaches;
 
       expect(
-        opened.timesheetInkStripStore.celHasRenderableContent(band),
+        opened.timesheetInkStore.celHasRenderableContent(first),
         isTrue,
-        reason: 'what was written over the frames reopens with the project',
+        reason: 'what was written on the paper reopens with the project',
       );
       expect(
-        opened.timesheetInkPageStore.celHasRenderableContent(page),
+        opened.timesheetInkStore.celHasRenderableContent(page),
         isTrue,
-        reason: 'and what was written on the paper, in its own store',
+        reason: 'every page of it',
       );
       expect(
-        opened.timesheetInkStripStore.celHasRenderableContent(gone),
+        opened.timesheetInkStore.celHasRenderableContent(gone),
         isFalse,
         reason: 'a deleted cut takes its sheet\'s ink with it',
       );

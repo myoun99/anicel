@@ -59,6 +59,12 @@ enum AppStrings {
   String shortcutCategory(String category, String fallback) =>
       _values['shortcutCategory.$category'] ?? fallback;
 
+  /// And for a shortcut preset's name (I-63), by the enum value's `name`: the
+  /// English is the preset's own. The app's own name is one word in every
+  /// language, so the anicel preset has no row anywhere.
+  String shortcutPresetName(String preset, String fallback) =>
+      _values['shortcutPreset.$preset'] ?? fallback;
+
   /// A menu entry's wording, by the stable id the menu bar already keys its
   /// widgets with. Same fallback contract as [shortcutLabel]: English lives
   /// at the call site, the other languages here. An id left untabled — the
@@ -66,11 +72,6 @@ enum AppStrings {
   /// the label it was given.
   String menuLabel(String id, String fallback) =>
       _values['menuAction.$id'] ?? fallback;
-
-  /// The rasterize verb's ONE name: the timeline menu's entry and the
-  /// reference popover's button say the same word for the same verb.
-  String get layerRasterizeLabel =>
-      menuLabel('layer-rasterize', 'Rasterize layer');
 
   /// 색 라벨의 공정·수정 이름과 축약어(I-4).
   ///
@@ -143,16 +144,10 @@ enum AppStrings {
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
-  /// The timesheet panel-frame position label: page view prints
-  /// '`<pageLabel>` N'.
-  String get pageLabel => _s('pageLabel');
-
-  /// The continuous-view position label.
-  String get continuousLabel => _s('continuousLabel');
-
   /// R26 #35/#13 — the shared CURSOR NOTICES: every refused action says
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
+  String get noticeNothingToCut => _s('noticeNothingToCut');
 
   /// The conte's pen on a cut with no conte row to draw into, while
   /// 「프레임 자동 생성」 is off (유저 2026-09-30, H51: 「콘티레이어없으면
@@ -320,12 +315,18 @@ enum AppStrings {
   String get deleteLayerTitle => _s('deleteLayerTitle');
 
   /// '{name}' is replaced with the layer name.
-  String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
+  String get deleteLayersMessage => _s('deleteLayersMessage');
+  String get deleteLayersHeading => _s('deleteLayersHeading');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
 
   /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
   /// 아니라 복수 대응을 기본으로」) — the frames are the list under it.
   String get frameNameConflictBody => _s('frameNameConflictBody');
+
+  /// The same notice said of a LINKED PASTE onto another row (I-71): the
+  /// frames listed are the row's own, already holding the names — what
+  /// is not brought is the copied drawing, not theirs.
+  String get linkedPasteConflictBody => _s('linkedPasteConflictBody');
 
   /// The fold over the frames a name link would join.
   String get frameNameConflictListHeading =>
@@ -352,9 +353,9 @@ enum AppStrings {
   String get convertLinkedCutBodyTemplate => _s('convertLinkedCutBodyTemplate');
   String get convertLinkedCutTargetLabel => _s('convertLinkedCutTargetLabel');
 
-  /// '{names}' is the comma-joined layer list.
-  String get convertLinkedCutLinksTemplate =>
-      _s('convertLinkedCutLinksTemplate');
+  /// The heading over the layers it links.
+  String get convertLinkedCutLinksHeading =>
+      _s('convertLinkedCutLinksHeading');
 
   /// '{cut}' the target cut. The origin's picture wins each same-name
   /// conflict (원본 승리) — announced up front, the drawings it replaces
@@ -370,13 +371,13 @@ enum AppStrings {
   String get convertLinkedCutJoiningTemplate =>
       _s('convertLinkedCutJoiningTemplate');
 
-  /// '{cut}' gains '{names}'.
-  String get convertLinkedCutTargetGainsTemplate =>
-      _s('convertLinkedCutTargetGainsTemplate');
+  /// The heading over the layers '{cut}' gains.
+  String get convertLinkedCutTargetGainsHeadingTemplate =>
+      _s('convertLinkedCutTargetGainsHeadingTemplate');
 
-  /// '{names}' join THIS cut.
-  String get convertLinkedCutOriginGainsTemplate =>
-      _s('convertLinkedCutOriginGainsTemplate');
+  /// The heading over the layers THIS cut gains.
+  String get convertLinkedCutOriginGainsHeading =>
+      _s('convertLinkedCutOriginGainsHeading');
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
   String get convertLinkedCutResizeFirst => _s('convertLinkedCutResizeFirst');
@@ -407,18 +408,29 @@ enum AppStrings {
   // --- Project lifecycle confirmations ---
   String get closeProjectTitle => _s('closeProjectTitle');
 
-  /// The project popover's first row: a new project in a tab of its own
-  /// (I-7).
-  String get newProject => _s('newProject');
-
   /// A never-saved project's tab (I-7); `{n}` is its number this run.
   String get untitledProjectTab => _s('untitledProjectTab');
 
   /// Save As pointed at a file another tab has open (I-7).
   String get fileOpenInAnotherTab => _s('fileOpenInAnotherTab');
+
+  /// A project the format numbers refuse, as the open door says it
+  /// (`fileErrorWords`): one sentence, and the older one says the
+  /// file's format (the save law, 유저 2026-10-06).
+  String get openNewerFormat => _s('openNewerFormat');
+  String openOlderFormat(int saved, int oldest) =>
+      _s('openOlderFormatTemplate')
+          .replaceAll('{saved}', '$saved')
+          .replaceAll('{oldest}', '$oldest');
   String get closeProjectBody => _s('closeProjectBody');
   String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
+
+  /// 「다른 이름으로 저장」 as the row that opens its formats wears it —
+  /// the verb and nothing after it, since what it opens is a second
+  /// level, not a window (backlog-21-Q1) — and as the formats' actions
+  /// are named over it (「다른 이름으로 저장: PNG」).
+  String get saveAsTitle => _s('saveAsTitle');
 
   /// The window a manual save puts in front of itself, running and finished.
   ///
@@ -508,8 +520,10 @@ enum AppStrings {
   String get canvasHeightLabel => _s('canvasHeightLabel');
 
   /// '{min}'/'{max}' are the dimension bounds.
-  String get canvasAnchorHelpTemplate => _s('canvasAnchorHelpTemplate');
-  String get canvasPresetDefault => _s('canvasPresetDefault');
+  String get canvasSizePresets => _s('canvasSizePresets');
+  String get canvasAdjustOnCanvas => _s('canvasAdjustOnCanvas');
+  String get cameraRatioFree => _s('cameraRatioFree');
+  String get cameraRatioCurrent => _s('cameraRatioCurrent');
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
@@ -537,6 +551,7 @@ enum AppStrings {
   String get inputRotationLockHelp => _s('inputRotationLockHelp');
   String get inputRotationSnap => _s('inputRotationSnap');
   String get inputZoomSnaps => _s('inputZoomSnaps');
+  String get inputZoomCeiling => _s('inputZoomCeiling');
   String get inputBrushSizeSnaps => _s('inputBrushSizeSnaps');
   String get inputTabletHeading => _s('inputTabletHeading');
   String get inputTabletStandard => _s('inputTabletStandard');
@@ -630,7 +645,6 @@ enum AppStrings {
   /// A line of the notice's fold: the platform's own words.
   String saveFailedErrorLine(String error) =>
       _s('saveFailedErrorLineTemplate').replaceAll('{error}', error);
-  String get failedCopyBackUp => _s('failedCopyBackUp');
   String get failedCopyPickTitle => _s('failedCopyPickTitle');
   String get failedCopyVanishOnClose => _s('failedCopyVanishOnClose');
   String get failedCopyBackingUp => _s('failedCopyBackingUp');
@@ -685,10 +699,10 @@ enum AppStrings {
   String get sheetFillOn => _s('sheetFillOn');
   String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
+  String get conteCoverPage => _s('conteCoverPage');
+  String get conteBlankPage => _s('conteBlankPage');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
-  String get sheetViewPage => _s('sheetViewPage');
-  String get sheetViewContinuous => _s('sheetViewContinuous');
 
   // --- The instruction vocabulary and its events ---
   String get instructionsTitle => _s('instructionsTitle');
@@ -703,7 +717,6 @@ enum AppStrings {
   String get instructionNameLabel => _s('instructionNameLabel');
   String get instructionStartLabel => _s('instructionStartLabel');
   String get instructionEndLabel => _s('instructionEndLabel');
-  String get instructionMemoLabel => _s('instructionMemoLabel');
   String get instructionEditSetButton => _s('instructionEditSetButton');
   String get instructionEditorIcon => _s('instructionEditorIcon');
   String get instructionEditorColor => _s('instructionEditorColor');
@@ -711,7 +724,6 @@ enum AppStrings {
   String get systemStatusHelp => _s('systemStatusHelp');
 
   // --- The timeline action toolbar and its flyouts ---
-  String get tlAddLayerHeader => _s('tlAddLayerHeader');
   String get tlNoLayers => _s('tlNoLayers');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
@@ -802,23 +814,15 @@ enum AppStrings {
   /// Japanese keeps the trade word のりしろ; every other language says its own
   /// word for MARGIN, because のりしろ is not borrowed outside Japanese.
   String get tlNoriShiro => _s('tlNoriShiro');
-  String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
-  String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
-  String get tlAttachSyncedAbove => _s('tlAttachSyncedAbove');
-  String get tlAttachSyncedBelow => _s('tlAttachSyncedBelow');
   String get tlLayerCommands => _s('tlLayerCommands');
   String get tlFrameCommands => _s('tlFrameCommands');
   String get tlLayer => _s('tlLayer');
   String get tlFrame => _s('tlFrame');
-  String get tlDuplicateLayer => _s('tlDuplicateLayer');
-  String get tlSelectRowSpan => _s('tlSelectRowSpan');
-  String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   /// I-25: the link window's button, and why it is off on a linked cut's row.
   String get linkWindowUnlink => _s('linkWindowUnlink');
   String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlRenameLayer => _s('tlRenameLayer');
-  String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
@@ -831,22 +835,19 @@ enum AppStrings {
   /// ⑦: the one landing a folder attach has no home for — an organizer
   /// folder is FLAT, so a folder carrying a folder cannot become one.
 
-  String get tlDetachLayer => _s('tlDetachLayer');
 
   /// 폴더가 어태치가 될 때 fx 를 잃는다는 확인창(유저 2026-08-29). ⚠️「fx」는
   /// **fx 를 펼쳐서 보이는 전부**다 — 네임태그·트랜스폼·추가 fx. 그래서 문장도
   /// 나눠 쓰지 않고 「fx」 하나로 말한다.
   String get tlAttachDropsFxTitle => _s('tlAttachDropsFxTitle');
   String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
+  String get tlAttachDropsFxRows => _s('tlAttachDropsFxRows');
 
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
 
-  /// The shared pill's link-independent button (I-45) — the user's own
-  /// word for it, 「링크 독립」.
-  String get tlSharedUnlink => _s('tlSharedUnlink');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
@@ -856,7 +857,6 @@ enum AppStrings {
   /// … 프레임 알약 안, 중간나누기 버튼 오른쪽에 두도록」. The key follows the
   /// control: this is a timeline string now, and the `br` prefix would have
   /// pointed the next reader at a panel it no longer lives in.
-  String get tlAutoFrame => _s('tlAutoFrame');
 
   /// Design D: the rigid shove as a verb. PUSH opens frames at the anchor
   /// and everything after travels with its spacing; PULL closes them and
@@ -903,7 +903,6 @@ enum AppStrings {
   String get tlCustom => _s('tlCustom');
   String get tlShowSeRows => _s('tlShowSeRows');
   String get tlShowCameraRows => _s('tlShowCameraRows');
-  String get tlStoryboardLayer => _s('tlStoryboardLayer');
 
   // --- The cut command group ---
   /// The cut PILL's name cell — the noun itself, beside [tlLayer] and
@@ -912,15 +911,7 @@ enum AppStrings {
   String get tlCut => _s('tlCut');
   String get cutCommands => _s('cutCommands');
   String get cutAddCut => _s('cutAddCut');
-  String get cutNewCut => _s('cutNewCut');
-  String get cutDuplicateCut => _s('cutDuplicateCut');
-  String get cutDuplicateActive => _s('cutDuplicateActive');
-  String get cutRename => _s('cutRename');
-  String get cutEditNote => _s('cutEditNote');
-  String get cutSettings => _s('cutSettings');
   String get cutSettingsTitle => _s('cutSettingsTitle');
-  String get cutMoveLeft => _s('cutMoveLeft');
-  String get cutMoveRight => _s('cutMoveRight');
   String get cutDelete => _s('cutDelete');
 
   // --- The media pool ---
@@ -1015,7 +1006,10 @@ enum AppStrings {
   String get panelColorPalette => _s('panelColorPalette');
   String get transportIn => _s('transportIn');
   String get transportOut => _s('transportOut');
+  String get transportToStart => _s('transportToStart');
+  String get transportToEnd => _s('transportToEnd');
   String get transportLoop => _s('transportLoop');
+  String get transportOnce => _s('transportOnce');
   String get transportPrevFrame => _s('transportPrevFrame');
   String get transportNextFrame => _s('transportNextFrame');
   String get colorRecent => _s('colorRecent');
@@ -1066,6 +1060,7 @@ enum AppStrings {
   String get shortcutTitle => _s('shortcutTitle');
   String get shortcutResetAll => _s('shortcutResetAll');
   String get shortcutResetToDefault => _s('shortcutResetToDefault');
+  String get shortcutUnassign => _s('shortcutUnassign');
   String get shortcutRecordNew => _s('shortcutRecordNew');
   String get shortcutTouch => _s('shortcutTouch');
   String get shortcutSearch => _s('shortcutSearch');
@@ -1073,7 +1068,10 @@ enum AppStrings {
   String get shortcutRecordingHint => _s('shortcutRecordingHint');
 
   // --- Playback transport and the sheet page rail ---
-  String get playbackQuality => _s('playbackQuality');
+  String get playbackMode => _s('playbackMode');
+  String get playbackModeSkipFrames => _s('playbackModeSkipFrames');
+  String get playbackModeEveryPicture => _s('playbackModeEveryPicture');
+  String get playbackModeRenderFirst => _s('playbackModeRenderFirst');
   String get playbackStop => _s('playbackStop');
   String get sheetPreviousPage => _s('sheetPreviousPage');
   String get sheetNextPage => _s('sheetNextPage');
@@ -1094,7 +1092,6 @@ enum AppStrings {
   String get exImage => _s('exImage');
   String get exVideo => _s('exVideo');
   String get exCels => _s('exCels');
-  String get exSheetPng => _s('exSheetPng');
   String get exFormat => _s('exFormat');
   String get exOptions => _s('exOptions');
   String get exNaming => _s('exNaming');
@@ -1104,21 +1101,38 @@ enum AppStrings {
   String get exBitrate => _s('exBitrate');
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
-  String get exBrowse => _s('exBrowse');
-  String get exHandOverWhenDone => _s('exHandOverWhenDone');
   String get exHandOverDeclined => _s('exHandOverDeclined');
+  String get exHandOverPending => _s('exHandOverPending');
+  String get exHandOverPickAgain => _s('exHandOverPickAgain');
+  String get exHandOverDiscard => _s('exHandOverDiscard');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
   String get exBaseName => _s('exBaseName');
   String get exSuffix => _s('exSuffix');
+  String get exPrefix => _s('exPrefix');
+
+  /// The Cels list's band: what is laid over the drawing shown (F-289).
+  String get exLayDirection => _s('exLayDirection');
+  String get exCelFormat => _s('exCelFormat');
+  String get exTimesheetFormat => _s('exTimesheetFormat');
+  String get exEnvelopeFormat => _s('exEnvelopeFormat');
+
+  /// Why a drawing of the Cels list is no file as things stand — said at
+  /// the pointer when its block is pressed (유저 2026-10-06: 「나갈 수 없는
+  /// 그림은 작동하려하면 이유 띄우자」).
+  String get noticeExportRowOff => _s('noticeExportRowOff');
+  String get noticeExportNoPicture => _s('noticeExportNoPicture');
+  String get noticeExportNotPlaced => _s('noticeExportNotPlaced');
+  String get noticeExportSameName => _s('noticeExportSameName');
+  String get noticeExportRidesBase => _s('noticeExportRidesBase');
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exApplyLayerFxHelp => _s('exApplyLayerFxHelp');
   String get exMuxSeMix => _s('exMuxSeMix');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
-  String get exAdd => _s('exAdd');
-  String get exSelect => _s('exSelect');
+  String get exKinds => _s('exKinds');
+  String get exLayerFilter => _s('exLayerFilter');
   String get exSelBase => _s('exSelBase');
   String get exSelAttach => _s('exSelAttach');
   String get exSelSheet => _s('exSelSheet');
@@ -1141,26 +1155,16 @@ enum AppStrings {
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
   String get exBackground => _s('exBackground');
-  String get exChooseLocation => _s('exChooseLocation');
   String get exNoCels => _s('exNoCels');
   String get exNoCuts => _s('exNoCuts');
   String get exPresets => _s('exPresets');
   String get exQueue => _s('exQueue');
   String get exSize => _s('exSize');
 
-  /// The cut envelope's own words: its form (서식), the paper it prints on
-  /// and the layers it paints.
-  String get exForm => _s('exForm');
+  /// The paper a cut envelope is written on: the cut's own pixels, or the
+  /// real envelope's.
   String get exCutSize => _s('exCutSize');
   String get exRealSheet => _s('exRealSheet');
-  String get exWidth => _s('exWidth');
-  String get exSheetLayers => _s('exSheetLayers');
-  String get exContent => _s('exContent');
-  String get exInk => _s('exInk');
-  String get exPictureLayer => _s('exPictureLayer');
-  String get exFiles => _s('exFiles');
-  String get exOneImage => _s('exOneImage');
-  String get exOnePerLayer => _s('exOnePerLayer');
 
   /// A count said with its noun: `<key>One` at one, `<key>` otherwise — a
   /// language whose noun does not change simply says the same word twice.
@@ -1177,16 +1181,13 @@ enum AppStrings {
   String exFrameCount(int count) => _count('exFrameCount', count);
   String exPageCount(int count) => _count('exPageCount', count);
   String exFileCount(int count) => _count('exFileCount', count);
-  String exLabelCount(int count) => _count('exLabelCount', count);
+
+  /// How many files the Cels tab writes, said over its list: a cel, a page
+  /// of a timesheet and a cut envelope are counted alike — in sheets, where
+  /// the language counts them so (장 · 枚 · 张).
+  String exWrittenCount(int count) => _count('exWrittenCount', count);
   String exJobCount(int count) => _count('exJobCount', count);
-  String exLayerCount(int count) => _count('exLayerCount', count);
-  String exPngCount(int count) => _count('exPngCount', count);
-  String exXdtsSheetCount(int count) => _count('exXdtsSheetCount', count);
-  String exSheetPageCount(int count) => _count('exSheetPageCount', count);
   String exContePageCount(int count) => _count('exContePageCount', count);
-  String exEnvelopeCount(int count) => _count('exEnvelopeCount', count);
-  String exEnvelopeFileCount(int count) =>
-      _count('exEnvelopeFileCount', count);
 
   /// How an export ends — the status line's sentences, each taking a count
   /// already said with its noun. ⚠️A name or a cut goes in LAST: it is the
@@ -1208,13 +1209,8 @@ enum AppStrings {
   String exDoneContePdf(String count) =>
       _s('exDoneContePdfTemplate').replaceAll('{count}', count);
   String get exNothingInFrame => _s('exNothingInFrame');
-  String get exExporting => _s('exExporting');
-  String exExportingProgress(int done, int total) => _s(
-    'exExportingProgressTemplate',
-  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
   String exFailed(Object error) =>
       _s('exFailedTemplate').replaceAll('{error}', '$error');
-  String get exRenderingQueue => _s('exRenderingQueue');
   String exQueueRest(String count, {required int failed, required bool kept}) =>
       _s('exQueueRestTemplate')
           .replaceAll(
@@ -1226,108 +1222,27 @@ enum AppStrings {
           .replaceAll('{rest}', kept ? _s('exQueueRestKept') : '')
           .replaceAll('{count}', count);
 
-  /// The preview's position line and the sentence under it: what the tab
-  /// would write, in that tab's own terms.
-  String exInvalidInOut({required int frame, required String cut}) =>
-      _s(
-        'exInvalidInOutTemplate',
-      ).replaceAll('{frame}', '$frame').replaceAll('{cut}', cut);
-  String exInOut({
-    required int inFrame,
-    required int outFrame,
-    required int count,
-    required int frame,
-    required String cut,
-  }) => _s('exInOutTemplate')
-      .replaceAll('{in}', '$inFrame')
-      .replaceAll('{out}', '$outFrame')
-      .replaceAll('{count}', '$count')
-      .replaceAll('{frame}', '$frame')
-      .replaceAll('{cut}', cut);
-  String exInvalidRange(int duration) =>
-      _s('exInvalidRangeTemplate').replaceAll('{duration}', '$duration');
-  String exSequenceCamera(String frames, int width, int height) =>
-      _s('exSequenceCameraTemplate')
-          .replaceAll('{w}', '$width')
-          .replaceAll('{h}', '$height')
-          .replaceAll('{frames}', frames);
-  String exSequenceCanvas(String frames, int width, int height) =>
-      _s('exSequenceCanvasTemplate')
-          .replaceAll('{w}', '$width')
-          .replaceAll('{h}', '$height')
-          .replaceAll('{frames}', frames);
-  String exSequencePerCut(String frames) =>
-      _s('exSequencePerCutTemplate').replaceAll('{frames}', frames);
-  String exImageHeadline({
-    required int frame,
-    required String cut,
-    required int width,
-    required int height,
-  }) => _s('exImageHeadlineTemplate')
-      .replaceAll('{frame}', '$frame')
-      .replaceAll('{w}', '$width')
-      .replaceAll('{h}', '$height')
-      .replaceAll('{cut}', cut);
-  String exCelsHeadline({
-    required String labels,
-    required String files,
-    required String background,
-    required String format,
-  }) => _s('exCelsHeadlineTemplate')
-      .replaceAll('{labels}', labels)
-      .replaceAll('{files}', files)
-      .replaceAll('{background}', background)
-      .replaceAll('{format}', format);
-  String get exTransparent => _s('exTransparent');
-  String get exOpaque => _s('exOpaque');
-  String exSheetImageHeadline(String pages) =>
-      _s('exSheetImageHeadlineTemplate').replaceAll('{pages}', pages);
-  String exXdtsHeadline(String sheets) =>
-      _s('exXdtsHeadlineTemplate').replaceAll('{sheets}', sheets);
-  String exContePdfHeadline(String pages) =>
-      _s('exContePdfHeadlineTemplate').replaceAll('{pages}', pages);
-  String exContePngHeadline(String pages) =>
-      _s('exContePngHeadlineTemplate').replaceAll('{pages}', pages);
-  String exEnvelopeHeadline({
-    required String sheets,
-    required String files,
-    required String paper,
-    required String layered,
-  }) => _s('exEnvelopeHeadlineTemplate')
-      .replaceAll('{sheets}', sheets)
-      .replaceAll('{files}', files)
-      .replaceAll('{layered}', layered)
-      .replaceAll('{paper}', paper);
-  String get exEnvelopePaperCut => _s('exEnvelopePaperCut');
-  String exEnvelopePaperSheet(int width) =>
-      _s('exEnvelopePaperSheetTemplate').replaceAll('{w}', '$width');
-  String exEnvelopeLayered(int count) =>
-      _s('exEnvelopeLayeredTemplate').replaceAll('{n}', '$count');
 
   /// The file bar's words and the modules' one-line summaries.
   String get exFileLabel => _s('exFileLabel');
-  String get exPatternLabel => _s('exPatternLabel');
-  String get exLocationLabel => _s('exLocationLabel');
-  String get exChooseFolder => _s('exChooseFolder');
+  /// The order an export takes on this machine, said beside its button —
+  /// 🗣️F-221 (유저 2026-10-06): 「ios : 출력한 후 위치를 지정합니다 이런식으로
+  /// os별로 어떻게 동작하는지 적어두고싶어. 그럼 알기쉬우니까」 · 「윈도우 :
+  /// 위치를 지정하고 출력합니다 이런식으로 써주도록?」. ⚠️The one line of
+  /// explanation this window carries: the user asked for it by name.
+  String get exOrderAsksFirst => _s('exOrderAsksFirst');
+  String get exOrderAsksAfter => _s('exOrderAsksAfter');
   String exSeMuxed(String codec) =>
       _s('exSeMuxedTemplate').replaceAll('{codec}', codec);
   String get exVectorPdf => _s('exVectorPdf');
-  String get exPagePng => _s('exPagePng');
   String get exFxOn => _s('exFxOn');
   String get exFxOff => _s('exFxOff');
-  String exSheetWidth(int width) =>
-      _s('exSheetWidthTemplate').replaceAll('{w}', '$width');
-  String exSeparatePngs(int count) =>
-      _s('exSeparatePngsTemplate').replaceAll('{n}', '$count');
-  String exFlatLayers(int count) =>
-      _s('exFlatLayersTemplate').replaceAll('{n}', '$count');
 
   /// The rails: the tab names the presets say, the render queue and its jobs,
   /// the cut grid, and why a format cannot be picked here.
   String get exTabSequence => _s('exTabSequence');
   String get exSizeCamera => _s('exSizeCamera');
   String get exSizeCanvas => _s('exSizeCanvas');
-  String get exSheetImage => _s('exSheetImage');
   String get exPageImage => _s('exPageImage');
   String get exSaveCurrent => _s('exSaveCurrent');
   String get exRenderQueue => _s('exRenderQueue');
@@ -1399,6 +1314,15 @@ enum AppStrings {
   String get imBake => _s('imBake');
   String get imSound => _s('imSound');
   String get imSoundOnly => _s('imSoundOnly');
+  String get imRun => _s('imRun');
+  String get imRunTogether => _s('imRunTogether');
+  String get imRunAlone => _s('imRunAlone');
+  String imRunSpan(String first, String last, int count) => _s(
+    'imRunSpanTemplate',
+  )
+      .replaceAll('{first}', first)
+      .replaceAll('{last}', last)
+      .replaceAll('{n}', '$count');
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitContain => _s('imFitContain');
@@ -1412,13 +1336,17 @@ enum AppStrings {
   String get imPsdMerge => _s('imPsdMerge');
   String get imPsdExpand => _s('imPsdExpand');
 
-  /// What the file doors say themselves — the two refusals an open can end
-  /// in, the picture a cel could not read, and the two the .tvpp door adds
-  /// to a converted project's notice.
+  /// What the file doors say themselves — the refusals an open can end in,
+  /// the picture a cel could not read, and the two the .tvpp door adds to a
+  /// converted project's notice.
   String get imNotTvpp => _s('imNotTvpp');
+  String get imNotClip => _s('imNotClip');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
       _s('imNotFoundTemplate').replaceAll('{path}', path);
+
+  /// The folder a CLIP STUDIO cel's hidden layers stand in, its eye off.
+  String get clipHiddenLayers => _s('clipHiddenLayers');
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
@@ -1426,6 +1354,7 @@ enum AppStrings {
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
+  String get imStatusDone => _s('imStatusDone');
   String get imFolderGone => _s('imFolderGone');
   String imFolderUnreadable(String reason) =>
       _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
@@ -1446,9 +1375,6 @@ enum AppStrings {
       _s('imCouldNotImportTemplate').replaceAll('{name}', name);
   String imPsdNoLayers(String name) =>
       _s('imPsdNoLayersTemplate').replaceAll('{name}', name);
-  String imRenderingPdf(int done, int total) => _s(
-    'imRenderingPdfTemplate',
-  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
 
   /// The cut-folder column's words.
   String get imKeepExplain => _s('imKeepExplain');
@@ -1473,6 +1399,62 @@ enum AppStrings {
   String get toolEraser => _s('toolEraser');
   String get toolEyedropper => _s('toolEyedropper');
   String get toolFill => _s('toolFill');
+  String get toolText => _s('toolText');
+  String get toolShape => _s('toolShape');
+
+  // The text tool's settings (R9-rest) — the rows of the layout 유저 took
+  // on 2026-10-06.
+  String get textToolSelectedText => _s('textToolSelectedText');
+  String get textToolDeleteText => _s('textToolDeleteText');
+  String get textToolLetters => _s('textToolLetters');
+  String get textToolBox => _s('textToolBox');
+  String get textToolFont => _s('textToolFont');
+  String get textToolSize => _s('textToolSize');
+  String get textToolTracking => _s('textToolTracking');
+  String get textToolBold => _s('textToolBold');
+  String get textToolColor => _s('textToolColor');
+  String get textToolOutline => _s('textToolOutline');
+  String get textToolOutlineWidth => _s('textToolOutlineWidth');
+  String get textToolAlign => _s('textToolAlign');
+  String get textToolAlignLeft => _s('textToolAlignLeft');
+  String get textToolAlignCenter => _s('textToolAlignCenter');
+  String get textToolAlignRight => _s('textToolAlignRight');
+  String get textToolBoxWidth => _s('textToolBoxWidth');
+  String get textToolWidthAuto => _s('textToolWidthAuto');
+  String get textToolWidthFixed => _s('textToolWidthFixed');
+  String get textToolLineHeight => _s('textToolLineHeight');
+  String get textToolBackground => _s('textToolBackground');
+  String get textToolIntoDrawing => _s('textToolIntoDrawing');
+  String get textToolWriting => _s('textToolWriting');
+  String get textToolWritingLines => _s('textToolWritingLines');
+  String get textToolWritingColumns => _s('textToolWritingColumns');
+  String get textToolAlignTop => _s('textToolAlignTop');
+  String get textToolAlignBottom => _s('textToolAlignBottom');
+
+  /// The ＋ over the list of faces, and a brought face's own delete.
+  String get textToolFontImport => _s('textToolFontImport');
+  String get textToolFontDelete => _s('textToolFontDelete');
+
+  /// The two groups of the list of faces beside the app's own — the fonts
+  /// the project on screen carries, and the ones this device was brought —
+  /// and the taking of a font out of the project.
+  String get textToolFontsOfProject => _s('textToolFontsOfProject');
+  String get textToolFontsOfDevice => _s('textToolFontsOfDevice');
+  String get textToolFontTakeOut => _s('textToolFontTakeOut');
+
+  /// ⚠️WARNINGS, written at the face they are about (유저 2026-10-06: 「이
+  /// 글꼴은 편집하는 문서에 넣도록 허용되지않아서 다른 기기에서 열면 바뀐다
+  /// 이런식으로 적어두자」): a face its maker does not let ride in a project,
+  /// and a face a text is written in that this device does not hold.
+  String get textToolFontStaysOnThisDevice =>
+      _s('textToolFontStaysOnThisDevice');
+  String get textToolFontNotOnThisDevice => _s('textToolFontNotOnThisDevice');
+
+  /// Why a picked file was not taken as a font.
+  String get textToolFontUnreadable => _s('textToolFontUnreadable');
+  String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
+  String get textToolFontNotKept => _s('textToolFontNotKept');
+
   String get toolSelect => _s('toolSelect');
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
@@ -1491,9 +1473,20 @@ enum AppStrings {
   String get toolShapeEllipse => _s('toolShapeEllipse');
   String get toolShapeLasso => _s('toolShapeLasso');
   String get toolShapePolygon => _s('toolShapePolygon');
+  String get toolShapeLine => _s('toolShapeLine');
   String get toolShapeSelectTemplate => _s('toolShapeSelectTemplate');
   String get toolShapeCutTemplate => _s('toolShapeCutTemplate');
   String get toolShapeFillTemplate => _s('toolShapeFillTemplate');
+  String get toolShapeDrawTemplate => _s('toolShapeDrawTemplate');
+  String get shapeToolDraws => _s('shapeToolDraws');
+  String get shapeToolStroke => _s('shapeToolStroke');
+  String get shapeToolFill => _s('shapeToolFill');
+  String get shapeToolType => _s('shapeToolType');
+  String get shapeToolTypePlain => _s('shapeToolTypePlain');
+  String get shapeToolCorners => _s('shapeToolCorners');
+  String get shapeToolCornersSharp => _s('shapeToolCornersSharp');
+  String get shapeToolCornersRound => _s('shapeToolCornersRound');
+  String get shapeToolRatioLock => _s('shapeToolRatioLock');
   /// A built-in brush's or group's name, by its `builtin-*` id — written ONCE,
   /// when the library makes the built-ins. 유저 2026-09-15
   /// (brush-preset-names-language-Q1): 「만들 때 그 언어로 적는다」. From then
@@ -1600,9 +1593,37 @@ enum AppStrings {
   String get brExportSelected => _s('brExportSelected');
   String get brExportGroup => _s('brExportGroup');
   String get brExportNothing => _s('brExportNothing');
+  String brExportPlaceUnchosen(Object error) =>
+      _s('brExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+  String brExportNotWritten(Object error) =>
+      _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
+  String brExportedOne(String name) =>
+      _s('brExportedOneTemplate').replaceAll('{name}', name);
+  String brExportedMany(int count) =>
+      _s('brExportedManyTemplate').replaceAll('{count}', '$count');
+
+  /// The file's name when the brushes exported are no one group's.
+  String get brExportFallbackName => _s('brExportFallbackName');
+  String get brImportUnreadable => _s('brImportUnreadable');
+  String brImportPickFailed(Object error) =>
+      _s('brImportPickFailedTemplate').replaceAll('{error}', '$error');
+  String brImported(int count, String file) =>
+      _s(count == 1 ? 'brImportedOneTemplate' : 'brImportedManyTemplate')
+          .replaceAll('{count}', '$count')
+          .replaceAll('{file}', file);
+  String brImportWarnings(String summary, int count) =>
+      _s('brImportWarningsTemplate')
+          .replaceAll('{summary}', summary)
+          .replaceAll('{count}', '$count');
+  String get brTipUnreadable => _s('brTipUnreadable');
+  String get brTipNoShape => _s('brTipNoShape');
+  String get brTipNotSaved => _s('brTipNotSaved');
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
+  String get trScaleX => _s('trScaleX');
+  String get trScaleY => _s('trScaleY');
+  String get trScaleLink => _s('trScaleLink');
   String get trAnchorPointX => _s('trAnchorPointX');
   String get trAnchorPointY => _s('trAnchorPointY');
   String get trMeshColumns => _s('trMeshColumns');
@@ -1663,8 +1684,6 @@ enum AppStrings {
   String get railFolderBlendMode => _s('railFolderBlendMode');
   String get railHideLayer => _s('railHideLayer');
   String get railShowLayer => _s('railShowLayer');
-  String get railHideCutPicture => _s('railHideCutPicture');
-  String get railShowCutPicture => _s('railShowCutPicture');
   String get railBypassLayerFx => _s('railBypassLayerFx');
   String get railApplyLayerFx => _s('railApplyLayerFx');
   String get railBypassMixedLayerFx => _s('railBypassMixedLayerFx');
@@ -1729,9 +1748,8 @@ enum AppStrings {
     'programLanguageHelp': 'Menus, panels and labels.',
     'notationLanguageHelp': 'What prints on the timesheet and exports.',
     'noCutSelected': 'No cut selected',
-    'pageLabel': 'Page',
-    'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
+    'noticeNothingToCut': 'There is nothing to cut',
     'noticeNoConteLayer': 'This cut has no storyboard layer',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
     'noticeLayerHidden': 'This layer is hidden',
@@ -1824,13 +1842,19 @@ enum AppStrings {
     'cutNoteTitle': 'Edit cut note',
     'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
-    'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
+    'deleteLayersMessage': 'Delete the layers below?',
+    'deleteLayersHeading': 'Layers to delete',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'Each frame listed takes a name another frame on its layer already '
         'uses. Link them to the frames holding those names? The same name '
         "then shares the same material, and each listed frame's drawing is "
         'discarded.',
+    'linkedPasteConflictBody':
+        'Each frame listed already uses a name the pasted frames '
+        'carry. Link the pasted blocks to them? The same name then '
+        'shares the same material: the pasted blocks show the listed '
+        'frames, and the copied drawings are not brought.',
     'frameNameConflictListHeading': 'Frames to link',
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
@@ -1847,15 +1871,15 @@ enum AppStrings {
         'Link "{cut}" (origin) with another cut. Layers with the SAME NAME '
         'become one shared picture.',
     'convertLinkedCutTargetLabel': 'Link with cut',
-    'convertLinkedCutLinksTemplate': 'Links {names}.',
+    'convertLinkedCutLinksHeading': 'Layers linked',
     'convertLinkedCutReplacedTemplate':
         'Same-name drawings in "{cut}" will be replaced by the '
         "origin's (원본 승리).",
     'convertLinkedCutReplacedHeading': 'Drawings replaced',
     'convertLinkedCutJoiningTemplate':
         '{count} drawing(s) join the shared set.',
-    'convertLinkedCutTargetGainsTemplate': '"{cut}" gains: {names}.',
-    'convertLinkedCutOriginGainsTemplate': 'This cut gains: {names}.',
+    'convertLinkedCutTargetGainsHeadingTemplate': 'Added to "{cut}"',
+    'convertLinkedCutOriginGainsHeading': 'Added to this cut',
     'convertLinkedCutNothing':
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
@@ -1886,15 +1910,19 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Add vanishing point',
     'guideMakeVertical': 'Make exactly vertical',
     'closeProjectTitle': 'Close project?',
-    'newProject': 'New project',
     'untitledProjectTab': 'Untitled {n}',
     'fileOpenInAnotherTab': 'That file is already open in another tab.',
+    'openNewerFormat': 'This project was saved by a newer Anicel.',
+    'openOlderFormatTemplate':
+        'This project is in format {saved}, older than this Anicel '
+        'reads ({oldest}).',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
     'closeProjectVanishedBody':
         "This project's file is gone. Closing now takes the drawings that "
         'live only inside it. Save As writes what is still open to a new '
         'file.',
     'commonSaveAs': 'Save as…',
+    'saveAsTitle': 'Save as',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
@@ -1960,10 +1988,10 @@ enum AppStrings {
     'cameraSizeTitle': 'Camera size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
-    'canvasAnchorHelpTemplate':
-        'Anchor: existing artwork stays pinned here. Cropped strokes are '
-        'kept and reappear if the canvas grows again. ({min}–{max} px)',
-    'canvasPresetDefault': 'Default',
+    'canvasSizePresets': 'Presets',
+    'canvasAdjustOnCanvas': 'Adjust on canvas',
+    'cameraRatioFree': 'Free',
+    'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
@@ -1997,6 +2025,7 @@ enum AppStrings {
         'OFF (default): it snaps the angle.',
     'inputRotationSnap': 'Rotation snap (°)',
     'inputZoomSnaps': 'Zoom snaps (%)',
+    'inputZoomCeiling': 'Max zoom lock (%)',
     'inputBrushSizeSnaps': 'Brush size snaps (px)',
     'inputTabletHeading': 'Tablet service',
     'inputTabletStandard': 'Standard (default)',
@@ -2093,7 +2122,6 @@ enum AppStrings {
     'saveFailedDetailsHeading': 'Details',
     'saveFailedCopyLineTemplate': 'Failed copy: {path}',
     'saveFailedErrorLineTemplate': 'Error: {error}',
-    'failedCopyBackUp': 'Back up failed copy…',
     'failedCopyPickTitle': 'Which failed copy?',
     'failedCopyVanishOnClose':
         'Failed copies disappear when the program closes.',
@@ -2149,10 +2177,10 @@ enum AppStrings {
     'sheetFillOn': 'Grayed',
     'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
+    'conteCoverPage': 'Cover',
+    'conteBlankPage': 'Blank page',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
-    'sheetViewPage': 'Page View',
-    'sheetViewContinuous': 'Continuous View',
     'instructionsTitle': 'Instructions',
     'instructionEditTooltip': 'Edit instruction',
     'instructionDeleteTooltip': 'Delete instruction',
@@ -2165,7 +2193,6 @@ enum AppStrings {
     'instructionNameLabel': 'Name (blank = instruction name)',
     'instructionStartLabel': 'Start name (A)',
     'instructionEndLabel': 'End name (B)',
-    'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
     'instructionEditorIcon': 'Icon',
     'instructionEditorColor': 'Color',
@@ -2174,15 +2201,7 @@ enum AppStrings {
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
     'cutAddCut': 'Add cut',
-    'cutNewCut': 'New cut',
-    'cutDuplicateCut': 'Duplicate cut',
-    'cutDuplicateActive': 'Duplicate active cut',
-    'cutRename': 'Rename cut…',
-    'cutEditNote': 'Edit cut note…',
-    'cutSettings': 'Cut settings…',
     'cutSettingsTitle': 'Cut settings',
-    'cutMoveLeft': 'Move cut left',
-    'cutMoveRight': 'Move cut right',
     'cutDelete': 'Delete cut',
     'mediaActions': 'Media actions',
     'mediaPoolEmpty': 'No media',
@@ -2234,7 +2253,10 @@ enum AppStrings {
     'panelColorWheel': 'Colour wheel',
     'transportIn': 'In',
     'transportOut': 'Out',
+    'transportToStart': 'To start',
+    'transportToEnd': 'To end',
     'transportLoop': 'Loop',
+    'transportOnce': 'Play once',
     'transportPrevFrame': 'Previous frame',
     'transportNextFrame': 'Next frame',
     'colorRecent': 'Recent',
@@ -2256,7 +2278,7 @@ enum AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
     'panelConte': 'Conte Sheet',
-    'panelEnvelope': 'Envelope',
+    'panelEnvelope': 'Cut envelope',
     'commonRegister': 'Register',
     'commonNameField': 'Name',
     'tipRegisterTitle': 'Register as Tip',
@@ -2276,13 +2298,17 @@ enum AppStrings {
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutResetToDefault': 'Reset to default',
+    'shortcutUnassign': 'Remove shortcut',
     'shortcutRecordNew': 'Record new shortcut',
     'shortcutTouch': 'Touch shortcut',
     'shortcutSearch': 'Search actions',
     'shortcutConflictBanner':
         'Some actions share the same key — the highlighted bindings collide.',
     'shortcutRecordingHint': 'Press keys… (Esc cancels)',
-    'playbackQuality': 'Playback quality',
+    'playbackMode': 'Playback mode',
+    'playbackModeSkipFrames': 'Skip frames',
+    'playbackModeEveryPicture': 'Every frame',
+    'playbackModeRenderFirst': 'Render first',
     'playbackStop': 'Stop',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
@@ -2302,7 +2328,6 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Video',
     'exCels': 'Cels',
-    'exSheetPng': 'Sheet PNG',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Naming',
@@ -2312,24 +2337,38 @@ enum AppStrings {
     'exBitrate': 'Bitrate',
     'exChannels': 'Channels',
     'exAudio': 'Audio',
-    'exBrowse': 'Browse…',
-    'exHandOverWhenDone': 'Choose when done',
     'exHandOverDeclined': 'Not handed over — the outputs were let go.',
+    'exHandOverPending': 'The outputs have not been handed over yet.',
+    'exHandOverPickAgain': 'Pick again',
+    'exHandOverDiscard': 'Discard',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
     'exBaseName': 'Base name',
     'exSuffix': 'Suffix',
+    'exPrefix': 'Prefix',
+    'exLayDirection': 'Lay direction on this drawing',
+    'exCelFormat': 'Cel format',
+    'exTimesheetFormat': 'Timesheet format',
+    'exEnvelopeFormat': 'Cut envelope format',
+    'exWrittenCount': '{n} files',
+    'exWrittenCountOne': '{n} file',
+    'noticeExportRowOff': 'This row is off',
+    'noticeExportNoPicture': 'No row that is on holds a picture for this cel',
+    'noticeExportNotPlaced': 'This drawing is not on the timeline',
+    'noticeExportSameName':
+        'A row of the same name already exports this picture',
+    'noticeExportRidesBase': 'This drawing goes out on its base layer\'s cels',
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Apply layer FX',
     'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exLabel': 'Label',
     'exApply': 'Apply',
-    'exAdd': 'Add',
-    'exSelect': 'Select',
+    'exKinds': 'Kinds to export',
+    'exLayerFilter': 'Layers',
     'exSelBase': 'Base',
     'exSelAttach': 'Attach',
-    'exSelSheet': 'Sheet',
+    'exSelSheet': 'Sheet only',
     'exSelDirection': 'Direction',
     'exSelCustom': 'Custom',
     'exPaperLabel': 'Paper',
@@ -2346,24 +2385,16 @@ enum AppStrings {
     'exWhite': 'White',
     'exBlack': 'Black',
     'exBackground': 'BG',
-    'exChooseLocation': 'Choose a location to enable Export.',
     'exNoCels': '(no cels)',
     'exNoCuts': '(no cuts)',
     'exPresets': 'Presets',
     'exQueue': 'Queue',
     'exSize': 'Size',
-    'exForm': 'Form',
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
-    'exWidth': 'Width',
-    'exSheetLayers': 'Layers',
-    'exContent': 'Content',
-    'exInk': 'Ink',
-    'exPictureLayer': 'Pictures',
-    'exFiles': 'Files',
-    'exOneImage': 'One image',
-    'exOnePerLayer': 'One per layer',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
+    'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
+    'clipHiddenLayers': 'Hidden',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
         'moment.',
@@ -2375,24 +2406,10 @@ enum AppStrings {
     'exPageCountOne': '{n} page',
     'exFileCount': '{n} files',
     'exFileCountOne': '{n} file',
-    'exLabelCount': '{n} labels',
-    'exLabelCountOne': '{n} label',
     'exJobCount': '{n} jobs',
     'exJobCountOne': '{n} job',
-    'exLayerCount': '{n} layers',
-    'exLayerCountOne': '{n} layer',
-    'exPngCount': '{n} PNGs',
-    'exPngCountOne': '{n} PNG',
-    'exXdtsSheetCount': '{n} XDTS sheets',
-    'exXdtsSheetCountOne': '{n} XDTS sheet',
-    'exSheetPageCount': '{n} sheet pages',
-    'exSheetPageCountOne': '{n} sheet page',
     'exContePageCount': '{n} conte pages',
     'exContePageCountOne': '{n} conte page',
-    'exEnvelopeCount': '{n} envelopes',
-    'exEnvelopeCountOne': '{n} envelope',
-    'exEnvelopeFileCount': '{n} envelope files',
-    'exEnvelopeFileCountOne': '{n} envelope file',
     'exCancelledAfterTemplate': 'Export cancelled after {count}.',
     'exCancelledVideoTemplate':
         'Export cancelled after {count} (partial video kept).',
@@ -2403,52 +2420,20 @@ enum AppStrings {
     'exDoneVideoTemplate': 'Exported video ({count}).',
     'exDoneContePdfTemplate': 'Exported conte.pdf ({count}).',
     'exNothingInFrame': 'Nothing to export (empty frame).',
-    'exExporting': 'Exporting…',
-    'exExportingProgressTemplate': 'Exporting… {done}/{total}',
     'exFailedTemplate': 'Export failed: {error}',
-    'exRenderingQueue': 'Rendering the queue…',
     'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} failed',
     'exQueueRestKept': ', rest kept',
-    'exInvalidInOutTemplate': 'Invalid in/out · F{frame} · {cut}',
-    'exInOutTemplate': 'in {in} – out {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': 'Enter a valid in/out range (1–{duration}).',
-    'exSequenceCameraTemplate': '{frames} at {w}×{h} through the camera.',
-    'exSequenceCanvasTemplate': '{frames} at {w}×{h} (raw canvas).',
-    'exSequencePerCutTemplate': '{frames} at each cut\'s own canvas size.',
-    'exImageHeadlineTemplate': 'Frame {frame} of {cut} at {w}×{h}.',
-    'exCelsHeadlineTemplate':
-        '{labels} · {files} as {background} {format} (base + attaches composited per cel).',
-    'exTransparent': 'transparent',
-    'exOpaque': 'opaque',
-    'exSheetImageHeadlineTemplate':
-        '{pages} as B4 PNG — the panel\'s own paper, offscreen.',
-    'exXdtsHeadlineTemplate': '{sheets} (cels + serifu + camerawork columns).',
-    'exContePdfHeadlineTemplate':
-        '{pages} as ONE vector PDF — rules and text as vectors, pictures embedded.',
-    'exContePngHeadlineTemplate':
-        '{pages} as A4 PNG — the panel\'s own paper, offscreen.',
-    'exEnvelopeHeadlineTemplate': '{sheets} as {files} at {paper}{layered}.',
-    'exEnvelopePaperCut':
-        'the CUT\'s own pixels — drops into a working file as a layer',
-    'exEnvelopePaperSheetTemplate': '{w}px wide — the real 봉투, for printing',
-    'exEnvelopeLayeredTemplate': ' · one PNG per layer ({n})',
     'exFileLabel': 'File',
-    'exPatternLabel': 'Pattern',
-    'exLocationLabel': 'Location',
-    'exChooseFolder': 'Choose a folder…',
+    'exOrderAsksFirst': 'Asks where first, then exports',
+    'exOrderAsksAfter': 'Exports first, then asks where',
     'exSeMuxedTemplate': 'SE muxed · {codec}',
     'exVectorPdf': 'Vector PDF',
-    'exPagePng': 'Page PNG',
     'exFxOn': 'FX on',
     'exFxOff': 'FX off',
-    'exSheetWidthTemplate': 'Sheet · {w}px',
-    'exSeparatePngsTemplate': '{n} separate PNGs',
-    'exFlatLayersTemplate': '{n} of 4, flat',
     'exTabSequence': 'Sequence',
     'exSizeCamera': 'Camera',
     'exSizeCanvas': 'Canvas',
-    'exSheetImage': 'Sheet image',
     'exPageImage': 'Page image',
     'exSaveCurrent': '+ Save current…',
     'exRenderQueue': 'Render queue',
@@ -2495,6 +2480,10 @@ enum AppStrings {
     'imBake': 'Rasterize',
     'imSound': 'Sound',
     'imSoundOnly': 'Sound only',
+    'imRun': 'Run',
+    'imRunTogether': 'Together',
+    'imRunAlone': 'This file only',
+    'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitContain': 'Keep aspect',
@@ -2509,6 +2498,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
+    'imStatusDone': 'Imported',
     'imFolderGone': 'That folder is gone.',
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
@@ -2523,7 +2513,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': 'Could not import {name}.',
     'imPsdNoLayersTemplate':
         '{name}: no layers to expand — import it merged instead.',
-    'imRenderingPdfTemplate': 'Rendering PDF page {done}/{total}…',
     'imKeepExplain':
         'The project file holds these, compressed; the originals are left alone.',
     'imReferenceExplain':
@@ -2541,6 +2530,47 @@ enum AppStrings {
     'toolEraser': 'Eraser',
     'toolEyedropper': 'Eyedropper',
     'toolFill': 'Fill',
+    'toolText': 'Text',
+    'toolShape': 'Shape',
+    'textToolSelectedText': 'Selected text',
+    'textToolDeleteText': 'Delete text',
+    'textToolLetters': 'Letters',
+    'textToolBox': 'Box',
+    'textToolFont': 'Font',
+    'textToolSize': 'Size',
+    'textToolTracking': 'Tracking',
+    'textToolBold': 'Bold',
+    'textToolColor': 'Color',
+    'textToolOutline': 'Outline',
+    'textToolOutlineWidth': 'Outline width',
+    'textToolAlign': 'Align',
+    'textToolAlignLeft': 'Left',
+    'textToolAlignCenter': 'Center',
+    'textToolAlignRight': 'Right',
+    'textToolBoxWidth': 'Box width',
+    'textToolWidthAuto': 'Auto',
+    'textToolWidthFixed': 'Fixed',
+    'textToolLineHeight': 'Line spacing',
+    'textToolBackground': 'Background',
+    'textToolIntoDrawing': 'Rasterize',
+    'textToolWriting': 'Direction',
+    'textToolWritingLines': 'Horizontal',
+    'textToolWritingColumns': 'Vertical',
+    'textToolAlignTop': 'Top',
+    'textToolAlignBottom': 'Bottom',
+    'textToolFontImport': 'Import a font file',
+    'textToolFontDelete': 'Delete font',
+    'textToolFontsOfProject': 'Fonts in this project',
+    'textToolFontsOfDevice': 'Fonts on this device',
+    'textToolFontTakeOut': 'Take out of the project',
+    'textToolFontStaysOnThisDevice':
+        'This font may not be put inside a document that is edited, so it '
+        'changes when opened on another device.',
+    'textToolFontNotOnThisDevice':
+        'This font is not on this device, so it shows in another.',
+    'textToolFontUnreadable': 'That file could not be read as a font.',
+    'textToolFontIsTheApps': "That font is already one of the app's own.",
+    'textToolFontNotKept': 'That font could not be saved.',
     'toolSelect': 'Select',
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
@@ -2559,9 +2589,20 @@ enum AppStrings {
     'toolShapeEllipse': 'Ellipse',
     'toolShapeLasso': 'Lasso',
     'toolShapePolygon': 'Polygon',
+    'toolShapeLine': 'Line',
     'toolShapeSelectTemplate': '{shape} Select',
     'toolShapeCutTemplate': '{shape} Cut',
     'toolShapeFillTemplate': '{shape} Fill',
+    'toolShapeDrawTemplate': 'Draw {shape}',
+    'shapeToolDraws': 'Draw',
+    'shapeToolStroke': 'Stroke',
+    'shapeToolFill': 'Fill',
+    'shapeToolType': 'Type',
+    'shapeToolTypePlain': 'Plain',
+    'shapeToolCorners': 'Corners',
+    'shapeToolCornersSharp': 'Sharp',
+    'shapeToolCornersRound': 'Round',
+    'shapeToolRatioLock': 'Lock ratio',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
     'brCreate': 'Create',
@@ -2610,7 +2651,6 @@ enum AppStrings {
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
-    'tlAutoFrame': 'Make a frame where there is none',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brDualBlend': 'Dual blend',
@@ -2648,9 +2688,25 @@ enum AppStrings {
     'brExportSelected': 'Export brush',
     'brExportGroup': 'Export brush group',
     'brExportNothing': 'There is nothing to export here.',
+    'brExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
+    'brExportedOneTemplate': 'Exported "{name}".',
+    'brExportedManyTemplate': 'Exported {count} brushes.',
+    'brExportFallbackName': 'Brushes',
+    'brImportUnreadable': 'This file could not be read as a brush file.',
+    'brImportPickFailedTemplate': 'Could not open the file: {error}',
+    'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
+    'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
+    'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
+    'brTipUnreadable': 'That image could not be read as a brush tip.',
+    'brTipNoShape': 'That image has no visible shape to use as a tip.',
+    'brTipNotSaved': 'That tip could not be saved.',
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
+    'trScaleX': 'Scale X',
+    'trScaleY': 'Scale Y',
+    'trScaleLink': 'Link scale',
     'trAnchorPointX': 'Anchor X',
     'trAnchorPointY': 'Anchor Y',
     'trMeshColumns': 'Columns',
@@ -2702,8 +2758,6 @@ enum AppStrings {
     'railFolderBlendMode': 'Folder blend mode',
     'railHideLayer': 'Hide layer',
     'railShowLayer': 'Show layer',
-    'railHideCutPicture': 'Hide cut picture',
-    'railShowCutPicture': 'Show cut picture',
     'railBypassLayerFx': 'Bypass layer FX',
     'railApplyLayerFx': 'Apply layer FX',
     'railBypassMixedLayerFx': 'Bypass all layer FX (some are off)',
@@ -2725,7 +2779,6 @@ enum AppStrings {
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlSeNameTemplate': 'SE name {name}',
-    'tlAddLayerHeader': 'Add layer',
     'tlNoLayers': 'No layers',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
@@ -2778,23 +2831,15 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Bold',
     'seNameTagPreviewName': 'Name',
     'seNameTagPreviewLine': 'Line',
-    'tlAttachFreeAbove': 'Attach free layer above',
-    'tlAttachFreeBelow': 'Attach free layer below',
-    'tlAttachSyncedAbove': 'Attach synced layer above',
-    'tlAttachSyncedBelow': 'Attach synced layer below',
     'tlLayerCommands': 'Layer commands',
     'tlFrameCommands': 'Frame commands',
     'tlCut': 'Cut',
     'tlLayer': 'Layer',
     'tlFrame': 'Frame',
-    'tlDuplicateLayer': 'Duplicate layer',
-    'tlSelectRowSpan': 'Select whole row',
-    'tlLinkDuplicateLayer': 'Link duplicate layer',
     'linkWindowUnlink': 'Unlink',
     'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
     'tlResetGroup': 'Reset (keeps keys)',
     'tlRenameLayer': 'Rename layer…',
-    'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
@@ -2803,11 +2848,10 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
     'tlDropAttachFreeTemplate': 'attach to {name} (free)',
     'tlDropDetachAttach': 'detach',
-    'tlDetachLayer': 'Detach from base',
+    'tlAttachDropsFxRows': 'Layers that lose their fx',
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
-    'tlSharedUnlink': 'Make independent',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
@@ -2837,7 +2881,6 @@ enum AppStrings {
     'tlCustom': 'Custom…',
     'tlShowSeRows': 'Show SE rows',
     'tlShowCameraRows': 'Show camera rows',
-    'tlStoryboardLayer': 'Storyboard layer',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
     'frameCountEntryFrames': 'Frames',
@@ -2854,9 +2897,8 @@ enum AppStrings {
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
     'notationLanguageHelp': 'タイムシートなど提出物に印字される言語。',
     'noCutSelected': 'カット未選択',
-    'pageLabel': 'ページ',
-    'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
+    'noticeNothingToCut': '切り取る対象がありません',
     'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
     'noticeLayerHidden': 'このレイヤーは非表示です',
@@ -2946,12 +2988,18 @@ enum AppStrings {
     'cutNoteTitle': 'カットメモの編集',
     'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
-    'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
+    'deleteLayersMessage': '下のレイヤーを削除しますか？',
+    'deleteLayersHeading': '削除するレイヤー',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
         'その名前のフレームにリンクしますか？リンクすると同じ名前が同じ素材を共有し、'
         '一覧のフレームの絵は破棄されます。',
+    'linkedPasteConflictBody':
+        '貼り付けるフレームの名前を、一覧のフレームが既に使っています。'
+        '貼り付けるブロックをそのフレームにリンクしますか？リンクすると同じ名前が'
+        '同じ素材を共有し、貼り付けたブロックは一覧のフレームを表示します。'
+        'コピーした絵は取り込まれません。',
     'frameNameConflictListHeading': 'リンクするフレーム',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
@@ -2963,18 +3011,18 @@ enum AppStrings {
     'seUnlinkAudio': 'リンクを解除',
     'keyInterpolationLinear': 'リニア',
     'keyInterpolationHold': 'ホールド',
-    'convertLinkedCutTitle': 'リンクカットに変換',
+    'convertLinkedCutTitle': '兼用カットに変換',
     'convertLinkedCutBodyTemplate':
         '「{cut}」（原本）を別のカットとリンクします。同じ名前のレイヤーが'
         '1枚の共有画になります。',
     'convertLinkedCutTargetLabel': 'リンクするカット',
-    'convertLinkedCutLinksTemplate': '{names} をリンクします。',
+    'convertLinkedCutLinksHeading': 'リンクするレイヤー',
     'convertLinkedCutReplacedTemplate':
         '「{cut}」の同名作画が原本のもので置き換わります（原本優先）。',
     'convertLinkedCutReplacedHeading': '置き換わる作画',
     'convertLinkedCutJoiningTemplate': '作画 {count} 枚が共有セットに加わります。',
-    'convertLinkedCutTargetGainsTemplate': '「{cut}」に追加：{names}。',
-    'convertLinkedCutOriginGainsTemplate': 'このカットに追加：{names}。',
+    'convertLinkedCutTargetGainsHeadingTemplate': '「{cut}」に追加されるレイヤー',
+    'convertLinkedCutOriginGainsHeading': 'このカットに追加されるレイヤー',
     'convertLinkedCutNothing':
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
@@ -3003,15 +3051,19 @@ enum AppStrings {
     'guideAddVanishingPoint': '消失点を追加',
     'guideMakeVertical': '完全な垂直にする',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
-    'newProject': '新規プロジェクト',
+    'shortcutAction.file-new': '新規プロジェクト',
     'untitledProjectTab': '無題 {n}',
     'fileOpenInAnotherTab': 'そのファイルは別のタブで開いています。',
+    'openNewerFormat': '新しいバージョンの Anicel で保存されたプロジェクトのため開けません。',
+    'openOlderFormatTemplate':
+        '形式 {saved} のプロジェクトのため開けません（この Anicel が開けるのは形式 {oldest} からです）。',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
     'closeProjectVanishedBody':
         'このプロジェクトのファイルがなくなっています。このまま閉じると、その中にしか'
         'ない絵も一緒に失われます。「名前を付けて保存」なら、今開いているものを新しい'
         'ファイルに書き出せます。',
     'commonSaveAs': '名前を付けて保存…',
+    'saveAsTitle': '名前を付けて保存',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
@@ -3042,9 +3094,9 @@ enum AppStrings {
     'menuBarHelp': 'ヘルプ',
     'menuPlay': '再生',
     'menuPause': '一時停止',
-    'menuAction.file-open': '開く…',
-    'menuAction.file-import': '読み込み／配置…',
-    'menuAction.file-export': '書き出し…',
+    'shortcutAction.file-open': '開く…',
+    'shortcutAction.file-import': '読み込み／配置…',
+    'shortcutAction.file-export': '書き出し…',
     'menuAction.edit-undo': '元に戻す',
     'menuAction.edit-redo': 'やり直す',
     'menuAction.edit-copy-frame': 'フレームをコピー',
@@ -3053,27 +3105,22 @@ enum AppStrings {
     'menuAction.edit-delete-cell': 'セルを削除',
     'menuAction.edit-cut-exposure': '露光をカット',
     'menuAction.edit-toggle-mark': 'マークの切り替え',
-    'menuAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
-    'menuAction.edit-preferences': '環境設定…',
-    'menuAction.work-settings': '作品設定…',
+    'shortcutAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
+    'shortcutAction.edit-preferences': '環境設定…',
+    'shortcutAction.work-settings': '作品設定…',
+    'menuAction.file-save-as': 'プロジェクト(.anicel)…',
     'menuAction.project-settings': 'プロジェクト設定',
-    'menuAction.cut-new': 'カットを新規作成',
-    'menuAction.cut-duplicate': 'カットを複製',
-    'menuAction.cut-create-linked': 'リンクカットを作成',
-    'menuAction.cut-convert-linked': 'リンクカットに変換…',
-    'menuAction.cut-rename': 'カット名を変更…',
-    'menuAction.cut-canvas-size': 'カンバスサイズ…',
-    'menuAction.cut-move-left': 'カットを左へ',
-    'menuAction.cut-move-right': 'カットを右へ',
-    'menuAction.cut-copy-ae-camera': 'カメラのAEキーフレームをコピー',
+    'shortcutAction.cut-create-linked': '兼用カットを作成',
+    'shortcutAction.cut-convert-linked': '兼用カットに変換…',
+    'shortcutAction.cut-canvas-size': 'カンバスサイズ…',
+    'shortcutAction.cut-copy-ae-camera': 'カメラのAEキーフレームをコピー',
     'menuAction.cut-delete': 'カットを削除',
     'menuAction.layer-add': 'レイヤーを追加',
-    'menuAction.layer-duplicate': 'レイヤーを複製',
     'menuAction.layer-link-duplicate': 'リンクして複製',
     'menuAction.layer-unlink': 'リンクを解除',
     'menuAction.layer-group-into-folder': 'フォルダにまとめる',
     'menuAction.layer-rename': 'レイヤー名を変更…',
-    'menuAction.layer-rasterize': 'ラスタライズ',
+    'shortcutAction.layer-rasterize': 'ラスタライズ',
     'menuAction.layer-se-name-tag': 'SE ネームタグ…',
     'menuAction.layer-copy': 'レイヤーをコピー',
     'menuAction.layer-paste': 'レイヤーを貼り付け',
@@ -3081,18 +3128,18 @@ enum AppStrings {
     'menuAction.playback-stop': '停止',
     'menuAction.playback-play-all': '全カットを再生',
     'menuAction.window-panels': 'パネル',
-    'menuAction.window-tool-rail-right': 'ツールバーを右端に',
-    'menuAction.window-region-on-top': 'タイムライン領域を上に',
-    'menuAction.window-reset-layout': 'ワークスペース配置をリセット',
+    'shortcutAction.window-tool-rail-right': 'ツールバーを右端に',
+    'shortcutAction.window-region-on-top': 'タイムライン領域を上に',
+    'shortcutAction.window-reset-layout': 'ワークスペース配置をリセット',
     'menuAction.edit-debug': 'デバッグ',
-    'menuAction.edit-input-inspector': '入力インスペクタ',
-    'menuAction.edit-frame-timing-overlay': 'フレームタイミングのオーバーレイ',
-    'menuAction.edit-frame-stats': 'フレーム統計',
-    'menuAction.edit-show-repaints': '再描画を表示',
-    'menuAction.edit-bake-panels': '静的パネルをラスタライズ',
+    'shortcutAction.edit-input-inspector': '入力インスペクタ',
+    'shortcutAction.edit-frame-timing-overlay': 'フレームタイミングのオーバーレイ',
+    'shortcutAction.edit-frame-stats': 'フレーム統計',
+    'shortcutAction.edit-show-repaints': '再描画を表示',
+    'shortcutAction.edit-bake-panels': '静的パネルをラスタライズ',
     'menuAction.edit-knee-at-one': '画面解像度バッファ',
     'menuAction.edit-show-unpainted-tiles': '描画されなかったタイルを表示',
-    'menuAction.help-about': 'Anicel について',
+    'shortcutAction.help-about': 'Anicel について',
     'fileOpenTitle': 'プロジェクトを開く',
     'fileSaveTitle': 'プロジェクトを保存',
     'fileStorageOffNotice':
@@ -3129,10 +3176,10 @@ enum AppStrings {
     'cameraSizeTitle': 'カメラサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
-    'canvasAnchorHelpTemplate':
-        '基準：既存の絵はここに固定されます。切り取られた線は保持され、'
-        'カンバスを広げれば再び現れます。（{min}〜{max} px）',
-    'canvasPresetDefault': '既定',
+    'canvasSizePresets': 'プリセット',
+    'canvasAdjustOnCanvas': 'キャンバスで調整',
+    'cameraRatioFree': '自由',
+    'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
@@ -3166,6 +3213,7 @@ enum AppStrings {
         'OFF（既定）：角度をスナップします。',
     'inputRotationSnap': '回転スナップ（°）',
     'inputZoomSnaps': 'ズームスナップ（%）',
+    'inputZoomCeiling': '最大ズームをロック（%）',
     'inputBrushSizeSnaps': 'ブラシサイズのスナップ（px）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
@@ -3245,7 +3293,7 @@ enum AppStrings {
     'saveFailedDetailsHeading': '詳細',
     'saveFailedCopyLineTemplate': '失敗版: {path}',
     'saveFailedErrorLineTemplate': 'エラー: {error}',
-    'failedCopyBackUp': '失敗版をバックアップ…',
+    'shortcutAction.file-back-up-failed-copy': '失敗版をバックアップ…',
     'failedCopyPickTitle': 'バックアップする失敗版',
     'failedCopyVanishOnClose': '失敗版はプログラムを閉じると消えます。',
     'failedCopyBackingUp': 'バックアップ中…',
@@ -3284,10 +3332,10 @@ enum AppStrings {
     'sheetFillOn': '塗る',
     'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
+    'conteCoverPage': '表紙',
+    'conteBlankPage': '白紙',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
-    'sheetViewPage': 'ページ表示',
-    'sheetViewContinuous': '連続表示',
     'instructionsTitle': '指示記号',
     'instructionEditTooltip': '指示記号を編集',
     'instructionDeleteTooltip': '指示記号を削除',
@@ -3300,7 +3348,6 @@ enum AppStrings {
     'instructionNameLabel': '名前（空欄なら記号名）',
     'instructionStartLabel': '始点名（A）',
     'instructionEndLabel': '終点名（B）',
-    'instructionMemoLabel': 'メモ（タイムシートのメモ欄）',
     'instructionEditSetButton': '指示記号を編集…',
     'instructionEditorIcon': 'アイコン',
     'instructionEditorColor': '色',
@@ -3315,6 +3362,12 @@ enum AppStrings {
     'shortcutCategory.View': '表示',
     'shortcutCategory.Timeline': 'タイムライン',
     'shortcutCategory.File': 'ファイル',
+    'shortcutCategory.Brush Tool Brushes': 'ブラシツールのブラシ',
+    'shortcutCategory.Eraser Tool Brushes': '消しゴムツールのブラシ',
+    'shortcutCategory.Settings': '設定',
+    'shortcutCategory.Debug': 'デバッグ',
+    'shortcutCategory.Panels': 'パネル',
+    'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutAction.frame-previous': '前のフレーム',
     'shortcutAction.frame-next': '次のフレーム',
     'shortcutAction.drawing-previous': '前のブロック',
@@ -3330,6 +3383,8 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': 'スポイトツール',
     'shortcutAction.tool-fill': '塗りつぶしツール',
     'shortcutAction.tool-fill-bucket': '塗りつぶし',
+    'shortcutAction.tool-text': 'テキストツール',
+    'shortcutAction.tool-shape': '図形ツール',
     'shortcutAction.tool-guide': 'ガイドツール',
     'shortcutAction.tool-select': '選択ツール',
     'shortcutAction.tool-transform': '変形ツール',
@@ -3353,7 +3408,9 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '3コマに設定',
     'shortcutAction.timeline-comma-4': '4コマに設定',
     'shortcutAction.timeline-comma-n': 'Nコマに設定…',
-    'shortcutAction.frame-new-drawing': '新規作画',
+    'shortcutAction.frame-new-drawing': 'フレームを追加',
+    'shortcutAction.layer-add': 'レイヤーを追加',
+    'shortcutAction.cut-pin-thumbnail': 'サムネイルのフレームを固定',
     'shortcutAction.frame-blank-exposure': '中割なし / ×',
     'shortcutAction.frame-toggle-mark': 'マークを切り替え',
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
@@ -3362,6 +3419,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': 'コピー',
     'shortcutAction.edit-paste-linked': 'リンクして貼り付け',
     'shortcutAction.edit-paste-independent': '独立して貼り付け',
+    'shortcutAction.edit-unlink': 'リンクから独立',
     'shortcutAction.edit-delete': '削除',
     'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
@@ -3417,15 +3475,14 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'ズームアウト',
     'cutCommands': 'カット操作',
     'cutAddCut': 'カットを追加',
-    'cutNewCut': 'カットを新規作成',
-    'cutDuplicateCut': 'カットを複製',
-    'cutDuplicateActive': 'アクティブなカットを複製',
-    'cutRename': 'カット名を変更…',
-    'cutEditNote': 'カットメモを編集…',
-    'cutSettings': 'カット設定…',
+    'shortcutAction.cut-new': 'カットを新規作成',
+    'shortcutAction.cut-duplicate': 'カットを複製',
+    'shortcutAction.cut-rename': 'カット名を変更…',
+    'shortcutAction.cut-edit-note': 'カットメモを編集…',
+    'shortcutAction.cut-settings': 'カット設定…',
     'cutSettingsTitle': 'カット設定',
-    'cutMoveLeft': 'カットを左へ',
-    'cutMoveRight': 'カットを右へ',
+    'shortcutAction.cut-move-left': 'カットを左へ',
+    'shortcutAction.cut-move-right': 'カットを右へ',
     'cutDelete': 'カットを削除',
     'mediaActions': 'メディア操作',
     'mediaPoolEmpty': 'メディアがありません',
@@ -3470,7 +3527,10 @@ enum AppStrings {
     'panelColorWheel': 'カラーホイール',
     'transportIn': 'イン',
     'transportOut': 'アウト',
+    'transportToStart': '先頭へ',
+    'transportToEnd': '末尾へ',
     'transportLoop': 'ループ',
+    'transportOnce': '1回再生',
     'transportPrevFrame': '前のフレーム',
     'transportNextFrame': '次のフレーム',
     'colorRecent': '最近',
@@ -3492,7 +3552,7 @@ enum AppStrings {
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
     'panelConte': 'コンテ用紙',
-    'panelEnvelope': 'エンベロープ',
+    'panelEnvelope': 'カット袋',
     'commonRegister': '登録',
     'commonNameField': '名前',
     'tipRegisterTitle': '先端として登録',
@@ -3512,6 +3572,7 @@ enum AppStrings {
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutResetToDefault': '既定に戻す',
+    'shortcutUnassign': 'ショートカットを解除',
     'shortcutRecordNew': '新しいショートカットを記録',
     'shortcutTouch': 'タッチショートカット',
     'shortcutSearch': 'アクションを検索',
@@ -3519,7 +3580,10 @@ enum AppStrings {
         '同じキーを共有しているアクションがあります — 強調された割り当てが'
         '衝突しています。',
     'shortcutRecordingHint': 'キーを押してください…（Escで中止）',
-    'playbackQuality': '再生品質',
+    'playbackMode': '再生方式',
+    'playbackModeSkipFrames': 'フレームを飛ばす',
+    'playbackModeEveryPicture': 'すべてのフレーム',
+    'playbackModeRenderFirst': '再生前にレンダリング',
     'playbackStop': '停止',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
@@ -3538,7 +3602,6 @@ enum AppStrings {
     'exImage': '画像',
     'exVideo': '動画',
     'exCels': 'セル',
-    'exSheetPng': 'シートPNG',
     'exFormat': '形式',
     'exOptions': 'オプション',
     'exNaming': '命名',
@@ -3548,24 +3611,37 @@ enum AppStrings {
     'exBitrate': 'ビットレート',
     'exChannels': 'チャンネル',
     'exAudio': '音声',
-    'exBrowse': '参照…',
-    'exHandOverWhenDone': '終わったら選ぶ',
     'exHandOverDeclined': '渡さなかったため、書き出した結果は破棄しました。',
+    'exHandOverPending': '書き出した結果をまだ渡していません。',
+    'exHandOverPickAgain': '選び直す',
+    'exHandOverDiscard': '破棄',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
     'exBaseName': 'ベース名',
     'exSuffix': '接尾辞',
+    'exPrefix': '接頭辞',
+    'exLayDirection': 'この絵にディレクションを適用',
+    'exCelFormat': 'セル形式',
+    'exTimesheetFormat': 'タイムシート形式',
+    'exEnvelopeFormat': 'カット袋形式',
+    'exWrittenCount': '{n}枚',
+    'exWrittenCountOne': '{n}枚',
+    'noticeExportRowOff': 'この行はオフです',
+    'noticeExportNoPicture': 'このセルにはオンの行の絵がありません',
+    'noticeExportNotPlaced': 'タイムラインに置かれていない絵です',
+    'noticeExportSameName': '同じ名前の行がこの絵を書き出します',
+    'noticeExportRidesBase': '基準レイヤーのセルに重ねて書き出されます',
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFXを適用',
     'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exLabel': 'ラベル',
     'exApply': '適用',
-    'exAdd': '追加',
-    'exSelect': '選択',
+    'exKinds': '書き出す種類',
+    'exLayerFilter': 'レイヤー',
     'exSelBase': '基準',
     'exSelAttach': 'アタッチ',
-    'exSelSheet': 'シート',
+    'exSelSheet': 'シートのみ',
     'exSelDirection': 'ディレクション',
     'exSelCustom': 'カスタム',
     'exPaperLabel': '用紙',
@@ -3582,24 +3658,16 @@ enum AppStrings {
     'exWhite': '白',
     'exBlack': '黒',
     'exBackground': '背景',
-    'exChooseLocation': '保存先を選ぶと書き出せます。',
     'exNoCels': '（セルなし）',
     'exNoCuts': '（カットなし）',
     'exPresets': 'プリセット',
     'exQueue': 'キュー',
     'exSize': 'サイズ',
-    'exForm': '書式',
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
-    'exWidth': '幅',
-    'exSheetLayers': 'レイヤー',
-    'exContent': '内容',
-    'exInk': '線画',
-    'exPictureLayer': '絵',
-    'exFiles': 'ファイル',
-    'exOneImage': '画像1枚',
-    'exOnePerLayer': 'レイヤーごとに1枚',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
+    'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
+    'clipHiddenLayers': '非表示',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
@@ -3617,6 +3685,7 @@ enum AppStrings {
     'importWarning.psdLab': 'LabをプロファイルなしでRGBに変換しました — 色が変わります。',
     'importWarning.psdAdjustment': '{name}: 調整レイヤーは適用しませんでした。',
     'importWarning.psdClipping': '{name}: クリッピングマスクは適用しませんでした。',
+    'importWarning.psdLayerEffects': '{name}: レイヤー効果は適用しませんでした。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
     'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
     'importWarning.folderNoBase': '{process}/{symbol}: 対応する最上位レイヤーがありません — セル{n}枚を飛ばしました。',
@@ -3628,6 +3697,21 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}: 描画モード「{mode}」に相当するものがAnicelにありません — 通常として取り込みました。',
     'importWarning.tvppHoldNoDrawing': '{name}: フレーム{frame}のホールドが受け継ぐ絵がありません。',
     'importWarning.tvppChunkBroken': 'クリップ{n}: @{at} でチャンクの連なりが切れました — 以降のデータは捨てます。',
+    'importWarning.clipRead': 'ファイルの一部をたどれませんでした: {detail}',
+    'importWarning.clipFps': 'タイムラインごとにフレームレートが違います — プロジェクトは最初のタイムラインの {fps} fps にしました。',
+    'importWarning.clipUnplaced': '{name}: どのタイムラインにも置かれていないセルが{count}枚あります — 取り込みませんでした。',
+    'importWarning.clipNoSuchCel': '{name}: フォルダーにないセルを指すキーが{count}個あります。',
+    'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
+    'importWarning.clipSpread': '{name}: {count}枚のセルで、フォルダーの不透明度や合成モードを中の各レイヤーに分けて付けました — レイヤーが重なる所は見え方が変わることがあります。',
+    'importWarning.clipVector': '{name}: ベクターレイヤー — 描画していません。',
+    'importWarning.clipText': '{name}: テキストレイヤー — 描画していません。',
+    'importWarning.clipPaper': '{name}: 用紙レイヤー — 色は適用していません。',
+    'importWarning.clipFill': '{name}: 塗りつぶしレイヤー — 描画していません。',
+    'importWarning.clipSound': '{name}: 音声レイヤーは取り込みませんでした。',
+    'importWarning.clipUnknownLayer': '{name}: この取り込みでは読めない種類のレイヤーです。',
+    'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
+    'importWarning.clipNotColour': '{name}: グレー・モノクロのレイヤー — 描画していません。',
+    'importWarning.clipTransform': '{name}: 画像の拡大縮小・回転は適用していません。',
     'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
     'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
     'exclusionReason.unrecognized': '認識できない名前',
@@ -3640,24 +3724,10 @@ enum AppStrings {
     'exPageCountOne': '{n}ページ',
     'exFileCount': '{n}ファイル',
     'exFileCountOne': '{n}ファイル',
-    'exLabelCount': 'ラベル{n}個',
-    'exLabelCountOne': 'ラベル{n}個',
     'exJobCount': 'ジョブ{n}件',
     'exJobCountOne': 'ジョブ{n}件',
-    'exLayerCount': 'レイヤー{n}枚',
-    'exLayerCountOne': 'レイヤー{n}枚',
-    'exPngCount': 'PNG{n}枚',
-    'exPngCountOne': 'PNG{n}枚',
-    'exXdtsSheetCount': 'XDTSシート{n}枚',
-    'exXdtsSheetCountOne': 'XDTSシート{n}枚',
-    'exSheetPageCount': 'シート{n}ページ',
-    'exSheetPageCountOne': 'シート{n}ページ',
     'exContePageCount': 'コンテ{n}ページ',
     'exContePageCountOne': 'コンテ{n}ページ',
-    'exEnvelopeCount': 'エンベロープ{n}枚',
-    'exEnvelopeCountOne': 'エンベロープ{n}枚',
-    'exEnvelopeFileCount': 'エンベロープ{n}ファイル',
-    'exEnvelopeFileCountOne': 'エンベロープ{n}ファイル',
     'exCancelledAfterTemplate': '{count}を書き出したところで中止しました。',
     'exCancelledVideoTemplate': '{count}を書き出したところで中止しました（途中までの動画は残しています）。',
     'exCancelled': '書き出しを中止しました。',
@@ -3667,47 +3737,20 @@ enum AppStrings {
     'exDoneVideoTemplate': '動画を書き出しました（{count}）。',
     'exDoneContePdfTemplate': 'conte.pdfを書き出しました（{count}）。',
     'exNothingInFrame': '書き出すものがありません（空のフレーム）。',
-    'exExporting': '書き出し中…',
-    'exExportingProgressTemplate': '書き出し中… {done}/{total}',
     'exFailedTemplate': '書き出しに失敗しました: {error}',
-    'exRenderingQueue': 'キューを書き出し中…',
     'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
     'exQueueFailedTemplate': '、{n}件失敗',
     'exQueueRestKept': '、残りは保持',
-    'exInvalidInOutTemplate': 'イン/アウトが不正 · F{frame} · {cut}',
-    'exInOutTemplate': 'イン {in} – アウト {out}（{count}f） · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '有効なイン/アウト範囲を入力してください（1–{duration}）。',
-    'exSequenceCameraTemplate': 'カメラを通して{w}×{h}で{frames}。',
-    'exSequenceCanvasTemplate': '{w}×{h}で{frames}（キャンバスそのまま）。',
-    'exSequencePerCutTemplate': 'カットごとのキャンバスサイズで{frames}。',
-    'exImageHeadlineTemplate': '{cut}のフレーム{frame}、{w}×{h}。',
-    'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+アタッチを合成）。',
-    'exTransparent': '透過',
-    'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate': '{pages}をB4 PNGで — パネルの用紙のまま、画面外で描画。',
-    'exXdtsHeadlineTemplate': '{sheets}（セル + セリフ + カメラワーク列）。',
-    'exContePdfHeadlineTemplate': '{pages}を1つのベクターPDFに — 罫線と文字はベクター、絵は埋め込み。',
-    'exContePngHeadlineTemplate': '{pages}をA4 PNGで — パネルの用紙のまま、画面外で描画。',
-    'exEnvelopeHeadlineTemplate': '{sheets}を{files}で、{paper}{layered}。',
-    'exEnvelopePaperCut': 'カットそのままの画素 — 作業ファイルにレイヤーとして置ける',
-    'exEnvelopePaperSheetTemplate': '幅{w}px — 印刷用の実寸エンベロープ',
-    'exEnvelopeLayeredTemplate': ' · レイヤーごとにPNG1枚（{n}）',
     'exFileLabel': 'ファイル',
-    'exPatternLabel': 'パターン',
-    'exLocationLabel': '保存先',
-    'exChooseFolder': 'フォルダを選択…',
+    'exOrderAsksFirst': '場所を指定してから書き出します',
+    'exOrderAsksAfter': '書き出したあとに場所を指定します',
     'exSeMuxedTemplate': 'SE多重化 · {codec}',
     'exVectorPdf': 'ベクターPDF',
-    'exPagePng': 'ページPNG',
     'exFxOn': 'FXオン',
     'exFxOff': 'FXオフ',
-    'exSheetWidthTemplate': '用紙 · {w}px',
-    'exSeparatePngsTemplate': '個別PNG {n}枚',
-    'exFlatLayersTemplate': '4枚中{n}枚、統合',
     'exTabSequence': '連番',
     'exSizeCamera': 'カメラ',
     'exSizeCanvas': 'キャンバス',
-    'exSheetImage': 'シート画像',
     'exPageImage': 'ページ画像',
     'exSaveCurrent': '+ 現在の設定を保存…',
     'exRenderQueue': 'レンダーキュー',
@@ -3754,6 +3797,10 @@ enum AppStrings {
     'imBake': 'ラスタライズ',
     'imSound': '音',
     'imSoundOnly': '音のみ',
+    'imRun': '連番',
+    'imRunTogether': 'まとめて',
+    'imRunAlone': 'このファイルのみ',
+    'imRunSpanTemplate': '{first}–{last}（{n}枚）',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitContain': 'アスペクト維持',
@@ -3768,6 +3815,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
+    'imStatusDone': 'インポートしました',
     'imFolderGone': 'そのフォルダーは見つかりません。',
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
@@ -3782,7 +3830,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': '{name} をインポートできませんでした。',
     'imPsdNoLayersTemplate':
         '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
-    'imRenderingPdfTemplate': 'PDF ページを描画中 {done}/{total}…',
     'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
     'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
     'imCutFolderBakes':
@@ -3798,6 +3845,46 @@ enum AppStrings {
     'toolEraser': '消しゴム',
     'toolEyedropper': 'スポイト',
     'toolFill': '塗りつぶし',
+    'toolText': 'テキスト',
+    'toolShape': '図形',
+    'textToolSelectedText': '選択中のテキスト',
+    'textToolDeleteText': 'テキストを削除',
+    'textToolLetters': '文字',
+    'textToolBox': 'ボックス',
+    'textToolFont': 'フォント',
+    'textToolSize': 'サイズ',
+    'textToolTracking': '字間',
+    'textToolBold': '太字',
+    'textToolColor': '色',
+    'textToolOutline': 'フチ',
+    'textToolOutlineWidth': 'フチの太さ',
+    'textToolAlign': '揃え',
+    'textToolAlignLeft': '左',
+    'textToolAlignCenter': '中央',
+    'textToolAlignRight': '右',
+    'textToolBoxWidth': 'ボックス幅',
+    'textToolWidthAuto': '自動',
+    'textToolWidthFixed': '固定',
+    'textToolLineHeight': '行間',
+    'textToolBackground': '背景',
+    'textToolIntoDrawing': 'ラスタライズ',
+    'textToolWriting': '文字方向',
+    'textToolWritingLines': '横書き',
+    'textToolWritingColumns': '縦書き',
+    'textToolAlignTop': '上',
+    'textToolAlignBottom': '下',
+    'textToolFontImport': 'フォントファイルを読み込み',
+    'textToolFontDelete': 'フォントを削除',
+    'textToolFontsOfProject': 'このプロジェクトのフォント',
+    'textToolFontsOfDevice': 'このデバイスのフォント',
+    'textToolFontTakeOut': 'プロジェクトから外す',
+    'textToolFontStaysOnThisDevice':
+        'このフォントは編集する文書への埋め込みが許可されていないため、'
+        '別の端末で開くと別のフォントになります。',
+    'textToolFontNotOnThisDevice': 'この端末にないフォントのため、別のフォントで表示されます。',
+    'textToolFontUnreadable': 'フォントファイルとして読み込めませんでした。',
+    'textToolFontIsTheApps': 'アプリにすでに入っているフォントです。',
+    'textToolFontNotKept': 'フォントを保存できませんでした。',
     'toolSelect': '選択',
     'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
@@ -3817,9 +3904,20 @@ enum AppStrings {
     'toolShapeEllipse': '楕円',
     'toolShapeLasso': '投げ縄',
     'toolShapePolygon': '多角形',
+    'toolShapeLine': '直線',
     'toolShapeSelectTemplate': '{shape}選択',
     'toolShapeCutTemplate': '{shape}カット',
     'toolShapeFillTemplate': '{shape}塗り',
+    'toolShapeDrawTemplate': '{shape}描画',
+    'shapeToolDraws': '描画',
+    'shapeToolStroke': '線',
+    'shapeToolFill': '塗り',
+    'shapeToolType': '種類',
+    'shapeToolTypePlain': '通常',
+    'shapeToolCorners': '角',
+    'shapeToolCornersSharp': 'シャープ',
+    'shapeToolCornersRound': '丸',
+    'shapeToolRatioLock': '比率を固定',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
     'brCreate': '作成',
@@ -3868,7 +3966,7 @@ enum AppStrings {
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
-    'tlAutoFrame': '空のセルに描いたらフレームを作る',
+    'shortcutAction.frame-auto-create': '空のセルに描いたらフレームを作る',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
     'brDualBlend': 'デュアルの合成',
@@ -3976,9 +4074,25 @@ enum AppStrings {
     'brExportSelected': 'ブラシを書き出し',
     'brExportGroup': 'ブラシグループを書き出し',
     'brExportNothing': '書き出すブラシがありません。',
+    'brExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
+    'brExportedOneTemplate': '「{name}」を書き出しました。',
+    'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
+    'brExportFallbackName': 'ブラシ',
+    'brImportUnreadable': 'このファイルはブラシファイルとして読み込めませんでした。',
+    'brImportPickFailedTemplate': 'ファイルを開けませんでした: {error}',
+    'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
+    'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
+    'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
+    'brTipUnreadable': 'その画像はブラシ先端として読み込めませんでした。',
+    'brTipNoShape': 'その画像には先端に使える見える形がありません。',
+    'brTipNotSaved': 'その先端を保存できませんでした。',
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
+    'trScaleX': '拡大率 X',
+    'trScaleY': '拡大率 Y',
+    'trScaleLink': '拡大率を連動',
     'trAnchorPointX': '基準点 X',
     'trAnchorPointY': '基準点 Y',
     'trMeshColumns': '横のマス',
@@ -4030,8 +4144,6 @@ enum AppStrings {
     'railFolderBlendMode': 'フォルダーの合成モード',
     'railHideLayer': 'レイヤーを隠す',
     'railShowLayer': 'レイヤーを表示',
-    'railHideCutPicture': 'カットの絵を隠す',
-    'railShowCutPicture': 'カットの絵を表示',
     'railBypassLayerFx': 'レイヤーFXをバイパス',
     'railApplyLayerFx': 'レイヤーFXを適用',
     'railBypassMixedLayerFx': 'レイヤーFXをすべてバイパス（一部オフ）',
@@ -4085,7 +4197,6 @@ enum AppStrings {
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlSeNameTemplate': 'SE名 {name}',
-    'tlAddLayerHeader': 'レイヤーを追加',
     'tlNoLayers': 'レイヤーがありません',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
@@ -4140,23 +4251,21 @@ enum AppStrings {
     'seNameTagPreviewLine': 'セリフ',
     'tlKindInstruction': 'ディレクション',
     'tlNoriShiro': 'のりしろ',
-    'tlAttachFreeAbove': '上にフリーのアタッチレイヤー',
-    'tlAttachFreeBelow': '下にフリーのアタッチレイヤー',
-    'tlAttachSyncedAbove': '上にシンクのアタッチレイヤー',
-    'tlAttachSyncedBelow': '下にシンクのアタッチレイヤー',
+    'shortcutAction.layer-attach-free-above': '上にフリーのアタッチレイヤー',
+    'shortcutAction.layer-attach-free-below': '下にフリーのアタッチレイヤー',
+    'shortcutAction.layer-attach-synced-above': '上にシンクのアタッチレイヤー',
+    'shortcutAction.layer-attach-synced-below': '下にシンクのアタッチレイヤー',
     'tlLayerCommands': 'レイヤー操作',
     'tlFrameCommands': 'フレーム操作',
     'tlCut': 'カット',
     'tlLayer': 'レイヤー',
     'tlFrame': 'フレーム',
-    'tlDuplicateLayer': 'レイヤーを複製',
-    'tlSelectRowSpan': '行全体を選択',
-    'tlLinkDuplicateLayer': 'リンクして複製',
+    'shortcutAction.layer-duplicate': 'レイヤーを複製',
+    'shortcutAction.frame-select-row-span': '行全体を選択',
     'linkWindowUnlink': 'リンクを解除',
-    'linkWindowUnlinkLinkedCut': 'リンクカットのレイヤーはカットごと解除します',
+    'linkWindowUnlinkLinkedCut': '兼用カットのレイヤーはカットごと解除します',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlRenameLayer': 'レイヤー名を変更…',
-    'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
@@ -4165,10 +4274,10 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '{name} にアタッチ（シンク）',
     'tlDropAttachFreeTemplate': '{name} にアタッチ（フリー）',
     'tlDropDetachAttach': 'アタッチを解除',
-    'tlDetachLayer': 'アタッチを解除',
+    'shortcutAction.layer-detach': 'アタッチを解除',
+    'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
-    'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -4197,7 +4306,7 @@ enum AppStrings {
     'tlCustom': 'カスタム…',
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
-    'tlStoryboardLayer': '絵コンテレイヤー',
+    'shortcutAction.layer-storyboard': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
     'frameCountEntryFrames': 'コマ数',
@@ -4214,9 +4323,8 @@ enum AppStrings {
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
     'notationLanguageHelp': '타임시트 등 제출물에 인쇄되는 언어.',
     'noCutSelected': '선택된 컷 없음',
-    'pageLabel': '페이지',
-    'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
+    'noticeNothingToCut': '잘라낼 대상이 존재하지 않습니다',
     'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
     'noticeLayerHidden': '숨김 상태인 레이어입니다',
@@ -4306,12 +4414,18 @@ enum AppStrings {
     'cutNoteTitle': '컷 메모 편집',
     'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
-    'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
+    'deleteLayersMessage': '아래 레이어를 삭제할까요?',
+    'deleteLayersHeading': '삭제할 레이어',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
         '있습니다. 그 이름의 프레임에 링크할까요? 링크하면 같은 이름이 같은 '
         '원화를 공유하고, 목록의 프레임 그림은 버려집니다.',
+    'linkedPasteConflictBody':
+        '붙여넣는 프레임의 이름을 목록의 프레임이 이미 쓰고 있습니다. '
+        '붙여넣는 블록을 그 프레임에 링크할까요? 링크하면 같은 이름이 '
+        '같은 원화를 공유해서, 붙여넣은 블록은 목록의 프레임을 보여 '
+        '주고 복사해 온 그림은 들어오지 않습니다.',
     'frameNameConflictListHeading': '링크할 프레임',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
@@ -4323,18 +4437,18 @@ enum AppStrings {
     'seUnlinkAudio': '링크 해제',
     'keyInterpolationLinear': '리니어',
     'keyInterpolationHold': '홀드',
-    'convertLinkedCutTitle': '링크 컷으로 변환',
+    'convertLinkedCutTitle': '겸용컷으로 변환',
     'convertLinkedCutBodyTemplate':
         '"{cut}"(원본)을 다른 컷과 링크합니다. 이름이 같은 레이어끼리 '
         '한 장의 공유 그림이 됩니다.',
     'convertLinkedCutTargetLabel': '링크할 컷',
-    'convertLinkedCutLinksTemplate': '{names}을(를) 링크합니다.',
+    'convertLinkedCutLinksHeading': '링크할 레이어',
     'convertLinkedCutReplacedTemplate':
         '"{cut}"의 같은 이름 원화가 원본 것으로 대체됩니다(원본 승리).',
     'convertLinkedCutReplacedHeading': '대체되는 원화',
     'convertLinkedCutJoiningTemplate': '원화 {count}장이 공유 세트에 합류합니다.',
-    'convertLinkedCutTargetGainsTemplate': '"{cut}"에 추가: {names}.',
-    'convertLinkedCutOriginGainsTemplate': '이 컷에 추가: {names}.',
+    'convertLinkedCutTargetGainsHeadingTemplate': '"{cut}"에 추가되는 레이어',
+    'convertLinkedCutOriginGainsHeading': '이 컷에 추가되는 레이어',
     'convertLinkedCutNothing':
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
@@ -4363,15 +4477,19 @@ enum AppStrings {
     'guideAddVanishingPoint': '소실점 추가',
     'guideMakeVertical': '정확히 수직으로',
     'closeProjectTitle': '프로젝트를 닫을까요?',
-    'newProject': '새 프로젝트',
+    'shortcutAction.file-new': '새 프로젝트',
     'untitledProjectTab': '제목 없음 {n}',
     'fileOpenInAnotherTab': '그 파일은 다른 탭에서 열려 있습니다.',
+    'openNewerFormat': '더 새 버전의 Anicel 로 저장된 프로젝트라서 열 수 없습니다.',
+    'openOlderFormatTemplate':
+        '형식 {saved}의 프로젝트라서 열 수 없습니다(이 Anicel 은 형식 {oldest}부터 엽니다).',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
     'closeProjectVanishedBody':
         '이 프로젝트의 파일이 사라졌습니다. 지금 닫으면 그 안에만 있던 그림도 함께 '
         '사라집니다. 「다른 이름으로 저장」하면 지금 열려 있는 것을 새 파일로 '
         '옮길 수 있습니다.',
     'commonSaveAs': '다른 이름으로 저장…',
+    'saveAsTitle': '다른 이름으로 저장',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
@@ -4402,9 +4520,9 @@ enum AppStrings {
     'menuBarHelp': '도움말',
     'menuPlay': '재생',
     'menuPause': '일시정지',
-    'menuAction.file-open': '열기…',
-    'menuAction.file-import': '가져오기/배치…',
-    'menuAction.file-export': '내보내기…',
+    'shortcutAction.file-open': '열기…',
+    'shortcutAction.file-import': '가져오기/배치…',
+    'shortcutAction.file-export': '내보내기…',
     'menuAction.edit-undo': '실행 취소',
     'menuAction.edit-redo': '다시 실행',
     'menuAction.edit-copy-frame': '프레임 복사',
@@ -4413,27 +4531,22 @@ enum AppStrings {
     'menuAction.edit-delete-cell': '셀 삭제',
     'menuAction.edit-cut-exposure': '노출 잘라내기',
     'menuAction.edit-toggle-mark': '마크 켜기/끄기',
-    'menuAction.edit-keyboard-shortcuts': '키보드 단축키…',
-    'menuAction.edit-preferences': '환경설정…',
-    'menuAction.work-settings': '작품 설정…',
+    'shortcutAction.edit-keyboard-shortcuts': '키보드 단축키…',
+    'shortcutAction.edit-preferences': '환경설정…',
+    'shortcutAction.work-settings': '작품 설정…',
+    'menuAction.file-save-as': '프로젝트(.anicel)…',
     'menuAction.project-settings': '프로젝트 설정',
-    'menuAction.cut-new': '새 컷',
-    'menuAction.cut-duplicate': '컷 복제',
-    'menuAction.cut-create-linked': '링크 컷 만들기',
-    'menuAction.cut-convert-linked': '링크 컷으로 변환…',
-    'menuAction.cut-rename': '컷 이름 변경…',
-    'menuAction.cut-canvas-size': '캔버스 크기…',
-    'menuAction.cut-move-left': '컷 왼쪽으로',
-    'menuAction.cut-move-right': '컷 오른쪽으로',
-    'menuAction.cut-copy-ae-camera': '카메라 AE 키프레임 복사',
+    'shortcutAction.cut-create-linked': '겸용컷 만들기',
+    'shortcutAction.cut-convert-linked': '겸용컷으로 변환…',
+    'shortcutAction.cut-canvas-size': '캔버스 크기…',
+    'shortcutAction.cut-copy-ae-camera': '카메라 AE 키프레임 복사',
     'menuAction.cut-delete': '컷 삭제',
     'menuAction.layer-add': '레이어 추가',
-    'menuAction.layer-duplicate': '레이어 복제',
     'menuAction.layer-link-duplicate': '링크해서 복제',
     'menuAction.layer-unlink': '링크 해제',
     'menuAction.layer-group-into-folder': '폴더로 묶기',
     'menuAction.layer-rename': '레이어 이름 변경…',
-    'menuAction.layer-rasterize': '래스터라이즈',
+    'shortcutAction.layer-rasterize': '래스터라이즈',
     'menuAction.layer-se-name-tag': 'SE 이름표…',
     'menuAction.layer-copy': '레이어 복사',
     'menuAction.layer-paste': '레이어 붙여넣기',
@@ -4441,18 +4554,18 @@ enum AppStrings {
     'menuAction.playback-stop': '정지',
     'menuAction.playback-play-all': '모든 컷 재생',
     'menuAction.window-panels': '패널',
-    'menuAction.window-tool-rail-right': '툴 바를 오른쪽에',
-    'menuAction.window-region-on-top': '타임라인 영역을 위로',
-    'menuAction.window-reset-layout': '작업공간 배치 초기화',
+    'shortcutAction.window-tool-rail-right': '툴 바를 오른쪽에',
+    'shortcutAction.window-region-on-top': '타임라인 영역을 위로',
+    'shortcutAction.window-reset-layout': '작업공간 배치 초기화',
     'menuAction.edit-debug': '디버그',
-    'menuAction.edit-input-inspector': '입력 인스펙터',
-    'menuAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
-    'menuAction.edit-frame-stats': '프레임 통계',
-    'menuAction.edit-show-repaints': '다시 그리기 표시',
-    'menuAction.edit-bake-panels': '정적 패널 굽기',
+    'shortcutAction.edit-input-inspector': '입력 인스펙터',
+    'shortcutAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
+    'shortcutAction.edit-frame-stats': '프레임 통계',
+    'shortcutAction.edit-show-repaints': '다시 그리기 표시',
+    'shortcutAction.edit-bake-panels': '정적 패널 굽기',
     'menuAction.edit-knee-at-one': '화면 해상도 버퍼',
     'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
-    'menuAction.help-about': 'Anicel 정보',
+    'shortcutAction.help-about': 'Anicel 정보',
     'fileOpenTitle': '프로젝트 열기',
     'fileSaveTitle': '프로젝트 저장',
     'fileStorageOffNotice':
@@ -4489,10 +4602,10 @@ enum AppStrings {
     'cameraSizeTitle': '카메라 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
-    'canvasAnchorHelpTemplate':
-        '기준점: 기존 그림이 여기에 고정됩니다. 잘린 획은 보존되며 캔버스를 '
-        '다시 넓히면 되살아납니다. ({min}~{max} px)',
-    'canvasPresetDefault': '기본',
+    'canvasSizePresets': '프리셋',
+    'canvasAdjustOnCanvas': '캔버스에서 조정',
+    'cameraRatioFree': '자유',
+    'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
@@ -4524,6 +4637,7 @@ enum AppStrings {
         'OFF(기본): 각도를 스냅합니다.',
     'inputRotationSnap': '회전 스냅 (°)',
     'inputZoomSnaps': '줌 스냅 (%)',
+    'inputZoomCeiling': '최대 줌 잠금 (%)',
     'inputBrushSizeSnaps': '브러시 크기 스냅 (px)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
@@ -4603,7 +4717,7 @@ enum AppStrings {
     'saveFailedDetailsHeading': '자세히',
     'saveFailedCopyLineTemplate': '실패본: {path}',
     'saveFailedErrorLineTemplate': '오류: {error}',
-    'failedCopyBackUp': '실패본 백업…',
+    'shortcutAction.file-back-up-failed-copy': '실패본 백업…',
     'failedCopyPickTitle': '백업할 실패본',
     'failedCopyVanishOnClose': '실패본은 프로그램을 닫으면 사라집니다.',
     'failedCopyBackingUp': '백업 중…',
@@ -4642,10 +4756,10 @@ enum AppStrings {
     'sheetFillOn': '칠함',
     'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
+    'conteCoverPage': '표지',
+    'conteBlankPage': '빈 용지',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
-    'sheetViewPage': '페이지 보기',
-    'sheetViewContinuous': '콘티너스 보기',
     'instructionsTitle': '지시 기호',
     'instructionEditTooltip': '지시 기호 편집',
     'instructionDeleteTooltip': '지시 기호 삭제',
@@ -4658,7 +4772,6 @@ enum AppStrings {
     'instructionNameLabel': '이름 (비우면 기호 이름)',
     'instructionStartLabel': '시작 이름 (A)',
     'instructionEndLabel': '끝 이름 (B)',
-    'instructionMemoLabel': '메모 (타임시트 메모 칸)',
     'instructionEditSetButton': '지시 기호 편집…',
     'instructionEditorIcon': '아이콘',
     'instructionEditorColor': '색',
@@ -4673,6 +4786,12 @@ enum AppStrings {
     'shortcutCategory.View': '보기',
     'shortcutCategory.Timeline': '타임라인',
     'shortcutCategory.File': '파일',
+    'shortcutCategory.Brush Tool Brushes': '브러시 도구의 브러시',
+    'shortcutCategory.Eraser Tool Brushes': '지우개 도구의 브러시',
+    'shortcutCategory.Settings': '설정',
+    'shortcutCategory.Debug': '디버그',
+    'shortcutCategory.Panels': '패널',
+    'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutAction.frame-previous': '이전 프레임',
     'shortcutAction.frame-next': '다음 프레임',
     'shortcutAction.drawing-previous': '이전 블록',
@@ -4688,6 +4807,8 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': '스포이트 도구',
     'shortcutAction.tool-fill': '채우기 도구',
     'shortcutAction.tool-fill-bucket': '채우기',
+    'shortcutAction.tool-text': '텍스트 도구',
+    'shortcutAction.tool-shape': '도형 도구',
     'shortcutAction.tool-guide': '가이드 도구',
     'shortcutAction.tool-select': '선택 도구',
     'shortcutAction.tool-transform': '변형 도구',
@@ -4711,7 +4832,9 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '3코마로 설정',
     'shortcutAction.timeline-comma-4': '4코마로 설정',
     'shortcutAction.timeline-comma-n': 'N코마로 설정…',
-    'shortcutAction.frame-new-drawing': '새 그림',
+    'shortcutAction.frame-new-drawing': '프레임 추가',
+    'shortcutAction.layer-add': '레이어 추가',
+    'shortcutAction.cut-pin-thumbnail': '썸네일 프레임 고정',
     'shortcutAction.frame-blank-exposure': '중간 없음 / ×',
     'shortcutAction.frame-toggle-mark': '마크 토글',
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
@@ -4720,6 +4843,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': '복사',
     'shortcutAction.edit-paste-linked': '링크 붙여넣기',
     'shortcutAction.edit-paste-independent': '독립 붙여넣기',
+    'shortcutAction.edit-unlink': '링크 독립',
     'shortcutAction.edit-delete': '삭제',
     'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
@@ -4777,15 +4901,14 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '축소',
     'cutCommands': '컷 명령',
     'cutAddCut': '컷 추가',
-    'cutNewCut': '새 컷',
-    'cutDuplicateCut': '컷 복제',
-    'cutDuplicateActive': '활성 컷 복제',
-    'cutRename': '컷 이름 변경…',
-    'cutEditNote': '컷 메모 편집…',
-    'cutSettings': '컷 설정…',
+    'shortcutAction.cut-new': '새 컷',
+    'shortcutAction.cut-duplicate': '컷 복제',
+    'shortcutAction.cut-rename': '컷 이름 변경…',
+    'shortcutAction.cut-edit-note': '컷 메모 편집…',
+    'shortcutAction.cut-settings': '컷 설정…',
     'cutSettingsTitle': '컷 설정',
-    'cutMoveLeft': '컷 왼쪽으로',
-    'cutMoveRight': '컷 오른쪽으로',
+    'shortcutAction.cut-move-left': '컷 왼쪽으로',
+    'shortcutAction.cut-move-right': '컷 오른쪽으로',
     'cutDelete': '컷 삭제',
     'mediaActions': '미디어 작업',
     'mediaPoolEmpty': '미디어가 없습니다',
@@ -4830,7 +4953,10 @@ enum AppStrings {
     'panelColorWheel': '컬러 휠',
     'transportIn': '인',
     'transportOut': '아웃',
+    'transportToStart': '처음으로',
+    'transportToEnd': '끝으로',
     'transportLoop': '루프',
+    'transportOnce': '한 번 재생',
     'transportPrevFrame': '이전 프레임',
     'transportNextFrame': '다음 프레임',
     'colorRecent': '최근',
@@ -4852,7 +4978,7 @@ enum AppStrings {
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
     'panelConte': '콘티 용지',
-    'panelEnvelope': '엔벨로프',
+    'panelEnvelope': '컷 봉투',
     'commonRegister': '등록',
     'commonNameField': '이름',
     'tipRegisterTitle': '팁으로 등록',
@@ -4872,12 +4998,16 @@ enum AppStrings {
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutResetToDefault': '기본값으로',
+    'shortcutUnassign': '단축키 해제',
     'shortcutRecordNew': '새 단축키 기록',
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
     'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
-    'playbackQuality': '재생 품질',
+    'playbackMode': '재생 방식',
+    'playbackModeSkipFrames': '건너뛰기',
+    'playbackModeEveryPicture': '모든 그림',
+    'playbackModeRenderFirst': '재생 전 굽기',
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
@@ -4896,7 +5026,6 @@ enum AppStrings {
     'exImage': '이미지',
     'exVideo': '동영상',
     'exCels': '셀',
-    'exSheetPng': '시트 PNG',
     'exFormat': '형식',
     'exOptions': '옵션',
     'exNaming': '이름 규칙',
@@ -4906,24 +5035,37 @@ enum AppStrings {
     'exBitrate': '비트레이트',
     'exChannels': '채널',
     'exAudio': '오디오',
-    'exBrowse': '찾아보기…',
-    'exHandOverWhenDone': '끝나면 고르기',
     'exHandOverDeclined': '넘기지 않아 내보낸 결과물을 버렸습니다.',
+    'exHandOverPending': '결과물을 아직 넘기지 않았습니다.',
+    'exHandOverPickAgain': '다시 고르기',
+    'exHandOverDiscard': '버리기',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'exBaseName': '기본 이름',
     'exSuffix': '접미사',
+    'exPrefix': '접두사',
+    'exLayDirection': '이 그림에 디렉션 적용',
+    'exCelFormat': '셀 형식',
+    'exTimesheetFormat': '타임시트 형식',
+    'exEnvelopeFormat': '컷 봉투 형식',
+    'exWrittenCount': '{n}장',
+    'exWrittenCountOne': '{n}장',
+    'noticeExportRowOff': '꺼져 있는 줄입니다',
+    'noticeExportNoPicture': '이 셀에 켜진 그림이 존재하지 않습니다',
+    'noticeExportNotPlaced': '타임라인에 놓이지 않은 그림입니다',
+    'noticeExportSameName': '같은 이름의 줄이 이 그림을 내보냅니다',
+    'noticeExportRidesBase': '기준 레이어의 셀에 얹혀 나가는 그림입니다',
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX 적용',
     'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exLabel': '라벨',
     'exApply': '적용',
-    'exAdd': '추가',
-    'exSelect': '선택',
+    'exKinds': '내보낼 종류',
+    'exLayerFilter': '레이어',
     'exSelBase': '기준',
     'exSelAttach': '어태치',
-    'exSelSheet': '시트',
+    'exSelSheet': '시트만',
     'exSelDirection': '디렉션',
     'exSelCustom': '커스텀',
     'exPaperLabel': '용지',
@@ -4940,24 +5082,16 @@ enum AppStrings {
     'exWhite': '흰색',
     'exBlack': '검정',
     'exBackground': '배경',
-    'exChooseLocation': '위치를 고르면 내보낼 수 있습니다.',
     'exNoCels': '(셀 없음)',
     'exNoCuts': '(컷 없음)',
     'exPresets': '프리셋',
     'exQueue': '대기열',
     'exSize': '크기',
-    'exForm': '서식',
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
-    'exWidth': '너비',
-    'exSheetLayers': '레이어',
-    'exContent': '내용',
-    'exInk': '선화',
-    'exPictureLayer': '그림',
-    'exFiles': '파일',
-    'exOneImage': '이미지 한 장',
-    'exOnePerLayer': '레이어마다 한 장',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
+    'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
+    'clipHiddenLayers': '숨김',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
@@ -4975,6 +5109,7 @@ enum AppStrings {
     'importWarning.psdLab': 'Lab를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
     'importWarning.psdAdjustment': '{name}: 조정 레이어는 적용하지 않았습니다.',
     'importWarning.psdClipping': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
+    'importWarning.psdLayerEffects': '{name}: 레이어 효과는 적용하지 않았습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
     'importWarning.folderNoBase': '{process}/{symbol}: 맞는 최상위 레이어가 없습니다 — 셀 {n}장을 건너뛰었습니다.',
@@ -4986,6 +5121,21 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}: 블렌딩 모드 "{mode}" 에 해당하는 것이 Anicel 에 없습니다 — 보통으로 가져왔습니다.',
     'importWarning.tvppHoldNoDrawing': '{name}: {frame}프레임의 홀드가 이어받을 그림이 없습니다.',
     'importWarning.tvppChunkBroken': '클립 {n}: @{at} 에서 청크 열이 끊겼습니다 — 이후 데이터는 버립니다.',
+    'importWarning.clipRead': '파일의 일부를 따라가지 못했습니다: {detail}',
+    'importWarning.clipFps': '타임라인마다 프레임 레이트가 다릅니다 — 프로젝트는 첫 타임라인의 {fps} fps 로 했습니다.',
+    'importWarning.clipUnplaced': '{name}: 어느 타임라인에도 놓이지 않은 셀 {count}장은 가져오지 않았습니다.',
+    'importWarning.clipNoSuchCel': '{name}: 폴더에 없는 셀을 가리키는 키가 {count}개 있습니다.',
+    'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
+    'importWarning.clipSpread': '{name}: 셀 {count}장에서 폴더의 불투명도나 합성 모드를 안의 레이어마다 나눠 줬습니다 — 레이어가 겹치는 자리는 다르게 보일 수 있습니다.',
+    'importWarning.clipVector': '{name}: 벡터 레이어 — 그리지 않았습니다.',
+    'importWarning.clipText': '{name}: 텍스트 레이어 — 그리지 않았습니다.',
+    'importWarning.clipPaper': '{name}: 용지 레이어 — 색은 적용하지 않았습니다.',
+    'importWarning.clipFill': '{name}: 채우기 레이어 — 그리지 않았습니다.',
+    'importWarning.clipSound': '{name}: 소리 레이어는 가져오지 않았습니다.',
+    'importWarning.clipUnknownLayer': '{name}: 이 가져오기가 읽지 못하는 종류의 레이어입니다.',
+    'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
+    'importWarning.clipNotColour': '{name}: 그레이 · 모노크롬 레이어 — 그리지 않았습니다.',
+    'importWarning.clipTransform': '{name}: 그림의 크기 · 회전은 적용하지 않았습니다.',
     'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
     'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
     'exclusionReason.unrecognized': '알 수 없는 이름',
@@ -4998,24 +5148,10 @@ enum AppStrings {
     'exPageCountOne': '{n}페이지',
     'exFileCount': '파일 {n}개',
     'exFileCountOne': '파일 {n}개',
-    'exLabelCount': '라벨 {n}개',
-    'exLabelCountOne': '라벨 {n}개',
     'exJobCount': '작업 {n}개',
     'exJobCountOne': '작업 {n}개',
-    'exLayerCount': '레이어 {n}개',
-    'exLayerCountOne': '레이어 {n}개',
-    'exPngCount': 'PNG {n}장',
-    'exPngCountOne': 'PNG {n}장',
-    'exXdtsSheetCount': 'XDTS 시트 {n}장',
-    'exXdtsSheetCountOne': 'XDTS 시트 {n}장',
-    'exSheetPageCount': '시트 {n}페이지',
-    'exSheetPageCountOne': '시트 {n}페이지',
     'exContePageCount': '콘티 {n}페이지',
     'exContePageCountOne': '콘티 {n}페이지',
-    'exEnvelopeCount': '엔벨로프 {n}장',
-    'exEnvelopeCountOne': '엔벨로프 {n}장',
-    'exEnvelopeFileCount': '엔벨로프 파일 {n}개',
-    'exEnvelopeFileCountOne': '엔벨로프 파일 {n}개',
     'exCancelledAfterTemplate': '{count} 내보낸 뒤 취소했습니다.',
     'exCancelledVideoTemplate': '{count} 내보낸 뒤 취소했습니다(중간까지의 영상은 남겼습니다).',
     'exCancelled': '내보내기를 취소했습니다.',
@@ -5025,47 +5161,20 @@ enum AppStrings {
     'exDoneVideoTemplate': '영상을 내보냈습니다({count}).',
     'exDoneContePdfTemplate': 'conte.pdf를 내보냈습니다({count}).',
     'exNothingInFrame': '내보낼 것이 없습니다(빈 프레임).',
-    'exExporting': '내보내는 중…',
-    'exExportingProgressTemplate': '내보내는 중… {done}/{total}',
     'exFailedTemplate': '내보내기 실패: {error}',
-    'exRenderingQueue': '대기열을 렌더링하는 중…',
     'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
     'exQueueFailedTemplate': ', {n}개 실패',
     'exQueueRestKept': ', 나머지는 남겨 둠',
-    'exInvalidInOutTemplate': '인/아웃이 올바르지 않음 · F{frame} · {cut}',
-    'exInOutTemplate': '인 {in} – 아웃 {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '올바른 인/아웃 범위를 입력하세요(1–{duration}).',
-    'exSequenceCameraTemplate': '카메라를 거쳐 {w}×{h}로 {frames}.',
-    'exSequenceCanvasTemplate': '{w}×{h}로 {frames}(캔버스 그대로).',
-    'exSequencePerCutTemplate': '컷마다 제 캔버스 크기로 {frames}.',
-    'exImageHeadlineTemplate': '{cut}의 {frame}프레임, {w}×{h}.',
-    'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+어태치 합성).',
-    'exTransparent': '투명',
-    'exOpaque': '불투명',
-    'exSheetImageHeadlineTemplate': '{pages}를 B4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
-    'exXdtsHeadlineTemplate': '{sheets}(셀 + 대사 + 카메라워크 열).',
-    'exContePdfHeadlineTemplate': '{pages}를 벡터 PDF 하나로 — 선과 글자는 벡터, 그림은 포함.',
-    'exContePngHeadlineTemplate': '{pages}를 A4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
-    'exEnvelopeHeadlineTemplate': '{sheets}를 {files}로, {paper}{layered}.',
-    'exEnvelopePaperCut': '컷 그대로의 픽셀 — 작업 파일에 레이어로 넣을 수 있음',
-    'exEnvelopePaperSheetTemplate': '너비 {w}px — 인쇄용 실제 봉투',
-    'exEnvelopeLayeredTemplate': ' · 레이어마다 PNG 한 장({n})',
     'exFileLabel': '파일',
-    'exPatternLabel': '패턴',
-    'exLocationLabel': '위치',
-    'exChooseFolder': '폴더 선택…',
+    'exOrderAsksFirst': '위치를 지정하고 출력합니다',
+    'exOrderAsksAfter': '출력한 후 위치를 지정합니다',
     'exSeMuxedTemplate': 'SE 먹싱 · {codec}',
     'exVectorPdf': '벡터 PDF',
-    'exPagePng': '페이지 PNG',
     'exFxOn': 'FX 켬',
     'exFxOff': 'FX 끔',
-    'exSheetWidthTemplate': '용지 · {w}px',
-    'exSeparatePngsTemplate': '개별 PNG {n}장',
-    'exFlatLayersTemplate': '4개 중 {n}개, 합침',
     'exTabSequence': '시퀀스',
     'exSizeCamera': '카메라',
     'exSizeCanvas': '캔버스',
-    'exSheetImage': '시트 이미지',
     'exPageImage': '페이지 이미지',
     'exSaveCurrent': '+ 현재 설정 저장…',
     'exRenderQueue': '렌더 대기열',
@@ -5095,7 +5204,7 @@ enum AppStrings {
     'imModified': '수정일',
     'imSize': '크기',
     'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
-    'imMultiCutFolders': '겸용 컷 폴더',
+    'imMultiCutFolders': '겸용컷 폴더',
     'imProcess': '공정',
     'imPicture': '그림',
     'imReference': '참고',
@@ -5112,6 +5221,10 @@ enum AppStrings {
     'imBake': '굽기',
     'imSound': '소리',
     'imSoundOnly': '소리만',
+    'imRun': '연번',
+    'imRunTogether': '함께',
+    'imRunAlone': '이 파일만',
+    'imRunSpanTemplate': '{first}–{last} ({n}장)',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitContain': '비율 유지',
@@ -5126,6 +5239,7 @@ enum AppStrings {
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
+    'imStatusDone': '임포트 완료',
     'imFolderGone': '그 폴더가 없어졌습니다.',
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
@@ -5137,7 +5251,6 @@ enum AppStrings {
     'imNoPdfRendererTemplate': '{name}: 이 빌드에는 PDF 렌더러가 없습니다.',
     'imCouldNotImportTemplate': '{name}: 임포트하지 못했습니다.',
     'imPsdNoLayersTemplate': '{name}: 펼칠 레이어가 없습니다 — 합치기로 가져오세요.',
-    'imRenderingPdfTemplate': 'PDF 쪽을 그리는 중 {done}/{total}…',
     'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
     'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
     'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
@@ -5152,6 +5265,45 @@ enum AppStrings {
     'toolEraser': '지우개',
     'toolEyedropper': '스포이트',
     'toolFill': '채우기',
+    'toolText': '텍스트',
+    'toolShape': '도형',
+    'textToolSelectedText': '선택된 텍스트',
+    'textToolDeleteText': '텍스트 삭제',
+    'textToolLetters': '글자',
+    'textToolBox': '상자',
+    'textToolFont': '글꼴',
+    'textToolSize': '크기',
+    'textToolTracking': '자간',
+    'textToolBold': '굵게',
+    'textToolColor': '색',
+    'textToolOutline': '윤곽선',
+    'textToolOutlineWidth': '윤곽선 굵기',
+    'textToolAlign': '정렬',
+    'textToolAlignLeft': '왼쪽',
+    'textToolAlignCenter': '가운데',
+    'textToolAlignRight': '오른쪽',
+    'textToolBoxWidth': '상자 폭',
+    'textToolWidthAuto': '자동',
+    'textToolWidthFixed': '고정',
+    'textToolLineHeight': '줄 간격',
+    'textToolBackground': '배경',
+    'textToolIntoDrawing': '그림으로 굳히기',
+    'textToolWriting': '쓰기 방향',
+    'textToolWritingLines': '가로',
+    'textToolWritingColumns': '세로',
+    'textToolAlignTop': '위',
+    'textToolAlignBottom': '아래',
+    'textToolFontImport': '글꼴 파일 가져오기',
+    'textToolFontDelete': '글꼴 삭제',
+    'textToolFontsOfProject': '이 프로젝트의 글꼴',
+    'textToolFontsOfDevice': '이 기기의 글꼴',
+    'textToolFontTakeOut': '프로젝트에서 빼기',
+    'textToolFontStaysOnThisDevice':
+        '이 글꼴은 편집하는 문서에 넣도록 허용되지 않아서 다른 기기에서 열면 바뀝니다.',
+    'textToolFontNotOnThisDevice': '이 기기에 없는 글꼴이라 다른 글꼴로 보입니다.',
+    'textToolFontUnreadable': '글꼴 파일로 읽을 수 없습니다.',
+    'textToolFontIsTheApps': '앱에 이미 들어 있는 글꼴입니다.',
+    'textToolFontNotKept': '글꼴을 저장하지 못했습니다.',
     'toolSelect': '선택',
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
@@ -5170,9 +5322,20 @@ enum AppStrings {
     'toolShapeEllipse': '타원',
     'toolShapeLasso': '올가미',
     'toolShapePolygon': '다각형',
+    'toolShapeLine': '직선',
     'toolShapeSelectTemplate': '{shape} 선택',
     'toolShapeCutTemplate': '{shape} 잘라내기',
     'toolShapeFillTemplate': '{shape} 채우기',
+    'toolShapeDrawTemplate': '{shape} 그리기',
+    'shapeToolDraws': '그리기',
+    'shapeToolStroke': '선',
+    'shapeToolFill': '채움',
+    'shapeToolType': '타입',
+    'shapeToolTypePlain': '일반',
+    'shapeToolCorners': '모서리',
+    'shapeToolCornersSharp': '각지게',
+    'shapeToolCornersRound': '둥글게',
+    'shapeToolRatioLock': '비율 고정',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
     'brCreate': '만들기',
@@ -5220,7 +5383,7 @@ enum AppStrings {
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
-    'tlAutoFrame': '빈 칸에 그리면 프레임 자동 생성',
+    'shortcutAction.frame-auto-create': '빈 칸에 그리면 프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
     'brDualBlend': '듀얼 합성',
@@ -5328,9 +5491,25 @@ enum AppStrings {
     'brExportSelected': '브러시 내보내기',
     'brExportGroup': '브러시 그룹 내보내기',
     'brExportNothing': '내보낼 브러시가 없습니다.',
+    'brExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
+    'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
+    'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
+    'brExportFallbackName': '브러시',
+    'brImportUnreadable': '이 파일은 브러시 파일로 읽을 수 없습니다.',
+    'brImportPickFailedTemplate': '파일을 열지 못했습니다: {error}',
+    'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
+    'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
+    'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
+    'brTipUnreadable': '그 이미지는 브러시 팁으로 읽을 수 없습니다.',
+    'brTipNoShape': '그 이미지에는 팁으로 쓸 보이는 모양이 없습니다.',
+    'brTipNotSaved': '그 팁을 저장하지 못했습니다.',
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
+    'trScaleX': '배율 X',
+    'trScaleY': '배율 Y',
+    'trScaleLink': '배율 연동',
     'trAnchorPointX': '기준점 X',
     'trAnchorPointY': '기준점 Y',
     'trMeshColumns': '가로 칸',
@@ -5382,8 +5561,6 @@ enum AppStrings {
     'railFolderBlendMode': '폴더 블렌드 모드',
     'railHideLayer': '레이어 숨기기',
     'railShowLayer': '레이어 표시',
-    'railHideCutPicture': '컷 그림 숨기기',
-    'railShowCutPicture': '컷 그림 표시',
     'railBypassLayerFx': '레이어 FX 우회',
     'railApplyLayerFx': '레이어 FX 적용',
     'railBypassMixedLayerFx': '레이어 FX 모두 우회 (일부 꺼짐)',
@@ -5437,7 +5614,6 @@ enum AppStrings {
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlSeNameTemplate': 'SE 이름 {name}',
-    'tlAddLayerHeader': '레이어 추가',
     'tlNoLayers': '레이어 없음',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
@@ -5493,23 +5669,21 @@ enum AppStrings {
     'seNameTagPreviewLine': '대사',
     'tlKindInstruction': '디렉션',
     'tlNoriShiro': '여백',
-    'tlAttachFreeAbove': '위에 프리 어태치 레이어',
-    'tlAttachFreeBelow': '아래에 프리 어태치 레이어',
-    'tlAttachSyncedAbove': '위에 싱크 어태치 레이어',
-    'tlAttachSyncedBelow': '아래에 싱크 어태치 레이어',
+    'shortcutAction.layer-attach-free-above': '위에 프리 어태치 레이어',
+    'shortcutAction.layer-attach-free-below': '아래에 프리 어태치 레이어',
+    'shortcutAction.layer-attach-synced-above': '위에 싱크 어태치 레이어',
+    'shortcutAction.layer-attach-synced-below': '아래에 싱크 어태치 레이어',
     'tlLayerCommands': '레이어 명령',
     'tlFrameCommands': '프레임 명령',
     'tlCut': '컷',
     'tlLayer': '레이어',
     'tlFrame': '프레임',
-    'tlDuplicateLayer': '레이어 복제',
-    'tlSelectRowSpan': '행 전체 선택',
-    'tlLinkDuplicateLayer': '링크해서 복제',
+    'shortcutAction.layer-duplicate': '레이어 복제',
+    'shortcutAction.frame-select-row-span': '행 전체 선택',
     'linkWindowUnlink': '링크 해제',
-    'linkWindowUnlinkLinkedCut': '링크 컷이라 레이어만 해제할 수 없습니다',
+    'linkWindowUnlinkLinkedCut': '겸용컷이라 레이어만 해제할 수 없습니다',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlRenameLayer': '레이어 이름 변경…',
-    'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
@@ -5518,11 +5692,11 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '{name}에 어태치 (싱크)',
     'tlDropAttachFreeTemplate': '{name}에 어태치 (프리)',
     'tlDropDetachAttach': '어태치 해제',
-    'tlDetachLayer': '어태치 해제',
+    'shortcutAction.layer-detach': '어태치 해제',
+    'tlAttachDropsFxRows': 'fx 가 사라지는 레이어',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
-    'tlSharedUnlink': '링크 독립',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
@@ -5551,7 +5725,7 @@ enum AppStrings {
     'tlCustom': '사용자 지정…',
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
-    'tlStoryboardLayer': '콘티 레이어',
+    'shortcutAction.layer-storyboard': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
     'frameCountEntryFrames': '프레임',
@@ -5568,9 +5742,8 @@ enum AppStrings {
     'programLanguageHelp': 'Menus, panneaux et libellés.',
     'notationLanguageHelp': 'Ce qui s\'imprime sur la feuille d\'exposition.',
     'noCutSelected': 'Aucun plan sélectionné',
-    'pageLabel': 'Page',
-    'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
+    'noticeNothingToCut': 'Rien à couper',
     'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
     'noticeLayerHidden': 'Ce calque est masqué',
@@ -5664,13 +5837,20 @@ enum AppStrings {
     'cutNoteTitle': 'Modifier la note du plan',
     'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
-    'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
+    'deleteLayersMessage': 'Supprimer les calques ci-dessous ?',
+    'deleteLayersHeading': 'Calques à supprimer',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Chaque image listée prend un nom déjà utilisé par une autre image de '
         'son calque. Les lier aux images qui portent ces noms ? Le même nom '
         'partagera alors le même dessin, et le dessin de chaque image listée '
         'sera supprimé.',
+    'linkedPasteConflictBody':
+        'Chaque image listée utilise déjà un nom porté par les images '
+        'collées. Lier les blocs collés à ces images ? Le même nom '
+        'partagera alors le même dessin : les blocs collés montreront '
+        'les images listées, et les dessins copiés ne seront pas '
+        'apportés.',
     'frameNameConflictListHeading': 'Images à lier',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
@@ -5687,15 +5867,15 @@ enum AppStrings {
         'Lier « {cut} » (origine) à un autre plan. Les calques de MÊME NOM '
         'deviennent un seul dessin partagé.',
     'convertLinkedCutTargetLabel': 'Lier au plan',
-    'convertLinkedCutLinksTemplate': 'Lie {names}.',
+    'convertLinkedCutLinksHeading': 'Calques liés',
     'convertLinkedCutReplacedTemplate':
         'Les dessins de même nom dans « {cut} » seront remplacés par '
         "ceux de l'origine (원본 승리).",
     'convertLinkedCutReplacedHeading': 'Dessins remplacés',
     'convertLinkedCutJoiningTemplate':
         "{count} dessin(s) rejoignent l'ensemble partagé.",
-    'convertLinkedCutTargetGainsTemplate': '« {cut} » gagne : {names}.',
-    'convertLinkedCutOriginGainsTemplate': 'Ce plan gagne : {names}.',
+    'convertLinkedCutTargetGainsHeadingTemplate': 'Ajoutés à « {cut} »',
+    'convertLinkedCutOriginGainsHeading': 'Ajoutés à ce plan',
     'convertLinkedCutNothing':
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
@@ -5727,9 +5907,13 @@ enum AppStrings {
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
     'guideMakeVertical': 'Rendre exactement vertical',
     'closeProjectTitle': 'Fermer le projet ?',
-    'newProject': 'Nouveau projet',
+    'shortcutAction.file-new': 'Nouveau projet',
     'untitledProjectTab': 'Sans titre {n}',
     'fileOpenInAnotherTab': 'Ce fichier est déjà ouvert dans un autre onglet.',
+    'openNewerFormat':
+        'Ce projet a été enregistré par une version plus récente d’Anicel et ne peut pas être ouvert.',
+    'openOlderFormatTemplate':
+        'Ce projet est au format {saved} et ne peut pas être ouvert (cet Anicel ouvre à partir du format {oldest}).',
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
     'closeProjectVanishedBody':
@@ -5737,6 +5921,7 @@ enum AppStrings {
         "dessins qui n'existent que dedans. « Enregistrer sous » écrit dans "
         'un nouveau fichier ce qui est encore ouvert.',
     'commonSaveAs': 'Enregistrer sous…',
+    'saveAsTitle': 'Enregistrer sous',
     'saveProgressRunning': 'Enregistrement…',
     'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
@@ -5764,9 +5949,9 @@ enum AppStrings {
     'menuBarHelp': 'Aide',
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
-    'menuAction.file-open': 'Ouvrir…',
-    'menuAction.file-import': 'Importer / Placer…',
-    'menuAction.file-export': 'Exporter…',
+    'shortcutAction.file-open': 'Ouvrir…',
+    'shortcutAction.file-import': 'Importer / Placer…',
+    'shortcutAction.file-export': 'Exporter…',
     'menuAction.edit-undo': 'Annuler',
     'menuAction.edit-redo': 'Rétablir',
     'menuAction.edit-copy-frame': "Copier l'image",
@@ -5775,27 +5960,22 @@ enum AppStrings {
     'menuAction.edit-delete-cell': 'Supprimer la case',
     'menuAction.edit-cut-exposure': "Couper l'exposition",
     'menuAction.edit-toggle-mark': 'Basculer le repère',
-    'menuAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
-    'menuAction.edit-preferences': 'Préférences…',
-    'menuAction.work-settings': 'Réglages de l’œuvre…',
+    'shortcutAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
+    'shortcutAction.edit-preferences': 'Préférences…',
+    'shortcutAction.work-settings': 'Réglages de l’œuvre…',
+    'menuAction.file-save-as': 'Projet (.anicel)…',
     'menuAction.project-settings': 'Réglages du projet',
-    'menuAction.cut-new': 'Nouveau plan',
-    'menuAction.cut-duplicate': 'Dupliquer le plan',
-    'menuAction.cut-create-linked': 'Créer un plan lié',
-    'menuAction.cut-convert-linked': 'Convertir en plan lié…',
-    'menuAction.cut-rename': 'Renommer le plan…',
-    'menuAction.cut-canvas-size': 'Taille du canevas…',
-    'menuAction.cut-move-left': 'Déplacer le plan à gauche',
-    'menuAction.cut-move-right': 'Déplacer le plan à droite',
-    'menuAction.cut-copy-ae-camera': 'Copier les clés AE de la caméra',
+    'shortcutAction.cut-create-linked': 'Créer un plan lié',
+    'shortcutAction.cut-convert-linked': 'Convertir en plan lié…',
+    'shortcutAction.cut-canvas-size': 'Taille du canevas…',
+    'shortcutAction.cut-copy-ae-camera': 'Copier les clés AE de la caméra',
     'menuAction.cut-delete': 'Supprimer le plan',
     'menuAction.layer-add': 'Ajouter un calque',
-    'menuAction.layer-duplicate': 'Dupliquer le calque',
     'menuAction.layer-link-duplicate': 'Dupliquer en liant',
     'menuAction.layer-unlink': 'Délier le calque',
     'menuAction.layer-group-into-folder': 'Grouper dans un dossier',
     'menuAction.layer-rename': 'Renommer le calque…',
-    'menuAction.layer-rasterize': 'Pixelliser le calque',
+    'shortcutAction.layer-rasterize': 'Pixelliser le calque',
     'menuAction.layer-se-name-tag': 'Étiquette SE…',
     'menuAction.layer-copy': 'Copier le calque',
     'menuAction.layer-paste': 'Coller le calque',
@@ -5803,18 +5983,19 @@ enum AppStrings {
     'menuAction.playback-stop': 'Arrêter',
     'menuAction.playback-play-all': 'Lire tous les plans',
     'menuAction.window-panels': 'Panneaux',
-    'menuAction.window-tool-rail-right': "Barre d'outils à droite",
-    'menuAction.window-region-on-top': 'Zone de timeline en haut',
-    'menuAction.window-reset-layout': "Réinitialiser l'espace de travail",
+    'shortcutAction.window-tool-rail-right': "Barre d'outils à droite",
+    'shortcutAction.window-region-on-top': 'Zone de timeline en haut',
+    'shortcutAction.window-reset-layout': "Réinitialiser l'espace de travail",
     'menuAction.edit-debug': 'Débogage',
-    'menuAction.edit-input-inspector': "Inspecteur d'entrée",
-    'menuAction.edit-frame-timing-overlay': 'Superposition du minutage des images',
-    'menuAction.edit-frame-stats': 'Statistiques des images',
-    'menuAction.edit-show-repaints': 'Afficher les redessins',
-    'menuAction.edit-bake-panels': 'Pixelliser les panneaux statiques',
+    'shortcutAction.edit-input-inspector': "Inspecteur d'entrée",
+    'shortcutAction.edit-frame-timing-overlay':
+        'Superposition du minutage des images',
+    'shortcutAction.edit-frame-stats': 'Statistiques des images',
+    'shortcutAction.edit-show-repaints': 'Afficher les redessins',
+    'shortcutAction.edit-bake-panels': 'Pixelliser les panneaux statiques',
     'menuAction.edit-knee-at-one': "Tampon à la résolution de l'écran",
     'menuAction.edit-show-unpainted-tiles': 'Afficher les tuiles non peintes',
-    'menuAction.help-about': 'À propos de Anicel',
+    'shortcutAction.help-about': 'À propos de Anicel',
     'fileOpenTitle': 'Ouvrir un projet',
     'fileSaveTitle': 'Enregistrer le projet',
     'fileStorageOffNotice':
@@ -5851,11 +6032,10 @@ enum AppStrings {
     'cameraSizeTitle': 'Taille de la caméra',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
-    'canvasAnchorHelpTemplate':
-        'Ancrage : le dessin existant reste fixé ici. Les traits rognés sont '
-        'conservés et réapparaissent si le canevas est agrandi. '
-        '({min}–{max} px)',
-    'canvasPresetDefault': 'Par défaut',
+    'canvasSizePresets': 'Préréglages',
+    'canvasAdjustOnCanvas': 'Ajuster sur la toile',
+    'cameraRatioFree': 'Libre',
+    'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
@@ -5889,6 +6069,7 @@ enum AppStrings {
         "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
     'inputRotationSnap': 'Cran de rotation (°)',
     'inputZoomSnaps': 'Crans de zoom (%)',
+    'inputZoomCeiling': 'Verrou de zoom max (%)',
     'inputBrushSizeSnaps': 'Crans de taille de pinceau (px)',
     'inputTabletHeading': 'Service tablette',
     'inputTabletStandard': 'Standard (par défaut)',
@@ -5987,7 +6168,7 @@ enum AppStrings {
     'saveFailedDetailsHeading': 'Détails',
     'saveFailedCopyLineTemplate': "Copie d'échec : {path}",
     'saveFailedErrorLineTemplate': 'Erreur : {error}',
-    'failedCopyBackUp': "Sauvegarder la copie d'échec…",
+    'shortcutAction.file-back-up-failed-copy': "Sauvegarder la copie d'échec…",
     'failedCopyPickTitle': "Quelle copie d'échec ?",
     'failedCopyVanishOnClose':
         "Les copies d'échec disparaissent à la fermeture du programme.",
@@ -6031,10 +6212,10 @@ enum AppStrings {
     'sheetFillOn': 'Grisées',
     'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
+    'conteCoverPage': 'Couverture',
+    'conteBlankPage': 'Page blanche',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
-    'sheetViewPage': 'Vue page',
-    'sheetViewContinuous': 'Vue continue',
     'instructionsTitle': 'Indications',
     'instructionEditTooltip': "Modifier l'indication",
     'instructionDeleteTooltip': "Supprimer l'indication",
@@ -6047,7 +6228,6 @@ enum AppStrings {
     'instructionNameLabel': "Nom (vide = nom de l'indication)",
     'instructionStartLabel': 'Nom de début (A)',
     'instructionEndLabel': 'Nom de fin (B)',
-    'instructionMemoLabel': 'Mémo (bande mémo de la feuille)',
     'instructionEditSetButton': 'Modifier les indications…',
     'instructionEditorIcon': 'Icône',
     'instructionEditorColor': 'Couleur',
@@ -6062,6 +6242,12 @@ enum AppStrings {
     'shortcutCategory.View': 'Affichage',
     'shortcutCategory.Timeline': 'Timeline',
     'shortcutCategory.File': 'Fichier',
+    'shortcutCategory.Brush Tool Brushes': 'Pinceaux de l’outil pinceau',
+    'shortcutCategory.Eraser Tool Brushes': 'Pinceaux de l’outil gomme',
+    'shortcutCategory.Settings': 'Réglages',
+    'shortcutCategory.Debug': 'Débogage',
+    'shortcutCategory.Panels': 'Panneaux',
+    'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutAction.frame-previous': 'Image précédente',
     'shortcutAction.frame-next': 'Image suivante',
     'shortcutAction.drawing-previous': 'Bloc précédent',
@@ -6078,6 +6264,8 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': 'Outil pipette',
     'shortcutAction.tool-fill': 'Outil remplissage',
     'shortcutAction.tool-fill-bucket': 'Pot de peinture',
+    'shortcutAction.tool-text': 'Outil texte',
+    'shortcutAction.tool-shape': 'Outil forme',
     'shortcutAction.tool-guide': 'Outil repère',
     'shortcutAction.tool-select': 'Outil sélection',
     'shortcutAction.tool-transform': 'Outil transformation',
@@ -6101,7 +6289,9 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
     'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
     'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
-    'shortcutAction.frame-new-drawing': 'Nouveau dessin',
+    'shortcutAction.frame-new-drawing': 'Ajouter une image',
+    'shortcutAction.layer-add': 'Ajouter un calque',
+    'shortcutAction.cut-pin-thumbnail': "Épingler l'image de la vignette",
     'shortcutAction.frame-blank-exposure': 'Vide / X',
     'shortcutAction.frame-toggle-mark': 'Basculer le repère',
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
@@ -6110,6 +6300,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': 'Copier',
     'shortcutAction.edit-paste-linked': 'Coller lié',
     'shortcutAction.edit-paste-independent': 'Coller indépendant',
+    'shortcutAction.edit-unlink': 'Rendre indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
     'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
@@ -6165,15 +6356,14 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'Zoom arrière',
     'cutCommands': 'Commandes de plan',
     'cutAddCut': 'Ajouter un plan',
-    'cutNewCut': 'Nouveau plan',
-    'cutDuplicateCut': 'Dupliquer le plan',
-    'cutDuplicateActive': 'Dupliquer le plan actif',
-    'cutRename': 'Renommer le plan…',
-    'cutEditNote': 'Modifier la note du plan…',
-    'cutSettings': 'Réglages du plan…',
+    'shortcutAction.cut-new': 'Nouveau plan',
+    'shortcutAction.cut-duplicate': 'Dupliquer le plan',
+    'shortcutAction.cut-rename': 'Renommer le plan…',
+    'shortcutAction.cut-edit-note': 'Modifier la note du plan…',
+    'shortcutAction.cut-settings': 'Réglages du plan…',
     'cutSettingsTitle': 'Réglages du plan',
-    'cutMoveLeft': 'Déplacer le plan à gauche',
-    'cutMoveRight': 'Déplacer le plan à droite',
+    'shortcutAction.cut-move-left': 'Déplacer le plan à gauche',
+    'shortcutAction.cut-move-right': 'Déplacer le plan à droite',
     'cutDelete': 'Supprimer le plan',
     'mediaActions': 'Actions média',
     'mediaPoolEmpty': 'Aucun média',
@@ -6227,7 +6417,10 @@ enum AppStrings {
     'panelColorWheel': 'Roue chromatique',
     'transportIn': 'Entrée',
     'transportOut': 'Sortie',
+    'transportToStart': 'Au début',
+    'transportToEnd': 'À la fin',
     'transportLoop': 'Boucle',
+    'transportOnce': 'Lire une fois',
     'transportPrevFrame': 'Image précédente',
     'transportNextFrame': 'Image suivante',
     'colorRecent': 'Récentes',
@@ -6249,7 +6442,7 @@ enum AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
     'panelConte': 'Feuille de conte',
-    'panelEnvelope': 'Enveloppe',
+    'panelEnvelope': 'Enveloppe de plan',
     'commonRegister': 'Enregistrer',
     'commonNameField': 'Nom',
     'tipRegisterTitle': 'Enregistrer comme pointe',
@@ -6269,6 +6462,7 @@ enum AppStrings {
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutResetToDefault': 'Rétablir le défaut',
+    'shortcutUnassign': 'Retirer le raccourci',
     'shortcutRecordNew': 'Enregistrer un nouveau raccourci',
     'shortcutTouch': 'Raccourci tactile',
     'shortcutSearch': 'Rechercher une action',
@@ -6276,7 +6470,10 @@ enum AppStrings {
         'Certaines actions partagent la même touche — les assignations '
         'surlignées entrent en conflit.',
     'shortcutRecordingHint': 'Appuyez sur des touches… (Échap annule)',
-    'playbackQuality': 'Qualité de lecture',
+    'playbackMode': 'Mode de lecture',
+    'playbackModeSkipFrames': 'Sauter des images',
+    'playbackModeEveryPicture': 'Toutes les images',
+    'playbackModeRenderFirst': 'Rendu avant lecture',
     'playbackStop': 'Arrêter',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
@@ -6296,7 +6493,6 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Vidéo',
     'exCels': 'Cellulos',
-    'exSheetPng': 'Feuille PNG',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Nommage',
@@ -6306,13 +6502,28 @@ enum AppStrings {
     'exBitrate': 'Débit',
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
-    'exBrowse': 'Parcourir…',
-    'exHandOverWhenDone': 'Choisir à la fin',
     'exHandOverDeclined': 'Non transmis — les fichiers exportés ont été abandonnés.',
+    'exHandOverPending': 'Les fichiers exportés n’ont pas encore été transmis.',
+    'exHandOverPickAgain': 'Choisir à nouveau',
+    'exHandOverDiscard': 'Abandonner',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'exBaseName': 'Nom de base',
     'exSuffix': 'Suffixe',
+    'exPrefix': 'Préfixe',
+    'exLayDirection': 'Poser une direction sur ce dessin',
+    'exCelFormat': 'Format des cellulos',
+    'exTimesheetFormat': 'Format de la feuille de temps',
+    'exEnvelopeFormat': 'Format de l\'enveloppe de plan',
+    'exWrittenCount': '{n} fichiers',
+    'exWrittenCountOne': '{n} fichier',
+    'noticeExportRowOff': 'Cette ligne est désactivée',
+    'noticeExportNoPicture':
+        'Aucune ligne active n\'a de dessin pour ce cellulo',
+    'noticeExportNotPlaced': 'Ce dessin n\'est pas sur la timeline',
+    'noticeExportSameName': 'Une ligne du même nom exporte déjà ce dessin',
+    'noticeExportRidesBase':
+        'Ce dessin part sur les cellulos de son calque de base',
     'exDigits': 'Chiffres',
     'exApplyLayerFx': 'Appliquer les FX de calque',
     'exApplyLayerFxHelp':
@@ -6320,11 +6531,11 @@ enum AppStrings {
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
-    'exAdd': 'Ajouter',
-    'exSelect': 'Sélection',
+    'exKinds': 'Types à exporter',
+    'exLayerFilter': 'Calques',
     'exSelBase': 'Base',
     'exSelAttach': 'Attaches',
-    'exSelSheet': 'Feuille',
+    'exSelSheet': 'Feuille seule',
     'exSelDirection': 'Direction',
     'exSelCustom': 'Personnalisé',
     'exPaperLabel': 'Papier',
@@ -6341,24 +6552,17 @@ enum AppStrings {
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
     'exBackground': 'Fond',
-    'exChooseLocation': 'Choisissez un emplacement pour exporter.',
     'exNoCels': '(aucun cellulo)',
     'exNoCuts': '(aucun plan)',
     'exPresets': 'Préréglages',
     'exQueue': 'File d\'attente',
     'exSize': 'Taille',
-    'exForm': 'Formulaire',
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
-    'exWidth': 'Largeur',
-    'exSheetLayers': 'Calques',
-    'exContent': 'Contenu',
-    'exInk': 'Encre',
-    'exPictureLayer': 'Images',
-    'exFiles': 'Fichiers',
-    'exOneImage': 'Une image',
-    'exOnePerLayer': 'Une par calque',
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
+    'imNotClip':
+        'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
+    'clipHiddenLayers': 'Masqués',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
         'dans un instant.',
@@ -6390,6 +6594,7 @@ enum AppStrings {
         'Lab converti en RVB sans profil — les couleurs changent.',
     'importWarning.psdAdjustment': '{name} : calque de réglage non appliqué.',
     'importWarning.psdClipping': '{name} : masque d\'écrêtage non appliqué.',
+    'importWarning.psdLayerEffects': '{name} : effets de calque non appliqués.',
     'importWarning.psdBlend':
         '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent — réglé '
         'sur normal.',
@@ -6420,6 +6625,39 @@ enum AppStrings {
     'importWarning.tvppChunkBroken':
         'Clip {n} : la chaîne de blocs s\'est rompue à @{at} — tout ce qui '
         'suit est abandonné.',
+    'importWarning.clipRead':
+        'Une partie du fichier n\'a pas pu être suivie : {detail}',
+    'importWarning.clipFps':
+        'Les timelines n\'ont pas la même cadence — le projet prend celle de '
+        'la première, {fps} i/s.',
+    'importWarning.clipUnplaced':
+        '{name} : {count} cellulo(s) ne figurent sur aucune timeline — non '
+        'importé(s).',
+    'importWarning.clipNoSuchCel':
+        '{name} : {count} clé(s) désignent un cellulo absent du dossier.',
+    'importWarning.clipCelLayers':
+        '{name} : les calques de ses cellulos sont devenus des rangées selon '
+        'leur place depuis le haut — leurs noms et leurs dossiers ne sont '
+        'pas conservés.',
+    'importWarning.clipSpread':
+        '{name} : dans {count} cellulo(s), l\'opacité ou le mode de fusion '
+        'd\'un dossier a été donné à chacun de ses calques — là où ils se '
+        'chevauchent, le rendu peut différer.',
+    'importWarning.clipVector': '{name} : calque vectoriel — non dessiné.',
+    'importWarning.clipText': '{name} : calque de texte — non dessiné.',
+    'importWarning.clipPaper':
+        '{name} : calque papier — sa couleur n\'est pas appliquée.',
+    'importWarning.clipFill': '{name} : calque de remplissage — non dessiné.',
+    'importWarning.clipSound': '{name} : calque son non importé.',
+    'importWarning.clipUnknownLayer':
+        '{name} : un type de calque que cet import ne lit pas.',
+    'importWarning.clipBlend':
+        '{name} : le mode de fusion {mode} n\'a pas d\'équivalent — réglé '
+        'sur normal.',
+    'importWarning.clipNotColour':
+        '{name} : calque gris ou monochrome — non dessiné.',
+    'importWarning.clipTransform':
+        '{name} : l\'échelle ou la rotation de l\'image n\'est pas appliquée.',
     'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
     'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
     'exclusionReason.unrecognized': 'non reconnu',
@@ -6432,24 +6670,10 @@ enum AppStrings {
     'exPageCountOne': '{n} page',
     'exFileCount': '{n} fichiers',
     'exFileCountOne': '{n} fichier',
-    'exLabelCount': '{n} étiquettes',
-    'exLabelCountOne': '{n} étiquette',
     'exJobCount': '{n} tâches',
     'exJobCountOne': '{n} tâche',
-    'exLayerCount': '{n} calques',
-    'exLayerCountOne': '{n} calque',
-    'exPngCount': '{n} PNG',
-    'exPngCountOne': '{n} PNG',
-    'exXdtsSheetCount': '{n} feuilles XDTS',
-    'exXdtsSheetCountOne': '{n} feuille XDTS',
-    'exSheetPageCount': '{n} pages de feuille',
-    'exSheetPageCountOne': '{n} page de feuille',
     'exContePageCount': '{n} pages de conte',
     'exContePageCountOne': '{n} page de conte',
-    'exEnvelopeCount': '{n} enveloppes',
-    'exEnvelopeCountOne': '{n} enveloppe',
-    'exEnvelopeFileCount': '{n} fichiers d\'enveloppe',
-    'exEnvelopeFileCountOne': '{n} fichier d\'enveloppe',
     'exCancelledAfterTemplate': 'Export annulé après {count}.',
     'exCancelledVideoTemplate': 'Export annulé après {count} (vidéo partielle conservée).',
     'exCancelled': 'Export annulé.',
@@ -6459,47 +6683,20 @@ enum AppStrings {
     'exDoneVideoTemplate': 'Vidéo exportée ({count}).',
     'exDoneContePdfTemplate': 'conte.pdf exporté ({count}).',
     'exNothingInFrame': 'Rien à exporter (image vide).',
-    'exExporting': 'Export en cours…',
-    'exExportingProgressTemplate': 'Export en cours… {done}/{total}',
     'exFailedTemplate': 'Échec de l\'export : {error}',
-    'exRenderingQueue': 'Rendu de la file en cours…',
     'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} en échec',
     'exQueueRestKept': ', le reste est conservé',
-    'exInvalidInOutTemplate': 'Entrée/sortie invalide · F{frame} · {cut}',
-    'exInOutTemplate': 'entrée {in} – sortie {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': 'Saisissez une plage entrée/sortie valide (1–{duration}).',
-    'exSequenceCameraTemplate': '{frames} en {w}×{h} à travers la caméra.',
-    'exSequenceCanvasTemplate': '{frames} en {w}×{h} (canevas brut).',
-    'exSequencePerCutTemplate': '{frames} à la taille de canevas de chaque plan.',
-    'exImageHeadlineTemplate': 'Image {frame} de {cut} en {w}×{h}.',
-    'exCelsHeadlineTemplate': '{labels} · {files} en {format} {background} (base + attaches composées par cellulo).',
-    'exTransparent': 'transparent',
-    'exOpaque': 'opaque',
-    'exSheetImageHeadlineTemplate': '{pages} en PNG B4 — le papier du panneau, rendu hors écran.',
-    'exXdtsHeadlineTemplate': '{sheets} (colonnes cellulos + dialogues + caméra).',
-    'exContePdfHeadlineTemplate': '{pages} en UN seul PDF vectoriel — traits et texte vectoriels, images intégrées.',
-    'exContePngHeadlineTemplate': '{pages} en PNG A4 — le papier du panneau, rendu hors écran.',
-    'exEnvelopeHeadlineTemplate': '{sheets} en {files} à {paper}{layered}.',
-    'exEnvelopePaperCut': 'les pixels du plan — se dépose dans un fichier de travail comme calque',
-    'exEnvelopePaperSheetTemplate': '{w} px de large — la vraie enveloppe, pour l\'impression',
-    'exEnvelopeLayeredTemplate': ' · un PNG par calque ({n})',
     'exFileLabel': 'Fichier',
-    'exPatternLabel': 'Modèle',
-    'exLocationLabel': 'Emplacement',
-    'exChooseFolder': 'Choisir un dossier…',
+    'exOrderAsksFirst': 'Choisit l’emplacement, puis exporte',
+    'exOrderAsksAfter': 'Exporte, puis choisit l’emplacement',
     'exSeMuxedTemplate': 'SE intégré · {codec}',
     'exVectorPdf': 'PDF vectoriel',
-    'exPagePng': 'Page PNG',
     'exFxOn': 'FX activés',
     'exFxOff': 'FX désactivés',
-    'exSheetWidthTemplate': 'Feuille · {w} px',
-    'exSeparatePngsTemplate': '{n} PNG séparés',
-    'exFlatLayersTemplate': '{n} sur 4, fusionnés',
     'exTabSequence': 'Séquence',
     'exSizeCamera': 'Caméra',
     'exSizeCanvas': 'Canevas',
-    'exSheetImage': 'Image de feuille',
     'exPageImage': 'Image de page',
     'exSaveCurrent': '+ Enregistrer l\'actuel…',
     'exRenderQueue': 'File de rendu',
@@ -6549,6 +6746,10 @@ enum AppStrings {
     'imBake': 'Pixelliser',
     'imSound': 'Son',
     'imSoundOnly': 'Son seul',
+    'imRun': 'Série',
+    'imRunTogether': 'Ensemble',
+    'imRunAlone': 'Ce fichier seul',
+    'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitContain': 'Proportions',
@@ -6563,6 +6764,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
+    'imStatusDone': 'Importé',
     'imFolderGone': 'Ce dossier n’existe plus.',
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
@@ -6577,7 +6779,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': 'Impossible d’importer {name}.',
     'imPsdNoLayersTemplate':
         '{name} : aucun calque à développer — importez-le fusionné.',
-    'imRenderingPdfTemplate': 'Rendu de la page PDF {done}/{total}…',
     'imKeepExplain':
         'Le fichier du projet les contient, compressés ; les originaux restent intacts.',
     'imReferenceExplain':
@@ -6595,6 +6796,48 @@ enum AppStrings {
     'toolEraser': 'Gomme',
     'toolEyedropper': 'Pipette',
     'toolFill': 'Remplissage',
+    'toolText': 'Texte',
+    'toolShape': 'Forme',
+    'textToolSelectedText': 'Texte sélectionné',
+    'textToolDeleteText': 'Supprimer le texte',
+    'textToolLetters': 'Caractères',
+    'textToolBox': 'Bloc',
+    'textToolFont': 'Police',
+    'textToolSize': 'Taille',
+    'textToolTracking': 'Interlettrage',
+    'textToolBold': 'Gras',
+    'textToolColor': 'Couleur',
+    'textToolOutline': 'Contour',
+    'textToolOutlineWidth': 'Épaisseur du contour',
+    'textToolAlign': 'Alignement',
+    'textToolAlignLeft': 'Gauche',
+    'textToolAlignCenter': 'Centre',
+    'textToolAlignRight': 'Droite',
+    'textToolBoxWidth': 'Largeur du bloc',
+    'textToolWidthAuto': 'Auto',
+    'textToolWidthFixed': 'Fixe',
+    'textToolLineHeight': 'Interligne',
+    'textToolBackground': 'Fond',
+    'textToolIntoDrawing': 'Pixelliser',
+    'textToolWriting': 'Direction',
+    'textToolWritingLines': 'Horizontale',
+    'textToolWritingColumns': 'Verticale',
+    'textToolAlignTop': 'Haut',
+    'textToolAlignBottom': 'Bas',
+    'textToolFontImport': 'Importer un fichier de police',
+    'textToolFontDelete': 'Supprimer la police',
+    'textToolFontsOfProject': 'Polices de ce projet',
+    'textToolFontsOfDevice': 'Polices de cet appareil',
+    'textToolFontTakeOut': 'Retirer du projet',
+    'textToolFontStaysOnThisDevice':
+        'Cette police ne peut pas être intégrée à un document modifiable : '
+        "elle changera à l'ouverture sur un autre appareil.",
+    'textToolFontNotOnThisDevice':
+        "Cette police n'est pas sur cet appareil : le texte s'affiche avec "
+        'une autre.',
+    'textToolFontUnreadable': "Ce fichier n'a pas pu être lu comme une police.",
+    'textToolFontIsTheApps': "Cette police fait déjà partie de l'application.",
+    'textToolFontNotKept': "La police n'a pas pu être enregistrée.",
     'toolSelect': 'Sélection',
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
@@ -6613,9 +6856,20 @@ enum AppStrings {
     'toolShapeEllipse': 'Ellipse',
     'toolShapeLasso': 'Lasso',
     'toolShapePolygon': 'Polygone',
+    'toolShapeLine': 'Ligne',
     'toolShapeSelectTemplate': 'Sélection {shape}',
     'toolShapeCutTemplate': 'Découpe {shape}',
     'toolShapeFillTemplate': 'Remplissage {shape}',
+    'toolShapeDrawTemplate': 'Tracé {shape}',
+    'shapeToolDraws': 'Tracé',
+    'shapeToolStroke': 'Contour',
+    'shapeToolFill': 'Remplissage',
+    'shapeToolType': 'Type',
+    'shapeToolTypePlain': 'Simple',
+    'shapeToolCorners': 'Coins',
+    'shapeToolCornersSharp': 'Vifs',
+    'shapeToolCornersRound': 'Arrondis',
+    'shapeToolRatioLock': 'Verrouiller les proportions',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
     'brCreate': 'Créer',
@@ -6661,7 +6915,7 @@ enum AppStrings {
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
-    'tlAutoFrame': "Créer une image là où il n'y en a pas",
+    'shortcutAction.frame-auto-create': "Créer une image là où il n'y en a pas",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
     'brEditGroup': 'Modifier le groupe',
@@ -6679,6 +6933,9 @@ enum AppStrings {
         'intermédiaires',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
+    'trScaleX': 'Échelle X',
+    'trScaleY': 'Échelle Y',
+    'trScaleLink': 'Échelles liées',
     'trAnchorPointX': 'Ancre X',
     'trAnchorPointY': 'Ancre Y',
     'trMeshColumns': 'Colonnes',
@@ -6776,6 +7033,24 @@ enum AppStrings {
     'brExportSelected': 'Exporter la brosse',
     'brExportGroup': 'Exporter le groupe',
     'brExportNothing': 'Aucune brosse à exporter ici.',
+    'brExportPlaceUnchosenTemplate':
+        'Impossible de choisir où enregistrer : {error}',
+    'brExportNotWrittenTemplate':
+        'Impossible d’écrire le fichier de brosses : {error}',
+    'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
+    'brExportedManyTemplate': '{count} brosses exportées.',
+    'brExportFallbackName': 'Brosses',
+    'brImportUnreadable':
+        'Ce fichier n’a pas pu être lu comme un fichier de brosses.',
+    'brImportPickFailedTemplate': 'Impossible d’ouvrir le fichier : {error}',
+    'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
+    'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
+    'brImportWarningsTemplate':
+        '{summary} ({count} entrées avec des avertissements)',
+    'brTipUnreadable': 'Cette image n’a pas pu être lue comme pointe de brosse.',
+    'brTipNoShape':
+        'Cette image n’a aucune forme visible à utiliser comme pointe.',
+    'brTipNotSaved': 'Cette pointe n’a pas pu être enregistrée.',
     'brExpand': 'Déplier',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
@@ -6824,8 +7099,6 @@ enum AppStrings {
     'railFolderBlendMode': 'Mode de fusion du dossier',
     'railHideLayer': 'Masquer le calque',
     'railShowLayer': 'Afficher le calque',
-    'railHideCutPicture': "Masquer l'image du plan",
-    'railShowCutPicture': "Afficher l'image du plan",
     'railBypassLayerFx': 'Contourner les FX du calque',
     'railApplyLayerFx': 'Appliquer les FX du calque',
     'railBypassMixedLayerFx':
@@ -6864,7 +7137,6 @@ enum AppStrings {
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlSeNameTemplate': 'Nom SE {name}',
-    'tlAddLayerHeader': 'Ajouter un calque',
     'tlNoLayers': 'Aucun calque',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
@@ -6918,23 +7190,23 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Gras',
     'seNameTagPreviewName': 'Nom',
     'seNameTagPreviewLine': 'Réplique',
-    'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
-    'tlAttachFreeBelow': 'Calque attaché libre en dessous',
-    'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
-    'tlAttachSyncedBelow': 'Calque attaché synchronisé en dessous',
+    'shortcutAction.layer-attach-free-above': 'Calque attaché libre au-dessus',
+    'shortcutAction.layer-attach-free-below': 'Calque attaché libre en dessous',
+    'shortcutAction.layer-attach-synced-above':
+        'Calque attaché synchronisé au-dessus',
+    'shortcutAction.layer-attach-synced-below':
+        'Calque attaché synchronisé en dessous',
     'tlLayerCommands': 'Commandes de calque',
     'tlFrameCommands': "Commandes d'image",
     'tlCut': 'Plan',
     'tlLayer': 'Calque',
     'tlFrame': 'Image',
-    'tlDuplicateLayer': 'Dupliquer le calque',
-    'tlSelectRowSpan': 'Sélectionner toute la ligne',
-    'tlLinkDuplicateLayer': 'Dupliquer en liant',
+    'shortcutAction.layer-duplicate': 'Dupliquer le calque',
+    'shortcutAction.frame-select-row-span': 'Sélectionner toute la ligne',
     'linkWindowUnlink': 'Délier',
     'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlRenameLayer': 'Renommer le calque…',
-    'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
@@ -6943,11 +7215,11 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
-    'tlDetachLayer': 'Détacher de la base',
+    'shortcutAction.layer-detach': 'Détacher de la base',
+    'tlAttachDropsFxRows': 'Calques qui perdent leur fx',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
-    'tlSharedUnlink': 'Rendre indépendant',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
@@ -6979,7 +7251,7 @@ enum AppStrings {
     'tlCustom': 'Personnalisé…',
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
-    'tlStoryboardLayer': 'Calque storyboard',
+    'shortcutAction.layer-storyboard': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
     'frameCountEntryFrames': 'Images',
@@ -6996,9 +7268,8 @@ enum AppStrings {
     'programLanguageHelp': '菜单、面板与标签的语言。',
     'notationLanguageHelp': '打印在摄影表等提交物上的语言。',
     'noCutSelected': '未选择镜头',
-    'pageLabel': '页',
-    'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
+    'noticeNothingToCut': '没有可剪切的内容',
     'noticeNoConteLayer': '该镜头没有分镜图层',
     'noticeLayerNotDrawable': '该图层不可绘制',
     'noticeLayerHidden': '该图层已隐藏',
@@ -7086,11 +7357,15 @@ enum AppStrings {
     'cutNoteTitle': '编辑镜头备注',
     'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',
-    'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
+    'deleteLayersMessage': '要删除下列图层吗？',
+    'deleteLayersHeading': '要删除的图层',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
         '链接后相同名称共用同一张原画，列表中各帧的原画将被舍弃。',
+    'linkedPasteConflictBody':
+        '列表中的帧已在使用要粘贴的帧所带的名称。是否将粘贴的块链接到这些帧？'
+        '链接后相同名称共用同一张原画：粘贴的块显示列表中的帧，复制来的原画不会带入。',
     'frameNameConflictListHeading': '要链接的帧',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
@@ -7105,12 +7380,12 @@ enum AppStrings {
     'convertLinkedCutTitle': '转换为链接镜头',
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',
-    'convertLinkedCutLinksTemplate': '链接 {names}。',
+    'convertLinkedCutLinksHeading': '链接的图层',
     'convertLinkedCutReplacedTemplate': '“{cut}”中的同名原画将被原本的替换（원본 승리）。',
     'convertLinkedCutReplacedHeading': '被替换的原画',
     'convertLinkedCutJoiningTemplate': '{count} 张原画加入共用集合。',
-    'convertLinkedCutTargetGainsTemplate': '“{cut}”新增：{names}。',
-    'convertLinkedCutOriginGainsTemplate': '本镜头新增：{names}。',
+    'convertLinkedCutTargetGainsHeadingTemplate': '添加到“{cut}”的图层',
+    'convertLinkedCutOriginGainsHeading': '添加到本镜头的图层',
     'convertLinkedCutNothing':
         '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
@@ -7139,14 +7414,18 @@ enum AppStrings {
     'guideAddVanishingPoint': '添加消失点',
     'guideMakeVertical': '设为完全垂直',
     'closeProjectTitle': '关闭项目？',
-    'newProject': '新建项目',
+    'shortcutAction.file-new': '新建项目',
     'untitledProjectTab': '未命名 {n}',
     'fileOpenInAnotherTab': '该文件已在另一个标签页中打开。',
+    'openNewerFormat': '此项目由更新版本的 Anicel 保存，无法打开。',
+    'openOlderFormatTemplate':
+        '此项目为格式 {saved}，无法打开（此 Anicel 从格式 {oldest} 起才能打开）。',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
     'closeProjectVanishedBody':
         '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
         '使用「另存为」可将当前仍打开的内容写入新文件。',
     'commonSaveAs': '另存为…',
+    'saveAsTitle': '另存为',
     'saveProgressRunning': '正在保存…',
     'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
@@ -7173,9 +7452,9 @@ enum AppStrings {
     'menuBarHelp': '帮助',
     'menuPlay': '播放',
     'menuPause': '暂停',
-    'menuAction.file-open': '打开…',
-    'menuAction.file-import': '导入/放置…',
-    'menuAction.file-export': '导出…',
+    'shortcutAction.file-open': '打开…',
+    'shortcutAction.file-import': '导入/放置…',
+    'shortcutAction.file-export': '导出…',
     'menuAction.edit-undo': '撤销',
     'menuAction.edit-redo': '重做',
     'menuAction.edit-copy-frame': '复制帧',
@@ -7184,27 +7463,22 @@ enum AppStrings {
     'menuAction.edit-delete-cell': '删除单元格',
     'menuAction.edit-cut-exposure': '剪切曝光',
     'menuAction.edit-toggle-mark': '切换标记',
-    'menuAction.edit-keyboard-shortcuts': '键盘快捷键…',
-    'menuAction.edit-preferences': '偏好设置…',
-    'menuAction.work-settings': '作品设置…',
+    'shortcutAction.edit-keyboard-shortcuts': '键盘快捷键…',
+    'shortcutAction.edit-preferences': '偏好设置…',
+    'shortcutAction.work-settings': '作品设置…',
+    'menuAction.file-save-as': '项目(.anicel)…',
     'menuAction.project-settings': '项目设置',
-    'menuAction.cut-new': '新建镜头',
-    'menuAction.cut-duplicate': '复制镜头',
-    'menuAction.cut-create-linked': '创建链接镜头',
-    'menuAction.cut-convert-linked': '转换为链接镜头…',
-    'menuAction.cut-rename': '重命名镜头…',
-    'menuAction.cut-canvas-size': '画布尺寸…',
-    'menuAction.cut-move-left': '镜头左移',
-    'menuAction.cut-move-right': '镜头右移',
-    'menuAction.cut-copy-ae-camera': '复制摄影机 AE 关键帧',
+    'shortcutAction.cut-create-linked': '创建链接镜头',
+    'shortcutAction.cut-convert-linked': '转换为链接镜头…',
+    'shortcutAction.cut-canvas-size': '画布尺寸…',
+    'shortcutAction.cut-copy-ae-camera': '复制摄影机 AE 关键帧',
     'menuAction.cut-delete': '删除镜头',
     'menuAction.layer-add': '添加图层',
-    'menuAction.layer-duplicate': '复制图层',
     'menuAction.layer-link-duplicate': '链接复制图层',
     'menuAction.layer-unlink': '取消图层链接',
     'menuAction.layer-group-into-folder': '编组到文件夹',
     'menuAction.layer-rename': '重命名图层…',
-    'menuAction.layer-rasterize': '栅格化图层',
+    'shortcutAction.layer-rasterize': '栅格化图层',
     'menuAction.layer-se-name-tag': 'SE 名字条…',
     'menuAction.layer-copy': '复制图层',
     'menuAction.layer-paste': '粘贴图层',
@@ -7212,18 +7486,18 @@ enum AppStrings {
     'menuAction.playback-stop': '停止',
     'menuAction.playback-play-all': '播放所有镜头',
     'menuAction.window-panels': '面板',
-    'menuAction.window-tool-rail-right': '工具条在右侧',
-    'menuAction.window-region-on-top': '时间轴区域置顶',
-    'menuAction.window-reset-layout': '重置工作区布局',
+    'shortcutAction.window-tool-rail-right': '工具条在右侧',
+    'shortcutAction.window-region-on-top': '时间轴区域置顶',
+    'shortcutAction.window-reset-layout': '重置工作区布局',
     'menuAction.edit-debug': '调试',
-    'menuAction.edit-input-inspector': '输入检查器',
-    'menuAction.edit-frame-timing-overlay': '帧时序叠加',
-    'menuAction.edit-frame-stats': '帧统计',
-    'menuAction.edit-show-repaints': '显示重绘',
-    'menuAction.edit-bake-panels': '栅格化静态面板',
+    'shortcutAction.edit-input-inspector': '输入检查器',
+    'shortcutAction.edit-frame-timing-overlay': '帧时序叠加',
+    'shortcutAction.edit-frame-stats': '帧统计',
+    'shortcutAction.edit-show-repaints': '显示重绘',
+    'shortcutAction.edit-bake-panels': '栅格化静态面板',
     'menuAction.edit-knee-at-one': '屏幕分辨率缓冲区',
     'menuAction.edit-show-unpainted-tiles': '显示未绘制的图块',
-    'menuAction.help-about': '关于 Anicel',
+    'shortcutAction.help-about': '关于 Anicel',
     'fileOpenTitle': '打开项目',
     'fileSaveTitle': '保存项目',
     'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
@@ -7256,10 +7530,10 @@ enum AppStrings {
     'cameraSizeTitle': '摄影机尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
-    'canvasAnchorHelpTemplate':
-        '锚点：已有画面固定在此处。被裁掉的笔画会保留，画布再放大时会重新出现。'
-        '（{min}–{max} px）',
-    'canvasPresetDefault': '默认',
+    'canvasSizePresets': '预设',
+    'canvasAdjustOnCanvas': '在画布上调整',
+    'cameraRatioFree': '自由',
+    'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',
@@ -7285,6 +7559,7 @@ enum AppStrings {
     'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
     'inputRotationSnap': '旋转吸附（°）',
     'inputZoomSnaps': '缩放吸附（%）',
+    'inputZoomCeiling': '锁定最大缩放（%）',
     'inputBrushSizeSnaps': '笔刷大小吸附（px）',
     'inputTabletHeading': '数位板服务',
     'inputTabletStandard': '标准（默认）',
@@ -7356,7 +7631,7 @@ enum AppStrings {
     'saveFailedDetailsHeading': '详细信息',
     'saveFailedCopyLineTemplate': '失败副本：{path}',
     'saveFailedErrorLineTemplate': '错误：{error}',
-    'failedCopyBackUp': '备份失败副本…',
+    'shortcutAction.file-back-up-failed-copy': '备份失败副本…',
     'failedCopyPickTitle': '要备份的失败副本',
     'failedCopyVanishOnClose': '程序关闭后失败副本会消失。',
     'failedCopyBackingUp': '正在备份…',
@@ -7393,10 +7668,10 @@ enum AppStrings {
     'sheetFillOn': '置灰',
     'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
+    'conteCoverPage': '封面',
+    'conteBlankPage': '空白页',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
-    'sheetViewPage': '分页视图',
-    'sheetViewContinuous': '连续视图',
     'instructionsTitle': '指示记号',
     'instructionEditTooltip': '编辑指示记号',
     'instructionDeleteTooltip': '删除指示记号',
@@ -7409,7 +7684,6 @@ enum AppStrings {
     'instructionNameLabel': '名称（留空则用记号名）',
     'instructionStartLabel': '起点名称（A）',
     'instructionEndLabel': '终点名称（B）',
-    'instructionMemoLabel': '备注（摄影表备注栏）',
     'instructionEditSetButton': '编辑指示记号…',
     'instructionEditorIcon': '图标',
     'instructionEditorColor': '颜色',
@@ -7423,6 +7697,12 @@ enum AppStrings {
     'shortcutCategory.View': '视图',
     'shortcutCategory.Timeline': '时间轴',
     'shortcutCategory.File': '文件',
+    'shortcutCategory.Brush Tool Brushes': '画笔工具的画笔',
+    'shortcutCategory.Eraser Tool Brushes': '橡皮工具的画笔',
+    'shortcutCategory.Settings': '设置',
+    'shortcutCategory.Debug': '调试',
+    'shortcutCategory.Panels': '面板',
+    'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutAction.frame-previous': '上一帧',
     'shortcutAction.frame-next': '下一帧',
     'shortcutAction.drawing-previous': '上一个块',
@@ -7438,6 +7718,8 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': '吸管工具',
     'shortcutAction.tool-fill': '填充工具',
     'shortcutAction.tool-fill-bucket': '油漆桶',
+    'shortcutAction.tool-text': '文字工具',
+    'shortcutAction.tool-shape': '形状工具',
     'shortcutAction.tool-guide': '参考线工具',
     'shortcutAction.tool-select': '选择工具',
     'shortcutAction.tool-transform': '变换工具',
@@ -7461,7 +7743,9 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '设为 3 格',
     'shortcutAction.timeline-comma-4': '设为 4 格',
     'shortcutAction.timeline-comma-n': '设为 N 格…',
-    'shortcutAction.frame-new-drawing': '新建画稿',
+    'shortcutAction.frame-new-drawing': '添加帧',
+    'shortcutAction.layer-add': '添加图层',
+    'shortcutAction.cut-pin-thumbnail': '固定缩略图帧',
     'shortcutAction.frame-blank-exposure': '空 / ×',
     'shortcutAction.frame-toggle-mark': '切换标记',
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
@@ -7470,6 +7754,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': '复制',
     'shortcutAction.edit-paste-linked': '粘贴链接',
     'shortcutAction.edit-paste-independent': '粘贴独立',
+    'shortcutAction.edit-unlink': '取消链接',
     'shortcutAction.edit-delete': '删除',
     'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
@@ -7525,15 +7810,14 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '缩小',
     'cutCommands': '镜头命令',
     'cutAddCut': '添加镜头',
-    'cutNewCut': '新建镜头',
-    'cutDuplicateCut': '复制镜头',
-    'cutDuplicateActive': '复制当前镜头',
-    'cutRename': '重命名镜头…',
-    'cutEditNote': '编辑镜头备注…',
-    'cutSettings': '镜头设置…',
+    'shortcutAction.cut-new': '新建镜头',
+    'shortcutAction.cut-duplicate': '复制镜头',
+    'shortcutAction.cut-rename': '重命名镜头…',
+    'shortcutAction.cut-edit-note': '编辑镜头备注…',
+    'shortcutAction.cut-settings': '镜头设置…',
     'cutSettingsTitle': '镜头设置',
-    'cutMoveLeft': '镜头左移',
-    'cutMoveRight': '镜头右移',
+    'shortcutAction.cut-move-left': '镜头左移',
+    'shortcutAction.cut-move-right': '镜头右移',
     'cutDelete': '删除镜头',
     'mediaActions': '媒体操作',
     'mediaPoolEmpty': '没有媒体',
@@ -7575,7 +7859,10 @@ enum AppStrings {
     'panelColorWheel': '色轮',
     'transportIn': '入点',
     'transportOut': '出点',
+    'transportToStart': '回到开头',
+    'transportToEnd': '跳到结尾',
     'transportLoop': '循环',
+    'transportOnce': '播放一次',
     'transportPrevFrame': '上一帧',
     'transportNextFrame': '下一帧',
     'colorRecent': '最近',
@@ -7597,7 +7884,7 @@ enum AppStrings {
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
     'panelConte': '分镜用纸',
-    'panelEnvelope': '包络',
+    'panelEnvelope': '卡袋',
     'commonRegister': '注册',
     'commonNameField': '名称',
     'tipRegisterTitle': '注册为笔尖',
@@ -7617,12 +7904,16 @@ enum AppStrings {
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutResetToDefault': '恢复默认',
+    'shortcutUnassign': '移除快捷键',
     'shortcutRecordNew': '录制新快捷键',
     'shortcutTouch': '触摸快捷方式',
     'shortcutSearch': '搜索动作',
     'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
     'shortcutRecordingHint': '请按键…（Esc 取消）',
-    'playbackQuality': '播放质量',
+    'playbackMode': '播放方式',
+    'playbackModeSkipFrames': '跳帧',
+    'playbackModeEveryPicture': '所有帧',
+    'playbackModeRenderFirst': '播放前渲染',
     'playbackStop': '停止',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',
@@ -7641,7 +7932,6 @@ enum AppStrings {
     'exImage': '图像',
     'exVideo': '视频',
     'exCels': '赛璐珞',
-    'exSheetPng': '摄影表 PNG',
     'exFormat': '格式',
     'exOptions': '选项',
     'exNaming': '命名',
@@ -7651,24 +7941,37 @@ enum AppStrings {
     'exBitrate': '码率',
     'exChannels': '声道',
     'exAudio': '音频',
-    'exBrowse': '浏览…',
-    'exHandOverWhenDone': '完成后选择',
     'exHandOverDeclined': '未交出，导出的结果已丢弃。',
+    'exHandOverPending': '导出的结果尚未交出。',
+    'exHandOverPickAgain': '重新选择',
+    'exHandOverDiscard': '丢弃',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
     'exBaseName': '基础名称',
     'exSuffix': '后缀',
+    'exPrefix': '前缀',
+    'exLayDirection': '在此画上应用指示',
+    'exCelFormat': '赛璐珞格式',
+    'exTimesheetFormat': '摄影表格式',
+    'exEnvelopeFormat': '卡袋格式',
+    'exWrittenCount': '{n}张',
+    'exWrittenCountOne': '{n}张',
+    'noticeExportRowOff': '该行已关闭',
+    'noticeExportNoPicture': '此赛璐珞没有已开启的画',
+    'noticeExportNotPlaced': '此画未放在时间轴上',
+    'noticeExportSameName': '同名的行已导出此画',
+    'noticeExportRidesBase': '此画叠在基准图层的赛璐珞上导出',
     'exDigits': '位数',
     'exApplyLayerFx': '应用图层 FX',
     'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exLabel': '标签',
     'exApply': '应用',
-    'exAdd': '添加',
-    'exSelect': '选择',
+    'exKinds': '导出种类',
+    'exLayerFilter': '图层',
     'exSelBase': '基准',
     'exSelAttach': '附属',
-    'exSelSheet': '律表',
+    'exSelSheet': '仅律表',
     'exSelDirection': '指示',
     'exSelCustom': '自定义',
     'exPaperLabel': '用纸',
@@ -7685,24 +7988,16 @@ enum AppStrings {
     'exWhite': '白色',
     'exBlack': '黑色',
     'exBackground': '背景',
-    'exChooseLocation': '选择位置后即可导出。',
     'exNoCels': '（无赛璐珞）',
     'exNoCuts': '（无镜头）',
     'exPresets': '预设',
     'exQueue': '队列',
     'exSize': '尺寸',
-    'exForm': '表单',
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
-    'exWidth': '宽度',
-    'exSheetLayers': '图层',
-    'exContent': '内容',
-    'exInk': '线稿',
-    'exPictureLayer': '画面',
-    'exFiles': '文件',
-    'exOneImage': '单张图片',
-    'exOnePerLayer': '每图层一张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
+    'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
+    'clipHiddenLayers': '隐藏',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
@@ -7720,6 +8015,7 @@ enum AppStrings {
     'importWarning.psdLab': 'Lab 在无配置文件的情况下转为 RGB——颜色会偏移。',
     'importWarning.psdAdjustment': '{name}：未应用调整图层。',
     'importWarning.psdClipping': '{name}：未应用剪贴蒙版。',
+    'importWarning.psdLayerEffects': '{name}：未应用图层效果。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
     'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
     'importWarning.folderNoBase': '{process}/{symbol}：没有匹配的顶层图层——已跳过 {n} 张赛璐珞。',
@@ -7731,6 +8027,21 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}：混合模式“{mode}”在 Anicel 中没有对应项——按正常导入。',
     'importWarning.tvppHoldNoDrawing': '{name}：第 {frame} 帧的保持没有可承接的画。',
     'importWarning.tvppChunkBroken': '片段 {n}：块链在 @{at} 处中断——其后的数据被丢弃。',
+    'importWarning.clipRead': '文件的一部分无法读取：{detail}',
+    'importWarning.clipFps': '各时间轴的帧率不同——项目采用第一条时间轴的 {fps} fps。',
+    'importWarning.clipUnplaced': '{name}：有 {count} 张赛璐珞不在任何时间轴上——未导入。',
+    'importWarning.clipNoSuchCel': '{name}：有 {count} 个关键帧指向文件夹中不存在的赛璐珞。',
+    'importWarning.clipCelLayers': '{name}：赛璐珞中的图层按从上往下的位置分成了行——各自的名称和文件夹不保留。',
+    'importWarning.clipSpread': '{name}：在 {count} 张赛璐珞中，文件夹的不透明度或混合模式分给了其中的每个图层——图层重叠处看起来可能不同。',
+    'importWarning.clipVector': '{name}：矢量图层——未绘制。',
+    'importWarning.clipText': '{name}：文字图层——未绘制。',
+    'importWarning.clipPaper': '{name}：纸张图层——未应用其颜色。',
+    'importWarning.clipFill': '{name}：填充图层——未绘制。',
+    'importWarning.clipSound': '{name}：未导入声音图层。',
+    'importWarning.clipUnknownLayer': '{name}：此导入无法读取的图层类型。',
+    'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
+    'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',
+    'importWarning.clipTransform': '{name}：未应用图片的缩放或旋转。',
     'exclusionReason.processSubfolder': '工序子文件夹（存档）',
     'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
     'exclusionReason.unrecognized': '无法识别',
@@ -7743,24 +8054,10 @@ enum AppStrings {
     'exPageCountOne': '{n}页',
     'exFileCount': '{n}个文件',
     'exFileCountOne': '{n}个文件',
-    'exLabelCount': '{n}个标签',
-    'exLabelCountOne': '{n}个标签',
     'exJobCount': '{n}个任务',
     'exJobCountOne': '{n}个任务',
-    'exLayerCount': '{n}个图层',
-    'exLayerCountOne': '{n}个图层',
-    'exPngCount': '{n}张 PNG',
-    'exPngCountOne': '{n}张 PNG',
-    'exXdtsSheetCount': '{n}张 XDTS 摄影表',
-    'exXdtsSheetCountOne': '{n}张 XDTS 摄影表',
-    'exSheetPageCount': '摄影表{n}页',
-    'exSheetPageCountOne': '摄影表{n}页',
     'exContePageCount': '分镜稿{n}页',
     'exContePageCountOne': '分镜稿{n}页',
-    'exEnvelopeCount': '{n}个包络',
-    'exEnvelopeCountOne': '{n}个包络',
-    'exEnvelopeFileCount': '{n}个包络文件',
-    'exEnvelopeFileCountOne': '{n}个包络文件',
     'exCancelledAfterTemplate': '导出{count}后已取消。',
     'exCancelledVideoTemplate': '导出{count}后已取消（已保留部分视频）。',
     'exCancelled': '导出已取消。',
@@ -7770,47 +8067,20 @@ enum AppStrings {
     'exDoneVideoTemplate': '已导出视频（{count}）。',
     'exDoneContePdfTemplate': '已导出 conte.pdf（{count}）。',
     'exNothingInFrame': '没有可导出的内容（空帧）。',
-    'exExporting': '正在导出…',
-    'exExportingProgressTemplate': '正在导出… {done}/{total}',
     'exFailedTemplate': '导出失败：{error}',
-    'exRenderingQueue': '正在渲染队列…',
     'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',
     'exQueueFailedTemplate': '，{n}个失败',
     'exQueueRestKept': '，其余保留',
-    'exInvalidInOutTemplate': '入点/出点无效 · F{frame} · {cut}',
-    'exInOutTemplate': '入点 {in} – 出点 {out}（{count}f） · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '请输入有效的入点/出点范围（1–{duration}）。',
-    'exSequenceCameraTemplate': '通过摄影机以 {w}×{h} 输出{frames}。',
-    'exSequenceCanvasTemplate': '以 {w}×{h} 输出{frames}（原始画布）。',
-    'exSequencePerCutTemplate': '按各镜头自身的画布尺寸输出{frames}。',
-    'exImageHeadlineTemplate': '{cut} 的第 {frame} 帧，{w}×{h}。',
-    'exCelsHeadlineTemplate': '{labels} · 以{background} {format} 输出{files}（每张赛璐珞合成基准+附属）。',
-    'exTransparent': '透明',
-    'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate': '{pages}，B4 PNG——使用面板自身的纸张，离屏渲染。',
-    'exXdtsHeadlineTemplate': '{sheets}（赛璐珞 + 台词 + 摄影栏）。',
-    'exContePdfHeadlineTemplate': '{pages}合成一个矢量 PDF——线条与文字为矢量，图片嵌入。',
-    'exContePngHeadlineTemplate': '{pages}，A4 PNG——使用面板自身的纸张，离屏渲染。',
-    'exEnvelopeHeadlineTemplate': '{sheets}输出为{files}，{paper}{layered}。',
-    'exEnvelopePaperCut': '镜头自身的像素——可作为图层放入工作文件',
-    'exEnvelopePaperSheetTemplate': '宽 {w}px——用于打印的实际包络',
-    'exEnvelopeLayeredTemplate': ' · 每图层一张 PNG（{n}）',
     'exFileLabel': '文件',
-    'exPatternLabel': '命名模式',
-    'exLocationLabel': '位置',
-    'exChooseFolder': '选择文件夹…',
+    'exOrderAsksFirst': '先指定位置，再导出',
+    'exOrderAsksAfter': '导出后再指定位置',
     'exSeMuxedTemplate': 'SE 已封装 · {codec}',
     'exVectorPdf': '矢量 PDF',
-    'exPagePng': '页面 PNG',
     'exFxOn': 'FX 开',
     'exFxOff': 'FX 关',
-    'exSheetWidthTemplate': '纸张 · {w}px',
-    'exSeparatePngsTemplate': '{n}张独立 PNG',
-    'exFlatLayersTemplate': '4 层中 {n} 层，合并',
     'exTabSequence': '序列',
     'exSizeCamera': '摄影机',
     'exSizeCanvas': '画布',
-    'exSheetImage': '摄影表图像',
     'exPageImage': '页面图像',
     'exSaveCurrent': '+ 保存当前设置…',
     'exRenderQueue': '渲染队列',
@@ -7857,6 +8127,10 @@ enum AppStrings {
     'imBake': '栅格化',
     'imSound': '声音',
     'imSoundOnly': '仅声音',
+    'imRun': '连号',
+    'imRunTogether': '一起',
+    'imRunAlone': '仅此文件',
+    'imRunSpanTemplate': '{first}–{last}（{n}张）',
     'commonOn': '开',
     'commonOff': '关',
     'imFitContain': '保持比例',
@@ -7871,6 +8145,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
+    'imStatusDone': '已导入',
     'imFolderGone': '该文件夹已不存在。',
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',
@@ -7881,7 +8156,6 @@ enum AppStrings {
     'imNoPdfRendererTemplate': '{name}：此版本没有 PDF 渲染器。',
     'imCouldNotImportTemplate': '无法导入 {name}。',
     'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
-    'imRenderingPdfTemplate': '正在渲染 PDF 页面 {done}/{total}…',
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',
     'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',
@@ -7896,6 +8170,44 @@ enum AppStrings {
     'toolEraser': '橡皮',
     'toolEyedropper': '吸管',
     'toolFill': '填充',
+    'toolText': '文字',
+    'toolShape': '形状',
+    'textToolSelectedText': '所选文字',
+    'textToolDeleteText': '删除文字',
+    'textToolLetters': '字符',
+    'textToolBox': '文本框',
+    'textToolFont': '字体',
+    'textToolSize': '大小',
+    'textToolTracking': '字距',
+    'textToolBold': '加粗',
+    'textToolColor': '颜色',
+    'textToolOutline': '描边',
+    'textToolOutlineWidth': '描边粗细',
+    'textToolAlign': '对齐',
+    'textToolAlignLeft': '左',
+    'textToolAlignCenter': '居中',
+    'textToolAlignRight': '右',
+    'textToolBoxWidth': '框宽度',
+    'textToolWidthAuto': '自动',
+    'textToolWidthFixed': '固定',
+    'textToolLineHeight': '行距',
+    'textToolBackground': '背景',
+    'textToolIntoDrawing': '栅格化',
+    'textToolWriting': '文字方向',
+    'textToolWritingLines': '横排',
+    'textToolWritingColumns': '竖排',
+    'textToolAlignTop': '上',
+    'textToolAlignBottom': '下',
+    'textToolFontImport': '导入字体文件',
+    'textToolFontDelete': '删除字体',
+    'textToolFontsOfProject': '此项目的字体',
+    'textToolFontsOfDevice': '此设备的字体',
+    'textToolFontTakeOut': '从项目中移除',
+    'textToolFontStaysOnThisDevice': '此字体不允许嵌入可编辑的文档，在其他设备上打开时会变成其他字体。',
+    'textToolFontNotOnThisDevice': '此设备上没有该字体，因此以其他字体显示。',
+    'textToolFontUnreadable': '无法将该文件读取为字体。',
+    'textToolFontIsTheApps': '该字体已内置于应用中。',
+    'textToolFontNotKept': '无法保存该字体。',
     'toolSelect': '选择',
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
@@ -7914,9 +8226,20 @@ enum AppStrings {
     'toolShapeEllipse': '椭圆',
     'toolShapeLasso': '套索',
     'toolShapePolygon': '多边形',
+    'toolShapeLine': '直线',
     'toolShapeSelectTemplate': '{shape}选择',
     'toolShapeCutTemplate': '{shape}裁剪',
     'toolShapeFillTemplate': '{shape}填充',
+    'toolShapeDrawTemplate': '{shape}绘制',
+    'shapeToolDraws': '绘制',
+    'shapeToolStroke': '描边',
+    'shapeToolFill': '填充',
+    'shapeToolType': '类型',
+    'shapeToolTypePlain': '普通',
+    'shapeToolCorners': '边角',
+    'shapeToolCornersSharp': '尖角',
+    'shapeToolCornersRound': '圆角',
+    'shapeToolRatioLock': '锁定比例',
     'brBrushesTitle': '笔刷',
     'brGroupNameField': '组名称',
     'brCreate': '创建',
@@ -7961,7 +8284,7 @@ enum AppStrings {
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
-    'tlAutoFrame': '在空单元格上绘制时自动创建帧',
+    'shortcutAction.frame-auto-create': '在空单元格上绘制时自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
     'brEditGroup': '编辑分组',
@@ -8068,9 +8391,25 @@ enum AppStrings {
     'brExportSelected': '导出画笔',
     'brExportGroup': '导出画笔组',
     'brExportNothing': '这里没有可导出的画笔。',
+    'brExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
+    'brExportedOneTemplate': '已导出画笔“{name}”。',
+    'brExportedManyTemplate': '已导出 {count} 个画笔。',
+    'brExportFallbackName': '画笔',
+    'brImportUnreadable': '无法将此文件读取为画笔文件。',
+    'brImportPickFailedTemplate': '无法打开文件：{error}',
+    'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
+    'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
+    'brImportWarningsTemplate': '{summary}（{count} 项有警告）',
+    'brTipUnreadable': '无法将该图像读取为笔尖。',
+    'brTipNoShape': '该图像没有可用作笔尖的可见形状。',
+    'brTipNotSaved': '无法保存该笔尖。',
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
+    'trScaleX': '缩放 X',
+    'trScaleY': '缩放 Y',
+    'trScaleLink': '缩放联动',
     'trAnchorPointX': '基准点 X',
     'trAnchorPointY': '基准点 Y',
     'trMeshColumns': '列数',
@@ -8122,8 +8461,6 @@ enum AppStrings {
     'railFolderBlendMode': '文件夹混合模式',
     'railHideLayer': '隐藏图层',
     'railShowLayer': '显示图层',
-    'railHideCutPicture': '隐藏镜头画面',
-    'railShowCutPicture': '显示镜头画面',
     'railBypassLayerFx': '旁通图层 FX',
     'railApplyLayerFx': '应用图层 FX',
     'railBypassMixedLayerFx': '旁通全部图层 FX（部分已关闭）',
@@ -8141,7 +8478,6 @@ enum AppStrings {
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
     'tlSeNameTemplate': 'SE 名称 {name}',
-    'tlAddLayerHeader': '添加图层',
     'tlNoLayers': '没有图层',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
@@ -8197,23 +8533,21 @@ enum AppStrings {
     // was the odd one out, not the rule.
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': '留白',
-    'tlAttachFreeAbove': '在上方添加自由附属图层',
-    'tlAttachFreeBelow': '在下方添加自由附属图层',
-    'tlAttachSyncedAbove': '在上方添加同步附属图层',
-    'tlAttachSyncedBelow': '在下方添加同步附属图层',
+    'shortcutAction.layer-attach-free-above': '在上方添加自由附属图层',
+    'shortcutAction.layer-attach-free-below': '在下方添加自由附属图层',
+    'shortcutAction.layer-attach-synced-above': '在上方添加同步附属图层',
+    'shortcutAction.layer-attach-synced-below': '在下方添加同步附属图层',
     'tlLayerCommands': '图层命令',
     'tlFrameCommands': '帧命令',
     'tlCut': '镜头',
     'tlLayer': '图层',
     'tlFrame': '帧',
-    'tlDuplicateLayer': '复制图层',
-    'tlSelectRowSpan': '选择整行',
-    'tlLinkDuplicateLayer': '链接复制图层',
+    'shortcutAction.layer-duplicate': '复制图层',
+    'shortcutAction.frame-select-row-span': '选择整行',
     'linkWindowUnlink': '取消链接',
     'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',
     'tlResetGroup': '重置（保留关键帧）',
     'tlRenameLayer': '重命名图层…',
-    'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',
@@ -8222,10 +8556,10 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
-    'tlDetachLayer': '解除附属',
+    'shortcutAction.layer-detach': '解除附属',
+    'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
-    'tlSharedUnlink': '取消链接',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
@@ -8256,7 +8590,7 @@ enum AppStrings {
     'tlCustom': '自定义…',
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
-    'tlStoryboardLayer': '分镜图层',
+    'shortcutAction.layer-storyboard': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',
     'frameCountEntryFrames': '帧数',

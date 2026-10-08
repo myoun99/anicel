@@ -4,33 +4,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart' show LayerFxState;
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show seLayerIdForTrack;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
-/// R9 #21 — the V row's own columns. The rail row's fx switch and opacity
-/// bar describe the row's SUBJECT, and this row's subject is the TRACK:
-/// its fx master (over the per-cut switches) and its static opacity, both
+/// R9 #21 — the V row's own column. The rail row's fx switch describes the
+/// row's SUBJECT, and this row's subject is the TRACK: its fx master,
 /// persisted like every fx switch since R8.
+///
+/// ↩️The head carried two more until 2026-10-08 (I-73, 유저: 「V행의
+/// 불투명도랑 비지블 필요없어보여서 삭제하고싶은데 어때」 · 「5. 값도지움」) —
+/// the track's static OPACITY, a bar here and a value in the file, and an
+/// EYE that hid the picture of the cut under the playhead. What is pinned
+/// of them now is that they are gone and their columns still stand.
 void main() {
   group('Track model', () {
-    test('a default track writes neither key — R8\'s rule that a default '
-        'is silence, so files from before R9 are unchanged', () {
-      final track = Track(id: createDefaultProject().tracks.first.id, name: 'V1', cuts: const []);
-      final json = track.toJson();
+    test('a default track writes no fx key — R8\'s rule that a default is '
+        'silence, so files from before R9 are unchanged', () {
+      final track = Track(
+        id: createDefaultProject().tracks.first.id,
+        name: 'V1',
+        cuts: const [],
+      );
 
-      expect(json.containsKey('opacity'), isFalse);
-      expect(json.containsKey('fxEnabled'), isFalse);
+      expect(track.toJson().containsKey('fxEnabled'), isFalse);
     });
 
-    test('an old file with neither key opens at 1.0 and ON', () {
+    test('an old file without the key opens with the switch ON', () {
       final original = createDefaultProject();
       final json = original.toJson();
-      // Strip the R9 keys the way a pre-R9 writer would have.
-      for (final track in (json['tracks'] as List).cast<Map<String, dynamic>>()) {
-        track.remove('opacity');
+      // Strip the R9 key the way a pre-R9 writer would have.
+      for (final track
+          in (json['tracks'] as List).cast<Map<String, dynamic>>()) {
         track.remove('fxEnabled');
       }
 
@@ -38,15 +47,14 @@ void main() {
         jsonDecode(jsonEncode(json)) as Map<String, dynamic>,
       );
 
-      expect(reopened.tracks.first.opacity, 1.0);
       expect(reopened.tracks.first.fxEnabled, isTrue);
     });
 
-    test('non-default values round-trip', () {
+    test('a switch that is OFF round-trips', () {
       final original = createDefaultProject();
       final edited = original.copyWith(
         tracks: [
-          original.tracks.first.copyWith(opacity: 0.4, fxEnabled: false),
+          original.tracks.first.copyWith(fxEnabled: false),
           ...original.tracks.skip(1),
         ],
       );
@@ -55,7 +63,6 @@ void main() {
         jsonDecode(jsonEncode(edited.toJson())) as Map<String, dynamic>,
       );
 
-      expect(reopened.tracks.first.opacity, 0.4);
       expect(reopened.tracks.first.fxEnabled, isFalse);
     });
   });
@@ -117,6 +124,32 @@ void main() {
       expect(session.effectsAndFx.isCutFxEnabled(cutId), isTrue);
     });
 
+    test('writing the value it already holds is no edit — there is nothing '
+        'to undo', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final trackId = session.selectedTrackId;
+      final steps = session.historyManager.undoCount;
+
+      session.cutCommandCoordinator.updateTrackDisplay(
+        trackId: trackId,
+        fxEnabled: true,
+      );
+      expect(session.historyManager.undoCount, steps, reason: 'ON over ON');
+
+      session.cutCommandCoordinator.updateTrackDisplay(
+        trackId: trackId,
+        fxEnabled: false,
+      );
+      expect(
+        session.historyManager.undoCount,
+        steps + 1,
+        reason: 'LIVENESS: a real change is one step',
+      );
+    });
+
     test('the flag persists — it is model state, not a session set', () {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -133,66 +166,18 @@ void main() {
     });
   });
 
-  group('the track static opacity', () {
-    test('is NOT an fx: an fx bypass leaves it composited', () {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
+  // ↩️A group stood here for the track's static opacity: that an fx bypass
+  // left it composited (it was not an fx), and that its bar previewed live
+  // and committed once on release. The value went with the bar.
 
-      final trackId = session.selectedTrackId;
-      session.opacityVerbs.commitTrackOpacity(trackId, 0.25);
-      session.effectsAndFx.toggleTrackFx(trackId);
-
-      expect(session.opacityVerbs.trackStaticOpacity(trackId), 0.25);
-      expect(
-        session.opacityVerbs.activeCutEditingFadeOpacity(),
-        0.25,
-        reason: 'a layer\'s static opacity is not gated by its fx switch '
-            'either — only the animated fade stands down',
-      );
-    });
-
-    test('the drag previews live and commits ONCE on release', () {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
-
-      final trackId = session.selectedTrackId;
-      final before = session.repository.requireProject();
-
-      session.opacityVerbs.previewTrackOpacity(trackId, 0.5);
-      expect(
-        session.opacityVerbs.trackStaticOpacity(trackId),
-        0.5,
-        reason: 'readers see the live value',
-      );
-      expect(
-        identical(session.repository.requireProject(), before),
-        isTrue,
-        reason: 'per-move writes are what commit-on-release exists to avoid',
-      );
-
-      session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
-      expect(session.opacityVerbs.trackDragPreview.value, isNull);
-      expect(
-        session.repository.requireProject().tracks.first.opacity,
-        0.5,
-      );
-      session.undo();
-      expect(session.repository.requireProject().tracks.first.opacity, 1.0);
-    });
-  });
-
-  testWidgets('the V row mounts the TRACK\'s fx switch and an opacity bar — '
-      'the slot that was empty while every other rail row had one', (
-    tester,
-  ) async {
+  testWidgets('the V row mounts the TRACK\'s fx switch in the fx column, and '
+      'neither an eye nor an opacity bar beside it', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final session = EditorSessionManager(initialProject: createDefaultProject());
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
     addTearDown(session.dispose);
 
     await tester.pumpWidget(
@@ -215,15 +200,42 @@ void main() {
     await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
+    final head = find.byKey(
+      ValueKey<String>('storyboard-track-label-row-${trackId.value}'),
+    );
     final fxSwitch = find.byKey(
       ValueKey<String>('storyboard-track-fx-${trackId.value}'),
     );
-    final opacityBar = find.byKey(
-      ValueKey<String>('storyboard-track-opacity-${trackId.value}'),
-    );
     expect(fxSwitch, findsOneWidget);
-    expect(opacityBar, findsOneWidget);
-    expect(tester.widget<FieldSlider>(opacityBar).value, 1.0);
+    expect(
+      find.descendant(of: head, matching: find.byType(FieldSlider)),
+      findsNothing,
+      reason: 'the opacity bar left the head',
+    );
+    expect(
+      find.byWidgetPredicate((widget) {
+        final key = widget.key;
+        return key is ValueKey<String> &&
+            (key.value.startsWith('storyboard-cut-visibility-') ||
+                key.value.startsWith('storyboard-track-opacity-'));
+      }),
+      findsNothing,
+      reason: 'and so did the eye',
+    );
+
+    // The columns are still there: the switch stands where an S row's does,
+    // not slid over into the room the two left.
+    final seFx = find.byKey(
+      ValueKey<String>(
+        'storyboard-layer-fx-${seLayerIdForTrack(trackId, 1)}',
+      ),
+    );
+    expect(seFx, findsOneWidget, reason: 'LIVENESS: an S row wears the column');
+    expect(
+      tester.getRect(fxSwitch).left,
+      tester.getRect(seFx).left,
+      reason: 'a column a row has nothing to show in is reserved and empty',
+    );
 
     await tester.tap(fxSwitch);
     await tester.pumpAndSettle();

@@ -38,6 +38,8 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🚨★★★THE LAYER RIDES THE DRAWS — and it is the same pixels the buffer made.
 ///
 /// A layer's opacity and blend have to apply to the LAYER once. Wrapping the
@@ -390,7 +392,9 @@ void main() {
                         opacity: opacity,
                         blendMode: blendMode,
                         effects: effects,
-                        pose: pose,
+                        placement: pose == null
+                            ? null
+                            : placedBy(pose, canvasSize),
                       ),
                     ),
                   ],

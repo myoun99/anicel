@@ -179,4 +179,26 @@ const Set<String> _allowedFiles = {
   // the planner hands over an import's.
   'lib/src/services/commands/cut_command_coordinator.dart',
   'lib/src/services/commands/relink_media_asset_command.dart',
+  // 🆕A FONT A PROJECT CARRIES (R9-rest, 2026-10-07) is named the way a
+  // carry is, and keeps the law another way — these three say `carriedAs`
+  // or mint a name, and none of them stages:
+  //
+  // The record of one font file — it decides nothing, as the asset's own
+  // model above.
+  'lib/src/models/project_font_file.dart',
+  // The DEVICE's font library mints the name it keeps a brought file
+  // under, and writes the file at once (`ImportedFonts.importBytes`): the
+  // bytes are in the app's keeping from that moment, which is what staging
+  // is for.
+  'lib/src/services/font_library_service.dart',
+  // Registering a font with a project copies nothing: its bytes ARE held —
+  // in that library, immutable under a name that means them for good — and
+  // the text that registers it lands in the middle of somebody's typing,
+  // where a copy of tens of megabytes has no place. What keeps 「품은 순간
+  // 데이터를 가지고있고 불변」 is that the library asks before it lets go
+  // of a file, and every open project that carries it takes its own copy
+  // then (`ProjectFonts.holdBytesOf` — pinned by
+  // `a_registered_font_outlives_the_devices_copy` in
+  // `test/ui/session/project_fonts_test.dart`).
+  'lib/src/ui/session/project_fonts.dart',
 };

@@ -61,6 +61,8 @@ ConteSheetSource buildConteSheetSource(Project project) {
       const LayerMark(process: LayerProcess.conte),
     ),
     framesPerSecond: project.frameRate.countingBase,
+    cover: info.conteCover,
+    blankPage: info.conteBlankPage,
   );
 }
 

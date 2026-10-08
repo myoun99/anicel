@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
+import '../../models/tile_coord.dart';
 import '../../core/dev_profile.dart';
-import '../../services/straight_rgba_image.dart';
+import '../../services/cel_text_laying.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
 import 'raster_picture.dart';
@@ -31,11 +36,27 @@ class PositionedSurfaceImage {
       worldRect == surface.canvasSize.canvasRect;
 }
 
+/// The tiles a compose DRAWS for [surface], and the tiles every rect here
+/// is measured from: the picture as shown — its drawing with the texts it
+/// carries laid over it (`celSurfaceWithTextsLaid`).
+///
+/// 🚨★★★A COMPOSE CANNOT BE HANDED A PICTURE'S DRAWING WITHOUT ITS TEXTS
+/// (R9-rest, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」). Every function in
+/// this file reads its tiles through here, so no caller is the one that
+/// forgot — and a text that reaches past the drawing grows the rect a
+/// compose rasters exactly as a stroke there would. A surface that carries
+/// no text comes back as the object it was.
+Map<TileCoord, BitmapTile> _tilesShownBy(BitmapSurface surface) =>
+    celSurfaceWithTextsLaid(surface).tiles;
+
 /// The canvas rect UNIONED with every stored tile's rect — the extent a
 /// positioned compose rasters. Integer-aligned by construction.
 ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
   final canvas = surface.canvasSize.canvasRect;
-  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  final tiles = tileCoordsWorldRect(
+    _tilesShownBy(surface).keys,
+    surface.tileSize,
+  );
   return tiles == null ? canvas : canvas.expandToInclude(tiles);
 }
 
@@ -49,7 +70,10 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
 /// the part of that level it covers can be cut out as it is.
 ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
   final content = surfaceContentWorldRect(surface);
-  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  final tiles = tileCoordsWorldRect(
+    _tilesShownBy(surface).keys,
+    surface.tileSize,
+  );
   if (tiles == null) {
     return content;
   }
@@ -66,17 +90,103 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
   );
 }
 
+/// How an asynchronous compose makes the pictures of the tiles that have
+/// none. Either way a picture comes through the one door
+/// ([BitmapTileImageCache.pictureOfTile]), is the compose's own, and is let
+/// go right after it; what differs is whether the compose gives way while
+/// it makes them.
+enum MissingTilePictures {
+  /// A run of them at a time ([tilePictureRun]), the event queue given its
+  /// turn between runs ([_giveWay]) — which is what lets a pen that comes
+  /// down be heard, and an opportunistic compose be stood down
+  /// ([shouldAbort]), within a run. The road of everything that builds a
+  /// layer's image off the frame: the warm, a row the canvas fills in, a
+  /// cut the track stack asks for.
+  ///
+  /// 🪦Until 2026-10-07 this was `decodedInTurn`: every tile DECODED BY THE
+  /// ENGINE AND AWAITED, one at a time, and the giving way was that wait.
+  /// 🔬Measured on the Windows app (debug build, a user's project, cuts of
+  /// 2340×1654 and 2540×1654 — board F-296): the decode rounds were 55–78%
+  /// of a whole cut's warm with its cels in memory and over 90% of its
+  /// first warm off the file — 0.3–1.3 ms a tile, 500–3,700 tiles a cut —
+  /// where the door makes a picture in 0.04 ms. The two roads taken turn
+  /// about in one run of the app, three times each: a cut of 40 pictures
+  /// warmed in 0.51 s by rounds and 0.42 s by this road at full quality,
+  /// 0.92 and 0.69 s at half, and for the first time off the file in 1.12
+  /// and 0.72 s. With other work loading the machine — a round waits its
+  /// turn on two busy threads, three times a tile — a cut of 35 pictures
+  /// took 6.6 s by rounds and 1.9 s by this road at full, 9.2 and 2.8 s at
+  /// half. What is left of a warm is its rasters.
+  madeInTurn,
+
+  /// All of them at once — for a render somebody is WAITING for and nobody
+  /// can stand down: an export's frame, a panel's picture.
+  ///
+  /// ↩️Those renders took the warm path's road, and it was nine tenths of a
+  /// video export (F-289, measured 2026-10-07 on the Windows app, profile
+  /// build, a cut of two rows at 2340×1654): 395 tiles a frame, each
+  /// waiting a decode round of 1.3–2.9 ms on a busy machine, in a frame of
+  /// 1.15 s — where the door makes a picture in a few hundredths of a
+  /// millisecond. Giving way between tiles buys such a render nothing: no
+  /// one can stand it down, and the one waiting for it waits longer.
+  madeAtOnce,
+}
+
+/// How long [MissingTilePictures.madeInTurn] makes tile pictures before it
+/// gives way: the bound the decode rounds kept — 「an interactive input
+/// stops an opportunistic compose within ~one tile (1–2ms)」 (R13-4).
+///
+/// ⛔A LENGTH OF TIME, NOT A COUNT OF PICTURES. A count is a different
+/// length on every machine — 0.04 ms a picture on the desk it was measured
+/// on (debug build), several times that on an old tablet — and the turn it
+/// buys is not free: 🔬0.5–0.7 ms each on the Windows app (2026-10-07), so
+/// sixteen pictures a run spent as long giving way as making them. Most
+/// cels never reach the end of a run: the raster after a layer's tiles is a
+/// turn of its own.
+@visibleForTesting
+const Duration tilePictureRun = Duration(milliseconds: 2);
+
+/// A test's clock for [tilePictureRun], in microseconds — the time a run
+/// has taken is read off the wall when this is null.
+@visibleForTesting
+int Function()? debugTilePictureClock;
+
+/// One turn of the event queue: whatever was waiting in it when this is
+/// called — a pen coming down, a frame — is handled before it completes.
+///
+/// A message to this isolate's own port: it joins the queue behind what is
+/// already there and is answered in its turn.
+///
+/// 🚨★★★NOT A TIMER, though a zero `Timer` is the same turn. A compose is
+/// nobody's to cancel — it belongs to no widget and no scheduler — so a
+/// timer it left pending outlives whatever asked for the picture, and a
+/// widget test that ends with one pending fails on the binding's timer
+/// invariant (the reason `PlaybackPrerenderScheduler` keeps every wait of
+/// its own in a list it can flush). ⛔Not an engine call that happens to
+/// answer later either: `ImmutableBuffer.fromUint8List` answers inside the
+/// call, and a wait for it is a wait for microtasks — the pen is not let in.
+Future<void> _giveWay() {
+  final turn = Completer<void>();
+  final port = RawReceivePort();
+  port.handler = (Object? _) {
+    port.close();
+    turn.complete();
+  };
+  port.sendPort.send(null);
+  return turn.future;
+}
+
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by
 /// drawing per-tile GPU images — the editing canvas's display route, reused
 /// for playback/preview rendering.
 ///
-/// Tiles already decoded in [reuse] (typically [BitmapTileImageCache.instance],
+/// Tiles already pictured in [reuse] (typically [BitmapTileImageCache.instance],
 /// which the editing canvas keeps warm for the frame on screen) are drawn
 /// as-is, so rebuilding the ACTIVE frame after a stroke uploads nothing:
-/// cost scales with the changed tiles, not the canvas. Missing tiles decode
-/// transiently and are disposed right after the compose — cold frames pay
-/// one upload per stored tile without pinning GPU copies of every frame's
-/// artwork.
+/// cost scales with the changed tiles, not the canvas. Missing tiles are
+/// pictured transiently ([missing] says how) and disposed right after the
+/// compose — cold frames pay one upload per stored tile without pinning GPU
+/// copies of every frame's artwork.
 ///
 /// Byte-parity with the CPU assembly path ([bitmapSurfaceToImage]): tile
 /// bytes premultiply through the SAME mul-div-255 rounding
@@ -86,21 +196,24 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 ///
 /// The caller owns (and must dispose) the returned image.
 ///
-/// [shouldAbort] (R13-4, the warm path only): checked before every tile
-/// decode and before the final full-canvas raster — the two cost centers —
-/// so an interactive input stops an opportunistic compose within ~one tile
-/// (1–2ms), not one canvas. Aborts return null with nothing cached and the
-/// transient decodes disposed; without [shouldAbort] the result is never
-/// null.
+/// [shouldAbort] (R13-4, abandonable work only): checked before every
+/// tile picture and before the final full-canvas raster — the two cost
+/// centers — so an interactive input stops an opportunistic compose within
+/// one run of tile pictures ([tilePictureRun]), not one canvas. Aborts
+/// return null with nothing cached and the transient pictures disposed;
+/// without [shouldAbort] the result is never null.
 Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+  MissingTilePictures missing = MissingTilePictures.madeInTurn,
 }) => _composeAsync(
   surface,
   reuse: reuse,
   shouldAbort: shouldAbort,
+  missing: missing,
   over: surface.canvasSize.canvasRect,
+  deferred: false,
 );
 
 /// THE tile compose, async: draw every tile 1:1 at its integer offset and
@@ -111,11 +224,18 @@ Future<ui.Image?> composeTiledSurfaceImage(
 /// positioned, each async and sync — and they differed only in the origin,
 /// the extent, and whether the raster awaits. Four copies of a recorder
 /// lifetime is four chances to leak one.
+///
+/// [deferred] is how the recording is rastered: false waits for its plain
+/// snapshot — what a holder keeps; true rasters it deferred on the GPU and
+/// waits for nothing — a step of a chain whose LAST step is the snapshot
+/// ([composePositionedSurfaceImage] says when).
 Future<ui.Image?> _composeAsync(
   BitmapSurface surface, {
   required BitmapTileImageCache? reuse,
   required bool Function()? shouldAbort,
+  required MissingTilePictures missing,
   required ui.Rect over,
+  required bool deferred,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
@@ -123,18 +243,26 @@ Future<ui.Image?> _composeAsync(
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final transient = <ui.Image>[];
   var recorderClosed = false;
+  final watch = Stopwatch()..start();
+  int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
+  var runBegan = now();
 
   try {
-    for (final entry in surface.tiles.entries) {
+    for (final entry in _tilesShownBy(surface).entries) {
       final tile = entry.value;
       var image = reuse?.imageFor(tile);
       if (image == null) {
+        if (missing == MissingTilePictures.madeInTurn &&
+            now() - runBegan >= tilePictureRun.inMicroseconds) {
+          await _giveWay();
+          runBegan = now();
+        }
         if (shouldAbort?.call() ?? false) {
           recorder.endRecording().dispose();
           recorderClosed = true;
           return null;
         }
-        image = await _decodeTile(tile);
+        image = BitmapTileImageCache.pictureOfTile(tile);
         transient.add(image);
       }
       canvas.drawImage(
@@ -150,10 +278,11 @@ Future<ui.Image?> _composeAsync(
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      return await picture.toImage(
-        over.width.round(),
-        over.height.round(),
-      );
+      final width = over.width.round();
+      final height = over.height.round();
+      return deferred
+          ? picture.toImageSync(width, height)
+          : await waitedSnapshot(picture, width, height);
     } finally {
       picture.dispose();
     }
@@ -161,6 +290,9 @@ Future<ui.Image?> _composeAsync(
     if (!recorderClosed) {
       recorder.endRecording().dispose();
     }
+    // After the snapshot has landed — or, for a deferred raster, at once:
+    // the deferred image keeps the recording, and the recording keeps every
+    // picture it drew (`raster_picture.dart`), so only the handles go here.
     for (final image in transient) {
       image.dispose();
     }
@@ -206,7 +338,7 @@ Future<ui.Image?> _composeAsync(
   canvas.translate(-over.left, -over.top);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
 
-  for (final entry in surface.tiles.entries) {
+  for (final entry in _tilesShownBy(surface).entries) {
     final tile = entry.value;
     final image = makePictures ? reuse.pictureFor(tile) : reuse.imageFor(tile);
     if (image == null) {
@@ -260,18 +392,28 @@ ui.Image composeTiledSurfaceImageNow(
 /// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
+///
+/// [deferred] hands back the recording rastered DEFERRED, with nothing
+/// waited for — for a caller that draws it into the next step of a chain
+/// and keeps only the chain's last step, a plain snapshot. ⛔Never an image
+/// to keep: a deferred image pins every tile picture it drew for as long as
+/// it lives (`raster_picture.dart`).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+  MissingTilePictures missing = MissingTilePictures.madeInTurn,
   ui.Rect? over,
+  bool deferred = false,
 }) async {
   final worldRect = _composedOver(surface, over);
   final image = await _composeAsync(
     surface,
     reuse: reuse,
     shouldAbort: shouldAbort,
+    missing: missing,
     over: worldRect,
+    deferred: deferred,
   );
   return image == null
       ? null
@@ -316,27 +458,11 @@ ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
     return surfaceContentWorldRect(surface);
   }
   assert(() {
-    final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+    final tiles = tileCoordsWorldRect(
+      _tilesShownBy(surface).keys,
+      surface.tileSize,
+    );
     return tiles == null || over.expandToInclude(tiles) == over;
   }(), 'a part of the content composed on its own must hold every tile');
   return over;
-}
-
-Future<ui.Image> _decodeTile(BitmapTile tile) async {
-  // 🚨Through [uploadRawRgba], not `ui.decodeImageFromPixels`: the SDK
-  // function tells nobody when a decode fails, so the `Completer` that stood
-  // here could only ever succeed — and the `upload.free()` it carried lived
-  // in the same success-only callback. A refused tile therefore leaked its
-  // native staging buffer AND left this future pending. The `finally` frees
-  // on both roads; see [uploadRawRgba] for the SDK's two dropped chains.
-  final upload = BitmapTileImageCache.premultipliedTileUpload(tile);
-  try {
-    return await uploadRawRgba(
-      upload.view,
-      width: tile.size,
-      height: tile.size,
-    );
-  } finally {
-    upload.free();
-  }
 }

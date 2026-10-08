@@ -14,6 +14,7 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
+import 'tool_settings_section.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../widgets/pill_strip.dart';
@@ -206,7 +207,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // mark on the canvas, and this panel scrolls; the strip is always
           // where it was. Keeping a second copy here would be two places
           // showing one number.
-          const _GroupHeader('Ink', first: true),
+          const ToolSettingsGroupHeader('Ink', first: true),
           _PanelSlider(
             label: AppText.strings.brFlow,
             unit: '%',
@@ -221,7 +222,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               AppText.strings.brFlow,
             ),
           ),
-          const _GroupHeader('Brush tip'),
+          const ToolSettingsGroupHeader('Brush tip'),
           BrushTipPickerRow(
             label: AppText.strings.brBrushTip,
             role: BrushTipRole.tip,
@@ -292,7 +293,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // P20 shipped placement dynamics into the engine and left them
           // unreachable: only a preset or an import could set them. These
           // are those knobs.
-          const _GroupHeader('Randomness'),
+          const ToolSettingsGroupHeader('Randomness'),
           _PanelSlider(
             label: AppText.strings.brSizeJitter,
             unit: '%',
@@ -346,7 +347,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             onChanged: (value) =>
                 onChanged(state.copyWith(spacingJitter: value)),
           ),
-          const _GroupHeader('Mixing'),
+          const ToolSettingsGroupHeader('Mixing'),
           SettingsSwitchRow(
             tileKey: const ValueKey<String>('brush-tool-mixing-toggle'),
             label: AppText.strings.brMixing,
@@ -395,7 +396,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                 ? (value) => onChanged(state.copyWith(colorStretch: value))
                 : null,
           ),
-          const _GroupHeader('Scattering'),
+          const ToolSettingsGroupHeader('Scattering'),
           _PanelSlider(
             // A ratio of the brush size, so scatter keeps its character as
             // the brush grows.
@@ -435,7 +436,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterBothAxes: value)),
           ),
-          const _GroupHeader('Texture'),
+          const ToolSettingsGroupHeader('Texture'),
           BrushTipPickerRow(
             label: AppText.strings.brDualTip,
             role: BrushTipRole.dual,
@@ -553,7 +554,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                 ? null
                 : (value) => onChanged(state.copyWith(textureContrast: value)),
           ),
-          const _GroupHeader('Correction'),
+          const ToolSettingsGroupHeader('Correction'),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
           _PanelSlider(
@@ -579,44 +580,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // beside the other verbs that make and unmake a block, which is
           // the group it belongs to.
         ]),
-      ),
-    );
-  }
-}
-
-/// The CSP category rule: a small header over each settings group, a
-/// hairline separating it from the group above.
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader(this.label, {this.first = false});
-
-  final String label;
-  final bool first;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(top: first ? 0 : 8, bottom: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!first)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Divider(
-                height: 1,
-                thickness: 1,
-                color: theme.colorScheme.outlineVariant,
-              ),
-            ),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ),
     );
   }

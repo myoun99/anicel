@@ -3,30 +3,36 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data' show BytesBuilder;
 
-/// Stands in for the ffmpeg process in video-export tests: collects the PNG
-/// bytes piped to stdin and exits with [exitCodeValue] once stdin closes
+/// Stands in for the ffmpeg process in video-export tests: collects the raw
+/// frames piped to stdin and exits with [exitCodeValue] once stdin closes
 /// (or the service kills it).
 class FakeFfmpegProcess implements Process {
   FakeFfmpegProcess({
     this.exitCodeValue = 0,
     this.stderrText = '',
     this.onFrame,
+    this.breaksAtFrame,
   });
 
   final int exitCodeValue;
   final String stderrText;
 
-  /// Called with the running frame count as each PNG reaches stdin — the
+  /// Called with the running frame count as each frame reaches stdin — the
   /// seam a test needs to STOP an export midway, deterministically,
   /// instead of racing a timer against the encoder.
   final void Function(int framesSoFar)? onFrame;
+
+  /// The frame (counted from 1) the pipe breaks at instead of taking it —
+  /// ffmpeg gone mid-stream. Null never breaks.
+  final int? breaksAtFrame;
   final BytesBuilder collectedStdin = BytesBuilder();
   bool killed = false;
 
   late final _FakeStdinSink _stdin = _FakeStdinSink(
     collectedStdin,
     onClose: _completeExit,
-    onFrame: onFrame == null ? null : () => onFrame!(receivedPngCount),
+    onFrame: onFrame == null ? null : () => onFrame!(receivedFrameCount),
+    breaksAtFrame: breaksAtFrame,
   );
 
   // ZONE TRAP: this fake is usually CONSTRUCTED in a widget test's
@@ -50,25 +56,9 @@ class FakeFfmpegProcess implements Process {
     _exitWaiters.clear();
   }
 
-  /// PNG signatures seen on stdin = frames ffmpeg received.
-  int get receivedPngCount {
-    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    final bytes = collectedStdin.toBytes();
-    var count = 0;
-    for (var i = 0; i + signature.length <= bytes.length; i += 1) {
-      var match = true;
-      for (var j = 0; j < signature.length; j += 1) {
-        if (bytes[i + j] != signature[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        count += 1;
-      }
-    }
-    return count;
-  }
+  /// The frames ffmpeg received: a raw frame goes down the pipe in one
+  /// write, and nothing in the bytes says where one ends.
+  int get receivedFrameCount => _stdin.frames;
 
   @override
   Future<int> get exitCode {
@@ -103,18 +93,31 @@ class FakeFfmpegProcess implements Process {
 }
 
 class _FakeStdinSink implements IOSink {
-  _FakeStdinSink(this.buffer, {required this.onClose, this.onFrame});
+  _FakeStdinSink(
+    this.buffer, {
+    required this.onClose,
+    this.onFrame,
+    this.breaksAtFrame,
+  });
 
   final BytesBuilder buffer;
   final void Function() onClose;
   final void Function()? onFrame;
+  final int? breaksAtFrame;
+
+  /// How many writes were taken.
+  int frames = 0;
 
   @override
   Encoding encoding = utf8;
 
   @override
   void add(List<int> data) {
+    if (frames + 1 == breaksAtFrame) {
+      throw const SocketException('Broken pipe');
+    }
     buffer.add(data);
+    frames += 1;
     onFrame?.call();
   }
 

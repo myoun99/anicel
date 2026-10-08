@@ -16,10 +16,11 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -39,7 +40,7 @@ void main() {
         frameId: frameId,
       );
 
-  Cut cut({double opacity = 1}) => Cut(
+  Cut cut({double opacity = 1, TransformTrack? transformTrack}) => Cut(
     id: const CutId('cut'),
     name: 'Cut',
     duration: 24,
@@ -55,6 +56,7 @@ void main() {
           0: const TimelineExposure.drawing(FrameId('frame-a'), length: 24),
         },
         opacity: opacity,
+        transformTrack: transformTrack,
       ),
     ],
   );
@@ -108,12 +110,10 @@ void main() {
       final atZero = await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       final held = await cache.prepareComposite(
         cut: cut(),
         frameIndex: 7,
-        quality: PlaybackQuality.full,
       );
 
       expect(identical(atZero, held), isTrue);
@@ -140,12 +140,10 @@ void main() {
         cache.prepareComposite(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         cache.prepareComposite(
           cut: cut(),
           frameIndex: 7,
-          quality: PlaybackQuality.full,
         ),
       ]);
 
@@ -157,7 +155,6 @@ void main() {
           cache.validCompositeOrNull(
             cut: cut(),
             frameIndex: frameIndex,
-            quality: PlaybackQuality.full,
           ),
           isNotNull,
         );
@@ -175,7 +172,6 @@ void main() {
       final pending = cache.prepareCompositeInterruptible(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
         shouldAbort: () => false,
       );
       cache.dispose();
@@ -195,7 +191,6 @@ void main() {
         final image = await cache.prepareComposite(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         );
         final data = await image.toByteData(
           format: ui.ImageByteFormat.rawRgba,
@@ -249,7 +244,6 @@ void main() {
       final aborted = await cache.prepareCompositeInterruptible(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
         shouldAbort: () => true,
       );
       expect(aborted, isNull);
@@ -257,7 +251,6 @@ void main() {
         cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         isNull,
         reason: 'an abandoned build must leave no cache entry behind',
@@ -266,7 +259,6 @@ void main() {
       final completed = await cache.prepareCompositeInterruptible(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
         shouldAbort: () => false,
       );
       expect(completed, isNotNull);
@@ -274,7 +266,6 @@ void main() {
         cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         isNotNull,
       );
@@ -291,13 +282,11 @@ void main() {
       await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       expect(
         cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         isNotNull,
       );
@@ -306,7 +295,6 @@ void main() {
         cache.validCompositeOrNull(
           cut: cut(opacity: 0.5),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         isNull,
       );
@@ -321,7 +309,6 @@ void main() {
       await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
 
       coordinator.commitSourceStroke(
@@ -344,7 +331,6 @@ void main() {
         cache.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
         isNull,
       );
@@ -361,14 +347,12 @@ void main() {
       await cache.prepareComposite(
         cut: held,
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       CutFrameCompositeSignature? heldAt(int frameIndex) =>
           cache.heldSignature(
             cache.signatureOf(
               cut: held,
               frameIndex: frameIndex,
-              quality: PlaybackQuality.full,
             ),
           );
 
@@ -383,24 +367,18 @@ void main() {
         reason: 'two fresh signatures of one picture get the ONE filed key '
             'back — what lets the green bar\'s next ask be `identical`',
       );
-      cache.enforceBudget(
-        maxBytes: 0,
-        protect: const [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 5,
-            endFrame: 5,
-            quality: PlaybackQuality.full,
-          ),
-        ],
-      );
+      // A screen showing frame 5 keeps the image only if frame 5 is one of
+      // the slots it is filed under.
+      cache.retainPin((const CutId('cut'), 5));
+      cache.enforceBudget(maxBytes: 0);
 
       expect(
         heldAt(5),
         isNull,
         reason: 'only frame 0 filed a key — a read that filed frame 5 '
-            'would have let the range keep the image',
+            'would have let the pin keep the image',
       );
+      cache.releasePin((const CutId('cut'), 5));
       cache.dispose();
     });
   });
@@ -414,7 +392,6 @@ void main() {
       final image = await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
 
       final withCamera = cut().copyWith(
@@ -428,7 +405,6 @@ void main() {
           cache.validCompositeOrNull(
             cut: withCamera,
             frameIndex: 0,
-            quality: PlaybackQuality.full,
           ),
           image,
         ),
@@ -447,7 +423,6 @@ void main() {
       await cache.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       expect(cache.estimatedBytes, greaterThan(0));
 
@@ -461,59 +436,152 @@ void main() {
     });
   });
 
-  testWidgets('budget eviction never touches the protected range', (
+  /// 유저 2026-10-08 (「4 허용치도 해결」): what a full cache keeps is what
+  /// is wanted soonest. ↩️A `protect` list of frame ranges was passed over
+  /// here whatever the cap said.
+  testWidgets('a full cache lets go of the picture wanted latest, and makes '
+      'room only out of pictures wanted later than the one it is for', (
     tester,
   ) async {
     await tester.runAsync(() async {
-      final (store, coordinator) = storeWithStroke();
+      final (store, _) = storeWithStroke();
       final cache = cacheFor(store);
+      const picture = 8 * 8 * 4;
 
-      final protectedImage = await cache.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-        quality: PlaybackQuality.full,
-      );
-      // A second, different composite (new stroke on a different frame id
-      // exposed at index 12 via a second layer entry isn't needed — reuse a
-      // different quality to create a distinct image).
-      await cache.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-        quality: PlaybackQuality.half,
-      );
-      expect(cache.estimatedBytes, greaterThan(8 * 8 * 4));
-
-      cache.enforceBudget(
-        maxBytes: 8 * 8 * 4,
-        protect: const [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 0,
-            endFrame: 23,
-            quality: PlaybackQuality.full,
-          ),
-        ],
-      );
+      // Three pictures: the drawing (wanted now), the nothing past it
+      // (wanted thirty frames on), and the drawing as it was before an edit
+      // — which no frame wants. Made in that order, so recency says the
+      // opposite.
+      final wantedNow = await cache.prepareComposite(cut: cut(), frameIndex: 0);
+      await cache.prepareComposite(cut: cut(), frameIndex: 30);
+      await cache.prepareComposite(cut: cut(opacity: 0.5), frameIndex: 12);
+      expect(cache.estimatedBytes, 3 * picture);
+      int? stepOf(CutId cutId, int frameIndex) => switch (frameIndex) {
+        0 => 0,
+        30 => 30,
+        _ => null,
+      };
+      bool held(int frameIndex, {double opacity = 1}) =>
+          cache.validCompositeOrNull(
+            cut: cut(opacity: opacity),
+            frameIndex: frameIndex,
+          ) !=
+          null;
 
       expect(
-        identical(
-          cache.validCompositeOrNull(
-            cut: cut(),
-            frameIndex: 0,
-            quality: PlaybackQuality.full,
-          ),
-          protectedImage,
-        ),
+        cache.enforceBudget(maxBytes: 2 * picture, stepOf: stepOf),
         isTrue,
       );
       expect(
-        cache.validCompositeOrNull(
-          cut: cut(),
-          frameIndex: 0,
-          quality: PlaybackQuality.half,
-        ),
-        isNull,
+        [held(0), held(30), held(12, opacity: 0.5)],
+        [true, true, false],
+        reason: 'what nobody wants goes first',
       );
+
+      expect(
+        cache.enforceBudget(maxBytes: 0, stepOf: stepOf, laterThan: 10),
+        isFalse,
+        reason: 'the picture wanted now is not room for one wanted ten on',
+      );
+      expect([held(0), held(30)], [true, false]);
+      expect(
+        identical(
+          cache.validCompositeOrNull(cut: cut(), frameIndex: 0),
+          wantedNow,
+        ),
+        isTrue,
+      );
+
+      expect(
+        cache.enforceBudget(maxBytes: 0, stepOf: stepOf),
+        isTrue,
+        reason: 'with no such floor, a cap is a cap',
+      );
+      expect(cache.estimatedBytes, 0);
+      cache.dispose();
+    });
+  });
+
+  testWidgets('among pictures wanted equally, the one used longest ago '
+      'goes first', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      await cache.prepareComposite(cut: cut(), frameIndex: 0);
+      await cache.prepareComposite(cut: cut(), frameIndex: 30);
+      // The first is asked again: the second is the one used longest ago.
+      cache.validCompositeOrNull(cut: cut(), frameIndex: 0);
+
+      cache.enforceBudget(maxBytes: 8 * 8 * 4);
+
+      expect(cache.validCompositeOrNull(cut: cut(), frameIndex: 0), isNotNull);
+      expect(cache.validCompositeOrNull(cut: cut(), frameIndex: 30), isNull);
+      cache.dispose();
+    });
+  });
+
+  // Where a row lies is laid on at composite time, and until this nothing
+  // in the file moved one: every picture above is the same with the
+  // placement left out.
+  testWidgets('a MOVED row is composited where it lies', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      // The stroke inks artwork 0..2 both ways. The row lies half the canvas
+      // right and down, so it shows over canvas 4..6.
+      final moved = cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 8, y: 8),
+          ),
+        ),
+      );
+      Future<int> alphaAt(CanvasPoint canvas) async {
+        final image = await cache.prepareComposite(cut: moved, frameIndex: 0);
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        final x = canvas.x.floor();
+        final y = canvas.y.floor();
+        return data!.getUint8((y * image.width + x) * 4 + 3);
+      }
+
+      expect(await alphaAt(CanvasPoint(x: 4.5, y: 4.5)), greaterThan(0));
+      expect(await alphaAt(CanvasPoint(x: 0.5, y: 0.5)), 0);
+      cache.dispose();
+    });
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」. Keyed from 100 to −100, the frame halfway is a scale of zero:
+  // the row is not drawn there, as After Effects does not draw one.
+  testWidgets('a row scaled to NOTHING on an axis is composited as nothing '
+      '— the frame a flip passes through', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      final flipping = cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>.empty()
+              .withKey(0, CanvasPoint(x: 1, y: 1))
+              .withKey(2, CanvasPoint(x: -1, y: 1)),
+        ),
+      );
+      Future<bool> inked(int frameIndex) async {
+        final image = await cache.prepareComposite(
+          cut: flipping,
+          frameIndex: frameIndex,
+        );
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        return data!.buffer.asUint8List().any((byte) => byte != 0);
+      }
+
+      expect(await inked(0), isTrue, reason: 'fixture: the row has ink');
+      expect(await inked(1), isFalse, reason: 'halfway: nothing across');
+      expect(await inked(2), isTrue, reason: 'and flipped, it is back');
       cache.dispose();
     });
   });

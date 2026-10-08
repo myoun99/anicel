@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/placement_reading.dart';
 
 /// R28-S — the selection unification round.
 ///
@@ -83,7 +84,10 @@ void main() {
                 BrushToolState.defaults.copyWith(tool: tool),
               ),
               selectionCommands: commands,
-              interactiveContentPose: placement,
+              interactiveContentPose: placementOfSample(
+                placement,
+                BrushCanvasFixture.canvasSize,
+              ),
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork px per DEVICE px,

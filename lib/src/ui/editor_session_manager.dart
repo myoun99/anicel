@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
@@ -14,6 +15,7 @@ import '../services/persistence/app_memory_settings.dart';
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
+import 'session/canvas_adjust.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
@@ -53,8 +55,10 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/cut_frame_composite_plan.dart';
+import '../models/playback_mode.dart';
+import '../models/track_transitions.dart' show drawnFrameCountsOf;
+import '../services/playback/frame_demand.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -67,6 +71,7 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/commands/link_mirror.dart' show linkMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -84,6 +89,8 @@ import 'brush/canvas_selection_commands.dart' show CanvasSelectionDocument;
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
+import 'timeline/timeline_frame_ruler_painter.dart'
+    show timelineFramePlaceLabel;
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
@@ -94,9 +101,11 @@ import 'session/import_landing.dart';
 import 'session/project_import_doors.dart';
 import 'session/cut_folder_import_door.dart';
 import 'session/tvpp_import_door.dart';
+import 'session/clip_import_door.dart';
 import 'session/audio_clips.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
+import 'session/project_fonts.dart';
 import 'session/project_audio.dart';
 import 'session/movie_cel_hydrator.dart';
 import 'session/playback_rig.dart';
@@ -108,7 +117,6 @@ import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
-import 'session/cut_picture_eyes.dart';
 import 'session/cut_under_playhead.dart';
 import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
@@ -132,6 +140,7 @@ import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
+import 'session/panel_view_memory.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
@@ -179,6 +188,7 @@ class EditorSessionManager extends ChangeNotifier
     EditorAppSettings? appSettings,
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
+    FontLibraryService? fontLibrary,
     ImageCache? frameworkImageCache,
     FailedSaveCopies? failedSaveCopies,
     AppClipboard? appClipboard,
@@ -186,6 +196,7 @@ class EditorSessionManager extends ChangeNotifier
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
+       _injectedFontLibrary = fontLibrary,
        _frameworkImageCache = frameworkImageCache,
        failedSaveCopies = failedSaveCopies ?? FailedSaveCopies(),
        _appClipboard = appClipboard ?? AppClipboard(),
@@ -562,33 +573,71 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
+  /// A run begins, and from here the warmer follows what it shows in the
+  /// order it plays ([PlayingDemand]): the frame under the playhead first,
+  /// so the pictures about to be shown are the ones made, and round to the
+  /// frame behind it when the run loops — a second pass plays out of the
+  /// cache as far as the allowance holds one.
+  ///
+  /// What a frame shows is what the screen draws there. A cut playing alone
+  /// shows that cut, every frame it is DRAWN for (F-227 — the のりしろ an O.L
+  /// asks of it, which its playlist entry already spans). The film shows
+  /// the track stack: every covered track's cut, and both cuts of an O.L.
   void _onPlaybackPlaylistWarmRequested(
     List<StoryboardTimelineLayoutEntry> playlist,
     PlaybackScope scope,
     int startGlobalFrame,
   ) {
-    // Playhead-forward with wrap-around: the frames about to play warm
-    // first, so first-pass misses shrink toward zero and a looping second
-    // pass starts fully cached. Each cut warms every frame it is DRAWN for
-    // (F-227) — an O.L composites the のりしろ, which `entry.duration`
-    // stopped short of — the same count the budget protects while playing.
-    final drawn = drawnFrameCountsOf(repository.requireProject());
-    final frames = <(CutId, int)>[
-      for (final entry in playlist)
-        for (
-          var index = 0;
-          index < (drawn[entry.cutId] ?? entry.duration);
-          index += 1
-        )
-          (entry.cutId, index),
-    ];
-    if (frames.isEmpty) {
+    final playback = playbackRig.playback;
+    final totalFrames = playback.totalFrames;
+    if (totalFrames == 0) {
       return;
     }
-    final start = startGlobalFrame.clamp(0, frames.length - 1);
-    playbackRig.prerenderScheduler.requestWarmFrames(
-      frames: [...frames.sublist(start), ...frames.sublist(0, start)],
-      quality: playbackRig.playbackQuality,
+    final alone = scope == PlaybackScope.activeCut;
+    // Where each cut's own frame 0 stands on the film's axis: asked once a
+    // cut, because the budget asks it of every picture it weighs. And how
+    // many frames the film shows of it — what it is DRAWN for; a frame past
+    // that (a drawing out on the runway) is no frame of the film's.
+    final mediaStarts = <CutId, int>{};
+    final drawn = drawnFrameCountsOf(repository.requireProject());
+    playbackRig.prerenderScheduler.follow(
+      PlayingDemand(
+        totalFrames: totalFrames,
+        loops: () => playback.loopMode == PlaybackLoopMode.loop,
+        playhead: () => playback.playlistFrame,
+        picturesOf: alone
+            ? (frame) {
+                final position = resolvePlaybackPosition(
+                  playlist: playlist,
+                  globalFrameIndex: frame,
+                );
+                return [
+                  if (position != null)
+                    (cut: position.cut, frameIndex: position.localFrameIndex),
+                ];
+              }
+            : (frame) => [
+                for (final shown in rowSpans.trackStackContributionsAt(frame))
+                  (cut: shown.cut, frameIndex: shown.localFrameIndex),
+              ],
+        playlistFrameOf: alone
+            ? (cutId, frameIndex) =>
+                  cutId == playlist.first.cutId ? frameIndex : null
+            : (cutId, frameIndex) => frameIndex < (drawn[cutId] ?? 0)
+                  ? (mediaStarts[cutId] ??= rowSpans.trackGlobalFrameOf(
+                          cutId,
+                          0,
+                        )) +
+                        frameIndex
+                  : null,
+        // Where the clock does not wait for a picture, one is started
+        // where the playhead will be when it lands. Where it waits, the
+        // frame under the playhead is the one to make.
+        lead: (composeTime) =>
+            playbackRig.playbackMode == PlaybackMode.skipFrames
+            ? projectSettings.projectFrameRate.frameAtElapsed(composeTime)
+            : 0,
+      ),
     );
   }
 
@@ -658,7 +707,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits, renderCaches: renderCaches);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, renderCaches: renderCaches);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -680,6 +729,7 @@ class EditorSessionManager extends ChangeNotifier
     folderBands: folderBands,
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
+    dragPreview: dragPreview,
   );
 
   bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;
@@ -710,10 +760,33 @@ class EditorSessionManager extends ChangeNotifier
   /// project's (I-7).
   late final RailView railView = RailView();
 
+  /// Every use of [row] — the rows that twirl and fold as one with it: its
+  /// link group's, in whichever cuts they stand ([linkMirrorRows]), and
+  /// itself alone for a row that is not linked or that no cut holds (a
+  /// track's).
+  ///
+  /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
+  /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
+  /// 상태 접힌 상태 공유하라는것. 법통일」.
+  List<LayerId> rowsFoldingWith(LayerId row) {
+    final cutId = activeCutId;
+    return cutId == null
+        ? [row]
+        : linkMirrorRows(
+            repository.requireProject(),
+            cutId: cutId,
+            layerId: row,
+          );
+  }
+
   /// The timeline zoom each of this project's cuts was left at (F-253) —
   /// held here, not on the window, because the cuts it names are this
   /// project's (I-7).
   late final TimelineZoomMemory timelineZoom = TimelineZoomMemory();
+
+  /// Where this project's panels were left — the conte's zoom and each frame
+  /// panel's scroll (F-267) — held here for the zoom's reason (I-7).
+  late final PanelViewMemory panelViews = PanelViewMemory();
 
   /// Where this project's CANVAS is framed — its zoom, pan and turn; null
   /// until something frames it, which the canvas resolves to the identity
@@ -729,6 +802,10 @@ class EditorSessionManager extends ChangeNotifier
   /// shows it while this project is on screen (I-7; see
   /// [CanvasSelectionDocument]).
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
+
+  /// This project's canvas being resized on the canvas (I-79) — the size
+  /// window opens it, the canvas shows its box and pill.
+  final CanvasAdjust canvasAdjust = CanvasAdjust();
 
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
@@ -757,6 +834,10 @@ class EditorSessionManager extends ChangeNotifier
   @override
   TimelineRowAddress get storyboardStandingRow =>
       standing.storyboardStandingRow;
+
+  /// The row the TIMELINE's verbs act on ([Standing.timelineStandingRow]).
+  @override
+  TimelineRowAddress get timelineStandingRow => standing.timelineStandingRow;
 
   void standOnRow(
     TimelineRowAddress row, {
@@ -1138,6 +1219,13 @@ class EditorSessionManager extends ChangeNotifier
   int get activeCutGlobalStartFrame =>
       cutGlobalStartFrameIn(activeTrack, editingSession.activeCutId) ?? 0;
 
+  @override
+  String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
+    frameIndex: frameIndex,
+    framesPerSecond: projectSettings.projectFrameRate.countingBase,
+    showSeconds: appSettings.showSecondsDisplay.value,
+  );
+
   // ── the track SE display: its own object, in its own file ───────────
   //
   // A collaborator (session/track_se_display.dart). ⛔The forwarders are
@@ -1203,6 +1291,9 @@ class EditorSessionManager extends ChangeNotifier
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
     );
+    // F-302: a row the command linked wears its group's twirls and folds —
+    // BEFORE the standing law asks which rows the rail shows.
+    railView.followLinks(repository.requireProject().linkRegistry);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
       reveal: reveal,
@@ -1233,13 +1324,19 @@ class EditorSessionManager extends ChangeNotifier
   /// on.
   @override
   void warmActiveCut() {
+    if (playbackRig.playback.isActive) {
+      // A run is being followed, and stays followed. What changed under it
+      // — a reference movie's frame decoded — is looked at again from the
+      // playhead.
+      playbackRig.prerenderScheduler.wake(fromTheStart: true);
+      return;
+    }
     final cut = activeCutOrNull;
     if (cut == null) {
       return;
     }
     playbackRig.prerenderScheduler.requestWarmCut(
       cutId: cut.id,
-      quality: playbackRig.playbackQuality,
       aroundFrameIndex:
           activeCutControllers.timelineController.currentFrameIndex,
       followedByCutId: storyboardRows.nextCutIdInStoryboardOrder(cut.id),
@@ -1346,12 +1443,14 @@ class EditorSessionManager extends ChangeNotifier
     frameRangeSelection.dispose,
     brushInputActive.dispose,
     dragPreview.dispose,
+    canvasAdjust.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
     trackFrameRangeSelection.dispose,
     railView.dispose,
     canvasViewport.dispose,
+    panelViews.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     standing.dispose,
@@ -1363,6 +1462,17 @@ class EditorSessionManager extends ChangeNotifier
   /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
   final MediaStagingStore? _injectedMediaStagingStore;
+  final FontLibraryService? _injectedFontLibrary;
+
+  /// The fonts a person brought to this device (R9-rest) — asked, at a save
+  /// and whenever a font this project carries is read, where the file the
+  /// project registered is kept (`ProjectFile.fontsToStore`).
+  ///
+  /// The shell hands every open project the library its font list is read
+  /// from. A session built without one reads the app's own folder — which
+  /// under a test is a sandbox (`FontLibraryService.defaultFontDirectoryPath`).
+  late final FontLibraryService fontLibrary =
+      _injectedFontLibrary ?? FontLibraryService();
 
   /// [CacheBudgetLine.imageCache]'s holder: the framework's image cache,
   /// which exists only once a binding does. The screen hands it in. A plain
@@ -1690,16 +1800,10 @@ class EditorSessionManager extends ChangeNotifier
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
 
-  // ── the V row's eyes: their own object, in their own file ────────────
-  //
-  // A collaborator (session/cut_picture_eyes.dart, the audit's
-  // twenty-third family). Callers name it — `session.cutPictureEyes`.
-  late final CutPictureEyes cutPictureEyes = CutPictureEyes(
-    selection: this,
-    timeline: this,
-    changes: this,
-    park: parkGlobalFrame,
-  );
+  // ↩️The V row's EYES stood here (`CutPictureEyes`, the audit's
+  // twenty-third family): the cuts whose picture the playback display hid.
+  // They left with the V row's head on 2026-10-08 (I-73, 유저: 「V행의
+  // 불투명도랑 비지블 필요없어보여서 삭제하고싶은데 어때」).
 
   /// Steps history and puts the session back where the new layer list says
   /// it should be.
@@ -2040,7 +2144,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     frameIds: this,
     controllers: activeCutControllers,
-    cutVerbs: cutVerbs,
     camera: camera,
   );
 
@@ -2139,6 +2242,16 @@ class EditorSessionManager extends ChangeNotifier
     file: projectFile,
     projectDoor: projectDoor,
     mediaPool: mediaPool,
+  );
+
+  // The CLIP STUDIO door (session/clip_import_door.dart) — a .clip opens AS
+  // A PROJECT the way a .tvpp does, and what it does here is the same: bake
+  // the pictures the plan made room for, into this session's stores.
+  late final ClipImportDoor clipDoor = ClipImportDoor(
+    project: this,
+    changes: this,
+    renderCaches: renderCaches,
+    file: projectFile,
   );
 
   bool disposed = false;
@@ -2518,6 +2631,7 @@ class EditorSessionManager extends ChangeNotifier
   // after it.
   late final CutShift cutShift = CutShift(
     project: this,
+    selection: this,
     changes: this,
     storyboardRows: storyboardRows,
   );
@@ -2842,10 +2956,10 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
   /// 잘라내기 — all resolve against the active layer. A band covering that
-  /// row is served: 잘라내기 splices exactly the swept span
-  /// ([FrameClipboard.spliceRunOnActiveRow]), and the playhead verbs act on the row the
-  /// user highlighted. A band naming only OTHER rows is a different
-  /// statement, and acting on the active row then edits something the
+  /// row is served: 잘라내기 splices exactly the swept span (the clipboard
+  /// asks this of its own place — [ClipboardPlace]), and the playhead verbs
+  /// act on the row the user highlighted. A band naming only OTHER rows is a
+  /// different statement, and acting on the active row then edits something the
   /// user never swept while the highlight sits elsewhere explaining
   /// nothing — which for 잘라내기 means silently lifting a whole block.
   ///
@@ -3191,6 +3305,9 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectFile projectFile = ProjectFile(
     project: this,
     staging: mediaStagingStore,
+    // Asked when a font is looked for, and not before: a session that
+    // carries none never builds the library.
+    deviceFontFile: (file) => fontLibrary.pathOfFontHeld(file),
     openElsewhere: _fileIsOpenElsewhere,
   );
 
@@ -3208,6 +3325,17 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
+  );
+
+  // ── the fonts registered with the project: their own object ─────────
+  //
+  // A collaborator (session/project_fonts.dart). The list is the project's
+  // and the bytes are [projectFile]'s; this is the registering and the
+  // taking out.
+  late final ProjectFonts projectFonts = ProjectFonts(
+    project: this,
+    changes: this,
+    file: projectFile,
   );
 
   late final ProjectFileDoor projectDoor = ProjectFileDoor(
@@ -3228,6 +3356,8 @@ class EditorSessionManager extends ChangeNotifier
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
     playback: playbackRig,
+    timelineZoom: timelineZoom,
+    panelViews: panelViews,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

@@ -97,8 +97,7 @@ class EditingStackMap {
     return CanvasActiveLayerRow(
       opacity: node.render.opacity,
       blendMode: node.render.blendMode,
-      pose: node.render.placement?.pose,
-      anchorPoint: node.render.placement?.anchorPoint,
+      placement: node.render.placement,
       effects: node.render.effects,
     );
   }
@@ -145,8 +144,7 @@ class EditingStackMap {
         ),
         opacity: entry.opacity,
         blendMode: entry.blendMode,
-        pose: entry.pose,
-        anchorPoint: entry.anchorPoint,
+        placement: entry.placement,
         effects: entry.effects,
       );
     }
@@ -167,8 +165,7 @@ class EditingStackMap {
       // so standing on a multiply row silently made it normal on the
       // editing canvas only.
       blendMode: entry.blendMode,
-      pose: entry.pose,
-      anchorPoint: entry.anchorPoint,
+      placement: entry.placement,
       effects: entry.effects,
     );
   }

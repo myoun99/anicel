@@ -16,6 +16,7 @@ import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
 import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
+import 'scale_lane_form.dart';
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
 /// the twirl-down's structural spine: Transform first, Effects stack below
@@ -108,11 +109,12 @@ PropertyLaneRow transformUnionHeader({
 /// lanes; the camera's group stays the pose trio).
 ///
 /// [poseAt]/[anchorAt]/[opacityAt] resolve the values for the value column
-/// (AE display units: Position and Anchor Point in canvas px, Scale as
-/// zoom·100 %, Rotation in clockwise degrees, Opacity ·100 %); null hides
-/// the values.
+/// (AE display units: Position and Anchor Point in canvas px, Scale as its
+/// [scaleForm] prints it, Rotation in clockwise degrees, Opacity ·100 %);
+/// null hides the values.
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
+  required ScaleLaneForm scaleForm,
   bool includeAnchorAndOpacity = false,
   TransformPose Function(int frameIndex)? poseAt,
   CanvasPoint Function(int frameIndex)? anchorAt,
@@ -150,9 +152,9 @@ List<PropertyLaneRow> transformPropertyLanes(
       track.scale,
       valueLabel: poseAt == null
           ? null
-          : (frame) => formatTransformLaneValue('scale', poseAt(frame)),
-      scrubValue: (label, delta) =>
-          scrubTransformLaneValue('scale', label, delta),
+          : (frame) => scaleForm.label(poseAt(frame).scale),
+      scrubValue: scaleForm.scrubbed,
+      linkable: scaleForm.links,
     ),
     _lane(
       'rotation',
@@ -287,7 +289,6 @@ bool laneSelectionCoversBandRow(
 String formatTransformLaneValue(String laneId, TransformPose pose) {
   return switch (laneId) {
     'position' => '${formatTrimmedDecimal(pose.center.x)}, ${formatTrimmedDecimal(pose.center.y)}',
-    'scale' => '${formatTrimmedDecimal(pose.zoom * 100)}%',
     'rotation' => '${formatTrimmedDecimal(pose.rotationDegrees)}°',
     _ => '',
   };
@@ -318,12 +319,6 @@ String? scrubTransformLaneValue(
         return null;
       }
       return '${formatTrimmedDecimal(x + dragDelta.dx)}, ${formatTrimmedDecimal(y + dragDelta.dy)}';
-    case 'scale':
-      final percent = parse(currentLabel);
-      if (percent == null) {
-        return null;
-      }
-      return '${formatTrimmedDecimal(percent + dragDelta.dx * 0.5)}%';
     case 'rotation':
       final degrees = parse(currentLabel);
       if (degrees == null) {
@@ -347,6 +342,7 @@ PropertyLaneRow _lane<T>(
   PropertyTrack<T> track, {
   String Function(int frameIndex)? valueLabel,
   String? Function(String currentLabel, Offset dragDelta)? scrubValue,
+  bool linkable = false,
 }) {
   return PropertyLaneRow(
     laneId: id,
@@ -360,5 +356,6 @@ PropertyLaneRow _lane<T>(
     keyNames: track.namedKeysByFrame,
     valueLabel: valueLabel,
     scrubValue: scrubValue,
+    linkable: linkable,
   );
 }

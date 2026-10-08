@@ -202,6 +202,7 @@ void main() {
       (ProjectFile file, String another) => file.bindToOpenedFile(
         another,
         mediaInFile: const {},
+        fontsInFile: const {},
         unsaved: false,
       ),
     ),

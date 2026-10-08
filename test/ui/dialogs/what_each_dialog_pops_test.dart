@@ -268,15 +268,25 @@ void main() {
   });
 
   group('the confirm dialogs', () {
-    testWidgets('deleting a layer NAMES it in the message', (tester) async {
+    testWidgets('deleting a layer NAMES it — in the window\'s list, under a '
+        'sentence that does not grow with it', (tester) async {
+      // ↩️「NAMES it in the message」 until F-303: the names were joined into
+      // the sentence.
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(body: DeleteLayerDialog(layerName: 'B셀')),
+          home: Scaffold(body: DeleteLayerDialog(rows: ['B셀', 'C셀'])),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('B셀'), findsOneWidget);
+      expect(find.text(AppText.strings.deleteLayersMessage), findsOneWidget);
+      expect(
+        find.text('${AppText.strings.deleteLayersHeading} (2)'),
+        findsOneWidget,
+        reason: 'the list stands OPEN, with its count',
+      );
+      expect(find.text('B셀'), findsOneWidget);
+      expect(find.text('C셀'), findsOneWidget);
     });
 
     testWidgets('deleting a layer pops TRUE only on the delete button', (
@@ -292,7 +302,7 @@ void main() {
                   onPressed: () async {
                     popped = await showDialog<Object?>(
                       context: context,
-                      builder: (_) => const DeleteLayerDialog(layerName: 'B'),
+                      builder: (_) => const DeleteLayerDialog(rows: ['B']),
                     );
                   },
                   child: const Text('open'),

@@ -5,10 +5,9 @@ import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
-import '../cels_ahead.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
-import 'cel_snapshot_restore.dart';
+import 'cel_snapshot_step.dart';
 
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
@@ -38,12 +37,7 @@ import 'cel_snapshot_restore.dart';
 /// 처럼 여러 프레임 선택해서 동시 붙여넣기」). [blendMode] is the one thing a
 /// paste adds: 위 = `color`, 아래 = `behind` (위/아래 was always composite
 /// order, 유저 08-10). ⛔Not a second command for the same landing.
-class BrushLiftMoveHistoryCommand
-    implements
-        Command,
-        RetainedBytesCommand,
-        ParkableCommand,
-        PictureRestoringCommand {
+class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
   BrushLiftMoveHistoryCommand({
     required this.coordinator,
     required this.frameKey,
@@ -58,8 +52,10 @@ class BrushLiftMoveHistoryCommand
   }) : _preLiftSurface = preLiftSurface,
        _landingDabs = landingDabs;
 
+  @override
   final BrushFrameEditingCoordinator coordinator;
   final BrushFrameKey frameKey;
+  @override
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// How the landing composites — `color` for a move, either order for a
@@ -130,44 +126,22 @@ class BrushLiftMoveHistoryCommand
   /// so every test stayed green while the RAM never moved.
   bool get retainsPreLiftSurface => _preLiftSurface != null;
 
-  /// Zero until the landing, and then the pre-lift tiles the confirm left
-  /// behind — the one law, asked of the snapshot that holds them.
+  /// Null until the landing — nothing of its own to move or to read — and
+  /// then the pre-lift tiles the confirm left behind: the one law, asked of
+  /// the snapshot that holds them ([CelSnapshotStep]).
   ///
-  /// ⛔It used to be the STAMP rectangle, which is not a thing this
+  /// ⛔Its bill used to be the STAMP rectangle, which is not a thing this
   /// command holds. Measured 2026-09-07: a 64×64 stamp reported 32 KB
   /// against 64 MiB actually retained (2048×), and a null stamp reported
   /// ZERO while holding a full-canvas surface — so the byte budget never
   /// fired on the very entries that killed the app.
   @override
-  int estimatedRetainedBytes({required bool undone}) =>
-      _surfaces?.residentBytes(undone: undone) ?? 0;
-
-  /// Not landed yet: nothing of its own to move.
-  @override
-  Future<bool> parkPayload() => _surfaces?.park() ?? Future.value(true);
-
-  @override
-  void dropPayload() => _surfaces?.drop();
-
-  /// Not landed yet: nothing to read — see [PictureRestoringCommand].
-  @override
-  void readAhead(CelsAhead cels, {required bool undo}) => cels.readSnapshot(
-    frameKey,
-    undo ? _surfaces?.before : _surfaces?.after,
-    () => coordinator.currentSurfaceOf(frameKey),
-  );
-
-  @override
-  void dropReadAhead() => _surfaces?.dropReadAhead();
-
-  @override
-  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) =>
-      _surfaces?.visitHeldTiles(visit, undone: undone);
+  UndoSurfacePair? get surfaces => _surfaces;
 
   @override
   void execute() {
     if (_landed) {
-      _restore(_surfaces?.after);
+      restoreAfter();
       restoreRegion?.call(_regionAfter);
       return;
     }
@@ -240,20 +214,13 @@ class BrushLiftMoveHistoryCommand
     );
   }
 
-  @override
-  void undo() {
-    _restore(_surfaces?.before);
-    restoreRegion?.call(regionBefore);
-  }
-
   /// ⛔A payload that will not come back leaves the PIXELS alone — but the
   /// selection still travels, because the outline is held in memory here
   /// and putting it back is never the destructive half. That asymmetry is
-  /// this command's own; the pixel half is [restoreCelSnapshot]'s.
-  void _restore(UndoSurfaceSnapshot? snapshot) => restoreCelSnapshot(
-    coordinator: coordinator,
-    frameKey: frameKey,
-    snapshot: snapshot,
-    cacheInvalidationSink: cacheInvalidationSink,
-  );
+  /// this command's own; the pixel half is `restoreCelSnapshot`'s.
+  @override
+  void undo() {
+    restoreBefore();
+    restoreRegion?.call(regionBefore);
+  }
 }

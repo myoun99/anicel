@@ -6,13 +6,12 @@ import '../../models/cut.dart';
 import '../../models/cut_warm_extent.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
 import 'cut_frame_composite_signature.dart';
 import 'cut_frame_composite_spans.dart';
 
 /// [cut]'s frames in `[start, end)` as spans that each composite to ONE
 /// tree, clipped to the range — named by their STRUCTURE: the composite
-/// signature with every source revision read as 0, at one fixed quality.
+/// signature with every source revision read as 0.
 ///
 /// Why structure and not the signature itself: a stroke moves revisions,
 /// never where one picture ends and the next begins. Frames with the same
@@ -46,10 +45,6 @@ int _framesResolved = 0;
 /// Frames per lazily discovered chunk.
 const int _chunkFrames = 64;
 
-/// The quality structure is read at — any one serves: quality rides the
-/// signature as a field, never the tree.
-const PlaybackQuality _structureQuality = PlaybackQuality.full;
-
 int _noRevision(LayerId layerId, FrameId frameId) => 0;
 
 final Expando<_StructureTable> _tables = Expando<_StructureTable>(
@@ -62,7 +57,6 @@ class _StructureTable {
       computeCutFrameCompositeSignature(
         cut: cut,
         frameIndex: _extent,
-        quality: _structureQuality,
         revisionOf: _noRevision,
       ).nodes.isEmpty,
       'past the authored extent every frame must compose to nothing — a row '
@@ -79,7 +73,6 @@ class _StructureTable {
 
   late final CutFrameCompositeSignature _nothing = CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
-    quality: _structureQuality,
     nodes: const [],
   );
 
@@ -93,7 +86,6 @@ class _StructureTable {
     return computeCutFrameCompositeSpans(
       cut: cut,
       frames: (startIndex: from, endIndexExclusive: to),
-      quality: _structureQuality,
       revisionOf: _noRevision,
     );
   }
