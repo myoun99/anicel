@@ -1,8 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
+
+import '../helpers/dart_sources.dart';
 
 /// One basename rule, in `core/`, for the services that plan an import or
 /// stage a file and the dialogs that name a picked one.
@@ -58,11 +58,8 @@ void main() {
       r"|split\('/'\)\.last",
     );
     final cutting = [
-      for (final file in Directory('lib').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            cut.hasMatch(file.readAsStringSync()))
-          file.path.replaceAll(r'\', '/'),
+      for (final file in dartFilesUnder('lib'))
+        if (cut.hasMatch(file.readAsStringSync())) libPath(file),
     ];
     expect(cutting, ['lib/src/core/path_names.dart']);
   });
