@@ -1,15 +1,28 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
     show anicelCelEntryName;
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
-    show AnicelCelBlob;
+    show
+        AnicelCelBlob,
+        AnicelCelEntry,
+        anicelCelBinaryVersion,
+        decodeCelEntry,
+        encodeCelEntry;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
@@ -109,6 +122,30 @@ void main() {
       reason: 'the header and the payload are one answer',
     );
     expect(picture.canvasSize, canvas, reason: '⛔premise: the cut\'s canvas');
+  });
+
+  test('⛔and a cel stream from a newer build is refused by the one header '
+      'reader — opened or blobbed', () {
+    final payload = encodeCelEntry(
+      const AnicelCelEntry(
+        key: BrushFrameKey(
+          projectId: ProjectId('p'),
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('l'),
+          frameId: FrameId('f'),
+        ),
+        canvasSize: CanvasSize(width: 8, height: 8),
+        tileSize: 4,
+        tiles: [],
+      ),
+    );
+    expect(payload.first, anicelCelBinaryVersion, reason: '⛔premise');
+    final newer = Uint8List.fromList(payload)
+      ..[0] = anicelCelBinaryVersion + 1;
+    expect(() => decodeCelEntry(newer), throwsFormatException);
+    expect(() => AnicelCelBlob.ofPayload(newer), throwsFormatException);
+    expect(AnicelCelBlob.ofPayload(payload).tileSize, 4);
   });
 
   test('a cel in RAM crosses as ONE serialised payload — never an entry of '
