@@ -533,27 +533,36 @@ void main() {
         session.storyboardCursor.storyboardCursorBlockOrNull()!
             as StoryboardCursorStoryboardPanel;
 
+    // b's panels are its own [6, 18) and [18, 30). The frames asked here
+    // are within a のりしろ of the second panel's start, so a reader that
+    // counts the margin twice names the wrong one.
     test('🚨from the storyboard: the panel under the track\'s frame', () {
       final session = sessionOf();
-      // The track's 38 is b's second panel — its own [18, 30).
+      session.standOnRow(
+        conteRow,
+        panel: WorkingPanel.storyboard,
+        globalFrameIndex: 32,
+      );
+
+      expect(session.currentFrameIndex, 14);
+      expect(panelUnder(session).panelStartIndex, 6);
+
       session.standOnRow(
         conteRow,
         panel: WorkingPanel.storyboard,
         globalFrameIndex: 38,
       );
-
       expect(panelUnder(session).panelStartIndex, 18);
-      expect(session.currentFrameIndex, 20);
     });
 
     test('🚨and the same panel when the timeline put the cursor there', () {
       final session = sessionOf()..selectCut(b);
       session.standOnRow(const LayerRowAddress(LayerId('sb-b')));
-      session.selectFrameIndex(20);
+      session.selectFrameIndex(14);
       session.standOnRow(conteRow, panel: WorkingPanel.storyboard);
 
-      expect(session.currentFrameIndex, 20, reason: 'fixture');
-      expect(panelUnder(session).panelStartIndex, 18);
+      expect(session.currentFrameIndex, 14, reason: 'fixture');
+      expect(panelUnder(session).panelStartIndex, 6);
     });
   });
 

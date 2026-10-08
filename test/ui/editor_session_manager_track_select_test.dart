@@ -87,4 +87,28 @@ void main() {
     expect(s.activeCutId, const CutId('cut-b1'));
     expect(s.currentFrameIndex, 2, reason: 'global 6 - start 4');
   });
+
+  // The pin above stands in the gap BEFORE its track's first cut, which no
+  // reading gives a cut. A gap AFTER a cut is that cut's runway on the axis
+  // (`TrackFrameAxis.ownerOf`) — an addressing rule, and no cut standing
+  // there.
+  test('a gap after a cut parks too — the cut before it does not take the '
+      'press', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.cutVerbs.createCut();
+    final track = s.repository.requireProject().tracks.first;
+    final gapStart = track.cuts[0].duration;
+    s.repository.updateCutLeadingGap(
+      cutId: track.cuts[1].id,
+      leadingGapFrames: 4,
+    );
+    s.selectGlobalFrame(gapStart + 1);
+    expect(s.activeCutId, isNull, reason: 'the premise: parked in the gap');
+
+    s.selectTrackCutAtPlayhead(track.id);
+
+    expect(s.activeCutId, isNull);
+    expect(s.editingSession.gapGlobalFrame, gapStart + 1);
+  });
 }
