@@ -988,6 +988,79 @@ void main() {
     expect(_row('preset-calligraphy'), findsNothing);
   });
 
+  // 🗣️F-319 (유저 2026-10-08): 「브러시는 항상 선택된그룹/브러시 를 보여줌 …
+  // 계속해서 이런 선택된걸 제대로 표시안하는걸 몇번째 피드백하는지
+  // 모르겟는데」 · 「이상한건 됫다가 말았다가 함」.
+  //
+  // The panel followed the held brush only UNTIL A TAB WAS TAPPED — a latch
+  // that lasted for as long as the panel stayed mounted, and it is mounted
+  // only while a paint tool is in hand: so it followed again after a trip
+  // through any other tool, and stopped at the next tap.
+  group('the open tab is the held brush\'s', () {
+    const dry = BrushGroupId('dry');
+    const groups = [
+      BrushGroup(id: _ink, name: 'Ink'),
+      BrushGroup(id: _paint, name: 'Paint'),
+      BrushGroup(id: dry, name: 'Dry'),
+    ];
+    List<BrushPreset> presets() => [
+      _calligraphy().copyWith(groupId: _ink),
+      _sampled().copyWith(groupId: _paint),
+      _marker().copyWith(groupId: _paint),
+    ];
+    Future<void> holding(WidgetTester tester, String held) => _pumpPanel(
+      tester,
+      groups: groups,
+      presets: presets(),
+      selectedPresetId: BrushPresetId(held),
+    );
+
+    testWidgets('🚨after a tab was tapped too: the hand changes, and the '
+        'library shows what it holds', (tester) async {
+      await holding(tester, 'preset-sampled');
+      // Nothing is wired to take a brush up here, so the tap only LOOKS.
+      await tester.tap(_tab('ink'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-calligraphy'), findsOneWidget, reason: '⛔premise');
+
+      await holding(tester, 'preset-marker');
+
+      expect(_row('preset-marker'), findsOneWidget);
+      expect(_row('preset-calligraphy'), findsNothing);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget, reason: 'and again');
+      expect(_row('preset-marker'), findsNothing);
+    });
+
+    testWidgets('a tab with no brush to take up is LOOKED INTO — for as '
+        'long as the hand is the same', (tester) async {
+      await holding(tester, 'preset-sampled');
+
+      await tester.tap(_tab('dry'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-sampled'), findsNothing, reason: 'the empty tab');
+
+      // The same hand, built again: nothing to follow.
+      await holding(tester, 'preset-sampled');
+      expect(_row('preset-sampled'), findsNothing);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget);
+    });
+
+    testWidgets('tapping the tab the library already shows looks into '
+        'nothing', (tester) async {
+      await holding(tester, 'preset-sampled');
+      await tester.tap(_tab('paint'));
+      await tester.pumpAndSettle();
+      expect(_row('preset-sampled'), findsOneWidget);
+
+      await holding(tester, 'preset-calligraphy');
+      expect(_row('preset-calligraphy'), findsOneWidget);
+    });
+  });
+
   testWidgets('no root tab when every brush is filed', (tester) async {
     await _pumpPanel(
       tester,

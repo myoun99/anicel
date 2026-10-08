@@ -901,11 +901,17 @@ void main() {
       );
     });
 
-    testWidgets('a brush\'s key takes it up — out of another tab, and the '
-        'tab shown stays', (tester) async {
+    // 🗣️F-319 (유저 2026-10-08): 「브러시만 지정하더라도 브러시 누르면 그룹
+    // 바껴야함」 · 「브러시는 항상 선택된그룹/브러시 를 보여줌」.
+    // ↩️This pinned the opposite until then — 「…and the tab shown stays」:
+    // the key changed the hand and the library went on showing the tab that
+    // had been tapped last.
+    testWidgets('🚨a brush\'s key takes it up out of another tab — and the '
+        'library shows the tab it is in', (tester) async {
       await pumpWithPresets(tester);
       final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
       await tapTabOf(tester, x.first);
+      expect(tileOf(y[1]), findsNothing, reason: '⛔premise: tab x is shown');
       keys(tester).setActivators(brushPresetActionId(y[1]), const [
         SingleActivator(k),
       ]);
@@ -913,8 +919,33 @@ void main() {
       await press(tester);
 
       expect(panel(tester).selectedPresetId, y[1]);
-      expect(tileOf(x.first), findsOneWidget, reason: 'tab x is still shown');
+      expect(tileOf(y[1]), findsOneWidget, reason: 'its tab is shown');
+      expect(tileOf(x.first), findsNothing);
+    });
+
+    // 🗣️F-319: 「지금 브러시 선택하다 지우개 선택하면 도구라이브러리에서
+    // 다른곳에 있는 브러시로 바껴야하는데 바뀌지않음」.
+    testWidgets('🚨the eraser coming to hand shows the tab of the brush IT '
+        'holds — whatever tab had been tapped', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      // The eraser holds a brush of tab x; the brush tool one of tab y.
+      await takeUp(tester, 'eraser');
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, y.first);
+      await pickInView(tester, y[1]);
+      expect(tileOf(x[1]), findsNothing, reason: '⛔premise: tab y is shown');
+
+      await takeUp(tester, 'eraser');
+
+      expect(panel(tester).selectedPresetId, x[1], reason: '⛔premise');
+      expect(tileOf(x[1]), findsOneWidget, reason: 'the eraser\'s tab');
       expect(tileOf(y[1]), findsNothing);
+
+      await takeUp(tester, 'brush');
+      expect(tileOf(y[1]), findsOneWidget, reason: 'and back');
     });
 
     testWidgets('a group\'s key enters its tab: the brush last picked there '

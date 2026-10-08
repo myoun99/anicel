@@ -223,17 +223,33 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   // Library tab keeps no State once it closes, so every close forgot them.
   // The host keeps them in the workspace file now ([widget.viewOptions]) and
   // this is its answer, flipped here the moment a toggle is picked. The open
-  // TAB stays session state — on a fresh launch it follows the selected
-  // brush, which is a better answer than whatever was open last time.
+  // TAB is kept nowhere: it is the held brush's ([_openGroupId]), which is
+  // a better answer than whatever was open last time.
   late BrushPresetViewOptions _viewOptions = widget.viewOptions;
   bool get _showTipIcon => _viewOptions.showTipIcon;
   bool get _showStrokePreview => _viewOptions.showStrokePreview;
   bool get _showName => _viewOptions.showName;
 
-  /// The open tab; `null` is the root section (presets in no group). Unset
-  /// until the user picks one, so the panel can follow the selection.
-  BrushGroupId? _activeGroupId;
-  bool _tabChosen = false;
+  /// 🗣️F-319 (유저 2026-10-08): 「브러시는 항상 선택된그룹/브러시 를 보여줌.
+  /// 지금 브러시 선택하다 지우개 선택하면 도구라이브러리에서 다른곳에 있는
+  /// 브러시로 바껴야하는데 바뀌지않음. 계속해서 이런 선택된걸 제대로
+  /// 표시안하는걸 몇번째 피드백하는지모르겟는데」.
+  ///
+  /// THE TAB SHOWN IS THE HELD BRUSH'S ([_openGroupId]). What stands here is
+  /// only a tab LOOKED INTO while the hand cannot say it — one with no brush
+  /// to take up (an empty group), or the one a dragged brush is held over —
+  /// and it ends the moment the hand changes ([didUpdateWidget]). The record
+  /// is there so that 「looking into the root section」 (a null group) is
+  /// not 「looking into nothing」.
+  ///
+  /// ↩️It was a latch (`_tabChosen`): 「Unset until the user picks one, so
+  /// the panel can follow the selection」. One tap, and the panel never
+  /// followed again — a key that took up a brush of another group, or the
+  /// eraser coming to hand, changed the hand and left the library standing
+  /// where it was. And since this panel is mounted only while a paint tool
+  /// is in hand, it followed again after a trip through any other tool:
+  /// 「됫다가 말았다가 함」.
+  ({BrushGroupId? group})? _lookedInto;
 
   /// A preset is mid-drag: the rail watches the pointer so hovering a tab
   /// opens it, the way a spring-loaded folder does.
@@ -343,11 +359,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       ? const <BrushGroup?>[]
       : [...widget.groups, if (_hasRootTab) null];
 
-  /// The open tab. Until the user picks one this follows the SELECTED brush,
-  /// so opening the panel lands on the group you are painting from.
+  /// The open tab: the one the held brush shows in — or the one being
+  /// looked into ([_lookedInto]) until the hand next changes.
   BrushGroupId? get _openGroupId {
-    if (_tabChosen) {
-      return _activeGroupId;
+    if (_lookedInto case (:final group)) {
+      return group;
     }
     final selectedId = widget.selectedPresetId;
     final selected = selectedId == null
@@ -565,8 +581,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// A tab TAPPED: the paint tool in hand takes up its brush there
   /// (F-250), then the tab shows. Told every time, the open tab's own
   /// included — whether the hand already holds a brush of this tab is the
-  /// workspace's question, and the tab shown can differ from it after a
-  /// switch of tool. ⛔Not a drag's spring-loaded opening ([_openTab]),
+  /// workspace's question. A tab with a brush to take up changes the hand,
+  /// and the library follows it; one with none is looked into
+  /// ([_lookedInto]). ⛔Not a drag's spring-loaded opening ([_openTab]),
   /// which only shows where a dragged brush can land.
   void _enterTab(BrushGroupId? groupId) {
     widget.onGroupOpened?.call(groupId);
@@ -574,13 +591,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   void _openTab(BrushGroupId? groupId) {
-    if (_tabChosen && _activeGroupId == groupId) {
+    if (_openGroupId == groupId) {
       return;
     }
-    setState(() {
-      _tabChosen = true;
-      _activeGroupId = groupId;
-    });
+    setState(() => _lookedInto = (group: groupId));
   }
 
   /// Moves a group in the rail. The rail is a plain list of tabs, so a tab
@@ -714,6 +728,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   void didUpdateWidget(BrushPresetPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     _selection.value = widget.selectedPresetId;
+    // The hand changed — a brush picked, a key, the eraser coming to hand:
+    // the library shows what it holds now, whatever tab was being looked
+    // into (F-319).
+    if (widget.selectedPresetId != oldWidget.selectedPresetId) {
+      _lookedInto = null;
+    }
     // A restored or reset layout reaches an open panel through here; the
     // panel's own flips come back equal and change nothing.
     if (widget.viewOptions != oldWidget.viewOptions) {
