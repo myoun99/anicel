@@ -179,11 +179,17 @@
 # So `land` waits for the headroom alone, `gate` — an ordinary run — for a
 # place as well, and neither wants a waiter around it.
 #
-# ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
-#   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
-# bash reads a script LAZILY, so the `merge --ff-only` near the end of `land`
-# swaps this file out from under the interpreter at a byte offset it has not
-# reached yet, and everything after the merge is read out of the wrong file.
+# ⚠️THE DISPATCH AT THE BOTTOM IS ONE COMMAND, AND IT ENDS IN `exit`.
+# bash reads a script LAZILY, so a land that changes this file — its
+# `merge --ff-only` swaps the file out from under the interpreter — had
+# everything after the dispatch read out of the NEW file, from a byte
+# offset that means nothing there. A command is read whole before it runs,
+# and the `exit` inside it is reached without reading another byte.
+# ↩️Until 2026-10-09 the answer was a sentence here: 「run the land through
+# a COPY」. That day a session landed a change to this file without the
+# copy (🧪measured on this machine the same day: a script rewritten in
+# place while it ran, the old dispatch shape read the new file and failed
+# on a line torn in half; this shape read nothing more).
 
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -985,7 +991,7 @@ cmd_land() {
     || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — the next open tries again" >&2
 }
 
-case "${1:-}" in
+{ case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
   native) shift; cmd_native "$@" ;;
@@ -1001,4 +1007,4 @@ case "${1:-}" in
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
   *) sed -n '2,18p' "$0"; exit 2 ;;
-esac
+esac; exit; }
