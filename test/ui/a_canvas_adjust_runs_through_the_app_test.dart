@@ -4,11 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import 'flyout_test_helpers.dart' show tapCommandButton;
 
 /// I-79 through the app: an adjust opened on the canvas stands its box and
 /// pill on the canvas showing the cut, Escape closes it as its ✕ does, and
@@ -37,14 +39,22 @@ void main() {
     }
   }
 
-  testWidgets('the adjust stands on the canvas, and Escape closes it',
-      (tester) async {
+  testWidgets('the size window\'s 「캔버스에서 조정」 stands the adjust on the '
+      'canvas, and Escape closes it', (tester) async {
     final session = await pumpApp(tester);
     final cut = session.requireActiveCut;
     expect(pill, findsNothing, reason: '⛔전제: nothing open');
 
-    session.canvasAdjust.begin(cut.id, cut.canvasSize);
-    await tester.pump();
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('resize-cut-canvas-button'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-adjust-on-canvas')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(CanvasSizeDialog), findsNothing, reason: 'closed');
+    expect(session.canvasAdjust.isOpenOn(cut.id), isTrue);
     expect(pill, findsOneWidget, reason: 'on the canvas showing the cut');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
