@@ -10,7 +10,7 @@ import '../../models/track_transitions.dart'
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
-import 'sleeping_ticker.dart';
+import 'looking_ticker.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).
@@ -18,14 +18,18 @@ enum PlaybackScope { activeCut, allCuts }
 
 enum PlaybackLoopMode { loop, once }
 
-/// One reading of the audio-master clock (audio program wiring).
+/// What a run's clock says when it is looked at.
 ///
-/// [globalFrame] is the playlist frame containing what is being HEARD
-/// right now; [ended] reports that a non-looping transport ran out. The
-/// device transport produces these; the controller consumes them instead
-/// of its wall clock whenever they are available.
-class AudioClockStatus {
-  const AudioClockStatus({required this.globalFrame, this.ended = false});
+/// [globalFrame] is the playlist frame the run is on by that clock;
+/// [ended], that the clock has run past the run's end — which ends a run
+/// that plays once, and is the lap wrapping for one that loops.
+///
+/// Both clocks say it. The device's is the audio-master clock (audio
+/// program wiring): its frame is the one containing what is being HEARD
+/// right now, and the device transport produces it. The wall clock's is
+/// the controller's own, read when no device carries the run.
+class ClockReading {
+  const ClockReading({required this.globalFrame, this.ended = false});
 
   final int globalFrame;
   final bool ended;
@@ -85,7 +89,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// follows the sound"); null falls back to the wall-clock derivation.
   /// The ticker keeps running either way — it is the polling cadence, the
   /// clock is whose TIME gets shown.
-  AudioClockStatus? Function()? resolveAudioClock;
+  ClockReading? Function()? resolveAudioClock;
 
   /// Asked of every frame the run would stand on: whether its clock must
   /// WAIT there — the frame's picture is not made yet, or (rendering first)
@@ -109,9 +113,9 @@ class CanvasPlaybackController extends ChangeNotifier
 
   TickerProvider? _vsync;
 
-  /// The run's clock: a ticker that sleeps between the frames it has to
-  /// show ([SleepingTicker], where the reason and the measurements are).
-  late final SleepingTicker _clock = SleepingTicker(_onTick);
+  /// The run's clock: looked at on every vsync — and a vsync it was only
+  /// looked at on is not drawn ([LookingTicker]).
+  late final LookingTicker _clock = LookingTicker(_onTick);
 
   final ValueNotifier<int?> _localFrameIndex = ValueNotifier<int?>(null);
 
@@ -459,35 +463,35 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     final total = _playbackTotalFrames(playlist);
-    final audio = resolveAudioClock?.call();
-    if (audio != null) {
-      _onAudioClockTick(audio, total);
-      // 🚨UNDER THE DEVICE'S CLOCK THE TICKER STAYS AWAKE: the device is
-      // read on every vsync. ⚠️In the app this is the clock of every run,
-      // silent ones too — an empty schedule uploads like any other and
-      // rides the device. What the device counts is samples handed over,
-      // which climb a stair, so it cannot say when its next frame is due.
-      // ↩️For a day (2026-10-08) it was asked instead — every 3ms, off the
-      // ticker, which woke when it said another frame. Asked between
-      // vsyncs, a frame changes up to a screen frame later than read on
-      // one, and the stair is late enough by itself (유저: 「늦게바뀌는건
-      // 좀 많이 신경쓰이는데」). It sleeps again when the device's clock is a
-      // continuous one that can say when.
+    // 🚨ONE LAW FOR BOTH CLOCKS: each is read on EVERY vsync, so its frame
+    // changes on the first vsync it is due on, and what it says is followed
+    // the one way. (What looking that often costs the screen is not paid:
+    // [LookingTicker].) ↩️For a day each slept between frames and a timer
+    // woke it; before that the device was asked every 3ms off the ticker.
+    // Both changed frames late — `LookOnlyFrames` has the measurements.
+    //
+    // ⚠️In the app the device's is the clock of every run, silent ones
+    // too: an empty schedule uploads like any other and rides the device.
+    // When the app's frames fall behind it, playback frames are dropped —
+    // the sound is not made to wait for them. It waits only where the
+    // picture itself is not made ([waitsOn]), and then the device is
+    // stopped with the clock ([isWaiting]).
+    final says = resolveAudioClock?.call() ?? _wallClock(elapsed, total);
+    if (says.ended && _loopMode == PlaybackLoopMode.once) {
+      _endAt(total);
       return;
     }
-    final rate = resolveFrameRate();
-    final played = elapsedToGlobalFrame(elapsed, rate);
-    var frame = _baseGlobalFrame + played;
-    if (frame >= total) {
-      if (_loopMode == PlaybackLoopMode.loop) {
-        frame %= total;
-      } else {
-        _endAt(total);
-        return;
-      }
-    }
-    _goTo(frame, total);
-    _clock.untilDue(rate.frameStart(played + 1) - elapsed);
+    // A reading past either end is the end it is past; a step back is the
+    // lap wrapping, and [_goTo] goes round the end to it.
+    _goTo(says.globalFrame.clamp(0, total - 1), total);
+  }
+
+  /// What the wall clock says [elapsed] after the run's ticker started on
+  /// [_baseGlobalFrame]: the frames that time holds, folded into the run.
+  ClockReading _wallClock(Duration elapsed, int total) {
+    final frame =
+        _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFrameRate());
+    return ClockReading(globalFrame: frame % total, ended: frame >= total);
   }
 
   /// A run that plays once has run out: it stops on its last frame — once
@@ -551,26 +555,6 @@ class CanvasPlaybackController extends ChangeNotifier
     _syncFrameNotifiers();
     notifyListeners();
   }
-
-  /// The audio-master tick: the picture shows whatever frame the device
-  /// says is being heard. When the app's frames fall behind, playback frames
-  /// are dropped — the sound is not made to wait for them. It waits only
-  /// where the picture itself is not made ([waitsOn]), and then the device
-  /// is stopped with the clock ([isWaiting]).
-  void _onAudioClockTick(AudioClockStatus audio, int total) {
-    if (audio.ended && _loopMode == PlaybackLoopMode.once) {
-      _endAt(total);
-      return;
-    }
-    // A backward step is the loop wrapping (the transport wraps the
-    // position itself): [_goTo] goes round the end to it.
-    _goTo(_heardFrame(audio, total), total);
-  }
-
-  /// The frame of the run [audio] says is heard — a reading past either end
-  /// is the end it is past.
-  int _heardFrame(AudioClockStatus audio, int total) =>
-      audio.globalFrame.clamp(0, total - 1);
 
   void _setFrame(int frame) {
     if (frame == _currentGlobalFrame) {

@@ -235,7 +235,7 @@ void main() {
     addTearDown(c.dispose);
     missing.add(2);
     var heard = 0;
-    c.resolveAudioClock = () => AudioClockStatus(globalFrame: heard);
+    c.resolveAudioClock = () => ClockReading(globalFrame: heard);
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();
@@ -314,7 +314,7 @@ void main() {
     addTearDown(c.dispose);
     missing.add(2);
     var heard = 0;
-    c.resolveAudioClock = () => AudioClockStatus(globalFrame: heard);
+    c.resolveAudioClock = () => ClockReading(globalFrame: heard);
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/look_test_binding.dart';
 import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -35,6 +36,10 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 void main() {
+  // The view's tests run under the law the app draws by: a frame that was
+  // asked for only to look, and changed nothing, is not drawn.
+  final binding = LookTestBinding.ensureInitialized();
+
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
@@ -434,6 +439,48 @@ void main() {
     expect(f.controller.isPlaying, isTrue);
     expect(f.controller.position!.localFrameIndex, 1);
     expect(tester.takeException(), isNull);
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
+  /// 유저 2026-10-08: 「3 화면을 프레임만큼만 다시그리도록」. The view itself,
+  /// playing: nothing in it asks for a frame of its own while the run goes
+  /// by, so what is drawn is what changed.
+  testWidgets('🚨played through the view, the screen is drawn as often as '
+      'the frame changes — it is looked at on every screen frame', (
+    tester,
+  ) async {
+    final f = fixture();
+    await tester.runAsync(() async {
+      await f.composites.prepareComposite(cut: cut(), frameIndex: 0);
+      await f.composites.prepareComposite(cut: cut(), frameIndex: 1);
+    });
+
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(tester, controller: f.controller, composites: f.composites);
+    await tester.pump();
+    final drawn = binding.drawnFrames;
+    var changes = 0;
+    var frame = f.controller.position!.localFrameIndex;
+    // A second of a 60Hz screen; a frame of the run is 100ms.
+    for (var screen = 0; screen < 60; screen += 1) {
+      await tester.pump(const Duration(microseconds: 16667));
+      final now = f.controller.position!.localFrameIndex;
+      if (now != frame) {
+        changes += 1;
+        frame = now;
+      }
+    }
+
+    expect(changes, 10, reason: '⛔premise: ten frames went by');
+    expect(
+      binding.drawnFrames - drawn,
+      changes,
+      reason: 'sixty screen frames, and the ten that changed the picture '
+          'were drawn',
+    );
 
     f.controller.stop();
     await tester.pump();
