@@ -32,6 +32,27 @@ import 'layer_kind.dart';
 bool isConteBase(Layer layer) =>
     layer.kind == LayerKind.storyboard && !isAttachedLayer(layer);
 
+/// Whether [layer] rides the CONTE of [stack] — a row of its conte group
+/// other than the conte itself.
+///
+/// 🗣️I-73-one-head-Q1 (유저 2026-10-09 → `refuse`): 「콘티의 어태치 행은
+/// 떼지 못하게 한다」. Such a row is never let go — neither by the menu's
+/// 어태치 해제 nor by dragging it out of its group: an attach row takes its
+/// base's kind, so a let-go one would be a second conte in its cut, and the
+/// same seat of the track's other cuts would keep theirs.
+bool ridesTheConte(Layer layer, Iterable<Layer> stack) {
+  final baseId = layer.attachedToLayerId;
+  if (baseId == null) {
+    return false;
+  }
+  for (final other in stack) {
+    if (other.id == baseId) {
+      return isConteBase(other);
+    }
+  }
+  return false;
+}
+
 /// The cut's storyboard row — its conte BASE ([isConteBase]) — or null
 /// when it has none.
 ///

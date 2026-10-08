@@ -2,6 +2,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_placement.dart';
+import '../../models/conte_group.dart' show ridesTheConte;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -207,9 +208,14 @@ class FoldersAndAttachments {
   //
   // The release keeps its menu entry: the drag must not be a one-way door.
 
+  /// …except a row riding the conte, which is never let go
+  /// ([ridesTheConte], I-73-one-head-Q1).
   bool get canDetachActiveLayer {
     final active = _selection.activeLayer;
-    return active != null && isAttachedLayer(active);
+    final cut = _project.activeCutOrNull;
+    return active != null &&
+        isAttachedLayer(active) &&
+        !(cut != null && ridesTheConte(active, cut.layers));
   }
 
   /// 어태치 해제: the active row stops riding its base.
@@ -221,7 +227,7 @@ class FoldersAndAttachments {
   void detachActiveLayer() {
     final cut = _project.activeCutOrNull;
     final row = _selection.activeLayer;
-    if (cut == null || row == null || !isAttachedLayer(row)) {
+    if (cut == null || row == null || !canDetachActiveLayer) {
       return;
     }
     final attach = LayerAttachDrop(detachIds: {row.id});

@@ -27,6 +27,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_placement.dart';
+import '../../models/conte_group.dart' show ridesTheConte;
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
@@ -660,10 +661,20 @@ LayerAttachDrop? _attachPlan(
           : (baseId: forceMountBaseId, placement: forceMountPlacement));
   final mounts = target == null ? const <_Mount>[] : _mountsOn(lift, target);
   if (mounts == null) return null;
+  final detachIds = _detachIds(lift, mounts);
+  // A row riding the conte is never let go (I-73-one-head-Q1,
+  // [ridesTheConte]): a landing that would take one off it — out on its
+  // own, or onto another base — is no landing.
+  final leaving = {...detachIds, for (final mount in mounts) mount.layerId};
+  if (lift.carried.any(
+    (layer) => leaving.contains(layer.id) && ridesTheConte(layer, lift.stack),
+  )) {
+    return null;
+  }
   return LayerAttachDrop(
     mounts: mounts,
     sideChange: keepsOwnGroup ? _sideChange(lift, ownBase) : null,
-    detachIds: _detachIds(lift, mounts),
+    detachIds: detachIds,
   );
 }
 
