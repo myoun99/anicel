@@ -1147,6 +1147,31 @@ void main() {
       expect(tileOf(x[1]), findsOneWidget, reason: 'the tab is shown');
     });
 
+    // 「안에 있으면 그대로」 asks where the brush of the tool PRESSED FOR is —
+    // not the one in hand.
+    testWidgets('🚨the eraser\'s group key enters the group though the brush '
+        'in hand is already in it', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, ...] = otherTabsWithAtLeast(tester, 2);
+      await takeUp(tester, 'eraser');
+      final erasers = panel(tester).selectedPresetId!;
+      expect(x, isNot(contains(erasers)), reason: '⛔premise');
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      putKeyOn(tester, brushGroupActionId(eraser, groupOf(tester, x.first)));
+
+      await press(tester);
+
+      expect(toolInHand(tester), eraser);
+      expect(
+        panel(tester).selectedPresetId,
+        x.first,
+        reason: 'the eraser never held one there: the group\'s first — not '
+            '$erasers, which it held outside it',
+      );
+    });
+
     testWidgets('a group\'s tab wears its key, as every button does — the '
         'key of the tool whose library it is', (tester) async {
       await pumpWithPresets(tester);
@@ -1262,6 +1287,16 @@ void main() {
       putKeyOn(tester, brushPresetActionId(brush, x.first));
       await press(tester);
       expect(tileOf(x.first), findsOneWidget);
+
+      // And a hand changed by no press at all: the brush in hand deleted,
+      // the hand takes up the one beside it (F-250) — and the library shows
+      // that.
+      await tapTab(tester, nothing);
+      expect(onScreen(tester), isEmpty, reason: '⛔premise');
+      panel(tester).onPresetDeleted!(x.first);
+      await tester.pumpAndSettle();
+      expect(panel(tester).selectedPresetId, x[1], reason: '⛔premise');
+      expect(tileOf(x[1]), findsOneWidget);
     });
 
     testWidgets('the ERASER\'s key on a group with no brush brings the '
