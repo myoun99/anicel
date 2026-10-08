@@ -39,7 +39,7 @@ void main() {
               Uint8List.fromList([
                 for (var y = 0; y < 100; y += 1)
                   for (var x = 0; x < 100; x += 1)
-                    y < 20 || y >= 80 ? outside : inside,
+                    if (y < 20 || y >= 80) outside else inside,
               ]),
           ],
         ),
