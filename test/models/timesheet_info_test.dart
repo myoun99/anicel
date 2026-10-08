@@ -152,6 +152,12 @@ void main() {
       expect(restored.logoAssetPath, 'logos/studio.png');
     });
 
+    // ↩️Two pins stood here for what the reader dropped from a file: a staff
+    // value that was a name-and-stamp object (before the labels vocabulary),
+    // and a stage the work no longer keeps (before F-291-Q1, 유저 2026-10-08:
+    // 「스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」 — the
+    // rule itself lives on in `staffHolderOf`). Both shapes are only in
+    // formats refused by their number now (the save law, 유저 2026-10-06).
     test('an old file with no staff loads clean', () {
       final restored = TimesheetInfo.fromJson({'title': 'X'});
 
