@@ -480,19 +480,32 @@ void main() {
       expect(tagsAt(session, a, 23), ['a-last']);
     });
 
-    test('a frame outside the cut\'s place is held to the cut: past its '
-        'end on its last frame, in the のりしろ before its conte on its '
-        'first', () {
+    // 🗣️I-73-ol-index-space-Q1 (유저 2026-10-09 → 「그 칸이 재생되는 시각의
+    // 것」): a frame of a のりしろ plays over the other cut, and shows the
+    // speaker heard then.
+    test('🚨a frame of the のりしろ shows the speaker heard as it plays — the '
+        'cut in front\'s before, the cut behind\'s after', () {
       final session = withSpeakers();
 
-      expect(tagsAt(session, a, 26), ['a-last']);
-      expect(tagsAt(session, a, 400), ['a-last']);
       expect(
         tagsAt(session, b, 2),
-        ['b-first'],
-        reason: 'the track\'s 20 is a\'s — its speaker is not put over '
-            'this picture',
+        ['in-a'],
+        reason: 'b\'s frame 2 plays at the track\'s 20, while a speaks',
       );
+      expect(
+        tagsAt(session, a, 24),
+        ['b-first'],
+        reason: 'a\'s frame 24 plays at 24, on b\'s first frame',
+      );
+      expect(tagsAt(session, a, 26), isEmpty, reason: 'nobody speaks at 26');
+    });
+
+    test('a frame past the のりしろ — the runway, never played — is held to '
+        'the cut\'s last frame, as it was', () {
+      final session = withSpeakers();
+
+      expect(tagsAt(session, a, 30), ['a-last']);
+      expect(tagsAt(session, a, 400), ['a-last']);
     });
 
     test('a cut no track holds puts none', () {

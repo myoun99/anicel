@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_line_type.dart';
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/se_name_tag_plan.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, globalLayersShowingDragPreview;
@@ -74,12 +75,17 @@ class SeEntries {
     int localFrameIndex, {
     TimelineDragPreview? preview,
   }) {
-    // The over-end runway is a CLIPPED VIEW of the cut (UI-R9 #4): a
-    // playhead past the last frame must never address the NEIGHBOUR
-    // cut's SE window and put the next speaker over this picture. The
-    // storyboard's playhead is held to the cut the same way, and this is
-    // that clamp ([TrackFrameAxis.clampedToCutGlobalOf]) — which holds a
-    // frame of the のりしろ BEFORE the conte to the cut's first frame too.
+    // A frame the film PLAYS — the cut's place and the のりしろ an O.L asks
+    // before and after it — shows what is heard then: in a margin, the
+    // other cut's speaker (I-73-ol-index-space-Q1, 유저 2026-10-09: 「그 칸이
+    // 재생되는 시각의 것」), so an O.L played through carries one tag on.
+    // The runway past that is a CLIPPED VIEW of the cut (UI-R9 #4): a
+    // playhead there must never address the NEIGHBOUR cut's SE window and
+    // put the next speaker over this picture, so it is held to the cut
+    // ([TrackFrameAxis.clampedToCutGlobalOf]), as before.
+    //
+    // ↩️The margins were held to the cut too — the storyboard's playhead
+    // clamp, which they shared — until Q1.
     //
     // ↩️The cut's frame was added to the cut's PLACE on the track. A cut
     // an O.L arrives into counts its own frames from its のりしろ before
@@ -89,7 +95,15 @@ class SeEntries {
     // 30 showed on the cut's frame 6, which plays at 24, and was gone by
     // the frame that plays at 30).
     final axis = _projectSettings.projectAxis();
-    final shown = axis.clampedToCutGlobalOf(cut.id, localFrameIndex);
+    final drawn = cutDrawnFrameCount(
+      _project.repository.requireProject(),
+      cut.id,
+    );
+    final plays =
+        drawn != null && localFrameIndex >= 0 && localFrameIndex < drawn;
+    final shown = plays
+        ? axis.globalOf(cut.id, localFrameIndex)
+        : axis.clampedToCutGlobalOf(cut.id, localFrameIndex);
     final trackId = axis.entryFor(cut.id)?.trackId;
     final track = trackId == null ? null : _project.trackById(trackId);
     // Most tracks hold no SE writing at all, and this runs per painted

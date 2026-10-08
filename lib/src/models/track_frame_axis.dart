@@ -178,9 +178,11 @@ class TrackFrameAxis {
   /// plays over the cut in front, and stands on this cut's first frame
   /// here — the cut's own block, as at its end.
   ///
-  /// The ONE clamp: the storyboard's playhead and the name tags a cut's
-  /// frame puts on the canvas (`SeEntries.seNameTagsForCutFrame`) both ask
-  /// it. ⚠️MUTANT SURVIVES, equivalent (measured 2026-09-08, where the tags
+  /// The ONE clamp the storyboard's playhead asks; the name tags a cut's
+  /// frame puts on the canvas (`SeEntries.seNameTagsForCutFrame`) ask it
+  /// past the frames the film plays — ↩️in the のりしろ too, until
+  /// I-73-ol-index-space-Q1 gave the margins what is heard then.
+  /// ⚠️MUTANT SURVIVES, equivalent (measured 2026-09-08, where the tags
   /// held this clamp for themselves): `>` → `>=` clamps a frame that
   /// already IS the last to itself — and `<` → `<=` the first, the same.
   int? clampedToCutGlobalOf(CutId cutId, int localFrame) {
