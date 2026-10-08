@@ -4,6 +4,7 @@ import 'dart:isolate';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -498,7 +499,7 @@ class AnicelFileService {
     final baked = saveSnapshot.baked;
     final dirtySets = [for (final store in stores) store.dirtyCelKeysSinceSave];
     final dirty = <BrushFrameKey>{for (final set in dirtySets) ...set};
-    final saveDirectory = _parentDirectory(filePath);
+    final saveDirectory = folderOfPath(filePath);
     // Made once, for both roads: what leaves the file and what is written
     // into it are asked of the same list.
     final carried = _carriedKinds(
@@ -1598,13 +1599,13 @@ class AnicelFileService {
     // the .anicel wins (the folder traveled whole); otherwise the stored
     // absolute path stays and the existing missing-media relink flow takes
     // over.
-    final directory = _parentDirectory(filePath);
+    final directory = folderOfPath(filePath);
     final remap = <String, String>{};
     for (final entry in document.mediaRelativePaths.entries) {
       if (mediaEntryNames.containsKey(entry.key)) {
         continue;
       }
-      final resolved = '$directory/${entry.value}';
+      final resolved = pathInFolder(directory, entry.value);
       if (await File(resolved).exists()) {
         remap[entry.key] = resolved;
       }
@@ -1627,12 +1628,6 @@ class AnicelFileService {
         ),
       ),
     );
-  }
-
-  static String _parentDirectory(String filePath) {
-    final normalized = filePath.replaceAll('\\', '/');
-    final slash = normalized.lastIndexOf('/');
-    return slash <= 0 ? '.' : normalized.substring(0, slash);
   }
 
   /// 🚨★★★**A NAME THAT VANISHED WHILE WE HELD THE FILE IS NOT A LOSS.** On

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -90,6 +91,38 @@ void main() {
     });
     expect(remapped.mediaAssets.first.path, 'G:/drive/proj/audio/boom.wav');
     expect(remapped.mediaAssets[1].path, 'E:/elsewhere/hiss.wav');
+  });
+
+  test('a project at the top of a disk records the media under it relative '
+      'too — and a bare file name stands in no folder', () {
+    // The save asked a folder of its own, which answered `.` for
+    // `/scene.anicel` — the working directory — so a project kept at the
+    // top of a Mac's or Linux's disk recorded nothing relative (board
+    // `the-save-keeps-its-own-folder-of-a-path`).
+    final project = createDefaultProject().copyWith(
+      mediaAssets: [
+        MediaAsset(path: '/snd/boom.wav', name: 'boom'),
+        MediaAsset(path: 'C:/snd/hiss.wav', name: 'hiss'),
+      ],
+    );
+    Map<String, String> recordedBeside(String projectPath) =>
+        parseAnicelArchiveBytes(
+          buildAnicelArchiveBytes(
+            project: project,
+            cels: const [],
+            saveDirectory: folderOfPath(projectPath),
+          ),
+        ).mediaRelativePaths;
+
+    expect(recordedBeside('/scene.anicel'), {'/snd/boom.wav': 'snd/boom.wav'});
+    expect(recordedBeside('C:/scene.anicel'), {
+      'C:/snd/hiss.wav': 'snd/hiss.wav',
+    });
+    expect(
+      recordedBeside('scene.anicel'),
+      isEmpty,
+      reason: 'nothing is under no folder',
+    );
   });
 
   test('pasteboard tiles (negative coords) round-trip through the cel '

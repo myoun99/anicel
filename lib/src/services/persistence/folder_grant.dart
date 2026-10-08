@@ -1069,10 +1069,9 @@ abstract final class FolderPicker {
         }
       }
     }
-    final dot = path.lastIndexOf('.');
-    final extension = dot > path.lastIndexOf(Platform.pathSeparator)
-        ? path.substring(dot)
-        : '';
+    final name = fileNameOfPath(path);
+    final dot = name.lastIndexOf('.');
+    final extension = dot < 0 ? '' : name.substring(dot);
     // 🚨IN THIS RUN'S ROOM, NOT LOOSE IN THE SYSTEM TEMP (2026-10-08). The
     // project door reads its cels out of this copy for as long as the
     // session is open, so no read could delete it when it was done, and

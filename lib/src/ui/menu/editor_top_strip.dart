@@ -269,7 +269,7 @@ class EditorTopStrip extends StatelessWidget {
         // mode Drive refuses. The resolved item's own name is the
         // discriminator.
         final resolved = grant.path!;
-        path = resolved.split('/').last == entry.name
+        path = fileNameOfPath(resolved) == entry.name
             ? resolved
             : '$resolved/${entry.name}';
         bookmark = grant.bookmark ?? bookmark;

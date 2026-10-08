@@ -543,9 +543,9 @@ String anicelCelEntryName(BrushFrameKey key) {
 
 /// The `project.json` payload bytes — shared verbatim by the full-archive
 /// builder and the incremental appender so both save paths write the
-/// identical entry. [saveDirectory] (the file's parent, normalized with
-/// forward slashes) keys the relative-path manifest: media living under
-/// it is recorded relative, everything else stays absolute-only.
+/// identical entry. [saveDirectory] (the folder the file stands in, as
+/// [folderOfPath] answers it) keys the relative-path manifest: media living
+/// under it is recorded relative, everything else stays absolute-only.
 /// [grants] are the security-scoped tokens the project needs to reopen the
 /// media it REFERENCES — top level, beside `mediaPaths`, because they are
 /// bookkeeping about the machine rather than anything about the film.
@@ -916,16 +916,17 @@ Set<String> projectMediaPaths(Project project) {
 /// [path] relative to [directory] when it lives underneath it (separator-
 /// and case-insensitively on the drive prefix); null otherwise. Forward
 /// slashes throughout so the manifest is portable across platforms.
+/// [directory] is a folder as [folderOfPath] answers one: a root keeps its
+/// slash, and a bare file name stands in no folder, under which nothing is.
 String? _relativeTo(String path, String directory) {
-  final normalizedPath = path.replaceAll('\\', '/');
-  var normalizedDirectory = directory.replaceAll('\\', '/');
-  if (!normalizedDirectory.endsWith('/')) {
-    normalizedDirectory = '$normalizedDirectory/';
+  if (directory.isEmpty) {
+    return null;
   }
-  if (normalizedPath.toLowerCase().startsWith(
-    normalizedDirectory.toLowerCase(),
-  )) {
-    return normalizedPath.substring(normalizedDirectory.length);
+  final normalizedPath = path.replaceAll('\\', '/');
+  // The folder with one slash after it — a root's own, not a second.
+  final under = pathInFolder(directory.replaceAll('\\', '/'), '');
+  if (normalizedPath.toLowerCase().startsWith(under.toLowerCase())) {
+    return normalizedPath.substring(under.length);
   }
   return null;
 }

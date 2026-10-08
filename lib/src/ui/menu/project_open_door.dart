@@ -2,6 +2,7 @@ import 'dart:io' show FileSystemException;
 
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/import/import_warning.dart';
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
@@ -286,7 +287,7 @@ final class ProjectOpenDoor {
     }
     final layout = ProjectAssetLayout(path);
     if (layout.hasLegacyAssetsDirectory) {
-      final name = layout.assetsDirectory.split('/').last;
+      final name = fileNameOfPath(layout.assetsDirectory);
       await showAppNotice(
         context,
         windowKey: const ValueKey<String>('legacy-assets-folder-notice'),
