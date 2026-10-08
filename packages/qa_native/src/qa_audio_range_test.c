@@ -31,6 +31,7 @@
 
 #define QA_AUDIO_FORMAT_UNKNOWN 0
 #define QA_AUDIO_FORMAT_WAV 1
+#define QA_AUDIO_FORMAT_FLAC 2
 #define QA_AUDIO_FORMAT_MP3 3
 
 extern int32_t qa_audio_decode_span(const char* path,
@@ -109,12 +110,14 @@ static size_t build_wav(uint8_t* out) {
   return (size_t)(at - out);
 }
 
-/// Checks a decode that is supposed to have produced the fixture.
-static void expect_fixture(const char* what, int32_t format, float* samples,
-                           int64_t frames, int32_t channels, int32_t rate) {
+/// Checks a decode that is supposed to have produced the fixture, through the
+/// decoder [want].
+static void expect_fixture(const char* what, int32_t want, int32_t format,
+                           float* samples, int64_t frames, int32_t channels,
+                           int32_t rate) {
   char label[128];
-  snprintf(label, sizeof(label), "%s: is a WAV", what);
-  expect_int(label, format, QA_AUDIO_FORMAT_WAV);
+  snprintf(label, sizeof(label), "%s: which decoder", what);
+  expect_int(label, format, want);
   snprintf(label, sizeof(label), "%s: frame count", what);
   expect_int(label, frames, FIXTURE_FRAMES);
   snprintf(label, sizeof(label), "%s: channels", what);
@@ -148,7 +151,8 @@ static void decode_and_check(const char* what, const char* path,
   const int32_t format = qa_audio_decode_span(
       path, offset, length, framed, &samples, &frames, &channels, &rate);
   if (expect == QA_AUDIO_FORMAT_WAV) {
-    expect_fixture(what, format, samples, frames, channels, rate);
+    expect_fixture(what, QA_AUDIO_FORMAT_WAV, format, samples, frames,
+                   channels, rate);
   } else {
     expect_int(what, format == QA_AUDIO_FORMAT_WAV ? 1 : 0, 0);
   }
@@ -195,9 +199,90 @@ static size_t build_mp3_frames(uint8_t* out) {
   return (size_t)MP3_FRAMES * MP3_FRAME_BYTES;
 }
 
-/// [head] and then [body], as a whole file: which decoder read it.
-static int32_t format_behind(const uint8_t* head, size_t head_bytes,
-                             const uint8_t* body, size_t body_bytes) {
+// ---------------------------------------------------------------------------
+// The fixture again as a FLAC, VERBATIM subframes: nothing predicted, so what
+// dr_flac hands back is the fixture itself. Both CRCs are real — dr_flac
+// checks them.
+
+#define FLAC_BLOCK 256
+#define FLAC_BYTES                                                \
+  (4 + 4 + 34 +                                                   \
+   (FIXTURE_FRAMES / FLAC_BLOCK) *                                \
+       (6 + FIXTURE_CHANNELS * (1 + FLAC_BLOCK * 2) + 2))
+
+static uint8_t flac_crc8(const uint8_t* bytes, size_t count) {
+  uint8_t crc = 0;
+  for (size_t index = 0; index < count; index += 1) {
+    crc ^= bytes[index];
+    for (int bit = 0; bit < 8; bit += 1) {
+      crc = (uint8_t)((crc & 0x80) ? (crc << 1) ^ 0x07 : crc << 1);
+    }
+  }
+  return crc;
+}
+
+static uint16_t flac_crc16(const uint8_t* bytes, size_t count) {
+  uint16_t crc = 0;
+  for (size_t index = 0; index < count; index += 1) {
+    crc ^= (uint16_t)(bytes[index] << 8);
+    for (int bit = 0; bit < 8; bit += 1) {
+      crc = (uint16_t)((crc & 0x8000) ? (crc << 1) ^ 0x8005 : crc << 1);
+    }
+  }
+  return crc;
+}
+
+static size_t build_flac(uint8_t* out) {
+  memcpy(out, "fLaC", 4);
+  // The one metadata block — STREAMINFO, and the last.
+  uint8_t* info = out + 4;
+  memset(info, 0, 4 + 34);
+  info[0] = 0x80;
+  info[3] = 34;
+  info[4 + 0] = FLAC_BLOCK >> 8;  // smallest block
+  info[4 + 1] = FLAC_BLOCK & 0xFF;
+  info[4 + 2] = FLAC_BLOCK >> 8;  // largest block
+  info[4 + 3] = FLAC_BLOCK & 0xFF;
+  // Rate (20 bits), channels - 1 (3), bits - 1 (5), total frames (36); the
+  // frame sizes and the MD5 stay 0, which the format reads as 「unknown」.
+  const uint64_t packed = ((uint64_t)FIXTURE_RATE << 44) |
+                          ((uint64_t)(FIXTURE_CHANNELS - 1) << 41) |
+                          ((uint64_t)15 << 36) | (uint64_t)FIXTURE_FRAMES;
+  for (int byte = 0; byte < 8; byte += 1) {
+    info[4 + 10 + byte] = (uint8_t)(packed >> (56 - 8 * byte));
+  }
+  uint8_t* at = info + 4 + 34;
+  for (int block = 0; block < FIXTURE_FRAMES / FLAC_BLOCK; block += 1) {
+    uint8_t* frame = at;
+    frame[0] = 0xFF;
+    frame[1] = 0xF8;  // sync, fixed block size
+    frame[2] = 0x89;  // 256 frames, 44100 Hz
+    frame[3] = 0x18;  // left and right, 16 bits
+    frame[4] = (uint8_t)block;  // the frame number, one UTF-8 byte
+    frame[5] = flac_crc8(frame, 5);
+    at = frame + 6;
+    for (int channel = 0; channel < FIXTURE_CHANNELS; channel += 1) {
+      *at++ = 0x02;  // VERBATIM, no wasted bits
+      for (int index = 0; index < FLAC_BLOCK; index += 1) {
+        const uint16_t sample =
+            (uint16_t)fixture_sample(block * FLAC_BLOCK + index, channel);
+        *at++ = (uint8_t)(sample >> 8);
+        *at++ = (uint8_t)(sample & 0xFF);
+      }
+    }
+    const uint16_t crc = flac_crc16(frame, (size_t)(at - frame));
+    *at++ = (uint8_t)(crc >> 8);
+    *at++ = (uint8_t)(crc & 0xFF);
+  }
+  return (size_t)(at - out);
+}
+
+/// [head] and then [body], written as a whole file and decoded: which decoder
+/// read it — and, unless [fixture] is UNKNOWN, whether that decoder was
+/// [fixture] and what it read was the fixture, the check [what] names.
+static int32_t decode_behind(const char* what, const uint8_t* head,
+                             size_t head_bytes, const uint8_t* body,
+                             size_t body_bytes, int32_t fixture) {
   const char* path = "qa_audio_head_fixture.bin";
   FILE* file = fopen(path, "wb");
   if (file == NULL) {
@@ -217,6 +302,9 @@ static int32_t format_behind(const uint8_t* head, size_t head_bytes,
   const int32_t format =
       qa_audio_decode_span(path, 0, (int64_t)(head_bytes + body_bytes), 0,
                            &samples, &frames, &channels, &rate);
+  if (fixture != QA_AUDIO_FORMAT_UNKNOWN) {
+    expect_fixture(what, fixture, format, samples, frames, channels, rate);
+  }
   qa_audio_decode_free(samples);
   remove(path);
   return format;
@@ -308,15 +396,18 @@ int main(void) {
     // head nobody knows, which still runs the whole chain. Without them, a
     // sniff that turned dr_mp3 away from everything would pass the rest.
     expect_int("bare frames are an MP3",
-               format_behind(NULL, 0, frames, frame_bytes),
+               decode_behind(NULL, NULL, 0, frames, frame_bytes,
+                             QA_AUDIO_FORMAT_UNKNOWN),
                QA_AUDIO_FORMAT_MP3);
     static const uint8_t id3[10] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0};
     expect_int("frames behind an ID3 tag are an MP3",
-               format_behind(id3, sizeof(id3), frames, frame_bytes),
+               decode_behind(NULL, id3, sizeof(id3), frames, frame_bytes,
+                             QA_AUDIO_FORMAT_UNKNOWN),
                QA_AUDIO_FORMAT_MP3);
     static const uint8_t nobody[16] = {0};
     expect_int("frames behind a head nobody knows are still an MP3",
-               format_behind(nobody, sizeof(nobody), frames, frame_bytes),
+               decode_behind(NULL, nobody, sizeof(nobody), frames, frame_bytes,
+                             QA_AUDIO_FORMAT_UNKNOWN),
                QA_AUDIO_FORMAT_MP3);
 
     // The law: a head that names another container keeps dr_mp3 away from
@@ -332,7 +423,8 @@ int main(void) {
                "frames in a movie that opens with `%s` are not dr_mp3's",
                movie_boxes[index]);
       expect_int(label,
-                 format_behind(box, sizeof(box), frames, frame_bytes) ==
+                 decode_behind(NULL, box, sizeof(box), frames, frame_bytes,
+                               QA_AUDIO_FORMAT_UNKNOWN) ==
                      QA_AUDIO_FORMAT_MP3,
                  0);
     }
@@ -341,8 +433,12 @@ int main(void) {
       const char* head;
       size_t bytes;
     } others[] = {
-        {"an AVI's RIFF", "RIFF\x10\0\0\0AVI ", 12},
-        {"a WAV's RIFF", "RIFF\x10\0\0\0WAVE", 12},
+        // ⚠️Literals split where a hex escape would run on into the name.
+        {"an AVI's RIFF", "RIFF\x10\0\0\0" "AVI ", 12},
+        {"a big-endian WAV's RIFX", "RIFX\0\0\0\x10" "WAVE", 12},
+        {"an RF64", "RF64\xFF\xFF\xFF\xFF" "WAVE", 12},
+        {"a W64's riff", "riff", 4},
+        {"an AIFF's FORM", "FORM\0\0\0\x10" "AIFF", 12},
         {"FLAC's fLaC", "fLaC", 4},
         {"ogg's OggS", "OggS", 4},
     };
@@ -352,11 +448,24 @@ int main(void) {
       snprintf(label, sizeof(label), "frames behind %s are not dr_mp3's",
                others[index].name);
       expect_int(label,
-                 format_behind((const uint8_t*)others[index].head,
-                               others[index].bytes, frames, frame_bytes) ==
+                 decode_behind(NULL, (const uint8_t*)others[index].head,
+                               others[index].bytes, frames, frame_bytes,
+                               QA_AUDIO_FORMAT_UNKNOWN) ==
                      QA_AUDIO_FORMAT_MP3,
                  0);
     }
+  }
+
+  // 8. ...AND NO HEAD TAKES A FORMAT FROM ITS OWN DECODER. dr_flac skips an
+  // ID3 tag itself, so a tagged FLAC is dr_flac's — a sniff that read 「ID3
+  // means MP3」 would hand it to dr_mp3 alone, which cannot read it.
+  {
+    static uint8_t flac[FLAC_BYTES];
+    const size_t flac_bytes = build_flac(flac);
+    decode_behind("a FLAC", NULL, 0, flac, flac_bytes, QA_AUDIO_FORMAT_FLAC);
+    static const uint8_t id3[10] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0};
+    decode_behind("a FLAC behind an ID3 tag", id3, sizeof(id3), flac,
+                  flac_bytes, QA_AUDIO_FORMAT_FLAC);
   }
 
   if (g_failures == 0) {
