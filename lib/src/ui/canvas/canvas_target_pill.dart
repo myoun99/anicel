@@ -58,7 +58,6 @@ class CanvasTargetPill extends StatelessWidget {
     required this.keyValue,
     required this.target,
     required this.children,
-    this.cover = EdgeInsets.zero,
   });
 
   final String keyValue;
@@ -66,17 +65,12 @@ class CanvasTargetPill extends StatelessWidget {
   /// What the verb works on, in this widget's own coordinates.
   final Rect target;
 
-  /// The edges of this widget that something else stands on — a panel
-  /// lying on the floor, the panel's own capsules — so the pill keeps out
-  /// from under them.
-  final EdgeInsets cover;
-
   /// Bar buttons (`AppIconButtonSize.bar`), the view pill's.
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) => CustomSingleChildLayout(
-    delegate: _UnderTheTarget(target, cover),
+    delegate: _UnderTheTarget(target, CanvasPillRoom.coverOf(context)),
     // 🚨A PRESS ON THE PILL IS THE PILL'S, its rim included (CLAUDE.md: 「컨트롤
     // 위에서 시작한 제스처는 그 컨트롤의 것이다」). The verb's own layer is
     // an ancestor and hears the press too, and to the transform tool a
@@ -98,6 +92,34 @@ class CanvasTargetPill extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// What the canvas's pills keep out from under: the edges of the panel's
+/// tool layers that something else stands on — a panel lying on the floor,
+/// the panel's own capsules.
+///
+/// Given ONCE, around every tool the panel raises a pill from (the
+/// transform box's 확정/취소, the canvas adjusted on the canvas), the way
+/// the floor's cover is given to whatever lies on the floor
+/// (`CanvasFloorInsets`): where a pill may stand is a question about where
+/// it is. ↩️The selection layer was handed it as a parameter of its own.
+class CanvasPillRoom extends InheritedWidget {
+  const CanvasPillRoom({
+    super.key,
+    required this.cover,
+    required super.child,
+  });
+
+  final EdgeInsets cover;
+
+  /// The cover over [context]'s tools — none where no panel gives one.
+  static EdgeInsets coverOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasPillRoom>()?.cover ??
+      EdgeInsets.zero;
+
+  @override
+  bool updateShouldNotify(CanvasPillRoom oldWidget) =>
+      oldWidget.cover != cover;
 }
 
 class _UnderTheTarget extends SingleChildLayoutDelegate {

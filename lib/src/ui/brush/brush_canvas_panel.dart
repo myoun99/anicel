@@ -99,6 +99,7 @@ import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
+import '../canvas/canvas_target_pill.dart' show CanvasPillRoom;
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show sliderValueText;
 import '../widgets/panel_flyout.dart';
@@ -1822,7 +1823,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _cutPieceFromShape,
               oneFingerAction:
                   widget.oneFingerAction,
-              pillCover: _pillCover,
               onFillShape:
                   _fillDrawnShape,
               onDrawShape:
@@ -2172,7 +2172,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ),
       );
 
-  /// What the 확정/취소 pill keeps out from under (`CanvasTargetPill`):
+  /// What the canvas's pills keep out from under (`CanvasPillRoom`):
   /// all that framing keeps out from under, and on the floor the
   /// horizontal bar's capsule as well — framing looks past a capsule
   /// floating on the artwork, and a pill under one could not be pressed.

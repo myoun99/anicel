@@ -93,14 +93,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.floatOverlay,
     this.oneFingerAction,
-    this.pillCover = EdgeInsets.zero,
   });
-
-  /// The edges of this layer that something else stands on — the panels
-  /// lying on the floor, the panel's own capsules — which the 확정/취소
-  /// pill keeps out from under ([CanvasTargetPill.cover]). Zero = the
-  /// whole layer is open.
-  final EdgeInsets pillCover;
 
   /// Where the FLOAT's pixels go (TS1): the composite that draws the active
   /// layer reads this and draws them at that layer's depth, so the layers
@@ -3302,7 +3295,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ) => CanvasTargetPill(
     keyValue: 'selection-confirm-pill',
     target: _pillTarget(displayShape, chrome),
-    cover: widget.pillCover,
     children: [_confirmButton(displayShape), _cancelButton()],
   );
 

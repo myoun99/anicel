@@ -61,14 +61,18 @@ void main() {
             child: SizedBox(
               width: 400,
               height: 300,
-              child: CanvasTargetPill(
-                keyValue: 'probe-pill',
-                target: target,
+              // The panel gives its tools the cover this way, once for
+              // every pill they raise.
+              child: CanvasPillRoom(
                 cover: cover,
-                children: const [
-                  SizedBox(width: 30, height: 24),
-                  SizedBox(width: 30, height: 24),
-                ],
+                child: CanvasTargetPill(
+                  keyValue: 'probe-pill',
+                  target: target,
+                  children: const [
+                    SizedBox(width: 30, height: 24),
+                    SizedBox(width: 30, height: 24),
+                  ],
+                ),
               ),
             ),
           ),
