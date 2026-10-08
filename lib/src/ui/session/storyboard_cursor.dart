@@ -10,7 +10,6 @@ import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_conte_row.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
@@ -195,13 +194,11 @@ class StoryboardCursor {
         return cut == null
             ? null
             : _conteRowBlockUnderCursor(cut, conteRowSeatOf(row)!);
-      case final row when isTrackCameraRow(row):
-        // The camera row's block is its cut's camera layer's, as the
-        // timeline's camera row's is ([timelineCursorBlockOrNull]) — and a
-        // camera keeps keys, not blocks (I-73 ④).
-        final camera = _cutUnderCursor()?.layers.cameraLayer;
-        return camera == null ? null : _rowBlockUnderCursor(camera.id);
       case LayerRowAddress(:final layerId):
+        // The CAMERA row (I-73 ④) lands here too, and holds no block: its
+        // address names no layer, and the camera it stands on keeps keys,
+        // not blocks — the timeline's camera row has none under its cursor
+        // either ([timelineCursorBlockOrNull]).
         return _rowBlockUnderCursor(layerId);
       case LaneRowAddress():
         // A lane row holds keys, not blocks — the lane-verb family owns it.

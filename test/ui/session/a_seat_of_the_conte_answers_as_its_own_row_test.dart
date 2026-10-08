@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart'
     show projectedLayerInHand;
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08, of a row riding
 /// the conte on the storyboard: 「서면 — 블록」 · 「플립 — 블록 단위」 ·
@@ -175,6 +176,47 @@ void main() {
     standAt(onConte, conteRow, 0);
     onConte.trackAxisWalk.flipTrackRow(conteRow.layerId, forward: true);
     expect(onConte.editingGlobalFrame, 6, reason: 'LIVENESS: the next panel');
+  });
+
+  // I-73 ④: the projection rows lend the timeline's ＋ on their cell, the
+  // camera row and a row riding the conte alike (↩️a riding row's ＋ was
+  // dark: only the conte's own D28 division answered on this rail).
+  test('＋ on a row riding the conte makes what the timeline\'s ＋ makes on '
+      'the same cell', () {
+    TimelineToolbarPanelContext onTheTimelinesRow(int frame) =>
+        TimelineToolbarPanelContext(
+          sessionOf()
+            ..selectCut(const CutId('a'))
+            ..standOnRow(const LayerRowAddress(LayerId('a-over')))
+            ..selectFrameIndex(frame),
+        );
+
+    // Frame 10: past the row's two blocks, an empty cell.
+    final session = sessionOf();
+    standAt(session, over, 10);
+    final panel = StoryboardToolbarPanelContext(session);
+    expect(panel.canCreateInstance, isTrue);
+    panel.createInstance();
+
+    final timeline = onTheTimelinesRow(10);
+    timeline.createInstance();
+    expect(
+      blocksOf(session, 'a', 'a-over'),
+      isNot(blocksOf(sessionOf(), 'a', 'a-over')),
+      reason: 'LIVENESS: something was made',
+    );
+    expect(
+      blocksOf(session, 'a', 'a-over'),
+      blocksOf(timeline.session, 'a', 'a-over'),
+    );
+
+    // …and at a block's first cell both refuse alike.
+    final atAStart = sessionOf();
+    standAt(atAStart, over, 4);
+    expect(
+      StoryboardToolbarPanelContext(atAStart).canCreateInstance,
+      onTheTimelinesRow(4).canCreateInstance,
+    );
   });
 
   test('the row in hand at a seat is the cut\'s row there — while it is '

@@ -5,12 +5,15 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart';
@@ -29,11 +32,13 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 /// Standing on the storyboard's camera row stands the timeline on the camera
 /// row of the cut the session stands in, and the frame buttons are that
 /// row's: ＋ keys the cell, Delete takes its key, Edit opens it, the flip
-/// walks a frame at a time. Where the row holds no camera — a gap, or once
-/// the timeline has picked another layer — they are dark.
+/// walks a frame at a time — every button answering as the timeline's camera
+/// row answers on the same cell. Where the row holds no camera — a gap, or
+/// once the timeline has picked another layer — they are dark, and no other
+/// row is touched.
 ///
 /// Cuts a [0, 24) with camera keys 0 and 12, b [24, 48) with 2 and 6, four
-/// frames of gap, c [52, 64).
+/// frames of gap, c [52, 64). Each cut's cel row holds one block of twelve.
 void main() {
   const trackId = TrackId('t');
   const a = CutId('a');
@@ -53,7 +58,16 @@ void main() {
       },
     ),
     layers: [
-      Layer(id: LayerId('$id-cel'), name: 'A', frames: const []),
+      Layer(
+        id: LayerId('$id-cel'),
+        name: 'A',
+        frames: [
+          Frame(id: FrameId('$id-1'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: TimelineExposure.drawing(FrameId('$id-1'), length: 12),
+        },
+      ),
       Layer(
         id: LayerId('$id-cam'),
         name: 'Camera',
@@ -96,6 +110,14 @@ void main() {
       globalFrameIndex: globalFrame,
     );
 
+  /// The TIMELINE, stood on [cutId]'s camera row at its own [frame] — the
+  /// row whose answers the storyboard's camera row borrows.
+  EditorSessionManager onTheTimelinesCameraRow(CutId cutId, int frame) =>
+      open()
+        ..selectCut(cutId)
+        ..standOnRow(LayerRowAddress(LayerId('${cutId.value}-cam')))
+        ..selectFrameIndex(frame);
+
   List<int> keysOf(EditorSessionManager session, CutId cutId) => [
     ...session.repository
         .requireProject()
@@ -107,6 +129,32 @@ void main() {
         .keyframes
         .keys,
   ];
+
+  /// Every button the row borrows, as [panel] answers it.
+  Map<String, Object?> answersOf(
+    ToolbarPanelContext panel,
+    EditorSessionManager session,
+  ) => {
+    'create': panel.canCreateInstance,
+    'edit': panel.canEditInstance,
+    'delete': panel.deleteSubject,
+    'comma': panel.canSetComma,
+    'blank': panel.canBlankExposure,
+    'mark': panel.canToggleMark,
+    'cut': panel.canCutRun,
+    'copy': panel.canCopyFrame,
+    'paste': panel.canPasteIndependentFrame,
+    'paste linked': panel.canPasteLinkedFrame,
+    'row span': panel.canSelectRowSpan,
+    'unlink': panel.canUnlink,
+    'auto-name': panel.canAutoName,
+    'push': session.blockShift.canPushBlocks(
+      currentRow: panel.shiftCurrentRow,
+    ),
+    'pull': session.blockShift.canPullBlocks(
+      currentRow: panel.shiftCurrentRow,
+    ),
+  };
 
   test('standing there seats the cut\'s camera — the timeline stands on its '
       'camera row', () {
@@ -124,6 +172,19 @@ void main() {
       )?.id,
       const LayerId('b-cam'),
     );
+  });
+
+  test('🚨every button answers as the timeline\'s camera row does on the '
+      'same cell — on a key and off one', () {
+    for (final (globalFrame, ownFrame) in [(30, 6), (28, 4)]) {
+      final storyboard = onTheCameraRow(globalFrame);
+      final timeline = onTheTimelinesCameraRow(b, ownFrame);
+      expect(
+        answersOf(StoryboardToolbarPanelContext(storyboard), storyboard),
+        answersOf(TimelineToolbarPanelContext(timeline), timeline),
+        reason: 'at $globalFrame',
+      );
+    }
   });
 
   test('＋ keys the cell it stands on', () {
@@ -171,25 +232,37 @@ void main() {
     expect(session.editingGlobalFrame, 23, reason: 'back, a frame');
   });
 
+  /// Every button the row borrows, dark.
+  final dark = isA<Map<String, Object?>>().having(
+    (answers) => answers.values.toSet(),
+    'answers',
+    {false, PillSubject.nothing},
+  );
+
   test('a gap holds no camera: the buttons are dark', () {
     final session = onTheCameraRow(50);
     final panel = StoryboardToolbarPanelContext(session);
 
-    expect(session.activeCutOrNull, isNull);
-    expect(panel.canCreateInstance, isFalse);
-    expect(panel.deleteSubject, PillSubject.nothing);
-    expect(panel.canEditInstance, isFalse);
+    expect(session.activeCutOrNull, isNull, reason: '⛔전제');
+    expect(answersOf(panel, session), dark);
+    expect(panel.editTarget, isNull);
   });
 
-  test('once the timeline picks another layer, the row lends nothing', () {
+  test('🚨once the timeline picks another layer, the row lends nothing — '
+      'and shoves no other row', () {
     final session = onTheCameraRow(30)
       ..selectLayer(const LayerId('b-cel'))
       ..claimStoryboardRow();
     final panel = StoryboardToolbarPanelContext(session);
 
     expect(session.storyboardStandingRow, cameraRow, reason: '⛔전제');
-    expect(panel.canCreateInstance, isFalse);
-    expect(panel.deleteSubject, PillSubject.nothing);
+    expect(answersOf(panel, session), dark);
+    expect(
+      answersOf(TimelineToolbarPanelContext(session), session)['push'],
+      isTrue,
+      reason: 'LIVENESS: the timeline\'s own shove of the cel is there — '
+          'it is this row that refuses it',
+    );
     expect(keysOf(session, b), [2, 6]);
   });
 }

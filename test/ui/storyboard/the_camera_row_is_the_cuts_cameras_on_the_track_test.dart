@@ -21,8 +21,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardCameraRowPainter, StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockText;
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show TimelineSection;
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformTrackWithLaneRangeNamed;
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 · 「카메라 행 범위는 키표시/이동/레인 등 모든거
@@ -42,20 +46,49 @@ void main() {
   const b = CutId('b');
   final cameraRow = LayerRowAddress(trackCameraRowId(trackId));
 
-  CutCamera keyed(List<int> frames) => CutCamera(
-    keyframes: {
-      for (final frame in frames)
-        frame: CameraPose(center: CanvasPoint(x: 320.0 + frame, y: 180)),
-    },
-  );
+  /// A camera keyed at [frames], the keys at [names]' frames named so on
+  /// every lane they hold — the name the camera row's union prints.
+  CutCamera keyed(List<int> frames, {Map<int, String> names = const {}}) {
+    var track = CutCamera(
+      keyframes: {
+        for (final frame in frames)
+          frame: CameraPose(center: CanvasPoint(x: 320.0 + frame, y: 180)),
+      },
+    ).track;
+    for (final MapEntry(key: frame, value: name) in names.entries) {
+      for (final laneId in const [
+        'anchor-point',
+        'position',
+        'scale',
+        'rotation',
+        'opacity',
+      ]) {
+        track =
+            transformTrackWithLaneRangeNamed(
+              track,
+              laneId: laneId,
+              frames: {frame},
+              name: name,
+            ) ??
+            track;
+      }
+    }
+    return CutCamera.fromTrack(track);
+  }
 
-  Cut cutOf(String id, int duration, List<int> keys, {int gap = 0}) => Cut(
+  Cut cutOf(
+    String id,
+    int duration,
+    List<int> keys, {
+    int gap = 0,
+    Map<int, String> names = const {},
+  }) => Cut(
     id: CutId(id),
     name: id,
     duration: duration,
     leadingGapFrames: gap,
     canvasSize: const CanvasSize(width: 640, height: 360),
-    camera: keyed(keys),
+    camera: keyed(keys, names: names),
     layers: [
       Layer(id: LayerId('$id-cel'), name: 'A', frames: const []),
       Layer(
@@ -67,6 +100,7 @@ void main() {
     ],
   );
 
+  /// a's key 12 is named IN and b's key 2 OUT.
   Project film() => Project(
     id: const ProjectId('camera-row'),
     name: 'Camera row',
@@ -76,8 +110,8 @@ void main() {
         id: trackId,
         name: 'V1',
         cuts: [
-          cutOf('a', 24, [0, 12, 30]),
-          cutOf('b', 24, [2, 6]),
+          cutOf('a', 24, [0, 12, 30], names: {12: 'IN'}),
+          cutOf('b', 24, [2, 6], names: {2: 'OUT'}),
           cutOf('c', 12, const [], gap: 4),
         ],
       ),
@@ -228,6 +262,33 @@ void main() {
         line.right - row.left,
         closeTo(24 * ppf(tester), 0.5),
         reason: 'to a\'s end, not to the key past it',
+      );
+    });
+
+    testWidgets('a key\'s name is printed on the one line, and left off where '
+        'two lines share the row', (tester) async {
+      Finder word(String text) => find.descendant(
+        of: cameraStrip,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TimelineBlockText && widget.text == text,
+        ),
+      );
+
+      await pumpPanel(tester);
+      expect(word('IN'), findsOneWidget, reason: 'a\'s key 12, one line');
+      expect(word('OUT'), findsOneWidget, reason: 'b\'s key 2, one line');
+
+      await pumpPanel(tester, withOl: true);
+      expect(word('IN'), findsOneWidget, reason: 'still before the O.L');
+      expect(
+        word('OUT'),
+        findsNothing,
+        reason: 'b\'s key 2 plays at 20, on the lower of two lines',
+      );
+      expect(
+        key('storyboard-camera-lane-key-span-b-cam-transform-group-2'),
+        findsOneWidget,
+        reason: 'its mark is still there',
       );
     });
 
