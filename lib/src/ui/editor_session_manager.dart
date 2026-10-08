@@ -155,6 +155,7 @@ import 'session/block_naming.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
 import 'session/pixel_verbs.dart';
+import 'session/rail_legends.dart';
 import 'session/folders_and_attachments.dart';
 import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
@@ -1152,6 +1153,9 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
   // when I-55 doubled the family. Callers name it, as they name [cells].
   late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
+
+  // ── the rail legends: what each panel's header opens, for a key (I-40) ──
+  final RailLegends railLegends = RailLegends();
 
   // ── 자동 이름 지정: its own object, in its own file ─────────────────────
   //

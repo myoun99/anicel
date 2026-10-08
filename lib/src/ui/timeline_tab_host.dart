@@ -929,6 +929,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
+            // What its legend opens, for a key on this panel (I-40).
+            onLegendMenus: (menus) =>
+                _session.railLegends.publish(WorkingPanel.timeline, menus),
             legend: sessionLegendCallbacks(
               _session,
               rowFilter: widget.rowFilter,

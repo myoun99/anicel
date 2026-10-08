@@ -2,7 +2,6 @@ import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -12,85 +11,11 @@ import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_legend_menus.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
-import '../shortcuts/editor_action_registry.dart';
-import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
-import '../text/model_vocabulary.dart';
 import '../text/vertical_writing_text.dart';
-
-/// The rail legend's bulk commands (session-backed; the host wires them).
-/// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
-/// view-ish ones (eye/mute/fx/opacity) mirror their per-row toggles. The
-/// row-solo facets and the master opacity bar ride the same struct.
-class LayerLegendCallbacks {
-  const LayerLegendCallbacks({
-    required this.onShowAllLayers,
-    required this.onHideAllLayers,
-    required this.onToggleVisibilitySolo,
-    required this.onSheetAllOn,
-    required this.onSheetAllOff,
-    required this.onClearMarkFilter,
-    required this.onClearAllFillReferences,
-    required this.onMuteAllSe,
-    required this.onUnmuteAllSe,
-    required this.onBypassAllFx,
-    required this.onEnableAllFx,
-    required this.onToggleMarkFilter,
-    required this.onToggleKindFilter,
-    required this.onToggleSheetOnlyFilter,
-    required this.onToggleFxOnlyFilter,
-    required this.onToggleFillReferenceOnlyFilter,
-    required this.onPreviewLayersOpacity,
-    required this.onCommitLayersOpacity,
-    this.onToggleOnionSkinForDisplayed,
-    this.onRevealOnionSkinPanel,
-    this.onSetBlendModeForDisplayed,
-  });
-
-  final VoidCallback onShowAllLayers;
-  final VoidCallback onHideAllLayers;
-
-  /// Toggles the visibility SOLO MODE (follows the active layer; R3
-  /// feedback #3) — a mode switch, not a one-shot eye sweep.
-  final VoidCallback onToggleVisibilitySolo;
-  final VoidCallback onSheetAllOn;
-  final VoidCallback onSheetAllOff;
-  final VoidCallback onClearMarkFilter;
-  final VoidCallback onClearAllFillReferences;
-  final VoidCallback onMuteAllSe;
-  final VoidCallback onUnmuteAllSe;
-  final VoidCallback onBypassAllFx;
-  final VoidCallback onEnableAllFx;
-
-  /// R2/R4 row-filter facet toggles (mark colors + layer kinds).
-  final ValueChanged<LayerMark> onToggleMarkFilter;
-  final ValueChanged<LayerKind> onToggleKindFilter;
-  final VoidCallback onToggleSheetOnlyFilter;
-  final VoidCallback onToggleFxOnlyFilter;
-  final VoidCallback onToggleFillReferenceOnlyFilter;
-
-  /// The legend's MASTER opacity bar (R4 #6): per-move preview + one
-  /// commit on release, over the rows the rail currently displays (the
-  /// grid computes the set).
-  final void Function(Set<LayerId> layerIds, double opacity)
-  onPreviewLayersOpacity;
-  final void Function(Set<LayerId> layerIds, double opacity)
-  onCommitLayersOpacity;
-
-  /// Onion legend (UI-R17 #5): bulk-apply/clear for every DISPLAYED
-  /// drawing layer, and the "open the onion panel" reveal (already open =
-  /// the panel flashes in place). Null hides the onion legend cell.
-  final VoidCallback? onToggleOnionSkinForDisplayed;
-  final VoidCallback? onRevealOnionSkinPanel;
-
-  /// R27 #6: the BLEND column's bulk command — the master opacity bar's
-  /// rule applied to the mode: one pick sets every DISPLAYED row that
-  /// composites (the same [displayedLayerIds] set the opacity bar drags).
-  final void Function(Set<LayerId> layerIds, LayerBlendMode mode)?
-  onSetBlendModeForDisplayed;
-}
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
 /// '+ Layer' button is gone — instead each control column gets an icon
@@ -196,27 +121,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   final VoidCallback? onCollapseAllLanes;
   final VoidCallback? onExpandAllLanes;
 
-  List<PanelFlyoutEntry> _sectionEntries() {
-    return [
-      PanelFlyoutHeader(AppText.strings.tlSections),
-      PanelFlyoutItem(
-        keyValue: 'legend-section-se',
-        label: AppText.strings.tlShowSeRows,
-        icon: Icons.music_note_outlined,
-        enabled: onToggleSection != null,
-        checked: !hiddenSections.contains(TimelineSection.se),
-        onSelected: () => onToggleSection?.call(TimelineSection.se),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'legend-section-camera',
-        label: AppText.strings.tlShowCameraRows,
-        icon: Icons.videocam_outlined,
-        enabled: onToggleSection != null,
-        checked: !hiddenSections.contains(TimelineSection.camera),
-        onSelected: () => onToggleSection?.call(TimelineSection.camera),
-      ),
-    ];
-  }
+  /// The legend's menus — this header's flyouts and, published by the panel
+  /// that built this header, what a key presses one of (I-40). ONE place
+  /// makes them from this header's own fields, so the rows a key presses
+  /// are the rows this header shows.
+  TimelineLegendMenus get menus => TimelineLegendMenus(
+    legend: legend,
+    hiddenSections: hiddenSections,
+    onToggleSection: onToggleSection,
+    rowFilter: rowFilter,
+    marksInUse: marksInUse,
+    kindsInUse: kindsInUse,
+    visibilitySoloEnabled: visibilitySoloEnabled,
+    displayedLayerIds: displayedLayerIds,
+    displayedOnionSkinOn: displayedOnionSkinOn,
+    showRowSolos: showRowSolos,
+  );
 
   // R9 #22: the cell no longer carries its own width — the rail's shared
   // column skeleton sizes it, so a legend icon cannot drift off the
@@ -225,7 +145,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     required String keyValue,
     required String tooltip,
     required Widget child,
-    List<PanelFlyoutEntry> Function()? entriesBuilder,
+    LegendFlyout? entriesBuilder,
   }) {
     final content = Center(child: child);
     // The key stays on the cell whether or not it can open a flyout —
@@ -256,13 +176,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget _buildSectionBand(
-    LayerLegendCallbacks? legend,
+    TimelineLegendMenus menus,
     ColorScheme colorScheme,
   ) {
     return _cell(
       keyValue: 'legend-sections',
       tooltip: AppText.strings.tlSections,
-      entriesBuilder: _sectionEntries,
+      entriesBuilder: menus.sections,
       child: Icon(
         Icons.view_agenda_outlined,
         size: 13,
@@ -271,15 +191,17 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  Widget? _buildLaneToggle(LayerLegendCallbacks? legend, Color restColor) {
+  Widget? _buildLaneToggle(Color restColor) {
     // The lane column's header: fold/unfold EVERY layer's lanes in one tap
     // (R3 feedback #5). The toggle has ONE handler, named once.
     final onToggle = anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes;
     return onExpandAllLanes != null && onCollapseAllLanes != null
         ? AppTooltip(
+            // ↩️Written in English here, in every language, until I-40's
+            // round on the legend found it (10-09).
             message: anyLanesExpanded
-                ? 'Collapse all layers'
-                : 'Expand all layers',
+                ? AppText.strings.tlCollapseAllLayers
+                : AppText.strings.tlExpandAllLayers,
             child: ControlPressClaim(
               onPressed: onToggle,
               child: InkWell(
@@ -298,73 +220,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         : null;
   }
 
-  /// One legend cell whose flyout is BULK OPS then, only where the host
-  /// shows row solos, a divider and the SOLO entries.
-  ///
-  /// The template four cells spell out (timesheet, mark, fill-ref, fx).
-  /// A null [legend] means no flyout at all; a solo half that comes back
-  /// EMPTY takes its divider with it, so a host with row solos on but
-  /// nothing to solo never shows a stray line.
-  ///
-  /// [_buildTypeButton] deliberately calls [_cell] directly instead: its
-  /// whole flyout is solos with no bulk half, so it nulls the builder
-  /// outright — an all-or-nothing law, not this one.
-  Widget _legendFlyoutCell({
-    required String keyValue,
-    required String tooltip,
-    required Widget child,
-    required _LegendFlyout? flyout,
-  }) {
+  Widget _buildTimesheet(TimelineLegendMenus menus, Color restColor) {
     return _cell(
-      keyValue: keyValue,
-      tooltip: tooltip,
-      child: child,
-      entriesBuilder: flyout == null
-          ? null
-          : () {
-              final solos = showRowSolos
-                  ? flyout.solo()
-                  : const <PanelFlyoutEntry>[];
-              return [
-                ...flyout.bulk(),
-                if (solos.isNotEmpty) const PanelFlyoutDivider(),
-                ...solos,
-              ];
-            },
-    );
-  }
-
-  Widget _buildTimesheet(LayerLegendCallbacks? legend, Color restColor) {
-    return _legendFlyoutCell(
       keyValue: 'legend-sheet',
       tooltip: AppText.strings.tlColTimesheet,
-      flyout: legend == null
-          ? null
-          : _LegendFlyout(
-              bulk: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-sheet-all-on',
-                  label: AppText.strings.tlAllOnTimesheet,
-                  icon: Icons.table_chart,
-                  onSelected: legend.onSheetAllOn,
-                ),
-                PanelFlyoutItem(
-                  keyValue: 'legend-sheet-all-off',
-                  label: AppText.strings.tlAllOffTimesheet,
-                  icon: Icons.table_chart_outlined,
-                  onSelected: legend.onSheetAllOff,
-                ),
-              ],
-              solo: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-sheet',
-                  label: AppText.strings.tlSoloSheetOnRows,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.onTimesheetOnly,
-                  onSelected: legend.onToggleSheetOnlyFilter,
-                ),
-              ],
-            ),
+      entriesBuilder: menus.sheet,
       child: _legendIcon(
         Icons.table_chart_outlined,
         restColor: restColor,
@@ -373,16 +233,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildMark(LayerLegendCallbacks? legend, Color restColor) {
-    return _legendFlyoutCell(
+  Widget _buildMark(TimelineLegendMenus menus, Color restColor) {
+    return _cell(
       keyValue: 'legend-mark',
       tooltip: AppText.strings.tlColMark,
-      flyout: legend == null
-          ? null
-          : _LegendFlyout(
-              bulk: () => [_markFilterReset(legend)],
-              solo: () => _markSolos(legend),
-            ),
+      entriesBuilder: menus.mark,
       child: _legendIcon(
         Icons.label_outline,
         restColor: restColor,
@@ -391,76 +246,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  /// 🚨THE FILTER'S OWN WAY BACK, not the labels' eraser
-  /// (clear-all-marks-meaning-Q1, 유저 2026-09-25: 「마크 모두 지우기를 삭제.
-  /// 그리고 마크 필터해제 넣고」). The row that stood here wiped every
-  /// layer's label; beside the solo list it read as 「undo the solo」, and
-  /// pressed that way it erased the project's labels and left the solo in
-  /// place.
-  PanelFlyoutItem _markFilterReset(LayerLegendCallbacks legend) =>
-      PanelFlyoutItem(
-        keyValue: 'legend-mark-filter-clear',
-        label: AppText.strings.tlClearMarkFilter,
-        icon: Icons.filter_alt_off_outlined,
-        enabled: rowFilter.markColors.isNotEmpty,
-        onSelected: legend.onClearMarkFilter,
-      );
-
-  /// The colour solos — 🚨THE MARKS IN USE, not every mark there could be.
-  /// A mark is a 공정/수정 pair now, so «every value» is a product of two
-  /// lists and most of it would never appear in this project — the filter
-  /// was always about what is actually on the rows, and this says so.
-  ///
-  /// Answering EMPTY when nothing is marked is what drops the divider too —
-  /// the old `showRowSolos && marksInUse.isNotEmpty` gate, said once by the
-  /// template.
-  ///
-  /// 🚨AND EVERY MARK THE FILTER HOLDS, in use or not
-  /// (mark-filter-held-after-its-mark-is-gone, 유저 2026-09-25: 「레이아웃만
-  /// 켜고, 다시 돌리려고 마크 모두 지우기 눌렀는데도 초기화안됨」). Clearing
-  /// every label left LO in the filter and gone from this list: every row
-  /// but the standing one hidden, and nothing here to uncheck.
-  List<PanelFlyoutEntry> _markSolos(LayerLegendCallbacks legend) {
-    final listed = {...marksInUse, ...rowFilter.markColors}
-      ..removeWhere((mark) => mark.isNone);
-    return listed.isEmpty
-        ? const []
-        : [
-            PanelFlyoutHeader(AppText.strings.tlSoloColor),
-            for (final mark
-                in listed.toList()
-                  ..sort((a, b) => a.sortKey.compareTo(b.sortKey)))
-              PanelFlyoutItem(
-                keyValue: 'legend-filter-mark-${mark.keySlug}',
-                label: layerMarkDisplayName(mark),
-                checked: rowFilter.markColors.contains(mark),
-                onSelected: () => legend.onToggleMarkFilter(mark),
-              ),
-          ];
-  }
-
-  Widget _buildTypeButton(LayerLegendCallbacks? legend, Color restColor) {
-    // The kinds on the rows AND every kind the filter holds — a kind whose
-    // last row went away stays listed so its solo can still be undone, as
-    // the mark solo's does (mark-filter-held-after-its-mark-is-gone).
-    final listed = {...kindsInUse, ...rowFilter.kinds};
+  Widget _buildTypeButton(TimelineLegendMenus menus, Color restColor) {
     return _cell(
       keyValue: 'legend-kind',
       tooltip: AppText.strings.tlColLayerKind,
-      entriesBuilder: legend == null || listed.isEmpty || !showRowSolos
-          ? null
-          : () => [
-              PanelFlyoutHeader(AppText.strings.tlSoloKind),
-              for (final kind in LayerKind.values)
-                if (listed.contains(kind))
-                  PanelFlyoutItem(
-                    keyValue: 'legend-filter-kind-${kind.name}',
-                    label: layerKindDisplayName(kind),
-                    icon: layerKindIcon(kind),
-                    checked: rowFilter.kinds.contains(kind),
-                    onSelected: () => legend.onToggleKindFilter(kind),
-                  ),
-            ],
+      entriesBuilder: menus.kind,
       child: _legendIcon(
         Icons.interests_outlined,
         restColor: restColor,
@@ -469,31 +259,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildFillReference(LayerLegendCallbacks? legend, Color restColor) {
-    return _legendFlyoutCell(
+  Widget _buildFillReference(TimelineLegendMenus menus, Color restColor) {
+    return _cell(
       keyValue: 'legend-fill-ref',
       tooltip: AppText.strings.tlColFillReference,
-      flyout: legend == null
-          ? null
-          : _LegendFlyout(
-              bulk: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-fill-ref-clear',
-                  label: AppText.strings.tlClearAllFillRefs,
-                  icon: Icons.format_color_reset_outlined,
-                  onSelected: legend.onClearAllFillReferences,
-                ),
-              ],
-              solo: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-fill-ref',
-                  label: AppText.strings.tlSoloFillReferences,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.fillReferenceOnly,
-                  onSelected: legend.onToggleFillReferenceOnlyFilter,
-                ),
-              ],
-            ),
+      entriesBuilder: menus.fillReference,
       child: _legendIcon(
         Icons.format_color_fill,
         restColor: restColor,
@@ -502,35 +272,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildFx(BuildContext context, LayerLegendCallbacks? legend) {
-    return _legendFlyoutCell(
+  Widget _buildFx(BuildContext context, TimelineLegendMenus menus) {
+    return _cell(
       keyValue: 'legend-fx',
       tooltip: AppText.strings.tlColFx,
-      flyout: legend == null
-          ? null
-          : _LegendFlyout(
-              bulk: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-fx-enable-all',
-                  label: AppText.strings.tlApplyAllFx,
-                  onSelected: legend.onEnableAllFx,
-                ),
-                PanelFlyoutItem(
-                  keyValue: 'legend-fx-bypass-all',
-                  label: AppText.strings.tlBypassAllFx,
-                  onSelected: legend.onBypassAllFx,
-                ),
-              ],
-              solo: () => [
-                PanelFlyoutItem(
-                  keyValue: 'legend-filter-fx',
-                  label: AppText.strings.tlSoloFxOnRows,
-                  icon: Icons.center_focus_strong_outlined,
-                  checked: rowFilter.fxOnly,
-                  onSelected: legend.onToggleFxOnlyFilter,
-                ),
-              ],
-            ),
+      entriesBuilder: menus.fx,
       // The shared fx glyph (R28 follow-up) — the column
       // header and the row switches read the same mark.
       child: fxGlyph(context: context, active: rowFilter.fxOnly, fontSize: 11),
@@ -538,7 +284,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget? _buildOnion(
-    LayerLegendCallbacks? legend,
+    TimelineLegendMenus menus,
     bool hasOnion,
     Color restColor,
   ) {
@@ -547,26 +293,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         : _cell(
             keyValue: 'legend-onion',
             tooltip: AppText.strings.tlColOnionSkin,
-            entriesBuilder: legend?.onToggleOnionSkinForDisplayed == null
-                ? null
-                : () => [
-                    PanelFlyoutItem(
-                      keyValue: 'legend-onion-toggle-displayed',
-                      label: displayedOnionSkinOn
-                          ? 'Clear onion on displayed layers'
-                          : 'Apply onion to displayed layers',
-                      icon: Icons.filter_none,
-                      checked: displayedOnionSkinOn,
-                      onSelected: legend!.onToggleOnionSkinForDisplayed,
-                    ),
-                    if (legend.onRevealOnionSkinPanel != null)
-                      PanelFlyoutItem(
-                        keyValue: 'legend-onion-open-panel',
-                        label: AppText.strings.tlOpenOnionPanel,
-                        icon: Icons.open_in_new,
-                        onSelected: legend.onRevealOnionSkinPanel,
-                      ),
-                  ],
+            entriesBuilder: menus.onion,
             child: _legendIcon(
               Icons.filter_none,
               restColor: restColor,
@@ -575,35 +302,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
           );
   }
 
-  Widget _buildVisibility(LayerLegendCallbacks? legend, Color restColor) {
+  Widget _buildVisibility(TimelineLegendMenus menus, Color restColor) {
     return _cell(
       keyValue: 'legend-eye',
       tooltip: AppText.strings.tlColVisibility,
-      entriesBuilder: legend == null
-          ? null
-          : () => [
-              PanelFlyoutItem(
-                keyValue: 'legend-eye-show-all',
-                label: AppText.strings.tlShowAll,
-                icon: Icons.visibility,
-                onSelected: legend.onShowAllLayers,
-              ),
-              PanelFlyoutItem(
-                keyValue: 'legend-eye-hide-all',
-                label: AppText.strings.tlHideAll,
-                icon: Icons.visibility_off,
-                onSelected: legend.onHideAllLayers,
-              ),
-              PanelFlyoutItem(
-                keyValue: 'legend-eye-solo',
-                // The registry's name: `=` presses this item (I-19).
-                label: editorActionLabel(EditorActionIds.layerVisibilitySolo),
-                shortcuts: const [EditorActionIds.layerVisibilitySolo],
-                icon: Icons.center_focus_strong_outlined,
-                checked: visibilitySoloEnabled,
-                onSelected: legend.onToggleVisibilitySolo,
-              ),
-            ],
+      entriesBuilder: menus.visibility,
       child: _legendIcon(
         Icons.visibility_outlined,
         restColor: restColor,
@@ -619,7 +322,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         ? null
         : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe);
     return AppTooltip(
-      message: allSeMuted ? 'Unmute all SE' : 'Mute all SE',
+      // ↩️Written in English here, in every language, until I-40's round on
+      // the legend found it (10-09).
+      message: allSeMuted
+          ? AppText.strings.tlUnmuteAllSe
+          : AppText.strings.tlMuteAllSe,
       child: ControlPressClaim(
         onPressed: toggle,
         child: InkWell(
@@ -671,7 +378,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }
 
   Widget? _buildBlend(
-    LayerLegendCallbacks? legend,
+    TimelineLegendMenus menus,
     bool hasBlend,
     ColorScheme colorScheme,
   ) {
@@ -680,27 +387,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         : _cell(
             keyValue: 'legend-blend',
             tooltip: AppText.strings.tlColBlendMode,
-            entriesBuilder:
-                legend?.onSetBlendModeForDisplayed == null ||
-                    displayedLayerIds == null
-                ? null
-                : () => [
-                    PanelFlyoutHeader(AppText.strings.tlAllDisplayedLayers),
-                    // The bulk set writes DRAWING rows;
-                    // pass-through is a group-only answer,
-                    // so it never appears here.
-                    for (final mode in LayerBlendMode.optionsFor(
-                      isGroup: false,
-                    ))
-                      PanelFlyoutItem(
-                        keyValue: 'legend-blend-${mode.name}',
-                        label: mode.labelFor(AppText.language),
-                        onSelected: () => legend!.onSetBlendModeForDisplayed!(
-                          displayedLayerIds!(),
-                          mode,
-                        ),
-                      ),
-                  ],
+            entriesBuilder: menus.blend,
             child: _columnHeading('BLND', colorScheme, axis),
           );
   }
@@ -717,6 +404,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final legend = this.legend;
+    final menus = this.menus;
 
     final restColor = colorScheme.onSurfaceVariant;
 
@@ -783,13 +471,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     axis: axis,
                     // Over the rows' inline section band (UI-R5/R6 #5):
                     // the sections flyout.
-                    sectionBand: _buildSectionBand(legend, colorScheme),
-                    laneToggle: _buildLaneToggle(legend, restColor),
-                    timesheet: _buildTimesheet(legend, restColor),
-                    mark: _buildMark(legend, restColor),
+                    sectionBand: _buildSectionBand(menus, colorScheme),
+                    laneToggle: _buildLaneToggle(restColor),
+                    timesheet: _buildTimesheet(menus, restColor),
+                    mark: _buildMark(menus, restColor),
                     // Kind-solo flyout over the rows' TYPE BUTTON column
                     // (R4 #8): solo one layer TYPE like the mark colors.
-                    typeButton: _buildTypeButton(legend, restColor),
+                    typeButton: _buildTypeButton(menus, restColor),
                   ),
                   // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
                   // moved to the command bar (add) and the lane-column
@@ -831,8 +519,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ...layerRailTrailingCells(
                     axis: axis,
                     columns: metrics.railColumns,
-                    fillReference: _buildFillReference(legend, restColor),
-                    fx: _buildFx(context, legend),
+                    fillReference: _buildFillReference(menus, restColor),
+                    fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
                     // displayed layers + the panel reveal. Hosts without
                     // the callback (storyboard rail) skip the COLUMN so
@@ -844,8 +532,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // onion but which passes no legend bulk commands —
                     // reserved the slot and left it blank: the one column
                     // on that surface with no heading over it.
-                    onion: _buildOnion(legend, hasOnion, restColor),
-                    visibility: _buildVisibility(legend, restColor),
+                    onion: _buildOnion(menus, hasOnion, restColor),
+                    visibility: _buildVisibility(menus, restColor),
                     // The mute cell is a DIRECT all-SE toggle (R3 feedback
                     // #10): one tap mutes/unmutes every SE row, colored by
                     // the muted state — no flyout.
@@ -874,7 +562,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     hasBlendColumn: hasBlend,
                     // Heading follows the COLUMN, flyout follows the bulk
                     // callback — see the onion cell above.
-                    blend: _buildBlend(legend, hasBlend, colorScheme),
+                    blend: _buildBlend(menus, hasBlend, colorScheme),
                   ),
                 ],
               ),
@@ -916,21 +604,4 @@ class TimelineLayerControlsHeader extends StatelessWidget {
             ),
           );
   }
-}
-
-/// One legend cell's flyout halves, both LAZY: the entries are built when
-/// the list opens, not when the header builds.
-///
-/// A value rather than two more parameters on the cell, and it exists only
-/// where the legend does — the callbacks are already captured, so the cell
-/// never asks again whether it has a legend.
-class _LegendFlyout {
-  const _LegendFlyout({required this.bulk, required this.solo});
-
-  /// The bulk ops — always shown.
-  final List<PanelFlyoutEntry> Function() bulk;
-
-  /// The row SOLOS — shown only where the host filters rows, and an EMPTY
-  /// answer takes the divider with it.
-  final List<PanelFlyoutEntry> Function() solo;
 }

@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_legend_callbacks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 

@@ -5,8 +5,10 @@ import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/export_format_selection.dart' show ExportStillFormat;
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show EffectKind;
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
@@ -16,7 +18,12 @@ import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
 import '../text/model_vocabulary.dart'
-    show BrushBlendModeWords, EffectKindWords, LayerKindWords;
+    show
+        BrushBlendModeWords,
+        EffectKindWords,
+        LayerBlendModeWords,
+        LayerKindWords,
+        LayerMarkWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
 
 /// The single shortcut intent: every editor action dispatches through ONE
@@ -363,6 +370,141 @@ List<EditorActionDefinition> _addEffectActions() => [
 ];
 
 String addEffectActionId(EffectKind kind) => 'effect-add-${kind.jsonValue}';
+
+/// The rail legend's rows as actions — every row the columns' flyouts can
+/// show (`TimelineLegendMenus`), on the timeline's rail and the
+/// storyboard's, pressed on the panel being worked in.
+///
+/// 🗣️I-40 (유저 2026-09-18 · I-40-Q1 10-08): the editing screen's command
+/// buttons and menu rows. A row is named by its own words where they say
+/// what it does (「SE 행 표시」 · 「마크 필터 해제」); where they need their
+/// column to be understood, the column comes first — 「표시 열: 모두
+/// 표시」 — as an add-layer row's kind comes after its menu's name.
+abstract final class RailLegendActionIds {
+  static const sectionSe = 'rail-section-se';
+  static const sectionCamera = 'rail-section-camera';
+  static const sheetAllOn = 'rail-sheet-all-on';
+  static const sheetAllOff = 'rail-sheet-all-off';
+  static const soloSheet = 'rail-solo-sheet';
+  static const markFilterClear = 'rail-mark-filter-clear';
+  static const fillReferenceClear = 'rail-fill-reference-clear';
+  static const soloFillReference = 'rail-solo-fill-reference';
+  static const fxEnableAll = 'rail-fx-enable-all';
+  static const fxBypassAll = 'rail-fx-bypass-all';
+  static const soloFx = 'rail-solo-fx';
+  static const onionOnDisplayed = 'rail-onion-on-displayed';
+  static const onionOpenPanel = 'rail-onion-open-panel';
+  static const eyeShowAll = 'rail-eye-show-all';
+  static const eyeHideAll = 'rail-eye-hide-all';
+}
+
+/// A colour solo's action: one per label there can be, though the column
+/// lists only the labels on the rows (and the ones the filter holds).
+String railSoloMarkActionId(LayerMark mark) =>
+    'rail-solo-mark-${mark.keySlug}';
+
+/// A kind solo's action: one per kind.
+String railSoloKindActionId(LayerKind kind) => 'rail-solo-kind-${kind.name}';
+
+/// The blend column's sweep to [mode] — one per mode it offers.
+String railBlendActionId(LayerBlendMode mode) => 'rail-blend-${mode.name}';
+
+/// The modes the blend column's sweep offers — its rows and their actions
+/// are both made from this list. The sweep writes drawing rows; pass-through
+/// is a group's answer alone.
+final List<LayerBlendMode> railBlendModes = LayerBlendMode.optionsFor(
+  isGroup: false,
+);
+
+EditorActionDefinition _railLegendAction(
+  String id,
+  String Function(AppLanguage language) name,
+) => EditorActionDefinition.composed(
+  id: id,
+  name: name,
+  category: 'Layer Header',
+  defaultActivators: const [],
+  menuRow: true,
+);
+
+List<EditorActionDefinition> _railLegendActions() {
+  AppStrings s(AppLanguage language) => AppStrings.of(language);
+  return [
+    _railLegendAction(
+      RailLegendActionIds.sectionSe,
+      (l) => s(l).tlShowSeRows,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.sectionCamera,
+      (l) => s(l).tlShowCameraRows,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.sheetAllOn,
+      (l) => s(l).tlAllOnTimesheet,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.sheetAllOff,
+      (l) => s(l).tlAllOffTimesheet,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.soloSheet,
+      (l) => s(l).tlSoloSheetOnRows,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.markFilterClear,
+      (l) => s(l).tlClearMarkFilter,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.fillReferenceClear,
+      (l) => s(l).tlClearAllFillRefs,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.soloFillReference,
+      (l) => s(l).tlSoloFillReferences,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.fxEnableAll,
+      (l) => s(l).tlApplyAllFx,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.fxBypassAll,
+      (l) => s(l).tlBypassAllFx,
+    ),
+    _railLegendAction(RailLegendActionIds.soloFx, (l) => s(l).tlSoloFxOnRows),
+    _railLegendAction(
+      RailLegendActionIds.onionOnDisplayed,
+      (l) => s(l).tlOnionOnDisplayedToggle,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.onionOpenPanel,
+      (l) => s(l).tlOpenOnionPanel,
+    ),
+    _railLegendAction(
+      RailLegendActionIds.eyeShowAll,
+      (l) => '${s(l).tlColVisibility}: ${s(l).tlShowAll}',
+    ),
+    _railLegendAction(
+      RailLegendActionIds.eyeHideAll,
+      (l) => '${s(l).tlColVisibility}: ${s(l).tlHideAll}',
+    ),
+    for (final mark in everyLayerMark())
+      if (!mark.isNone)
+        _railLegendAction(
+          railSoloMarkActionId(mark),
+          (l) => '${s(l).tlSoloColor}: ${mark.labelFor(l)}',
+        ),
+    for (final kind in LayerKind.values)
+      _railLegendAction(
+        railSoloKindActionId(kind),
+        (l) => '${s(l).tlSoloKind}: ${kind.labelFor(l)}',
+      ),
+    for (final mode in railBlendModes)
+      _railLegendAction(
+        railBlendActionId(mode),
+        (l) => '${s(l).tlAllDisplayedLayers}: ${mode.labelFor(l)}',
+      ),
+  ];
+}
 
 String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
     AppStrings.of(
@@ -1413,6 +1555,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // The fx pill's rows, after the frame pill's — the bar's order.
   ..._addEffectActions(),
+  // The rail legend's rows, under the bar: its columns from left to right.
+  ..._railLegendActions(),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
   // nothing and is no action; the rows under it are.

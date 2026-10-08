@@ -149,7 +149,7 @@ class _LayerGridRailRows {
     );
     final cached = _state._legendHeaderMemo;
     if (cached != null && cached.inputs == inputs) {
-      return cached.header;
+      return _published(cached.header);
     }
     final header = TimelineLayerControlsHeader(
       metrics: _state._metrics,
@@ -175,6 +175,15 @@ class _LayerGridRailRows {
           : _state._lanes._collapseAllLanes,
     );
     _state._legendHeaderMemo = (inputs: inputs, header: header);
+    return _published(header);
+  }
+
+  /// [header], its menus handed to whoever presses its rows by key (I-40):
+  /// the very menus it opens, counted on this grid's rows.
+  TimelineLayerControlsHeader _published(TimelineLayerControlsHeader header) {
+    _state.widget.onLegendMenus?.call(
+      header.legend == null ? null : header.menus,
+    );
     return header;
   }
 

@@ -42,6 +42,7 @@ import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
+import 'timeline_legend_menus.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import '../widgets/empty_state_text.dart';
 import '../input/pen_friendly_scroll_controller.dart';
@@ -82,6 +83,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.metrics = TimelineGridMetrics.defaults,
     this.onToggleSection,
     this.legend,
+    this.onLegendMenus,
     this.visibilitySoloEnabled = false,
     this.masterOpacityValue = 1.0,
   });
@@ -124,6 +126,10 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// The rail legend's bulk commands; null renders a display-only legend.
   final LayerLegendCallbacks? legend;
+
+  /// Told the menus the legend header opens each time it is built, and null
+  /// when the grid goes — what a key presses one of (I-40, `RailLegends`).
+  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -179,7 +185,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The legend header's memo — same idea, token-gated (R13-2): the
   /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible
   /// fact changes, never on zoom steps.
-  ({_LegendMemoInputs inputs, Widget header})? _legendHeaderMemo;
+  ({_LegendMemoInputs inputs, TimelineLayerControlsHeader header})?
+  _legendHeaderMemo;
 
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
@@ -374,6 +381,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
+    widget.onLegendMenus?.call(null);
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.hooks.frameCursor.removeListener(_handlePlaybackPage);
     _frameAxis.dispose();

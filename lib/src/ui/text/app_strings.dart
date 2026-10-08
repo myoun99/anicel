@@ -1637,6 +1637,13 @@ enum AppStrings {
   String get tlColFillReference => _s('tlColFillReference');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
+  String get tlApplyOnionToDisplayed => _s('tlApplyOnionToDisplayed');
+  String get tlClearOnionOnDisplayed => _s('tlClearOnionOnDisplayed');
+  String get tlOnionOnDisplayedToggle => _s('tlOnionOnDisplayedToggle');
+  String get tlCollapseAllLayers => _s('tlCollapseAllLayers');
+  String get tlExpandAllLayers => _s('tlExpandAllLayers');
+  String get tlMuteAllSe => _s('tlMuteAllSe');
+  String get tlUnmuteAllSe => _s('tlUnmuteAllSe');
 
   // The rail row's controls (rail-subject-tooltips): one whole sentence per
   // control, state and row. ⛔Never a noun slotted into a template — French
@@ -2685,6 +2692,13 @@ enum AppStrings {
     'tlColFillReference': 'Fill reference column',
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
+    'tlApplyOnionToDisplayed': 'Apply onion skin to displayed layers',
+    'tlClearOnionOnDisplayed': 'Clear onion skin on displayed layers',
+    'tlOnionOnDisplayedToggle': 'Onion skin on displayed layers (on/off)',
+    'tlCollapseAllLayers': 'Collapse all layers',
+    'tlExpandAllLayers': 'Expand all layers',
+    'tlMuteAllSe': 'Mute all SE',
+    'tlUnmuteAllSe': 'Unmute all SE',
     'railLayerBlendMode': 'Layer blend mode',
     'railFolderBlendMode': 'Folder blend mode',
     'railHideLayer': 'Hide layer',
@@ -3275,6 +3289,7 @@ enum AppStrings {
     'shortcutCategory.Settings': '設定',
     'shortcutCategory.Debug': 'デバッグ',
     'shortcutCategory.Panels': 'パネル',
+    'shortcutCategory.Layer Header': 'レイヤーヘッダー',
     'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutAction.frame-previous': '前のフレーム',
     'shortcutAction.frame-next': '次のフレーム',
@@ -4041,6 +4056,13 @@ enum AppStrings {
     'tlColFillReference': '塗り参照列',
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
+    'tlApplyOnionToDisplayed': '表示中のレイヤーにオニオンスキンを適用',
+    'tlClearOnionOnDisplayed': '表示中のレイヤーのオニオンスキンを解除',
+    'tlOnionOnDisplayedToggle': '表示中のレイヤーのオニオンスキン(オン/オフ)',
+    'tlCollapseAllLayers': 'すべてのレイヤーを折りたたむ',
+    'tlExpandAllLayers': 'すべてのレイヤーを展開',
+    'tlMuteAllSe': 'SEをすべてミュート',
+    'tlUnmuteAllSe': 'SEのミュートをすべて解除',
     'railLayerBlendMode': 'レイヤーの合成モード',
     'railFolderBlendMode': 'フォルダーの合成モード',
     'railHideLayer': 'レイヤーを隠す',
@@ -4669,6 +4691,7 @@ enum AppStrings {
     'shortcutCategory.Settings': '설정',
     'shortcutCategory.Debug': '디버그',
     'shortcutCategory.Panels': '패널',
+    'shortcutCategory.Layer Header': '레이어 머리',
     'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutAction.frame-previous': '이전 프레임',
     'shortcutAction.frame-next': '다음 프레임',
@@ -5428,6 +5451,13 @@ enum AppStrings {
     'tlColFillReference': '채색 참조 열',
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
+    'tlApplyOnionToDisplayed': '표시 중인 레이어에 어니언 스킨 적용',
+    'tlClearOnionOnDisplayed': '표시 중인 레이어의 어니언 스킨 해제',
+    'tlOnionOnDisplayedToggle': '표시 중인 레이어의 어니언 스킨 켜기/끄기',
+    'tlCollapseAllLayers': '모든 레이어 접기',
+    'tlExpandAllLayers': '모든 레이어 펼치기',
+    'tlMuteAllSe': 'SE 모두 음소거',
+    'tlUnmuteAllSe': 'SE 모두 음소거 해제',
     'railLayerBlendMode': '레이어 블렌드 모드',
     'railFolderBlendMode': '폴더 블렌드 모드',
     'railHideLayer': '레이어 숨기기',
@@ -6095,6 +6125,7 @@ enum AppStrings {
     'shortcutCategory.Settings': 'Réglages',
     'shortcutCategory.Debug': 'Débogage',
     'shortcutCategory.Panels': 'Panneaux',
+    'shortcutCategory.Layer Header': 'En-tête des calques',
     'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutAction.frame-previous': 'Image précédente',
     'shortcutAction.frame-next': 'Image suivante',
@@ -6935,6 +6966,13 @@ enum AppStrings {
     'tlColFillReference': 'Colonne référence de remplissage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
+    'tlApplyOnionToDisplayed': "Appliquer la pelure d'oignon aux calques affichés",
+    'tlClearOnionOnDisplayed': "Retirer la pelure d'oignon des calques affichés",
+    'tlOnionOnDisplayedToggle': "Pelure d'oignon des calques affichés (activer/désactiver)",
+    'tlCollapseAllLayers': 'Replier tous les calques',
+    'tlExpandAllLayers': 'Déplier tous les calques',
+    'tlMuteAllSe': 'Couper tous les SE',
+    'tlUnmuteAllSe': 'Rétablir tous les SE',
     'railLayerBlendMode': 'Mode de fusion du calque',
     'railFolderBlendMode': 'Mode de fusion du dossier',
     'railHideLayer': 'Masquer le calque',
@@ -7519,6 +7557,7 @@ enum AppStrings {
     'shortcutCategory.Settings': '设置',
     'shortcutCategory.Debug': '调试',
     'shortcutCategory.Panels': '面板',
+    'shortcutCategory.Layer Header': '图层表头',
     'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutAction.frame-previous': '上一帧',
     'shortcutAction.frame-next': '下一帧',
@@ -8265,6 +8304,13 @@ enum AppStrings {
     'tlColFillReference': '填充参考列',
     'tlColTimesheet': '摄影表列',
     'tlOpenOnionPanel': '打开洋葱皮面板',
+    'tlApplyOnionToDisplayed': '对显示的图层应用洋葱皮',
+    'tlClearOnionOnDisplayed': '清除显示图层的洋葱皮',
+    'tlOnionOnDisplayedToggle': '显示图层的洋葱皮(开/关)',
+    'tlCollapseAllLayers': '折叠所有图层',
+    'tlExpandAllLayers': '展开所有图层',
+    'tlMuteAllSe': '静音全部 SE',
+    'tlUnmuteAllSe': '取消全部 SE 静音',
     'railLayerBlendMode': '图层混合模式',
     'railFolderBlendMode': '文件夹混合模式',
     'railHideLayer': '隐藏图层',

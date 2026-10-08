@@ -922,8 +922,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
     // a row of a menu is pressed AS the row: built the way its menu builds
     // it, and pressed only where the menu would let it be. The rows are the
-    // top strip's and the timeline bar's, the bar's built for the panel
-    // being worked in — as every key on that bar speaks to it.
+    // top strip's, the timeline bar's and the rail legend's — the bar's and
+    // the legend's those of the panel being worked in, as every key on them
+    // speaks to it.
     if (definition?.menuRow ?? false) {
       pressFlyoutRow([
         ..._topStrip().menuRows(context),
@@ -931,6 +932,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           session: _session,
           panel: _workingPanel,
         ).rows(context),
+        // The rail legend's, as that panel's header opens them — counted
+        // on the rows it shows (RailLegends).
+        ..._session.railLegends.rowsOf(_session.workingPanel),
       ], actionId);
       return;
     }

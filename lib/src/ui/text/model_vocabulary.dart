@@ -3,6 +3,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
@@ -66,6 +67,26 @@ extension LayerKindWords on LayerKind {
       LayerKind.folder => strings.tlKindFolder,
       LayerKind.adjustment => strings.tlKindAdjustment,
     };
+  }
+}
+
+/// A colour label's unabbreviated reading — its stage, and its correction
+/// after it — empty for no label. `layerMarkLabel` asks here in the
+/// program's language; a key's name asks in the language it is shown in
+/// (I-40: the legend's colour solos as actions).
+extension LayerMarkWords on LayerMark {
+  String labelFor(AppLanguage language) {
+    final stage = process;
+    if (stage == null) {
+      return '';
+    }
+    final strings = AppStrings.of(language);
+    final name = strings.layerProcessName(stage.jsonValue, stage.displayName);
+    final correction = revise;
+    return correction == null
+        ? name
+        : '$name '
+              '${strings.layerReviseName(correction.jsonValue, correction.displayName)}';
   }
 }
 

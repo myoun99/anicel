@@ -174,6 +174,7 @@ import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
+import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
@@ -614,6 +615,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditConteBlock,
     this.dragPreview,
     this.legend,
+    this.onLegendMenus,
     this.rowFilter = TimelineRowFilter.none,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -1158,6 +1160,10 @@ class StoryboardPanel extends StatefulWidget {
   /// through the same session hooks. Null renders a display-only legend.
   final LayerLegendCallbacks? legend;
 
+  /// Told the menus the legend header opens each time it is built, and
+  /// null when the panel goes — what a key presses one of (I-40).
+  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
+
   /// The legend's row filter (R5 #9 — "있는거면 다 달아서 통일").
   ///
   /// Judged FACET BY FACET, not row kind by row kind: a chip hides only
@@ -1558,6 +1564,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
+    widget.onLegendMenus?.call(null);
     widget.rowsChannel?.unbind(this);
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
@@ -1640,6 +1647,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       }
     }
     return const [];
+  }
+
+  /// [header], its menus handed to whoever presses its rows by key (I-40):
+  /// the very menus it opens, counted on this panel's rows.
+  TimelineLayerControlsHeader _publishedLegend(
+    TimelineLayerControlsHeader header,
+  ) {
+    widget.onLegendMenus?.call(header.legend == null ? null : header.menus);
+    return header;
   }
 
   Set<LayerMark> _legendMarksInUse() => {
@@ -2310,7 +2326,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           availableExtent: frame.availableRailWidth,
           child: SizedBox(
             width: _naturalRailWidth,
-            child: TimelineLayerControlsHeader(
+            child: _publishedLegend(TimelineLayerControlsHeader(
               // The storyboard rail states its OWN width, which
               // today is the same number as the timeline's and is
               // deliberately not the same constant (see
@@ -2360,7 +2376,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               onCollapseAllLanes: _railRows.hasLaneTwirls
                   ? _railRows.collapseAllLanes
                   : null,
-            ),
+            )),
           ),
         ),
         const SizedBox(width: LayerRailSplitter.thickness),

@@ -35,7 +35,8 @@ import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
-import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline_legend_menus.dart'
+    show LayerLegendCallbacks, TimelineLegendMenus;
 import 'timeline_row_filter.dart';
 import 'memo_token.dart' show Kept, keptWhileSame;
 import 'timeline_view_cluster.dart';
@@ -136,6 +137,7 @@ class TimelinePanel extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
+    this.onLegendMenus,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
@@ -526,6 +528,9 @@ class TimelinePanel extends StatefulWidget {
   /// The rail legend's bulk commands (horizontal timeline only).
   final LayerLegendCallbacks? legend;
 
+  /// Told the menus the legend header opens, for a key (I-40) — the grid's.
+  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
+
   /// The rail's row filter and its editor (R2); shared by both orientations.
   final TimelineRowFilter rowFilter;
   final ValueChanged<TimelineRowFilter>? onSetRowFilter;
@@ -770,6 +775,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       metrics: horizontalMetrics,
                       onToggleSection: widget.onToggleSection,
                       legend: widget.legend,
+                      onLegendMenus: widget.onLegendMenus,
                       visibilitySoloEnabled: widget.visibilitySoloEnabled,
                       masterOpacityValue: widget.masterOpacityValue,
                     )

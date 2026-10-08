@@ -1708,16 +1708,7 @@ String layerReviseAbbrev(LayerRevise revise) =>
 );
 
 /// The unabbreviated reading — tooltips and the flyout.
-String layerMarkLabel(LayerMark mark) {
-  final stage = mark.process;
-  if (stage == null) {
-    return '';
-  }
-  final correction = mark.revise;
-  return correction == null
-      ? layerProcessLabel(stage)
-      : '${layerProcessLabel(stage)} ${layerReviseLabel(correction)}';
-}
+String layerMarkLabel(LayerMark mark) => mark.labelFor(AppText.language);
 
 /// A REFERENCE row's button: the file glyph that opens the row's reference
 /// popover (유저 2026-09-11, 미디어 배치 라운드 3~5 — 「아이콘만(이름은

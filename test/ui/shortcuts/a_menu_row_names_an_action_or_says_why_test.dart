@@ -82,45 +82,6 @@ const ledger = <String, Why>{
           "'layer-mark-option-\${process.jsonValue}' : "
           "'layer-mark-stage-\${process.jsonValue}'":
       Why.aChoice,
-  "timeline/timeline_layer_controls_header.dart | 'legend-blend-\${mode.name}'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-eye-hide-all'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-eye-show-all'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-fill-ref-clear'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-filter-fill-ref'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-filter-fx'":
-      Why.owed,
-  'timeline/timeline_layer_controls_header.dart | '
-          "'legend-filter-kind-\${kind.name}'":
-      Why.owed,
-  'timeline/timeline_layer_controls_header.dart | '
-          "'legend-filter-mark-\${mark.keySlug}'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-filter-sheet'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-fx-bypass-all'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-fx-enable-all'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-mark-filter-clear'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-onion-open-panel'":
-      Why.owed,
-  'timeline/timeline_layer_controls_header.dart | '
-          "'legend-onion-toggle-displayed'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-section-camera'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-section-se'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-sheet-all-off'":
-      Why.owed,
-  "timeline/timeline_layer_controls_header.dart | 'legend-sheet-all-on'":
-      Why.owed,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-hold'": Why.aChoice,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-none'": Why.aChoice,
   "timeline/timeline_row_edit_chrome.dart | 'run-edge-mode-repeat'":

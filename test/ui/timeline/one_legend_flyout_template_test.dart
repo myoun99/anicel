@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 
 /// **ONE LEGEND FLYOUT TEMPLATE.**
 ///

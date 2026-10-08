@@ -4,7 +4,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../editor_session_manager.dart';
-import '../timeline/timeline_layer_controls_header.dart'
+import '../timeline/timeline_legend_menus.dart'
     show LayerLegendCallbacks;
 import '../timeline/timeline_row_filter.dart';
 

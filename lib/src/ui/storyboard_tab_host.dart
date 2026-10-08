@@ -1046,6 +1046,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // row solos stand down (the storyboard rail is track-global,
                     // no row filter here).
                     visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
+                    // What its legend opens, for a key on this panel (I-40).
+                    onLegendMenus: (menus) => _session.railLegends.publish(
+                      WorkingPanel.storyboard,
+                      menus,
+                    ),
                     legend: sessionLegendCallbacks(
                       _session,
                       rowFilter: widget.rowFilter,
