@@ -142,6 +142,15 @@ void main() {
     // 🗣️유저 2026-09-13 (I-19-menu-keys, 1번): 「중간에 점 두는게아니라 저장
     // Ctrl+S 이런식으로. 단축키 텍스트는 흐린색. 단축키 텍스트 오른쪽정렬」.
     await _pumpApp(tester);
+    // Save As and its Ctrl+Shift+S are one level in since backlog-21-Q1, so
+    // this menu's second, longer key is one recorded here.
+    tester
+        .widget<EditorShortcutScope>(find.byType(EditorShortcutScope))
+        .notifier!
+        .setActivators(EditorActionIds.fileNew, const [
+          SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true),
+        ]);
+    await tester.pumpAndSettle();
     await tester.tap(_button('top-strip-project-button'));
     await tester.pumpAndSettle();
 
@@ -161,7 +170,7 @@ void main() {
       greaterThan(tester.getTopRight(inRow('file-save', find.text('Save'))).dx),
       reason: 'after the label — 「저장 Ctrl+S」, no dot leaders between',
     );
-    final longer = inRow('file-save-as', find.text('Ctrl+Shift+S'));
+    final longer = inRow('file-new', find.text('Ctrl+Shift+N'));
     expect(
       tester.getTopRight(keys).dx,
       tester.getTopRight(longer).dx,

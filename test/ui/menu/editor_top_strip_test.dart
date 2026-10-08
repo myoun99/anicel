@@ -77,12 +77,22 @@ void main() {
     await pumpHome(tester);
     await openStrip(tester, 'top-strip-project-button');
 
-    for (final slot in ['file-open', 'file-save', 'file-save-as']) {
+    for (final slot in ['file-open', 'file-save']) {
       final item = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
         find.byKey(ValueKey<String>('menu-$slot')),
       );
       expect(item.enabled, isTrue, reason: '$slot is live since P3');
     }
+    // Save As is one level in since backlog-21-Q1: its door takes no tap of
+    // its own, as no door does, and the project's row behind it is live.
+    final rows = tester
+        .widget<EditorTopStrip>(find.byType(EditorTopStrip))
+        .menuRows(tester.element(find.byType(EditorTopStrip)));
+    expect(
+      rows.singleWhere((row) => row.keyValue == 'menu-file-save-as').enabled,
+      isTrue,
+      reason: 'file-save-as is live since P3',
+    );
 
     // Export used to be its own icon in the strip; it is a once-a-session
     // verb, so it lives behind the same button as saving now.
