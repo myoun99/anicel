@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../helpers/temp_dir.dart';
+import '../services/abr_test_builder.dart';
 
 const _ink = BrushGroupId('ink');
 const _paint = BrushGroupId('paint');
@@ -114,6 +115,47 @@ void main() {
         ko.brImportPickFailed('Bad state: no dialog'),
       );
       expect(await garbled.importFromFile(), ko.brImportUnreadable);
+    });
+
+    test('a file that lands with warnings says so in the program language — '
+        'its brushes counted, and how many said something', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final ko = AppStrings.of(AppLanguage.ko);
+      // Two tips: one at 8 bits, and one at 16 the decoder skips with a
+      // warning.
+      final samp = AbrBytes();
+      writeSampEntry(
+        samp,
+        uuid: 'deep-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(8, 1),
+        depth: 16,
+      );
+      writeSampEntry(
+        samp,
+        uuid: 'ok-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(4, 9),
+      );
+      final file = AbrBytes()
+        ..i16(6)
+        ..i16(2);
+      write8bimSection(file, 'samp', samp.bytes);
+      final library = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async => (name: 'pack.abr', bytes: file.bytes),
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        await library.importFromFile(),
+        ko.brImportWarnings(ko.brImported(1, 'pack.abr'), 1),
+      );
     });
 
     test('a cancelled pick is nothing, not an error', () async {

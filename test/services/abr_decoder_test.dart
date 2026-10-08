@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,128 +7,11 @@ import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 import 'package:anicel/src/services/abr/abr_decoder.dart';
 import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 
-/// Big-endian byte builder mirroring the ABR/descriptor wire format, used
-/// to construct synthetic fixture files.
-class _AbrBytes {
-  final BytesBuilder _builder = BytesBuilder();
-
-  Uint8List get bytes => _builder.toBytes();
-  int get length => _builder.length;
-
-  void u8(int value) => _builder.addByte(value & 0xFF);
-
-  void i16(int value) {
-    u8(value >> 8);
-    u8(value);
-  }
-
-  void i32(int value) {
-    u8(value >> 24);
-    u8(value >> 16);
-    u8(value >> 8);
-    u8(value);
-  }
-
-  void f64(double value) {
-    final data = ByteData(8)..setFloat64(0, value);
-    _builder.add(data.buffer.asUint8List());
-  }
-
-  void asciiChars(String value) => _builder.add(ascii.encode(value));
-
-  void raw(List<int> value) => _builder.add(value);
-
-  void pascal(String value) {
-    u8(value.length);
-    asciiChars(value);
-  }
-
-  /// Descriptor key/classID: zero length means four characters.
-  void key(String value) {
-    if (value.length == 4) {
-      i32(0);
-    } else {
-      i32(value.length);
-    }
-    asciiChars(value);
-  }
-
-  /// Photoshop unicode string with a trailing NUL, as Photoshop writes.
-  void unicode(String value) {
-    i32(value.length + 1);
-    for (final unit in value.codeUnits) {
-      i16(unit);
-    }
-    i16(0);
-  }
-
-  void untf(String unit, double value) {
-    asciiChars('UntF');
-    asciiChars(unit);
-    f64(value);
-  }
-
-  void text(String value) {
-    asciiChars('TEXT');
-    unicode(value);
-  }
-}
-
-/// One samp-section entry (subversion 2 layout: 301-byte preamble).
-void _writeSampEntry(
-  _AbrBytes samp, {
-  required String uuid,
-  required int width,
-  required int height,
-  required List<int> pixels,
-  bool rle = false,
-  int depth = 8,
-}) {
-  final entry = _AbrBytes();
-  entry.pascal(uuid);
-  // Pad the preamble (key + coordinates + unknown) out to 301 bytes.
-  entry.raw(List<int>.filled(301 - 1 - uuid.length, 0));
-  entry.i32(0); // top
-  entry.i32(0); // left
-  entry.i32(height); // bottom
-  entry.i32(width); // right
-  entry.i16(depth);
-  entry.u8(rle ? 1 : 0);
-  if (rle) {
-    final rows = <List<int>>[];
-    for (var y = 0; y < height; y += 1) {
-      final row = pixels.sublist(y * width, (y + 1) * width);
-      // Naive PackBits: encode the whole row as one literal chunk.
-      rows.add([row.length - 1, ...row]);
-    }
-    for (final row in rows) {
-      entry.i16(row.length);
-    }
-    for (final row in rows) {
-      entry.raw(row);
-    }
-  } else {
-    entry.raw(pixels);
-  }
-
-  final entryBytes = entry.bytes;
-  samp.i32(entryBytes.length);
-  samp.raw(entryBytes);
-  // Entries are padded to four-byte boundaries.
-  final padding = (4 - entryBytes.length % 4) % 4;
-  samp.raw(List<int>.filled(padding, 0));
-}
-
-void _write8bimSection(_AbrBytes file, String tag, Uint8List payload) {
-  file.asciiChars('8BIM');
-  file.asciiChars(tag);
-  file.i32(payload.length);
-  file.raw(payload);
-}
+import 'abr_test_builder.dart';
 
 /// Writes a `brVr` dynamics descriptor (control type + jitter).
 void _writeBrVr(
-  _AbrBytes desc,
+  AbrBytes desc,
   String key, {
   required int control,
   required double jitterPercent,
@@ -148,7 +30,7 @@ void _writeBrVr(
 
 /// Sampled + computed brush descriptor payload (`desc` section).
 Uint8List _descPayload({required String sampledUuid}) {
-  final desc = _AbrBytes();
+  final desc = AbrBytes();
   desc.i32(16); // descriptor version
   desc.unicode(''); // root class name
   desc.key('null'); // root classID
@@ -303,7 +185,7 @@ final List<int> _tipTwoPixels = List<int>.filled(16, 200);
 /// memory array per channel. [rle] packs the planes the way Photoshop does
 /// once a pattern gets large.
 void _writePatternRecord(
-  _AbrBytes patt, {
+  AbrBytes patt, {
   required String name,
   required String id,
   required int width,
@@ -312,7 +194,7 @@ void _writePatternRecord(
   int channels = 3,
   bool rle = false,
 }) {
-  final record = _AbrBytes();
+  final record = AbrBytes();
   record.i32(1); // record version
   record.i32(3); // image mode: RGB
   record.i16(height);
@@ -334,7 +216,7 @@ void _writePatternRecord(
       record.i32(0); // length
       continue;
     }
-    final body = _AbrBytes();
+    final body = AbrBytes();
     body.i32(8); // pixel depth
     body.i32(0);
     body.i32(0);
@@ -374,8 +256,8 @@ Uint8List _fixtureAbr({
   bool corruptDesc = false,
   bool patternsMissing = false,
 }) {
-  final samp = _AbrBytes();
-  _writeSampEntry(
+  final samp = AbrBytes();
+  writeSampEntry(
     samp,
     uuid: 'tip-one-uuid',
     width: 6,
@@ -383,7 +265,7 @@ Uint8List _fixtureAbr({
     pixels: _tipOnePixels,
     rle: true,
   );
-  _writeSampEntry(
+  writeSampEntry(
     samp,
     uuid: 'tip-two-uuid',
     width: 4,
@@ -393,7 +275,7 @@ Uint8List _fixtureAbr({
 
   // Two patterns: a raw one that nothing references, and the RLE one the
   // computed brush asks for by uuid.
-  final patt = _AbrBytes();
+  final patt = AbrBytes();
   _writePatternRecord(
     patt,
     name: 'plain paper',
@@ -415,18 +297,18 @@ Uint8List _fixtureAbr({
         List<int>.generate(16, (i) => channel == 0 ? (i * 16) % 256 : 0),
   );
 
-  final file = _AbrBytes();
+  final file = AbrBytes();
   file.i16(6); // version
   file.i16(2); // subversion
-  _write8bimSection(file, 'samp', samp.bytes);
+  write8bimSection(file, 'samp', samp.bytes);
   if (!patternsMissing) {
-    _write8bimSection(file, 'patt', patt.bytes);
+    write8bimSection(file, 'patt', patt.bytes);
   }
   if (includeDesc) {
     final payload = corruptDesc
         ? Uint8List.fromList([0, 0, 0, 99, 1, 2, 3])
         : _descPayload(sampledUuid: 'tip-one-uuid');
-    _write8bimSection(file, 'desc', payload);
+    write8bimSection(file, 'desc', payload);
   }
   return file.bytes;
 }
@@ -592,7 +474,7 @@ void main() {
     });
 
     test('rejects legacy and non-ABR files with clear errors', () {
-      final legacy = _AbrBytes()
+      final legacy = AbrBytes()
         ..i16(1)
         ..i16(0);
       expect(
@@ -616,7 +498,7 @@ void main() {
       // Real packs commonly define several brushes as variants of the SAME
       // tip bitmap. Duplicate preset ids crashed the preset chips (duplicate
       // widget keys), so the decoder must de-collide them deterministically.
-      final desc = _AbrBytes();
+      final desc = AbrBytes();
       desc.i32(16);
       desc.unicode('');
       desc.key('null');
@@ -642,19 +524,19 @@ void main() {
         desc.untf('#Pxl', 20);
       }
 
-      final samp = _AbrBytes();
-      _writeSampEntry(
+      final samp = AbrBytes();
+      writeSampEntry(
         samp,
         uuid: 'shared-tip',
         width: 2,
         height: 2,
         pixels: List<int>.filled(4, 7),
       );
-      final file = _AbrBytes()
+      final file = AbrBytes()
         ..i16(6)
         ..i16(2);
-      _write8bimSection(file, 'samp', samp.bytes);
-      _write8bimSection(file, 'desc', desc.bytes);
+      write8bimSection(file, 'samp', samp.bytes);
+      write8bimSection(file, 'desc', desc.bytes);
 
       final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
       expect(result.presets, hasLength(2));
@@ -679,8 +561,8 @@ void main() {
     });
 
     test('skips unsupported 16-bit tips with a warning', () {
-      final samp = _AbrBytes();
-      _writeSampEntry(
+      final samp = AbrBytes();
+      writeSampEntry(
         samp,
         uuid: 'deep-tip',
         width: 2,
@@ -688,17 +570,17 @@ void main() {
         pixels: List<int>.filled(8, 1),
         depth: 16,
       );
-      _writeSampEntry(
+      writeSampEntry(
         samp,
         uuid: 'ok-tip',
         width: 2,
         height: 2,
         pixels: List<int>.filled(4, 9),
       );
-      final file = _AbrBytes()
+      final file = AbrBytes()
         ..i16(6)
         ..i16(2);
-      _write8bimSection(file, 'samp', samp.bytes);
+      write8bimSection(file, 'samp', samp.bytes);
 
       final result = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
       expect(result.warnings.single, contains('16-bit'));
@@ -723,7 +605,7 @@ void main() {
     });
 
     test('fails cleanly on unknown value types', () {
-      final bytes = _AbrBytes()
+      final bytes = AbrBytes()
         ..i32(16)
         ..unicode('')
         ..key('null')
