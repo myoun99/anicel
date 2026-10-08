@@ -605,6 +605,10 @@ void main() {
     /// Every height the panel asked the printed picture at, in order.
     final askedHeights = <double>[];
 
+    /// The canvas region each of those asks showed — null for a still
+    /// camera's frame.
+    final askedRegions = <Rect?>[];
+
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held still over its one block — two keys at one place are no camera
     /// work — or panning on to [last]; its conte row posed by [rowPose], its
@@ -801,6 +805,7 @@ void main() {
                                 region,
                               }) {
                                 askedHeights.add(shownHeight);
+                                askedRegions.add(region);
                                 return printed ?? printedAt!(shownHeight);
                               },
                           landed: const _NeverLands(),
@@ -1041,6 +1046,77 @@ void main() {
         sheetPictureQuality(640, Offset.zero & Size(slot.width, 1), 1.25),
         reason: 'laid on the screen with the print\'s own filter',
       );
+    });
+
+    testWidgets('🗣️F-215-Q1: the live raster is the print\'s — as many pixels '
+        'as the print is asked for, laid on the picture\'s frame — where the '
+        'camera pans too', (tester) async {
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(exportFrameGround, BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      const zoom = 6.0;
+      for (final last in [
+        null,
+        CameraPose(center: CanvasPoint(x: 400, y: 180), zoom: 4),
+      ]) {
+        askedHeights.clear();
+        askedRegions.clear();
+        await pumpPanel(
+          tester,
+          framed(zoom: 4, last: last),
+          printed: printed,
+          view: CanvasViewport(zoom: zoom),
+        );
+        brushOn.value = true;
+        await tester.pumpAndSettle();
+        final pans = last != null;
+        expect(
+          askedRegions.last != null,
+          pans,
+          reason: '⛔전제: a panning camera\'s print shows the region it sweeps',
+        );
+
+        final live = find.byKey(
+          const ValueKey<String>('conte-picture-live-picture-39-0'),
+        );
+        final region = askedRegions.last;
+        expect(
+          tester.getSize(live).width * tester.view.devicePixelRatio,
+          closeTo(
+            pictureRenderWidthFor(
+              askedHeights.last,
+              region?.size ??
+                  Size(canvas.width.toDouble(), canvas.height.toDouble()),
+            ),
+            0.5,
+          ),
+          reason: 'as many pixels as the print${pans ? ' of the region' : ''}',
+        );
+        final page = layoutConteSheet(
+          buildConteSheetSource(session.repository.requireProject()),
+          metrics: ConteSheetMetrics(
+            cameraAspect: session.camera.cameraFrameAspect,
+          ),
+        ).first;
+        final frame = contePictureOf(page.cells.single, page.metrics).frame;
+        final origin = conteBodyTopLeft(tester);
+        expect(
+          tester.getRect(live),
+          rectMoreOrLessEquals(
+            Rect.fromLTWH(
+              origin.dx + zoom * frame.left,
+              origin.dy + zoom * frame.top,
+              zoom * frame.width,
+              zoom * frame.height,
+            ),
+            epsilon: 1e-6,
+          ),
+          reason: 'laid on the picture\'s frame, edge to edge',
+        );
+      }
     });
 
     testWidgets('the camera\'s work is printed over the live picture — its '
