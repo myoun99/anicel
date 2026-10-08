@@ -441,6 +441,14 @@ cmd_sync() {
     || die "no '$MIRROR' remote — add the mirror first"
   [ "$(git -C "$ROOT" branch --show-current)" = "$TRUNK" ] \
     || die "the main checkout is not on $TRUNK — lanes are worktrees, the main checkout stays on $TRUNK"
+  # ⚠️THE OFFERS ARE ASKED BEFORE THE TRUNK IS TAKEN. `land` takes an offer
+  # off the mirror only once the trunk that holds the lane is there, so an
+  # offer already gone NOW is a lane the master fetched below holds. Asked
+  # the other way round, a land that fell between the fetch and the asking
+  # read as a lane nobody took (card
+  # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
+  local offers asked=
+  offers="$(offers_here)" && asked=1
   git -C "$ROOT" fetch --quiet "$MIRROR" "$TRUNK" \
     || die "could not fetch $TRUNK from $MIRROR"
   # ⚠️ASKED BEFORE THE MERGE, not left to it. `merge --ff-only` of a commit
@@ -454,7 +462,14 @@ cmd_sync() {
   git -C "$ROOT" merge --ff-only FETCH_HEAD >/dev/null 2>&1 \
     || die "could not move $TRUNK to the trunk's — is the main checkout clean?"
   echo "lane: $TRUNK is the trunk's $(git -C "$ROOT" rev-parse --short HEAD)"
-  landed_lanes_leave
+  [ -z "$asked" ] || landed_lanes_leave "$offers"
+}
+
+# (away) This machine's offers on the mirror, a ref a line — or a failure
+# when the mirror cannot be asked.
+offers_here() {
+  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
+    ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null
 }
 
 # (away) Let go of the lanes that landed. A lane this machine sent, whose
@@ -464,18 +479,24 @@ cmd_sync() {
 # and says why: commits written after the send exist nowhere else, neither
 # does work typed into the worktree and never committed, and neither does a
 # lane whose offer left the mirror without landing.
-# ⚠️Silent and harmless when the mirror cannot be asked: a lane is only
-# ever looked at on the mirror's own word that the offer is gone.
+# ⚠️Called only on the mirror's own word ($1, what `offers_here` answered —
+# `sync` does not call it when the mirror could not be asked): a lane is
+# only ever looked at on that word that the offer is gone.
 #
 # ⛔「THE OFFER IS GONE」 IS NOT 「IT LANDED」. The first version dropped on
 # that alone, and an offer leaves the mirror three ways — `land`, `unsend`,
 # and somebody deleting the branch. Two of the three would have thrown away
 # the only copy of the work (2026-10-07, read before any machine used it).
+# ↩️「THE TRUNK DOES NOT HOLD IT」 IS NOT 「IT WAS TURNED DOWN」 EITHER. A
+# lane the trunk does not hold YET — it landed while the mirror's copy of
+# the trunk lagged — was let go of as one nobody took: its `sent` was
+# unset, and no later sync asked again, so the lane that HAD landed was
+# kept for ever under a warning that sent its author looking (2026-10-08,
+# the second machine — card a-lane-landed-during-a-sync-is-kept-as-turned-down).
+# So it is said ONCE for the commit that was sent, and asked about at every
+# sync until the trunk holds it.
 landed_lanes_leave() {
-  local offers
-  offers="$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
-    ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null)" \
-    || return 0
+  local offers="$1"
   local ref name sent p
   git -C "$ROOT" for-each-ref --format='%(refname:short)' \
     "refs/heads/work/$MACHINE/*" | while read -r ref; do
@@ -483,9 +504,11 @@ landed_lanes_leave() {
       sent="$(git -C "$ROOT" config --get "branch.$ref.sent" 2>/dev/null)" || continue
       printf '%s\n' "$offers" | grep -q "refs/heads/sent/$name\$" && continue
       if ! trunk_holds "$sent"; then
-        git -C "$ROOT" config --unset "branch.$ref.sent"
+        [ "$(git -C "$ROOT" config --get "branch.$ref.unheld" 2>/dev/null)" = "$sent" ] \
+          && continue
+        git -C "$ROOT" config "branch.$ref.unheld" "$sent"
         echo "lane: ⚠️$name is no longer offered on $MIRROR, and $TRUNK does not hold it." >&2
-        echo "lane:   It was taken back or turned down (or landed with its conflicts resolved by hand): the lane is kept." >&2
+        echo "lane:   Taken back, turned down, landed with its conflicts resolved by hand — or landed while the mirror's $TRUNK lags: the lane is kept, and let go at the sync that finds it in $TRUNK." >&2
       elif [ "$(git -C "$ROOT" rev-parse "$ref")" = "$sent" ]; then
         # ⛔ITS COMMITS LANDED; WHAT WAS TYPED INTO ITS WORKTREE SINCE DID
         # NOT. The tip only says no commit was added, and a drop removes the
@@ -932,15 +955,6 @@ cmd_land() {
   # The stamp was for the lane that just merged; the name is free again.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
-  # A landed lane is finished on the mirror too: its OFFER goes — that is
-  # how the machine that sent it, and `incoming` here, see that it landed —
-  # and so do its stamp and its copy. (A lane that was never there has
-  # nothing to take off; the push says so and is not listened to.)
-  local gone
-  for gone in "sent/$name" "gated/$name" "work/$name"; do
-    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
-      "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
-  done
   # ⛔NOBODY IS THERE TO ANSWER A LOGIN. A land runs unattended, and with no
   # saved login git-credential-manager waited for one: the land never
   # returned, the trunk's engine below was never rebuilt, and the copy was
@@ -948,6 +962,20 @@ cmd_land() {
   # fails at once and says to run `backup`, which still asks — a person can
   # log in there.
   GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never mirror_trunk
+  # A landed lane is finished on the mirror too: its OFFER goes — that is
+  # how the machine that sent it, and `incoming` here, see that it landed —
+  # and so do its stamp and its copy. (A lane that was never there has
+  # nothing to take off; the push says so and is not listened to.)
+  # ⚠️AFTER THE TRUNK IS MIRRORED, never before: the machine that sent the
+  # lane reads 「the offer is gone」 as 「look in the trunk」, and the trunk
+  # it looks in is the mirror's. Gone before the trunk was there, the lane
+  # read as one nobody took (card
+  # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
+  local gone
+  for gone in "sent/$name" "gated/$name" "work/$name"; do
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
+      "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+  done
   # Refusal 6: the merge moved the trunk's C whenever this lane carried any,
   # and the trunk's engine follows it HERE, in the trunk's own directory and
   # cache — ⛔never the lane's build copied over, whose cache names the
