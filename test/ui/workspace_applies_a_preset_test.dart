@@ -1254,6 +1254,13 @@ void main() {
         'key, the held brush\'s key', (tester) async {
       await pumpWithPresets(tester);
       final [x, ...] = otherTabsWithAtLeast(tester, 2);
+      // The eraser holds a brush of its own from the start. ⚠️Taken up for
+      // the first time later, it would take the brush in hand — and the
+      // delete at the end would then hand BOTH tools the brush beside it,
+      // passing the eraser through the hand on the way: a tool changed,
+      // where the case is a brush changed.
+      await takeUp(tester, 'eraser');
+      await takeUp(tester, 'brush');
       await tapTabOf(tester, x.first);
       final nothing = await anEmptyGroup(tester);
       expect(tileOf(x.first), findsOneWidget, reason: '⛔premise: x shown');
