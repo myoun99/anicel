@@ -1042,6 +1042,7 @@ enum AppStrings {
   String get shortcutTitle => _s('shortcutTitle');
   String get shortcutResetAll => _s('shortcutResetAll');
   String get shortcutResetToDefault => _s('shortcutResetToDefault');
+  String get shortcutUnassign => _s('shortcutUnassign');
   String get shortcutRecordNew => _s('shortcutRecordNew');
   String get shortcutTouch => _s('shortcutTouch');
   String get shortcutSearch => _s('shortcutSearch');
@@ -2230,6 +2231,7 @@ enum AppStrings {
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutResetToDefault': 'Reset to default',
+    'shortcutUnassign': 'Remove shortcut',
     'shortcutRecordNew': 'Record new shortcut',
     'shortcutTouch': 'Touch shortcut',
     'shortcutSearch': 'Search actions',
@@ -3470,6 +3472,7 @@ enum AppStrings {
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutResetToDefault': '既定に戻す',
+    'shortcutUnassign': 'ショートカットを解除',
     'shortcutRecordNew': '新しいショートカットを記録',
     'shortcutTouch': 'タッチショートカット',
     'shortcutSearch': 'アクションを検索',
@@ -4863,6 +4866,7 @@ enum AppStrings {
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutResetToDefault': '기본값으로',
+    'shortcutUnassign': '단축키 해제',
     'shortcutRecordNew': '새 단축키 기록',
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
@@ -6293,6 +6297,7 @@ enum AppStrings {
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutResetToDefault': 'Rétablir le défaut',
+    'shortcutUnassign': 'Retirer le raccourci',
     'shortcutRecordNew': 'Enregistrer un nouveau raccourci',
     'shortcutTouch': 'Raccourci tactile',
     'shortcutSearch': 'Rechercher une action',
@@ -7699,6 +7704,7 @@ enum AppStrings {
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutResetToDefault': '恢复默认',
+    'shortcutUnassign': '移除快捷键',
     'shortcutRecordNew': '录制新快捷键',
     'shortcutTouch': '触摸快捷方式',
     'shortcutSearch': '搜索动作',

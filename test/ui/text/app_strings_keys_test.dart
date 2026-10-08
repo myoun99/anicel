@@ -472,6 +472,7 @@ void main() {
     'shortcutTitle': (s) => s.shortcutTitle,
     'shortcutResetAll': (s) => s.shortcutResetAll,
     'shortcutResetToDefault': (s) => s.shortcutResetToDefault,
+    'shortcutUnassign': (s) => s.shortcutUnassign,
     'shortcutRecordNew': (s) => s.shortcutRecordNew,
     'shortcutTouch': (s) => s.shortcutTouch,
     'shortcutSearch': (s) => s.shortcutSearch,

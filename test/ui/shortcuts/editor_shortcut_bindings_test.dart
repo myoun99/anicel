@@ -161,6 +161,14 @@ void main() {
     bindings.setActivators(EditorActionIds.undo, const [
       SingleActivator(LogicalKeyboardKey.keyU, control: true, alt: true),
     ]);
+    // 「No key」 is an answer like any other (F-318: the window's button
+    // records it) — the default must not be back at the next launch.
+    expect(
+      bindings.activatorsFor(EditorActionIds.redo),
+      isNotEmpty,
+      reason: '⛔premise: redo ships with a key',
+    );
+    bindings.setActivators(EditorActionIds.redo, const []);
     // The persist is fire-and-forget from the caller's view; the exposed
     // chain says when it has actually hit disk.
     await bindings.pendingPersist;
@@ -175,6 +183,8 @@ void main() {
     expect(activator.control, isTrue);
     expect(activator.alt, isTrue);
     expect(activator.shift, isFalse);
+    expect(restored.activatorsFor(EditorActionIds.redo), isEmpty);
+    expect(restored.isOverridden(EditorActionIds.redo), isTrue);
 
     // Corrupt/unknown content never breaks the bindings.
     File(path).writeAsStringSync(

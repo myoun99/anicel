@@ -62,6 +62,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     _recordFocus.requestFocus();
   }
 
+  /// Takes every key off [actionId] — its own default too, which then
+  /// stays off until the row is reset. A recording under way for it ends:
+  /// the answer to 「which key?」 was 「none」.
+  ///
+  /// 🗣️F-318 (유저 2026-10-08): 「단축키 할당 해제 버튼같은게 없음」. The
+  /// bindings have always held 「no key」 as a recorded answer (an empty
+  /// list, written to the file and read back); nothing in the window
+  /// recorded it — a key could only be replaced by another.
+  void _unassign(String actionId) {
+    if (_recordingActionId == actionId) {
+      setState(() => _recordingActionId = null);
+    }
+    widget.bindings.setActivators(actionId, const []);
+  }
+
   KeyEventResult _onRecordKey(FocusNode node, KeyEvent event) {
     final actionId = _recordingActionId;
     if (actionId == null || event is! KeyDownEvent) {
@@ -306,18 +321,30 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 ),
                 onChanged: (_) => setState(_openFoundBundles),
               ),
-              if (conflicted.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
+              // 🗣️F-318 (유저 2026-10-08): 「동일한 단축키 있을때 빨간
+              // 경고메시지가 영어로 뜨고」 — the table has had the sentence
+              // in every language since the window was localised
+              // (`shortcutConflictBanner`); this line went on writing the
+              // English one itself.
+              //
+              // ⛔Its PLACE is always there (「없다가 생기는 UI 금지」): laid
+              // out in the program language whether or not a key clashes,
+              // and shown when one does. ↩️It was mounted on the clash, and
+              // the list under it jumped down a line — two, in the
+              // languages the sentence wraps in.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Visibility.maintain(
+                  visible: conflicted.isNotEmpty,
                   child: Text(
-                    'Some actions share the same key — the highlighted '
-                    'bindings collide.',
+                    AppText.strings.shortcutConflictBanner,
                     key: const ValueKey<String>('shortcut-conflict-banner'),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
                     ),
                   ),
                 ),
+              ),
               Expanded(
                 child: ListView(
                   key: const ValueKey<String>('shortcut-action-list'),
@@ -345,6 +372,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
+  /// How much of a row its keys and its touch gesture may take before they
+  /// wrap — the name and the row's buttons keep the rest.
+  static const double _keysShare = 0.6;
+
   Widget _actionRow(
     EditorActionDefinition definition,
     bool conflicted,
@@ -358,119 +389,151 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final touchGesture = bindings.touchGestureFor(definition.id);
     final titlesBundle = definition.brushPress is BrushGroupPress;
 
+    // The keys recorded on the row and its touch gesture — what stands
+    // between its name and its buttons.
+    final keys = <Widget>[
+      if (recording)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            AppText.strings.shortcutRecordingHint,
+            key: const ValueKey<String>('shortcut-recording-hint'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        )
+      else
+        for (final activator in activators)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Chip(
+              label: Text(
+                singleActivatorLabel(
+                  bindings.shownActivatorFor(definition.id, activator),
+                ),
+                style: theme.textTheme.labelSmall,
+              ),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              backgroundColor: conflicted
+                  ? theme.colorScheme.errorContainer
+                  : null,
+            ),
+          ),
+      // The TOUCH binding (R11-⑨): one multi-finger gesture per
+      // action, picked from the fixed vocabulary — same custom feel
+      // as the key bindings, same conflict highlighting.
+      // R6 #4: the shared flyout. These rows carried no `height`, so
+      // they came out at Material's 48 beside the app's 32.
+      //
+      // ✅The sentinel is gone with the migration: a flyout item carries
+      // a CALLBACK rather than a value, so "None" simply passes null and
+      // no longer has to be told apart from a dismissal.
+      PanelFlyoutTrigger(
+        key: ValueKey<String>('shortcut-touch-${definition.id}'),
+        tooltip: AppText.strings.shortcutTouch,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        entriesBuilder: () =>
+            <TouchGesture?>[null, ...TouchGesture.values]
+                .asFlyoutValueChoices(
+                  current: touchGesture,
+                  choiceOf: (gesture) => PanelFlyoutChoice(
+                    key:
+                        'shortcut-touch-${definition.id}-'
+                        '${gesture?.name ?? 'none'}',
+                    label: gesture?.label ?? AppText.strings.commonNone,
+                  ),
+                  onPicked: (gesture) => widget.bindings.setTouchGesture(
+                    definition.id,
+                    gesture,
+                  ),
+                ),
+        child: touchGesture == null
+            ? Icon(
+                Icons.touch_app_outlined,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.5,
+                ),
+              )
+            : Chip(
+                label: Text(
+                  touchGesture.label,
+                  style: theme.textTheme.labelSmall,
+                ),
+                avatar: const Icon(Icons.touch_app_outlined, size: 14),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                backgroundColor: touchConflicted
+                    ? theme.colorScheme.errorContainer
+                    : null,
+              ),
+      ),
+    ];
+
     return Padding(
       key: ValueKey<String>('shortcut-row-${definition.id}'),
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Expanded(
-            // A brush stands under its bundle's title, a step in.
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: bundle == null || titlesBundle ? 0 : 16,
-              ),
-              child: Text(
-                _labelOf(definition),
-                style: theme.textTheme.bodyMedium,
+      // 🗣️F-318: the row gained a button, and a row with several keys
+      // and a touch gesture was already within a few pixels of its
+      // width. The keys and the gesture take what they need up to
+      // [_keysShare] of the row and WRAP past it — the name keeps the
+      // rest, and no row overflows whatever is recorded on it.
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            Expanded(
+              // A brush stands under its bundle's title, a step in.
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: bundle == null || titlesBundle ? 0 : 16,
+                ),
+                child: Text(
+                  _labelOf(definition),
+                  style: theme.textTheme.bodyMedium,
+                ),
               ),
             ),
-          ),
-          if (bundle != null && titlesBundle) _twirl(bundle),
-          if (recording)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                AppText.strings.shortcutRecordingHint,
-                key: const ValueKey<String>('shortcut-recording-hint'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                ),
+            if (bundle != null && titlesBundle) _twirl(bundle),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: constraints.maxWidth * _keysShare,
               ),
-            )
-          else
-            for (final activator in activators)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Chip(
-                  label: Text(
-                    singleActivatorLabel(
-                      bindings.shownActivatorFor(definition.id, activator),
-                    ),
-                    style: theme.textTheme.labelSmall,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  backgroundColor: conflicted
-                      ? theme.colorScheme.errorContainer
-                      : null,
-                ),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 2,
+                children: keys,
               ),
-          // The TOUCH binding (R11-⑨): one multi-finger gesture per
-          // action, picked from the fixed vocabulary — same custom feel
-          // as the key bindings, same conflict highlighting.
-          // R6 #4: the shared flyout. These rows carried no `height`, so
-          // they came out at Material's 48 beside the app's 32.
-          //
-          // ✅The sentinel is gone with the migration: a flyout item carries
-          // a CALLBACK rather than a value, so "None" simply passes null and
-          // no longer has to be told apart from a dismissal.
-          PanelFlyoutTrigger(
-            key: ValueKey<String>('shortcut-touch-${definition.id}'),
-            tooltip: AppText.strings.shortcutTouch,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            entriesBuilder: () =>
-                <TouchGesture?>[null, ...TouchGesture.values]
-                    .asFlyoutValueChoices(
-                      current: touchGesture,
-                      choiceOf: (gesture) => PanelFlyoutChoice(
-                        key:
-                            'shortcut-touch-${definition.id}-'
-                            '${gesture?.name ?? 'none'}',
-                        label: gesture?.label ?? AppText.strings.commonNone,
-                      ),
-                      onPicked: (gesture) => widget.bindings.setTouchGesture(
-                        definition.id,
-                        gesture,
-                      ),
-                    ),
-            child: touchGesture == null
-                ? Icon(
-                    Icons.touch_app_outlined,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.5,
-                    ),
-                  )
-                : Chip(
-                    label: Text(
-                      touchGesture.label,
-                      style: theme.textTheme.labelSmall,
-                    ),
-                    avatar: const Icon(Icons.touch_app_outlined, size: 14),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    backgroundColor: touchConflicted
-                        ? theme.colorScheme.errorContainer
-                        : null,
-                  ),
-          ),
-          AppIconButton(
-            keyValue: 'shortcut-record-${definition.id}',
-            tooltip: AppText.strings.shortcutRecordNew,
-            icon: const Icon(Icons.keyboard),
-            onPressed: () => _startRecording(definition.id),
-          ),
-          AppIconButton(
-            keyValue: 'shortcut-reset-${definition.id}',
-            tooltip: AppText.strings.shortcutResetToDefault,
-            icon: const Icon(Icons.restart_alt),
-            onPressed:
-                bindings.isOverridden(definition.id) ||
-                    bindings.isTouchOverridden(definition.id)
-                ? () => bindings.resetAction(definition.id)
-                : null,
-          ),
-        ],
+            ),
+            AppIconButton(
+              keyValue: 'shortcut-record-${definition.id}',
+              tooltip: AppText.strings.shortcutRecordNew,
+              icon: const Icon(Icons.keyboard),
+              onPressed: () => _startRecording(definition.id),
+            ),
+            // Dead on a row with no key: there is nothing to take off.
+            AppIconButton(
+              keyValue: 'shortcut-unassign-${definition.id}',
+              tooltip: AppText.strings.shortcutUnassign,
+              icon: const Icon(Icons.backspace_outlined),
+              onPressed: activators.isEmpty
+                  ? null
+                  : () => _unassign(definition.id),
+            ),
+            AppIconButton(
+              keyValue: 'shortcut-reset-${definition.id}',
+              tooltip: AppText.strings.shortcutResetToDefault,
+              icon: const Icon(Icons.restart_alt),
+              onPressed:
+                  bindings.isOverridden(definition.id) ||
+                      bindings.isTouchOverridden(definition.id)
+                  ? () => bindings.resetAction(definition.id)
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }
