@@ -410,13 +410,20 @@ class _WorkspaceTabs {
                           builder: (context, _) => BrushPresetPanel(
                             presets: _state._presetLibrary.presets,
                             groups: _state._presetLibrary.groups,
+                            // This panel is THIS tool's library (F-319):
+                            // its rows and tabs press for it and wear its
+                            // keys, and both tools' panels read the one
+                            // look.
+                            tool: toolState.tool,
+                            look: _state._brushGroups.look,
                             selectedPresetId: toolState.presetId,
                             viewOptions: _state._brushPresetView.value,
                             onViewOptionsChanged: (options) {
                               _state._brushPresetView.value = options;
                               _state._layoutPersistence.scheduleLayoutSave();
                             },
-                            onPresetApplied: _state._brushPresets._applyPreset,
+                            onPresetApplied:
+                                _state._brushPresets.rowPressOf[toolState.tool],
                             onPresetSaveRequested:
                                 _state._brushPresets.saveHeldBrushAsPreset,
                             onPresetDeleted: _state._brushPresets.deletePreset,
@@ -433,8 +440,8 @@ class _WorkspaceTabs {
                             onGroupCreated: _state._presetLibrary.createGroup,
                             onGroupEdited: _state._presetLibrary.editGroup,
                             onGroupDeleted: _state._brushPresets.deleteGroup,
-                            onGroupOpened: _state._brushGroups.openGroup,
-                            libraryKeys: _state.widget.brushKeys,
+                            onGroupOpened:
+                                _state._brushGroups.tabPressOf[toolState.tool],
                             onGroupsReordered:
                                 _state._brushPresets.arrangeGroups,
                             onLibraryReset:

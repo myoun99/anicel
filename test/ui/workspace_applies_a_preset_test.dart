@@ -858,8 +858,15 @@ void main() {
   // 🗣️I-56 (유저 2026-10-01): 「브러시 그룹이나 브러시에도 단축키 명명가능하게.
   // 단축키리스트 등록」 — a key presses what the brush's row or the group's
   // tab does (the rows themselves: test/ui/shortcuts/brush_keys_test.dart).
+  //
+  // 🗣️F-319 (유저 2026-10-08): 「브러시 그룹은 도구가 두곳에 있으니까 두 곳
+  // 나눠서 지정하도록. 브러시도구의 브러시그룹/브러시 변경. 지우개도구의
+  // 브러시그룹/브러시변경」 — a key is on a brush or a group OF A TOOL, and
+  // brings that tool to hand with it.
   group('🚨I-56: a key on a brush or a group', () {
     const k = LogicalKeyboardKey.keyK;
+    const brush = CanvasTool.brush;
+    const eraser = CanvasTool.eraser;
 
     EditorShortcutBindings keys(WidgetTester tester) =>
         EditorShortcutScope.peek(tester.element(find.byType(EditorWorkspace)))!;
@@ -877,10 +884,51 @@ void main() {
         .value
         .tool;
 
+    /// The action K is on — one at a time, or two rows would answer one key.
+    String? keyed;
+    setUp(() => keyed = null);
+
+    /// Records K on [actionId], and takes it off whatever it was on.
+    void putKeyOn(WidgetTester tester, String actionId) {
+      final bindings = keys(tester);
+      if (keyed case final before?) {
+        bindings.setActivators(before, const []);
+      }
+      bindings.setActivators(actionId, const [SingleActivator(k)]);
+      keyed = actionId;
+    }
+
     /// The key, once the app has taken in what was just recorded for it.
     Future<void> press(WidgetTester tester) async {
       await tester.pump();
       await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
+    }
+
+    /// A group with no brush in it, made the way the panel's menu makes one.
+    Future<BrushGroupId> anEmptyGroup(WidgetTester tester) async {
+      panel(tester).onGroupCreated!('Nothing yet');
+      await tester.pumpAndSettle();
+      final shown = panel(tester);
+      final made = shown.groups.firstWhere(
+        (group) => group.name == 'Nothing yet',
+      );
+      expect(
+        shown.presets.where(
+          (preset) => preset.groupShownAmong(shown.groups) == made.id,
+        ),
+        isEmpty,
+        reason: '⛔premise',
+      );
+      return made.id;
+    }
+
+    Future<void> tapTab(WidgetTester tester, BrushGroupId group) async {
+      final tab = find.byKey(
+        ValueKey<String>('brush-preset-tab-${group.value}'),
+      );
+      await tester.ensureVisible(tab);
+      await tester.tap(tab);
       await tester.pumpAndSettle();
     }
 
@@ -912,9 +960,7 @@ void main() {
       final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
       await tapTabOf(tester, x.first);
       expect(tileOf(y[1]), findsNothing, reason: '⛔premise: tab x is shown');
-      keys(tester).setActivators(brushPresetActionId(y[1]), const [
-        SingleActivator(k),
-      ]);
+      putKeyOn(tester, brushPresetActionId(brush, y[1]));
 
       await press(tester);
 
@@ -956,10 +1002,7 @@ void main() {
       await pickInView(tester, x[1]);
       await tapTabOf(tester, y.first);
       expect(tileOf(x[1]), findsNothing, reason: '⛔premise: tab y is shown');
-      keys(tester).setActivators(
-        brushGroupActionId(groupOf(tester, x.first)),
-        const [SingleActivator(k)],
-      );
+      putKeyOn(tester, brushGroupActionId(brush, groupOf(tester, x.first)));
 
       await press(tester);
 
@@ -972,37 +1015,176 @@ void main() {
       expect(tileOf(y.first), findsNothing);
     });
 
-    testWidgets('a group\'s tab wears its key, as every button does', (
+    // 🗣️F-319: 「브러시를 단축키로 바꿀때, 단축키누르면 브러시그룹이 바껴야하는데
+    // 안바뀜 … 브러시그룹을 단축키 지정했을때 얘기임」 · 「이상한건 됫다가
+    // 말았다가 함」.
+    //
+    // 🔬Measured on the code before (2026-10-08, the two cases below run
+    // there): with the eraser never taken up they pass; once it HAS been,
+    // the key moves the hand and the tab on screen stays (the first), and
+    // the eraser then comes to hand on a tab its brush is not in (the
+    // second). The tool library keeps a panel alive for each paint tool, and
+    // a group's key reached 「the panel」 through one slot the panel mounted
+    // LAST had taken — the eraser's, from the moment it was first taken up.
+    testWidgets('🚨a group\'s key turns the tab ON SCREEN, though the '
+        'eraser\'s library has been on screen since the app opened', (
       tester,
     ) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await takeUp(tester, 'eraser');
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, y.first);
+      expect(tileOf(x.first), findsNothing, reason: '⛔premise: tab y shown');
+      putKeyOn(tester, brushGroupActionId(brush, groupOf(tester, x.first)));
+
+      await press(tester);
+
+      expect(panel(tester).selectedPresetId, x.first, reason: 'the hand');
+      expect(tileOf(x.first), findsOneWidget, reason: 'and the tab shown');
+      expect(tileOf(y.first), findsNothing);
+    });
+
+    testWidgets('🚨…and it turns no tab of the eraser\'s library: the eraser '
+        'comes to hand showing the tab of its own brush', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await takeUp(tester, 'eraser');
+      final erasers = panel(tester).selectedPresetId!;
+      expect(tileOf(erasers), findsOneWidget, reason: '⛔premise');
+      expect(x, isNot(contains(erasers)), reason: '⛔premise');
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, y.first);
+      putKeyOn(tester, brushGroupActionId(brush, groupOf(tester, x.first)));
+      await press(tester);
+
+      await takeUp(tester, 'eraser');
+
+      expect(panel(tester).selectedPresetId, erasers, reason: 'its brush');
+      expect(tileOf(erasers), findsOneWidget, reason: 'and its tab');
+      expect(tileOf(x.first), findsNothing);
+    });
+
+    testWidgets('🚨a tool has its own keys: the eraser\'s brings the ERASER '
+        'to hand with its brush, the brush tool\'s the brush tool — and '
+        'each leaves the other\'s brush alone', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      expect(toolInHand(tester), brush, reason: '⛔premise');
+
+      // The eraser's key, with the brush tool in hand.
+      putKeyOn(tester, brushPresetActionId(eraser, y[1]));
+      await press(tester);
+      expect(toolInHand(tester), eraser);
+      expect(panel(tester).tool, eraser, reason: 'the eraser\'s library');
+      expect(panel(tester).selectedPresetId, y[1]);
+      expect(tileOf(y[1]), findsOneWidget, reason: 'and its tab is shown');
+
+      // The brush tool's key, with the eraser in hand.
+      putKeyOn(tester, brushPresetActionId(brush, y.first));
+      await press(tester);
+      expect(toolInHand(tester), brush);
+      expect(panel(tester).tool, brush);
+      expect(panel(tester).selectedPresetId, y.first);
+
+      await takeUp(tester, 'eraser');
+      expect(
+        panel(tester).selectedPresetId,
+        y[1],
+        reason: 'the eraser holds what ITS key gave it',
+      );
+    });
+
+    // F-181's law, for a key: a tool taken up holding a brush EQUAL to the
+    // one in hand is not a bare switch back to what it had banked.
+    testWidgets('🚨a tool brought to hand by a key holds THAT brush — though '
+        'it is the very brush the tool in hand holds', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await takeUp(tester, 'eraser');
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, y.first);
+      await pickInView(tester, y[1]);
+      putKeyOn(tester, brushPresetActionId(eraser, y[1]));
+
+      await press(tester);
+
+      expect(toolInHand(tester), eraser);
+      expect(
+        panel(tester).selectedPresetId,
+        y[1],
+        reason: 'not ${x[1]}, the brush the eraser had put down',
+      );
+    });
+
+    testWidgets('🚨the eraser\'s group key hands the eraser what the ERASER '
+        'last held there — and brings it to hand', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      // The eraser last held x[1] in tab x, and holds a brush of tab y.
+      await takeUp(tester, 'eraser');
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      await tapTabOf(tester, y.first);
+      // The brush tool held x's first there, and is in hand.
+      await takeUp(tester, 'brush');
+      await tapTabOf(tester, x.first);
+      await tapTabOf(tester, y.first);
+      putKeyOn(tester, brushGroupActionId(eraser, groupOf(tester, x.first)));
+
+      await press(tester);
+
+      expect(toolInHand(tester), eraser);
+      expect(
+        panel(tester).selectedPresetId,
+        x[1],
+        reason: '「도구마다 따로」 — not ${x.first}, the brush tool\'s',
+      );
+      expect(tileOf(x[1]), findsOneWidget, reason: 'the tab is shown');
+    });
+
+    testWidgets('a group\'s tab wears its key, as every button does — the '
+        'key of the tool whose library it is', (tester) async {
       await pumpWithPresets(tester);
       final [x, ...] = otherTabsWithAtLeast(tester, 2);
       final group = groupOf(tester, x.first);
       final name = panel(tester).groups
           .firstWhere((candidate) => candidate.id == group)
           .name;
+      final tab = find.byKey(
+        ValueKey<String>('brush-preset-tab-${group.value}'),
+      );
       String? tipOfTab() => tester
           .widget<AppTooltip>(
-            find.ancestor(
-              of: find.byKey(
-                ValueKey<String>('brush-preset-tab-${group.value}'),
-              ),
-              matching: find.byType(AppTooltip),
-            ).first,
+            find.ancestor(of: tab, matching: find.byType(AppTooltip)).first,
           )
           .message;
       expect(tipOfTab(), name);
 
-      keys(tester).setActivators(brushGroupActionId(group), const [
-        SingleActivator(k),
-      ]);
+      putKeyOn(tester, brushGroupActionId(brush, group));
       await tester.pump();
       expect(tipOfTab(), '$name (K)');
+      // 🗣️F-319: 「이름이 있는곳은 흐린글자로 표시임」.
+      expect(
+        find.descendant(of: tab, matching: find.text('K')),
+        findsOneWidget,
+        reason: 'and after its name, where the name shows',
+      );
+
+      await takeUp(tester, 'eraser');
+      expect(tipOfTab(), name, reason: 'the eraser\'s tab is another row');
+      expect(find.descendant(of: tab, matching: find.text('K')), findsNothing);
     });
 
-    testWidgets('with a tool in hand that paints nothing, a group\'s key '
-        'arms the brush holding what the BRUSH last held there — and its '
-        'own tab\'s key arms it too', (tester) async {
+    testWidgets('with a tool in hand that paints nothing, a key brings ITS '
+        'tool to hand: the brush tool holding what it last held in the '
+        'group, its own tab\'s key too — and the eraser\'s key the eraser', (
+      tester,
+    ) async {
       await pumpWithPresets(tester);
       final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
       await tapTabOf(tester, x.first);
@@ -1010,27 +1192,97 @@ void main() {
       await tapTabOf(tester, y.first);
       final groupX = groupOf(tester, x.first);
       final groupY = groupOf(tester, y.first);
-      keys(tester).setActivators(brushGroupActionId(groupX), const [
-        SingleActivator(k),
-      ]);
+      putKeyOn(tester, brushGroupActionId(brush, groupX));
 
       await takeUp(tester, 'select');
       expect(toolInHand(tester), CanvasTool.select, reason: '⛔premise');
       await press(tester);
 
-      expect(toolInHand(tester), CanvasTool.brush);
+      expect(toolInHand(tester), brush);
       expect(panel(tester).selectedPresetId, x[1]);
 
       // The hand outside again, and the key of the tab its brush shows in:
-      // 「안에 있으면 그대로」 is for a hand that IS inside.
+      // the tool comes to hand holding exactly what it holds.
       await tapTabOf(tester, y.first);
-      keys(tester).setActivators(brushGroupActionId(groupY), const [
-        SingleActivator(k),
-      ]);
+      putKeyOn(tester, brushGroupActionId(brush, groupY));
       await takeUp(tester, 'select');
       await press(tester);
-      expect(toolInHand(tester), CanvasTool.brush);
+      expect(toolInHand(tester), brush);
       expect(panel(tester).selectedPresetId, y.first);
+
+      putKeyOn(tester, brushGroupActionId(eraser, groupX));
+      await takeUp(tester, 'select');
+      await press(tester);
+      expect(toolInHand(tester), eraser);
+      expect(
+        panel(tester).selectedPresetId,
+        x.first,
+        reason: 'the eraser never held one there: the group\'s first',
+      );
+    });
+
+    // 「브러시는 항상 선택된그룹/브러시 를 보여줌」 has one exception, and it
+    // ends with the hand: a group with no brush to take up can only be
+    // LOOKED INTO.
+    testWidgets('🚨a group with no brush is looked into — by a tap or by its '
+        'key — until the hand is another: another tool, the held group\'s '
+        'key, the held brush\'s key', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, ...] = otherTabsWithAtLeast(tester, 2);
+      await tapTabOf(tester, x.first);
+      final nothing = await anEmptyGroup(tester);
+      expect(tileOf(x.first), findsOneWidget, reason: '⛔premise: x shown');
+
+      // A tap looks into it; the hand holds what it held.
+      await tapTab(tester, nothing);
+      expect(onScreen(tester), isEmpty, reason: 'the empty tab');
+      expect(panel(tester).selectedPresetId, x.first);
+
+      // Another tool comes to hand, and the brush tool back: no look left.
+      await takeUp(tester, 'eraser');
+      expect(onScreen(tester), isNotEmpty, reason: 'the eraser\'s own tab');
+      await takeUp(tester, 'brush');
+      expect(tileOf(x.first), findsOneWidget, reason: 'the held brush\'s');
+
+      // Its key looks into it too.
+      putKeyOn(tester, brushGroupActionId(brush, nothing));
+      await press(tester);
+      expect(onScreen(tester), isEmpty);
+      expect(panel(tester).selectedPresetId, x.first);
+
+      // The key of the group the hand is in: the hand stays, the tab shows.
+      putKeyOn(tester, brushGroupActionId(brush, groupOf(tester, x.first)));
+      await press(tester);
+      expect(tileOf(x.first), findsOneWidget);
+      expect(panel(tester).selectedPresetId, x.first);
+
+      // And the key of the very brush in hand.
+      await tapTab(tester, nothing);
+      expect(onScreen(tester), isEmpty, reason: '⛔premise');
+      putKeyOn(tester, brushPresetActionId(brush, x.first));
+      await press(tester);
+      expect(tileOf(x.first), findsOneWidget);
+    });
+
+    testWidgets('the ERASER\'s key on a group with no brush brings the '
+        'eraser to hand, holding what it holds, and looks into the group', (
+      tester,
+    ) async {
+      await pumpWithPresets(tester);
+      await takeUp(tester, 'eraser');
+      final erasers = panel(tester).selectedPresetId!;
+      await takeUp(tester, 'brush');
+      final nothing = await anEmptyGroup(tester);
+      putKeyOn(tester, brushGroupActionId(eraser, nothing));
+
+      await press(tester);
+
+      expect(toolInHand(tester), eraser);
+      expect(panel(tester).selectedPresetId, erasers);
+      expect(onScreen(tester), isEmpty, reason: 'the empty tab is shown');
+
+      await takeUp(tester, 'brush');
+      expect(onScreen(tester), isNotEmpty, reason: 'and it ends with the hand');
     });
   });
 }

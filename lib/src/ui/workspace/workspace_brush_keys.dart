@@ -2,9 +2,9 @@ part of '../editor_workspace.dart';
 
 /// The brush library's half of its KEYS (I-56): the shell owns the keys and
 /// this workspace owns the library, so it tells the shell's port what the
-/// library holds and lends it the two presses a key can make — beside
-/// [_WorkspaceBrushPresets], which takes a brush up, and
-/// [_WorkspaceBrushGroups], which opens a group.
+/// library holds and lends it the two presses a key can make — the ones a
+/// tap on a brush's row and on a group's tab make:
+/// [_WorkspaceBrushPresets.takeUp] and [_WorkspaceBrushGroups.openGroup].
 class _WorkspaceBrushKeys {
   _WorkspaceBrushKeys(this._state);
 
@@ -35,12 +35,12 @@ class _WorkspaceBrushKeys {
   void _show() =>
       _port?.show(_state._presetLibrary.groups, _state._presetLibrary.presets);
 
-  /// The brush row's press for a KEY: the brush of [id], while the library
-  /// holds one.
-  void takeUp(BrushPresetId id) {
+  /// The brush row's press for a KEY: [tool] takes up the brush of [id],
+  /// while the library holds one.
+  void takeUp(CanvasTool tool, BrushPresetId id) {
     final preset = _state._brushPresets._presetNamed(id);
     if (preset != null) {
-      _state._brushPresets._applyPreset(preset);
+      _state._brushPresets.takeUp(tool, preset);
     }
   }
 }

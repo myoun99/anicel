@@ -40,6 +40,7 @@ import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/arrange_brush_library_command.dart';
 import 'brush/brush_library_keys.dart';
+import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
@@ -1618,6 +1619,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushPresets.saveHandSettings();
     }
     _brushKeys.detach();
+    _brushGroups.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
     if (widget.canvasTextCommands?.landingWith == _landingWithItsFaces) {

@@ -53,9 +53,11 @@ BrushPreset? openingPresetFor({
   if (alreadyChosen) {
     return null;
   }
-  // ⛔And never move the hand. From a non-painting tool, applying a preset
-  // arms the brush — at startup that would change the tool the app opens
-  // with, which nobody asked for.
+  // ⛔And never move the hand. A brush is taken up FOR a paint tool, which
+  // comes to hand with it — at startup that would change the tool the app
+  // opens with, which nobody asked for.
+  // ↩️「From a non-painting tool, applying a preset arms the brush」 was how
+  // it would have, until a press named its tool (F-319).
   if (!toolPaints || presets.isEmpty) {
     return null;
   }

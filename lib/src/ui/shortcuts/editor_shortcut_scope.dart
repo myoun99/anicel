@@ -118,15 +118,29 @@ class ShortcutTooltip extends StatelessWidget {
 /// 「단축키 색 지금보다 더 불투명도 낮춰서. 진짜 흐리게」. ONE widget for every
 /// such row — a menu item, a tile of the tool library — so how a key beside a
 /// name looks is decided once ([AppColors.shortcutKeys]).
+///
+/// 🗣️F-319 (유저 2026-10-08): 「단축키는 이름 표시하는것처럼 브러시 그룹 옆에
+/// 흐린글자로 표시하는거 잊지말고. 이름이 있는곳은 흐린글자로 표시임」 — so
+/// the brush library's tabs and rows wear it too. Their names are smaller
+/// than a menu row's and stand in far less room, which is all [fontSize]
+/// and [padding] are for: the key is the size of the name it stands beside.
 class ShortcutKeysText extends StatelessWidget {
   const ShortcutKeysText({
     super.key,
     required this.actionIds,
     this.bindings,
     this.enabled = true,
+    this.fontSize = 12,
+    this.padding = const EdgeInsets.only(left: 16),
   });
 
   final List<String> actionIds;
+
+  /// The size of the name beside it — a menu row's unless said.
+  final double fontSize;
+
+  /// The room kept around the key — between it and the name before it.
+  final EdgeInsets padding;
 
   /// Null reads the scope above. A flyout is a ROUTE, outside the scope, so
   /// it hands in the bindings it read where it opened.
@@ -145,11 +159,16 @@ class ShortcutKeysText extends StatelessWidget {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(left: 16),
+      padding: padding,
       child: Text(
         keys,
+        // One line, and the tail gives where the room is a tab's: a key
+        // that wrapped would push the name out of its row.
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: fontSize,
           color: enabled
               ? AppColors.shortcutKeys
               : AppColors.shortcutKeysDisabled,

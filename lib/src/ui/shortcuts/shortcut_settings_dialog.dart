@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/brush_group.dart';
 import '../brush/brush_press.dart';
+import '../brush/brush_tool_state.dart';
 import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
@@ -130,7 +131,8 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       _categoryOf(definition).toLowerCase().contains(query);
 
   /// The brush BUNDLES standing open — a group's, named by its title row's
-  /// action; the root section's, by [_rootBundle].
+  /// action; the root section's, by [_rootBundleOf]. A paint tool has its
+  /// own (F-319): the brush tool's Inks and the eraser's Inks are two.
   ///
   /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
   /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
@@ -140,17 +142,30 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// in this one set, so the twirl folds them again like any other.
   final Set<String> _openBundles = {};
 
-  /// The root section's bundle: the brushes of no group. ⚠️Its title is a
-  /// word and not a row — the root is not a group and has no press.
-  static const _rootBundle = 'brush-root';
+  /// The root section's bundle in [tool]'s library: the brushes of no
+  /// group. ⚠️Its title is a word and not a row — the root is not a group
+  /// and has no press.
+  static String _rootBundleOf(CanvasTool tool) => '${tool.name}-root';
 
   /// The bundle [definition] stands in, or null for every other action.
   String? _bundleOf(EditorActionDefinition definition) =>
       switch (definition.brushPress) {
-        BrushGroupPress(:final group) => brushGroupActionId(group),
-        BrushPresetPress(group: final group?) => brushGroupActionId(group),
-        BrushPresetPress() => _rootBundle,
+        BrushGroupPress(:final tool, :final group) => brushGroupActionId(
+          tool,
+          group,
+        ),
+        BrushPresetPress(:final tool, group: final group?) =>
+          brushGroupActionId(tool, group),
+        BrushPresetPress(:final tool) => _rootBundleOf(tool),
         null => null,
+      };
+
+  /// Whether [definition] is a brush of a root section — one that stands
+  /// under the section's word, which is no row of its own.
+  bool _isLoose(EditorActionDefinition definition) =>
+      switch (definition.brushPress) {
+        BrushPresetPress(group: null) => true,
+        _ => false,
       };
 
   /// The bundles [query] finds something in — a title or a brush.
@@ -202,12 +217,16 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
 
     final rows = <Widget>[];
     String? category;
-    var rootTitled = false;
+    // The root sections whose word already stands — one a paint tool.
+    final rootsTitled = <String>{};
     for (final definition in bindings.definitions) {
       final bundle = _bundleOf(definition);
       final shown = shows(definition, bundle);
       final rootTitleDue =
-          bundle == _rootBundle && !rootTitled && found.contains(_rootBundle);
+          bundle != null &&
+          _isLoose(definition) &&
+          !rootsTitled.contains(bundle) &&
+          found.contains(bundle);
       if (!shown && !rootTitleDue) {
         continue;
       }
@@ -216,8 +235,8 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         rows.add(_categoryHeading(theme, definition));
       }
       if (rootTitleDue) {
-        rootTitled = true;
-        rows.add(_rootTitleRow(theme));
+        rootsTitled.add(bundle);
+        rows.add(_rootTitleRow(theme, bundle));
       }
       if (shown) {
         rows.add(
@@ -254,15 +273,15 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     onToggle: () => _toggleBundle(bundle),
   );
 
-  Widget _rootTitleRow(ThemeData theme) => Padding(
-    key: const ValueKey<String>('shortcut-row-$_rootBundle'),
+  Widget _rootTitleRow(ThemeData theme, String bundle) => Padding(
+    key: ValueKey<String>('shortcut-row-$bundle'),
     padding: const EdgeInsets.symmetric(vertical: 2),
     child: Row(
       children: [
         Expanded(
           child: Text(brushRootSectionLabel, style: theme.textTheme.bodyMedium),
         ),
-        _twirl(_rootBundle),
+        _twirl(bundle),
       ],
     ),
   );

@@ -21,6 +21,7 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_library_keys.dart';
 import 'package:anicel/src/ui/brush/brush_press.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
@@ -59,26 +60,44 @@ final presets = [
   brush('maru', 'Maru pen', inks),
 ];
 
-String groupId(BrushGroupId id) => brushGroupActionId(id);
-String presetId(String id) => brushPresetActionId(BrushPresetId(id));
+const brushTool = CanvasTool.brush;
+const eraser = CanvasTool.eraser;
+
+/// A group's row and a brush's, in [tool]'s library — the brush tool's
+/// unless said.
+String groupId(BrushGroupId id, [CanvasTool tool = brushTool]) =>
+    brushGroupActionId(tool, id);
+String presetId(String id, [CanvasTool tool = brushTool]) =>
+    brushPresetActionId(tool, BrushPresetId(id));
+
+/// The library's rows for [tool], in the order they come in.
+List<String> rowsFor(CanvasTool tool) => [
+  groupId(inks, tool),
+  presetId('g-pen', tool),
+  presetId('maru', tool),
+  groupId(empty, tool),
+  groupId(chalks, tool),
+  presetId('soft', tool),
+  presetId('loose', tool),
+  presetId('orphan', tool),
+];
 
 void main() {
   group('the library as rows', () {
     final rows = brushActionsOf(groups, presets);
 
-    test('come in the library\'s order: each group, the brushes that show in '
-        'it, and the root section\'s after the groups', () {
+    // 🗣️F-319 (유저 2026-10-08): 「브러시 그룹은 도구가 두곳에 있으니까 두 곳
+    // 나눠서 지정하도록. 브러시도구의 브러시그룹/브러시 변경. 지우개도구의
+    // 브러시그룹/브러시변경」.
+    test('come once for each paint tool — the brush tool\'s, then the '
+        'eraser\'s — and each time in the library\'s order: each group, the '
+        'brushes that show in it, and the root section\'s after the '
+        'groups', () {
       expect(rows.map((row) => row.id), [
-        groupId(inks),
-        presetId('g-pen'),
-        presetId('maru'),
-        groupId(empty),
-        groupId(chalks),
-        presetId('soft'),
-        presetId('loose'),
-        presetId('orphan'),
+        ...rowsFor(brushTool),
+        ...rowsFor(eraser),
       ]);
-      expect(rows.map((row) => row.label), [
+      const names = [
         'Inks',
         'G pen',
         'Maru pen',
@@ -87,26 +106,56 @@ void main() {
         'Soft chalk',
         'Loose pencil',
         'Orphan marker',
-      ]);
+      ];
+      expect(rows.map((row) => row.label), [...names, ...names]);
     });
 
-    test('say what they press, ship with no key, and stand under one '
-        'category', () {
-      expect(rows.first.brushPress, const BrushGroupPress(inks));
+    test('🚨a tool\'s rows are its own: no id is shared, and the brush '
+        'tool\'s are the ids a key was recorded under before the eraser '
+        'had rows', () {
+      expect(rows.map((row) => row.id).toSet(), hasLength(rows.length));
+      expect(groupId(inks), 'brush-group-inks');
+      expect(presetId('maru'), 'brush-preset-maru');
+      expect(groupId(inks, eraser), 'eraser-group-inks');
+      expect(presetId('maru', eraser), 'eraser-preset-maru');
+    });
+
+    test('say what they press — and for which tool — ship with no key, and '
+        'stand under their tool\'s category', () {
+      expect(rows.first.brushPress, const BrushGroupPress(brushTool, inks));
       expect(
         rows[1].brushPress,
-        const BrushPresetPress(BrushPresetId('g-pen'), group: inks),
+        const BrushPresetPress(brushTool, BrushPresetId('g-pen'), group: inks),
+      );
+      expect(
+        rows[rowsFor(brushTool).length].brushPress,
+        const BrushGroupPress(eraser, inks),
       );
       expect(
         rows.last.brushPress,
-        const BrushPresetPress(BrushPresetId('orphan'), group: null),
+        const BrushPresetPress(eraser, BrushPresetId('orphan'), group: null),
         reason: 'a brush whose group is gone shows in the root section',
       );
       for (final row in rows) {
         expect(row.defaultActivators, isEmpty, reason: row.id);
-        expect(row.category, brushActionCategory, reason: row.id);
+        expect(
+          row.category,
+          brushActionCategories[row.brushPress!.tool],
+          reason: row.id,
+        );
         expect(isBrushActionId(row.id), isTrue, reason: row.id);
       }
+    });
+
+    test('every tool that holds a brush of its own has rows, under a '
+        'heading of its own', () {
+      final holders = CanvasTool.values.where(canvasToolPaints).toList();
+      expect(brushActionCategories.keys, holders);
+      expect(brushActionCategories.values.toSet(), hasLength(holders.length));
+      expect(
+        {for (final row in rows) row.brushPress!.tool},
+        holders.toSet(),
+      );
     });
 
     test('⛔no action of the registry reads as a brush\'s', () {
@@ -205,7 +254,7 @@ void main() {
       expect(told, 1);
       expect(
         bindings.definitionFor(presetId('g-pen'))?.brushPress,
-        const BrushPresetPress(BrushPresetId('g-pen'), group: null),
+        const BrushPresetPress(brushTool, BrushPresetId('g-pen'), group: null),
       );
     });
 
@@ -219,7 +268,17 @@ void main() {
       expect(actionOn(bindings, k), presetId('maru'));
       expect(bindings.conflictedActionIds, isEmpty);
 
-      // The eraser's key, recorded on a group.
+      // The same key on the same brush of the ERASER's library: two rows,
+      // and one key cannot press both (F-319).
+      bindings.setActivators(presetId('maru', eraser), const [k]);
+      expect(
+        bindings.conflictedActionIds,
+        {presetId('maru'), presetId('maru', eraser)},
+      );
+      bindings.setActivators(presetId('maru', eraser), const []);
+      expect(bindings.conflictedActionIds, isEmpty);
+
+      // The eraser tool's key, recorded on a group.
       bindings.setActivators(groupId(chalks), const [
         SingleActivator(LogicalKeyboardKey.keyE),
       ]);
@@ -295,40 +354,52 @@ void main() {
     });
   });
 
-  test('the brush category has a word in every language', () {
+  test('each tool\'s brush category has a word in every language — and a '
+      'word of its own', () {
     for (final language in AppLanguage.values) {
       if (language == AppLanguage.en) {
         continue;
       }
-      expect(
-        AppStrings.of(language).shortcutCategory(brushActionCategory, ''),
-        isNotEmpty,
-        reason: language.name,
-      );
+      final words = [
+        for (final category in brushActionCategories.values)
+          AppStrings.of(language).shortcutCategory(category, ''),
+      ];
+      expect(words, everyElement(isNotEmpty), reason: language.name);
+      expect(words.toSet(), hasLength(words.length), reason: language.name);
     }
   });
 
   group('the port', () {
-    test('presses a brush through the workspace, and a group through the '
-        'panel\'s tab while it is on screen — the workspace\'s otherwise', () {
+    // ↩️A group's press went 「through the panel's tab while it is on screen
+    // — the workspace's otherwise」: a third lend (`enterTab`), taken by the
+    // panel mounted last. There is a panel a paint tool, so that was not
+    // always the one on screen (F-319).
+    test('presses a brush and a group through the workspace — each for the '
+        'tool it names', () {
       final keys = BrushLibraryKeys();
       addTearDown(keys.dispose);
       final pressed = <String>[];
 
       // Nothing attached: a press does nothing, and does not throw.
-      keys.press(const BrushGroupPress(inks));
-      keys.press(const BrushPresetPress(BrushPresetId('maru'), group: inks));
+      keys.press(const BrushGroupPress(brushTool, inks));
+      keys.press(
+        const BrushPresetPress(eraser, BrushPresetId('maru'), group: inks),
+      );
 
       keys
-        ..takeUp = ((id) => pressed.add('take ${id.value}'))
-        ..openGroup = ((id) => pressed.add('open ${id.value}'));
-      keys.press(const BrushPresetPress(BrushPresetId('maru'), group: inks));
-      keys.press(const BrushGroupPress(inks));
-      expect(pressed, ['take maru', 'open inks']);
-
-      keys.enterTab = (id) => pressed.add('tab ${id.value}');
-      keys.press(const BrushGroupPress(chalks));
-      expect(pressed.last, 'tab chalks');
+        ..takeUp = ((tool, id) => pressed.add('take ${tool.name} ${id.value}'))
+        ..openGroup = ((tool, id) =>
+            pressed.add('open ${tool.name} ${id.value}'));
+      keys.press(
+        const BrushPresetPress(eraser, BrushPresetId('maru'), group: inks),
+      );
+      keys.press(const BrushGroupPress(brushTool, inks));
+      keys.press(const BrushGroupPress(eraser, chalks));
+      expect(pressed, [
+        'take eraser maru',
+        'open brush inks',
+        'open eraser chalks',
+      ]);
     });
 
     test('tells what the library holds', () {
@@ -377,10 +448,11 @@ void main() {
     final list = find.byKey(const ValueKey<String>('shortcut-action-list'));
     final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
 
-    /// The brush rows the list holds, in order — built or not: the list is
-    /// lazy and these stand at its far end, so they are read off the
-    /// children it was handed. The root section's title reads `brush-root`.
-    List<String> brushRows(WidgetTester tester) {
+    /// The rows of [tool]'s brushes the list holds, in order — built or not:
+    /// the list is lazy and these stand at its far end, so they are read off
+    /// the children it was handed. A root section's title reads
+    /// `<tool>-root`.
+    List<String> brushRows(WidgetTester tester, [CanvasTool tool = brushTool]) {
       final children =
           (tester.widget<ListView>(list).childrenDelegate
                   as SliverChildListDelegate)
@@ -388,8 +460,21 @@ void main() {
       return [
         for (final child in children)
           if (child.key case ValueKey<String>(:final value)
-              when value.startsWith('shortcut-row-brush-'))
+              when value.startsWith('shortcut-row-${tool.name}-'))
             value.substring('shortcut-row-'.length),
+      ];
+    }
+
+    /// The category headings the list holds, in order — read the same way.
+    List<String> headings(WidgetTester tester) {
+      final children =
+          (tester.widget<ListView>(list).childrenDelegate
+                  as SliverChildListDelegate)
+              .children;
+      return [
+        for (final child in children)
+          if (child case Padding(child: Text(:final data?)))
+            if (brushActionCategories.values.contains(data)) data,
       ];
     }
 
@@ -398,19 +483,27 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('holds a bundle per group, shut: the titles, and no brush', (
-      tester,
-    ) async {
+    testWidgets('holds a bundle per group, shut — once under each tool\'s '
+        'heading: the titles, and no brush', (tester) async {
       await pump(tester);
-      expect(brushRows(tester), [
-        groupId(inks),
-        groupId(empty),
-        groupId(chalks),
-        'brush-root',
-      ]);
+      expect(headings(tester), brushActionCategories.values);
+      for (final tool in [brushTool, eraser]) {
+        expect(brushRows(tester, tool), [
+          groupId(inks, tool),
+          groupId(empty, tool),
+          groupId(chalks, tool),
+          '${tool.name}-root',
+        ], reason: tool.name);
+      }
       await bringIn(tester, twirlOf(groupId(inks)));
-      expect(find.text('Brushes'), findsOneWidget);
-      expect(find.text(brushRootSectionLabel), findsOneWidget);
+      expect(find.text(brushActionCategories[brushTool]!), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('shortcut-row-brush-root')),
+          matching: find.text(brushRootSectionLabel),
+        ),
+        findsOneWidget,
+      );
       for (final bundle in [groupId(inks), groupId(chalks), 'brush-root']) {
         expect(
           isOpen(tester, bundle),
@@ -438,6 +531,16 @@ void main() {
         isOpen(tester, groupId(inks)),
         isTrue,
       );
+      expect(
+        brushRows(tester, eraser),
+        [
+          groupId(inks, eraser),
+          groupId(empty, eraser),
+          groupId(chalks, eraser),
+          'eraser-root',
+        ],
+        reason: 'the eraser\'s Inks is another bundle, and stays shut',
+      );
 
       await bringIn(tester, twirlOf('brush-root'));
       await tester.tap(twirlOf('brush-root'));
@@ -448,6 +551,11 @@ void main() {
         presetId('orphan'),
       ]);
       expect(rowOf('brush-root'), findsNothing);
+      expect(
+        brushRows(tester, eraser).last,
+        'eraser-root',
+        reason: 'and the eraser\'s root section is its own too',
+      );
 
       await bringIn(tester, twirlOf(groupId(inks)));
       await tester.tap(twirlOf(groupId(inks)));
@@ -462,14 +570,44 @@ void main() {
       ]);
     });
 
-    testWidgets('🗣️「검색하면 맞는 묶음이 펼쳐진다」 — a brush found opens its '
-        'bundle on what was found, and the bundle stays open after', (
+    testWidgets('the eraser\'s bundles open by their own twirls', (
       tester,
     ) async {
+      await pump(tester);
+      await bringIn(tester, twirlOf(groupId(inks, eraser)));
+      await tester.tap(twirlOf(groupId(inks, eraser)));
+      await tester.pump();
+      await bringIn(tester, twirlOf('eraser-root'));
+      await tester.tap(twirlOf('eraser-root'));
+      await tester.pump();
+      expect(brushRows(tester, eraser), [
+        groupId(inks, eraser),
+        presetId('g-pen', eraser),
+        presetId('maru', eraser),
+        groupId(empty, eraser),
+        groupId(chalks, eraser),
+        'eraser-root',
+        presetId('loose', eraser),
+        presetId('orphan', eraser),
+      ]);
+      expect(
+        brushRows(tester),
+        [groupId(inks), groupId(empty), groupId(chalks), 'brush-root'],
+        reason: 'and the brush tool\'s stay shut',
+      );
+    });
+
+    testWidgets('🗣️「검색하면 맞는 묶음이 펼쳐진다」 — a brush found opens its '
+        'bundle on what was found, in each tool\'s rows, and the bundle '
+        'stays open after', (tester) async {
       await pump(tester);
       await tester.enterText(search, 'maru');
       await tester.pump();
       expect(brushRows(tester), [groupId(inks), presetId('maru')]);
+      expect(brushRows(tester, eraser), [
+        groupId(inks, eraser),
+        presetId('maru', eraser),
+      ]);
       expect(
         isOpen(tester, groupId(inks)),
         isTrue,
@@ -505,22 +643,43 @@ void main() {
       await tester.enterText(search, 'orphan');
       await tester.pump();
       expect(brushRows(tester), ['brush-root', presetId('orphan')]);
-      expect(find.text(brushRootSectionLabel), findsOneWidget);
-      expect(find.text('Brushes'), findsOneWidget);
+      expect(brushRows(tester, eraser), [
+        'eraser-root',
+        presetId('orphan', eraser),
+      ]);
+      expect(
+        find.text(brushRootSectionLabel),
+        findsNWidgets(2),
+        reason: 'one under each tool\'s heading',
+      );
+      expect(headings(tester), brushActionCategories.values);
     });
 
-    testWidgets('a group\'s key is recorded on its title row', (tester) async {
+    testWidgets('a tool\'s heading found shows that tool\'s rows alone', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tester.enterText(search, 'eraser tool brushes');
+      await tester.pump();
+      expect(brushRows(tester), isEmpty);
+      expect(brushRows(tester, eraser), isNotEmpty);
+      expect(headings(tester), [brushActionCategories[eraser]]);
+    });
+
+    testWidgets('a group\'s key is recorded on its title row — the row of '
+        'the tool it is under', (tester) async {
       final bindings = await pump(tester);
       await tester.enterText(search, 'chalks');
       await tester.pump();
-      await tester.tap(rowOf(groupId(chalks)));
+      await tester.tap(rowOf(groupId(chalks, eraser)));
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
       await tester.pump();
       expect(
-        bindings.activatorsFor(groupId(chalks)).single.trigger,
+        bindings.activatorsFor(groupId(chalks, eraser)).single.trigger,
         LogicalKeyboardKey.keyK,
       );
+      expect(bindings.activatorsFor(groupId(chalks)), isEmpty);
     });
   });
 }
