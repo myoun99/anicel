@@ -597,6 +597,24 @@ void main() {
     await pumpCels(tester, session);
     await standOn(tester, 'a');
     expect(tester.celsStackLines, [('a-color', true), ('a', true)]);
+    // The base wears its word, an attach row its side's arrow.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('export-cels-stack-line-a')),
+        matching: find.text(AppText.strings.exSelBase),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('export-cels-stack-layer-attach-arrow-a-color'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-stack-layer-attach-arrow-a')),
+      findsNothing,
+    );
     final before = tester.exportPreviewDocument!.look;
     await tester.settleExportPreview();
     final pictureBefore = tester.exportPreviewImage;

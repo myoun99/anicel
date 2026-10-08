@@ -268,6 +268,24 @@ void main() {
       expect(backOnA.shown, 'a-3');
     });
 
+    test('with nothing chosen it is the first row that HOLDS a drawing — not '
+        'a row above it with none — and the first row where none does', () {
+      const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
+      final rows = board(film(), spec: lo).rows;
+      expect(ids(rows).first, 'c', reason: '⛔전제: C is first');
+      expect(of(rows, 'c').sheets, isEmpty, reason: '⛔전제: none under LO');
+      expect(const ExportCelsStanding().rowIn(rows)?.idValue, 'l');
+
+      const nothing = CelsExportSpec(
+        kinds: {ExportCelKind.cel},
+        base: false,
+        attach: false,
+      );
+      final bare = board(film(), spec: nothing).rows;
+      expect(bare.every((row) => row.sheets.isEmpty), isTrue, reason: '⛔전제');
+      expect(const ExportCelsStanding().rowIn(bare)?.idValue, 'c');
+    });
+
     // 유저 2026-10-08: 「그림 자체가 존재안하는 레이어는 서있는것도
     // 불가능한데, 서있을수는 있게하고」.
     test('a row with no file is stood on — nothing is shown, and the place '
