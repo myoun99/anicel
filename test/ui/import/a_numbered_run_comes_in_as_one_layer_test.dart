@@ -77,27 +77,25 @@ void main() {
         .data!;
   }
 
-  Future<void> place(
-    WidgetTester tester,
-    EditorSessionManager s, {
-    required int layersAfter,
-  }) async {
+  /// Places what the window holds, and answers the layers that brought —
+  /// by id: the default project has an `A` of its own.
+  Future<List<Layer>> place(WidgetTester tester, EditorSessionManager s) async {
+    final before = {for (final layer in s.requireActiveCut.layers) layer.id};
+    List<Layer> added() => [
+      for (final layer in s.requireActiveCut.layers)
+        if (!before.contains(layer.id)) layer,
+    ];
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length >= layersAfter) {
-        break;
-      }
+    for (var tries = 0; tries < 100 && added().isEmpty; tries += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump();
     }
     await tester.pumpAndSettle();
+    return added();
   }
-
-  Layer layerNamed(EditorSessionManager s, String name) =>
-      s.requireActiveCut.layers.singleWhere((layer) => layer.name == name);
 
   testWidgets('the row says the run it would bring, and a picture alone in '
       'its symbol says nothing', (tester) async {
@@ -129,12 +127,12 @@ void main() {
       'twice, and every file is in the pool', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    final layersBefore = s.requireActiveCut.layers.length;
 
-    await place(tester, s, layersAfter: layersBefore + 1);
+    final added = await place(tester, s);
 
-    expect(s.requireActiveCut.layers.length, layersBefore + 1);
-    final run = layerNamed(s, 'A');
+    expect(added, hasLength(1), reason: 'one layer for the whole run');
+    final run = added.single;
+    expect(run.name, 'A');
     expect([for (final frame in run.frames) frame.name], ['1', '3']);
     expect(
       {
@@ -158,7 +156,6 @@ void main() {
       'did', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    final layersBefore = s.requireActiveCut.layers.length;
     final cell = find.byKey(ValueKey<String>('import-cell-run-${files['A1']}'));
     await tester.ensureVisible(cell);
     await tester.pumpAndSettle();
@@ -173,13 +170,11 @@ void main() {
       AppText.strings.imRunAlone,
     );
 
-    await place(tester, s, layersAfter: layersBefore + 1);
+    final added = await place(tester, s);
 
-    expect(s.requireActiveCut.layers.length, layersBefore + 1);
-    expect(
-      s.requireActiveCut.layers.where((layer) => layer.name == 'A'),
-      isEmpty,
-    );
+    expect(added, hasLength(1));
+    expect(added.single.name, isNot('A'), reason: 'the file\'s own layer');
+    expect(added.single.frames, hasLength(1));
     expect(
       s.repository.requireProject().mediaAssetByPath(
         normalizedMediaPath(files['A2']!),
@@ -193,11 +188,10 @@ void main() {
       (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!, files['A3']!]);
-    final layersBefore = s.requireActiveCut.layers.length;
 
-    await place(tester, s, layersAfter: layersBefore + 1);
+    final added = await place(tester, s);
 
-    expect(s.requireActiveCut.layers.length, layersBefore + 1);
-    expect(layerNamed(s, 'A').frames, hasLength(2));
+    expect(added, hasLength(1));
+    expect(added.single.frames, hasLength(2));
   });
 }
