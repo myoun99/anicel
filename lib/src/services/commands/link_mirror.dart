@@ -1,6 +1,7 @@
 import '../../models/conte_group.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer.dart' show isAttachedLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
@@ -138,6 +139,33 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
     }
   }
   return reached;
+}
+
+/// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
+/// takes together.
+///
+/// A linked row is one layer seen from several cuts ([linkMirrorTargets]).
+/// And an ATTACH ROW OF A TRACK'S CONTE is one row of its head (I-73, the
+/// drawn proposal 유저 took on 2026-10-08: 「머리 — … 어태치 구성 … —
+/// 트랙의 모든 컷이 하나」): it goes from every cut of the track at once,
+/// each cut's own link group with it ([headMirrorTargets]).
+///
+/// ⛔Not the conte itself. A cut has a conte or has none, cut by cut — the
+/// rail keeps the button that makes one in every cut that has none — so
+/// deleting one cut's is that cut's alone (and its link group's).
+List<({CutId cutId, LayerId layerId})> existenceMirrorTargets(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) {
+  final layer = layerAnywhereOrNull(project, layerId);
+  final ridesAConte =
+      layer != null &&
+      isAttachedLayer(layer) &&
+      conteHeadTargets(project, layerId).isNotEmpty;
+  return ridesAConte
+      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
+      : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
 }
 
 /// The ROWS of [headMirrorTargets] — what [linkMirrorRows] is to the link

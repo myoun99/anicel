@@ -12,15 +12,27 @@ import 'link_mirror.dart';
 /// friendly warning before calling). The emptied link groups dissolve.
 /// One undo reinserts every member at its exact index and restores the
 /// registry.
+///
+/// An attach row of a track's conte, deleted ITSELF ([withItsSeat]), goes
+/// from every cut of the track the same way — it is one row of the conte's
+/// head (I-73, [existenceMirrorTargets]).
 class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
   DeleteLayerCommand({
     required super.repository,
     required this.cutId,
     required this.layerId,
+    this.withItsSeat = false,
   });
 
   final CutId cutId;
   final LayerId layerId;
+
+  /// Whether the delete takes the rows at this row's seat of its track's
+  /// conte with it ([existenceMirrorTargets]) — the row deleted for itself.
+  /// False for a row that goes because something it stands in goes: a
+  /// cut's conte taking its attach rows along is that CUT's delete, and
+  /// reaches no other cut's rows but through a link.
+  final bool withItsSeat;
 
   List<({CutId cutId, LayerId layerId, Layer layer, int index})>? _targets;
 
@@ -31,11 +43,10 @@ class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
   void execute() {
     final project = repository.requireProject();
     _targets ??= [
-      for (final target in linkMirrorTargets(
-        project,
-        cutId: cutId,
-        layerId: layerId,
-      ))
+      for (final target
+          in withItsSeat
+              ? existenceMirrorTargets(project, cutId: cutId, layerId: layerId)
+              : linkMirrorTargets(project, cutId: cutId, layerId: layerId))
         () {
           final cut = requireCut(project, target.cutId);
           final index = cut.layers.indexWhere(

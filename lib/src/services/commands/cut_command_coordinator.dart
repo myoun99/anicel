@@ -48,6 +48,7 @@ import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
+        existenceMirrorTargets,
         headMirrorTargets,
         linkCounterpartIn,
         linkMirrorTargets,
@@ -563,17 +564,21 @@ class CutCommandCoordinator {
     // while an empty ORGANIZER is a folder that belongs to no group and
     // sits outside every span. The sweep follows the invalidity, not the
     // emptiness.
+    //
+    // The row goes with its SEAT (I-73 — an attach row of a track's conte
+    // is one row of the conte's head, [existenceMirrorTargets]), so every
+    // cut it goes from is asked what it leaves empty there.
     if (isAttachedLayer(layer)) {
-      final emptied = cut.layers.foldersEmptiedByRemoving(
-        {layerId},
-        canRemove: (folder) =>
-            attachOrganizerBaseOf(folder, cut.layers) != null &&
-            repository.requireProject().linkRegistry.groupOf(
-                  cutId: cutId,
-                  layerId: folder.id,
-                ) ==
-                null,
-      );
+      final project = repository.requireProject();
+      final emptied = [
+        for (final target in existenceMirrorTargets(
+          project,
+          cutId: cutId,
+          layerId: layerId,
+        ))
+          for (final folder in _organizersEmptiedBy(project, target))
+            (cutId: target.cutId, folder: folder),
+      ];
       if (emptied.isNotEmpty) {
         historyManager.executeAsOneStep(
           'Delete layer ${layer.name} and its empty '
@@ -583,12 +588,13 @@ class CutCommandCoordinator {
               repository: repository,
               cutId: cutId,
               layerId: layerId,
+              withItsSeat: true,
             ),
-            for (final folder in emptied)
+            for (final gone in emptied)
               DeleteLayerCommand(
                 repository: repository,
-                cutId: cutId,
-                layerId: folder.id,
+                cutId: gone.cutId,
+                layerId: gone.folder.id,
               ),
           ],
         );
@@ -607,6 +613,7 @@ class CutCommandCoordinator {
           repository: repository,
           cutId: cutId,
           layerId: layerId,
+          withItsSeat: true,
         ),
       );
       return;
@@ -636,6 +643,25 @@ class CutCommandCoordinator {
           layerId: layerId,
         ),
       ],
+    );
+  }
+
+  /// The unlinked ORGANIZER folders of [row]'s cut that removing it leaves
+  /// with nothing in them — the walk [deleteLayer] says why.
+  List<Layer> _organizersEmptiedBy(
+    Project project,
+    ({CutId cutId, LayerId layerId}) row,
+  ) {
+    final layers = requireCut(project, row.cutId).layers;
+    return layers.foldersEmptiedByRemoving(
+      {row.layerId},
+      canRemove: (folder) =>
+          attachOrganizerBaseOf(folder, layers) != null &&
+          project.linkRegistry.groupOf(
+                cutId: row.cutId,
+                layerId: folder.id,
+              ) ==
+              null,
     );
   }
 
