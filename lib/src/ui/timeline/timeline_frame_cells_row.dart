@@ -349,7 +349,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     suppressFirstStartGrip:
         (spillInLeadFrames != null &&
             layerKindUsesSeSheetCells(layer.kind)) ||
-        layer.kind.coversWithoutGaps,
+        layerCoversWithoutGaps(layer),
   );
 
   /// A positioned overlay layer placed by [TimelineFrameSpanLayout] at

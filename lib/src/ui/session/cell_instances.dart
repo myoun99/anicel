@@ -185,7 +185,7 @@ class CellInstances {
     // one block, and the write lays that block as the row's picture — the
     // press with no band makes the same one
     // (`FrameVerbs.canCreateDrawingAtCurrentFrame`).
-    if (layer.kind.coversWithoutGaps && !pictureRowStandsEmpty(layer)) {
+    if (layerCoversWithoutGaps(layer) && !pictureRowStandsEmpty(layer)) {
       return const [];
     }
     final layerFills =

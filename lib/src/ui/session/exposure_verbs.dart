@@ -92,7 +92,7 @@ class ExposureVerbs {
   /// and the kind answers that.
   bool _blankable(Layer layer) =>
       layer.kind.holdsDrawings &&
-      !layer.kind.coversWithoutGaps &&
+      !layerCoversWithoutGaps(layer) &&
       !_retime.standsDownFromRetime(layer.id);
 
   bool get canBlankExposureForSelection =>
@@ -284,7 +284,7 @@ class ExposureVerbs {
         continue;
       }
       edits.add((before: before, after: after));
-      if (sync == null && cut != null && ridesCutLength(before.kind)) {
+      if (sync == null && cut != null && ridesCutLength(before)) {
         sync = cutSyncSnapshotFor(project: _project, cut: cut, row: before);
         syncedRow = after;
       }

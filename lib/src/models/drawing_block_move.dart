@@ -25,10 +25,10 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// F-227) — the frames in front are its first panel held back, not room for
 /// a panel to slide into.
 int _axisStartFor(Layer layer) =>
-    layer.kind.coversWithoutGaps ? storyboardConteStart(layer.timeline) : 0;
+    layerCoversWithoutGaps(layer) ? storyboardConteStart(layer.timeline) : 0;
 
 int? _axisEndFor(Layer layer, int? cutFrameCount) =>
-    layer.kind.coversWithoutGaps && cutFrameCount != null
+    layerCoversWithoutGaps(layer) && cutFrameCount != null
     ? _axisStartFor(layer) + cutFrameCount
     : null;
 

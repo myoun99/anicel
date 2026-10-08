@@ -563,6 +563,28 @@ bool layerAcceptsBrushInput(Layer layer) =>
 /// unchanged.
 bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
 
+/// Whether [layer] is a COVERING row: one that tiles its cut edge to edge,
+/// with no empty cell in its world ([LayerKind.coversWithoutGaps] — a cut's
+/// conte, an image row).
+///
+/// 🚨A LAYER's question, not its kind's — for the kind a cut holds ONE of
+/// ([LayerKind.isSingletonPerCut], the conte). An attach row takes its
+/// BASE's kind (`FoldersAndAttachments.addAttachedLayer`), and a row riding
+/// the cut's conte is not that conte ([holdsSingletonOfKind]): a synced one
+/// mirrors its base and stores no lane, a free one is timed like any
+/// drawing row (UI-R21 #3). 🧪Asked of the kind, a free attach row riding a
+/// conte was tiled to the cut by the write, refused the frame added at a
+/// block's head — and a comma set on one of its blocks resized the CUT to
+/// the row's end (12 frames to 10, measured 2026-10-08 beside the same row
+/// riding a cel layer, which did neither).
+///
+/// An image row's kind still answers for every row of it, an attach row
+/// among them: a cut holds as many as it likes, and each is its one
+/// picture held over the cut (`covering_image_normalize.dart`).
+bool layerCoversWithoutGaps(Layer layer) =>
+    layer.kind.coversWithoutGaps &&
+    !(layer.kind.isSingletonPerCut && isAttachedLayer(layer));
+
 /// Whether [layers] already hold the ONE row a singleton kind allows a cut
 /// ([LayerKind.isSingletonPerCut]).
 ///

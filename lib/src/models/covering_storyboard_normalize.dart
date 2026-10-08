@@ -82,7 +82,11 @@ Layer _coveringStoryboardRow(
   required CutTransitionHandles handles,
   required int from,
 }) {
-  if (layer.kind != LayerKind.storyboard || layer.timeline.isEmpty) {
+  // The cut's CONTE, that is — a storyboard row riding it took its kind and
+  // is no covering row ([layerCoversWithoutGaps]).
+  if (layer.kind != LayerKind.storyboard ||
+      !layerCoversWithoutGaps(layer) ||
+      layer.timeline.isEmpty) {
     return layer;
   }
   final conteStart = handles.head;

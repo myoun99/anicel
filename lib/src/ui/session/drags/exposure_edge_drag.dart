@@ -6,7 +6,6 @@ import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
-import '../../../models/layer_kind.dart';
 import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../storyboard_layer_policy.dart';
@@ -105,12 +104,12 @@ CutSyncCapture? _captureCutSync({
   Layer? syncRow;
   if (bulk != null) {
     for (final candidate in bulk.values) {
-      if (ridesCutLength(candidate.before.kind)) {
+      if (ridesCutLength(candidate.before)) {
         syncRow = candidate.before;
         break;
       }
     }
-  } else if (anchor != null && ridesCutLength(anchor.kind)) {
+  } else if (anchor != null && ridesCutLength(anchor)) {
     syncRow = anchor;
   }
   final activeId = roles.project.activeCutId;
@@ -131,8 +130,12 @@ CutSyncCapture? _captureCutSync({
 /// anchor either — the STORYBOARD row is the sole rider (otherwise a bulk
 /// drag spanning an image row would silently switch which row drives the cut
 /// resize).
-bool ridesCutLength(LayerKind kind) =>
-    kind.coversWithoutGaps && !kind.holdsSingleCel;
+///
+/// ↩️Asked of the row's KIND until I-73 (2026-10-08), which answered for an
+/// attach row riding the conte too — it takes the conte's kind — and its
+/// comma resized the cut ([layerCoversWithoutGaps]).
+bool ridesCutLength(Layer layer) =>
+    layerCoversWithoutGaps(layer) && !layer.kind.holdsSingleCel;
 
 CutSyncCapture cutSyncSnapshotFor({
   required ProjectAccess project,
