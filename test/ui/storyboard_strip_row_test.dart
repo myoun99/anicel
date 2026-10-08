@@ -649,6 +649,18 @@ void main() {
       expect(session.selectedRow, _conteRow);
       expect(session.editingGlobalFrame, 16);
       expect(session.activeLayerId, const LayerId('cut-2-sb'));
+      // …and it is the one row the rail lights.
+      const lit = ValueKey<String>('storyboard-selected-row');
+      expect(find.byKey(lit), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey<String>('storyboard-conte-label-${_trackId.value}'),
+          ),
+          matching: find.byKey(lit),
+        ),
+        findsOneWidget,
+      );
     });
   });
 

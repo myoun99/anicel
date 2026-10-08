@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
     show seLayerIdForTrack;
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -213,5 +215,101 @@ void main() {
       closeTo(row.top, 0.5),
       reason: 'and the label it belongs to stands beside it',
     );
+  });
+
+  // I-73: the conte row is a row of this rail, and the filter judges it as
+  // it judges every row — on the facets it carries here: its kind, and the
+  // colour label its blocks wear.
+  group('the conte row', () {
+    const kindFilter = TimelineRowFilter(kinds: {LayerKind.animation});
+
+    void expectConteRowHidden(String track) {
+      expect(keyed('storyboard-conte-label-$track'), findsNothing);
+      expect(
+        keyed('storyboard-conte-row-$track'),
+        findsNothing,
+        reason: 'the filter hides the ROW, its strip with it',
+      );
+    }
+
+    void expectConteRowShown(WidgetTester tester, String track) => expectOneRow(
+      tester,
+      'storyboard-conte-label-$track',
+      'storyboard-conte-row-$track',
+    );
+
+    testWidgets('⛔전제: unfiltered, it is one row under the V row', (
+      tester,
+    ) async {
+      final shown = await pumpFiltered(
+        tester,
+        rowFilter: TimelineRowFilter.none,
+      );
+      expectConteRowShown(tester, shown.track);
+      expect(
+        tester.getRect(keyed('storyboard-conte-row-${shown.track}')).top,
+        closeTo(
+          tester.getRect(keyed('storyboard-track-row-${shown.track}')).bottom,
+          0.5,
+        ),
+      );
+    });
+
+    testWidgets('the kind chip hides it, strip and all', (tester) async {
+      final shown = await pumpFiltered(tester, rowFilter: kindFilter);
+
+      expectConteRowHidden(shown.track);
+      expectOneRow(
+        tester,
+        'storyboard-track-label-row-${shown.track}',
+        'storyboard-track-row-${shown.track}',
+      );
+    });
+
+    testWidgets('…and it stays while it is the row you stand on', (
+      tester,
+    ) async {
+      final shown = await pumpFiltered(
+        tester,
+        rowFilter: kindFilter,
+        arrange: (session) => session.selectRow(
+          LayerRowAddress(trackConteRowId(session.selectedTrackId)),
+        ),
+      );
+      expectConteRowShown(tester, shown.track);
+    });
+
+    testWidgets('the mark chip finds no label on a row no conte layer has '
+        'coloured, and leaves it', (tester) async {
+      final shown = await pumpFiltered(tester, rowFilter: markFilter);
+      expectConteRowShown(tester, shown.track);
+    });
+
+    testWidgets('…and hides it by the label its blocks wear', (tester) async {
+      final shown = await pumpFiltered(
+        tester,
+        rowFilter: markFilter,
+        arrange: (session) =>
+            session.layerStack.addLayerOfKind(LayerKind.storyboard),
+      );
+      expectConteRowHidden(shown.track);
+    });
+
+    testWidgets('with the V row hidden above it, it is still one row', (
+      tester,
+    ) async {
+      final shown = await pumpFiltered(
+        tester,
+        rowFilter: const TimelineRowFilter(fxOnly: true),
+        arrange: (session) =>
+            session.effectsAndFx.toggleTrackFx(session.selectedTrackId),
+      );
+      expect(
+        keyed('storyboard-track-row-${shown.track}'),
+        findsNothing,
+        reason: '⛔전제: the fx chip hid the V row',
+      );
+      expectConteRowShown(tester, shown.track);
+    });
   });
 }

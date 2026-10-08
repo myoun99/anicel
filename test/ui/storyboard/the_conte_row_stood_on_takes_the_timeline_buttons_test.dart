@@ -233,9 +233,9 @@ void main() {
       final session = onTheConteRow(10);
       StoryboardToolbarPanelContext(session).selectRowSpan();
 
-      final band = session.frameRangeSelection.value!;
-      expect(band.layerId, conteA);
-      expect((band.startIndex, band.endIndexExclusive), (0, 24));
+      final band = session.frameRangeSelection.value;
+      expect(band?.layerId, conteA);
+      expect((band?.startIndex, band?.endIndexExclusive), (0, 24));
       expect(session.trackFrameRangeSelection.value, isNull);
     });
 
@@ -341,12 +341,16 @@ void main() {
 
   test('the V row above stays the CUT\'s: none of the timeline\'s cell '
       'buttons, and Delete names the cut', () {
-    final session = open()
+    // From the conte row, so the timeline still stands on the conte layer
+    // — a cut keeps the row it was left on. What is in hand is not what
+    // decides: the ROW the storyboard stands on does.
+    final session = onTheConteRow(10)
       ..standOnRow(
         const TrackRowAddress(trackId),
         panel: WorkingPanel.storyboard,
         globalFrameIndex: 10,
       );
+    expect(session.activeLayerId, conteA, reason: '⛔전제');
     final panel = StoryboardToolbarPanelContext(session);
 
     expect(panel.editTarget, isA<StoryboardEditCut>());

@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
@@ -44,6 +46,14 @@ import 'timeline_row_chrome_probe.dart';
 /// takes each one's ink where it stands on it (2026-09-26).
 const _trackId = TrackId('ink-track');
 
+/// The chrome slot each of the storyboard's two rows paints its grips in:
+/// the cut blocks' on their plates, and the conte row's panels' (I-73).
+const _vRow = 'storyboard-plate';
+const _conteRow = 'storyboard';
+
+/// The cut's own colour label — what its two bands wear.
+const _cutLabel = LayerMark(process: LayerProcess.art);
+
 Project _project() => Project(
   id: const ProjectId('ink-project'),
   name: 'Ink',
@@ -58,10 +68,8 @@ Project _project() => Project(
           name: 'cut-1',
           duration: 10,
           canvasSize: const CanvasSize(width: 640, height: 360),
-          // Labelled, so the cut's bands and the conte blocks' differ.
-          metadata: const CutMetadata(
-            mark: LayerMark(process: LayerProcess.art),
-          ),
+          // Labelled, so the cut's bands and the conte row's blocks differ.
+          metadata: const CutMetadata(mark: _cutLabel),
           layers: [
             Layer(
               id: const LayerId('cut-1-sb'),
@@ -190,7 +198,7 @@ void main() {
 
   testWidgets('🗣️the cut row\'s edges stand on the PLATE — the conte '
       'sheet\'s black, so its ink is the light one — while the timeline row '
-      'hands its grips its layer\'s paper', (tester) async {
+      'and the conte row hand their grips their own paper', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -215,7 +223,7 @@ void main() {
     final ground = timelineRowChromePainter(
       tester,
       _trackId.value,
-      prefix: 'storyboard',
+      prefix: _vRow,
     )!.gripGround;
     expect(ground, conteSheetInk);
     expect(
@@ -224,6 +232,17 @@ void main() {
         ground: ground,
       ).withValues(alpha: 1),
       timelineTextOnDarkGroundColor,
+    );
+    // I-73: a panel is a frame block of the conte row — the paper the
+    // timeline's own row hands its grips (↩️the plate's, while the conte
+    // blocks stood inside the cut block).
+    expect(
+      timelineRowChromePainter(
+        tester,
+        _trackId.value,
+        prefix: _conteRow,
+      )!.gripGround,
+      layerMarkColor(LayerMark.none),
     );
   });
 
@@ -265,32 +284,34 @@ void main() {
   // 걸치도록」. ↩️A triangle took half its paper and crossed a label band
   // into the picture — two grounds, two inks (유저 09-26 「2여도 흰종이부분에
   // 엣지는 1처럼 제대로 보이게 가능하지?」).
-  testWidgets('🗣️I-52: a conte block\'s edges stand in its bands alone — '
-      'the back edge in its name band, the front in its comma band', (
+  //
+  // I-73: the block with pictures is the CUT block alone now — its edges
+  // are the cut's two, in the cut's own bands, with a conte layer or
+  // without. ↩️A conte block's edges stood in the conte blocks' pair of
+  // bands inside it; a panel is a frame block of the conte row, with no
+  // picture to keep clear of.
+  testWidgets('🗣️I-52: a cut block\'s edges stand in its bands alone — the '
+      'back edge in its name band, the front in its length band', (
     tester,
   ) async {
     await openStoryboard(tester);
-    expectEdgesInTheBands(tester, 'storyboard');
+    expectEdgesInTheBands(tester, _vRow);
 
     final painter = timelineRowChromePainter(
       tester,
       _trackId.value,
-      prefix: 'storyboard',
+      prefix: _vRow,
     )!;
     final end = painter.targets.whereType<TimelineRowGripTarget>().firstWhere(
       (target) => target.edge == TimelineBlockEdge.end,
     );
-    // One ground under the triangle: the conte blocks' top band, in the
-    // storyboard layer's label — the paper, unlabelled — as painted: the
-    // conte opens standing on the V row, in the cut under the playhead,
-    // whose bands wear the standing wash (F-248).
+    // One ground under the triangle: the cut's top band, in the cut's own
+    // label, as painted: the conte opens standing on the V row, in the cut
+    // under the playhead, whose bands wear the standing wash (F-248).
     final band = painter.gripGrounds!().under(end.rect).single;
     expect(
       band.color,
-      Color.alphaBlend(
-        timelineStandingWashColor,
-        layerMarkColor(LayerMark.none),
-      ),
+      Color.alphaBlend(timelineStandingWashColor, layerMarkColor(_cutLabel)),
     );
     expect(
       band.rect.expandToInclude(end.rect),
@@ -301,9 +322,7 @@ void main() {
     final spy = _InkSpy();
     painter.paint(
       spy,
-      tester.getSize(
-        timelineRowChromeFinder(_trackId.value, prefix: 'storyboard'),
-      ),
+      tester.getSize(timelineRowChromeFinder(_trackId.value, prefix: _vRow)),
     );
     // As ARGB: a Paint keeps its colour in 32 bits.
     final ink = blockEdgeGripColor(
@@ -321,11 +340,41 @@ void main() {
     );
   });
 
-  testWidgets('I-52: a cut with no conte blocks hangs its edges in its own '
-      'bands — the back edge in its name band, the front in its length '
-      'band', (tester) async {
+  testWidgets('I-52: a cut with no conte layer hangs its edges in its own '
+      'bands the same — the back edge in its name band, the front in its '
+      'length band', (tester) async {
     await openStoryboard(tester, project: _bareCutProject());
-    expectEdgesInTheBands(tester, 'storyboard-plate');
+    expectEdgesInTheBands(tester, _vRow);
+  });
+
+  testWidgets('I-73: a panel\'s edges take half its block\'s paper on the '
+      'conte row — the timeline row\'s own grips, on one ground', (
+    tester,
+  ) async {
+    await openStoryboard(tester);
+    final painter = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: _conteRow,
+    )!;
+    // A block's paper stops short of the row's seam (I-44).
+    final paper = timelineRowPaperExtent(
+      tester
+          .getSize(timelineRowChromeFinder(_trackId.value, prefix: _conteRow))
+          .height,
+    );
+    final grips = painter.targets.whereType<TimelineRowGripTarget>().toList();
+    expect(grips, hasLength(4), reason: 'two panels, two edges each');
+    expect(painter.gripGrounds, isNull, reason: 'the blocks are the paper');
+    for (final grip in grips) {
+      expect(grip.rect.height, moreOrLessEquals(paper / 2), reason: grip.id);
+      expect(
+        grip.edge == TimelineBlockEdge.end ? grip.rect.top : grip.rect.bottom,
+        grip.edge == TimelineBlockEdge.end ? 0 : moreOrLessEquals(paper),
+        reason: '${grip.id}: the back edge at the paper\'s top, the front at '
+            'its bottom',
+      );
+    }
   });
 
   testWidgets('with thumbnails OFF there is no picture under an edge — the '
@@ -357,7 +406,7 @@ void main() {
     final painter = timelineRowChromePainter(
       tester,
       _trackId.value,
-      prefix: 'storyboard',
+      prefix: _vRow,
     )!;
     expect(painter.gripGround, conteSheetInk);
     final grounds = painter.gripGrounds!();
@@ -370,10 +419,10 @@ void main() {
         {
           Color.alphaBlend(
             timelineStandingWashColor,
-            layerMarkColor(LayerMark.none),
+            layerMarkColor(_cutLabel),
           ),
         },
-        reason: '${grip.id}: its conte block\'s band, and the plate',
+        reason: '${grip.id}: its cut\'s band, and the plate',
       );
     }
   });

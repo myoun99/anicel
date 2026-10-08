@@ -12,6 +12,8 @@ import '../models/storyboard_timeline_layout.dart';
 import '../models/timeline_exposure.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
+import 'text/app_strings.dart';
+import 'text/model_vocabulary.dart';
 
 /// The cut's storyboard row, or null when it has none.
 ///
@@ -114,16 +116,27 @@ Layer trackConteRowShown(
       timeline[entry.startFrame + ownFrame - conteStart] = block;
     }
   }
-  final head = trackConteHeadLayer([for (final entry in entries) entry.cut]);
+  final cuts = [for (final entry in entries) entry.cut];
   return Layer(
     id: trackConteRowId(trackId),
-    name: head?.name ?? '',
+    name: trackConteRowName(cuts),
     kind: LayerKind.storyboard,
-    mark: head?.mark ?? LayerMark.none,
+    mark: trackConteHeadLayer(cuts)?.mark ?? LayerMark.none,
     frames: frames,
     timeline: timeline,
   );
 }
+
+/// The name the track's conte row goes by wherever it is written — its
+/// rail label, the flip window: the first conte layer's on the track
+/// ([trackConteHeadLayer]), and the kind's own word while no cut has one.
+///
+/// ⚠️ONE answer. The rail read the kind's word and the row as drawn an
+/// empty name, so a film with no conte layer yet named the row on its rail
+/// and left it nameless in the flip window (🧪2026-10-08, before it landed).
+String trackConteRowName(Iterable<Cut> cuts) =>
+    trackConteHeadLayer(cuts)?.name ??
+    LayerKind.storyboard.labelFor(AppText.language);
 
 /// The conte layer the track's conte row is NAMED and COLOURED by: the
 /// first one on the track, in the cuts' order — null while no cut has one.

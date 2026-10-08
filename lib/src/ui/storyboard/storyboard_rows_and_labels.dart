@@ -182,10 +182,9 @@ class _StoryboardRowsAndLabels {
     );
   }
 
-  /// The CONTE row's rail label: the row's glyph and its name — the first
-  /// conte layer's on the track ([trackConteHeadLayer]), or the kind's own
-  /// word while no cut has one. A press picks the ROW ([trackConteRowId]),
-  /// which the session lands on the conte layer of the cut it stands in.
+  /// The CONTE row's rail label: the row's glyph and its name
+  /// ([trackConteRowName]). A press picks the ROW ([trackConteRowId]), which
+  /// the session lands on the conte layer of the cut it stands in.
   ///
   /// Its control slots are reserved and empty: the head is to be the
   /// timeline's own, one for every cut (I-73 ③ — see
@@ -197,9 +196,7 @@ class _StoryboardRowsAndLabels {
       rowId: rowId,
       kind: LayerKind.storyboard,
       keyName: 'conte',
-      name:
-          trackConteHeadLayer(track.cuts)?.name ??
-          layerKindDisplayName(LayerKind.storyboard),
+      name: trackConteRowName(track.cuts),
       layer: null,
       active: _state.widget.selectedRow == LayerRowAddress(rowId),
       height: _state._rowHeights.conte,

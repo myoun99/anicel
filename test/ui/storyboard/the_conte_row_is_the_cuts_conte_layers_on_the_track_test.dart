@@ -19,6 +19,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 
 /// 🗣️I-73 (유저 2026-10-08): 「v행 아래에 콘티행 만들어서 거기서」 · 「콘티행도
@@ -223,8 +225,8 @@ void main() {
       expect(shown.memo?.actionMemo, 'runs');
     });
 
-    test('it wears the FIRST conte layer\'s name and colour label — and '
-        'none while no cut has one', () {
+    test('it wears the FIRST conte layer\'s name and colour label — and, '
+        'while no cut has one, the kind\'s own word and no label', () {
       final entries = entriesOf([
         cut('a', 4),
         cut(
@@ -247,12 +249,18 @@ void main() {
         const LayerId('sb-b'),
       );
 
+      expect(trackConteRowName([for (final entry in entries) entry.cut]), 'B');
+
       final bare = entriesOf([cut('a', 4)]);
+      final bareCuts = [for (final entry in bare) entry.cut];
       expect(trackConteRowShown(trackId, bare).mark, LayerMark.none);
-      expect(
-        trackConteHeadLayer([for (final entry in bare) entry.cut]),
-        isNull,
-      );
+      expect(trackConteHeadLayer(bareCuts), isNull);
+      // One name wherever the row is written: the rail's label reads
+      // [trackConteRowName], the flip window the row as drawn.
+      final kindsWord = LayerKind.storyboard.labelFor(AppText.language);
+      expect(kindsWord, isNotEmpty, reason: '⛔전제');
+      expect(trackConteRowName(bareCuts), kindsWord);
+      expect(trackConteRowShown(trackId, bare).name, kindsWord);
     });
   });
 
