@@ -13,6 +13,7 @@ import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
@@ -445,34 +446,38 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
+  /// The codec, picked from the app's one value list.
+  ///
+  /// 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서
+  /// 그중에 고르게하도록」. ↩️It was a pill strip, and MOV's six shared the
+  /// settings column's row at some 30px each — every name cut to an
+  /// ellipsis (실측 10-05).
   Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
     label: AppText.strings.exCodec,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final codec in codecs)
-            PillItem(
-              keyValue: 'export-format-codec-${codec.jsonValue}',
+      child: PanelFlyoutButton(
+        key: const ValueKey<String>('export-format-codec'),
+        label: selection.videoCodec.label,
+        enabled: enabled,
+        entriesBuilder: () => codecs.asFlyoutValueChoices(
+          current: selection.videoCodec,
+          choiceOf: (codec) {
+            final writable = capabilities.isVideoEnabled(
+              selection.container,
+              codec,
+            );
+            return PanelFlyoutChoice(
+              key: 'export-format-codec-${codec.jsonValue}',
               label: codec.label,
-              selected: selection.videoCodec == codec,
-              onTap:
-                  enabled &&
-                      capabilities.isVideoEnabled(selection.container, codec)
-                  ? () => _change(selection.copyWith(videoCodec: codec))
-                  : null,
-              // 🗣️video-export-speed ② (유저 2026-10-08): 「mov의 코덱 이름
-              // 안보이니까 이거 해결하고싶음. 일단 툴팁으로 띄우는건
-              // 최소한의해결」 — MOV's six share the row and their words
-              // are cut, so each says its whole name on hover, and a
-              // refused one why under it.
-              tooltip: [
-                codec.label,
-                if (!capabilities.isVideoEnabled(selection.container, codec))
-                  ?capabilities.reasonFor(selection.container, codec),
-              ].join('\n'),
-            ),
-        ],
+              enabled: writable,
+              warning: writable
+                  ? null
+                  : capabilities.reasonFor(selection.container, codec),
+            );
+          },
+          onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
+        ),
       ),
     ),
   );

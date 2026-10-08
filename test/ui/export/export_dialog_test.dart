@@ -1,4 +1,3 @@
-import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -38,7 +37,7 @@ import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/export_cels_board_probe.dart';
@@ -993,6 +992,21 @@ void main() {
   });
 
   group('codec lineup (EX4)', () {
+    const codecButton = ValueKey<String>('export-format-codec');
+    Finder codecRow(String codec) =>
+        find.byKey(ValueKey<String>('export-format-codec-$codec'));
+
+    /// Opens the codec list and picks [codec] from it.
+    Future<void> pickCodec(WidgetTester tester, String codec) async {
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
+      await tester.tap(codecRow(codec));
+      await tester.pumpAndSettle();
+    }
+
+    String codecShown(WidgetTester tester) =>
+        tester.widget<PanelFlyoutButton>(find.byKey(codecButton)).label;
+
     testWidgets('H.265 rides the ffmpeg fallback with libx265',
         (tester) async {
       final fake = FakeFfmpegProcess();
@@ -1008,10 +1022,7 @@ void main() {
           },
         ),
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-codec-h265')),
-      );
-      await tester.pump();
+      await pickCodec(tester, 'h265');
       await tester.runAsync(state.export);
       await tester.pump();
       expect(capturedArgs, contains('libx265'));
@@ -1040,12 +1051,7 @@ void main() {
         find.byKey(const ValueKey<String>('export-format-container-mov')),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('export-format-codec-prores4444'),
-        ),
-      );
-      await tester.pump();
+      await pickCodec(tester, 'prores4444');
       // 4444 exposes the channel choice; RGBA is the default already.
       expect(
         find.byKey(const ValueKey<String>('export-format-channels-rgba')),
@@ -1066,31 +1072,38 @@ void main() {
       );
     });
 
-    // 🗣️video-export-speed ② (유저 2026-10-08): 「mov의 코덱 이름
-    // 안보이니까 이거 해결하고싶음. 일단 툴팁으로 띄우는건 최소한의해결」.
-    testWidgets('🗣️every codec pill says its whole name on hover — MOV\'s six '
-        'share the row and their words are cut', (tester) async {
+    // 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서
+    // 그중에 고르게하도록」 — ↩️MOV's six were pills cut to an ellipsis.
+    testWidgets('🗣️the codec is picked from a list: the button says the one '
+        'in force, whole, and the list holds the container\'s every codec', (
+      tester,
+    ) async {
       await pumpDialog(tester, exportSession());
       await tester.tap(
         find.byKey(const ValueKey<String>('export-format-container-mov')),
       );
       await tester.pump();
+      expect(codecShown(tester), ExportVideoCodec.h264.label);
+
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
       for (final codec in ExportVideoCodec.codecsFor(
         ExportVideoContainer.mov,
       )) {
-        final pill = find.byKey(
-          ValueKey<String>('export-format-codec-${codec.jsonValue}'),
-        );
         expect(
-          tester
-              .widget<AppTooltip>(
-                find.ancestor(of: pill, matching: find.byType(AppTooltip)),
-              )
-              .message,
-          codec.label,
+          find.descendant(
+            of: codecRow(codec.jsonValue),
+            matching: find.text(codec.label),
+          ),
+          findsOneWidget,
           reason: codec.jsonValue,
         );
       }
+      expect(codecRow('h265'), findsNothing, reason: 'MP4 alone holds it');
+
+      await tester.tap(codecRow('prores4444'));
+      await tester.pumpAndSettle();
+      expect(codecShown(tester), 'ProRes 4444');
     });
 
     testWidgets('a restrictive availability grays the pair with a reason',
@@ -1107,26 +1120,27 @@ void main() {
         formatAvailability: restrictive,
       );
       await tester.pump();
-      final h265 = find.byKey(
-        const ValueKey<String>('export-format-codec-h265'),
-      );
-      expect(h265, findsOneWidget);
-      final tip = tester.widget<AppTooltip>(
-        find.ancestor(of: h265, matching: find.byType(AppTooltip)),
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PopupMenuItem<PanelFlyoutItem>>(codecRow('h265')).enabled,
+        isFalse,
+        reason: 'a codec this machine cannot write stays in the list, off',
       );
       expect(
-        tip.message!.split('\n'),
-        hasLength(2),
-        reason: 'a grayed chip says its name, and explains itself under it',
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              (widget.data == AppText.strings.exNeedsFfmpeg ||
+                  widget.data == AppText.strings.exCheckingEncoders),
+        ),
+        findsWidgets,
+        reason: 'and says why under its name',
       );
-      expect(tip.message!.split('\n').first, 'H.265');
-      // The tap is a no-op on a grayed chip — H.264 stays selected.
-      await tester.tap(h265);
-      await tester.pump();
-      final h264Chip = tester.widget<Pill>(
-        find.byKey(const ValueKey<String>('export-format-codec-h264')),
-      );
-      expect(h264Chip.selected, isTrue);
+      // A press on a row that is off picks nothing — H.264 stays.
+      await tester.tap(codecRow('h265'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(codecShown(tester), ExportVideoCodec.h264.label);
     });
 
     testWidgets('JPG sequence writes .jpg files through the native encoder',

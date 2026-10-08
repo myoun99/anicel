@@ -266,6 +266,8 @@ class PanelFlyoutChoice {
     required this.label,
     this.icon,
     this.shortcuts = const [],
+    this.enabled = true,
+    this.warning,
   });
 
   final String key;
@@ -275,6 +277,14 @@ class PanelFlyoutChoice {
   /// The actions picking this value is ([PanelFlyoutItem.shortcuts]) — a
   /// value that is a row of the shortcut list prints that row's key.
   final List<String> shortcuts;
+
+  /// False keeps the value's row in the list, off ([PanelFlyoutItem.enabled])
+  /// — an export codec this build cannot write.
+  final bool enabled;
+
+  /// [PanelFlyoutItem.warning]: what to know before picking it — why an
+  /// export codec cannot be written here.
+  final String? warning;
 }
 
 /// One [PanelFlyoutItem] per value, the one equal to [current] marked as
@@ -310,6 +320,8 @@ extension PanelFlyoutValueChoices<T> on Iterable<T> {
           icon: choice.icon,
           shortcuts: choice.shortcuts,
           selected: value == current,
+          enabled: choice.enabled,
+          warning: choice.warning,
           onSelected: () => onPicked(value),
         ),
   ];
