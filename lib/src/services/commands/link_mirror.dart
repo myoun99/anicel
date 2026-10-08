@@ -1,7 +1,7 @@
 import '../../models/conte_group.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer.dart' show isAttachedLayer;
+import '../../models/layer.dart' show LayerStackQueries, isAttachedLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
@@ -104,6 +104,43 @@ List<({CutId cutId, LayerId layerId})> conteHeadTargets(
   return const [];
 }
 
+/// 🚨A TRACK'S CAMERAS WEAR ONE HEAD TOO — ITS NAME AND ITS FX SWITCH (I-73
+/// ④).
+///
+/// 유저 2026-10-09: 「그럼 카메라행도 글로벌? 콘티행처럼 머리 같도록
+/// 할까하는데」, and of the head that drew (I-73-camera-row-Q1): 「좋은데
+/// 색라벨은 컷마다 있는게 좋을거같은데」. The storyboard draws a track's
+/// cameras as ONE row, so the row's name and its fx switch — the camera
+/// work on or off — are one for every cut of the track. ⛔The colour label
+/// stays each cut's own: the row draws each cut's keys and line in it. The
+/// eye and the opacity are the camera VIEW's, no layer's at all.
+///
+/// Every (cut, camera row) of the track [layerId]'s camera stands on — the
+/// row itself first. Empty for any other row.
+///
+/// ⛔Not a link group either: what a camera HOLDS — its keys, their names
+/// and values — stays each cut's own, as a conte row's panels do.
+List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
+  Project project,
+  LayerId layerId,
+) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      if (cut.layers.cameraLayer?.id != layerId) {
+        continue;
+      }
+      return [
+        (cutId: cut.id, layerId: layerId),
+        for (final other in track.cuts)
+          if (other.id != cut.id)
+            if (other.layers.cameraLayer case final camera?)
+              (cutId: other.id, layerId: camera.id),
+      ];
+    }
+  }
+  return const [];
+}
+
 /// The addresses a HEAD edit lands on: the row's link group
 /// ([linkMirrorTargets]) and, of a row of a conte group, the rows at its
 /// seat in every cut of the track ([conteHeadTargets]) — the closure of the
@@ -114,10 +151,15 @@ List<({CutId cutId, LayerId layerId})> conteHeadTargets(
 /// What walks it: a row's name, label, blend, static opacity and fold, its
 /// transform switch and the shape of its effect chain. ⛔Never the named
 /// keys' space or the cel bank — those are the link group's alone.
+///
+/// [cameraHead]: whether the field is one a track's cameras wear as one as
+/// well ([cameraHeadTargets]) — the name and the transform switch, and not
+/// the label.
 List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   Project project, {
   required CutId cutId,
   required LayerId layerId,
+  bool cameraHead = false,
 }) {
   // From the cut that HOLDS the row ([conteHeadTargets] says why): the
   // registry keys a row's group by its own cut, and would call a row
@@ -131,6 +173,7 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
     final next = [
       ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
       ...conteHeadTargets(project, at.layerId),
+      if (cameraHead) ...cameraHeadTargets(project, at.layerId),
     ];
     for (final target in next) {
       if (seen.add(target)) {
@@ -174,11 +217,13 @@ List<LayerId> headMirrorRows(
   Project project, {
   required CutId cutId,
   required LayerId layerId,
+  bool cameraHead = false,
 }) => [
   for (final target in headMirrorTargets(
     project,
     cutId: cutId,
     layerId: layerId,
+    cameraHead: cameraHead,
   ))
     target.layerId,
 ];

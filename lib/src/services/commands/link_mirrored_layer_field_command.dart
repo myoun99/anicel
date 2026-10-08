@@ -29,6 +29,7 @@ class LinkMirroredLayerFieldCommand<T>
     required T Function(Layer layer) read,
     required LayerFieldWrite<T> write,
     this.ofTheHead = true,
+    this.ofTheCameraHead = false,
   }) : _read = read,
        _write = write;
 
@@ -49,6 +50,11 @@ class LinkMirroredLayerFieldCommand<T>
   /// reaches the link group alone, as it always did.
   final bool ofTheHead;
 
+  /// Whether the field is part of the head a track's CAMERAS wear as one
+  /// ([cameraHeadTargets], I-73 ④) as well — the name, and not the label
+  /// (🗣️I-73-camera-row-Q1: 「색라벨은 컷마다」).
+  final bool ofTheCameraHead;
+
   @override
   String get description => 'Update layer $fieldName $layerId';
 
@@ -58,7 +64,12 @@ class LinkMirroredLayerFieldCommand<T>
   @override
   List<({CutId cutId, LayerId layerId})> membersOf(Project project) =>
       ofTheHead
-      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
+      ? headMirrorTargets(
+          project,
+          cutId: cutId,
+          layerId: layerId,
+          cameraHead: ofTheCameraHead,
+        )
       : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
 
   @override

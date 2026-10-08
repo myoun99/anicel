@@ -41,8 +41,15 @@ class UpdateLayerTransformEnabledCommand implements Command {
       return [layerId];
     }
     // The switch is part of the row's head — a track's conte rows wear it
-    // as one, with the link group ([headMirrorRows], I-73).
-    return headMirrorRows(project, cutId: cutId, layerId: layerId);
+    // as one, with the link group ([headMirrorRows], I-73) — and so do a
+    // track's cameras: their fx switch is the camera work on or off, for
+    // the track's one camera row (I-73-camera-row-Q1).
+    return headMirrorRows(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+      cameraHead: true,
+    );
   }
 
   @override
