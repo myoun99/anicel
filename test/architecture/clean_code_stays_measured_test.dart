@@ -244,6 +244,21 @@ void main() {
   /// `_placeRun` stayed under (four: the row's answers are read inside).
   /// 🔬The lane's scan against master (`1018781b8`, at 384) named those
   /// two added and nothing gone.
+  ///
+  /// ⚠️386 stays on 2026-10-09 with one more under it, named as the rule
+  /// above asks (I-73 ④, the storyboard's camera row): master (`fc275859c`)
+  /// scanned at 385 under this ceiling, and `timelineUnionKeySpan` (eight)
+  /// is the ONE key mark the timeline's union row and the storyboard's
+  /// camera row lay out — `timelineUnionKeyMarkerSpans` drew it inline. Its
+  /// eight are whose key it is (the layer, the lane, the frame, the prefix
+  /// its keys are named under), where it stands (`at`, the cell on the
+  /// row's own axis — a cut's own frame stands elsewhere on the track's —
+  /// and `crossInset`/`crossExtent`, the band across that holds one of the
+  /// camera row's two lines over an O.L) and whether its name is printed
+  /// (`named`: two lines leave no room for a word). The line beside it
+  /// stayed under: `timelineKeysLineCourse` takes the line it draws.
+  /// 🔬The lane's scan against master named that one added and nothing
+  /// gone.
   const wideSignatures = 386;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's

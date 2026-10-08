@@ -1848,19 +1848,7 @@ class TimelineLaneKeysLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _KeysLinePainter(
-          axis: axis,
-          cells: cells,
-          color: color,
-          startsAtKey: startsAtKey,
-          endsAtKey: endsAtKey,
-          crossFraction: crossFraction,
-          steps: steps,
-        ),
-      ),
-    );
+    return IgnorePointer(child: CustomPaint(painter: _KeysLinePainter(this)));
   }
 }
 
@@ -1873,35 +1861,31 @@ typedef TimelineKeysLineStep = ({int edge, double to});
 /// edge, at most — half a cell when a cell is narrower than twice this.
 const double timelineKeysLineBendReach = 6;
 
-/// THE COURSE a [TimelineLaneKeysLine] strokes through, in its box: from the
-/// middle of the first of its [cells] (or the box's edge, where it does not
-/// start at a key) to the middle of the last (or the far edge), at
-/// [crossFraction] across, and at each step a slope from where it was to
-/// where the step sends it — reaching half a cell either side of the step's
-/// edge, never more than [timelineKeysLineBendReach], never past the line's
-/// own ends. Empty where the box holds no line.
+/// THE COURSE [line] strokes through, in a box [along] long and [across]
+/// wide: from the middle of the first of its cells (or the box's edge,
+/// where it does not start at a key) to the middle of the last (or the far
+/// edge), at its cross fraction, and at each of its steps a slope from
+/// where it was to where the step sends it — reaching half a cell either
+/// side of the step's edge, never more than [timelineKeysLineBendReach],
+/// never past the line's own ends. Empty where the box holds no line.
 ///
 /// ★What the painter draws and what a pin reads are this one answer.
-List<({double along, double across})> timelineKeysLineCourse({
+List<({double along, double across})> timelineKeysLineCourse(
+  TimelineLaneKeysLine line, {
   required double along,
   required double across,
-  required int cells,
-  required bool startsAtKey,
-  required bool endsAtKey,
-  required double crossFraction,
-  required List<TimelineKeysLineStep> steps,
 }) {
-  final cell = cells < 1 ? 0.0 : along / cells;
-  final from = startsAtKey ? cell / 2 : 0.0;
-  final to = endsAtKey ? along - cell / 2 : along;
+  final cell = line.cells < 1 ? 0.0 : along / line.cells;
+  final from = line.startsAtKey ? cell / 2 : 0.0;
+  final to = line.endsAtKey ? along - cell / 2 : along;
   if (to <= from) {
     return const [];
   }
   final reach = math.min(cell / 2, timelineKeysLineBendReach);
   double held(double value) => value.clamp(from, to).toDouble();
-  var at = across * crossFraction;
+  var at = across * line.crossFraction;
   final course = [(along: from, across: at)];
-  for (final step in steps) {
+  for (final step in line.steps) {
     final edge = step.edge * cell;
     final next = across * step.to;
     course
@@ -1914,34 +1898,17 @@ List<({double along, double across})> timelineKeysLineCourse({
 }
 
 class _KeysLinePainter extends CustomPainter with RepaintOnProps {
-  _KeysLinePainter({
-    required this.axis,
-    required this.cells,
-    required this.color,
-    required this.startsAtKey,
-    required this.endsAtKey,
-    required this.crossFraction,
-    required this.steps,
-  });
+  _KeysLinePainter(this.line);
 
-  final Axis axis;
-  final int cells;
-  final Color color;
-  final bool startsAtKey;
-  final bool endsAtKey;
-  final double crossFraction;
-  final List<TimelineKeysLineStep> steps;
+  final TimelineLaneKeysLine line;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final axis = line.axis;
     final course = timelineKeysLineCourse(
+      line,
       along: extentAlong(axis, size),
       across: extentAcross(axis, size),
-      cells: cells,
-      startsAtKey: startsAtKey,
-      endsAtKey: endsAtKey,
-      crossFraction: crossFraction,
-      steps: steps,
     );
     if (course.length < 2) {
       return;
@@ -1951,7 +1918,7 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
         offsetAlong(axis, along: point.along, across: point.across),
     ];
     final paint = Paint()
-      ..color = color
+      ..color = line.color
       ..strokeWidth = timelineJoiningLineWidth;
     if (points.length == 2) {
       canvas.drawLine(points.first, points.last, paint);
@@ -1966,13 +1933,13 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (
-    axis,
-    cells,
-    color,
-    startsAtKey,
-    endsAtKey,
-    crossFraction,
-    ByList(steps),
+    line.axis,
+    line.cells,
+    line.color,
+    line.startsAtKey,
+    line.endsAtKey,
+    line.crossFraction,
+    ByList(line.steps),
   );
 }
 

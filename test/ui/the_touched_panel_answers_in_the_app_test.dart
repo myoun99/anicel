@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
@@ -288,14 +289,22 @@ void main() {
     expect(session.currentRow, LayerRowAddress(track.seLayers[1].id));
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(session.currentRow, LayerRowAddress(track.transitionLayer.id));
+    // I-73 ④: the camera row heads the CAM section, over the transition row.
+    final cameraRow = LayerRowAddress(trackCameraRowId(track.id));
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(
       session.currentRow,
-      LayerRowAddress(track.transitionLayer.id),
+      cameraRow,
+      reason: '↩️the transition row was the top of the storyboard\'s rows',
+    );
+    await key(tester, LogicalKeyboardKey.arrowUp);
+    expect(
+      session.currentRow,
+      cameraRow,
       reason: 'clamped at the top of the storyboard\'s rows',
     );
 
-    for (var step = 0; step < 3; step += 1) {
+    for (var step = 0; step < 4; step += 1) {
       await key(tester, LogicalKeyboardKey.arrowDown);
     }
     expect(session.currentRow, TrackRowAddress(track.id));
@@ -326,17 +335,28 @@ void main() {
 
     final storyboard = hud.debugSnapshotFor(FlipHudAxis.row)!;
     expect(
-      [for (final row in storyboard.rows.skip(1)) row.name],
+      storyboard.rows.first.name,
+      session.activeCutOrNull!.layers.cameraLayer!.name,
+      reason: 'the camera row heads it (I-73 ④), by its head\'s name',
+    );
+    expect(
+      [for (final row in storyboard.rows.skip(2)) row.name],
       ['S2', 'S1', 'V1', layerKindDisplayName(LayerKind.storyboard)],
-      reason: 'the storyboard\'s own stack under its transition row — the '
-          'conte row last, by the name its rail label wears (no cut has a '
-          'conte layer here, so the kind\'s own word)',
+      reason: 'the storyboard\'s own stack under its camera and transition '
+          'rows — the conte row last, by the name its rail label wears (no '
+          'cut has a conte layer here, so the kind\'s own word)',
     );
     expect(storyboard.currentRow!.name, 'V1');
 
     session.claimTimelineRow();
     final timeline = hud.debugSnapshotFor(FlipHudAxis.row)!;
-    expect(timeline.rows.length, isNot(storyboard.rows.length));
+    // ↩️It compared how MANY rows the two drew — and once the storyboard
+    // had a camera row (I-73 ④) both drew six.
+    expect(
+      [for (final row in timeline.rows) row.name],
+      isNot([for (final row in storyboard.rows) row.name]),
+      reason: 'the timeline\'s own rows, not the storyboard\'s',
+    );
     expect(
       timeline.currentRow!.name,
       session.activeLayer!.name,

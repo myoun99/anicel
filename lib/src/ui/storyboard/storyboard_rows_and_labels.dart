@@ -300,6 +300,9 @@ class _StoryboardRowsAndLabels {
         onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
         opacityOverride: _state.widget.cameraDimOpacity,
         onLayerMarkSelected: verbs.pickMark,
+        // This rail has the blend column, as the conte heads say: a camera
+        // keeps its slot empty, so the columns stand over the rows' own.
+        onLayerBlendModeSelected: verbs.pickBlend,
         fxState:
             _state.widget.layerFxStateOf?.call(head.id) ?? LayerFxState.on,
         onToggleLayerFx: _state.widget.onToggleLayerFx,

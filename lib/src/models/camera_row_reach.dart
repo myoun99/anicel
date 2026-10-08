@@ -86,6 +86,10 @@ List<CameraRowReach> cameraRowReachesOf(
         );
       }(),
   ];
+  // Two neighbours' own frames never run past each other: a span reaching
+  // past a cut's far end owes that cut a のりしろ as long
+  // ([cutTransitionHandles]), so the stretch they share ends where the one
+  // before ends and begins where the one after begins.
   return [
     for (var index = 0; index < entries.length; index += 1)
       CameraRowReach(
@@ -94,16 +98,12 @@ List<CameraRowReach> cameraRowReachesOf(
         mediaEnd: own[index].end,
         arrivingUntil: index == 0 || own[index - 1].end <= own[index].start
             ? own[index].start
-            : (own[index - 1].end < own[index].end
-                  ? own[index - 1].end
-                  : own[index].end),
+            : own[index - 1].end,
         leavingFrom:
             index == entries.length - 1 ||
                 own[index + 1].start >= own[index].end
             ? own[index].end
-            : (own[index + 1].start > own[index].start
-                  ? own[index + 1].start
-                  : own[index].start),
+            : own[index + 1].start,
       ),
   ];
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show Axis, Color;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
@@ -17,13 +18,17 @@ void main() {
     double along = 240,
     int cells = 10,
   }) => timelineKeysLineCourse(
+    TimelineLaneKeysLine(
+      axis: Axis.horizontal,
+      cells: cells,
+      color: const Color(0xFF000000),
+      startsAtKey: startsAtKey,
+      endsAtKey: endsAtKey,
+      crossFraction: crossFraction,
+      steps: steps,
+    ),
     along: along,
     across: 30,
-    cells: cells,
-    startsAtKey: startsAtKey,
-    endsAtKey: endsAtKey,
-    crossFraction: crossFraction,
-    steps: steps,
   );
 
   void expectCourse(
