@@ -946,6 +946,7 @@ enum AppStrings {
   // --- The media viewer (R4, §6-h) ---
   String get mediaViewerEmpty => _s('mediaViewerEmpty');
   String get mediaViewerOpenFile => _s('mediaViewerOpenFile');
+  String get mediaViewerCloseFile => _s('mediaViewerCloseFile');
   String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
   String get mediaViewerCutTooLarge => _s('mediaViewerCutTooLarge');
   String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
@@ -2181,6 +2182,7 @@ enum AppStrings {
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
     'mediaViewerEmpty': 'Nothing to view yet',
     'mediaViewerOpenFile': 'Open File…',
+    'mediaViewerCloseFile': 'Close File',
     'mediaViewerLoadFailed': 'Could not read this file.',
     'mediaViewerCutTooLarge':
         'Too large to cut at full size within the memory allowance.',
@@ -3433,6 +3435,7 @@ enum AppStrings {
     'mediaOpenInSubViewer': 'サブビューアで開く',
     'mediaViewerEmpty': '表示するものがありません',
     'mediaViewerOpenFile': 'ファイルを開く…',
+    'mediaViewerCloseFile': 'ファイルを閉じる',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
     'mediaViewerCutTooLarge': 'メモリ許容量に収まらないため、原寸で切り取れません。',
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
@@ -4836,6 +4839,7 @@ enum AppStrings {
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
     'mediaViewerEmpty': '표시할 것이 없습니다',
     'mediaViewerOpenFile': '파일 열기…',
+    'mediaViewerCloseFile': '파일 닫기',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
     'mediaViewerCutTooLarge': '메모리 허용치 안에 들어가지 않아 원본 크기로 잘라낼 수 없습니다.',
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
@@ -6266,6 +6270,7 @@ enum AppStrings {
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty': 'Rien à afficher',
     'mediaViewerOpenFile': 'Ouvrir un fichier…',
+    'mediaViewerCloseFile': 'Fermer le fichier',
     'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
     'mediaViewerCutTooLarge':
         'Trop grand pour être découpé en taille réelle dans la mémoire autorisée.',
@@ -7698,6 +7703,7 @@ enum AppStrings {
     'mediaOpenInSubViewer': '在副查看器中打开',
     'mediaViewerEmpty': '暂无可查看的内容',
     'mediaViewerOpenFile': '打开文件…',
+    'mediaViewerCloseFile': '关闭文件',
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCutTooLarge': '超出内存允许量，无法按原尺寸裁切。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',

@@ -398,6 +398,7 @@ void main() {
     'mediaOpenInSubViewer': (s) => s.mediaOpenInSubViewer,
     'mediaViewerEmpty': (s) => s.mediaViewerEmpty,
     'mediaViewerOpenFile': (s) => s.mediaViewerOpenFile,
+    'mediaViewerCloseFile': (s) => s.mediaViewerCloseFile,
     'mediaViewerLoadFailed': (s) => s.mediaViewerLoadFailed,
     'mediaViewerCutTooLarge': (s) => s.mediaViewerCutTooLarge,
     'mediaViewerCannotDisplay': (s) => s.mediaViewerCannotDisplay,

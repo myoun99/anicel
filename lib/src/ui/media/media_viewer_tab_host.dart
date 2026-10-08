@@ -179,6 +179,7 @@ class MediaViewerTabHost extends StatefulWidget {
     required this.request,
     required this.position,
     this.onRequestPicked,
+    this.onRequestClosed,
     this.onSwapViewers,
     this.onRegisterAsset,
     this.isPathRegistered,
@@ -234,6 +235,10 @@ class MediaViewerTabHost extends StatefulWidget {
   /// Where the panel's own file button puts its answer. Null hides that
   /// button: a viewer with nowhere to put the reply should not ask.
   final ValueChanged<MediaViewerRequest>? onRequestPicked;
+
+  /// Empties the viewer — its close button, beside the open one. Null
+  /// hides that button, as [onRequestPicked] hides its own.
+  final VoidCallback? onRequestClosed;
 
   /// Trades documents with the OTHER viewer (유저 확정 ⑪): same button on
   /// both sides, because swapping is symmetric.
@@ -1316,6 +1321,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // on the pill. Register and swap are a session's worth of taps
       // between them, and every control that stays costs the pill 44px of
       // budget it then takes from the page navigation on a narrow rail.
+      // 🗣️I-83-Q1 (유저 2026-10-09): 「알약의 「파일 열기」 옆」 — closing
+      // stands beside opening, at that cost; off while nothing is open.
       bottomBarLeading: [
         if (widget.onRequestPicked != null)
           AppIconButton(
@@ -1324,6 +1331,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             icon: const Icon(Icons.file_open_outlined),
             size: AppIconButtonSize.strip,
             onPressed: _pickLooseFile,
+          ),
+        if (widget.onRequestClosed case final close?)
+          AppIconButton(
+            keyValue: _key('close-file-button'),
+            tooltip: strings.mediaViewerCloseFile,
+            icon: const Icon(Icons.close),
+            size: AppIconButtonSize.strip,
+            onPressed: request == null ? null : close,
           ),
       ],
       pageStrip: _pageStrip(pageIndex, pageCount),
@@ -1352,8 +1367,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // The register command's enabled state rides this token too — it
       // changes with the file, which is exactly when the answer to "is
       // this one in the pool" can change. ⚠️It has to: the list captures
-      // the entries when the BAR is built, not when the list opens.
-      bottomBarHostToken: (pageIndex, pageCount, _canRegister),
+      // the entries when the BAR is built, not when the list opens. So
+      // does whether a file is open: the close button is off without one.
+      bottomBarHostToken: (pageIndex, pageCount, _canRegister, request != null),
       // A book's Fit frames the page read — the panel's to know.
       fitFocusRect: book == null ? paper : null,
       viewLimit: paper,

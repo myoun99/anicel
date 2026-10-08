@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:async';
 import 'dart:io';
@@ -255,6 +256,63 @@ void main() {
     fake.releaseRender(0);
     await settleLoadedPages(tester);
     expect(loading, findsNothing);
+  });
+
+  // 🗣️I-83 (유저 2026-10-08): 「뷰어패널, 파일 닫기 버튼 추가」 — and where
+  // (I-83-Q1, 10-09): 「알약의 「파일 열기」 옆」.
+  testWidgets('🗣️the pill closes the file beside opening one — off while '
+      'nothing is open, and pressed, the viewer is empty again', (
+    tester,
+  ) async {
+    final fake = FakePdfDocument(
+      pageSizes: List<ui.Size>.filled(2, const ui.Size(595, 842)),
+    );
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MediaViewerTabHost(
+            viewerId: 'media-viewer',
+            session: session,
+            request: slot.request,
+            position: slot.position,
+            onRequestPicked: slot.open,
+            onRequestClosed: () => slot.open(null),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final open = find.byKey(
+      const ValueKey<String>('media-viewer-open-file-button'),
+    );
+    final close = find.byKey(
+      const ValueKey<String>('media-viewer-close-file-button'),
+    );
+    bool live() => tester.widget<AppIconButtonFace>(close).onPressed != null;
+    expect(close, findsOneWidget, reason: 'in its place, nothing open');
+    expect(live(), isFalse);
+    expect(
+      tester.getTopLeft(close).dx,
+      greaterThan(tester.getTopLeft(open).dx),
+      reason: 'beside 「파일 열기」',
+    );
+
+    slot.open(
+      const MediaViewerRequest(
+        path: 'C:/work/conte.pdf',
+        kind: MediaAssetKind.pdf,
+        name: 'conte',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(live(), isTrue);
+
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+    expect(slot.request.value, isNull);
+    expect(find.text(AppText.strings.mediaViewerEmpty), findsOneWidget);
+    expect(live(), isFalse, reason: 'nothing left to close');
   });
 
   testWidgets('a PDF request with NO renderer states the absence instead '

@@ -115,6 +115,7 @@ class _WorkspaceTabs {
           request: slot.request,
           position: slot.position,
           onRequestPicked: slot.open,
+          onRequestClosed: () => slot.open(null),
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
           loudness: slot.loudness,
