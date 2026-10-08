@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -24,14 +26,22 @@ void main() {
       width: 100,
       height: 60,
       layers: [
-        // 20 above the document and 20 below it.
+        // 20 above the document and 20 below it: blue out there, red
+        // inside — so a cut taken from the wrong rows shows.
         PsdTestLayer(
           name: 'frame',
           left: 0,
           top: -20,
           right: 100,
           bottom: 80,
-          planes: psdSolidPlanes(100, 100, [200, 0, 0]),
+          planes: [
+            for (final (outside, inside) in [(0, 200), (0, 0), (200, 0)])
+              Uint8List.fromList([
+                for (var y = 0; y < 100; y += 1)
+                  for (var x = 0; x < 100; x += 1)
+                    y < 20 || y >= 80 ? outside : inside,
+              ]),
+          ],
         ),
       ],
     );
@@ -60,9 +70,13 @@ void main() {
       reason: 'nothing above the document, on the pasteboard',
     );
     final pixels = surface.tiles[TileCoord(x: 0, y: 0)]!.pixels;
-    int alphaAt(int x, int y) => pixels[(y * 128 + x) * 4 + 3];
-    expect(alphaAt(5, 0), 255, reason: 'the document\'s top row');
-    expect(alphaAt(5, 59), 255, reason: 'its bottom row');
-    expect(alphaAt(5, 60), 0, reason: 'below the document, nothing');
+    List<int> at(int x, int y) {
+      final i = (y * 128 + x) * 4;
+      return pixels.sublist(i, i + 4);
+    }
+
+    expect(at(5, 0), [200, 0, 0, 255], reason: 'the document\'s top row');
+    expect(at(5, 59), [200, 0, 0, 255], reason: 'its bottom row');
+    expect(at(5, 60)[3], 0, reason: 'below the document, nothing');
   });
 }
