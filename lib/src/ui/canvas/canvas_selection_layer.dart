@@ -77,6 +77,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onCutShape,
     this.onFillShape,
     this.onDrawShape,
+    this.onDrawShapeDragged,
     this.shapeKeepsRatio = false,
     this.onPressNeedsCel,
     this.symmetry,
@@ -188,6 +189,14 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// ⚠️A PATH, not an outline: the line is two ends with no inside, so it
   /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).
   final ValueChanged<List<DrawnShapePath>>? onDrawShape;
+
+  /// A SHAPE-TOOL drag's path SO FAR, with every copy the guide makes of it
+  /// as [onDrawShape] hands them — after every move that changes it — and
+  /// null when the drag ends with no shape to draw (a cancel, or a release
+  /// on nothing). A release on a shape is [onDrawShape]'s alone. The host
+  /// shows the actual result under the outline while the hand drags it
+  /// (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을 따라오고, 실제 결과는 따라 그린다」).
+  final ValueChanged<List<DrawnShapePath>?>? onDrawShapeDragged;
 
   /// The shape tool's 「비율 고정」 switch (유저 답 I-69-Q5, 2026-10-08:
   /// 「설정 스위치 + Shift」): a shape being DRAWN is a square, a circle, a
@@ -1052,6 +1061,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _interrupted(SessionInterruption.land);
       });
     }
+    // A shape drag the tool switched away from draws nothing any more.
+    if (oldWidget.tool == CanvasSelectionTool.drawShape &&
+        widget.tool != CanvasSelectionTool.drawShape) {
+      _takeBackTheDraggedShape();
+    }
   }
 
   @override
@@ -1060,6 +1074,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     widget.selectionCommands?.unbind(this);
     if (_drag != null) {
       _notifyDragActive(false);
+    }
+    if (widget.tool == CanvasSelectionTool.drawShape) {
+      _takeBackTheDraggedShape();
     }
     // 🚨★★★**UNMOUNTING IS AN INTERRUPTION THAT CANNOT CARRY**, so it
     // takes the same door as every other one. A switch to a painting tool
@@ -2561,6 +2578,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               keepsRatio: _shapeKeepsRatioNow,
             ),
         );
+        if (widget.tool == CanvasSelectionTool.drawShape) {
+          widget.onDrawShapeDragged?.call(_drawnCopies(drag.path()));
+        }
       case MoveDrag():
         setState(() {
           drag.screenDelta += event.delta;
@@ -2948,6 +2968,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _setRegion(drag.before);
       _shapeNeedsLift = true;
     }
+    if (cancelled &&
+        drag is MarqueeDrag &&
+        widget.tool == CanvasSelectionTool.drawShape) {
+      widget.onDrawShapeDragged?.call(null);
+    }
     _drag = null;
     if (_transform == null && !_movePending) {
       _floatSurface = null;
@@ -2989,17 +3014,40 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.tool == CanvasSelectionTool.drawShape) {
       // The one verb that takes the PATH: a line has no outline to commit,
       // and what the drag traced is drawn rather than folded into anything.
-      final path = drag.path();
-      if (path != null) {
-        widget.onDrawShape?.call([
-          for (final points in _guideCopiesOf(path.points))
-            (points: points, closed: path.closed),
-        ]);
+      final copies = _drawnCopies(drag.path());
+      if (copies != null) {
+        widget.onDrawShape?.call(copies);
+      } else {
+        widget.onDrawShapeDragged?.call(null);
       }
       return;
     }
     _commitDrawnOutline(drag.shape(), before: drag.before);
   }
+
+  /// A shape drag still running ends without a shape — its tool switched
+  /// away, or this layer is going: the host takes back what it showed
+  /// ([CanvasSelectionLayer.onDrawShapeDragged]). After the frame, for both
+  /// come inside a build.
+  void _takeBackTheDraggedShape() {
+    if (_drag is! MarqueeDrag) {
+      return;
+    }
+    final dragged = widget.onDrawShapeDragged;
+    if (dragged == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => dragged(null));
+  }
+
+  /// [path] and every copy the guide makes of it, the original first — or
+  /// null for no path (a drag too small to have meant a shape).
+  List<DrawnShapePath>? _drawnCopies(DrawnShapePath? path) => path == null
+      ? null
+      : [
+          for (final points in _guideCopiesOf(path.points))
+            (points: points, closed: path.closed),
+        ];
 
   /// Where every finished outline lands, whoever traced it — a marquee
   /// drag, a lasso, or a closed polygon. The tracing is the only part that

@@ -20,6 +20,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_ground_color_sampling.dart';
@@ -47,6 +48,7 @@ import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_path_stroke.dart';
+part 'brush_edit/brush_edit_shape_show.dart';
 part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
@@ -81,6 +83,40 @@ typedef StrokeLander = bool Function();
 /// one verb, not a handle onto its stroke.
 typedef PathStroker = bool Function(List<CanvasPoint> path);
 
+/// How long one frame may spend laying a dragged shape before it hands the
+/// rest of the frame back ([_BrushEditShapeShow]) — a quarter of a 60 Hz
+/// frame, so the outline the hand drags is drawn in the rest of it. A test
+/// sets it to zero to lay one piece a frame and watch the shape come up.
+@visibleForTesting
+Duration shapeShowFrameShare = const Duration(microseconds: 4000);
+
+/// A shape the shape tool's drag hands this view to SHOW while it is
+/// dragged and to LAND when it is let go (유저 답 I-69-Q4ⓒ): an area laid as
+/// stamp pieces made one at a time — every call of [pieces] makes them
+/// afresh — under [blend]. [shape] is what the pieces are OF, compared by
+/// value: the same shape asked for again asks for nothing new.
+typedef ShapeArea = ({
+  Object shape,
+  Iterable<BrushDab> Function() pieces,
+  BrushBlendMode blend,
+});
+
+/// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
+/// [_BrushEditShapeShow] handed out, published as [PathStroker] is.
+abstract interface class ShapeShow {
+  /// Lays [area] off screen and shows it when it is whole — the hand's
+  /// newest shape once the one being laid is done.
+  void show(ShapeArea area);
+
+  /// Lands [area] as it is shown — or, when the hand moved on from it, as
+  /// laid whole now — and answers whether anything landed.
+  bool land(ShapeArea area);
+
+  /// Takes back whatever is shown or being laid: the drag ended without a
+  /// shape.
+  void drop();
+}
+
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
   /// the engine's navigate-lock and this view's cancel window agreeing).
@@ -104,6 +140,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
     this.onPathStrokerChanged,
+    this.onShapeShowChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
@@ -237,6 +274,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// Handed this view's [PathStroker] while it is mounted, and null when
   /// it goes — published the way [onStrokeLanderChanged] is.
   final ValueChanged<PathStroker?>? onPathStrokerChanged;
+
+  /// Handed this view's [ShapeShow] while it is mounted, and null when it
+  /// goes — published the way [onPathStrokerChanged] is.
+  final ValueChanged<ShapeShow?>? onShapeShowChanged;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -433,6 +474,7 @@ class _InteractiveBrushEditCanvasViewState
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
     widget.onPathStrokerChanged?.call(_pathStroke.strokeAlong);
+    widget.onShapeShowChanged?.call(_shapeShow);
     _toolHolds.handOver = _door;
   }
 
@@ -460,6 +502,8 @@ class _InteractiveBrushEditCanvasViewState
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
+      // A shape laid on the cel that went is no shape of this one's.
+      _shapeShow.drop();
       _overlay.resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
@@ -502,6 +546,7 @@ class _InteractiveBrushEditCanvasViewState
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
     widget.onPathStrokerChanged?.call(null);
+    widget.onShapeShowChanged?.call(null);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
@@ -606,6 +651,9 @@ class _InteractiveBrushEditCanvasViewState
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
 
   late final _BrushEditPathStroke _pathStroke = _BrushEditPathStroke(this);
+
+  /// The shape tool's shape while it is dragged (I-69-Q4ⓒ).
+  late final _BrushEditShapeShow _shapeShow = _BrushEditShapeShow(this);
 
   /// What the stroke's contact has read so far, and what it holds until it
   /// has (H43).

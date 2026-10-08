@@ -66,18 +66,6 @@ class _BrushEditFill {
     final blend = _state.widget.inputSettings().blendMode;
     final dabs = [for (final dab in rawDabs) dab.underBlend(blend)];
     final surface = _state.widget.celNow();
-    final overlay = _state._overlay._overlayModel;
-    _state._overlay.resetOverlay();
-    // The fill composites like anything else now (유저 확정: 버킷에도
-    // 블렌드를 깐다) — 뒤에 그리기 puts colour UNDER the line art already
-    // on the cel, which is the whole reason to want it. The overlay is
-    // configured exactly as a stroke's: the surface's grid, the blend, and
-    // the surface as the pre-blend base, so its tiles REPLACE their
-    // coordinates.
-    overlay.configureTileSize(surface.tileSize);
-    overlay.erase = blend == BrushBlendMode.erase;
-    overlay.blendMode = blend;
-    overlay.preBlendBase = surface;
     final promoted = promoteFillDabs(
       surface: surface,
       dabs: dabs,
@@ -89,10 +77,11 @@ class _BrushEditFill {
     if (promoted.isEmpty) {
       // Nothing to land: outside the selection, or a no-op on these
       // pixels.
+      _state._overlay.resetOverlay();
       return;
     }
     _state._pendingFill = (dabs: dabs, base: surface, tiles: promoted);
-    overlay.showResultTiles(promoted);
+    showResult(base: surface, blend: blend, tiles: promoted);
     // Commit AFTER the tap frame renders, so the reveal and the commit's
     // frame overlap instead of stacking; the commit is a tile PUT of the
     // objects made above.
@@ -108,15 +97,55 @@ class _BrushEditFill {
     if (pending == null || !_state.mounted) {
       return;
     }
+    landResult(
+      tiles: pending.tiles,
+      dabs: pending.dabs,
+      blend: _state.widget.inputSettings().blendMode,
+      base: pending.base,
+    );
+  }
+
+  /// Shows [tiles] — a fill's result, made by the commit's own function
+  /// ([promoteFillDabs]) against [base] — as the overlay's pictures, in
+  /// place of whatever it showed.
+  ///
+  /// The fill composites like anything else (유저 확정: 버킷에도 블렌드를
+  /// 깐다) — 뒤에 그리기 puts colour UNDER the line art already on the cel,
+  /// which is the whole reason to want it. So the overlay is configured
+  /// exactly as a stroke's: the surface's grid, the blend, and the surface
+  /// as the pre-blend base, and its tiles REPLACE their coordinates.
+  void showResult({
+    required BitmapSurface base,
+    required BrushBlendMode blend,
+    required List<PromotedStrokeTile> tiles,
+  }) {
+    final overlay = _state._overlay._overlayModel;
+    _state._overlay.resetOverlay();
+    overlay.configureTileSize(base.tileSize);
+    overlay.erase = blend == BrushBlendMode.erase;
+    overlay.blendMode = blend;
+    overlay.preBlendBase = base;
+    overlay.showResultTiles(tiles);
+  }
+
+  /// Lands [tiles], the result of [dabs] on [base] that the overlay shows,
+  /// through the landing a stroke takes at pen-up
+  /// ([_BrushEditStroke.landPromoted]): the pictures hand over and the
+  /// commit installs these very tiles.
+  void landResult({
+    required List<PromotedStrokeTile> tiles,
+    required List<BrushDab> dabs,
+    required BrushBlendMode blend,
+    required BitmapSurface base,
+  }) {
     _state._stroke.landPromoted(
-      pending.tiles,
+      tiles,
       BrushStrokeCommitData(
-        sourceDabs: pending.dabs,
-        blendMode: _state.widget.inputSettings().blendMode,
-        promotedBase: pending.base,
+        sourceDabs: dabs,
+        blendMode: blend,
+        promotedBase: base,
         promotedTiles: [
-          for (final entry in pending.tiles)
-            (coord: entry.coord, tile: entry.tile),
+          for (final entry in tiles) (coord: entry.coord, tile: entry.tile),
         ],
       ),
     );

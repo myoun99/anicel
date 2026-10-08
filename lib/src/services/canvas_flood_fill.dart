@@ -1181,14 +1181,30 @@ List<BrushDab> buildRegionFillDabs({
   required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
-}) {
+}) => regionFillPieces(
+  region: region,
+  color: color,
+  opacity: opacity,
+  options: options,
+).toList();
+
+/// [buildRegionFillDabs]'s pieces one at a time, each made as it is asked
+/// for — what lets a shape being dragged be laid a few pieces a frame and
+/// shown when it is whole (I-69-Q4ⓒ). Every pass over it makes its pieces
+/// afresh.
+Iterable<BrushDab> regionFillPieces({
+  required CanvasSelectionRegion region,
+  required int color,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) sync* {
   final bounds = region.coverageBounds;
   final left = bounds.left.floor();
   final top = bounds.top.floor();
   final width = bounds.right.ceil() - left;
   final height = bounds.bottom.ceil() - top;
   if (width <= 0 || height <= 0) {
-    return const [];
+    return;
   }
   final rows = region.pixelRunsFor(
     left: left,
@@ -1208,7 +1224,7 @@ List<BrushDab> buildRegionFillDabs({
   );
   final reach = grow + (options.antiAlias ? 1 : 0);
   final reached = _tilesReached(hard, sheet: sheet, reach: reach);
-  return _stampPieces(
+  yield* _stampPieces(
     sheet,
     color: color,
     opacity: opacity,
@@ -1472,7 +1488,7 @@ List<BrushDab> buildFillDabs({
     color: color,
     opacity: opacity,
     finishedAround: (_) => finished,
-  );
+  ).toList();
 }
 
 /// The regions a fill flooded, merged into the single region the stamp path
@@ -1552,54 +1568,54 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
 /// the desktop); a run of the row's covered tiles takes one call per run,
 /// and a thin line still carries only the tiles it crosses.
-List<BrushDab> _stampPieces(
+Iterable<BrushDab> _stampPieces(
   DirtyRegion box, {
   required int color,
   required double opacity,
   required _FinishedMask? Function(TileSpan tile) finishedAround,
-}) {
+}) sync* {
   // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
   // inside one microsecond, and a stamp is equal to another by id, size and
   // bytes — two solid pieces sharing an id would be one stamp to any set of
   // them (the 확정 slot counts its stamps' bytes as a set).
   final id = 'fill-${DateTime.now().microsecondsSinceEpoch}';
-  final dabs = <BrushDab>[];
+  var sequence = 0;
   final run = <({TileSpan tile, Uint8List coverage})>[];
-  void layRun() {
-    if (run.isEmpty) {
-      return;
-    }
+  BrushDab laid() {
     final first = run.first.tile;
-    dabs.add(
-      _colorStampDab(
-        left: first.left,
-        top: first.top,
-        width: run.last.tile.rightExclusive - first.left,
-        height: first.bottomExclusive - first.top,
-        mask: _joined(run),
-        color: color,
-        opacity: opacity,
-        id: '$id-${first.coord.x}.${first.coord.y}',
-        sequence: dabs.length,
-      ),
+    final dab = _colorStampDab(
+      left: first.left,
+      top: first.top,
+      width: run.last.tile.rightExclusive - first.left,
+      height: first.bottomExclusive - first.top,
+      mask: _joined(run),
+      color: color,
+      opacity: opacity,
+      id: '$id-${first.coord.x}.${first.coord.y}',
+      sequence: sequence,
     );
+    sequence += 1;
     run.clear();
+    return dab;
   }
 
   for (final tile in tileSpansOf(box, tileSize: _pieceSize)) {
     if (run.isNotEmpty && run.last.tile.coord.y != tile.coord.y) {
-      layRun();
+      yield laid();
     }
     final finished = finishedAround(tile);
     final coverage = finished == null ? null : _coverageOf(tile, finished);
     if (coverage == null) {
-      layRun();
+      if (run.isNotEmpty) {
+        yield laid();
+      }
       continue;
     }
     run.add((tile: tile, coverage: coverage));
   }
-  layRun();
-  return dabs;
+  if (run.isNotEmpty) {
+    yield laid();
+  }
 }
 
 /// [finished]'s bytes over [tile], or null when not one of them is

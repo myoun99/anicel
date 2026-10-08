@@ -32,7 +32,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
-    show FloodFillOptions, buildRegionFillDabs;
+    show FloodFillOptions, regionFillPieces;
 import '../../services/plain_line_region.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -1844,6 +1844,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _fillDrawnShape,
               onDrawShape:
                   _drawTracedShape,
+              onDrawShapeDragged:
+                  _showTracedShape,
               shapeKeepsRatio:
                   _brush.shapeOptions.ratioLock,
               // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE
@@ -2115,6 +2117,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
       // I-69: the shape tool has the view draw what its drag traced.
       onPathStrokerChanged: (stroker) => _pathStroker = stroker,
+      onShapeShowChanged: (show) => _shapeShow = show,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -2354,6 +2357,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// shape becomes a stroke ([_drawTracedShape]).
   PathStroker? _pathStroker;
 
+  /// The drawing view's [ShapeShow] while it is mounted — how a shape being
+  /// dragged shows its actual result, and lands as shown
+  /// ([_showTracedShape], [_drawTracedShape]).
+  ShapeShow? _shapeShow;
+
   /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
   /// and every copy the symmetry guide made of it, the original first — as
   /// the tool is set to lay it:
@@ -2364,27 +2372,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ///   stroke it is. ⚠️So the stroke is handed the ORIGINAL alone: it makes
   ///   its own copies, and handed theirs it would copy every copy;
   /// - everything else — 「채움」, and a line of the 「일반」 type — as ONE
-  ///   AREA, every copy's together ([_shapeToolArea]), down the funnel a
-  ///   shape fill lands by. Where two copies overlap the area is covered
-  ///   once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이 맞춘다」).
+  ///   AREA, every copy's together ([_tracedArea]), landed as the drag
+  ///   showed it ([ShapeShow.land], the road a fill lands by). Where two
+  ///   copies overlap the area is covered once (유저 답 I-69-Q6: 「따른다 —
+  ///   도형 채우기도 같이 맞춘다」).
   void _drawTracedShape(List<DrawnShapePath> copies) {
-    // Traced on the canvas, drawn in the row's own artwork where the row
-    // shows it (a-marquee-on-a-posed-row).
-    final onTheRow = <DrawnShapePath>[];
-    for (final path in copies) {
-      final points = <CanvasPoint>[];
-      for (final point in path.points) {
-        final there = _selectionSeat.pointOnTheRow(point);
-        if (there == null) {
-          // The placement has collapsed the row: it shows nothing to draw
-          // on.
-          return;
-        }
-        points.add(there);
-      }
-      onTheRow.add((points: points, closed: path.closed));
-    }
-    if (onTheRow.isEmpty) {
+    final onTheRow = _onTheRow(copies);
+    if (onTheRow == null) {
+      _shapeShow?.drop();
       return;
     }
     if (_brush.shapeDrawsWithTheBrush) {
@@ -2392,26 +2387,72 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _pathStroker?.call([...path.points, if (path.closed) path.points.first]);
       return;
     }
-    _layArea((color) {
-      final area = CanvasSelectionRegion.unionOf([
-        for (final path in onTheRow) ?_shapeToolArea(path),
-      ]);
-      // Exactly the area — it grows by nothing — at the tool's OWN opacity
-      // and with the tool's own edge: no brush is read (유저 답 I-69-Q8:
-      // 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은 타입과
-      // 무관하다」).
-      return area == null
-          ? const []
-          : buildRegionFillDabs(
-              region: area,
+    // What the drag showed under its outline lands as it is (Q4ⓒ).
+    _shapeShow?.land(_tracedArea(onTheRow));
+  }
+
+  /// The shape a shape-tool drag has traced SO FAR — [copies], as
+  /// [_drawTracedShape] takes them — shown under its outline as it will
+  /// land, or taken back when there is none (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을
+  /// 따라오고, 실제 결과는 따라 그린다」).
+  void _showTracedShape(List<DrawnShapePath>? copies) {
+    final show = _shapeShow;
+    if (show == null) {
+      return;
+    }
+    final onTheRow = copies == null ? null : _onTheRow(copies);
+    if (onTheRow == null || _brush.shapeDrawsWithTheBrush) {
+      show.drop();
+      return;
+    }
+    show.show(_tracedArea(onTheRow));
+  }
+
+  /// [copies] where the row shows them: traced on the canvas, drawn in the
+  /// row's own artwork (a-marquee-on-a-posed-row). Null when there is
+  /// nothing to draw on — no copy, or a placement that collapsed the row.
+  List<DrawnShapePath>? _onTheRow(List<DrawnShapePath> copies) {
+    final onTheRow = <DrawnShapePath>[];
+    for (final path in copies) {
+      final points = <CanvasPoint>[];
+      for (final point in path.points) {
+        final there = _selectionSeat.pointOnTheRow(point);
+        if (there == null) {
+          return null;
+        }
+        points.add(there);
+      }
+      onTheRow.add((points: points, closed: path.closed));
+    }
+    return onTheRow.isEmpty ? null : onTheRow;
+  }
+
+  /// The AREA the shape tool lays for [onTheRow] where it does not draw
+  /// with the brush — every copy's together ([_shapeToolArea]), under the
+  /// tool's blend. Exactly the area — it grows by nothing — at the tool's
+  /// OWN opacity and with the tool's own edge: no brush is read (유저 답
+  /// I-69-Q8: 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은
+  /// 타입과 무관하다」).
+  ShapeArea _tracedArea(List<DrawnShapePath> onTheRow) {
+    final region = CanvasSelectionRegion.unionOf([
+      for (final path in onTheRow) ?_shapeToolArea(path),
+    ]);
+    final color = _brush.color;
+    final opacity = _brush.activeOpacity;
+    final antiAlias = _brush.shapeOptions.antiAlias;
+    final blend = _brush.activeBlendMode;
+    return (
+      shape: (region, color, opacity, antiAlias, blend),
+      pieces: () => region == null
+          ? const <BrushDab>[]
+          : regionFillPieces(
+              region: region,
               color: color,
-              opacity: _brush.activeOpacity,
-              options: FloodFillOptions(
-                expandPx: 0,
-                antiAlias: _brush.shapeOptions.antiAlias,
-              ),
-            );
-    });
+              opacity: opacity,
+              options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
+            ),
+      blend: blend,
+    );
   }
 
   /// What the shape tool lays where it does not draw with the brush, as
