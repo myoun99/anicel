@@ -41,6 +41,7 @@ abstract interface class ProjectAccess {
   ProjectRepository get repository;
   Track? trackById(TrackId trackId);
   int get activeCutGlobalStartFrame;
+  int get activeCutMediaStartFrame;
 
   /// How a frame's place on its row is WRITTEN wherever a list names one:
   /// the number the ruler writes over it ([timelineFramePlaceLabel]), which

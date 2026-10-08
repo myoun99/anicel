@@ -37,8 +37,7 @@ void main() {
     );
     return resolveSeNameTagsAt(
       trackSeLayers: [row],
-      cutStartFrame: 0,
-      localFrameIndex: 3,
+      globalFrame: 3,
       canvas: canvas,
       cameraFrame: camera,
     ).single;

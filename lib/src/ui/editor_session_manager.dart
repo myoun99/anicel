@@ -55,7 +55,6 @@ import '../models/working_panel.dart';
 import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
-import '../models/track_se_window.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
@@ -520,7 +519,9 @@ class EditorSessionManager extends ChangeNotifier
       selectCut(lastPosition.cutId);
     }
     selectFrameIndex(
-      activeCutControllers.clampedFrameIndex(lastPosition.localFrameIndex),
+      activeCutControllers.clampedFrameIndex(
+        playheadCursors.ownFrameOf(lastPosition),
+      ),
     );
     // F-169: the follow seats a cut's row without the standing law — it has
     // to stay quiet mid-playback (R12-B) — so the stop is where it answers.
@@ -571,7 +572,7 @@ class EditorSessionManager extends ChangeNotifier
         position.cutId,
         before: before,
       ),
-      preferredFrameIndex: position.localFrameIndex,
+      preferredFrameIndex: playheadCursors.ownFrameOf(position),
     );
   }
 
@@ -1224,6 +1225,26 @@ class EditorSessionManager extends ChangeNotifier
   int get activeCutGlobalStartFrame =>
       cutGlobalStartFrameIn(activeTrack, editingSession.activeCutId) ?? 0;
 
+  /// The track frame the active cut's OWN frame 0 shows — 🚨THE LENS
+  /// between the cut's frames (its rows' keys, the timeline's columns) and
+  /// the track's ([TrackFrameAxis.mediaStartOf]): the cut's place on the
+  /// track less the のりしろ an O.L arriving into it asks. In every other
+  /// cut it is [activeCutGlobalStartFrame], which stays the answer to WHERE
+  /// THE CUT STANDS — what a span is measured against to say whether it
+  /// crosses the cut, or began before it.
+  ///
+  /// ↩️The cut view's window on the track's rows counted from the cut's
+  /// place (I-73-ol-index-space, 🧪2026-10-08: in a cut a 12-frame O.L
+  /// arrives into, a sound at the track's frame 30 stood on the timeline's
+  /// column 6 — and the picture it is heard with on column 12).
+  @override
+  int get activeCutMediaStartFrame {
+    final cutId = editingSession.activeCutId;
+    return cutId == null
+        ? 0
+        : projectSettings.projectAxis().mediaStartOf(cutId) ?? 0;
+  }
+
   @override
   String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
     frameIndex: frameIndex,
@@ -1251,7 +1272,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -2307,7 +2328,7 @@ class EditorSessionManager extends ChangeNotifier
     cutCommandCoordinator: () => cutCommandCoordinator,
     uiStrings: () => uiStrings,
     projectFrameRate: () => projectSettings.projectFrameRate,
-    activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
+    activeCutMediaStartFrame: () => activeCutMediaStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
     gapParkedGlobalFrame: () => editingSession.gapGlobalFrame,
     standingRow: () => currentRow,
@@ -2516,10 +2537,7 @@ class EditorSessionManager extends ChangeNotifier
               layerId,
               // The ONE converter between the cut's frames and the track's:
               // the timeline's rows show the active cut's window.
-              trackFrame: TrackSeWindow(
-                cutStartFrame: activeCutGlobalStartFrame,
-                cutDurationFrames: cut.duration,
-              ).toGlobalFrame(frameIndex),
+              trackFrame: trackSe.trackSeWindow.toGlobalFrame(frameIndex),
               shownCell: frameIndex,
               path: path,
             );
@@ -3199,17 +3217,16 @@ class EditorSessionManager extends ChangeNotifier
     // announces.
     selectTrackRow(trackId);
     final globalFrame = editingGlobalFrame;
-    final layout = buildStoryboardTimelineLayout(repository.requireProject());
-    for (final entry in layout) {
-      if (entry.trackId == trackId &&
-          globalFrame >= entry.startFrame &&
-          globalFrame < entry.endFrame) {
-        if (entry.cutId != activeCutId) {
-          selectCut(entry.cutId);
-        }
-        selectFrameIndex(globalFrame - entry.startFrame);
-        return;
+    // The tapped track's own axis — its cuts, and where each one's own
+    // frames stand on it.
+    final axis = projectSettings.axisForTrack(trackId);
+    final entry = axis.isGap(globalFrame) ? null : axis.ownerOf(globalFrame);
+    if (entry != null) {
+      if (entry.cutId != activeCutId) {
+        selectCut(entry.cutId);
       }
+      selectFrameIndex(axis.localIn(entry, globalFrame));
+      return;
     }
     // A GAP on the tapped track PARKS there (user 2026-07-29, superseding
     // UI-R18 #6's no-op): selecting a row makes its current index the

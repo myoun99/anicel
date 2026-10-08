@@ -1,8 +1,10 @@
+import '../../models/cut_id.dart';
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show transitionHandlesByCut;
 import '../../services/command.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
 import 'editor_app_settings.dart';
@@ -163,7 +165,7 @@ class ProjectSettings {
       () => TrackFrameAxis([
         for (final entry in layout)
           if (entry.trackId == trackId) entry,
-      ]),
+      ], leads: _leadsForAxes()),
     );
   }
 
@@ -172,8 +174,18 @@ class ProjectSettings {
   /// the old whole-layout axis gave).
   TrackFrameAxis projectAxis() {
     final layout = _layoutForAxes();
-    return _projectAxis ??= TrackFrameAxis(layout);
+    return _projectAxis ??= TrackFrameAxis(layout, leads: _leadsForAxes());
   }
+
+  /// Each cut's のりしろ before its conte ([TrackFrameAxis.leadOf]) — read
+  /// off the project the layout was built from, once, and kept beside the
+  /// axes it is handed to.
+  Map<CutId, int> _leadsForAxes() => _axesLeads ??= {
+    for (final MapEntry(key: cutId, value: handles) in transitionHandlesByCut(
+      _project.repository.requireProject(),
+    ).entries)
+      if (handles.head > 0) cutId: handles.head,
+  };
 
   /// [projectLayout], letting go of every axis built on an older one.
   List<StoryboardTimelineLayoutEntry> _layoutForAxes() {
@@ -182,11 +194,13 @@ class ProjectSettings {
       _axesLayout = layout;
       _axes.clear();
       _projectAxis = null;
+      _axesLeads = null;
     }
     return layout;
   }
 
   List<StoryboardTimelineLayoutEntry>? _axesLayout;
+  Map<CutId, int>? _axesLeads;
   final Map<TrackId, TrackFrameAxis> _axes = {};
   TrackFrameAxis? _projectAxis;
 }

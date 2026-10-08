@@ -146,8 +146,12 @@ void main() {
           start + 10: const InstructionEvent(instructionId: 'fo', length: 3),
         };
       });
-      expect(marks(session), [0, 10], reason: 'premise: both drawn in cut 2');
-      selectOnTheRow(session, 0, 12);
+      // Cut 2's own frames begin with the four the O.L asks of it, so the
+      // fade ten frames into its conte is drawn on its frame 14 — under
+      // the pictures it plays over. ↩️On 10, counted from the cut's place
+      // (I-73-ol-index-space).
+      expect(marks(session), [0, 14], reason: 'premise: both drawn in cut 2');
+      selectOnTheRow(session, 0, 16);
 
       moveTheRange(session, 2);
 
@@ -246,7 +250,10 @@ void main() {
           start + 10: const InstructionEvent(instructionId: 'fo', length: 3),
         };
       });
-      selectOnTheRow(session, 0, 12);
+      // The fade's mark stands on the cut's frame 14: its own frames begin
+      // with the O.L's four.
+      expect(marks(session), [0, 14], reason: 'premise: both in the range');
+      selectOnTheRow(session, 0, 16);
 
       session.cells.deleteCellAtCurrentFrame();
 

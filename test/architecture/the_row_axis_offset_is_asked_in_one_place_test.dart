@@ -7,10 +7,12 @@ import '../helpers/dart_sources.dart';
 /// row is keyed on the cut's own. So every verb that turns a cut-local frame
 /// into a row's frame, or back, adds one offset — and six places wrote that
 /// conditional out by hand (`isTrackSeLayerId(id) ? activeCutGlobalStartFrame
-/// : 0`): the controllers' frame offset, the lane verbs' write axis, the lane
-/// selection's hit test and its drag, the SE fill's pre-subtraction and the
-/// cut-local lane range. F-102 (keys erased in an earlier cut) and F-115 (a
-/// paste landing on the wrong global frame) are both mistakes on this axis.
+/// : 0` — the cut's MEDIA start since I-73-ol-index-space, where the cut's
+/// own frames begin): the controllers' frame offset, the lane verbs' write
+/// axis, the lane selection's hit test and its drag, the SE fill's
+/// pre-subtraction and the cut-local lane range. F-102 (keys erased in an
+/// earlier cut) and F-115 (a paste landing on the wrong global frame) are
+/// both mistakes on this axis.
 ///
 /// ⛔This scans SOURCE on purpose, like
 /// `the_frame_axis_is_asked_in_one_place_test`: six copies that agree today
@@ -27,11 +29,16 @@ void main() {
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
         final line = lines[i].trim();
-        if (!line.contains('activeCutGlobalStartFrame')) {
+        // Either of the cut's two starts: its place on the track, which the
+        // conditional was written with, and where its own frames begin,
+        // which is what it is written with now.
+        if (!line.contains('activeCutGlobalStartFrame') &&
+            !line.contains('activeCutMediaStartFrame')) {
           continue;
         }
         // A role DECLARES the member; declaring is not answering.
-        if (line == 'int get activeCutGlobalStartFrame;') {
+        if (line == 'int get activeCutGlobalStartFrame;' ||
+            line == 'int get activeCutMediaStartFrame;') {
           continue;
         }
         final from = i - 4 < 0 ? 0 : i - 4;

@@ -154,11 +154,14 @@ class OpacityVerbs {
     if (cut == null) {
       return nothing;
     }
-    final start = _project.activeCutGlobalStartFrame;
+    // Where the cut STANDS, which a span is measured against — and the
+    // track frame the cut's own frame plays at, which is not that far in
+    // when an O.L arrives into the cut.
     return answer(
       cut,
-      start,
-      start + (frameIndex ?? _controllers.timelineController.currentFrameIndex),
+      _project.activeCutGlobalStartFrame,
+      _project.activeCutMediaStartFrame +
+          (frameIndex ?? _controllers.timelineController.currentFrameIndex),
     );
   }
 

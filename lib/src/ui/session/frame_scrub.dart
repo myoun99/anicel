@@ -158,7 +158,7 @@ class FrameScrub {
         outOfTerritory.value = false;
       }
     }
-    scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
+    scrubFrameIndex(math.max(0, axis.localIn(owner, globalFrame)));
   }
 
   /// Whether the LIVE scrub gesture has stood inside the active cut's

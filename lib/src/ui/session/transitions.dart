@@ -65,9 +65,16 @@ class Transitions {
       names.rowNamed(_selection.activeTrack, row),
       cutStart: _project.activeCutGlobalStartFrame,
       duration: _project.activeCutOrNull?.duration ?? 0,
+      lead: _openCutLead,
     ).display,
     global: row,
   );
+
+  /// How many of the open cut's OWN frames come before its place on the
+  /// track — its head のりしろ, as the session's lens counts it
+  /// ([ProjectAccess.activeCutMediaStartFrame]).
+  int get _openCutLead =>
+      _project.activeCutGlobalStartFrame - _project.activeCutMediaStartFrame;
 
   /// The active track's transition spans on the GLOBAL frame axis — the one
   /// reader for every surface that has to answer a transition question
@@ -135,6 +142,9 @@ class Transitions {
       source,
       cutStart: cutStart,
       duration: duration,
+      // The same row at the same place owes the same のりしろ: the key
+      // above names both, and need not name this.
+      lead: _openCutLead,
     );
     _transitionDisplayClone = (
       source: source,
@@ -147,14 +157,16 @@ class Transitions {
     return walk.display;
   }
 
-  /// The projection walk onto the cut whose frames are `[cutStart,
-  /// cutStart + duration)`, with the projected keys of the one-sided spans
-  /// that cross it, and where each projected mark came from — its span's
-  /// GLOBAL start, by projected key.
+  /// The projection walk onto the cut that stands on `[cutStart, cutStart
+  /// + duration)` and whose own frames begin [lead] frames before that,
+  /// with the projected keys of the one-sided spans that cross it, and
+  /// where each projected mark came from — its span's GLOBAL start, by
+  /// projected key.
   ({Layer display, Set<int> crossing, Map<int, int> origins}) _projectOntoCut(
     Layer source, {
     required int cutStart,
     required int duration,
+    required int lead,
   }) {
     final projected = SplayTreeMap<int, InstructionEvent>();
     // D26: the crossing answer is recorded under the PROJECTED key in the
@@ -168,6 +180,7 @@ class Transitions {
         span: span,
         cutStart: cutStart,
         cutEnd: cutStart + duration,
+        cutLead: lead,
       );
       if (mark == null) {
         continue;
@@ -258,6 +271,9 @@ class Transitions {
       names.rowNamed(track, track.transitionLayer, olWord: olWord),
       cutStart: cutStart,
       duration: duration,
+      // The SHEET counts its rows from the cut's place, as its sound
+      // columns do (`SheetSources`) — its own projection, not this lane's.
+      lead: 0,
     );
     if (crossing.isEmpty) {
       return display;
@@ -355,7 +371,7 @@ class Transitions {
       wanted = (startFrame: onTrack.startFrame, length: onTrack.lengthFrames);
     } else if (inCut != null && inCut.coversRow(row)) {
       wanted = (
-        startFrame: _project.activeCutGlobalStartFrame + inCut.startIndex,
+        startFrame: _project.activeCutMediaStartFrame + inCut.startIndex,
         length: inCut.endIndexExclusive - inCut.startIndex,
       );
     } else {
@@ -398,7 +414,7 @@ class Transitions {
     if (plan == null) {
       return null;
     }
-    final local = plan.startFrame - _project.activeCutGlobalStartFrame;
+    final local = plan.startFrame - _project.activeCutMediaStartFrame;
     return transitionShownInCutAt(local) ? null : plan;
   }
 

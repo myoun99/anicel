@@ -3,11 +3,16 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import 'active_cut_controllers.dart';
+import '../../services/playback/playback_frame_mapping.dart'
+    show PlaybackPosition;
+import 'playback_own_frame.dart';
 import 'playback_rig.dart';
 import 'session_roles.dart';
 
 /// Where the playhead stands on its track: the cut under it, the frame that
-/// cut starts on, and the playhead's frame inside it.
+/// cut starts on, and the playhead's frame inside it — a frame of the cut's
+/// OWN, which begins before [startFrame] in a cut an O.L arrives into
+/// (`TrackFrameAxis`).
 typedef CutUnderPlayheadPosition = ({Cut cut, int startFrame, int localFrame});
 
 /// The CUT UNDER THE PLAYHEAD — one answer for every surface that shows the
@@ -81,7 +86,7 @@ class CutUnderPlayhead {
       return (
         cut: position.cut,
         startFrame: position.globalFrameIndex - position.localFrameIndex,
-        localFrame: position.localFrameIndex,
+        localFrame: _ownFrameOf(position),
       );
     }
     final parkedFrame = liveParkedFrame;
@@ -105,11 +110,12 @@ class CutUnderPlayhead {
   int get localFrame {
     final editing = _controllers.timelineController.currentFrameIndex;
     if (_playing) {
-      return _playbackRig.playback.position?.localFrameIndex ?? editing;
+      final position = _playbackRig.playback.position;
+      return position == null ? editing : _ownFrameOf(position);
     }
     final parked = liveParkedFrame;
     return parked != null && parked >= _start && parked < _end
-        ? parked - _start
+        ? atTrackFrame(parked)?.localFrame ?? editing
         : editing;
   }
 
@@ -135,7 +141,7 @@ class CutUnderPlayhead {
     return (
       cut: owner.cut,
       startFrame: owner.startFrame,
-      localFrame: globalFrame - owner.startFrame,
+      localFrame: axis.localIn(owner, globalFrame),
     );
   }
 
@@ -167,6 +173,14 @@ class CutUnderPlayhead {
     _cutId.dispose();
     _cutName.dispose();
   }
+
+  /// The frame of its cut's own a playing [position] stands on
+  /// ([playbackOwnFrameOf]).
+  int _ownFrameOf(PlaybackPosition position) => playbackOwnFrameOf(
+    position,
+    playback: _playbackRig.playback,
+    axis: _timeline.trackFrameAxis(),
+  );
 
   bool get _playing =>
       _playbackRig.playback.globalFrameIndexListenable.value != null;

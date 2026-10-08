@@ -56,23 +56,27 @@ class ResolvedSeNameTag {
   final TextCelContent? delivery;
 }
 
-/// The tags visible at [localFrameIndex] of a cut starting at
-/// [cutStartFrame], in the rows' own order (first row drawn first).
+/// The tags visible at the TRACK's frame [globalFrame] — the axis the rows
+/// are keyed on — in the rows' own order (first row drawn first).
 ///
 /// A row contributes nothing when its eye is off, when no SE block covers
 /// the frame, or when the covering block carries no writing at all — an
 /// empty red box would say less than nothing.
+///
+/// ↩️It took a cut's start and a frame of the cut and added the two. Where
+/// a cut's own frames stand on the track is not this function's to know —
+/// they begin before the cut's place in a cut an O.L arrives into
+/// (`TrackFrameAxis`), and the sum put every tag of such a cut that margin
+/// early (I-73-ol-index-space).
 List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required List<Layer> trackSeLayers,
-  required int cutStartFrame,
-  required int localFrameIndex,
+  required int globalFrame,
   required CanvasSize canvas,
   required CanvasSize cameraFrame,
 }) {
-  if (localFrameIndex < 0) {
+  if (globalFrame < 0) {
     return const [];
   }
-  final globalFrame = cutStartFrame + localFrameIndex;
   final budget = seNameTagWidthBudget(canvas: canvas, cameraFrame: cameraFrame);
   final tags = <ResolvedSeNameTag>[];
   for (var rowIndex = 0; rowIndex < trackSeLayers.length; rowIndex += 1) {

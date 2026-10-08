@@ -73,7 +73,7 @@ class EditorVoiceRecording {
     required CutCommandCoordinator Function() cutCommandCoordinator,
     required AppStrings Function() uiStrings,
     required ProjectFrameRate Function() projectFrameRate,
-    required int Function() activeCutGlobalStartFrame,
+    required int Function() activeCutMediaStartFrame,
     required int Function() editingGlobalFrame,
     required int? Function() gapParkedGlobalFrame,
     required TimelineRowAddress Function() standingRow,
@@ -97,7 +97,7 @@ class EditorVoiceRecording {
        _cutCommandCoordinatorRef = cutCommandCoordinator,
        _uiStrings = uiStrings,
        _projectFrameRate = projectFrameRate,
-       _activeCutGlobalStartFrame = activeCutGlobalStartFrame,
+       _activeCutMediaStartFrame = activeCutMediaStartFrame,
        _editingGlobalFrame = editingGlobalFrame,
        _gapParkedGlobalFrame = gapParkedGlobalFrame,
        _standingRow = standingRow,
@@ -142,8 +142,11 @@ class EditorVoiceRecording {
   final ProjectFrameRate Function() _projectFrameRate;
   ProjectFrameRate get projectFrameRate => _projectFrameRate();
 
-  final int Function() _activeCutGlobalStartFrame;
-  int get activeCutGlobalStartFrame => _activeCutGlobalStartFrame();
+  final int Function() _activeCutMediaStartFrame;
+
+  /// The track frame the open cut's own frame 0 shows — the session's lens
+  /// (`ProjectAccess.activeCutMediaStartFrame`).
+  int get activeCutMediaStartFrame => _activeCutMediaStartFrame();
 
   final int Function() _editingGlobalFrame;
   int get editingGlobalFrame => _editingGlobalFrame();
@@ -885,7 +888,7 @@ class EditorVoiceRecording {
     if (cells == null || !cells.coversLayer(laneId)) {
       return null;
     }
-    final offset = activeCutGlobalStartFrame;
+    final offset = activeCutMediaStartFrame;
     return (
       start: cells.startIndex + offset,
       end: cells.endIndexExclusive + offset,

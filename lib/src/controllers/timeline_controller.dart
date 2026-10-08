@@ -737,7 +737,7 @@ class TimelineController {
     // gates then had to say "a parked playhead has no cut to lens through"
     // — the same sentence three times, guarding one lookup. The row lives
     // on the TRACK, so the gap has no bearing on finding it: the shift it
-    // asks for is `activeCutGlobalStartFrame`, which is 0 with no cut,
+    // asks for is `activeCutMediaStartFrame`, which is 0 with no cut,
     // which is exactly the identity a global row wants.
     for (final layer in _trackSeLayers?.call() ?? const <Layer>[]) {
       if (layer.id == layerId) {

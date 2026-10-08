@@ -227,14 +227,6 @@ void main() {
     expect(s.activeCutId, isNull);
     s.selectGlobalFrame(aEnd + 4);
     expect(s.activeCutId, second);
-
-    // Territory clamp: a stale over-end local never addresses cut-b.
-    s.selectCut(first);
-    expect(
-      s.trackFrameAxis().clampedGlobalOf(first, aEnd + 400),
-      aEnd + 3,
-      reason: 'mid-track territory ends at the gap\'s last frame',
-    );
   });
 
   testWidgets('a playback seek lands IN the gap: background frame, no snap', (

@@ -6,7 +6,6 @@ import '../../models/range_snap.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
-import '../../models/track_transitions.dart' show cutMediaStartFrame;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'folder_bands.dart';
@@ -202,10 +201,12 @@ class RowSpans {
   /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
   /// — what the track-owned lanes are keyed in. A frame of the cut's OWN
   /// (the picture's) counts from where its material starts, which is ahead
-  /// of the conte start in a cut an O.L arrives into ([cutMediaStartFrame]).
+  /// of the conte start in a cut an O.L arrives into
+  /// ([TrackFrameAxis.globalOf] — the session's ONE converter; ↩️this read
+  /// the media start off the project for itself while the axis counted from
+  /// the cut's start, and the two answered six frames apart in such a cut).
   int trackGlobalFrameOf(CutId cutId, int frameIndex) =>
-      (cutMediaStartFrame(_project.repository.requireProject(), cutId) ?? 0) +
-      frameIndex;
+      _projectSettings.projectAxis().globalOf(cutId, frameIndex) ?? frameIndex;
 
   /// The multitrack display resolution WITH transitions: every track's
   /// covered cut at [globalFrame], in project track order, and an O.L

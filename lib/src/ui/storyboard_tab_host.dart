@@ -381,13 +381,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// the press gone no double click opened another cell or stood
   /// elsewhere).
   ///
-  /// ⚠️In a cut an O.L arrives into, the frame the storyboard's seek leaves
-  /// the session on is short of the row's own by the のりしろ, so the cell
-  /// that opens is that much early (🧪2026-10-08: a double click on the
-  /// second panel named the first). That is the seek's to put right, for
-  /// every verb at once — board `I-73-ol-index-space`. ⛔Not here: adding
-  /// the のりしろ to the frame handed on moved the playhead, and the name
-  /// still landed where the session stood.
+  /// ↩️In a cut an O.L arrives into, the frame the storyboard's seek left
+  /// the session on was short of the row's own by the のりしろ, so the cell
+  /// that opened was that much early (🧪2026-10-08: a double click on the
+  /// second panel named the first). The seek counts the cut's own frames
+  /// now, for every verb at once (I-73-ol-index-space, `TrackFrameAxis`).
+  /// ⛔It was not this door's to put right: adding the のりしろ to the
+  /// frame handed on moved the playhead, and the name still landed where
+  /// the session stood.
   Future<void> _editConteBlock(TrackId _, LayerId layerId, int _) =>
       activateCellOnDoubleTap(
         context,

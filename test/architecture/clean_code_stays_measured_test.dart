@@ -522,7 +522,17 @@ void main() {
   /// layer — went to a row of its own (`_StoryboardConteRow`), and the cut
   /// row kept what is the cut's. 🔬`clean_code_diff` between master and the
   /// lane names that one gone and none added.
-  const longClasses = 60;
+  ///
+  /// ⚠️60 → 61 on 2026-10-09, ONE name: `Transitions` crossed (591 → 607)
+  /// in I-73-ol-index-space — the cut view's marks are laid on the cut's
+  /// OWN frames, which begin its head のりしろ before its place on the
+  /// track, so the projection walk takes that lead beside the place, and
+  /// the sheet's projection says its own (none) out loud.
+  /// 🔬`clean_code_diff` between master and the lane names this one and no
+  /// other class. ⛔Not split to fit: it is one more number through the
+  /// walk the class already owns, and a seam cut for it would put the
+  /// projection's origin in a different file from the walk that reads it.
+  const longClasses = 61;
 
   late CleanCodeScan scan;
   setUpAll(() {

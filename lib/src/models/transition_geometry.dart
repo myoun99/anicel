@@ -319,10 +319,18 @@ CutTransitionHandles cutTransitionHandles({
 /// mark sits, and that is the design ("글로벌↔로컬은 다르게 그린다"). The
 /// global row is the one that is edited; a cut's row is for reading, and
 /// what it has to say is "a 1+0 O.L happens at this end of you".
+///
+/// The mark is laid on the cut's OWN frames, which begin [cutLead] frames
+/// before [cutStart] in a cut an O.L arrives into (its head のりしろ,
+/// F-227): that O.L's own mark starts on the cut's frame 0 by arithmetic
+/// now, and a span INSIDE such a cut stands under the pictures it plays
+/// over. ↩️Counted from [cutStart], an inner span stood [cutLead] columns
+/// left of them (I-73-ol-index-space).
 ({int start, int length})? transitionMarkInCut({
   required TransitionSpan span,
   required int cutStart,
   required int cutEnd,
+  int cutLead = 0,
 }) {
   // D26: display stays UN-GATED by the refusal — a crossing fade no longer
   // fires, but its block must keep drawing here, or the red warning marker
@@ -335,9 +343,10 @@ CutTransitionHandles cutTransitionHandles({
       )) {
     return null;
   }
-  final localStart = span.start - cutStart;
-  // Negative means the span opened before this cut did — the incoming side.
-  // Pull the whole mark to the head rather than clipping off its front.
+  final localStart = span.start - (cutStart - cutLead);
+  // Negative means the span opened before this cut's frames do — a span
+  // from further back than the cut is drawn for. Pull the whole mark to
+  // the head rather than clipping off its front.
   return (start: localStart < 0 ? 0 : localStart, length: span.length);
 }
 

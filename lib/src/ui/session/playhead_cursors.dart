@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../playback/canvas_playback_controller.dart' show PlaybackScope;
+import '../../services/playback/playback_frame_mapping.dart'
+    show PlaybackPosition;
+import 'playback_own_frame.dart';
 import 'playback_rig.dart';
 import 'session_roles.dart';
 
@@ -58,15 +61,26 @@ class PlayheadCursors {
   /// there is nowhere to draw it (no cut and no parking).
   ValueListenable<int?> get trackFrame => _trackFrame;
 
-  /// [cutFrame]'s answer, asked now: playback's own local frame while it
-  /// plays, the editing playhead otherwise.
+  /// [cutFrame]'s answer, asked now: the frame of the cut's own playback
+  /// stands on while it plays ([ownFrameOf]), the editing playhead
+  /// otherwise.
   int cutFrameNow() {
     final editing = _selection.currentFrameIndex;
     if (_playbackRig.playback.globalFrameIndexListenable.value == null) {
       return editing;
     }
-    return _playbackRig.playback.position?.localFrameIndex ?? editing;
+    final position = _playbackRig.playback.position;
+    return position == null ? editing : ownFrameOf(position);
   }
+
+  /// The frame of its cut's OWN a playing [position] stands on
+  /// ([playbackOwnFrameOf]) — the run's own, or the last it handed on at a
+  /// stop.
+  int ownFrameOf(PlaybackPosition position) => playbackOwnFrameOf(
+    position,
+    playback: _playbackRig.playback,
+    axis: _timeline.trackFrameAxis(),
+  );
 
   /// [trackFrame]'s answer, asked now: the playback position while playback
   /// is active (an activeCut-scope playlist is rebased to frame 0, so it is
@@ -99,14 +113,9 @@ class PlayheadCursors {
         localFrame: _selection.currentFrameIndex,
       );
     }
-    for (final entry in axis.entries) {
-      if (entry.cutId == position.cutId) {
-        final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
-        return entry.startFrame +
-            position.localFrameIndex.clamp(0, maxLocal);
-      }
-    }
-    return null;
+    // A cut played alone: its playlist frame is the cut's own, shown where
+    // the storyboard shows the cut — inside its block.
+    return axis.clampedToCutGlobalOf(position.cutId, position.localFrameIndex);
   }
 
   /// Re-answers both — the session wires this to every channel either can

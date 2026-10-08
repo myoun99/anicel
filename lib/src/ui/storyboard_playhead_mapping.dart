@@ -90,6 +90,9 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
     return const [];
   }
   final owners = _firstOwners(entries, edges);
+  // Where each cut's OWN frames stand on its track — the cache holds a
+  // cut's pictures by the cut's own frame.
+  final axis = session.projectSettings.projectAxis();
   final runs = <({int startIndex, int endIndexExclusive})>[];
   void ready(int from, int to) {
     final last = runs.isEmpty ? null : runs.last;
@@ -108,16 +111,15 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
       ready(from, to);
       continue;
     }
+    final ownFrom = axis.localIn(owner, from);
+    final onTrack = from - ownFrom;
     for (final run
         in session.playbackRig.playbackCache.playbackReadyRunsForCut(
           owner.cut,
-          from - owner.startFrame,
-          to - owner.startFrame,
+          ownFrom,
+          ownFrom + (to - from),
         )) {
-      ready(
-        run.startIndex + owner.startFrame,
-        run.endIndexExclusive + owner.startFrame,
-      );
+      ready(run.startIndex + onTrack, run.endIndexExclusive + onTrack);
     }
   }
   return runs;
@@ -156,13 +158,15 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
       playback.seekToGlobalFrame(globalFrame);
       return;
     }
-    // Single-cut playback: its playlist is rebased to frame 0, and seeks
-    // outside the playing cut are a no-op.
+    // Single-cut playback: its playlist counts the cut's OWN frames from
+    // 0, and seeks outside the playing cut are a no-op.
     for (final entry in storyboardActiveTrackLayout(session)) {
       if (globalFrame >= entry.startFrame &&
           globalFrame < entry.endFrame &&
           entry.cutId == playback.position?.cutId) {
-        playback.seekToGlobalFrame(globalFrame - entry.startFrame);
+        playback.seekToGlobalFrame(
+          session.projectSettings.projectAxis().localIn(entry, globalFrame),
+        );
         return;
       }
     }

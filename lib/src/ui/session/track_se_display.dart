@@ -34,10 +34,22 @@ class TrackSeDisplay {
   final ActiveCutControllers _controllers;
   final Transitions _transitions;
 
-  TrackSeWindow get trackSeWindow => TrackSeWindow(
-    cutStartFrame: _project.activeCutGlobalStartFrame,
-    cutDurationFrames: _project.activeCutOrNull?.duration ?? 0,
-  );
+  /// The open cut's window on the track's rows — THE converter between the
+  /// cut's frames and the track's. It opens where the cut's OWN frame 0
+  /// stands ([ProjectAccess.activeCutMediaStartFrame]) and its cut ends
+  /// where the cut does on the track, so in a cut an O.L arrives into the
+  /// のりしろ before the conte is inside the window, as it is on every row
+  /// of the cut.
+  TrackSeWindow get trackSeWindow {
+    final cut = _project.activeCutOrNull;
+    final opens = _project.activeCutMediaStartFrame;
+    return TrackSeWindow(
+      cutStartFrame: opens,
+      cutDurationFrames: cut == null
+          ? 0
+          : _project.activeCutGlobalStartFrame + cut.duration - opens,
+    );
+  }
 
   /// Whether [layerId] names a TRACK-owned SE row — a question about what
   /// KIND of row it is, on any track in the project.
@@ -62,7 +74,7 @@ class TrackSeDisplay {
   /// ones that part later; the source scan
   /// `the_row_axis_offset_is_asked_in_one_place_test` keeps it here.
   int rowAxisOffset(LayerId layerId) =>
-      isTrackSeLayerId(layerId) ? _project.activeCutGlobalStartFrame : 0;
+      isTrackSeLayerId(layerId) ? _project.activeCutMediaStartFrame : 0;
 
   /// Whether [layerId] is a TRACK-OWNED row of the storyboard's rail — an SE
   /// lane or the transition row.

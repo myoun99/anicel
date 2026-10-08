@@ -56,17 +56,13 @@ void main() {
     );
   }
 
-  List<ResolvedSeNameTag> resolve(
-    List<Layer> rows, {
-    int cutStartFrame = 0,
-    int localFrameIndex = 0,
-  }) => resolveSeNameTagsAt(
-    trackSeLayers: rows,
-    cutStartFrame: cutStartFrame,
-    localFrameIndex: localFrameIndex,
-    canvas: canvas,
-    cameraFrame: camera,
-  );
+  List<ResolvedSeNameTag> resolve(List<Layer> rows, {int globalFrame = 0}) =>
+      resolveSeNameTagsAt(
+        trackSeLayers: rows,
+        globalFrame: globalFrame,
+        canvas: canvas,
+        cameraFrame: camera,
+      );
 
   test('a covered row shows the name and the dialogue as SEPARATE runs, and '
       'the stacked default lands INSIDE THE SHOT — the canvas is bigger '
@@ -75,7 +71,7 @@ void main() {
     final tags = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ', dialogue: 'おはよう'),
       seRow(id: 's2', name: 'S2', seName: 'ユキ', dialogue: 'うん'),
-    ], localFrameIndex: 3);
+    ], globalFrame: 3);
 
     // R5 #7: two runs, not one `[name] line` string — the name lives in
     // the box and the dialogue hangs beside it with its own ink.
@@ -135,23 +131,20 @@ void main() {
     expect(resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]), hasLength(1));
   });
 
-  test('SE rows key on the TRACK-GLOBAL axis: the cut start converts, and '
-      'a block that spills in from an earlier cut still shows', () {
+  // ↩️This passed a cut's start and a frame of the cut, which the function
+  // added: where a cut's frames stand on the track is the caller's to say
+  // (I-73-ol-index-space).
+  test('SE rows key on the TRACK-GLOBAL axis: a block shows over the '
+      'frames of the track it covers, and nowhere else', () {
     final rows = [
-      // Global frames 20..32 — the cut starts at 24, so the block spills
-      // in and covers this cut's frames 0..8.
+      // Global frames 20..32.
       seRow(id: 's1', name: 'S1', seName: 'タモツ', startFrame: 20, length: 12),
     ];
-    expect(
-      resolve(rows, cutStartFrame: 24, localFrameIndex: 0),
-      hasLength(1),
-      reason: 'covered from before the cut',
-    );
-    expect(
-      resolve(rows, cutStartFrame: 24, localFrameIndex: 10),
-      isEmpty,
-      reason: 'global frame 34 is past the block',
-    );
+    expect(resolve(rows, globalFrame: 24), hasLength(1));
+    expect(resolve(rows, globalFrame: 20), hasLength(1));
+    expect(resolve(rows, globalFrame: 19), isEmpty, reason: 'before it');
+    expect(resolve(rows, globalFrame: 32), isEmpty, reason: 'past it');
+    expect(resolve(rows, globalFrame: -1), isEmpty);
   });
 
   // R5 #7 (user, 2026-08-09): the tag has no position of its own, and rows
