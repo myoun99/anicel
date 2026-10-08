@@ -506,6 +506,7 @@ enum AppStrings {
 
   /// '{min}'/'{max}' are the dimension bounds.
   String get canvasSizePresets => _s('canvasSizePresets');
+  String get canvasAdjustOnCanvas => _s('canvasAdjustOnCanvas');
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
@@ -1925,6 +1926,7 @@ enum AppStrings {
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
     'canvasSizePresets': 'Presets',
+    'canvasAdjustOnCanvas': 'Adjust on canvas',
     'commonResize': 'Resize',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
@@ -3081,6 +3083,7 @@ enum AppStrings {
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
     'canvasSizePresets': 'プリセット',
+    'canvasAdjustOnCanvas': 'キャンバスで調整',
     'commonResize': 'サイズ変更',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
@@ -4474,6 +4477,7 @@ enum AppStrings {
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
     'canvasSizePresets': '프리셋',
+    'canvasAdjustOnCanvas': '캔버스에서 조정',
     'commonResize': '크기 변경',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
@@ -5870,6 +5874,7 @@ enum AppStrings {
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
     'canvasSizePresets': 'Préréglages',
+    'canvasAdjustOnCanvas': 'Ajuster sur la toile',
     'commonResize': 'Redimensionner',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
@@ -7330,6 +7335,7 @@ enum AppStrings {
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
     'canvasSizePresets': '预设',
+    'canvasAdjustOnCanvas': '在画布上调整',
     'commonResize': '调整尺寸',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',

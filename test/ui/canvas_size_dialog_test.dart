@@ -11,6 +11,7 @@ void main() {
   Future<void> pumpOpenDialog(
     WidgetTester tester, {
     CanvasSize initialSize = const CanvasSize(width: 1920, height: 1080),
+    VoidCallback? onAdjustOnCanvas,
   }) async {
     dialogResult = null;
     await tester.pumpWidget(
@@ -21,8 +22,10 @@ void main() {
               onPressed: () async {
                 dialogResult = await showDialog<CanvasResizeRequest>(
                   context: context,
-                  builder: (context) =>
-                      CanvasSizeDialog(initialSize: initialSize),
+                  builder: (context) => CanvasSizeDialog(
+                    initialSize: initialSize,
+                    onAdjustOnCanvas: onAdjustOnCanvas,
+                  ),
                 );
               },
               child: const Text('open'),
@@ -249,6 +252,37 @@ void main() {
       ),
       findsNothing,
       reason: 'the range is the fields\' to enforce, not a sentence\'s',
+    );
+  });
+
+  // 🗣️I-79-Q3 (유저 2026-10-08): 「캔버스에서 조정」.
+  testWidgets('🚨「캔버스에서 조정」 closes the window and opens the adjust on '
+      'the canvas — and stays, greyed, where there is nothing to open', (
+    tester,
+  ) async {
+    var opened = 0;
+    await pumpOpenDialog(tester, onAdjustOnCanvas: () => opened += 1);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-adjust-on-canvas')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(opened, 1);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-size-dialog')),
+      findsNothing,
+      reason: 'the window steps aside for the canvas',
+    );
+    expect(dialogResult, isNull, reason: 'nothing resized from the window');
+
+    await pumpOpenDialog(tester);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey<String>('canvas-size-adjust-on-canvas')),
+          )
+          .onPressed,
+      isNull,
     );
   });
 

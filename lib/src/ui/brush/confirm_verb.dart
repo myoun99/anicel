@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../session/canvas_adjust.dart';
 import '../../services/last_stroke_slot.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
@@ -26,7 +27,12 @@ class ConfirmVerb {
     required this.lastStroke,
     required this.tool,
     required this.transformOptions,
+    required this.canvasAdjust,
   });
+
+  /// The canvas adjusted on the canvas (I-79) — the project on screen's,
+  /// asked each time because the project on screen changes.
+  final CanvasAdjust Function() canvasAdjust;
 
   final CanvasSelectionCommands selection;
 
@@ -41,14 +47,27 @@ class ConfirmVerb {
   final ValueListenable<TransformToolOptions> transformOptions;
 
   /// Everything [canConfirm] depends on.
-  Listenable get changes =>
-      Listenable.merge([selection, text, lastStroke, tool, transformOptions]);
+  Listenable get changes => Listenable.merge([
+    selection,
+    text,
+    lastStroke,
+    tool,
+    transformOptions,
+    canvasAdjust(),
+  ]);
 
   bool get canConfirm => _action() != null;
 
   void confirm() => _action()?.call();
 
   VoidCallback? _action() {
+    // A canvas being adjusted on the canvas is a step the user took into
+    // its own mode (I-79): confirming lands it — grey while no box is up to
+    // land it from ([CanvasAdjust.land]).
+    final adjust = canvasAdjust();
+    if (adjust.isOpen) {
+      return adjust.land;
+    }
     // An open polygon outline is the newest thing a confirm can be closing,
     // and it is what the user is looking at (유저 확정 — 폴리곤 확정은 확정
     // 버튼으로).

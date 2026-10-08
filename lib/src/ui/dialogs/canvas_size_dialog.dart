@@ -39,7 +39,11 @@ class CanvasResizeRequest {
 /// Studio) chooses where existing artwork stays pinned; cropped strokes are
 /// kept and reappear if the canvas grows again.
 class CanvasSizeDialog extends StatefulWidget {
-  const CanvasSizeDialog({super.key, required this.initialSize});
+  const CanvasSizeDialog({
+    super.key,
+    required this.initialSize,
+    this.onAdjustOnCanvas,
+  });
 
   static const int minDimension = 1;
 
@@ -69,6 +73,11 @@ class CanvasSizeDialog extends StatefulWidget {
   }
 
   final CanvasSize initialSize;
+
+  /// Opens the canvas's adjust ON the canvas, the window closing to show
+  /// it (I-79-Q3, 유저 2026-10-08: 「캔버스에서 조정」). Null greys the
+  /// button out.
+  final VoidCallback? onAdjustOnCanvas;
 
   @override
   State<CanvasSizeDialog> createState() => _CanvasSizeDialogState();
@@ -145,6 +154,17 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     );
   }
 
+  /// The window closes and the canvas shows its adjust.
+  VoidCallback? get _adjustOnCanvas {
+    final open = widget.onAdjustOnCanvas;
+    return open == null
+        ? null
+        : () {
+            Navigator.of(context).pop();
+            open();
+          };
+  }
+
   void _applyPreset(CanvasSize size) {
     setState(() {
       _widthController.text = '${size.width}';
@@ -175,10 +195,23 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
-          PanelFlyoutButton(
-            key: const ValueKey<String>('canvas-size-presets'),
-            label: strings.canvasSizePresets,
-            entriesBuilder: () => _presetRows(enteredRequest?.size),
+          Row(
+            children: [
+              PanelFlyoutButton(
+                key: const ValueKey<String>('canvas-size-presets'),
+                label: strings.canvasSizePresets,
+                entriesBuilder: () => _presetRows(enteredRequest?.size),
+              ),
+              const SizedBox(width: 8),
+              ControlPressClaim(
+                onPressed: _adjustOnCanvas,
+                child: OutlinedButton(
+                  key: const ValueKey<String>('canvas-size-adjust-on-canvas'),
+                  onPressed: silentPress(_adjustOnCanvas),
+                  child: Text(strings.canvasAdjustOnCanvas),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           // ⛔No caption beside the grid: the rule against explaining a

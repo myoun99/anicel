@@ -230,6 +230,7 @@ void main() {
     'canvasWidthLabel': (s) => s.canvasWidthLabel,
     'canvasHeightLabel': (s) => s.canvasHeightLabel,
     'canvasSizePresets': (s) => s.canvasSizePresets,
+    'canvasAdjustOnCanvas': (s) => s.canvasAdjustOnCanvas,
     'commonResize': (s) => s.commonResize,
     'inputTitle': (s) => s.inputTitle,
     'inputPressureHeading': (s) => s.inputPressureHeading,

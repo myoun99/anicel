@@ -64,6 +64,21 @@ final class RowBoxTwoScales extends RowBoxScale {
   final RowBoxLanding<CanvasPoint> landing;
 }
 
+/// The EDGES themselves, where they stand on the canvas — a canvas resized
+/// on the canvas (I-79). A handle moves its own edges by the hand's travel
+/// and the opposite ones stay where they are: I-79-Q2 (유저 2026-10-08)
+/// 「따로 안 보인다 — 끄는 변의 반대쪽이 기준」. A corner moves its two,
+/// an edge's middle its one; the edges keep to whole pixels and never come
+/// closer than one.
+///
+/// ⛔Not a scale: there is no pivot. Pulling the right edge out leaves the
+/// left where it was, which a scale about any centre would not.
+final class RowBoxEdges extends RowBoxScale {
+  const RowBoxEdges(this.landing);
+
+  final RowBoxLanding<Rect> landing;
+}
+
 /// A ROW's transform box on the canvas — a layer's fx transform, the
 /// camera's frame, an SE name tag — under the one law every box keeps
 /// (F-222): a press takes the cross, a handle, the inside, or outside on
@@ -221,7 +236,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     return switch (widget.scale) {
       null => const [],
       RowBoxOneScale() => corners,
-      RowBoxTwoScales() => [
+      RowBoxTwoScales() || RowBoxEdges() => [
         ...corners,
         if (corners.length == _edgeCount)
           for (var edge = 0; edge < _edgeCount; edge += 1)
@@ -331,6 +346,8 @@ class _RowTransformBoxState extends State<RowTransformBox> {
             );
           case RowBoxTwoScales(:final landing):
             _show(landing, _twoScalesAt(local, start), from: start.scale);
+          case RowBoxEdges(:final landing):
+            _show(landing, _edgesAt(local), from: _startEdges);
         }
       case BoxPress.turn:
         final step = TransformBoxLaw.turn(
@@ -426,6 +443,36 @@ class _RowTransformBoxState extends State<RowTransformBox> {
         ? (stood.across, carried.across)
         : (stood.down, carried.down);
     return from == 0 ? 1 : (from + by) / from;
+  }
+
+  /// The box's edges as the press found them: its corners' bounds on the
+  /// canvas.
+  Rect get _startEdges => Rect.fromLTRB(
+    _startCorners[0].x,
+    _startCorners[0].y,
+    _startCorners[2].x,
+    _startCorners[2].y,
+  );
+
+  /// The edges the grabbed handle has carried ([RowBoxEdges]): its own by
+  /// the hand's travel in whole pixels (F-127: by the travel, not onto the
+  /// hand), the others where they were.
+  Rect _edgesAt(Offset local) {
+    final travel = TransformBoxLaw.wholePixels(_travel(local));
+    final start = _startEdges;
+    final handle = _grabbedHandle;
+    // Corners first (top-left, top-right, bottom-right, bottom-left), then
+    // the middles of the edges (top, right, bottom, left).
+    final left = handle == 0 || handle == 3 || handle == 7;
+    final right = handle == 1 || handle == 2 || handle == 5;
+    final top = handle == 0 || handle == 1 || handle == 4;
+    final bottom = handle == 2 || handle == 3 || handle == 6;
+    return Rect.fromLTRB(
+      left ? math.min(start.left + travel.x, start.right - 1) : start.left,
+      top ? math.min(start.top + travel.y, start.bottom - 1) : start.top,
+      right ? math.max(start.right + travel.x, start.left + 1) : start.right,
+      bottom ? math.max(start.bottom + travel.y, start.top + 1) : start.bottom,
+    );
   }
 
   /// Shows [value] on [landing] — and keeps the call that writes it, unless

@@ -302,6 +302,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     lastStroke: _lastStroke,
     tool: _brushTool,
     transformOptions: _transformOptions,
+    canvasAdjust: () => _session.canvasAdjust,
   );
 
   /// Undo and redo — the keys, the finger taps and a mapped button here,
@@ -1165,6 +1166,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _abandonPolygonOrCancelTransform() {
+    // I-79: Escape closes a canvas being adjusted on the canvas — its ✕.
+    if (_session.canvasAdjust.isOpen) {
+      _session.canvasAdjust.end();
+      return;
+    }
     if (_canvasSelectionCommands.hasOpenPolygon) {
       _canvasSelectionCommands.abandonPolygon();
       return;

@@ -77,29 +77,61 @@ Future<void> _resizeActiveCutCanvas(
   context,
   // Gap state: no cut canvas to resize.
   session.activeCutOrNull,
-  dialog: (cut) => CanvasSizeDialog(initialSize: cut.canvasSize),
-  // D3: the app's ONE wait-for-this window, exactly as save wears it.
-  // The command is synchronous, but runWithAppProgress paints the
-  // window before starting the task; the trailing endOfFrame holds
-  // the modal barrier over the SECOND half of the resize — the
-  // canvas host's adoption pass and the first recomposite land on
-  // the next frame, and no input may slip between the halves (an
-  // edit there would commit a stroke at the wrong canvas size).
-  commit: (request) => runWithAppProgress<void>(
-    context: context,
-    title: AppText.strings.canvasSizeTitle,
-    titleIcon: Icons.aspect_ratio,
-    runningLabel: AppText.strings.resizeProgressRunning,
-    doneLabel: AppText.strings.resizeProgressDone,
-    windowKey: const ValueKey<String>('resize-progress-dialog'),
-    task: (report) async {
-      session.cutVerbs.resizeActiveCutCanvas(
-        request.size,
-        anchor: request.anchor,
-      );
-      await WidgetsBinding.instance.endOfFrame;
-    },
+  dialog: (cut) => CanvasSizeDialog(
+    initialSize: cut.canvasSize,
+    onAdjustOnCanvas: () => session.canvasAdjust.begin(cut.id, cut.canvasSize),
   ),
+  commit: (request) => _resizeBehindTheWaitWindow(
+    context,
+    () => session.cutVerbs.resizeActiveCutCanvas(
+      request.size,
+      anchor: request.anchor,
+    ),
+  ),
+);
+
+/// Lands the canvas adjusted on the canvas (I-79): the size its edges make,
+/// the picture moved by the edges pulled out on the left and the top —
+/// behind the same wait window as a size typed into the window.
+Future<void> landCanvasAdjust(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final adjust = session.canvasAdjust;
+  final size = adjust.size;
+  final offset = adjust.contentOffset;
+  if (size == null || offset == null) {
+    return;
+  }
+  await _resizeBehindTheWaitWindow(context, () {
+    session.cutVerbs.placeActiveCutCanvas(size, contentOffset: offset);
+    adjust.end();
+  });
+}
+
+/// A canvas resize, the one way every door runs it.
+///
+/// D3: the app's ONE wait-for-this window, exactly as save wears it.
+/// The command is synchronous, but runWithAppProgress paints the
+/// window before starting the task; the trailing endOfFrame holds
+/// the modal barrier over the SECOND half of the resize — the
+/// canvas host's adoption pass and the first recomposite land on
+/// the next frame, and no input may slip between the halves (an
+/// edit there would commit a stroke at the wrong canvas size).
+Future<void> _resizeBehindTheWaitWindow(
+  BuildContext context,
+  VoidCallback resize,
+) => runWithAppProgress<void>(
+  context: context,
+  title: AppText.strings.canvasSizeTitle,
+  titleIcon: Icons.aspect_ratio,
+  runningLabel: AppText.strings.resizeProgressRunning,
+  doneLabel: AppText.strings.resizeProgressDone,
+  windowKey: const ValueKey<String>('resize-progress-dialog'),
+  task: (report) async {
+    resize();
+    await WidgetsBinding.instance.endOfFrame;
+  },
 );
 
 /// The band over the cut pill's ＋ — the ways of making a cut.

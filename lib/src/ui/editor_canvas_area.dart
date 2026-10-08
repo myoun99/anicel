@@ -40,6 +40,8 @@ import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
+import 'canvas/canvas_adjust_layer.dart';
+import 'cut_command_group.dart' show landCanvasAdjust;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/selection_float_overlay.dart';
 import 'canvas/flip_hud_controller.dart';

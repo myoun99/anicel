@@ -15,6 +15,7 @@ import '../services/persistence/app_memory_settings.dart';
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
+import 'session/canvas_adjust.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
@@ -798,6 +799,10 @@ class EditorSessionManager extends ChangeNotifier
   /// [CanvasSelectionDocument]).
   final CanvasSelectionDocument canvasSelection = CanvasSelectionDocument();
 
+  /// This project's canvas being resized on the canvas (I-79) — the size
+  /// window opens it, the canvas shows its box and pill.
+  final CanvasAdjust canvasAdjust = CanvasAdjust();
+
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
@@ -1434,6 +1439,7 @@ class EditorSessionManager extends ChangeNotifier
     frameRangeSelection.dispose,
     brushInputActive.dispose,
     dragPreview.dispose,
+    canvasAdjust.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/confirm_verb.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/session/canvas_adjust.dart';
 
 import '../../helpers/cel_text_hand.dart';
 
@@ -29,12 +32,14 @@ void main() {
   final lastStroke = LastStrokeSlot();
   final tool = ValueNotifier(BrushToolState.defaults);
   final options = ValueNotifier(TransformToolOptions.defaults);
+  final adjust = CanvasAdjust();
   final verb = ConfirmVerb(
     selection: selection,
     text: CelTextCommands(),
     lastStroke: lastStroke,
     tool: tool,
     transformOptions: options,
+    canvasAdjust: () => adjust,
   );
   final owner = Object();
 
@@ -48,6 +53,7 @@ void main() {
     reinputs = 0;
     canApply = false;
     sessionOpen = false;
+    adjust.end();
     tool.value = BrushToolState.defaults.copyWith(tool: CanvasTool.brush);
     selection
       ..abandonPolygon()
@@ -92,6 +98,29 @@ void main() {
     expect(applied, 0);
   });
 
+  // I-79: a canvas adjusted on the canvas is the mode the user stepped
+  // into — 확정 lands it, and is grey while no box is up to land it from.
+  test('🚨an open canvas adjust is what 확정 lands — before everything else, '
+      'grey with no box up', () {
+    selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
+    adjust.begin(const CutId('c'), const CanvasSize(width: 8, height: 8));
+    expect(verb.canConfirm, isFalse, reason: 'no box to land it from');
+
+    var landed = 0;
+    final box = Object();
+    adjust.bind(box, () => landed += 1);
+    expect(verb.canConfirm, isTrue);
+    verb.confirm();
+    expect(landed, 1);
+    expect(
+      selection.hasOpenPolygon,
+      isTrue,
+      reason: '⛔the polygon waits: the adjust was the newer step',
+    );
+    expect(reinputs, 0);
+    adjust.unbind(box);
+  });
+
   test('an open polygon is closed first — and nothing else happens', () {
     selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
     expect(verb.canConfirm, isTrue);
@@ -121,6 +150,7 @@ void main() {
       lastStroke: lastStroke,
       tool: tool,
       transformOptions: options,
+      canvasAdjust: () => adjust,
     );
     expect(hand.tool.session, isNotNull, reason: '⛔fixture: in hand');
 
