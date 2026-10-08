@@ -274,10 +274,12 @@ final class ClipImportDoor {
       if (cut == null) {
         continue;
       }
-      // A vector layer is drawn from its strokes: the render it keeps beside
-      // them has no blocks in the file.
-      if (bake.source.vectorData case final data when data.isNotEmpty) {
-        final places = [for (final id in data) container.externals[id]];
+      // A vector layer is drawn from its strokes, however few: the render
+      // it keeps beside them has no blocks in the file.
+      if (bake.source.kind == ClipLayerKind.vector) {
+        final places = [
+          for (final id in bake.source.vectorData) container.externals[id],
+        ];
         if (places.contains(null)) {
           warnings.add(_unreadable(bake, 'its strokes are not in the file'));
           continue;

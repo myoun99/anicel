@@ -61,16 +61,12 @@ void main() {
   /// grey one, a dropped picture its transform doubles, and one whose
   /// blocks the file does not hold.
   ///
-  /// [vector] puts a vector layer 「lines」 on top instead, moved to (30, 40):
-  /// one stroke 0 … 40 across at its row 10, six across, and one record of
-  /// a kind not drawn — and beside them a render whose blocks the file does
-  /// not hold, as the one sample with vectors keeps. [strokesLost] names
-  /// strokes the file does not hold instead.
-  String writeClip({
-    bool troubled = false,
-    bool vector = false,
-    bool strokesLost = false,
-  }) {
+  /// [strokes] puts a vector layer 「lines」 on top instead, moved to (30, 40)
+  /// and beside its strokes a render whose blocks the file does not hold, as
+  /// the one sample with vectors keeps. Its strokes ([_Strokes.held]): one 0
+  /// … 40 across at its row 10, six across, and one record of a kind not
+  /// drawn.
+  String writeClip({bool troubled = false, _Strokes? strokes}) {
     final attribute = offscreenAttributeBytes(
       width: 64,
       height: 64,
@@ -141,7 +137,7 @@ void main() {
       // The layer chained on top of A, if any.
       final onTopOfA = troubled
           ? 8
-          : vector
+          : strokes != null
           ? 11
           : 0;
       // id, name, type, folder, composite, uuid, x, y, child, next,
@@ -158,32 +154,39 @@ void main() {
           [8, 'grey', 1, 0, 0, '', 0, 0, 0, 9, 105, 0],
           [10, 'lost', 1, 0, 0, '', 0, 0, 0, 0, 106, 0],
         ],
-        if (vector) [11, 'lines', 1, 0, 0, '', 30, 40, 0, 0, 107, 0],
+        if (strokes != null) [11, 'lines', 1, 0, 0, '', 30, 40, 0, 0, 107, 0],
       ]) {
         layer.execute(row);
       }
       layer.close();
-      if (vector) {
+      if (strokes != null) {
         db.execute('''
           INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (107, 207);
           INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
             VALUES (207, 100, 307, 0);
         ''');
-        db
-          ..execute(
-            'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
-            'VALUES (307, ?, ?)',
-            [attribute, externalId(98)],
-          )
-          ..execute(
+        db.execute(
+          'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+          'VALUES (307, ?, ?)',
+          [attribute, externalId(98)],
+        );
+        if (strokes == _Strokes.none) {
+          // A vector layer by its render type alone: no stroke at all.
+          db.execute(
+            'UPDATE Layer SET DrawToRenderOffscreenType = 10 '
+            'WHERE MainId = 11',
+          );
+        } else {
+          db.execute(
             'INSERT INTO VectorObjectList(MainId, CanvasId, LayerId, '
             'VectorData) VALUES (1, 1, 11, ?)',
             [
               Uint8List.fromList(
-                externalId(strokesLost ? 97 : 20).codeUnits,
+                externalId(strokes == _Strokes.lost ? 97 : 20).codeUnits,
               ),
             ],
           );
+        }
       }
       if (troubled) {
         db
@@ -428,7 +431,7 @@ void main() {
   test('🎯a vector layer is drawn from its strokes, where its offset puts '
       'them — the render it keeps without blocks is not refused for it '
       '(6-1 item 8: 「벡터 레이어는 래스터로 그려 넣는다」)', () async {
-    final opened = await openedClip(writeClip(vector: true));
+    final opened = await openedClip(writeClip(strokes: _Strokes.held));
     final session = opened!.session;
     addTearDown(session.dispose);
 
@@ -460,7 +463,7 @@ void main() {
 
   test('strokes the file does not hold are said by name, and the layer '
       'stays, empty', () async {
-    final opened = await openedClip(writeClip(vector: true, strokesLost: true));
+    final opened = await openedClip(writeClip(strokes: _Strokes.lost));
     final session = opened!.session;
     addTearDown(session.dispose);
 
@@ -480,6 +483,24 @@ void main() {
     expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
   });
 
+  test('a vector layer with no stroke is an empty picture — not one 「that '
+      'could not be read」 for the render it keeps without blocks', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.none));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([('clipCelLayers', 'A'), ('clipVector', 'lines')]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
+  });
+
   test('a file that is not a CLIP STUDIO file is not one', () async {
     final path = '${temp.path}${Platform.pathSeparator}not.clip';
     File(path).writeAsStringSync('nothing in particular');
@@ -487,3 +508,7 @@ void main() {
     expect(await openedClip(path), isNull);
   });
 }
+
+/// What the vector layer of [writeClip] holds: its strokes, strokes the file
+/// does not hold, or none at all.
+enum _Strokes { held, lost, none }

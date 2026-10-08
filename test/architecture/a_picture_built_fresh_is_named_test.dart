@@ -64,6 +64,12 @@ void main() {
       count: 1,
       why: 'the empty picture that takes a forked cel away again',
     ),
+    'lib/src/services/import/clip_vector_raster.dart': (
+      count: 1,
+      why:
+          'a scratch surface a CLIP STUDIO vector layer\'s strokes are laid '
+          'on and read from — its pixels go on as a decoded picture\'s do',
+    ),
     'lib/src/services/import/raster_cel_import.dart': (
       count: 3,
       why:
@@ -123,7 +129,7 @@ void main() {
           '`texts:`; if it really starts a picture, name it in the ledger '
           'with the reason',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 16);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 17);
   });
 
   test('the places that rebuild a picture from its parts hand the texts '
