@@ -183,11 +183,35 @@ String? secretShown(HttpRequest request) {
 }
 
 /// The cookie that lets a browser back in for a year without typing again.
+///
+/// 🗣️`Lax`, not `Strict` (2026-10-09, from the phone — an iPhone's Chrome):
+/// the door was shown to a browser that held the key, and its next POST
+/// carried that key. That is what a `Strict` cookie does to a page opened from
+/// another app or a link: it stays home for that navigation and goes with the
+/// page's own requests after it. ⚠️This is the reading that fits, not one
+/// that was seen — the door now notes whether a cookie came with the request
+/// it turned away. What `Lax` gives up is small: a page of another site that
+/// sends the browser here by a link gets the board's READ-ONLY pages, as
+/// itself, and cannot read them; every write is a POST, and `Lax` withholds
+/// the cookie from a cross-site POST just as `Strict` did (and the server
+/// refuses it besides — [asksFromTheBoardItself]).
 Cookie doorCookie(String secret) => Cookie(kDoorCookie, secret)
   ..httpOnly = true
   ..path = '/'
-  ..sameSite = SameSite.strict
+  ..sameSite = SameSite.lax
   ..maxAge = 60 * 60 * 24 * 365;
+
+/// [text] with the door's secret taken out of it.
+///
+/// 🚨An exception's message carries the text it choked on: the failure log's
+/// first line on 2026-10-09 held the secret itself, because a JSON parser
+/// was handed the body of `/enter` and quoted it back. A log that exists to
+/// be read, and sent to whoever helps, must not be a second place the key
+/// lives.
+String withoutSecret(BoardDoor door, String text) => switch (door) {
+  LoopbackDoor() => text,
+  LanDoor(:final secret) => text.replaceAll(secret, '<secret>'),
+};
 
 // ─────────────────────────────────────────── the other side of the door
 

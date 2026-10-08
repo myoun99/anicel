@@ -408,13 +408,16 @@ void _noteFailed(HttpRequest request, Object error) {
     request.headers.forEach((name, values) => headers[name] = values);
     noteRequestFailure(
       File('${File(_recordsPath).parent.path}/$kRequestFailureLog'),
-      requestFailureLine(
-        at: DateTime.now(),
-        method: request.method,
-        path: request.uri.path,
-        from: request.connectionInfo?.remoteAddress.address,
-        headers: headers,
-        error: error,
+      withoutSecret(
+        _door,
+        requestFailureLine(
+          at: DateTime.now(),
+          method: request.method,
+          path: request.uri.path,
+          from: request.connectionInfo?.remoteAddress.address,
+          headers: headers,
+          error: error,
+        ),
       ),
     );
   } on Object catch (_) {}
@@ -899,10 +902,20 @@ Future<void> _handle(HttpRequest req) async {
 Future<bool> _letIn(HttpRequest req, String path) async {
   final from = req.connectionInfo?.remoteAddress;
   final here = from != null && _isThisMachine(from);
-  if (doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
+  // 🚨`/enter` IS THE DOOR'S, WHOEVER ASKS — a browser that already holds the
+  // key too. Until 2026-10-09 a request the cookie admitted went on down the
+  // routes, and `/enter` is not one: its body, the secret, was handed to the
+  // JSON reader of the POST routes ("Missing expected digit" — a secret that
+  // starts with `1e`) and the phone with the right key got 500. 🧪Every try
+  // from this machine had no cookie yet, so none could meet it. Shown again,
+  // the secret is checked again and the cookie handed again, which is also
+  // how a cookie changed to a new kind reaches a browser that has the old.
+  final entering = req.method == 'POST' && path == '/enter';
+  if (!entering &&
+      doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
     return true;
   }
-  if (req.method == 'POST' && path == '/enter') {
+  if (entering) {
     // 🚨A stranger's body is decoded leniently: bytes that are not text are a
     // secret that does not match (401), never an exception (500).
     final shown =
@@ -916,6 +929,10 @@ Future<bool> _letIn(HttpRequest req, String path) async {
       return false;
     }
   }
+  // What the door turned away is noted like what broke the server: from the
+  // phone, 「no reaction」, 「401」 and 「it held a key and was shown the
+  // door anyway」 are three different stories and look the same.
+  _noteFailed(req, 'turned away at the door (401)');
   req.response
     ..statusCode = HttpStatus.unauthorized
     ..headers.set('Cache-Control', 'no-store');

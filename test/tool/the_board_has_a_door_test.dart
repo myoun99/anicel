@@ -302,10 +302,40 @@ void main() {
       final cookie = entered.cookies.single;
       expect(cookie.name, kDoorCookie);
       expect(cookie.httpOnly, isTrue);
-      expect(cookie.sameSite, SameSite.strict);
+      expect(
+        cookie.sameSite,
+        SameSite.lax,
+        reason: 'a page opened from another app is still let in (an iPhone '
+            'held the key and was shown the door); a cross-site POST still '
+            'carries nothing',
+      );
 
       final back = await ask('GET', '/fresh', cookie: cookie.value);
       expect(back.status, HttpStatus.ok);
+    });
+
+    // 유저 2026-10-09, from an iPhone: the key was held (its POST carried a
+    // cookie of the secret's length) and the door still said 500.
+    test('🚨a browser that already holds the key and shows the secret again '
+        'is answered by the door — 200 and the cookie again, 401 for a wrong '
+        'one — and never by the routes (500)', () async {
+      final again = await ask(
+        'POST',
+        '/enter',
+        cookie: secret,
+        body: secret,
+      );
+      expect(again.status, HttpStatus.ok);
+      expect(again.cookies.single.sameSite, SameSite.lax);
+      // A body shaped like a number, which met a JSON reader on the phone.
+      final number = await ask(
+        'POST',
+        '/enter',
+        cookie: secret,
+        body: '1eae816f17f3bc5f04a868398173c6cb',
+      );
+      expect(number.status, HttpStatus.unauthorized);
+      expect(number.cookies, isEmpty);
     });
 
     test('🚨what a session says goes through the server onto the records — '
@@ -657,6 +687,49 @@ void main() {
     });
   });
 
+  group('what the door keeps of the secret, and of who it turned away', () {
+    test('the secret is taken out of a text, wherever it stands', () {
+      const door = LanDoor(secret);
+      expect(
+        withoutSecret(door, 'a $secret b $secret'),
+        'a <secret> b <secret>',
+      );
+      expect(withoutSecret(door, 'nothing here'), 'nothing here');
+      expect(
+        withoutSecret(const LoopbackDoor(), 'a $secret'),
+        'a $secret',
+        reason: 'a door with no secret has none to take out',
+      );
+    });
+
+    test('🚨a request the door turns away leaves a line — with whether a key '
+        'came, never the key — and the secret is out of every header it '
+        'names', () async {
+      final log = File('${dir.path}/$kRequestFailureLog');
+      if (log.existsSync()) log.deleteSync();
+      await ask('GET', '/', cookie: 'a-key-that-does-not-fit');
+      await ask(
+        'GET',
+        '/',
+        saying: {'Referer': 'http://elsewhere/$secret'},
+      );
+      await ask('POST', '/enter', body: 'not-the-secret');
+      final lines = log.readAsLinesSync();
+      expect(lines, hasLength(3));
+      expect(
+        lines.first,
+        allOf(
+          contains(' GET / '),
+          contains('turned away at the door (401)'),
+          contains('cookie×1=<'),
+        ),
+      );
+      expect(lines[1], contains('referer×1=http://elsewhere/<secret>'));
+      expect(lines.last, contains(' POST /enter '));
+      expect(log.readAsStringSync(), isNot(contains(secret)));
+    });
+  });
+
   // 🚨The server's stderr is thrown away by the script that starts it, so a
   // failed request said nothing about itself; it leaves one line instead.
   group('a request that broke the server leaves a line', () {
@@ -739,6 +812,11 @@ void main() {
     test('🚨the request loop writes it before it answers 500', () {
       final server = File('tool/board_server.dart').readAsStringSync();
       expect(server, contains('_noteFailed(request, e);'));
+      expect(
+        RegExp(r'withoutSecret\(\s*_door,').hasMatch(server),
+        isTrue,
+        reason: 'and what it writes has the secret taken out',
+      );
       expect(
         server.indexOf('_noteFailed(request, e);'),
         lessThan(server.indexOf('request.response.statusCode = 500;')),
