@@ -120,7 +120,16 @@ class TvppLayer {
     required this.ctgSecondStream,
     required this.instanceNames,
     this.visible = true,
+    this.collapsed = false,
   });
+
+  /// LRHD[11]'s low half: the row is FOLDED in TVPaint's timeline (1) —
+  /// a folder showing none of its members, a layer showing no thumbnail
+  /// strip — or open (0). Pinned on SKH re-saved by the user with one
+  /// folder open (F-306, 10-09): every row of its first cut matched the
+  /// timeline's screenshot, seven folded and three open. ⚠️Only `1` reads
+  /// folded — the only two values measured.
+  final bool collapsed;
 
   /// LRHD[7] bit 0 says HIDDEN (bit 4 is the layer lock). Pinned 19/19
   /// against 288's own timeline screenshot and KLM's JSON (TAP·CON
@@ -551,6 +560,7 @@ TvppClip _parseClip(
         preBehavior: _edgeBehavior(field(13) >> 16),
         postBehavior: _edgeBehavior(field(11) >> 16),
         visible: header == null || field(7) & 1 == 0,
+        collapsed: header != null && field(11) & 0xFFFF == 1,
         slots: List.unmodifiable(slots),
         ctgSecondStream: List.unmodifiable(secondStream),
         instanceNames: Map.unmodifiable(instanceNames),

@@ -28,6 +28,7 @@ TvppLayer _layer(
   Map<int, String> names = const {},
   int opacity = 255,
   bool visible = true,
+  bool collapsed = false,
   TvpEdgeBehavior pre = TvpEdgeBehavior.none,
   TvpEdgeBehavior post = TvpEdgeBehavior.none,
 }) =>
@@ -40,6 +41,7 @@ TvppLayer _layer(
       end: start + (slots.isEmpty ? 0 : slots.length - 1),
       opacity: opacity,
       visible: visible,
+      collapsed: collapsed,
       preBehavior: pre,
       postBehavior: post,
       slots: slots,
@@ -167,6 +169,51 @@ void main() {
       expect(layers[1].parentIndex, 3); // B → F
       expect(layers[2].parentIndex, 3); // A → F
       expect(layers[0].parentIndex, -1); // C → root
+    });
+
+    test('a folder keeps its fold — a folder inside a folder as well, and '
+        'only a folder: a CTG\'s folder of sources stays open', () {
+      final clip = _clip(
+        layers: [
+          _layer(
+            'OUT',
+            kind: TvppLayerKind.folder,
+            layerId: 9,
+            collapsed: true,
+          ),
+          _layer(
+            'IN',
+            kind: TvppLayerKind.folder,
+            layerId: 8,
+            parentId: 9,
+            collapsed: true,
+          ),
+          _layer('A', parentId: 8, slots: [_image()]),
+          _layer('OPEN', kind: TvppLayerKind.folder, layerId: 7),
+          _layer('B', parentId: 7, slots: [_image()]),
+          _layer(
+            'C(CTGlayer)',
+            kind: TvppLayerKind.ctg,
+            layerId: 6,
+            collapsed: true,
+            slots: [_image()],
+            second: [_image()],
+          ),
+        ],
+      );
+      final layers = convertTvppClip(clip, clipIndex: 0).result.layers;
+      bool folded(String name) => layers
+          .singleWhere((layer) => layer.isFolder && layer.name == name)
+          .collapsed;
+
+      expect(folded('OUT'), isTrue);
+      expect(folded('IN'), isTrue, reason: 'given its parent, still folded');
+      expect(folded('OPEN'), isFalse);
+      expect(
+        folded('C(CTGlayer)'),
+        isFalse,
+        reason: 'TVPaint has no folder there — its fold is a thumbnail strip',
+      );
     });
 
     test('a CTG layer becomes a folder holding its two source streams',

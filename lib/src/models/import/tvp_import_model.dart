@@ -153,6 +153,7 @@ class TvpLayer {
     required this.blocks,
     this.isFolder = false,
     this.parentIndex = -1,
+    this.collapsed = false,
   });
 
   final String name;
@@ -193,6 +194,11 @@ class TvpLayer {
   /// in the stack), which is the shape [Layer.folderId] wants.
   final bool isFolder;
   final int parentIndex;
+
+  /// A folder that stood FOLDED in TVPaint's timeline — it comes in folded
+  /// (유저 10-07: 「접힌 폴더는 접힌상태로 들여오도록. 이건 tvp든 뭐든
+  /// 임포트할때의 기본」).
+  final bool collapsed;
 
   /// Whether the layer has anything to show at all.
   bool get isEmpty => blocks.isEmpty;

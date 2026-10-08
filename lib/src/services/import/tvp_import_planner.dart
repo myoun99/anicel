@@ -97,6 +97,7 @@ TvpImportPlan planTvpImport({
           timeline: SplayTreeMap<int, TimelineExposure>(),
           opacity: source.opacity,
           kind: LayerKind.folder,
+          collapsed: source.collapsed,
         ),
       );
       continue;

@@ -101,6 +101,7 @@ class TvppBuilder {
     int layerId = 0,
     int parentId = 0,
     bool visible = true,
+    bool folded = true,
     List<int>? ansiNameBytes,
   }) {
     final utf = [...utf8.encode(name), 0];
@@ -115,7 +116,9 @@ class TvppBuilder {
     v.setUint32(2 * 4, end);
     v.setUint32(3 * 4, count);
     v.setUint32(4 * 4, opacity);
-    v.setUint32(11 * 4, (post << 16) | 1);
+    // The low half is the row's fold — 1 folded, as every row of KLM is
+    // (F-306, 10-09).
+    v.setUint32(11 * 4, (post << 16) | (folded ? 1 : 0));
     v.setUint32(13 * 4, (pre << 16) | 1);
     v.setUint32(7 * 4, visible ? 0 : 1);
     v.setUint32(17 * 4, parentId);

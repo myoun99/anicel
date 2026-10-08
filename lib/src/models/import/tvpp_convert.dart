@@ -73,6 +73,7 @@ TvppClipConversion convertTvppClip(
           groupColor: null,
           blocks: const [],
           isFolder: true,
+          collapsed: layer.collapsed,
         ),
       );
       topFirstParentLayerId.add(layer.parentId);
@@ -181,6 +182,7 @@ TvppClipConversion convertTvppClip(
               blocks: layer.blocks,
               isFolder: layer.isFolder,
               parentIndex: parentBottom,
+              collapsed: layer.collapsed,
             ),
     );
   }

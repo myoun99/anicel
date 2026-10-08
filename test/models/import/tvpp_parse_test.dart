@@ -149,6 +149,11 @@ mpoints-1-bezieraftery=0.000000
 
       expect(clip.layers[2].kind, TvppLayerKind.folder);
       expect(clip.layers[3].parentId, 950);
+      expect(
+        clip.layers[2].collapsed,
+        isTrue,
+        reason: 'LRHD[11]\'s low half 1 — the row stood folded',
+      );
 
       final ctg = clip.layers[4];
       expect(ctg.kind, TvppLayerKind.ctg);
@@ -211,6 +216,32 @@ mpoints-1-bezieraftery=0.000000
       b.clipConfig();
 
       expect(parseTvppStructure(b.bytes).clips.single.name, 'fresh');
+    });
+
+    test('a row\'s fold is LRHD[11]\'s low half — 1 folded, 0 open — as '
+        'SKH\'s first cut stands (F-306, 10-09)', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 64, height: 32);
+      b.layerHead('B(folder)', headerChunk: 'LRFH', layerId: 979);
+      b.layerExt(const {});
+      b.layerHead(
+        'A(folder)',
+        headerChunk: 'LRFH',
+        layerId: 976,
+        folded: false,
+      );
+      b.layerExt(const {});
+      b.layerHead('A', layerId: 975, parentId: 976, folded: false);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.clipConfig();
+
+      final layers = parseTvppStructure(b.bytes).clips.single.layers;
+      expect(
+        [for (final layer in layers) (layer.name, layer.collapsed)],
+        [('B(folder)', true), ('A(folder)', false), ('A', false)],
+      );
     });
 
     test('reads v10 files: bare SRAW/DBOD chunks, no folders', () {

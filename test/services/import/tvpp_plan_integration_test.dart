@@ -74,6 +74,7 @@ void main() {
           slots: [],
           ctgSecondStream: [],
           instanceNames: {},
+          collapsed: true,
         ),
         TvppLayer(
           kind: TvppLayerKind.raster,
@@ -116,6 +117,12 @@ void main() {
     expect(folder.kind, LayerKind.folder);
     expect(a.folderId, folder.id);
     expect(folder.folderId, isNull);
+    expect(
+      folder.collapsed,
+      isTrue,
+      reason: 'folded in TVPaint, folded here (F-306: 「접힌 폴더는 접힌상태로 '
+          '들여오도록」)',
+    );
 
     // One drawing held 4 frames, the mark as its inbetween dot.
     final exposure = a.timeline[0]!;
