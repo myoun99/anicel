@@ -176,6 +176,7 @@ void main() {
     'closeProjectTitle': (s) => s.closeProjectTitle,
     'untitledProjectTab': (s) => s.untitledProjectTab,
     'fileOpenInAnotherTab': (s) => s.fileOpenInAnotherTab,
+    'openNewerFormat': (s) => s.openNewerFormat,
     'closeProjectBody': (s) => s.closeProjectBody,
     'closeProjectVanishedBody': (s) => s.closeProjectVanishedBody,
     'commonSaveAs': (s) => s.commonSaveAs,

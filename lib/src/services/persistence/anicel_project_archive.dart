@@ -200,6 +200,29 @@ const int anicelFormatVersion = 11;
 /// 11: a cut's one note is no longer read (v11 above).
 const int anicelOldestReadFormatVersion = 11;
 
+/// A project document the format numbers refuse — saved by a NEWER Anicel,
+/// or in a format older than [anicelOldestReadFormatVersion] — with the
+/// format it says it is in ([saved]; 0 when it says none).
+///
+/// Still a [FormatException], its English for the logs and for whatever
+/// catches one. ↩️It WAS only that, and the person read it as it was:
+/// 「FormatException: This project is in format 9, …」, English in every
+/// language. What a person reads is said where a file error becomes words
+/// (`showFileError`), in the program language, by this number.
+class AnicelFormatRefused extends FormatException {
+  AnicelFormatRefused(this.saved)
+    : super(
+        saved > anicelFormatVersion
+            ? 'This project was saved by a newer Anicel.'
+            : 'This project is in format $saved, older than this Anicel '
+                  'reads ($anicelOldestReadFormatVersion).',
+      );
+
+  final int saved;
+
+  bool get newer => saved > anicelFormatVersion;
+}
+
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,
 /// pixels still compressed) and the saved relative-path manifest
@@ -784,14 +807,8 @@ class AnicelProjectDocument {
 AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
   final saved = decoded['formatVersion'] as int? ?? 0;
-  if (saved > anicelFormatVersion) {
-    throw const FormatException('This project was saved by a newer Anicel.');
-  }
-  if (saved < anicelOldestReadFormatVersion) {
-    throw FormatException(
-      'This project is in format $saved, older than this Anicel reads '
-      '($anicelOldestReadFormatVersion).',
-    );
+  if (saved > anicelFormatVersion || saved < anicelOldestReadFormatVersion) {
+    throw AnicelFormatRefused(saved);
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/anicel_project_archive.dart'
+    show AnicelFormatRefused, anicelOldestReadFormatVersion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../input/control_press_claim.dart';
@@ -254,9 +256,24 @@ void showFileError(BuildContext context, Object error) => unawaited(
   showAppNotice(
     context,
     title: AppText.strings.commonNotice,
-    message: '$error',
+    message: fileErrorWords(error),
   ),
 );
+
+/// What a person reads for a file [error]: the program language's sentence
+/// where the app knows what went wrong, the error's own words otherwise.
+///
+/// 🗣️유저 2026-10-06 (the save law): an older file 「여는 문에서 형식
+/// 번호를 말해 주며 한 문장으로 거절한다」 — and it was saying it in English
+/// with `FormatException:` in front, whatever the program language.
+String fileErrorWords(Object error) => switch (error) {
+  AnicelFormatRefused(newer: true) => AppText.strings.openNewerFormat,
+  AnicelFormatRefused(:final saved) => AppText.strings.openOlderFormat(
+    saved,
+    anicelOldestReadFormatVersion,
+  ),
+  _ => '$error',
+};
 
 /// One of the two answers a yes/no window offers: what the button SAYS
 /// and how loudly it says it.

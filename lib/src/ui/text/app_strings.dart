@@ -413,6 +413,15 @@ enum AppStrings {
 
   /// Save As pointed at a file another tab has open (I-7).
   String get fileOpenInAnotherTab => _s('fileOpenInAnotherTab');
+
+  /// A project the format numbers refuse, as the open door says it
+  /// (`fileErrorWords`): one sentence, and the older one says the
+  /// file's format (the save law, 유저 2026-10-06).
+  String get openNewerFormat => _s('openNewerFormat');
+  String openOlderFormat(int saved, int oldest) =>
+      _s('openOlderFormatTemplate')
+          .replaceAll('{saved}', '$saved')
+          .replaceAll('{oldest}', '$oldest');
   String get closeProjectBody => _s('closeProjectBody');
   String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
@@ -1878,6 +1887,10 @@ enum AppStrings {
     'closeProjectTitle': 'Close project?',
     'untitledProjectTab': 'Untitled {n}',
     'fileOpenInAnotherTab': 'That file is already open in another tab.',
+    'openNewerFormat': 'This project was saved by a newer Anicel.',
+    'openOlderFormatTemplate':
+        'This project is in format {saved}, older than this Anicel '
+        'reads ({oldest}).',
     'closeProjectBody': 'Your changes are not saved. Close anyway?',
     'closeProjectVanishedBody':
         "This project's file is gone. Closing now takes the drawings that "
@@ -3003,6 +3016,9 @@ enum AppStrings {
     'shortcutAction.file-new': '新規プロジェクト',
     'untitledProjectTab': '無題 {n}',
     'fileOpenInAnotherTab': 'そのファイルは別のタブで開いています。',
+    'openNewerFormat': '新しいバージョンの Anicel で保存されたプロジェクトのため開けません。',
+    'openOlderFormatTemplate':
+        '形式 {saved} のプロジェクトのため開けません（この Anicel が開けるのは形式 {oldest} からです）。',
     'closeProjectBody': '変更は保存されていません。閉じますか？',
     'closeProjectVanishedBody':
         'このプロジェクトのファイルがなくなっています。このまま閉じると、その中にしか'
@@ -4413,6 +4429,9 @@ enum AppStrings {
     'shortcutAction.file-new': '새 프로젝트',
     'untitledProjectTab': '제목 없음 {n}',
     'fileOpenInAnotherTab': '그 파일은 다른 탭에서 열려 있습니다.',
+    'openNewerFormat': '더 새 버전의 Anicel 로 저장된 프로젝트라서 열 수 없습니다.',
+    'openOlderFormatTemplate':
+        '형식 {saved}의 프로젝트라서 열 수 없습니다(이 Anicel 은 형식 {oldest}부터 엽니다).',
     'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
     'closeProjectVanishedBody':
         '이 프로젝트의 파일이 사라졌습니다. 지금 닫으면 그 안에만 있던 그림도 함께 '
@@ -5827,6 +5846,10 @@ enum AppStrings {
     'shortcutAction.file-new': 'Nouveau projet',
     'untitledProjectTab': 'Sans titre {n}',
     'fileOpenInAnotherTab': 'Ce fichier est déjà ouvert dans un autre onglet.',
+    'openNewerFormat':
+        'Ce projet a été enregistré par une version plus récente d’Anicel et ne peut pas être ouvert.',
+    'openOlderFormatTemplate':
+        'Ce projet est au format {saved} et ne peut pas être ouvert (cet Anicel ouvre à partir du format {oldest}).',
     'closeProjectBody':
         'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
     'closeProjectVanishedBody':
@@ -7312,6 +7335,9 @@ enum AppStrings {
     'shortcutAction.file-new': '新建项目',
     'untitledProjectTab': '未命名 {n}',
     'fileOpenInAnotherTab': '该文件已在另一个标签页中打开。',
+    'openNewerFormat': '此项目由更新版本的 Anicel 保存，无法打开。',
+    'openOlderFormatTemplate':
+        '此项目为格式 {saved}，无法打开（此 Anicel 从格式 {oldest} 起才能打开）。',
     'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
     'closeProjectVanishedBody':
         '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
