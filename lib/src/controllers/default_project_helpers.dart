@@ -2,6 +2,7 @@ import '../models/app_workspace_colors.dart';
 import '../models/cut_id.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/project.dart';
+import '../models/project_frame_rate.dart';
 import '../models/project_id.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
@@ -33,11 +34,20 @@ Project createDefaultProject({DateTime? createdAt}) {
 /// born with its first cel on the cut's first frame — the ＋ press's own
 /// drawing ([layerWithDrawingFrameAt]), made before anyone has pressed.
 /// ⛔[createDefaultProject] stays bare: it is the project the tests build on.
+///
+/// 🗣️new-project-default-fps-23976 (유저 2026-10-06): 「프로젝트 기본 fps
+/// 23.976으로하자」. So a new project runs at 24000/1001 and still counts 24:
+/// the sheet, the grid and the 6f lines are 24's, and only real time — the
+/// sound, the export's length — runs 1000/1001 slower. ⛔It is set HERE, not
+/// as the [Project] constructor's default: a file that is read keeps the
+/// rate it was saved with, and a project nobody gives a rate — the bare one
+/// above, a .tvpp opened as a project — stays at 24 as it was.
 Project newUntitledProject() {
   final now = DateTime.now().toUtc();
   final bare = createDefaultProject(createdAt: now).copyWith(
     id: ProjectId('project-${now.microsecondsSinceEpoch}-${_minted++}'),
     pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
+    frameRate: const ProjectFrameRate.ntsc(24),
   );
   final rowA = defaultLayerIdForSequence(1);
   return updateLayerAnywhere(
