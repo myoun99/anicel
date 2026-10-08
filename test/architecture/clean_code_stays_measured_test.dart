@@ -221,6 +221,16 @@ void main() {
   /// tables); the track its link members name, which the door builds; and
   /// the id mint. 🔬The lane's scan against master (`94d72eef8`, at 383)
   /// named that one added and nothing gone.
+  ///
+  /// ⚠️384 stays on 2026-10-08 with one more under it, named as the rule
+  /// above asks (I-73, one line joins a row's keys): master (`676b0fcd4`)
+  /// scanned at 383 under this ceiling, and `timelineUnionKeyMarkerSpans`
+  /// (five) took the row's `axis`. The camera row's summary lays the keys'
+  /// line along the row it sits in — across in the timeline, down in the
+  /// x-sheet — and the line cannot read that off the box it is laid out in:
+  /// two narrow cells are taller than they are long. The other four are the
+  /// marks', as they were. 🔬The lane's scan against master named that one
+  /// added and nothing gone.
   const wideSignatures = 384;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's

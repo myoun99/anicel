@@ -505,7 +505,7 @@ class _InstructionMarkPainter extends CustomPainter with RepaintOnProps {
   void _paintDurationLine(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 1.4
+      ..strokeWidth = timelineJoiningLineWidth
       ..strokeCap = StrokeCap.round;
     final mainExtent = extentAlong(axis, size);
     final crossExtent = extentAcross(axis, size);

@@ -509,6 +509,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       layer: layer,
       lane: lane,
       crossExtent: crossAxisExtent,
+      axis: axis,
     );
   }
 
