@@ -284,7 +284,9 @@ void main() {
         ValueKey<String>('conte-picture-live-picture-${of.value}-0'),
       );
       expect(live, findsOneWidget);
-      final at = picture.center - tester.getTopLeft(live);
+      final at = tester.renderObject<RenderBox>(live).globalToLocal(
+        picture.center,
+      );
 
       Future<bool> showsInk() async {
         final painter = tester

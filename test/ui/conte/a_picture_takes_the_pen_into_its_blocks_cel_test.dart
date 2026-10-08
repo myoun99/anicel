@@ -514,7 +514,7 @@ void main() {
     expect(live, findsOneWidget);
     final pageTopLeft = conteBodyTopLeft(tester);
     final centre = pageTopLeft + cell.pictureRect.center;
-    final at = centre - tester.getTopLeft(live);
+    final at = tester.renderObject<RenderBox>(live).globalToLocal(centre);
 
     /// The live composite's own painter, rasterized: is there ink at [at]?
     Future<bool> showsInk() async {
