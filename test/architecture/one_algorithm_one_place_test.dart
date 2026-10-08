@@ -217,6 +217,25 @@ import '../../tool/refactor/clone_scan.dart';
 /// seconds cadence had copied from the numbers' is one method
 /// (`_widestDigits`). 🔬`clones.dart` on master and on the lane: that pair
 /// gone, nothing added.
+///
+/// 87 → 88 (2026-10-08, the narrowed word's average), under the ceiling —
+/// three pairs had left since without it following them down.
+/// 🔬`clones.dart` on master and on the lane: this pair added, none gone.
+///
+///     40 tokens
+///       lib/src/services/resample/resample_kernel.dart
+///         resampleRgbaReferenceInto
+///       lib/src/ui/text/word_bake.dart
+///         boxFilterA8
+///
+/// What they share is real, and it is the SHAPE of any weighted mean over a
+/// rectangle of taps: two loops, a weight an axis, a sum and a divide.
+/// ⛔It is not merged, and not by the rule of three — the reading DISMISSES
+/// it. The kernel's Blend weighs under a tent as wide as the reduction; the
+/// bake's average is the destination pixel's own box, by area. Those are
+/// two filters, and the difference is what the bake is for. 🧪Measured the
+/// same day, one raster through each: what a baked word loses through
+/// Blend is in the comment over `boxFilterA8`.
 void main() {
   const ceiling = 90;
 
