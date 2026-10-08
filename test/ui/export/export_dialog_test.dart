@@ -846,6 +846,19 @@ void main() {
       expect(filesWrittenUnder(temp), ['Project.png']);
     });
 
+    testWidgets('the image tab opens on the frame under the playhead — the '
+        'frame 「다른 이름으로 저장」 takes too (backlog-21-Q7)', (tester) async {
+      final session = exportSession();
+      session.editingFrameCursor.value = 1;
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'image');
+      expect(state.debugImageFrame, 1);
+    });
+
     testWidgets('project scope: in/out trims by whole-track positions',
         (tester) async {
       final state = await pumpDialog(

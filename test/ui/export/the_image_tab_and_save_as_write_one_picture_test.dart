@@ -7,6 +7,9 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
@@ -16,6 +19,7 @@ import 'package:anicel/src/ui/export/still_image_encoders.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️backlog-21-Q7 (유저 2026-09-30): 「다른 이름으로 저장」's PNG · JPG is
@@ -194,6 +198,55 @@ void main() {
       );
       expect(written, isFalse);
       expect(File('${folder.path}/frame.png').existsSync(), isFalse);
+    });
+
+    testWidgets('the tab\'s FX switch reaches the picture: off, a row its FX '
+        'hide is drawn raw', (tester) async {
+      drawOnCurrentFrame(session);
+      final layer = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      // Animated opacity 0 at frame 0: with its FX the row is not there.
+      session.laneVerbs.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 0),
+        ),
+      );
+      Future<int> dabAlpha({required bool applyLayerFx}) async {
+        final name = 'fx-$applyLayerFx.png';
+        final alpha = await tester.runAsync(() async {
+          await writeFrameImage(
+            session,
+            frameUnderThePlayhead(session)!,
+            ImageExportSpec(
+              format: const ExportFormatSelection(kind: ExportMediaKind.still),
+              sizeMode: ExportSizeMode.canvas,
+              applyLayerFx: applyLayerFx,
+            ),
+            (
+              directory: folder.path,
+              name: name,
+              isCancelled: null,
+              onProgress: null,
+            ),
+          );
+          final codec = await ui.instantiateImageCodec(
+            File('${folder.path}/$name').readAsBytesSync(),
+          );
+          final image = (await codec.getNextFrame()).image;
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          final at = (10 * image.width + 10) * 4 + 3;
+          image.dispose();
+          return data!.getUint8(at);
+        });
+        return alpha!;
+      }
+
+      expect(await dabAlpha(applyLayerFx: true), 0);
+      expect(await dabAlpha(applyLayerFx: false), greaterThan(0));
     });
   });
 
