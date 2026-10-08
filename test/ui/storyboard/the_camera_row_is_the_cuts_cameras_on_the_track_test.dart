@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
@@ -13,6 +14,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart';
@@ -21,8 +24,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardCameraRowPainter, StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
     show TimelineBlockText;
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeysLine;
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show TimelineSection;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
@@ -38,8 +45,9 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
 /// timeline's camera row, laid on the track's axis.
 ///
 /// Cuts a [0, 24) and b [24, 48), four frames of gap, then c [52, 64). a's
-/// camera keys 0, 12 and 30 — the last past its end; b's 2 and 6; c has
-/// none.
+/// camera keys 0, 12 (named IN), 20 and 30 — the last past its end; b's 2
+/// (named OUT) and 6; c has none. With the O.L, a 12-frame span at [18, 30)
+/// joins a and b: a is drawn to 30, b from 18.
 void main() {
   const trackId = TrackId('t1');
   const a = CutId('a');
@@ -100,7 +108,6 @@ void main() {
     ],
   );
 
-  /// a's key 12 is named IN and b's key 2 OUT.
   Project film() => Project(
     id: const ProjectId('camera-row'),
     name: 'Camera row',
@@ -110,7 +117,7 @@ void main() {
         id: trackId,
         name: 'V1',
         cuts: [
-          cutOf('a', 24, [0, 12, 30], names: {12: 'IN'}),
+          cutOf('a', 24, [0, 12, 20, 30], names: {12: 'IN'}),
           cutOf('b', 24, [2, 6], names: {2: 'OUT'}),
           cutOf('c', 12, const [], gap: 4),
         ],
@@ -128,7 +135,6 @@ void main() {
     final session = EditorSessionManager(initialProject: film());
     addTearDown(session.dispose);
     if (withOl) {
-      // A 12-frame O.L across a|b: a is drawn to 30, b from 18.
       session.transitions.updateTransitionInstructions({
         18: const InstructionEvent(instructionId: 'ol', length: 12),
       });
@@ -158,8 +164,9 @@ void main() {
   Finder key(String value) => find.byKey(ValueKey<String>(value));
   final cameraStrip = key('storyboard-camera-row-t1');
 
-  double ppf(WidgetTester tester) =>
-      tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).pixelsPerFrame;
+  double ppf(WidgetTester tester) => tester
+      .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+      .pixelsPerFrame;
 
   /// The frames [camera]'s marks stand on, as the row lays them out: the
   /// cell each mark's span is laid over, on the track's axis.
@@ -181,14 +188,25 @@ void main() {
   }
 
   /// [camera]'s mark for its own [frame], on screen.
-  Rect markRect(WidgetTester tester, String camera, int frame) => tester.getRect(
-    key('storyboard-camera-lane-key-span-$camera-transform-group-$frame'),
-  );
+  Rect markRect(WidgetTester tester, String camera, int frame) => tester
+      .getRect(
+        key('storyboard-camera-lane-key-span-$camera-transform-group-$frame'),
+      );
+
+  /// The line between [camera]'s keys, as the row hands it its course.
+  TimelineLaneKeysLine lineOf(WidgetTester tester, String camera) =>
+      tester.widget<TimelineLaneKeysLine>(key('storyboard-camera-line-$camera'));
 
   /// The row's ground, as its painter lays it down.
   StoryboardCameraRowPainter ground(WidgetTester tester) =>
       tester.widget<CustomPaint>(key('storyboard-camera-ground-t1')).painter!
           as StoryboardCameraRowPainter;
+
+  /// The stretches two cuts share on the ground, in frames.
+  List<(double, double)> sharedFrames(WidgetTester tester) => [
+    for (final (from, to) in ground(tester).sharedMiddles())
+      (from.dx / ppf(tester), to.dx / ppf(tester)),
+  ];
 
   /// A point on the camera row at [globalFrame]'s cell, [across] of the way
   /// down it.
@@ -199,6 +217,18 @@ void main() {
       row.top + row.height * across,
     );
   }
+
+  List<int> keysOf(EditorSessionManager session, CutId cutId) => [
+    ...session.repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .singleWhere((cut) => cut.id == cutId)
+        .camera
+        .keyframes
+        .keys,
+  ];
 
   group('where the row stands', () {
     testWidgets('it heads the track\'s CAM section, above the transition row '
@@ -235,11 +265,12 @@ void main() {
         'joined from its first to its last', (tester) async {
       await pumpPanel(tester);
 
-      expect(marksOf(tester, 'a-cam'), [0, 12]);
+      expect(marksOf(tester, 'a-cam'), [0, 12, 20]);
       expect(marksOf(tester, 'b-cam'), [26, 30], reason: 'b stands at 24');
       expect(marksOf(tester, 'c-cam'), isEmpty);
-      expect(key('storyboard-camera-line-a-cam'), findsOneWidget);
-      expect(key('storyboard-camera-line-b-cam'), findsOneWidget);
+      expect(lineOf(tester, 'b-cam').endsAtKey, isTrue);
+      expect(lineOf(tester, 'b-cam').crossFraction, 0.5, reason: 'one line');
+      expect(lineOf(tester, 'b-cam').steps, isEmpty);
       expect(
         key('storyboard-camera-line-c-cam'),
         findsNothing,
@@ -262,6 +293,11 @@ void main() {
         line.right - row.left,
         closeTo(24 * ppf(tester), 0.5),
         reason: 'to a\'s end, not to the key past it',
+      );
+      expect(
+        lineOf(tester, 'a-cam').endsAtKey,
+        isFalse,
+        reason: 'the line runs to the box\'s edge, past the last mark',
       );
     });
 
@@ -306,15 +342,31 @@ void main() {
 
       final row = tester.getRect(cameraStrip);
       // a's key 12 is before the O.L: the one line, in the middle.
-      expect(markRect(tester, 'a-cam', 12).center.dy, closeTo(row.center.dy, 1));
-      // b's own frame 2 plays at 20, inside the O.L: the lower line.
+      expect(
+        markRect(tester, 'a-cam', 12).center.dy,
+        closeTo(row.center.dy, 1),
+      );
+      // a's key 20 is inside it: a leaves, above.
+      expect(markRect(tester, 'a-cam', 20).center.dy, lessThan(row.center.dy));
+      // b's own frame 2 plays at 20, inside it too: b arrives, below.
       expect(marksOf(tester, 'b-cam'), [20, 24]);
-      expect(markRect(tester, 'b-cam', 2).center.dy, greaterThan(row.center.dy));
+      expect(
+        markRect(tester, 'b-cam', 2).center.dy,
+        greaterThan(row.center.dy),
+      );
       // a's key 30 is still past a's own frames — a is drawn to 30, not on it.
       expect(
         key('storyboard-camera-lane-key-span-a-cam-transform-group-30'),
         findsNothing,
       );
+
+      // a's line starts in the middle and steps up where a starts to leave;
+      // b's runs on the lower line, all of it inside the O.L.
+      expect(lineOf(tester, 'a-cam').crossFraction, 0.5);
+      expect(lineOf(tester, 'a-cam').steps, [(edge: 18, to: 0.27)]);
+      expect(lineOf(tester, 'a-cam').endsAtKey, isFalse);
+      expect(lineOf(tester, 'b-cam').crossFraction, 0.73);
+      expect(lineOf(tester, 'b-cam').steps, isEmpty);
 
       final washes = ground(tester).noriShiroWashes();
       final px = ppf(tester);
@@ -324,9 +376,63 @@ void main() {
         // b's head, 18..24, on the lower half.
         Rect.fromLTRB(18 * px, row.height / 2, 24 * px, row.height),
       ]);
-      expect(ground(tester).sharedMiddles(), [
-        (Offset(18 * px, row.height / 2), Offset(30 * px, row.height / 2)),
-      ]);
+      expect(sharedFrames(tester), [(18.0, 30.0)]);
+      expect(
+        ground(tester).cutStarts(),
+        [0.0, 24 * px, 52 * px],
+        reason: 'b begins at its place, not where its のりしろ is drawn from',
+      );
+    });
+  });
+
+  group('while a drag is in flight', () {
+    testWidgets('🚨an O.L\'s edge dragged moves the stretch it splits, live', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester, withOl: true);
+      expect(sharedFrames(tester), [(18.0, 30.0)], reason: '⛔전제');
+
+      expect(
+        session.edgeDrag.beginTransitionEdgeDrag(
+          spanStartIndex: 18,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+        reason: '⛔전제',
+      );
+      session.edgeDrag.updateTransitionEdgeDrag(2);
+      await tester.pumpAndSettle();
+      expect(sharedFrames(tester), [(18.0, 32.0)], reason: 'a leaves later');
+
+      session.edgeDrag.cancelTransitionEdgeDrag();
+      await tester.pumpAndSettle();
+      expect(sharedFrames(tester), [(18.0, 30.0)]);
+    });
+
+    testWidgets('🚨a cut\'s end dragged carries the O.L it crosses, live', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester, withOl: true);
+
+      expect(
+        session.edgeDrag.beginCutEdgeDrag(
+          cutId: a,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+        reason: '⛔전제',
+      );
+      session.edgeDrag.updateCutEdgeDrag(2);
+      await tester.pumpAndSettle();
+      expect(
+        sharedFrames(tester),
+        [(20.0, 32.0)],
+        reason: 'the O.L follows the boundary it crosses',
+      );
+
+      session.edgeDrag.cancelCutEdgeDrag();
+      await tester.pumpAndSettle();
+      expect(sharedFrames(tester), [(18.0, 30.0)]);
     });
   });
 
@@ -369,6 +475,35 @@ void main() {
       expect(session.selectedRow, cameraRow);
       expect(session.activeCutOrNull, isNull);
       expect(session.editingGlobalFrame, 50);
+    });
+  });
+
+  group('a double click on the row — the timeline camera row\'s own', () {
+    setUp(TimelineDoubleTapGate.reset);
+
+    Future<void> clickTwice(WidgetTester tester, Offset point) async {
+      await tester.tapAt(point, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(point, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('on an empty cell, keys it', (tester) async {
+      final session = await pumpPanel(tester);
+
+      await clickTwice(tester, at(tester, 28));
+
+      expect(keysOf(session, b), [2, 4, 6], reason: 'b\'s own frame at 28');
+      expect(keysOf(session, a), [0, 12, 20, 30]);
+    });
+
+    testWidgets('on a key, opens its name', (tester) async {
+      final session = await pumpPanel(tester);
+
+      await clickTwice(tester, at(tester, 30));
+
+      expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
+      expect(keysOf(session, b), [2, 6], reason: 'nothing made');
     });
   });
 }

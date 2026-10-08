@@ -232,8 +232,9 @@ class _StoryboardCameraRow extends StatelessWidget {
   }
 
   /// The line between [reach]'s cut's first key and its last, clamped to
-  /// its own frames, stepping where its cut changes lines — or null while it
-  /// has no two keys there to join.
+  /// the end of its own frames, stepping where its cut changes lines — or
+  /// null while it has no two keys there to join. Its own frames begin at
+  /// its frame 0, before every key.
   Widget? _line(
     CameraRowReach reach,
     Layer camera,
@@ -244,9 +245,8 @@ class _StoryboardCameraRow extends StatelessWidget {
     if (span == null) {
       return null;
     }
-    final first = reach.trackFrameOf(span.first);
+    final from = reach.trackFrameOf(span.first);
     final last = reach.trackFrameOf(span.last);
-    final from = math.max(first, reach.mediaStart);
     final to = math.min(last, reach.mediaEnd - 1);
     if (to < from ||
         to < window.startIndex ||
@@ -264,7 +264,6 @@ class _StoryboardCameraRow extends StatelessWidget {
         axis: Axis.horizontal,
         cells: to + 1 - from,
         color: layerMarkColor(camera.mark),
-        startsAtKey: first == from,
         endsAtKey: last == to,
         crossFraction: _cameraRowLineAt(reach.lineAt(from)),
         steps: [
