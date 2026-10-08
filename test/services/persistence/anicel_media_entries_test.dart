@@ -17,7 +17,7 @@ Project projectWithMediaPaths(List<String> paths) =>
 
 /// A carry of [path] — the first one, unless [token] says which.
 MediaCarry carryOf(String path, [String token = 'c1']) =>
-    (poolPath: path, token: token);
+    (poolPath: path, token: mediaCarryNamed(path, token));
 
 /// The archive holding media: what an asset's entry is called, which of
 /// the two manifests describes it, and when a file full of media is worth
@@ -34,10 +34,6 @@ void main() {
       // derivation the archive and the staging room each spelled before it
       // was one (audit 09-25) — a change here changes what every project
       // written so far holds.
-      expect(
-        anicelMediaEntryName(carryOf('/work/a.wav', '')),
-        'media/0d96c9e3-a.wav',
-      );
       expect(
         anicelMediaEntryName(carryOf('/work/a.wav', 'c1'), framed: true),
         'media/0d96c9e3-c1-a.wav.z',
@@ -87,21 +83,6 @@ void main() {
       expect(
         anicelMediaEntryNames(carryOf('/work/a.wav', 'c1')),
         isNot(contains(anicelMediaEntryName(carryOf('/work/a.wav', 'c2')))),
-      );
-    });
-
-    test('the carry a project had before carries had names keeps the name '
-        'the path alone gave — the one its file holds', () {
-      const path = '/work/C-045/대사.m4a';
-      expect(
-        anicelMediaEntryName(carryOf(path, '')),
-        anicelMediaEntryName(carryOf(path, 'c1')).replaceFirst('-c1-', '-'),
-      );
-      expect(
-        RegExp(
-          r'^media/[0-9a-f]{8}-[A-Za-z0-9._-]+$',
-        ).hasMatch(anicelMediaEntryName(carryOf(path, ''))),
-        isTrue,
       );
     });
 

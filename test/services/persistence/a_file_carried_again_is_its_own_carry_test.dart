@@ -486,26 +486,4 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
-
-  test('a carry from before carries had names reads as the path-named one',
-      () {
-    final legacy = MediaAsset.fromJson({
-      'path': path,
-      'name': 'take',
-      'kind': 'audio',
-      'carried': true,
-    });
-    expect(legacy.carriedAs, '');
-    expect(legacy.carried, isTrue);
-    expect(
-      MediaAsset.fromJson(legacy.toJson()),
-      legacy,
-      reason: 'and it is written back as that carry',
-    );
-    expect(
-      MediaAsset.fromJson({'path': path, 'name': 'take', 'kind': 'audio'})
-          .carriedAs,
-      isNull,
-    );
-  });
 }

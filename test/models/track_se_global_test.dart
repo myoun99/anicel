@@ -1,8 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
-import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -18,8 +15,11 @@ import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 /// W3: SE rows move from cut-owned to TRACK-owned (global frame axis,
-/// cut-crossing sounds). Pins the legacy migration, the JSON shapes and
-/// the display window.
+/// cut-crossing sounds). Pins the JSON shape and the display window.
+///
+/// ↩️It pinned the lift of a file's cut-owned SE rows onto the track too;
+/// those files are of formats refused by their number now (the save law,
+/// 유저 2026-10-06).
 void main() {
   Layer seLayer(
     String id, {
@@ -37,99 +37,34 @@ void main() {
     );
   }
 
-  Cut cut(String id, int duration, List<Layer> layers) => Cut(
-    id: CutId(id),
-    name: id,
-    layers: layers,
-    duration: duration,
-    canvasSize: const CanvasSize(width: 100, height: 100),
-  );
-
   Frame frame(String id) => Frame(id: FrameId(id), duration: 1, strokes: []);
 
-  group('legacy migration (Track.fromJson without seLayers)', () {
-    Track legacyTrack() {
-      // Cut 1 (24f): slot0 has a block [4,10) that legacy-overhangs the
-      // cut end via length 40 (clamped on migration). Cut 2 (12f): slot0
-      // block [2,6).
-      final cut1 = cut('cut-1', 24, [
-        Layer(
-          id: const LayerId('cel-1'),
-          name: 'A',
-          frames: const [],
-          timeline: const {},
-        ),
-        seLayer(
-          'cut-1-se-1',
-          timeline: {
-            4: const TimelineExposure.drawing(FrameId('f1'), length: 40),
-          },
-          frames: [frame('f1')],
-          audioClips: [
-            AudioClip(filePath: 'C:/snd/a.wav', frameId: const FrameId('f1')),
-          ],
-        ),
-        seLayer('cut-1-se-2'),
-      ]);
-      final cut2 = cut('cut-2', 12, [
-        Layer(
-          id: const LayerId('cel-2'),
-          name: 'A',
-          frames: const [],
-          timeline: const {},
-        ),
-        seLayer(
-          'cut-2-se-1',
-          timeline: {
-            2: const TimelineExposure.drawing(FrameId('f2'), length: 4),
-          },
-          frames: [frame('f2')],
-        ),
-        seLayer('cut-2-se-2'),
-      ]);
-      final json = Track(
-        id: const TrackId('track-1'),
-        name: 'Track 1',
-        cuts: [cut1, cut2],
-      ).toJson();
-      // Simulate the legacy shape: no seLayers key.
-      json.remove('seLayers');
-      return Track.fromJson(json);
-    }
+  test('a track\'s SE rows come back from its JSON — their blocks, cels '
+      'and sounds with them', () {
+    final row = seLayer(
+      'track-1-se-1',
+      timeline: {
+        4: const TimelineExposure.drawing(FrameId('f1'), length: 20),
+      },
+      frames: [frame('f1')],
+      audioClips: [
+        AudioClip(filePath: 'C:/snd/a.wav', frameId: const FrameId('f1')),
+      ],
+    );
+    final track = Track(
+      id: const TrackId('track-1'),
+      name: 'Track 1',
+      cuts: const [],
+      seLayers: [row],
+    );
 
-    test('lifts per-cut SE slots onto the track at global frames, clamped '
-        'to each cut window', () {
-      final track = legacyTrack();
+    final back = Track.fromJson(track.toJson())
+        .seLayers
+        .firstWhere((layer) => layer.id == row.id);
 
-      expect(track.seLayers, hasLength(2));
-      expect(track.seLayers[0].name, 'S1');
-      expect(track.seLayers[0].id.value, 'track-1-se-1');
-      // Cut 1's block [4, 4+40) clamps to the cut end (legacy playback
-      // never ran past it): global [4, 24). Cut 2's block lands at
-      // 24 + 2 = 26, length 4.
-      final timeline = track.seLayers[0].timeline;
-      expect(timeline[4]!.length, 20);
-      expect(timeline[26]!.length, 4);
-      // Frames and sounds ride along.
-      expect(
-        track.seLayers[0].frames.map((frame) => frame.id.value),
-        containsAll(['f1', 'f2']),
-      );
-      expect(track.seLayers[0].audioClips, hasLength(1));
-      // The cuts lose their SE rows.
-      for (final migratedCut in track.cuts) {
-        expect(
-          migratedCut.layers.where((layer) => layer.kind == LayerKind.se),
-          isEmpty,
-        );
-      }
-    });
-
-    test('new-shape JSON round-trips without re-migrating', () {
-      final track = legacyTrack();
-      final reloaded = Track.fromJson(track.toJson());
-      expect(reloaded, track);
-    });
+    expect(back.timeline, row.timeline);
+    expect(back.frames.map((frame) => frame.id), [const FrameId('f1')]);
+    expect(back.audioClips, row.audioClips);
   });
 
   group('TrackSeWindow', () {

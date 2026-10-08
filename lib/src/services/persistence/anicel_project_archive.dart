@@ -35,8 +35,7 @@ import '../../models/media_asset.dart'
         MediaCarry,
         mediaCarryName,
         mediaNameParts,
-        mintMediaCarry,
-        normalizedMediaPath;
+        mintMediaCarry;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -101,7 +100,7 @@ String projectDisplayName(String path) {
 /// bakes the lines and writes the text back without the word. The bump
 /// turns that into a refusal ([decodeAnicelProjectDocument]).
 ///
-/// ⚠️No older shape is read for it, and the floor stays where it was: a
+/// ⚠️No older shape was read for it, and it did not move the floor: a
 /// text that does not say is one in lines at THIS version too.
 ///
 /// v8 (2026-10-07, the text tool's AA switch — R9-rest): a letter says
@@ -112,10 +111,10 @@ String projectDisplayName(String path) {
 /// letters gone soft, and nothing said. The bump turns that into a refusal
 /// ([decodeAnicelProjectDocument]).
 ///
-/// ⚠️No older shape is read for it, and the floor stays where it was
+/// ⚠️No older shape was read for it, and it did not move the floor
 /// ([anicelOldestReadFormatVersion]): a letter that does not say is a
 /// smooth one at THIS version too (`TextLetterStyle.toJson` leaves the
-/// word out), so a v7 file is such a document.
+/// word out), so a v7 file was such a document.
 ///
 /// v7 (2026-10-07, the text tool's fonts — R9-rest): a project carries the
 /// font files its texts are set with — a `fonts` list in the document
@@ -126,10 +125,11 @@ String projectDisplayName(String path) {
 /// never brought them sets those texts in another face. The bump turns that
 /// into a refusal ([decodeAnicelProjectDocument]).
 ///
-/// ⚠️No older shape is read for it, and the floor stays where it was
+/// ⚠️No older shape was read for it, and it did not move the floor
 /// ([anicelOldestReadFormatVersion]): a document that lists no fonts is
 /// what a project that carries none writes at THIS version
-/// (`Project.toJson` leaves the list out), so a v6 file is such a document.
+/// (`Project.toJson` leaves the list out), so a v6 file was such a
+/// document.
 ///
 /// v6 (2026-10-06, F-256-Q1 — a layer's Scale keys an axis apiece): a
 /// transform track's `scale` lane holds `{x, y}` where it held one number
@@ -167,8 +167,8 @@ String projectDisplayName(String path) {
 /// 그냥 올리면 되는거아닌가?」 — it had stayed 3 since 07-29 through every
 /// format change, the 09-24 carry token among them, because no file anyone
 /// keeps was at stake (08-25); a build that loses carried bytes quietly is
-/// reason enough on its own. v3 files still open here: [mediaCarryName]
-/// keeps both older readings.
+/// reason enough on its own. v3 files opened here until the floor rose:
+/// [mediaCarryName] kept both older readings until floor 11.
 ///
 /// v3 (R20-A1 cold-cel tiering): cels persist as PRE-COMPRESSED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
@@ -618,9 +618,10 @@ class AnicelSessionFields {
 /// cel blob's tail has, through the same [compressAnicelPayload], so zstd
 /// and the deflate floor are chosen in ONE place for both.
 ///
-/// Old files keep their uncompressed `project.json` and still open. The
-/// reader takes whichever it finds, preferring the compressed name so an
-/// incremental append can shadow the old entry without a compaction.
+/// An old file keeps an uncompressed `project.json`, and the reader takes
+/// that too — so such a file is refused by its format number, not as 「not
+/// an Anicel project」. It prefers the compressed name, so an incremental
+/// append can shadow the old entry without a compaction.
 ({String name, Uint8List bytes}) buildAnicelProjectEntry({
   required Project project,
   String? saveDirectory,
@@ -812,8 +813,8 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
-    mediaRelativePaths: _keyedByPoolPath(decoded['mediaPaths']),
-    mediaEntryNames: _keyedByPoolPath(decoded['mediaEntries']),
+    mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
+    mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
       grants: anicelGrantsField(decoded['grants']),
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
@@ -821,18 +822,6 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     ),
   );
 }
-
-/// A document map keyed by pool path, its keys in the pool's spelling.
-///
-/// The project beside it was just spelled by its own constructors
-/// ([normalizedMediaPath]); a file written while a door still let another
-/// spelling in would otherwise name, under `C:\…\cut/A1.png`, an asset the
-/// pool now calls `C:/…/cut/A1.png` — and an entry the project carries
-/// would read as one it does not.
-Map<String, String> _keyedByPoolPath(Object? json) => {
-  for (final entry in anicelStringMapField(json).entries)
-    normalizedMediaPath(entry.key): entry.value,
-};
 
 /// A document field read as a `{string: string}` map — anything that is
 /// not a string pair is not one, and is left out rather than throwing.

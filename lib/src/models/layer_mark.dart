@@ -248,19 +248,16 @@ StaffHolder? staffHolderOf(LayerProcess process) => switch (process) {
   _ => StaffHolder.cut,
 };
 
-/// A staff map as a file holds it, for [holder]: a value that is not a name
-/// (a file from before the labels vocabulary kept a name-and-stamp object)
-/// drops silently, and so does a stage [holder] does not keep
-/// ([staffHolderOf]) — the work's 원화 or 동화, a cut's 콘티.
-Map<String, String> staffFromJson(
-  Object? json, {
-  required StaffHolder holder,
-}) {
-  final names = json as Map<String, dynamic>? ?? const {};
-  return {
-    for (final mark in everyLayerMark())
-      if (mark.process case final process?)
-        if (staffHolderOf(process) == holder)
-          if (names[mark.keySlug] case final String name) mark.keySlug: name,
-  };
-}
+/// A staff map as a file holds it: each stage's name by its key
+/// ([LayerMark.keySlug]).
+///
+/// ↩️It dropped two older shapes here — a value that was a name-and-stamp
+/// object (from before the labels vocabulary), and a stage its holder no
+/// longer keeps (from before F-291-Q1 gave every stage but the conte to the
+/// cut). Only files of formats refused by their number now hold either (the
+/// save law, 유저 2026-10-06).
+Map<String, String> staffFromJson(Object? json) => {
+  for (final MapEntry(:key, :value)
+      in (json as Map<String, dynamic>? ?? const {}).entries)
+    key: value as String,
+};

@@ -152,35 +152,6 @@ void main() {
       expect(restored.logoAssetPath, 'logos/studio.png');
     });
 
-    test('a staff entry that is not a name drops rather than throwing', () {
-      // A file from before the labels vocabulary kept a name-and-stamp
-      // object per role.
-      final restored = TimesheetInfo.fromJson({
-        'staff': {
-          'conte': '大川',
-          'genga': {'name': '山田', 'stamp': 'stamps/y.png'},
-        },
-      });
-
-      expect(restored.staff, {'conte': '大川'});
-    });
-
-    test('🎯the work keeps the conte\'s names alone: a file\'s name for '
-        'another stage drops — that stage is each cut\'s now', () {
-      // 유저 2026-10-08 (F-291-Q1): 「스태프는 콘티만 남겨둠. 나머진 삭제.
-      // 나머진 컷마다 스태프설정」.
-      final restored = TimesheetInfo.fromJson({
-        'staff': {
-          'conte': '大川',
-          'conte-director': '清',
-          'key': '山田',
-          'inbetween-inbetween-check': '林',
-        },
-      });
-
-      expect(restored.staff, {'conte': '大川', 'conte-director': '清'});
-    });
-
     test('an old file with no staff loads clean', () {
       final restored = TimesheetInfo.fromJson({'title': 'X'});
 

@@ -185,24 +185,9 @@ class TransformTrack {
   };
 
   factory TransformTrack.fromJson(Map<String, dynamic> json) {
-    // Legacy pose-keyed tracks ({'keyframes': [{index, pose}]}) migrate to
-    // synchronized per-property keys on load.
-    if (json.containsKey('keyframes')) {
-      final keyframes = <int, TransformPose>{};
-      for (final item in json['keyframes'] as List? ?? const []) {
-        final entry = item as Map<String, dynamic>;
-        final index = entry['index'] as int;
-        if (keyframes.containsKey(index)) {
-          throw FormatException('Duplicate transform keyframe index: $index');
-        }
-        // The pose-keyed shape is older than the two scales: one zoom.
-        keyframes[index] = TransformPose.ofCamera(
-          CameraPose.fromJson(entry['pose'] as Map<String, dynamic>),
-        );
-      }
-      return TransformTrack(keyframes: keyframes);
-    }
-
+    // ↩️A pose-keyed track ({'keyframes': [{index, pose}]}) migrated to
+    // per-property keys here — the shape of files whose format is refused
+    // by its number now (the save law, 유저 2026-10-06).
     return TransformTrack.properties(
       anchorPoint: PropertyTrack.fromJson(
         json['anchorPoint'] as List?,

@@ -440,8 +440,7 @@ Project _projectOf(
   ).replaceAll(RegExp(r'\.tvpp$', caseSensitive: false), '');
   // The planner still emits each clip's sound as a per-cut SE row (the
   // shape TVPaint stores); SE rows LIVE on the track's global axis now, so
-  // the same lift the legacy-file migration uses promotes them — one law
-  // for both doors.
+  // the lift promotes them — the one the .clip door's cuts go through too.
   final lifted = liftCutSeLayersToTrack(
     const TrackId('default-track'),
     [for (final (plan, _) in plans) plan.cut],

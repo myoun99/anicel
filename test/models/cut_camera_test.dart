@@ -10,25 +10,6 @@ import 'package:anicel/src/models/transform_pose.dart';
 
 void main() {
   group('CameraPose', () {
-    test('serializes to and from json', () {
-      final pose = CameraPose(
-        center: CanvasPoint(x: 100.5, y: 200.25),
-        zoom: 1.5,
-        rotationDegrees: -30,
-      );
-
-      expect(CameraPose.fromJson(pose.toJson()), pose);
-    });
-
-    test('missing rotation in json defaults to 0', () {
-      final pose = CameraPose.fromJson({
-        'center': {'x': 1.0, 'y': 2.0},
-        'zoom': 2.0,
-      });
-
-      expect(pose.rotationDegrees, 0);
-    });
-
     test('rejects non-positive or non-finite zoom', () {
       expect(
         () => CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 0),
@@ -116,18 +97,6 @@ void main() {
       );
 
       expect(CutCamera.fromJson(camera.toJson()), camera);
-    });
-
-    test('rejects duplicate keyframe indexes in json', () {
-      expect(
-        () => CutCamera.fromJson({
-          'keyframes': [
-            {'index': 0, 'pose': _pose(x: 0).toJson()},
-            {'index': 0, 'pose': _pose(x: 1).toJson()},
-          ],
-        }),
-        throwsFormatException,
-      );
     });
   });
 

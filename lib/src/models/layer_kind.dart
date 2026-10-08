@@ -831,13 +831,9 @@ enum LayerKind {
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {
-    // Legacy aliases: old dev files load as what their rows always were. The
-    // retired `art` kind drew and composited exactly like animation (its
-    // enum doc said as much); a retired TEXT row's pictures were ordinary
-    // baked cels, which is all rasterizing one ever left (F-154).
-    if (json == 'art' || json == 'text') {
-      return LayerKind.animation;
-    }
+    // ↩️`art` and `text` read as animation here — the retired kinds of
+    // older files, whose format is refused by its number now (the save law,
+    // 유저 2026-10-06).
     for (final kind in LayerKind.values) {
       if (json == kind.jsonValue) {
         return kind;

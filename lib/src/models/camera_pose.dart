@@ -52,14 +52,6 @@ class CameraPose {
     'rotationDegrees': rotationDegrees,
   };
 
-  factory CameraPose.fromJson(Map<String, dynamic> json) {
-    return CameraPose(
-      center: CanvasPoint.fromJson(json['center'] as Map<String, dynamic>),
-      zoom: (json['zoom'] as num).toDouble(),
-      rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
-
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

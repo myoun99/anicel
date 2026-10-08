@@ -4,12 +4,9 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_content_translation.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
-import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 /// D5 (R7): the model half of a canvas resize — everything stored in
@@ -220,36 +217,6 @@ void main() {
       reason: 'a scale is two numbers and no place on the canvas',
     );
     expect(moved.track.scale.keys.length, 1);
-  });
-
-  test('text cel anchors move with the content — the baked raster is a '
-      'projection of them and re-bakes after the resize', () {
-    final layer = Layer(
-      id: const LayerId('text'),
-      name: 'T',
-      frames: [
-        Frame(
-          id: const FrameId('t-1'),
-          duration: 1,
-          strokes: const [],
-          textContent: const TextCelContent(
-            text: 'hi',
-            style: TextCelStyle(),
-            position: Offset(500, 400),
-          ),
-        ),
-      ],
-      timeline: const {},
-    );
-
-    final moved = translateLayerForResize(
-      layer,
-      dx: 200,
-      dy: -100,
-      centreDx: 0,
-      centreDy: 0,
-    );
-    expect(moved.frames.single.textContent!.position, const Offset(700, 300));
   });
 
   test('a zero offset is identity for the whole cut model', () {

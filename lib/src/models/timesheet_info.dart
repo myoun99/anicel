@@ -175,7 +175,7 @@ class TimesheetInfo {
       },
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
-      staff: staffFromJson(json['staff'], holder: StaffHolder.work),
+      staff: staffFromJson(json['staff']),
       logoAssetPath: json['logo'] as String?,
       coverImagePath: json['cover'] as String?,
       envelopeFormId:

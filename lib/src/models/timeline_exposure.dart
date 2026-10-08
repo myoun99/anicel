@@ -147,18 +147,9 @@ class TimelineExposure {
     if (!endEdge.isNone) 'endEdge': endEdge.toJson(),
   };
 
-  /// Decodes the CURRENT format only. Legacy entries (`blank`/`mark`
-  /// types, drawing entries without `length`) are migrated in
-  /// `Layer.fromJson`, which needs whole-timeline context.
   factory TimelineExposure.fromJson(Map<String, dynamic> json) {
-    final type = TimelineExposureType.fromJson(json['type']);
-    if (type != TimelineExposureType.drawing) {
-      throw const FormatException(
-        'Standalone mark timeline entries are legacy; Layer.fromJson '
-        'migrates them into block breakdown offsets.',
-      );
-    }
-
+    // A drawing is the one kind of entry: anything else is refused here.
+    TimelineExposureType.fromJson(json['type']);
     final frameIdJson = json['frameId'];
     final length = json['length'];
     if (frameIdJson == null || length is! int || length < 1) {

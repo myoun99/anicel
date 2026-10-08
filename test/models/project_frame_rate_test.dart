@@ -159,22 +159,6 @@ void main() {
         );
       }
     });
-
-    test('a file carrying only the fraction recovers its counting base', () {
-      // Hand-edited or older files may lack the explicit base; every
-      // real-world rate rounds to it.
-      expect(
-        ProjectFrameRate.fromJson(const {
-          'numerator': 24000,
-          'denominator': 1001,
-        }),
-        const ProjectFrameRate.ntsc(24),
-      );
-      expect(
-        ProjectFrameRate.fromJson(const {'numerator': 30, 'denominator': 1}),
-        const ProjectFrameRate.integer(30),
-      );
-    });
   });
 
   test('presets cover the standard rates and carry no duplicates', () {

@@ -80,38 +80,6 @@ void main() {
 
       expect(TransformTrack.fromJson(track.toJson()), track);
     });
-
-    test('fromJson rejects duplicate keyframe indexes', () {
-      final pose = _pose(1).toCameraPose().toJson();
-      expect(
-        () => TransformTrack.fromJson({
-          'keyframes': [
-            {'index': 3, 'pose': pose},
-            {'index': 3, 'pose': pose},
-          ],
-        }),
-        throwsFormatException,
-      );
-    });
-
-    test('legacy pose-keyed json migrates to synchronized property keys', () {
-      final legacy = {
-        'keyframes': [
-          {
-            'index': 2,
-            'pose': _pose(10, zoom: 2, rotation: 45).toCameraPose().toJson(),
-          },
-        ],
-      };
-
-      final track = TransformTrack.fromJson(legacy);
-
-      expect(track.position.keyAt(2)!.value, CanvasPoint(x: 10, y: 20));
-      expect(track.scale.keyAt(2)!.value, uniformScale(2));
-      expect(track.rotation.keyAt(2)!.value, 45);
-      expect(track.anchorPoint.isEmpty, isTrue);
-      expect(track.opacity.isEmpty, isTrue);
-    });
   });
 
   group('TransformTrack per-property (AE model)', () {

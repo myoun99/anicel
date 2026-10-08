@@ -395,9 +395,10 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   final schedule = <ScheduledAudioClip>[];
 
   // SE rows are TRACK-owned and live on each track's GLOBAL frame axis;
-  // a cut merely shows a window onto them. Cut-owned SE is a legacy file
-  // shape that `Track.fromJson` lifts onto the track at load, so no
-  // loaded project can carry one — and scheduling from cut layers would
+  // a cut merely shows a window onto them. Cut-owned SE is what the .tvpp
+  // and .clip doors build before they lift it onto the track, and the shape
+  // of files refused by their format number, so no loaded project can
+  // carry one — and scheduling from cut layers would
   // clamp sounds at cut boundaries, which is exactly the restart-per-cut
   // behaviour the global model exists to remove.
   //

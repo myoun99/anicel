@@ -120,7 +120,7 @@ class CutMetadata {
       ]),
       thumbnailFrameIndex: json['thumbnailFrame'] as int?,
       mark: LayerMark.fromJson(json['mark']),
-      staff: staffFromJson(json['staff'], holder: StaffHolder.cut),
+      staff: staffFromJson(json['staff']),
       sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
     );
   }

@@ -128,41 +128,6 @@ void main() {
     expect(restored, layer);
     expect(restored.timeline[0]!.breakdownOffsets, const [2, 4]);
   });
-
-  test(
-    'old layer JSON without timeline derives timeline from frame durations',
-    () {
-      final json = {
-        'id': const LayerId('old-layer').toJson(),
-        'name': 'Old Layer',
-        'frames': [
-          Frame(
-            id: const FrameId('a'),
-            duration: 3,
-            strokes: const [],
-          ).toJson(),
-          Frame(
-            id: const FrameId('b'),
-            duration: 2,
-            strokes: const [],
-          ).toJson(),
-        ],
-        'isVisible': true,
-        'opacity': 1.0,
-      };
-
-      final layer = Layer.fromJson(json);
-
-      expect(
-        layer.timeline[0],
-        const TimelineExposure.drawing(FrameId('a'), length: 3),
-      );
-      expect(
-        layer.timeline[3],
-        const TimelineExposure.drawing(FrameId('b'), length: 2),
-      );
-    },
-  );
 }
 
 void frameNameJsonTests() {

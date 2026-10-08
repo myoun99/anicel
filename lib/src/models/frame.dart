@@ -4,7 +4,6 @@ import '../core/copy_with_sentinel.dart';
 import 'layer_kind.dart';
 import 'se_line_type.dart';
 import 'stroke.dart';
-import 'text_cel_style.dart';
 
 /// The in-between division mark (中割) written as TEXT — mark 1's glyph
 /// ([InbetweenMark.glyph]), for both of its uses: a drawing without a cel
@@ -118,7 +117,6 @@ class Frame {
     this.name,
     this.seName,
     this.seType = SeLineType.on,
-    this.textContent,
   }) : strokes = List.unmodifiable(strokes);
 
   final FrameId id;
@@ -147,12 +145,6 @@ class Frame {
   /// block never chose, which is also what a drawing carries and ignores.
   final SeLineType seType;
 
-  /// ↩️A TEXT row's picture as parameters (R5, §6-s) until F-154 removed
-  /// the kind: nothing writes it any more. It still reads from an old file
-  /// and rides copies until the save format drops it — the save lane's
-  /// half of F-154, left to it on purpose.
-  final TextCelContent? textContent;
-
   Frame copyWith({
     FrameId? id,
     int? duration,
@@ -160,7 +152,6 @@ class Frame {
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
     SeLineType? seType,
-    Object? textContent = copyWithSentinel,
   }) {
     return Frame(
       id: id ?? this.id,
@@ -171,9 +162,6 @@ class Frame {
           ? this.seName
           : seName as String?,
       seType: seType ?? this.seType,
-      textContent: identical(textContent, copyWithSentinel)
-          ? this.textContent
-          : textContent as TextCelContent?,
     );
   }
 
@@ -186,7 +174,6 @@ class Frame {
     // ON is the absent field — every drawing, and every block that never
     // chose, reads back as ON.
     if (seType != SeLineType.on) 'seType': seType.name,
-    if (textContent != null) 'textContent': textContent!.toJson(),
   };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
@@ -199,9 +186,6 @@ class Frame {
       name: json['name'] as String?,
       seName: json['seName'] as String?,
       seType: SeLineType.fromJson(json['seType']),
-      textContent: json['textContent'] is Map<String, dynamic>
-          ? TextCelContent.fromJson(json['textContent'] as Map<String, dynamic>)
-          : null,
     );
   }
 
@@ -214,7 +198,6 @@ class Frame {
           other.name == name &&
           other.seName == seName &&
           other.seType == seType &&
-          other.textContent == textContent &&
           listEquals(other.strokes, strokes);
 
   @override
@@ -224,13 +207,12 @@ class Frame {
     name,
     seName,
     seType,
-    textContent,
     Object.hashAll(strokes),
   );
 
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, '
-      'seName: $seName, seType: ${seType.name}, textContent: $textContent, '
+      'seName: $seName, seType: ${seType.name}, '
       'strokes: $strokes)';
 }

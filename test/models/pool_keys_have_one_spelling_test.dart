@@ -1,12 +1,9 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
-import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 
 /// 🚨★★★**THE POOL IS KEYED BY PATH, AND A PATH HAS ONE SPELLING** — given
 /// by the models themselves, whatever door the path came by (audit
@@ -46,30 +43,5 @@ void main() {
     );
     expect(project.mediaAssetByPath(os)?.path, pool);
     expect(project.mediaAssetByPath(pool)?.path, pool);
-  });
-
-  test('a file that recorded another spelling names the same entries the '
-      'pool now asks for', () {
-    final project = createDefaultProject().copyWith(
-      mediaAssets: [MediaAsset(path: pool, name: 'A1', carriedAs: 'c1')],
-    );
-    final json = project.toJson();
-    final assets = json['mediaAssets'] as List;
-    assets[0] = {...assets[0] as Map<String, dynamic>, 'path': os};
-
-    final document = decodeAnicelProjectDocument(
-      utf8.encode(
-        jsonEncode({
-          'formatVersion': anicelFormatVersion,
-          'project': json,
-          'mediaEntries': {os: 'media/0a1b2c3d-A1.png'},
-          'mediaPaths': {os: 'A1.png'},
-        }),
-      ),
-    );
-
-    expect(document.project.mediaAssets.single.path, pool);
-    expect(document.mediaEntryNames, {pool: 'media/0a1b2c3d-A1.png'});
-    expect(document.mediaRelativePaths, {pool: 'A1.png'});
   });
 }

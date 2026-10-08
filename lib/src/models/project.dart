@@ -152,8 +152,8 @@ class Project {
   final CameraInstructionSet cameraInstructions;
 
   /// The media pool the browser panel lists, keyed by absolute path.
-  /// Loading reconciles it against every clip reference, so legacy projects
-  /// (and hand-edited files) always open with a complete pool.
+  /// Loading reconciles it against every clip reference, so a project
+  /// always opens with a complete pool.
   final List<MediaAsset> mediaAssets;
 
   /// The font files REGISTERED with this project — the ones it carries
@@ -281,10 +281,9 @@ class Project {
     'name': name,
     'tracks': tracks.map((track) => track.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
-    // `fps` stays the counting base so a file written today still opens
-    // in a build that predates the fraction; `frameRate` carries the
-    // exact rate and wins on read.
-    'fps': fps,
+    // ↩️`fps` rode beside this so a build that predated the fraction could
+    // still open the file. Every build that opens this format reads the
+    // fraction, and an older one refuses it by number.
     'frameRate': frameRate.toJson(),
     'cameraSize': cameraSize.toJson(),
     if (background != ProjectBackground.defaultBackground)
@@ -341,11 +340,9 @@ class Project {
       name: json['name'] as String,
       tracks: tracks,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      frameRate: json['frameRate'] == null
-          ? ProjectFrameRate.integer(json['fps'] as int)
-          : ProjectFrameRate.fromJson(
-              json['frameRate'] as Map<String, dynamic>,
-            ),
+      frameRate: ProjectFrameRate.fromJson(
+        json['frameRate'] as Map<String, dynamic>,
+      ),
       cameraSize: json['cameraSize'] == null
           ? defaultProjectCameraSize
           : CanvasSize.fromJson(json['cameraSize'] as Map<String, dynamic>),

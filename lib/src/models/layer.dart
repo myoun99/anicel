@@ -30,8 +30,7 @@ import 'transform_track.dart';
 /// each carrying its own inbetween-dot offsets
 /// ([TimelineExposure.breakdownOffsets]). Emptiness has no entry —
 /// uncovered cells are the timesheet "X" cells. There is no separate marks
-/// map, no blank entry type, and no standalone mark entry (legacy files
-/// carrying any of those are migrated in [Layer.fromJson]).
+/// map, no blank entry type, and no standalone mark entry.
 class Layer {
   Layer({
     required this.id,
@@ -385,51 +384,21 @@ class Layer {
     },
   };
 
-  /// Migrates a legacy free-floating clip ({'file', 'start'}) onto the SE
-  /// frame whose block covered its start frame; clips landing on empty
-  /// cells have nothing to link to and drop.
-  static AudioClip? _audioClipFromJson(
-    Map<String, dynamic> json,
-    Map<int, TimelineExposure> timeline,
-  ) {
-    if (json.containsKey('frame')) {
-      return AudioClip.fromJson(json);
-    }
-    final startFrame = json['start'] as int? ?? 0;
-    for (final block in drawingBlocks(SplayTreeMap.of(timeline))) {
-      if (block.startIndex <= startFrame &&
-          startFrame < block.endIndexExclusive) {
-        return AudioClip(
-          filePath: json['file'] as String,
-          frameId: block.frameId,
-        );
-      }
-    }
-    return null;
-  }
-
   factory Layer.fromJson(Map<String, dynamic> json) {
-    final frames = (json['frames'] as List<dynamic>)
-        .map((frame) => Frame.fromJson(frame as Map<String, dynamic>))
-        .toList();
-    final timeline = json.containsKey('timeline')
-        ? _timelineFromJson(
-            json['timeline'],
-            legacyMarksJson: json['marks'],
-            frames: frames,
-          )
-        : _deriveTimeline(frames);
     return Layer(
       id: LayerId.fromJson(json['id'] as Map<String, dynamic>),
       name: json['name'] as String,
-      frames: frames,
-      timeline: timeline,
+      frames: [
+        for (final frame in json['frames'] as List<dynamic>)
+          Frame.fromJson(frame as Map<String, dynamic>),
+      ],
+      timeline: _timelineFromJson(json['timeline']),
       instructions: instructionMapFromJson(json['instructions']),
       audioClips: json['audioClips'] == null
           ? const []
           : [
               for (final clip in json['audioClips'] as List<dynamic>)
-                ?_audioClipFromJson(clip as Map<String, dynamic>, timeline),
+                AudioClip.fromJson(clip as Map<String, dynamic>),
             ],
       isVisible: json['isVisible'] as bool,
       collapsed: json['collapsed'] as bool? ?? false,
@@ -454,10 +423,6 @@ class Layer {
       seNameTag: json['seNameTag'] == null
           ? null
           : SeNameTag.fromJson(json['seNameTag'] as Map<String, dynamic>),
-      // Legacy 'repeatRegions' JSON is ignored (no production data), and so
-      // is the 'runBehaviors' spec list F-134 moved into the blocks' own
-      // marks: the stale ghost entries of either drop as the timeline
-      // decodes.
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
@@ -840,15 +805,13 @@ SplayTreeMap<int, TimelineExposure> _deriveTimeline(List<Frame> frames) {
   return timeline;
 }
 
-/// Raw parse of one legacy or current timeline item.
+/// Raw parse of one timeline item.
 class _RawTimelineItem {
   const _RawTimelineItem({
     required this.index,
-    required this.type,
-    this.frameId,
-    this.length,
+    required this.frameId,
+    required this.length,
     this.ghostOf,
-    this.legacyGhost = false,
     this.startEdge = TimelineRunEdgeMark.none,
     this.endEdge = TimelineRunEdgeMark.none,
     this.breakdownOffsets = const [],
@@ -857,15 +820,9 @@ class _RawTimelineItem {
   });
 
   final int index;
-
-  /// 'drawing' | 'blank' | 'mark'
-  final String type;
-  final FrameId? frameId;
-  final int? length;
+  final FrameId frameId;
+  final int length;
   final TimelineRunEdgeGhost? ghostOf;
-
-  /// A ghost written before F-134, whose owner was a frame id.
-  final bool legacyGhost;
   final TimelineRunEdgeMark startEdge;
   final TimelineRunEdgeMark endEdge;
   final List<int> breakdownOffsets;
@@ -881,22 +838,16 @@ class _RawTimelineItem {
   final ExposureInstruction? instruction;
 }
 
-/// Decodes a timeline from JSON, migrating legacy formats in one pass:
-///
-/// - legacy `blank` entries become nothing — each one cuts the preceding
-///   drawing's hold at its index;
-/// - legacy drawing entries without `length` get their old visual length:
-///   up to the next entry (drawing or blank), or `Frame.duration` for the
-///   last block (the old trailing infinite hold becomes finite);
-/// - legacy standalone `mark` entries and the legacy separate `marks` map
-///   fold into the covering drawing's [TimelineExposure.breakdownOffsets];
-///   marks on a drawing start (offset 0) or on uncovered cells drop
-///   (block-owned dots can't live off a block, and no production data
-///   exists to preserve).
 /// The timeline entries as the FILE spells them, validated and keyed by
 /// index — both spellings (a list of `{index, exposure}` pairs, and an
 /// object keyed by index) read into one map here so the walk below sees
 /// one shape.
+///
+/// 🗣️유저 2026-10-06 (the save law): 「옛파일 읽는코드는 필요없다고
+/// 확신했어」. ↩️This read four older shapes too — `blank` entries that cut
+/// a hold, drawings with no length, standalone `mark` entries with the
+/// separate `marks` map, and ghosts written before F-134 — none of which a
+/// file of a format this build opens holds (`anicelOldestReadFormatVersion`).
 SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
   final items = SplayTreeMap<int, _RawTimelineItem>();
 
@@ -908,29 +859,26 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
       throw FormatException('Duplicate timeline index: $index');
     }
     final type = exposureJson['type'];
-    if (type != 'drawing' && type != 'blank' && type != 'mark') {
+    if (type != 'drawing') {
       throw FormatException('Unknown timeline exposure type: $type');
     }
     final frameIdJson = exposureJson['frameId'];
-    final lengthJson = exposureJson['length'];
-    if (type == 'drawing' && frameIdJson == null) {
+    if (frameIdJson == null) {
       throw const FormatException(
         'Drawing timeline exposure requires frameId.',
       );
     }
-    if (type != 'drawing' && frameIdJson != null) {
-      throw FormatException('$type timeline exposure cannot have frameId.');
+    final length = exposureJson['length'];
+    if (length is! int || length < 1) {
+      throw const FormatException(
+        'Drawing timeline exposure requires a positive length.',
+      );
     }
     items[index] = _RawTimelineItem(
       index: index,
-      type: type as String,
-      frameId: frameIdJson == null
-          ? null
-          : FrameId.fromJson(frameIdJson as Map<String, dynamic>),
-      length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
+      frameId: FrameId.fromJson(frameIdJson as Map<String, dynamic>),
+      length: length,
       ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(exposureJson['ghostOf']),
-      legacyGhost:
-          exposureJson['ghost'] == true && exposureJson['ghostOf'] == null,
       startEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['startEdge']),
       endEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['endEdge']),
       breakdownOffsets: [
@@ -970,69 +918,24 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
   return items;
 }
 
-/// The frames a drawing entry covers, resolved against what follows it.
-///
-/// Two legacy shapes and one invariant. A file written before lengths
-/// existed held each visual until the next drawing or blank entry, and
-/// the LAST block held its Frame.duration — that is the first branch.
-/// The second is the invariant that outranks the file: a block never
-/// overlaps the next drawing, whatever the length says, because a file
+/// The frames a drawing entry covers: its length, never past the start of
+/// the next one — the invariant that outranks the file, because a file
 /// that says otherwise draws two cels on one frame.
-int _drawingLength(
-  List<_RawTimelineItem> rawItems,
-  int at,
-  Map<FrameId, int> frameDurations,
-) {
+int _drawingLength(List<_RawTimelineItem> rawItems, int at) {
   final item = rawItems[at];
-  final i = at;
-  var length = item.length;
-  if (length == null) {
-    // Legacy entry: old visuals held until the next drawing/blank
-    // entry; the last block held its Frame.duration.
-    int? boundary;
-    for (var j = i + 1; j < rawItems.length; j += 1) {
-      if (rawItems[j].type != 'mark') {
-        boundary = rawItems[j].index;
-        break;
-      }
-    }
-    length = boundary != null
-        ? boundary - item.index
-        : (frameDurations[item.frameId] ?? 1);
-  }
-  // Never overlap the next drawing regardless of what the file says.
-  for (var j = i + 1; j < rawItems.length; j += 1) {
-    if (rawItems[j].type == 'drawing') {
-      final maxLength = rawItems[j].index - item.index;
-      if (length! > maxLength) {
-        length = maxLength;
-      }
-      break;
-    }
-  }
-  if (length! < 1) {
-    length = 1;
-  }
-  return length;
+  return at + 1 < rawItems.length
+      ? math.min(item.length, rawItems[at + 1].index - item.index)
+      : item.length;
 }
 
-/// The entry one raw DRAWING item decodes to, [length] already resolved —
-/// or null for a ghost saved before F-134.
-TimelineExposure? _exposureFromRawItem(
+/// The entry one raw item decodes to, [length] already resolved.
+TimelineExposure _exposureFromRawItem(
   _RawTimelineItem item, {
   required int length,
 }) {
-  if (item.legacyGhost) {
-    // F-134: a ghost from before the edge properties moved into the
-    // blocks names an owner that no longer exists, and nothing is left
-    // to say what it was — kept, it would read back as an AUTHORED
-    // block. Derived state drops; the next rederive rebuilds whatever
-    // the blocks' own marks still say.
-    return null;
-  }
   final authored = item.ghostOf == null;
   var exposure = TimelineExposure.drawing(
-    item.frameId!,
+    item.frameId,
     length: length,
     ghostOf: item.ghostOf,
     // A ghost never carries marks: it is a property's output.
@@ -1056,98 +959,13 @@ TimelineExposure? _exposureFromRawItem(
   return exposure;
 }
 
-SplayTreeMap<int, TimelineExposure> _timelineFromJson(
-  Object? json, {
-  Object? legacyMarksJson,
-  required List<Frame> frames,
-}) {
-  final items = _rawTimelineItems(json);
-
-  final frameDurations = <FrameId, int>{
-    for (final frame in frames)
-      frame.id: frame.duration <= 0 ? 1 : frame.duration,
-  };
-
-  final timeline = SplayTreeMap<int, TimelineExposure>();
-  final legacyMarkIndexes = <int>[];
-  final rawItems = items.values.toList(growable: false);
-  for (var i = 0; i < rawItems.length; i += 1) {
-    final item = rawItems[i];
-    switch (item.type) {
-      case 'mark':
-        // Legacy standalone dot: folded into its covering block below.
-        legacyMarkIndexes.add(item.index);
-      case 'blank':
-        // Legacy hold terminator: consumed as the previous block's boundary.
-        break;
-      case 'drawing':
-        final exposure = _exposureFromRawItem(
-          item,
-          length: _drawingLength(rawItems, i, frameDurations),
-        );
-        if (exposure != null) {
-          timeline[item.index] = exposure;
-        }
-    }
-  }
-
-  _foldLegacyMarks(timeline, [
-    ...legacyMarkIndexes,
-    ..._legacyMarkIndexes(legacyMarksJson),
-  ]);
-  return timeline;
-}
-
-List<int> _legacyMarkIndexes(Object? legacyMarksJson) {
-  if (legacyMarksJson == null) {
-    return const [];
-  }
-
-  final indexes = <int>[];
-  if (legacyMarksJson is List<dynamic>) {
-    for (final item in legacyMarksJson) {
-      indexes.add((item as Map<String, dynamic>)['index'] as int);
-    }
-  } else if (legacyMarksJson is Map<String, dynamic>) {
-    for (final key in legacyMarksJson.keys) {
-      final index = int.tryParse(key);
-      if (index == null) {
-        throw FormatException('Invalid timeline mark index: $key');
-      }
-      indexes.add(index);
-    }
-  } else {
-    throw const FormatException('Layer marks must be a list or object.');
-  }
-  for (final index in indexes) {
-    if (index < 0) {
-      throw const FormatException(
-        'Timeline mark indexes must be non-negative.',
-      );
-    }
-  }
-  return indexes;
-}
-
-/// Folds legacy standalone marks into the covering drawing block's
-/// [TimelineExposure.breakdownOffsets]. Marks on a block start (the dot
-/// would sit on the drawing itself) or on uncovered cells drop.
-void _foldLegacyMarks(
-  SplayTreeMap<int, TimelineExposure> timeline,
-  Iterable<int> markIndexes,
-) {
-  for (final index in markIndexes) {
-    final start = timeline.lastKeyBefore(index + 1);
-    if (start == null) {
-      continue;
-    }
-    final exposure = timeline[start]!;
-    final offset = index - start;
-    if (offset < 1 || offset >= exposure.length!) {
-      continue;
-    }
-    timeline[start] = exposure.copyWith(
-      breakdownOffsets: [...exposure.breakdownOffsets, offset],
-    );
-  }
+SplayTreeMap<int, TimelineExposure> _timelineFromJson(Object? json) {
+  final rawItems = _rawTimelineItems(json).values.toList(growable: false);
+  return SplayTreeMap.of({
+    for (final (at, item) in rawItems.indexed)
+      item.index: _exposureFromRawItem(
+        item,
+        length: _drawingLength(rawItems, at),
+      ),
+  });
 }

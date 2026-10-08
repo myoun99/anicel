@@ -4,7 +4,6 @@ import 'layer.dart';
 import 'layer_effect.dart';
 import 'layer_section_defaults.dart';
 import 'track_id.dart';
-import 'track_se_migration.dart';
 
 enum TrackType { video, audio }
 
@@ -128,9 +127,6 @@ class Track {
     // that never used one keeps exactly the shape it had.
     if (transitionLayer != createTrackTransitionLayer(id))
       'transition': transitionLayer.toJson(),
-    // No 'transform' key any more: the V row has no transform. A file that
-    // carries one still LOADS — the key is read and dropped — so an old
-    // project opens one row lighter rather than failing.
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     'type': type.name,
@@ -142,11 +138,8 @@ class Track {
     final id = TrackId.fromJson(json['id'] as Map<String, dynamic>);
     final cutsJson = (json['cuts'] as List<dynamic>).cast<Map<String, dynamic>>();
     final cuts = cutsJson.map(Cut.fromJson).toList();
-    // A 'transform' key written before the teardown is read and DROPPED, as is
-    // the per-cut transform an even older file kept: there is nothing to load
-    // them into. Old projects open, one row lighter.
-    // Missing key = a file written before the transition row existed: it
-    // backfills a fresh empty one, so nothing downstream sees an absence.
+    // No key = an untouched transition row, which the writer leaves out: a
+    // fresh empty one, so nothing downstream sees an absence.
     final transitionJson = json['transition'];
     final transitionLayer = transitionJson is Map<String, dynamic>
         ? Layer.fromJson(transitionJson)
@@ -157,34 +150,14 @@ class Track {
       for (final effect in effectsJson ?? const [])
         LayerEffect.fromJson(effect as Map<String, dynamic>),
     ];
-    final seLayersJson = json['seLayers'] as List<dynamic>?;
-    if (seLayersJson != null) {
-      return Track(
-        id: id,
-        name: json['name'] as String,
-        cuts: cuts,
-        seLayers: withEnsuredTrackSeLayers(
-          id,
-          seLayersJson
-              .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
-              .toList(),
-        ),
-        transitionLayer: transitionLayer,
-        effects: effects,
-        type: TrackType.values.byName(json['type'] as String),
-        fxEnabled: fxEnabled,
-      );
-    }
-
-    // Legacy shape (no seLayers key): SE rows lived on each cut — lift
-    // them onto the track's global axis (shape-based migration, the
-    // codebase's convention).
-    final lifted = liftCutSeLayersToTrack(id, cuts);
     return Track(
       id: id,
       name: json['name'] as String,
-      cuts: lifted.cuts,
-      seLayers: lifted.seLayers,
+      cuts: cuts,
+      seLayers: withEnsuredTrackSeLayers(id, [
+        for (final layer in json['seLayers'] as List<dynamic>)
+          Layer.fromJson(layer as Map<String, dynamic>),
+      ]),
       transitionLayer: transitionLayer,
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
