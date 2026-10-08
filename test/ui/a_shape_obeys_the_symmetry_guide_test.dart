@@ -264,6 +264,11 @@ void main() {
     expect(alphaAt(env.coordinator, 40, 30), isNonZero, reason: 'the drag');
     expect(alphaAt(env.coordinator, 160, 30), isNonZero, reason: 'the mirror');
     expect(
+      alphaAt(env.coordinator, 100, 30),
+      0,
+      reason: 'the gap between: one path through every copy would cross it',
+    );
+    expect(
       env.history.undoCount,
       before + 1,
       reason: 'handed every copy, it would draw a stroke for each',
