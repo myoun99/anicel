@@ -1,4 +1,5 @@
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -227,7 +228,8 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: List<ui.Size>.filled(4, const ui.Size(595, 842)),
     )..holdRender(0);
-    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    final opened = Completer<FakePdfDocument>();
+    PdfRenderService.debugOpenerOverride = (_) => opened.future;
     await pumpViewer(tester);
     expect(loading, findsNothing, reason: 'nothing was asked for');
 
@@ -236,6 +238,10 @@ void main() {
       kind: MediaAssetKind.pdf,
       name: 'conte',
     );
+    await tester.pump();
+    expect(loading, findsOneWidget, reason: 'the file is opening');
+
+    opened.complete(fake);
     for (var i = 0; i < 4; i += 1) {
       await tester.pump();
     }
