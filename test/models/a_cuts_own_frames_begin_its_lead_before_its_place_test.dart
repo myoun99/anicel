@@ -102,6 +102,14 @@ void main() {
       expect(axis.clampedToCutGlobalOf(const CutId('nowhere'), 3), isNull);
     });
 
+    test('a cut of no length holds every frame to where it stands', () {
+      const empty = CutId('empty');
+      final short = TrackFrameAxis([at(empty, 0, 10, 10)]);
+
+      expect(short.clampedToCutGlobalOf(empty, 0), 10);
+      expect(short.clampedToCutGlobalOf(empty, 5), 10);
+    });
+
     test('the editing playhead: a parking where it is parked, else the '
         'open cut\'s frame held to the cut', () {
       expect(

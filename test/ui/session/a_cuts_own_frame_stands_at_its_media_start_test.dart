@@ -150,6 +150,21 @@ void main() {
     expect(session.activeCutMediaStartFrame, 24);
   });
 
+  test('with no cut open the lens is the identity: the track\'s rows are '
+      'read on their own axis, and the cut\'s window shows nothing', () {
+    final session = sessionOf();
+
+    session.selectGlobalFrame(60);
+
+    expect(session.activeCutId, isNull, reason: 'fixture: past the film');
+    expect(session.activeCutMediaStartFrame, 0);
+    expect(session.trackSe.rowAxisOffset(sound), 0);
+    expect(
+      session.trackSe.trackSeWindow.displayLayer(soundRow(session)).timeline,
+      isEmpty,
+    );
+  });
+
   test('🚨a frame of the track is the cut\'s own frame that PLAYS there — '
       'and back', () {
     for (final (global, own) in const [(24, 6), (30, 12), (40, 22), (47, 29)]) {
@@ -604,6 +619,12 @@ void main() {
         30,
         reason: 'shown where the storyboard shows the cut\'s frame',
       );
+
+      // Its のりしろ plays first — shown on the cut's own block, where the
+      // storyboard holds the editing playhead too.
+      session.playbackRig.playback.seekToGlobalFrame(2);
+      expect(session.playheadCursors.cutFrameNow(), 2);
+      expect(session.playheadCursors.trackFrameNow(), 24);
     });
 
     test('its stop', () async {
@@ -642,8 +663,9 @@ void main() {
       canvasSize: const CanvasSize(width: 8, height: 8),
       layers: layers,
     );
-    // Nothing to compose in a; in b one cel over its own [8, 10) — the
-    // track's [26, 28), six frames before b's place plus eight.
+    // Nothing to compose in a; in b one cel over its own [8, 10) and
+    // [26, 28) — the track's [26, 28) and [44, 46): b's own frames stand
+    // six before its place, to its end.
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('ready'),
@@ -670,6 +692,7 @@ void main() {
                     ],
                     timeline: const {
                       8: TimelineExposure.drawing(FrameId('drawn'), length: 2),
+                      26: TimelineExposure.drawing(FrameId('drawn'), length: 2),
                     },
                   ),
                 ],
@@ -684,7 +707,8 @@ void main() {
 
     expect(storyboardReadyRuns(session, 0, 48), [
       (startIndex: 0, endIndexExclusive: 26),
-      (startIndex: 28, endIndexExclusive: 48),
+      (startIndex: 28, endIndexExclusive: 44),
+      (startIndex: 46, endIndexExclusive: 48),
     ]);
   });
 }
