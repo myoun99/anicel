@@ -181,8 +181,11 @@ void main() {
     expect(envelopeKey(cut2), '');
   });
 
-  test('a cut\'s names travel with it through its file — but the conte\'s, '
-      'which is the work\'s', () {
+  // ↩️It also pinned that a conte's name in a cut's staff, as a file held
+  // it, was dropped on reading — what a file from before F-291-Q1 held
+  // (format 9). Those formats are refused by their number now (the save
+  // law, 유저 2026-10-06), and 컷 설정 offers only the stages a cut keeps.
+  test('a cut\'s names travel with it through its file', () {
     final metadata = const CutMetadata(
       pageNotes: ['n'],
     ).withStaffName(key, '大川').withStaffName(layout, '清');
@@ -192,13 +195,6 @@ void main() {
       CutMetadata.fromJson(const CutMetadata(pageNotes: ['n']).toJson()).staff,
       isEmpty,
       reason: 'a cut naming no one writes nothing',
-    );
-    expect(
-      CutMetadata.fromJson({
-        'note': 'n',
-        'staff': {'conte': '콘티', 'key': '大川'},
-      }).staff,
-      {'key': '大川'},
     );
   });
 }
