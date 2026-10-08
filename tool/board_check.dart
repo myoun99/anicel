@@ -912,10 +912,7 @@ bool _saysSomething(BoardCard c) => c.log.any((l) {
 Set<String> _acks(File records) {
   final file = gateAckFile(records);
   if (!file.existsSync()) return const {};
-  return {
-    for (final raw in file.readAsLinesSync())
-      if (_ackKeyOf(raw) case final key?) key,
-  };
+  return {for (final raw in file.readAsLinesSync()) ?_ackKeyOf(raw)};
 }
 
 /// Where the acks are kept: beside the records, on the machine that holds
