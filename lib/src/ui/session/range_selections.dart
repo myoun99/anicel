@@ -1072,6 +1072,7 @@ class RangeSelections {
       // The storyboard's conte row is no cut's layer: it stands on the
       // conte layer it has in hand, or on nothing (I-73).
       final row when isTrackConteRow(row) => conteLayerInHand(
+        row: row,
         cut: _project.activeCutOrNull,
         activeLayerId: _selection.activeLayerId,
       )?.id,

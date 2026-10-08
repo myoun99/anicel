@@ -131,8 +131,9 @@ class TrackAxisWalk {
       return;
     }
     final axis = _projectSettings.axisForTrack(track.id);
-    final layer = trackIdOfConteRow(layerId) != null
-        ? trackConteRowShown(track.id, axis.entries)
+    final conteRow = trackConteRowOf(layerId);
+    final layer = conteRow != null
+        ? trackConteRowShown(track.id, axis.entries, seat: conteRow.seat)
         : track.transitionLayer.id == layerId
         ? track.transitionLayer
         : track.seLayers.where((row) => row.id == layerId).firstOrNull;

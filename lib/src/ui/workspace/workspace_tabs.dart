@@ -993,6 +993,9 @@ class _WorkspaceTabs {
               _state._storyboardPixelsPerFrame,
               // F-199: a section toggle is not a session notify.
               _state.widget.session.railView.hiddenSections,
+              // Nor is a fold: the conte row's twirl folds its attach rows
+              // here as it does on the timeline's rail (I-73).
+              _state.widget.session.railView.collapsedAttachBaseIds,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -1016,6 +1019,12 @@ class _WorkspaceTabs {
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
+              // And the attach folds — the timeline's own set and verb.
+              collapsedAttachBaseIds:
+                  _state.widget.session.railView.collapsedAttachBaseIds.value,
+              onToggleAttachGroup: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleGroupFold,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,

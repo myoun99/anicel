@@ -135,6 +135,7 @@ class BlockShift {
     // that one is not this rail's to shove (I-73).
     if (isTrackConteRow(currentRow) &&
         conteLayerInHand(
+              row: currentRow,
               cut: _project.activeCutOrNull,
               activeLayerId: _selection.activeLayerId,
             ) ==

@@ -26,6 +26,7 @@ import '../services/editing/layer_standing_after_change.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_viewport.dart';
+import '../models/conte_group.dart' show conteHeadFamiliesOf;
 import '../models/cut.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
@@ -71,7 +72,7 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/link_mirror.dart' show linkMirrorRows;
+import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -760,19 +761,22 @@ class EditorSessionManager extends ChangeNotifier
   /// project's (I-7).
   late final RailView railView = RailView();
 
-  /// Every use of [row] — the rows that twirl and fold as one with it: its
-  /// link group's, in whichever cuts they stand ([linkMirrorRows]), and
-  /// itself alone for a row that is not linked or that no cut holds (a
-  /// track's).
+  /// Every use of [row] — the rows that twirl and fold as one with it: the
+  /// rows that wear its head, in whichever cuts they stand
+  /// ([headMirrorRows] — its link group's, and a track's conte rows at its
+  /// seat), and itself alone for a row that is neither or that no cut holds
+  /// (a track's).
   ///
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
-  /// 상태 접힌 상태 공유하라는것. 법통일」.
+  /// 상태 접힌 상태 공유하라는것. 법통일」 — and the conte rows since I-73
+  /// (10-08), whose head is one: 「콘티행도 동일하게 하고싶으니까 어태치
+  /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」.
   List<LayerId> rowsFoldingWith(LayerId row) {
     final cutId = activeCutId;
     return cutId == null
         ? [row]
-        : linkMirrorRows(
+        : headMirrorRows(
             repository.requireProject(),
             cutId: cutId,
             layerId: row,
@@ -1294,6 +1298,11 @@ class EditorSessionManager extends ChangeNotifier
     // F-302: a row the command linked wears its group's twirls and folds —
     // BEFORE the standing law asks which rows the rail shows.
     railView.followLinks(repository.requireProject().linkRegistry);
+    // And a row born into a track's conte family wears the family's.
+    railView.followHeads([
+      for (final track in repository.requireProject().tracks)
+        ...conteHeadFamiliesOf(track.cuts),
+    ]);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
       reveal: reveal,

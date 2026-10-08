@@ -6,7 +6,8 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/commands/toggle_id_in_set_command.dart';
-import '../../services/project_lookup.dart' show layerAnywhereOrNull;
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, layerAnywhereOrNull, requireCut;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
@@ -216,7 +217,7 @@ class SessionRowButtonPresses {
 
   bool? _groupOpen(LayerId id) {
     final layer = _row(id);
-    final layers = session.activeCutOrNull?.layers;
+    final layers = _stackOf(id);
     if (layer == null || layers == null) {
       return null;
     }
@@ -392,7 +393,7 @@ class SessionRowButtonPresses {
   /// The attach layers riding [base] while its group is folded on the rail
   /// — none while it is open.
   List<Layer> _foldedRidersOf(LayerId base) {
-    final layers = session.activeCutOrNull?.layers;
+    final layers = _stackOf(base);
     if (layers == null ||
         !session.railView.collapsedAttachBaseIds.value.contains(base)) {
       return const [];
@@ -404,6 +405,19 @@ class SessionRowButtonPresses {
 
   Layer? _row(LayerId id) =>
       layerAnywhereOrNull(session.repository.requireProject(), id);
+
+  /// The stack [id]'s row stands in — its own cut's, wherever that is: the
+  /// storyboard's rail presses the conte rows of cuts that are not the
+  /// active one (I-73). ↩️The active cut's, always; a base pressed from
+  /// that rail under another cut was then asked about a stack it is not in,
+  /// and answered that it carries no attach group.
+  List<Layer>? _stackOf(LayerId id) {
+    final project = session.repository.requireProject();
+    final cutId = cutIdOfLayer(project, id);
+    return cutId == null
+        ? session.activeCutOrNull?.layers
+        : requireCut(project, cutId).layers;
+  }
 
   /// [read] for a row that has the button ([has]); null for one that has
   /// not, or for an id no row answers to.

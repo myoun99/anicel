@@ -7,9 +7,14 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
+import '../models/attached_layer_resolve.dart'
+    show attachArrowPlacement, attachRowWearsBaseComposite;
 import '../models/canvas_size.dart';
+import '../models/conte_group.dart';
+import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
+import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show EffectId, LayerEffect, effectParameterValueAt;
 import '../models/layer_id.dart';
@@ -165,6 +170,8 @@ import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
+import 'timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -189,10 +196,27 @@ part 'storyboard/storyboard_sheet.dart';
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
-/// Three kinds share the rail and they do not share a subject — see
+/// Four kinds share the rail and they do not share a subject — see
 /// `_StoryboardRailRows._trackGroupRowGeometry`, the only place that builds
-/// one, and `railRowsIn`, which walks them.
-typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
+/// one, and `railRowsIn`, which walks them. [conteSeat] is set only for a
+/// row of the track's conte group (`models/conte_group.dart`), whose
+/// [layer] is that seat's HEAD: the buttons act on it, and the commands
+/// carry what they write to the seat's row in every cut.
+typedef StoryboardRailRow = ({
+  Track track,
+  Layer? layer,
+  int? seSlot,
+  int? conteSeat,
+});
+
+/// The four verbs a conte row's head takes as given
+/// ([_StoryboardRowsAndLabels.conteLabelRow]).
+typedef _ConteHeadVerbs = ({
+  ValueChanged<LayerId> toggleEye,
+  void Function(LayerId layerId, double opacity) setOpacity,
+  void Function(LayerId layerId, LayerMarkEdit edit) pickMark,
+  void Function(LayerId layerId, LayerBlendMode mode) pickBlend,
+});
 
 /// One row of a track group's rail, as the strip column lays it out.
 ///
@@ -210,12 +234,13 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// S slot with no layer keeps none either.
 ///
 /// [railRow] is the row as the rail's column swipe sees it — the transition,
-/// S and V rows, which carry the columns. A lane carries none, so it has
-/// none, and the walk steps over it.
+/// S, V and conte rows, which carry the columns. A lane carries none, so it
+/// has none, and the walk steps over it; nor does a conte row no cut holds
+/// a layer for yet.
 ///
 /// [standRow] is the address you can STAND on when the row is neither of
-/// those — the track's CONTE row ([trackConteRowId], I-73): its cells are
-/// its cuts' own, selected inside a cut on the cut's own axis, so no
+/// those — a CONTE row of the track ([trackConteRowId], I-73): its cells
+/// are its cuts' own, selected inside a cut on the cut's own axis, so no
 /// track-axis select-drag lands its head on it and it keeps no [row]
 /// (유저 2026-10-08: the sweep across cuts is for later).
 typedef _StoryboardRailSlot = ({
@@ -545,6 +570,9 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneOpenOf,
     this.layerFxStateOf,
     this.onToggleLayerFx,
+    this.onLayerBlendModeSelected,
+    this.collapsedAttachBaseIds = const {},
+    this.onToggleAttachGroup,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -613,22 +641,42 @@ class StoryboardPanel extends StatefulWidget {
   // ⛔ NOT `timelineLayerControlsWidth`, deliberately. The user asked for
   // the same NUMBER and explicitly NOT for one source: "다만 코드상 독립.
   // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carry different
-  // columns — this one has no blend cell — so the day either needs a new
-  // one, the other must be free to stay put. The repetition is the point;
-  // do not "clean it up" into a shared constant.
+  // columns — this one had no blend cell, and has no onion — so the day
+  // either needs a new one, the other must be free to stay put. The
+  // repetition is the point; do not "clean it up" into a shared constant.
   //
   // 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
   // this rail shares widened to hold the legend's OPAC at 1×, and the
   // answer the user picked named both rails.
+  //
+  // 2026-10-08 (I-73): the day came for the BLEND cell — the conte row's
+  // head is the timeline's own (유저: 「콘티행도 동일하게 하고싶으니까 어태치
+  // 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」; the drawn
+  // proposal: 「라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인 펼침이 타임라인과
+  // 같이 됩니다」), so this rail carries the column and every row of it
+  // keeps the slot ([railHasBlendColumn]). The NUMBER stays: it is the width
+  // the timeline's rail has held that cell in since R27 #6, and the room
+  // comes back out of the name, where it had gone.
   static const double _trackLabelWidth = 443;
 
+  /// Whether this rail's rows keep a BLEND slot after the opacity's — the
+  /// host's answer every row and the legend above them read
+  /// ([layerRailTrailingCells]): a row with no blend to show reserves it,
+  /// empty, as it does every column it has nothing in.
+  static const bool railHasBlendColumn = true;
+
   /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
-  /// ITS word-holding column's growth — the opacity bar's; it has no blend
-  /// column — as the timeline's pays for its two (text-scale-rail-columns,
-  /// 유저 2026-09-25: 「칸도 글자 따라 넓어진다」). 0 at 1×.
-  static double railWidthIn(BuildContext context) =>
-      _trackLabelWidth +
-      (layerRailColumnWidthsIn(context).opacity - layerOpacitySlotWidth);
+  /// its word-holding columns' growth — the opacity bar's and the blend
+  /// chip's — as the timeline's pays for the same two
+  /// (text-scale-rail-columns, 유저 2026-09-25: 「칸도 글자 따라
+  /// 넓어진다」). 0 at 1×. ↩️The opacity's alone, while this rail had no
+  /// blend column.
+  static double railWidthIn(BuildContext context) {
+    final columns = layerRailColumnWidthsIn(context);
+    return _trackLabelWidth +
+        (columns.opacity - layerOpacitySlotWidth) +
+        (columns.blend - layerBlendSlotWidth);
+  }
 
   /// The frame ruler's height — and, since the seconds corner is the strip
   /// beside it, that button's too.
@@ -1064,6 +1112,19 @@ class StoryboardPanel extends StatefulWidget {
 
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// A conte row's BLEND, picked on its head — the timeline rail's own
+  /// verb (I-73). The conte rows' heads are the timeline's rows, and they
+  /// are mounted while the host wires them whole: this, the eye, the
+  /// opacity and the label ([_StoryboardRowsAndLabels.conteLabelRow]).
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+
+  /// The bases whose attach group is folded, and the fold's verb — the
+  /// timeline rail's own pair. A conte row's twirl folds the attach rows
+  /// riding it, in every cut at once: the head is one.
+  final Set<LayerId> collapsedAttachBaseIds;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
@@ -2213,6 +2274,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               // the extra width lands in the NAME, which is where
               // a track wants it.
               //
+              // And the host's answer is said here outright, not left to
+              // whether a legend was handed in: the rows below keep the
+              // blend slot either way ([StoryboardPanel.railHasBlendColumn]),
+              // and a heading that came and went with the legend would stand
+              // a column off them.
+              //
               // The legend's columns are this rail's rows' columns, and
               // its extent the rail's, as the rows lay them out
               // (text-scale-rail-columns). Its row is the band's — the
@@ -2225,6 +2292,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 railColumns: layerRailColumnWidthsIn(context),
               ),
               legend: widget.legend,
+              hasBlendColumn: StoryboardPanel.railHasBlendColumn,
               rowFilter: widget.rowFilter,
               hiddenSections: widget.hiddenSections,
               onToggleSection: widget.onToggleSection,
@@ -2965,7 +3033,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                     : layerRailTimesheetCell(
                         keyPrefix: 'storyboard',
                         layer: layer,
-                        onToggle: onToggleLayerTimesheet!,
+                        onToggle: onToggleLayerTimesheet,
                       ),
                 mark: layer != null && onLayerMarkSelected != null
                     ? LayerMarkChip.forLayer(
@@ -3000,6 +3068,7 @@ class _StoryboardSeLabel extends StatelessWidget {
               ),
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
+                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
                 // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
                 // none either — the twirled-down Audio lane is the "big
                 // waveform" view. The fill-reference slot stays reserved so
@@ -3196,6 +3265,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
               ),
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
+                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
                 // The eye: include/exclude this row's composite
                 // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
                 // fx and opacity stay kind-gated off, exactly like the
@@ -4499,9 +4569,11 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 ),
               ),
               // The shared trailing slots (UI-R5): the fx switch in its
-              // column, and the eye's and the opacity's reserved and empty.
+              // column, and the eye's, the opacity's and the blend's reserved
+              // and empty.
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
+                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
                 // R9 #21: the switch in this row's fx column is the
                 // TRACK's — a row's columns describe the row's own
                 // subject, and this row is the track's.

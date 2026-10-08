@@ -10,9 +10,10 @@ import '../timeline/timeline_row_filter.dart';
 
 /// The legend's verbs wired to [session] and to the host's row filter —
 /// the one wiring behind the timeline rail's legend and the storyboard's
-/// (the audit's clone scan, 2026-09-03). The onion-skin and blend verbs are
-/// the timeline's alone: its rail has those columns, the storyboard's does
-/// not, so each host names them or leaves them null.
+/// (the audit's clone scan, 2026-09-03). A host names the verbs of the
+/// columns its rail has and leaves the rest null: the onion-skin's are the
+/// timeline's alone; the blend's is both rails' since the storyboard's took
+/// that column with the conte row's head (I-73, 2026-10-08).
 LayerLegendCallbacks sessionLegendCallbacks(
   EditorSessionManager session, {
   required TimelineRowFilter rowFilter,

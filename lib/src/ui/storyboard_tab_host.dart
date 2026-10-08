@@ -71,6 +71,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.onSetRowFilter,
     this.hiddenSections = const {},
     this.onToggleSection,
+    this.collapsedAttachBaseIds = const {},
+    this.onToggleAttachGroup,
     this.rowsChannel,
     this.transformOptions,
   });
@@ -84,6 +86,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// toggles, from the same legend menu (F-199).
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
+
+  /// The folded attach groups, shared with the timeline — the same set and
+  /// the same verb ([TimelineTabHost.collapsedAttachBaseIds]): the conte
+  /// row's twirl folds the attach rows riding it (I-73).
+  final Set<LayerId> collapsedAttachBaseIds;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -587,6 +595,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     rowFilter: widget.rowFilter,
                     hiddenSections: widget.hiddenSections,
                     onToggleSection: widget.onToggleSection,
+                    collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+                    onToggleAttachGroup: widget.onToggleAttachGroup,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _dragPreview,
                     // While playing, the highlight follows the PLAYING cut
@@ -1013,6 +1023,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _expandedTransformTracks.contains(track.id.value),
                     layerFxStateOf: _session.effectsAndFx.layerFxState,
                     onToggleLayerFx: _rowPresses.toggleFx,
+                    // The conte rows' heads are the timeline's rows (I-73):
+                    // their blend is that rail's own verb.
+                    onLayerBlendModeSelected: _rowPresses.pickBlendMode,
                     // The timeline's rail legend on this panel too (UI-R5): the
                     // same session-backed bulk flyouts + master opacity bar; the
                     // row solos stand down (the storyboard rail is track-global,
@@ -1022,6 +1035,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       _session,
                       rowFilter: widget.rowFilter,
                       onSetRowFilter: widget.onSetRowFilter,
+                      // The blend column came to this rail with the conte
+                      // row's head (I-73): its heading sweeps as the
+                      // timeline's does.
+                      onSetBlendModeForDisplayed:
+                          _session.layerSwitches.setBlendModeForLayers,
                     ),
                     // Master-bar drags (UI-R6 #2): S-row sliders follow the
                     // preview channel live; the bar rests on the last committed

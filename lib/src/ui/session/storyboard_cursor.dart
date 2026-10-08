@@ -1,3 +1,4 @@
+import '../../models/conte_group.dart' show conteRowAtSeat;
 import '../../models/conte/conte_ink_keys.dart'
     show conteInkRowLayerId;
 import '../../models/cut.dart';
@@ -187,11 +188,12 @@ class StoryboardCursor {
           return null;
         }
         return StoryboardCursorTransitionSpan(span.key, span.value.length);
-      case LayerRowAddress(:final layerId)
-          when trackIdOfConteRow(layerId) != null:
+      case final row when isTrackConteRow(row):
         // A cut with no conte row has no panel, and a gap has no cut.
         final cut = _cutUnderCursor();
-        return cut == null ? null : _panelUnderCursor(cut);
+        return cut == null
+            ? null
+            : _conteRowBlockUnderCursor(cut, conteRowSeatOf(row)!);
       case LayerRowAddress(:final layerId):
         return _rowBlockUnderCursor(layerId);
       case LaneRowAddress():
@@ -201,6 +203,18 @@ class StoryboardCursor {
         final cut = _cutUnderCursor();
         return cut == null ? null : StoryboardCursorCutBlock(cut);
     }
+  }
+
+  /// The block under the cursor on the conte row at [seat] of [cut]: the
+  /// conte's PANEL on its own row (seat 0), and on an attach row riding it
+  /// the block of that row — a cut's own row like any other, with the
+  /// timing the timeline gives it (a synced one has none of its own).
+  StoryboardCursorBlock? _conteRowBlockUnderCursor(Cut cut, int seat) {
+    if (seat == 0) {
+      return _panelUnderCursor(cut);
+    }
+    final attach = conteRowAtSeat(cut, seat);
+    return attach == null ? null : _rowBlockUnderCursor(attach.id);
   }
 
   /// The cut the storyboard's cursor stands in, or null in a gap.

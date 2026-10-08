@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
@@ -250,7 +251,7 @@ void main() {
       final row = trackConteRowShown(trackId, entries);
       expect((row.name, row.mark), ('B', conteMark));
       expect(
-        trackConteHeadLayer([for (final entry in entries) entry.cut])?.id,
+        conteHeadRowAt([for (final entry in entries) entry.cut], 0)?.id,
         const LayerId('sb-b'),
       );
 
@@ -259,7 +260,7 @@ void main() {
       final bare = entriesOf([cut('a', 4)]);
       final bareCuts = [for (final entry in bare) entry.cut];
       expect(trackConteRowShown(trackId, bare).mark, LayerMark.none);
-      expect(trackConteHeadLayer(bareCuts), isNull);
+      expect(conteHeadRowAt(bareCuts, 0), isNull);
       // One name wherever the row is written: the rail's label reads
       // [trackConteRowName], the flip window the row as drawn.
       final kindsWord = LayerKind.storyboard.labelFor(AppText.language);
@@ -293,26 +294,26 @@ void main() {
     test('a cut that begins its conte at 0: the frame counted from the '
         'cut\'s start', () {
       final entry = entryOf(plain);
-      expect(conteRowOwnFrameAt(entry, plain, 24), 0);
-      expect(conteRowOwnFrameAt(entry, plain, 30), 6);
-      expect(conteRowGlobalFrameOf(entry, plain, 6), 30);
+      expect(conteRowOwnFrameAt(entry, 24), 0);
+      expect(conteRowOwnFrameAt(entry, 30), 6);
+      expect(conteRowGlobalFrameOf(entry, 6), 30);
     });
 
     test('🚨a cut an O.L arrives into: that much further into the row — '
         'past the のりしろ', () {
       final entry = entryOf(arriving);
-      expect(conteRowOwnFrameAt(entry, arriving, 24), 6);
-      expect(conteRowOwnFrameAt(entry, arriving, 30), 12);
-      expect(conteRowGlobalFrameOf(entry, arriving, 6), 24);
-      expect(conteRowGlobalFrameOf(entry, arriving, 18), 36);
+      expect(conteRowOwnFrameAt(entry, 24), 6);
+      expect(conteRowOwnFrameAt(entry, 30), 12);
+      expect(conteRowGlobalFrameOf(entry, 6), 24);
+      expect(conteRowGlobalFrameOf(entry, 18), 36);
     });
 
     test('a frame outside the cut is held to the cut — a drag that leaves '
         'its cut stops at its edge', () {
       final entry = entryOf(arriving);
-      expect(conteRowOwnFrameAt(entry, arriving, 3), 6, reason: 'before it');
-      expect(conteRowOwnFrameAt(entry, arriving, 99), 29, reason: 'past it');
-      expect(conteRowOwnFrameAt(entry, plain, 99), 23);
+      expect(conteRowOwnFrameAt(entry, 3), 6, reason: 'before it');
+      expect(conteRowOwnFrameAt(entry, 99), 29, reason: 'past it');
+      expect(conteRowOwnFrameAt(entryOf(plain), 99), 23);
     });
   });
 

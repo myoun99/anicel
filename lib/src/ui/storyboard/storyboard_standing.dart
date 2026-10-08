@@ -184,11 +184,16 @@ class _StoryboardStanding {
     LayerId layerId,
     int frame,
   ) {
-    if (trackIdOfConteRow(layerId) != null) {
+    final conteRow = trackConteRowOf(layerId);
+    if (conteRow != null) {
       return standingUnitAt(
         lanes: [
           trackRowMaterialBlocks(
-            trackConteRowShown(track.id, _cutsAsShownOn(track)),
+            trackConteRowShown(
+              track.id,
+              _cutsAsShownOn(track),
+              seat: conteRow.seat,
+            ),
             spans: false,
           ),
         ],

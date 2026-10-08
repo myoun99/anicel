@@ -226,11 +226,12 @@ List<Widget> layerRailLeadingCells({
 ///
 /// [attachArrowPlacement] non-null is the attach row's arrow; otherwise
 /// the toggle when [layerCarriesTimesheetToggle], else null (the slot
-/// stays reserved and empty).
+/// stays reserved and empty). A host that hands in no [onToggle] mounts no
+/// toggle on the row.
 Widget? layerRailTimesheetCell({
   required String keyPrefix,
   required Layer layer,
-  required ValueChanged<LayerId> onToggle,
+  required ValueChanged<LayerId>? onToggle,
   AttachedPlacement? attachArrowPlacement,
 }) {
   if (attachArrowPlacement != null) {
@@ -240,7 +241,7 @@ Widget? layerRailTimesheetCell({
       placement: attachArrowPlacement,
     );
   }
-  if (!layerCarriesTimesheetToggle(layer)) {
+  if (onToggle == null || !layerCarriesTimesheetToggle(layer)) {
     return null;
   }
   return RailSwipeColumnPointer(

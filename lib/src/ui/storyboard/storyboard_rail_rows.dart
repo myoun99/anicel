@@ -211,33 +211,54 @@ class _StoryboardRailRows {
   bool _showsTransitionRow(Track track) =>
       _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
 
-  /// Whether the rail shows [track]'s CONTE row (I-73) — the cuts' conte
-  /// layers as one row, under the V row: its section is the one the timeline
-  /// puts that row's kind in, and the legend's filter judges it as it judges
-  /// every row ([_filterAllowsConteRow]). The row is there whether or not a
-  /// cut has a conte layer yet — a cut with none wears the button that makes
-  /// one there.
+  /// The seats of [track]'s conte group the rail SHOWS, top row first — the
+  /// attach rows above the conte, the conte, the ones below it
+  /// ([conteSeatsOf]) — under the V row (I-73): its section is the one the
+  /// timeline puts the kind in, and the legend's filter judges each row as
+  /// it judges every row ([_filterAllowsConteSeat]). The conte's own row is
+  /// there whether or not a cut has a conte layer yet — a cut with none
+  /// wears the button that makes one there. An attach row is there while
+  /// some cut holds one at its seat and the group is not folded.
   ///
-  /// ⚠️ONE question for the three places that lay the row out, as
-  /// [_showsTransitionRow] is.
-  bool _showsConteRow(Track track) =>
-      _sectionShown(timelineSectionForLayerKind(LayerKind.storyboard)) &&
-      _filterAllowsConteRow(track);
+  /// 🚨ONE LIST for the three places that lay these rows out — the row
+  /// table, the rail's labels and the strips — as [_shownSeSlots] is.
+  List<int> _shownConteSeats(Track track) {
+    if (!_sectionShown(timelineSectionForLayerKind(LayerKind.storyboard))) {
+      return const [];
+    }
+    final base = conteHeadRowAt(track.cuts, 0);
+    final folded =
+        base != null &&
+        _state.widget.collapsedAttachBaseIds.contains(base.id);
+    return [
+      for (final seat in folded ? const [0] : conteSeatsOf(track.cuts))
+        if (_filterAllowsConteSeat(track, seat)) seat,
+    ];
+  }
 
-  /// Whether the legend's filter lets the conte row show — judged, like
-  /// every row, ONLY on the facets it carries here ([TimelineRowFilter
-  /// .allowsRow]): its kind, and the colour label its blocks wear
-  /// ([trackConteHeadLayer]'s). It wears no fx switch on this rail yet
-  /// (I-73 ③), so the fx chip has nothing of it to judge.
-  bool _filterAllowsConteRow(Track track) =>
-      _state.widget.rowFilter.allowsRow(
-        standing:
-            _state.widget.selectedRow ==
-            LayerRowAddress(trackConteRowId(track.id)),
-        kind: LayerKind.storyboard,
-        mark: trackConteHeadLayer(track.cuts)?.mark,
-        fxEnabled: true,
-      );
+  /// Whether the legend's filter lets the conte row at [seat] show. Its
+  /// head IS a layer, so it answers every chip, as an S row does
+  /// ([TimelineRowFilter.allowsLayerRow]); while no cut holds a layer there
+  /// the row is judged on the one facet it has, its kind.
+  bool _filterAllowsConteSeat(Track track, int seat) {
+    final standing =
+        _state.widget.selectedRow ==
+        LayerRowAddress(trackConteRowId(track.id, seat: seat));
+    final head = conteHeadRowAt(track.cuts, seat);
+    return head == null
+        ? _state.widget.rowFilter.allowsRow(
+            standing: standing,
+            kind: LayerKind.storyboard,
+            fxEnabled: true,
+          )
+        : _state.widget.rowFilter.allowsLayerRow(
+            head,
+            standing: standing,
+            fxEnabled: fxEnabledFromState(
+              _state.widget.layerFxStateOf?.call(head.id),
+            ),
+          );
+  }
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)
@@ -402,6 +423,7 @@ class _StoryboardRailRows {
       crossExtent: _state._naturalRailWidth,
       columns: layerRailColumnWidthsIn(_state.context),
       leadingOrigin: 0,
+      hasBlendColumn: StoryboardPanel.railHasBlendColumn,
       visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
       // The transition row draws no fx switch, and a kind that shows none
       // draws none either — both read null, which is the same answer the row
@@ -438,7 +460,9 @@ class _StoryboardRailRows {
   }
 
   /// The FX column's value for a row: the layer's FX state where the kind
-  /// shows the toggle, the track's on a V row — null where it has no verb.
+  /// shows the toggle, the track's on a V row — null where it has no verb,
+  /// which is an attach row too: it wears its base's switch
+  /// ([isAttachedLayer]; no organizer folder is a row of this rail).
   bool? _rowFxOn(StoryboardRailRow row) {
     final toggleTrackFx = _state.widget.onToggleTrackFx;
     final trackFxStateOf = _state.widget.trackFxStateOf;
@@ -446,7 +470,9 @@ class _StoryboardRailRows {
     final layerFxStateOf = _state.widget.layerFxStateOf;
     final layer = row.layer;
     if (layer != null) {
-      return toggleLayerFx == null || !layerKindShowsFxToggle(layer.kind)
+      return toggleLayerFx == null ||
+              !layerKindShowsFxToggle(layer.kind) ||
+              isAttachedLayer(layer)
           ? null
           : fxEnabledFromState(layerFxStateOf?.call(layer.id));
     }
@@ -467,10 +493,14 @@ class _StoryboardRailRows {
   }
 
   /// The timesheet column's value: whether the layer is on the sheet, for
-  /// an eligible unattached layer row — null elsewhere.
+  /// an eligible unattached layer row — null elsewhere, and on a conte row:
+  /// its head mounts no sheet toggle
+  /// ([_StoryboardRowsAndLabels.conteLabelRow]).
   bool? _rowOnTimesheet(StoryboardRailRow row) {
     final layer = row.layer;
-    return layer != null && layerCarriesTimesheetToggle(layer)
+    return layer != null &&
+            row.conteSeat == null &&
+            layerCarriesTimesheetToggle(layer)
         ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
               layer.onTimesheet)
         : null;
@@ -560,13 +590,15 @@ class _StoryboardRailRows {
       // 유저 2026-10-08: 「v행 아래에 콘티행 만들어서 거기서」). The band says
       // what the timeline's says over the same layers — the section their
       // kind sits in ([timelineSectionForLayerKind]).
-      if (_showsConteRow(track))
+      if (_shownConteSeats(track) case final seats when seats.isNotEmpty)
         _sectionZoneGroup(
           keyValue: 'storyboard-section-zone-${track.id.value}-conte',
           label: timelineSectionLabel(
             timelineSectionForLayerKind(LayerKind.storyboard),
           ),
-          rows: [_state._rows.conteLabelRow(track)],
+          rows: [
+            for (final seat in seats) _state._rows.conteLabelRow(track, seat),
+          ],
         ),
     ];
   }
@@ -1255,7 +1287,12 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (track: track, layer: track.transitionLayer, seSlot: null),
+        railRow: (
+          track: track,
+          layer: track.transitionLayer,
+          seSlot: null,
+          conteSeat: null,
+        ),
         height: heights.transition,
       ));
     }
@@ -1267,7 +1304,7 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (track: track, layer: layer, seSlot: slot),
+        railRow: (track: track, layer: layer, seSlot: slot, conteSeat: null),
         height: heights.se,
       ));
       if (layer != null &&
@@ -1299,7 +1336,7 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (track: track, layer: null, seSlot: null),
+        railRow: (track: track, layer: null, seSlot: null, conteSeat: null),
         height: _state.widget.trackLaneHeight,
       ));
       // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape):
@@ -1323,18 +1360,22 @@ class _StoryboardRailRows {
         }
       }
     }
-    // The CONTE row closes the group, under the V row and the V row's own
-    // lanes (I-73). It is stood on and nothing else ([_StoryboardRailSlot
-    // .standRow]): no track-axis select-drag lands on it, and its head
-    // carries no column to swipe yet.
-    if (_showsConteRow(track)) {
+    // The CONTE rows close the group, under the V row and the V row's own
+    // lanes (I-73): one a seat ([_shownConteSeats]). Each is stood on
+    // ([_StoryboardRailSlot.standRow]) — no track-axis select-drag lands on
+    // it — and carries the columns its head does, once a cut holds a layer
+    // at its seat to be that head.
+    for (final seat in _shownConteSeats(track)) {
+      final head = conteHeadRowAt(track.cuts, seat);
       slots.add((
         row: null,
         laneRow: null,
-        standRow: LayerRowAddress(trackConteRowId(track.id)),
+        standRow: LayerRowAddress(trackConteRowId(track.id, seat: seat)),
         bandRow: false,
         lane: false,
-        railRow: null,
+        railRow: head == null
+            ? null
+            : (track: track, layer: head, seSlot: null, conteSeat: seat),
         height: heights.conte,
       ));
     }
@@ -1400,34 +1441,40 @@ class _StoryboardRailRows {
           ))
             strip,
       ],
-      if (_showsConteRow(track)) _conteStripRow(track, entries, width, scale),
+      ..._conteStripRows(track, entries, width, scale),
     ];
   }
 
-  /// The CONTE row's strip, on the cuts as this step lays them: a cut's
-  /// panels ride its trim and its move with the block above them.
-  Widget _conteStripRow(
+  /// The CONTE rows' strips — the conte's, and an attach row's at each seat
+  /// the rail shows ([_shownConteSeats]) — on the cuts as this step lays
+  /// them: a cut's panels ride its trim and its move with the block above
+  /// them.
+  List<Widget> _conteStripRows(
     Track track,
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
-  ) => _StoryboardConteRow(
-    track: track,
-    layoutEntries: entries,
-    width: width,
-    height: _state._rowHeights.conte,
-    timelineScale: scale,
-    frameGeometry: _state._frameGeometry,
-    windowBucket: _state._horizontalWindowBucket,
-    viewportWidth: _state._stripViewportWidth,
-    showSeconds: _state.widget.showSeconds,
-    projectFrameRate: _state.widget.projectFrameRate,
-    onRowFramePress: _state.widget.onRowFramePress,
-    stripEdges: _state.widget.stripEdges,
-    stripSelect: _state.widget.stripSelect,
-    onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
-    onEditConteBlock: _state.widget.onEditConteBlock,
-  );
+  ) => [
+    for (final seat in _shownConteSeats(track))
+      _StoryboardConteRow(
+        track: track,
+        seat: seat,
+        layoutEntries: entries,
+        width: width,
+        height: _state._rowHeights.conte,
+        timelineScale: scale,
+        frameGeometry: _state._frameGeometry,
+        windowBucket: _state._horizontalWindowBucket,
+        viewportWidth: _state._stripViewportWidth,
+        showSeconds: _state.widget.showSeconds,
+        projectFrameRate: _state.widget.projectFrameRate,
+        onRowFramePress: _state.widget.onRowFramePress,
+        stripEdges: _state.widget.stripEdges,
+        stripSelect: _state.widget.stripSelect,
+        onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+        onEditConteBlock: _state.widget.onEditConteBlock,
+      ),
+  ];
 
   /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
   /// track-global content, built from the base layout.

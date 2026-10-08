@@ -149,7 +149,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
-    required this.onToggleLayerTimesheet,
+    this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onOpenLayerMixer,
@@ -225,7 +225,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the real write. Null keeps the legacy per-move-write behavior.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
-  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  /// The sheet toggle's verb. Null mounts none and keeps its slot — the
+  /// storyboard's conte rows, whose head is ONE for every cut while the
+  /// sheet flag is each cut's own (I-73); an attach row's arrow stands in
+  /// that slot either way.
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);

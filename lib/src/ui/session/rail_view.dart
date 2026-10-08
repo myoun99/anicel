@@ -120,6 +120,34 @@ class RailView {
     }
   }
 
+  /// Rows that wear ONE head though no link holds them — a track's conte
+  /// rows at one seat (I-73, 유저 2026-10-08: 「콘티레이어 권고한대로 머리만
+  /// 한벌 ok. 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」) — fold and twirl
+  /// as one, as a link group's rows do ([followLinks]).
+  ///
+  /// A press reaches every row of the family by itself, so inside a family
+  /// that stood the sets already agree; this is for the row a command just
+  /// made — a new cut's conte, an attach row added to one — which takes on
+  /// what the others wear. ⚠️No row of a family is its canonical one (the
+  /// head is whichever cut comes first, and a cut can be put before it), so
+  /// the rule asks the family: where ANY row is in a set, every row is.
+  void followHeads(Iterable<List<LayerId>> families) {
+    for (final rows in [collapsedAttachBaseIds, expandedLaneLayerIds]) {
+      if (rows.value.isEmpty) {
+        continue;
+      }
+      final next = Set<LayerId>.of(rows.value);
+      for (final family in families) {
+        if (family.any(next.contains)) {
+          next.addAll(family);
+        }
+      }
+      if (!setEquals(next, rows.value)) {
+        rows.value = next;
+      }
+    }
+  }
+
   void dispose() {
     hiddenSections.dispose();
     rowFilter.dispose();

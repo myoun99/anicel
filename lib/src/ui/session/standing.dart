@@ -20,11 +20,11 @@ import '../timeline/layer_timeline_display_adapter.dart'
 import '../timeline/property_lane_model.dart'
     show LayerRowHiddenBy, layerRowHiddenBy;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
-import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
+import '../../models/conte_group.dart' show conteRowAtSeat;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
-    show linkMirrorRows, linkMirrorTargets;
+    show headMirrorRows, linkMirrorTargets;
 import '../../services/commands/update_layer_collapsed_command.dart';
 import 'playback_rig.dart';
 import 'rail_view.dart';
@@ -767,9 +767,10 @@ class Standing {
 
   LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
       switch (storyboardStandingRow) {
-        LayerRowAddress(:final layerId)
-            when trackIdOfConteRow(layerId) != null =>
-          layerAConteStandSeats(before: before),
+        final row when isTrackConteRow(row) => layerAConteStandSeats(
+          before: before,
+          seat: conteRowSeatOf(row)!,
+        ),
         LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
             when _activeCutHasLayer(layerId) =>
           layerId,
@@ -796,19 +797,23 @@ class Standing {
   }
 
   /// The layer standing on a CONTE CELL of the active cut seats (F-187):
-  /// the cut's conte row when it has one ([storyboardLayerForCut]); else
+  /// the cut's conte row when it has one ([conteRowAtSeat]); else
   /// [before] — the layer you stood on — when the cut shows it (a track's S
   /// row does, in every cut); else null, and nothing is done: the cut's own
   /// landing ([selectCut]'s memory) stands (「컷에설때 콘티레이어가 없다면
   /// 마지막에 선 레이어 그냥 그대로둠. 아무것도 안하고」).
   ///
+  /// [seat] is the row of the conte group stood on ([conteRowAtSeat]): the
+  /// conte itself, or an attach row riding it — the storyboard's rail draws
+  /// one row a seat (I-73).
+  ///
   /// ★One answer for every door that stands on a conte cell — the
-  /// storyboard's conte row and the conte preview's cells. ↩️The
+  /// storyboard's conte rows and the conte preview's cells. ↩️The
   /// storyboard's V row was one of them until I-73 (10-08): it stands on
   /// the CUT, which seats no row ([_seatTimelineOnStoryboardStand]).
-  LayerId? layerAConteStandSeats({required LayerId? before}) {
+  LayerId? layerAConteStandSeats({required LayerId? before, int seat = 0}) {
     final cut = _project.activeCutOrNull;
-    final conte = cut == null ? null : storyboardLayerForCut(cut);
+    final conte = cut == null ? null : conteRowAtSeat(cut, seat);
     if (conte != null) {
       return conte.id;
     }
@@ -1253,13 +1258,14 @@ class Standing {
     final baseId = attachGroupBaseOf(layer, stack);
     final folded = _railView.collapsedAttachBaseIds.value;
     if (baseId != null && folded.contains(baseId)) {
-      // Every use of the base unfolds with it (F-302).
+      // Every use of the base unfolds with it (F-302) — every row that
+      // wears its head (I-73).
       final cutId = _project.activeCutId;
       _railView.collapsedAttachBaseIds.value = {...folded}
         ..removeAll(
           cutId == null
               ? [baseId]
-              : linkMirrorRows(
+              : headMirrorRows(
                   _project.repository.requireProject(),
                   cutId: cutId,
                   layerId: baseId,

@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../models/conte_group.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -11,6 +12,8 @@ import '../models/layer_mark.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../models/timeline_exposure.dart';
+import '../models/timeline_row_address.dart';
+import '../models/timeline_splice.dart' show captureTimelineRun;
 import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
 import 'text/app_strings.dart';
@@ -28,21 +31,27 @@ export '../models/conte_group.dart'
         storyboardLayerForCut,
         storyboardLayersOfCut;
 
-/// THE CONTE LAYER THE STORYBOARD'S CONTE ROW HAS IN HAND: [cut]'s conte
-/// layer, while it is the layer the timeline stands on ([activeLayerId]).
+/// THE LAYER A STORYBOARD CONTE ROW HAS IN HAND: the layer at [row]'s seat
+/// of [cut]'s conte group, while it is the layer the timeline stands on
+/// ([activeLayerId]).
 ///
-/// The conte row is ONE row over every cut ([trackConteRowId]), so what it
+/// A conte row is ONE row over every cut ([trackConteRowId]), so what it
 /// stands on is resolved each time it is asked. Standing there seats the
-/// timeline on the conte layer of the cut under the playhead
+/// timeline on the layer at that seat of the cut under the playhead
 /// (`Standing.layerAConteStandSeats`), and the verbs that act on the
 /// timeline's own row — the frame buttons, the shove, the row's whole span
-/// — are this row's for as long as that stays so. Null where the cut has no
-/// conte layer, where there is no cut (a gap), and once another layer has
-/// been picked in the timeline: that one is the timeline panel's subject,
-/// not this row's.
-Layer? conteLayerInHand({required Cut? cut, required LayerId? activeLayerId}) {
-  final conte = cut == null ? null : storyboardLayerForCut(cut);
-  return conte != null && conte.id == activeLayerId ? conte : null;
+/// — are this row's for as long as that stays so. Null where [row] is no
+/// conte row, where the cut has no layer at its seat, where there is no cut
+/// (a gap), and once another layer has been picked in the timeline: that
+/// one is the timeline panel's subject, not this row's.
+Layer? conteLayerInHand({
+  required TimelineRowAddress? row,
+  required Cut? cut,
+  required LayerId? activeLayerId,
+}) {
+  final seat = conteRowSeatOf(row);
+  final layer = seat == null || cut == null ? null : conteRowAtSeat(cut, seat);
+  return layer != null && layer.id == activeLayerId ? layer : null;
 }
 
 /// Each cut's PANELS, under the coverage rule — what the V row's strip
@@ -82,97 +91,124 @@ Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut(
 /// のりしろ before it (F-227). A cut with no conte layer, and a gap, hold
 /// nothing here.
 ///
-/// The row wears the first conte layer's name and colour label
-/// ([trackConteHeadLayer]).
+/// An ATTACH row of the conte ([seat] other than 0) is laid the same way:
+/// each cut's row at that seat as the timeline shows it
+/// ([attachedRowAsShown] — a synced row wears its base's blocks), the cells
+/// of it that fall inside the conte ([captureTimelineRun], which cuts a
+/// block that straddles an end there).
+///
+/// The row wears its head's name and colour label ([conteHeadRowAt]).
 Layer trackConteRowShown(
   TrackId trackId,
-  Iterable<StoryboardTimelineLayoutEntry> entries,
-) {
+  Iterable<StoryboardTimelineLayoutEntry> entries, {
+  int seat = 0,
+}) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   final frames = <Frame>[];
   for (final entry in entries) {
-    final row = storyboardLayerForCut(entry.cut);
-    if (row == null) {
+    final cells = _conteCellsOf(entry, seat);
+    if (cells == null) {
       continue;
     }
-    final conteStart = storyboardConteStart(row.timeline);
-    final tiled = storyboardTimelineFilledToCover(
-      timeline: row.timeline,
-      cutDuration: entry.duration,
-      conteStart: conteStart,
-    );
-    if (tiled == null) {
-      continue;
-    }
-    frames.addAll(row.frames);
-    for (final MapEntry(key: ownFrame, value: block) in tiled.entries) {
-      timeline[entry.startFrame + ownFrame - conteStart] = block;
+    frames.addAll(cells.row.frames);
+    for (final MapEntry(key: conteFrame, value: block)
+        in cells.blocks.entries) {
+      timeline[entry.startFrame + conteFrame] = block;
     }
   }
   final cuts = [for (final entry in entries) entry.cut];
   return Layer(
-    id: trackConteRowId(trackId),
-    name: trackConteRowName(cuts),
+    id: trackConteRowId(trackId, seat: seat),
+    name: trackConteRowName(cuts, seat: seat),
     kind: LayerKind.storyboard,
-    mark: trackConteHeadLayer(cuts)?.mark ?? LayerMark.none,
+    mark: conteHeadRowAt(cuts, seat)?.mark ?? LayerMark.none,
     frames: frames,
     timeline: timeline,
   );
 }
 
-/// The name the track's conte row goes by wherever it is written — its
-/// rail label, the flip window: the first conte layer's on the track
-/// ([trackConteHeadLayer]), and the kind's own word while no cut has one.
+/// [entry]'s row at [seat] and its blocks counted in the CONTE's frames —
+/// 0 at the cut's start on the track; null where the cut holds no row
+/// there, or nothing of it to show.
+({Layer row, Map<int, TimelineExposure> blocks})? _conteCellsOf(
+  StoryboardTimelineLayoutEntry entry,
+  int seat,
+) {
+  final base = storyboardLayerForCut(entry.cut);
+  if (base == null) {
+    return null;
+  }
+  final conteStart = storyboardConteStart(base.timeline);
+  if (seat == 0) {
+    final tiled = storyboardTimelineFilledToCover(
+      timeline: base.timeline,
+      cutDuration: entry.duration,
+      conteStart: conteStart,
+    );
+    return tiled == null
+        ? null
+        : (
+            row: base,
+            blocks: {
+              for (final MapEntry(key: ownFrame, value: block)
+                  in tiled.entries)
+                ownFrame - conteStart: block,
+            },
+          );
+  }
+  final row = conteRowAtSeat(entry.cut, seat);
+  if (row == null) {
+    return null;
+  }
+  final shown = attachedRowAsShown(row, entry.cut.layers);
+  return (
+    row: shown,
+    blocks: captureTimelineRun(
+      timeline: shown.timeline,
+      index: conteStart,
+      count: entry.duration,
+    ).exposures,
+  );
+}
+
+/// The name a track's conte row goes by wherever it is written — its rail
+/// label, the flip window: its head's ([conteHeadRowAt], the first of the
+/// cuts that holds a row at [seat]), and the kind's own word while no cut
+/// has one.
 ///
 /// ⚠️ONE answer. The rail read the kind's word and the row as drawn an
 /// empty name, so a film with no conte layer yet named the row on its rail
 /// and left it nameless in the flip window (🧪2026-10-08, before it landed).
-String trackConteRowName(Iterable<Cut> cuts) =>
-    trackConteHeadLayer(cuts)?.name ??
+String trackConteRowName(Iterable<Cut> cuts, {int seat = 0}) =>
+    conteHeadRowAt(cuts, seat)?.name ??
     LayerKind.storyboard.labelFor(AppText.language);
 
-/// The conte layer the track's conte row is NAMED and COLOURED by: the
-/// first one on the track, in the cuts' order — null while no cut has one.
-///
-/// ⚠️Every cut keeps its own conte layer, so until the row's head writes to
-/// all of them at once (I-73 ③ — 유저 2026-10-08: 「콘티레이어 권고한대로
-/// 머리만 한벌 ok」) two cuts' layers may still differ; the row then shows
-/// the first's.
-Layer? trackConteHeadLayer(Iterable<Cut> cuts) {
-  for (final cut in cuts) {
-    final row = storyboardLayerForCut(cut);
-    if (row != null) {
-      return row;
-    }
-  }
-  return null;
-}
-
-/// The frame of [entry]'s conte layer — in the CUT's own frames, the row's
-/// keys — that the track's frame [globalFrame] shows on the conte row, held
-/// inside the cut: the conte begins [storyboardConteStart] frames into the
-/// row (F-227), so a track frame counted from the cut's start is that much
+/// The frame of [entry]'s cut — in the CUT's own frames, its rows' keys —
+/// that the track's frame [globalFrame] shows on a conte row, held inside
+/// the cut: the conte begins [storyboardConteStart] frames into its base
+/// (F-227), so a track frame counted from the cut's start is that much
 /// short of the key it stands on.
-int conteRowOwnFrameAt(
-  StoryboardTimelineLayoutEntry entry,
-  Layer row,
-  int globalFrame,
-) {
+///
+/// ↩️It took the row as well and read the start off it, which was the cut's
+/// conte layer while the row had one seat. An attach row's own first block
+/// says nothing of where the conte begins — its BASE's does — so the cut
+/// is asked ([storyboardLayerForCut]).
+int conteRowOwnFrameAt(StoryboardTimelineLayoutEntry entry, int globalFrame) {
   final last = entry.duration - 1;
   final conteFrame = (globalFrame - entry.startFrame).clamp(
     0,
     last < 0 ? 0 : last,
   );
-  return storyboardConteStart(row.timeline) + conteFrame;
+  return _conteStartOf(entry) + conteFrame;
 }
 
-/// Where [ownFrame] of [entry]'s conte layer stands on the track's axis —
+/// Where [ownFrame] of [entry]'s cut stands on the track's axis —
 /// [conteRowOwnFrameAt] read the other way.
-int conteRowGlobalFrameOf(
-  StoryboardTimelineLayoutEntry entry,
-  Layer row,
-  int ownFrame,
-) => entry.startFrame + ownFrame - storyboardConteStart(row.timeline);
+int conteRowGlobalFrameOf(StoryboardTimelineLayoutEntry entry, int ownFrame) =>
+    entry.startFrame + ownFrame - _conteStartOf(entry);
+
+int _conteStartOf(StoryboardTimelineLayoutEntry entry) =>
+    storyboardConteStart(storyboardLayerForCut(entry.cut)?.timeline);
 
 /// The shortest [cut] may become without leaving a storyboard drawing
 /// outside it (user's rule 2026-07-27).

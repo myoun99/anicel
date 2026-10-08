@@ -14,6 +14,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerBlendSlotWidth;
 
 /// 🚨★★★THE STORYBOARD RAIL SWIPES A COLUMN, LIKE THE TIMELINE RAIL DOES.
 ///
@@ -193,12 +195,19 @@ void main() {
       greaterThan(0),
       reason: 'the eye stands inside the rail, or nothing below means much',
     );
+    // ↩️Under 80 until the rail took the blend column with the conte row's
+    // head (I-73, 2026-10-08): that slot stands between the eye and the
+    // edge on every row now, the rows with no blend to show included.
     expect(
       rail.right - eye.right,
-      lessThan(80),
+      allOf(
+        greaterThan(layerBlendSlotWidth),
+        lessThan(80 + layerBlendSlotWidth),
+      ),
       reason:
           'the eye is a TRAILING column: it sits near the rail\'s right '
-          'edge, which is what the band arithmetic counts back from',
+          'edge — the mute, the opacity and the blend slots off it — which '
+          'is what the band arithmetic counts back from',
     );
   });
 

@@ -150,18 +150,32 @@ List<int> conteSeatsOf(Iterable<Cut> cuts) {
   return [for (var seat = top; seat >= bottom; seat -= 1) seat];
 }
 
-/// The row that SPEAKS for [seat] on a track: the first of [cuts], in their
-/// order, that holds one there — the head the storyboard's rail draws for
-/// the seat. Null while no cut has a row there.
-Layer? conteHeadRowAt(Iterable<Cut> cuts, int seat) {
+/// The row that SPEAKS for [seat] on a track, and the cut it stands in: the
+/// first of [cuts], in their order, that holds one there — the head the
+/// storyboard's rail draws for the seat. Null while no cut has a row there.
+({Cut cut, Layer row})? conteHeadAt(Iterable<Cut> cuts, int seat) {
   for (final cut in cuts) {
     final row = conteRowAtSeat(cut, seat);
     if (row != null) {
-      return row;
+      return (cut: cut, row: row);
     }
   }
   return null;
 }
+
+/// [conteHeadAt]'s row alone.
+Layer? conteHeadRowAt(Iterable<Cut> cuts, int seat) =>
+    conteHeadAt(cuts, seat)?.row;
+
+/// The rows of [cuts] that wear ONE head, family by family: the rows that
+/// sit at one seat of their cuts' conte groups — top seat first.
+List<List<LayerId>> conteHeadFamiliesOf(Iterable<Cut> cuts) => [
+  for (final seat in conteSeatsOf(cuts))
+    [
+      for (final cut in cuts)
+        if (conteRowAtSeat(cut, seat) case final row?) row.id,
+    ],
+];
 
 /// [row] wearing [head]'s HEAD — everything a track's conte rows have as
 /// one: the name, the label, the blend, the static opacity, the eye, the

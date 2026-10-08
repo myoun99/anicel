@@ -119,8 +119,12 @@ class _StoryboardSheet {
           // the track's axis; the S row as this rail draws it (a take in
           // flight stands in for its lane); else the one other layer row a
           // track group has.
-          trackIdOfConteRow(layerId) != null
-              ? trackConteRowShown(track.id, group.cuts)
+          trackConteRowOf(layerId) != null
+              ? trackConteRowShown(
+                  track.id,
+                  group.cuts,
+                  seat: trackConteRowOf(layerId)!.seat,
+                )
               : slot == -1
               ? _state.widget.transitionRowShown?.call(
                       track,

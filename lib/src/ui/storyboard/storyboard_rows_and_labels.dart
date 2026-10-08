@@ -138,6 +138,7 @@ class _StoryboardRowsAndLabels {
           : (_, _) => onResetGroup(lane),
       keyPrefix: 'storyboard',
       leadingInset: layerSectionLabelSlotWidth,
+      hasBlendColumn: StoryboardPanel.railHasBlendColumn,
       currentRowHooks: _state.widget.currentRowHooks,
     );
 
@@ -182,27 +183,133 @@ class _StoryboardRowsAndLabels {
     );
   }
 
-  /// The CONTE row's rail label: the row's glyph and its name
-  /// ([trackConteRowName]). A press picks the ROW ([trackConteRowId]), which
-  /// the session lands on the conte layer of the cut it stands in.
+  /// A CONTE row's rail label, at [seat] of the track's conte group — THE
+  /// TIMELINE'S OWN ROW ([TimelineLayerControlsRow]), wearing the seat's
+  /// head ([conteHeadAt]).
   ///
-  /// Its control slots are reserved and empty: the head is to be the
-  /// timeline's own, one for every cut (I-73 ③ — see
-  /// [_StoryboardLayerRowLabel]).
-  Widget conteLabelRow(Track track) {
-    final rowId = trackConteRowId(track.id);
-    return _StoryboardLayerRowLabel(
-      track: track,
-      rowId: rowId,
-      kind: LayerKind.storyboard,
-      keyName: 'conte',
-      name: trackConteRowName(track.cuts),
-      layer: null,
-      active: _state.widget.selectedRow == LayerRowAddress(rowId),
-      height: _state._rowHeights.conte,
-      onSelectLayer: _state.widget.onSelectLayer,
+  /// 🗣️I-73 (유저 2026-10-08): 「콘티행도 동일하게 하고싶으니까 어태치
+  /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어
+  /// 권고한대로 머리만 한벌 ok. 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」
+  /// · 「이거만 눈이랑 불투명도조차 링크하도록. 그거마저 머리로서
+  /// 하나로되도록 통일」. The row is the widget the timeline's rail builds
+  /// for the same layer, not a second listing of its cells, so what that
+  /// row grows this one has; and every control on it writes the row's head,
+  /// which the commands carry to the row at this seat of every cut
+  /// (`headMirrorTargets`).
+  ///
+  /// The head's contents are the drawn proposal's: 「이름 옆의 접기(∨)로
+  /// 어태치 행을 접고, 라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인 펼침이
+  /// 타임라인과 같이 됩니다」. So the cells that proposal does not name are
+  /// not handed their verbs here, and the row mounts none of them: the
+  /// sheet toggle (each cut's own flag, not the head's), the onion and the
+  /// fill-reference switches, the link badge.
+  ///
+  /// A press picks the ROW ([trackConteRowId]) — never the head's layer,
+  /// which is one cut's — and the session lands it on the layer at this
+  /// seat of the cut it stands in.
+  ///
+  /// While no cut holds a row at the seat there is no head to wear, and
+  /// while the host has not wired the head's verbs there is nothing for its
+  /// controls to do: the row then keeps its slots reserved and empty
+  /// ([_StoryboardLayerRowLabel]).
+  Widget conteLabelRow(Track track, int seat) {
+    final rowId = trackConteRowId(track.id, seat: seat);
+    final head = conteHeadAt(track.cuts, seat);
+    final verbs = _conteHeadVerbs();
+    if (head == null || verbs == null) {
+      return _StoryboardLayerRowLabel(
+        track: track,
+        rowId: rowId,
+        kind: LayerKind.storyboard,
+        keyName: conteLabelKeyName(seat),
+        name: trackConteRowName(track.cuts, seat: seat),
+        layer: null,
+        active: _state.widget.selectedRow == LayerRowAddress(rowId),
+        height: _state._rowHeights.conte,
+        onSelectLayer: _state.widget.onSelectLayer,
+      );
+    }
+    return KeyedSubtree(
+      key: ValueKey<String>(
+        'storyboard-${conteLabelKeyName(seat)}-label-${track.id.value}',
+      ),
+      child: _conteHead(track, seat, head, verbs),
     );
   }
+
+  /// The verbs a conte row's head cannot stand without — its eye, its
+  /// opacity, its label and its blend, which the timeline's row takes as
+  /// given — or null while the host has not wired them all.
+  _ConteHeadVerbs? _conteHeadVerbs() {
+    final toggleEye = _state.widget.onToggleLayerVisibility;
+    final setOpacity = _state.widget.onLayerOpacityChanged;
+    final pickMark = _state.widget.onLayerMarkSelected;
+    final pickBlend = _state.widget.onLayerBlendModeSelected;
+    return toggleEye == null ||
+            setOpacity == null ||
+            pickMark == null ||
+            pickBlend == null
+        ? null
+        : (
+            toggleEye: toggleEye,
+            setOpacity: setOpacity,
+            pickMark: pickMark,
+            pickBlend: pickBlend,
+          );
+  }
+
+  /// [head]'s row as the timeline's rail builds it, at this rail's width
+  /// and the conte rows' height — standing for [seat] of [track]: lit when
+  /// that row is the one stood on, and picking THAT row when pressed.
+  Widget _conteHead(
+    Track track,
+    int seat,
+    ({Cut cut, Layer row}) head,
+    _ConteHeadVerbs verbs,
+  ) {
+    final rowId = trackConteRowId(track.id, seat: seat);
+    final select = _state.widget.onSelectLayer;
+    return TimelineLayerControlsRow(
+      keyPrefix: 'storyboard',
+      layer: head.row,
+      active: _state.widget.selectedRow == LayerRowAddress(rowId),
+      metrics: TimelineGridMetrics.defaults.copyWith(
+        layerControlsWidth: _state._naturalRailWidth,
+        layerRowHeight: _state._rowHeights.conte,
+        railColumns: layerRailColumnWidthsIn(_state.context),
+      ),
+      onSelectLayer: (_) => select?.call(rowId),
+      labelDoubleClick: _state.widget.labelDoubleClick,
+      onToggleLayerVisibility: verbs.toggleEye,
+      onLayerOpacityChanged: verbs.setOpacity,
+      onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
+      opacityDragPreview: _state.widget.opacityDragPreview,
+      onLayerMarkSelected: verbs.pickMark,
+      fxState:
+          _state.widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
+      onToggleLayerFx: _state.widget.onToggleLayerFx,
+      onLayerBlendModeSelected: verbs.pickBlend,
+      // An attach row says which side of its base it rides, and wears the
+      // base's composite — the timeline row's own two answers, asked of the
+      // stack the head stands in.
+      attachArrowPlacement: attachArrowPlacement(head.row, head.cut.layers),
+      wearsBaseComposite: attachRowWearsBaseComposite(
+        head.row,
+        head.cut.layers,
+      ),
+      // The base's twirl folds the attach rows riding it (UI-R20 #9).
+      hasGroupFold: seat == 0 && conteSeatsOf(track.cuts).length > 1,
+      groupFoldExpanded: !_state.widget.collapsedAttachBaseIds.contains(
+        head.row.id,
+      ),
+      onToggleGroupFold: _state.widget.onToggleAttachGroup,
+    );
+  }
+
+  /// The word a conte row's label is keyed by: `conte` for the conte
+  /// itself, and its seat after it for an attach row (`conte+1`, `conte-1`).
+  static String conteLabelKeyName(int seat) =>
+      seat == 0 ? 'conte' : 'conte${seat > 0 ? '+' : ''}$seat';
 
   /// The transition row's strip: the track's spans on the GLOBAL axis, live
   /// through the session's edge-drag form while a grip is held.

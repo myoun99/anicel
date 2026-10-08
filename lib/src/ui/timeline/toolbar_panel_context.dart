@@ -556,12 +556,12 @@ class StoryboardToolbarPanelContext
   /// layer picked in the timeline since is that panel's subject, not this
   /// row's.
   TimelineToolbarPanelContext? get _conteCell =>
-      isTrackConteRow(session.storyboardStandingRow) &&
-          conteLayerInHand(
-                cut: session.activeCutOrNull,
-                activeLayerId: session.activeLayerId,
-              ) !=
-              null
+      conteLayerInHand(
+            row: session.storyboardStandingRow,
+            cut: session.activeCutOrNull,
+            activeLayerId: session.activeLayerId,
+          ) !=
+          null
       ? TimelineToolbarPanelContext(session, waitIn: waitIn)
       : null;
 
