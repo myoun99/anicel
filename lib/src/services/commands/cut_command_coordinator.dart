@@ -48,6 +48,7 @@ import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
+        conteGroupReorders,
         existenceMirrorTargets,
         headMirrorTargets,
         linkCounterpartIn,
@@ -1035,6 +1036,7 @@ class CutCommandCoordinator {
     LayerAttachDrop attach = const LayerAttachDrop(),
     String description = 'Move layers',
   }) {
+    final project = repository.requireProject();
     historyManager.executeAsOneStep(description, [
       ...layerPlacementCommands(
         cutId: cutId,
@@ -1050,6 +1052,35 @@ class CutCommandCoordinator {
         cutId: cutId,
         attach: attach,
         description: description,
+      ),
+      // A re-ordering of the conte group is every cut's of the track, in
+      // the same step (I-73-one-head-Q2, [conteGroupReorders]).
+      for (final mirror in conteGroupReorders(
+        project,
+        cutId: cutId,
+        order: order,
+        attach: attach,
+      )) ...[
+        SetLayerPlacementCommand(
+          repository: repository,
+          cutId: mirror.cutId,
+          order: mirror.order,
+          description: description,
+        ),
+        if (mirror.sideChange case final side?)
+          ...layerAttachmentCommands(
+            cutId: mirror.cutId,
+            attach: LayerAttachDrop(sideChange: side),
+            description: description,
+          ),
+      ],
+      // …and a row mounted on the conte is born on the same seat of every
+      // cut's, empty, wearing its head ([conteMountBirthCommands]).
+      ...conteMountBirthCommands(
+        repository: repository,
+        cutId: cutId,
+        order: order,
+        attach: attach,
       ),
     ]);
   }

@@ -1,3 +1,7 @@
+import '../../models/attached_layer_mount.dart' show LayerAttachDrop;
+import '../../models/attached_layer_resolve.dart'
+    show attachedGroupEndIndex, attachedGroupStartIndex;
+import '../../models/attached_placement.dart';
 import '../../models/conte_group.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -146,6 +150,122 @@ List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
   placeOf: (cut) => cut.layers.cameraLayer?.id == layerId ? () : null,
   rowAt: (cut, _) => cut.layers.cameraLayer,
 );
+
+/// One cut's conte group as a re-ordering of it leaves it: the stack's new
+/// [order], and the one rider whose side of the conte flipped.
+typedef ConteGroupReorder = ({
+  CutId cutId,
+  List<LayerId> order,
+  ({LayerId layerId, AttachedPlacement placement})? sideChange,
+});
+
+/// A placement in [cutId] that RE-ORDERS its conte group's rows, as every
+/// other cut of the track takes it: the row at each seat moved to the seat
+/// the row at that seat in [cutId] moved to.
+///
+/// 🗣️I-73-one-head-Q2 (유저 2026-10-09 → `all`): 「넷 다 모든 컷에 함께」 —
+/// of the attach structure the track's cuts wear as one head, 순서 바꾸기
+/// is one of the four. Only a pure re-ordering carries ([attach] mounts or
+/// lets go of nothing), and only into a cut whose group holds the same
+/// seats.
+///
+/// ⛔A group with an organizer folder in it — in [cutId] or in the other
+/// cut — stands down, as `folder_mirror` does where structures diverged:
+/// a folder files rows, so its members' seats and the folder's place are
+/// two answers a seat alone cannot carry. 겸용 siblings are left to the
+/// link mirror, which moves them as the same rows.
+List<ConteGroupReorder> conteGroupReorders(
+  Project project, {
+  required CutId cutId,
+  required List<LayerId> order,
+  required LayerAttachDrop attach,
+}) {
+  if (attach.mounts.isNotEmpty || attach.detachIds.isNotEmpty) {
+    return const [];
+  }
+  final cut = requireCut(project, cutId);
+  final before = plainConteGroupOf(cut);
+  if (before == null || before.length < 2) {
+    return const [];
+  }
+  final byId = {for (final layer in cut.layers) layer.id: layer};
+  final side = attach.sideChange;
+  final after = conteGroupOf(
+    cut.copyWith(
+      layers: [
+        for (final id in order)
+          if (byId[id] case final layer?)
+            if (side != null && side.layerId == id)
+              layer.copyWith(attachedPlacement: side.placement)
+            else
+              layer,
+      ],
+    ),
+  );
+  final seatOf = {for (final entry in after) entry.row.id: entry.seat};
+  final moved = {
+    for (final entry in before) entry.seat: ?seatOf[entry.row.id],
+  };
+  if (moved.length != before.length ||
+      moved.entries.every((entry) => entry.key == entry.value)) {
+    return const [];
+  }
+  final seats = [for (final entry in before) entry.seat];
+  final siblings = linkedCutSiblings(project, cutId: cutId).toSet();
+  final track = project.tracks.firstWhere(
+    (track) => track.cuts.any((other) => other.id == cutId),
+  );
+  return [
+    for (final other in track.cuts)
+      if (other.id != cutId && !siblings.contains(other.id))
+        ?_reorderedLike(other, moved, seats),
+  ];
+}
+
+/// [cut]'s conte group re-ordered by [moved] — each seat to its new one —
+/// when it holds exactly [seats] and no organizer folder; else null.
+ConteGroupReorder? _reorderedLike(
+  Cut cut,
+  Map<int, int> moved,
+  List<int> seats,
+) {
+  final group = plainConteGroupOf(cut);
+  if (group == null ||
+      group.length != seats.length ||
+      !group.indexed.every((entry) => entry.$2.seat == seats[entry.$1])) {
+    return null;
+  }
+  final flipped = [
+    for (final entry in group)
+      if (entry.seat.sign * moved[entry.seat]!.sign < 0) entry,
+  ];
+  if (flipped.length > 1) {
+    return null;
+  }
+  // The group's rows in their new stack order: lowest seat first.
+  final regrouped = [...group]
+    ..sort((a, b) => moved[a.seat]!.compareTo(moved[b.seat]!));
+  final base = group.firstWhere((entry) => entry.seat == 0).row;
+  final start = attachedGroupStartIndex(base.id, cut.layers);
+  final end = attachedGroupEndIndex(base.id, cut.layers);
+  final turned = flipped.firstOrNull;
+  return (
+    cutId: cut.id,
+    order: [
+      for (final layer in cut.layers.sublist(0, start)) layer.id,
+      for (final entry in regrouped) entry.row.id,
+      for (final layer in cut.layers.sublist(end)) layer.id,
+    ],
+    sideChange: turned == null
+        ? null
+        : (
+            layerId: turned.row.id,
+            placement: moved[turned.seat]! > 0
+                ? AttachedPlacement.above
+                : AttachedPlacement.below,
+          ),
+  );
+}
 
 /// The addresses a HEAD edit lands on: the row's link group
 /// ([linkMirrorTargets]) and, of a row of a conte group, the rows at its

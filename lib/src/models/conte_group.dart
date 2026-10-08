@@ -1,3 +1,5 @@
+import 'attached_layer_resolve.dart'
+    show attachedGroupEndIndex, attachedGroupStartIndex;
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_effect.dart' show effectChainWithSharedShape;
@@ -147,6 +149,67 @@ Layer? conteRowAtSeat(Cut cut, int seat) {
     }
   }
   return null;
+}
+
+/// [cut]'s conte group when its slice of the stack holds the conte and its
+/// attach rows alone — no organizer folder, no row filed in one; else null,
+/// a cut with no conte included.
+///
+/// The groups a STRUCTURE edit is carried between (I-73-one-head-Q2): a
+/// folder files rows, so its members' seats and its own place are two
+/// answers a seat alone cannot carry, and a group holding one stands down
+/// as `folder_mirror` does where structures diverged.
+List<ConteSeat>? plainConteGroupOf(Cut cut) {
+  final group = conteGroupOf(cut);
+  if (group.isEmpty) {
+    return null;
+  }
+  final base = group.firstWhere((entry) => entry.seat == 0).row;
+  final slice = cut.layers.sublist(
+    attachedGroupStartIndex(base.id, cut.layers),
+    attachedGroupEndIndex(base.id, cut.layers),
+  );
+  final plain = slice.every(
+    (layer) =>
+        layer.id == base.id ||
+        (layer.attachedToLayerId == base.id &&
+            layer.folderId == base.folderId),
+  );
+  return plain && slice.length == group.length ? group : null;
+}
+
+/// Where a row BORN at [seat] of [cut]'s conte group goes in the stack —
+/// on that seat, the rows from it outward each one seat farther — while
+/// the group is plain ([plainConteGroupOf]) and holds, on [seat]'s side of
+/// the conte, exactly the seats of [seats] — the group it was born in,
+/// before it; null otherwise: a group shaped differently there would put
+/// it on another seat. The other side numbers its seats from the conte on
+/// its own, so it is not asked.
+int? conteSeatInsertIndex(Cut cut, int seat, {required List<int> seats}) {
+  final group = plainConteGroupOf(cut);
+  final side = [
+    for (final held in seats)
+      if (held.sign == seat.sign) held,
+  ];
+  final there = group == null
+      ? null
+      : [
+          for (final entry in group)
+            if (entry.seat.sign == seat.sign) entry.seat,
+        ];
+  if (there == null ||
+      there.length != side.length ||
+      !there.indexed.every((entry) => entry.$2 == side[entry.$1])) {
+    return null;
+  }
+  // The row it sits beside on the conte's side: the seat one nearer.
+  final nearer = conteRowAtSeat(cut, seat > 0 ? seat - 1 : seat + 1);
+  if (nearer == null) {
+    return null;
+  }
+  final at = cut.layers.indexWhere((layer) => layer.id == nearer.id);
+  // Above, it goes over the nearer row; below, under it.
+  return seat > 0 ? at + 1 : at;
 }
 
 /// The seats the conte groups of [cuts] hold between them, TOP ROW FIRST:

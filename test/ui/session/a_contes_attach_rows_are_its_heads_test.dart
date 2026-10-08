@@ -280,8 +280,11 @@ void main() {
       );
     });
 
-    test('a row born INTO an organizer of the conte\'s rows is its cut\'s '
-        'alone: it stands where the folder does, on no seat at the edge', () {
+    // 🗣️I-73-one-head-Q2 (유저 2026-10-09 → `all`): 「넷 다 모든 컷에 함께」
+    // — 오거나이저 안 추가 is one of the four. ↩️Such a row was its cut's
+    // alone: the planner named only the group's edge, and stood down.
+    test('🚨a row born INTO an organizer of the conte\'s rows is born on its '
+        'seat in every cut\'s — riding the conte there, with no folder', () {
       final session = sessionOf([
         cutOf('a', [
           cel('a'),
@@ -305,13 +308,17 @@ void main() {
 
       session.folders.addAttachedLayer(AttachedPlacement.above);
 
-      expect(conteGroupOf(cutIn(session, 'a')), hasLength(3));
-      expect(
-        conteGroupOf(cutIn(session, 'b')),
-        hasLength(2),
-        reason: 'the planner stands down: the seat it would name is the '
-            'group\'s edge, and this row stands inside the group',
-      );
+      final inA = conteGroupOf(cutIn(session, 'a'));
+      final inB = conteGroupOf(cutIn(session, 'b'));
+      expect(inA, hasLength(3), reason: '⛔전제');
+      expect(inB, hasLength(3));
+      bool isNew(ConteSeat entry) =>
+          entry.seat != 0 && entry.row.id != const LayerId('a-over');
+      final bornSeat = inA.firstWhere(isNew).seat;
+      final bornInB = inB.firstWhere((entry) => entry.seat == bornSeat).row;
+      expect(bornInB.id, isNot(const LayerId('b-over')), reason: 'a new row');
+      expect(bornInB.attachedToLayerId, const LayerId('b-conte'));
+      expect(bornInB.folderId, isNull, reason: 'b files nothing there');
     });
   });
 
