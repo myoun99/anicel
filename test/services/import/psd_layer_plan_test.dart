@@ -361,6 +361,46 @@ void main() {
       expect(first.top, second.top);
     });
 
+    test('🎯F-307: only the part of a layer inside the document is drawn — '
+        'the part past an edge, which Photoshop never shows, is cut off', () {
+      final result = plan(
+        document(
+          // 20 past the left edge and 30 past the bottom of a 100x100.
+          [raster('frame', left: -20, top: 50, right: 60, bottom: 130)],
+          width: 100,
+          height: 100,
+        ),
+        canvas: const CanvasSize(width: 400, height: 200),
+        fit: MediaFitMode.contain,
+      );
+      final placement = result.placements.single;
+
+      expect(
+        placement.crop,
+        (left: 20, top: 0, width: 60, height: 50),
+        reason: 'the layer\'s own pixels 20 … 80 across, 0 … 50 down',
+      );
+      // Contain into 400x200 fits the document to 200x200 at x 100.
+      expect(placement.rect.left, closeTo(100 + 0 * 2, 0.001));
+      expect(placement.rect.top, closeTo(0 + 50 * 2, 0.001));
+      expect(placement.rect.width, closeTo(60 * 2, 0.001));
+      expect(placement.rect.height, closeTo(50 * 2, 0.001));
+    });
+
+    test('a layer wholly past the document keeps its row and asks for no '
+        'pixels, the way an empty one does', () {
+      final result = plan(
+        document(
+          [raster('away', left: 120, top: 0, right: 140, bottom: 10)],
+          width: 100,
+          height: 100,
+        ),
+      );
+
+      expect(result.layers.first.name, 'away');
+      expect(result.placements, isEmpty);
+    });
+
     test('a placement points at the layer and cel it belongs to', () {
       final result = plan(document([raster('a')]));
       final placement = result.placements.single;

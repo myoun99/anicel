@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
@@ -36,6 +37,9 @@ import '../../models/import/import_warning.dart';
 /// The pixels are the service's half, which is what makes every rule here
 /// testable without an engine.
 
+/// The part of a layer's picture that is drawn, in the layer's own pixels.
+typedef PsdLayerCrop = ({int left, int top, int width, int height});
+
 /// Where one expanded layer's picture goes.
 class PsdLayerPlacement {
   const PsdLayerPlacement({
@@ -43,6 +47,7 @@ class PsdLayerPlacement {
     required this.layerId,
     required this.frameId,
     required this.rect,
+    required this.crop,
   });
 
   /// Index into [PsdDocument.layers] — the record whose pixels these are.
@@ -50,8 +55,13 @@ class PsdLayerPlacement {
   final LayerId layerId;
   final FrameId frameId;
 
-  /// Canvas-space destination, already carrying the document's fit.
+  /// Canvas-space destination of [crop], already carrying the document's
+  /// fit.
   final ui.Rect rect;
+
+  /// The part of the layer inside the document — the only part Photoshop
+  /// shows (F-307).
+  final PsdLayerCrop crop;
 }
 
 class PsdExpandPlan {
@@ -197,18 +207,20 @@ PsdExpandPlan planPsdExpansion({
             folderId: enclosing(),
           ),
         );
-        if (source.hasPixels) {
+        final crop = _insideTheDocument(source, document);
+        if (source.hasPixels && crop != null) {
           placements.add(
             PsdLayerPlacement(
               sourceIndex: index,
               layerId: layerId,
               frameId: frameId,
               rect: ui.Rect.fromLTWH(
-                documentRect.left + source.left * scale,
-                documentRect.top + source.top * scale,
-                source.width * scale,
-                source.height * scale,
+                documentRect.left + (source.left + crop.left) * scale,
+                documentRect.top + (source.top + crop.top) * scale,
+                crop.width * scale,
+                crop.height * scale,
               ),
+              crop: crop,
             ),
           );
         }
@@ -262,6 +274,27 @@ void _sayEffects(PsdLayer source, List<ImportWarning> warnings) {
       {'name': source.name},
     ),
   );
+}
+
+/// The part of [source] inside [document], in the layer's own pixels — or
+/// null when none of it is.
+///
+/// F-307 (유저 2026-10-06): 「포토샵으로 열면 문제없는데 … 黒枠라는 레이어가
+/// 캔버스크기보다 더 위아래로 그림이 더 많은 상태로 임포트됬음」. A layer may
+/// hold pixels past the document's edges, and Photoshop shows none of them;
+/// a cel keeps its pixels out onto the pasteboard, where the canvas shows
+/// them. Measured on the user's file: a frame layer 199px above the
+/// document and 536px below it, and ten more layers past an edge. So only
+/// what Photoshop shows is drawn.
+PsdLayerCrop? _insideTheDocument(PsdLayer source, PsdDocument document) {
+  final left = math.max(0, -source.left);
+  final top = math.max(0, -source.top);
+  final right = math.min(source.width, document.width - source.left);
+  final bottom = math.min(source.height, document.height - source.top);
+  if (right <= left || bottom <= top) {
+    return null;
+  }
+  return (left: left, top: top, width: right - left, height: bottom - top);
 }
 
 LayerBlendMode _blendFor(PsdLayer source, List<ImportWarning> warnings) {
