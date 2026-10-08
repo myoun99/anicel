@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
+import '../../models/brush_input_source.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -12,6 +14,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../brush_commit_builder.dart';
 import '../brush_dab_interpolator.dart';
+import '../brush_pressure_dynamics.dart' show applyBrushInputDynamics;
 import '../brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'clip_cel_raster.dart';
 import 'clip_container.dart' show ClipFormatException;
@@ -163,9 +166,14 @@ double _distance(double ax, double ay, double bx, double by) =>
     math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
 
 /// The pen a vector stroke is drawn with: round, at the brush model's own
-/// hardness, flow and spacing — what the file cannot say of its brush
-/// (shape, texture) is not guessed at.
-const _pen = BrushShape();
+/// hardness, flow and spacing, its size following pressure in a straight
+/// line — what the file cannot say of its brush (shape, texture) is not
+/// guessed at.
+final _pen = const BrushShape().withCurve(
+  BrushPressureTarget.size,
+  BrushInputSource.pressure,
+  BrushPressureCurve(const [BrushCurvePoint(0, 0), BrushCurvePoint(1, 1)]),
+);
 
 /// [bodies] — a vector layer's data — drawn on [target]'s canvas with the
 /// layer's strokes moved by [offset] (its `LayerOffset`: the strokes are
@@ -226,27 +234,30 @@ const _pen = BrushShape();
   );
 }
 
-/// [stroke]'s dabs, laid along it the way the pen lays them between two
-/// readings ([BrushDabInterpolator]).
+/// [stroke]'s dabs, laid along it the way the pen lays them: the stroke's
+/// widest point is the pen's size, and each point's width rides as its
+/// pressure — carried between two readings ([BrushDabInterpolator]) and
+/// turned back into a size by the pen's own dynamics
+/// ([applyBrushInputDynamics]), so a line narrows toward a thin point as a
+/// pressed pen's does.
 List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
+  final widest = stroke.points.fold(0.0, (w, p) => math.max(w, p.width));
+  if (widest <= 0) {
+    return const [];
+  }
   final dabs = <BrushDab>[];
   BrushDab? previous;
   for (final point in stroke.points) {
-    // A point with no width lays no dab — and a dab cannot be narrower
-    // than nothing.
-    if (point.width <= 0) {
-      continue;
-    }
     final laid = const BrushDabInterpolator().interpolate(
       previous: previous,
       nextRaw: BrushDab(
         center: CanvasPoint(x: point.x + offset.x, y: point.y + offset.y),
         color: stroke.color,
-        size: point.width,
+        size: widest,
         opacity: 1,
         flow: _pen.flow,
         hardness: _pen.hardness,
-        pressure: 1,
+        pressure: (point.width / widest).clamp(0.0, 1.0),
         sequence: dabs.length,
       ),
       firstSequence: dabs.length,
@@ -257,5 +268,5 @@ List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
       previous = laid.last;
     }
   }
-  return dabs;
+  return [for (final dab in dabs) applyBrushInputDynamics(dab, shape: _pen)];
 }

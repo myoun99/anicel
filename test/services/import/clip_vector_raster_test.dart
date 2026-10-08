@@ -204,26 +204,32 @@ void main() {
       expect(pixel(faint.tiles, 30, 20).$4, closeTo(64, 1));
     });
 
-    test('a point with no width lays no dab — the rest of its stroke is '
-        'still drawn', () {
+    test('a line narrows toward a thin point as a pressed pen\'s does — and '
+        'a point with no width, or less, lays nothing', () {
       final drawn = clipVectorTiles(
         [
-          vectorStrokeBytes([
-            (10, 20, 1),
-            (30, 20, 0),
-            (50, 20, -1),
-          ], radius: 3),
+          body([
+            vectorStrokeBytes([
+              (10, 20, 2),
+              (40, 20, 0),
+              (55, 20, -0.5),
+            ], radius: 3),
+            // A stroke with no width anywhere — nothing to size a pen by.
+            vectorStrokeBytes([(10, 50, 0), (50, 50, 0)], radius: 3),
+          ]),
         ],
         (x: 0, y: 0),
         canvas(),
       );
-      expect(
-        pixel(drawn.tiles, 10, 19).$4,
-        greaterThan(100),
-        reason: 'the one dab the point with a width lays',
-      );
-      expect(pixel(drawn.tiles, 40, 19).$4, 0, reason: 'nothing past the '
-          'last point with a width');
+      /// How many rows of column [x] carry ink.
+      int across(int x) => [
+        for (var y = 0; y < 64; y += 1) pixel(drawn.tiles, x, y).$4,
+      ].where((alpha) => alpha > 0).length;
+
+      expect(across(12), greaterThan(across(25)), reason: 'twelve wide here');
+      expect(across(25), greaterThan(across(36)), reason: 'narrower on');
+      expect(across(36), greaterThan(0), reason: 'still a line');
+      expect(across(48), 0, reason: 'nothing past the point with no width');
     });
 
     test('a stroke off the canvas lands nothing — and the strokes it cannot '
