@@ -491,7 +491,18 @@ void main() {
   /// thing the round would not write. 🔬`clean_code_diff` between master
   /// and the lane names this one and no other class. ⛔Not split to fit:
   /// the cache's eviction and what it holds back are one question.
-  const longClasses = 60;
+  ///
+  /// ⚠️60 → 61 on 2026-10-08, ONE name: `CutVerbs` crossed (590 → 603) in
+  /// I-79 D2b — a canvas resized on the canvas lands through
+  /// `placeActiveCutCanvas`, the active cut's canvas at a size with the
+  /// picture moved by an offset, beside `resizeActiveCutCanvas` that the
+  /// size window's anchors take. Both land through the coordinator's one
+  /// `placeCutCanvas`. 🔬`clean_code_diff` between master and the lane
+  /// names this one and no other class. ⛔Not split to fit: the active
+  /// cut's verbs are one conversation (its header says why), and folding
+  /// the anchor verb into the offset one would move the anchor's sum into
+  /// every caller that resizes about the middle.
+  const longClasses = 61;
 
   late CleanCodeScan scan;
   setUpAll(() {
