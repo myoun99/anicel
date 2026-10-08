@@ -30,20 +30,25 @@ void main() {
 
   tearDown(() => deleteTempQuietly(tempDir));
 
-  /// Imports one linked picture into [s]'s active cut; its row's id.
+  /// Imports one linked picture [name] into [s]'s active cut; its row's id.
   Future<LayerId> importReference(
     WidgetTester tester,
-    EditorSessionManager s,
-  ) async {
+    EditorSessionManager s, {
+    String name = 'bg_street.png',
+  }) async {
+    final before = {for (final layer in s.requireActiveCut.layers) layer.id};
     await tester.runAsync(() async {
       await s.importDoors.importImageFile(
-        path: await writeSolidPng(tempDir, 'bg_street.png'),
+        path: await writeSolidPng(tempDir, name),
         destination: ImportDestination.activeCutLayer,
         copyIntoProject: false,
       );
     });
     return s.requireActiveCut.layers
-        .firstWhere((layer) => layer.mediaReference != null)
+        .firstWhere(
+          (layer) =>
+              layer.mediaReference != null && !before.contains(layer.id),
+        )
         .id;
   }
 
@@ -100,6 +105,66 @@ void main() {
       );
     });
   }
+
+  testWidgets('🎯F-308: rasterizing rows takes their buttons away at once, '
+      'and the undo puts them back at once — on rows no one stands on', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final first = await importReference(tester, s);
+    final second = await importReference(tester, s, name: 'bg_night.png');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: s,
+            builder: (context, _) => TimelineTabHost(
+              session: s,
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+              pixelsPerFrame: 24,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final buttons = [
+      for (final id in [first, second])
+        find.byKey(ValueKey<String>('timeline-layer-reference-$id')),
+    ];
+    for (final button in buttons) {
+      expect(button, findsOneWidget, reason: 'the premise: two references');
+    }
+    // Stand on a row that is neither of them, so no selection change
+    // rebuilds them.
+    s.standOnRow(
+      LayerRowAddress(
+        s.requireActiveCut.layers
+            .firstWhere((layer) => layer.mediaReference == null)
+            .id,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    s.editingCanvas.rasterizeLayerReferences([first, second]);
+    await tester.pumpAndSettle();
+    for (final button in buttons) {
+      expect(button, findsNothing, reason: 'the rows stand on no file now');
+    }
+
+    s.undo();
+    await tester.pumpAndSettle();
+    for (final button in buttons) {
+      expect(button, findsOneWidget, reason: 'and stand on theirs again');
+    }
+  });
 
   testWidgets('the folded row wears it too — the overlay mounts the real row '
       '(「싹 그대로」)', (tester) async {

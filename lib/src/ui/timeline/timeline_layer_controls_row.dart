@@ -91,8 +91,16 @@ final class ControlsRowFace {
             a.collapsed == b.collapsed &&
             a.isFillReference == b.isFillReference &&
             a.attachedToLayerId == b.attachedToLayerId &&
-            a.attachedPlacement == b.attachedPlacement);
+            a.attachedPlacement == b.attachedPlacement &&
+            _isReference(a) == _isReference(b));
   }
+
+  /// Whether the row stands on a file — what its reference button is
+  /// there for. Only THAT is shown; which file and from where is the
+  /// popover's to read. F-308 (유저 2026-10-06): 「래스터라이즈누르고 레이어
+  /// 이동등 갱신되는행동해야 버튼사라짐」 — left out, a rasterize (and its undo)
+  /// changed nothing this compared, and the button stayed as it was.
+  static bool _isReference(Layer layer) => layer.mediaReference != null;
 
   @override
   int get hashCode => Object.hash(
@@ -108,6 +116,7 @@ final class ControlsRowFace {
     layer.isFillReference,
     layer.attachedToLayerId,
     layer.attachedPlacement,
+    _isReference(layer),
   );
 }
 
