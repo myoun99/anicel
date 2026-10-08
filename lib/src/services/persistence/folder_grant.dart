@@ -249,6 +249,13 @@ class MaterializeCancelled implements Exception {
   String toString() => 'MaterializeCancelled';
 }
 
+/// The clock one wait for a file runs on: how long the wait has gone on,
+/// and a sleep of one slice that ends early when `sooner` does.
+typedef WaitClock = ({
+  Duration Function() elapsed,
+  Future<void> Function(Duration slice, Future<void>? sooner) sleep,
+});
+
 abstract final class FolderPicker {
   /// Test seam. The repo's convention for a Dart→native call is an
   /// injectable override rather than a mocked channel (`setMockMethodCallHandler`
@@ -955,7 +962,7 @@ abstract final class FolderPicker {
     // spacing's running total — so the line it drew skipped seconds (0 · 0 ·
     // 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and
     // the backoff is only the backoff.
-    final clock = Stopwatch()..start();
+    final clock = (debugWaitClock ?? _realWaitClock)();
     var pause = step;
     // What the last probe SAW, so the wait's sentence can be true instead of
     // guessed from the clock ([cloudWaitLine]).
@@ -977,22 +984,17 @@ abstract final class FolderPicker {
         if (isCancelled?.call() ?? false) {
           throw const MaterializeCancelled();
         }
-        if (within != null && clock.elapsed >= within) {
+        if (within != null && clock.elapsed() >= within) {
           return false;
         }
         final left = pause - slept;
         final slice = left < _reportEvery ? left : _reportEvery;
-        final elapsed = Completer<void>();
-        final timer = Timer(slice, elapsed.complete);
-        await (sooner == null
-            ? elapsed.future
-            : Future.any<void>([sooner, elapsed.future]));
-        timer.cancel();
+        await clock.sleep(slice, sooner);
         if (settled?.call() ?? false) {
           return true;
         }
         slept += slice;
-        onWaiting?.call(clock.elapsed, seen);
+        onWaiting?.call(clock.elapsed(), seen);
         if (slept >= pause) {
           // Doubling, capped: the common case lands within a second or two.
           pause = pause * 2;
@@ -1101,6 +1103,31 @@ abstract final class FolderPicker {
   /// with [_materializeMaxStep]: a clock that skipped seconds is exactly
   /// what F-141 reported.
   static const Duration _reportEvery = Duration(seconds: 1);
+
+  /// The clock a wait runs on: a stopwatch started with it, and a timer for
+  /// each slice — which [sooner] ends early, taking the timer with it.
+  static WaitClock _realWaitClock() {
+    final stopwatch = Stopwatch()..start();
+    return (
+      elapsed: () => stopwatch.elapsed,
+      sleep: (slice, sooner) async {
+        final over = Completer<void>();
+        final timer = Timer(slice, over.complete);
+        await (sooner == null
+            ? over.future
+            : Future.any<void>([sooner, over.future]));
+        timer.cancel();
+      },
+    );
+  }
+
+  /// Test seam for the clock each wait starts — so the beat the window is
+  /// told can be counted in no real time. A pin that waited four real
+  /// seconds went red on a busy machine: the timers slipped past a second
+  /// and the true clock skipped one (board
+  /// `the-cloud-wait-clock-pin-skips-a-second-under-load`).
+  /// ⚠️Reset in `test/flutter_test_config.dart`.
+  static WaitClock Function()? debugWaitClock;
 
   /// Test seam for [requestFileDownload]. ⚠️Reset in
   /// `test/flutter_test_config.dart`.

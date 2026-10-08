@@ -28,6 +28,7 @@ void main() {
     FolderPicker.debugDownloadRequester = null;
     FolderPicker.debugCoordinatedReader = null;
     FolderPicker.debugOperatingSystem = null;
+    FolderPicker.debugWaitClock = null;
     deleteTempQuietly(temp);
   });
 
@@ -81,11 +82,24 @@ void main() {
   /// product's own 250ms step: the window was shown seconds
   /// **[0, 0, 1, 3, 5]** (250 · 750 · 1750 · 3750 · 5750 ms) — the probe
   /// spacing's running total, doubling as it went.
+  ///
+  /// Counted on the wait's own clock, held here. ↩️The same wait ran four
+  /// real seconds, and a busy machine slipped its timers past a second —
+  /// the true clock then skipped one, and the pin went red for a beat the
+  /// product kept (board
+  /// `the-cloud-wait-clock-pin-skips-a-second-under-load`).
   test('🚨the window is shown a CLOCK, not the probe spacing — no second '
       'is skipped', () async {
     final path = at('never.anicel');
     File(path).writeAsBytesSync(const <int>[]);
     FolderPicker.debugDownloadRequester = (_) async {};
+    var now = Duration.zero;
+    FolderPicker.debugWaitClock = () => (
+      elapsed: () => now,
+      sleep: (slice, _) async {
+        now += slice;
+      },
+    );
     final seen = <Duration>[];
 
     await expectLater(
@@ -97,19 +111,11 @@ void main() {
       throwsA(isA<FileSystemException>()),
     );
 
-    final seconds = [for (final waited in seen) waited.inSeconds];
-    expect(seconds, isNotEmpty);
-    for (var i = 1; i < seconds.length; i += 1) {
-      expect(
-        seconds[i] - seconds[i - 1],
-        lessThanOrEqualTo(1),
-        reason: 'a second was skipped: $seconds',
-      );
-    }
     expect(
-      seconds.last,
-      greaterThanOrEqualTo(3),
-      reason: 'and it counted all the way to the deadline: $seconds',
+      [for (final waited in seen) waited.inSeconds],
+      [0, 0, 1, 2, 3, 4],
+      reason: 'every second, none skipped, all the way to the deadline — '
+          'while the probes backed off to two seconds apart',
     );
   });
 
