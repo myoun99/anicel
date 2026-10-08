@@ -287,6 +287,7 @@ class _BottomBarBuild {
       room: room,
       owed: owed,
       onFloor: _bar.onFloor,
+      oneToOneOnPill: _bar.oneToOneOnPill,
       hasLeading: _bar.leading.isNotEmpty,
       colorsWidth: _colorsWidth,
       hasViewControls: _hasViewControls,

@@ -88,9 +88,10 @@ void main() {
   }) async {
     final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
     // The table scrolls sideways when its columns outgrow the window (the
-    // test font's glyphs are wide), so the cell is brought into view first.
+    // test font's glyphs are wide), so the cell is brought into view first
+    // — and the preview's page lands, or its spinner never lets it settle.
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
@@ -753,7 +754,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await settleLoadedPages(tester);
       return s;
     }
 

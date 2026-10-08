@@ -14,7 +14,6 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
-import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -158,7 +157,9 @@ void main() {
     }
   });
 
-  testWidgets('🐛F-77: with nothing to view, 1:1 in the gear moves no view', (
+  // F-315 (유저 2026-10-08): 「뷰어패널에 1:1 보기버튼 넣고」 — on the pill,
+  // where it was one tap away behind the gear.
+  testWidgets('🐛F-77: with nothing to view, 1:1 on the pill moves no view', (
     tester,
   ) async {
     final seen = <CanvasViewport>[];
@@ -168,10 +169,9 @@ void main() {
       onViewportChanged: seen.add,
     );
     seen.clear();
-    await openViewSettings(tester);
-    final item = find.byKey(const ValueKey<String>('canvas-viewport-reset'));
-    expect(item, findsOneWidget, reason: 'listed, in its place');
-    await tester.tap(item, warnIfMissed: false);
+    final button = find.byKey(const ValueKey<String>('canvas-viewport-reset'));
+    expect(button, findsOneWidget, reason: 'on the pill, in its place');
+    await tester.tap(button, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(seen, isEmpty, reason: '1:1 of an empty stage');
   });
@@ -215,6 +215,40 @@ void main() {
       isNot(contains(3)),
       reason: 'the last page is still off screen',
     );
+  });
+
+  // 🗣️F-315 (유저 2026-10-08): 「준비안된상태면 … 로딩창같은거 해당패널중앙에
+  // 위젯 띄우도록 … 준비안된장이 그냥 흰색장인채로 보인다던가」.
+  testWidgets('🗣️a page on screen not drawn yet stands the loading widget in '
+      'the middle — 🪦a white sheet — and drawn, it takes it down', (
+    tester,
+  ) async {
+    final loading = find.byKey(const ValueKey<String>('media-viewer-loading'));
+    final fake = FakePdfDocument(
+      pageSizes: List<ui.Size>.filled(4, const ui.Size(595, 842)),
+    )..holdRender(0);
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    await pumpViewer(tester);
+    expect(loading, findsNothing, reason: 'nothing was asked for');
+
+    slot.request.value = const MediaViewerRequest(
+      path: 'C:/work/conte.pdf',
+      kind: MediaAssetKind.pdf,
+      name: 'conte',
+    );
+    for (var i = 0; i < 4; i += 1) {
+      await tester.pump();
+    }
+    expect(
+      fake.renderRequests.map((request) => request.$1),
+      contains(0),
+      reason: 'premise: the page is asked for, and held',
+    );
+    expect(loading, findsOneWidget);
+
+    fake.releaseRender(0);
+    await settleLoadedPages(tester);
+    expect(loading, findsNothing);
   });
 
   testWidgets('a PDF request with NO renderer states the absence instead '

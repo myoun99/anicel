@@ -195,8 +195,6 @@ class PageRasters {
       }
       _rebuild(() {
         _renders.remove((pageIndex, at));
-        _heldOver?.dispose();
-        _heldOver = null;
         _cache[pageIndex]?.image.dispose();
         _cache[pageIndex] = _RenderedPage(scale: at, image: image);
         evictToBudget(keeping: pageIndex);
@@ -262,39 +260,13 @@ class PageRasters {
     _renders.clear();
   }
 
-  /// The picture held over from before the document changed its look
-  /// ([changedLook]) — what a surface draws until a page of the new look
-  /// lands, which lets it go.
-  ui.Image? get heldOver => _heldOver;
-  ui.Image? _heldOver;
-
-  /// The document draws its pages another way now: every page is owed a
-  /// new render, and the picture that is up — page [showing]'s — is HELD
-  /// OVER until the first of them lands.
+  /// Nothing kept — the document is gone, or draws its pages another way.
   ///
-  /// The export window's preview (F-289): a setting that changes what a
-  /// frame looks like is not to blank the frame it is changing. ⚠️One
-  /// picture, out of the cache: the cache only ever holds pages of the look
-  /// that stands, so a page turned to is never an older look's.
-  void changedLook({required int? showing}) {
-    final up = (showing == null ? null : _cache.remove(showing))?.image;
-    final held = up ?? _heldOver;
-    if (up != null) {
-      _heldOver?.dispose();
-    }
-    _heldOver = null;
-    clear();
-    _heldOver = held;
-    if (held != null) {
-      _report(ViewerRasterBudget.costOf(held));
-    }
-  }
-
-  /// Nothing kept — the document is gone.
+  /// ↩️A change of look kept the picture that was up, HELD OVER until a
+  /// page of the new look landed (the export window's preview) — F-315
+  /// (유저 2026-10-08) asked for the loading widget in its place.
   void clear() {
     _generation += 1;
-    _heldOver?.dispose();
-    _heldOver = null;
     for (final page in _cache.values) {
       page.image.dispose();
     }

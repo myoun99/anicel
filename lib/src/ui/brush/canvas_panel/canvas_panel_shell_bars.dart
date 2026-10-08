@@ -67,6 +67,7 @@ class _CanvasPanelShellBars {
     bool rotation,
     bool view,
     bool floor,
+    bool oneToOne,
     int paper,
     int pasteboard,
     int backdrop,
@@ -145,6 +146,7 @@ class _CanvasPanelShellBars {
       // cannot change without this panel being rebuilt, but a memo that
       // did not carry it would be a memo that outlives the answer.
       floor: _state._onFloor,
+      oneToOne: _state.widget.oneToOneOnPill,
       // The swatches the SETTINGS LIST carries (they were in the pill until
       // 2026-08-13). They were missing from this token once, and the pill
       // went on painting yesterday's paper colour until an unrelated pan or
@@ -210,6 +212,7 @@ class _CanvasPanelShellBars {
     _pillToken = pillToken;
     _memoBottomBar = _CanvasViewportBottomBar(
       onFloor: _state._onFloor,
+      oneToOneOnPill: _state.widget.oneToOneOnPill,
       leading: _state.widget.bottomBarLeading,
       hostSettings: _state.widget.bottomBarSettings,
       viewport: _state._viewportState._viewport,

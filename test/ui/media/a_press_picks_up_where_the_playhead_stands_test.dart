@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/media/viewer_sound.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/recording_viewer_sound.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★**A PRESS PICKS THE SOUND UP WHERE THE PLAYHEAD STANDS**
 /// (import-preview-plays-silent, 2026-09-29).
@@ -77,7 +78,7 @@ void main() {
         kind: MediaAssetKind.video,
         name: 'clip',
       );
-      await tester.pumpAndSettle();
+      await settleLoadedPages(tester);
     }
 
     testWidgets('🎯played from page 6 of a 24fps movie, the sound starts at '

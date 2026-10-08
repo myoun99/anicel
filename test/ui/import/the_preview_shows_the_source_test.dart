@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -6,6 +8,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/settle_async.dart';
+import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/the_file_itself.dart';
 
 /// The import window's preview zone — nothing named it (2026-09-05).
@@ -100,5 +105,40 @@ void main() {
     await pump(tester);
 
     expect(find.byType(TransportBar), findsOneWidget);
+  });
+
+  // 🗣️F-315 (유저 2026-10-08): 「뷰어패널기반들 임포트/익스포트/뷰어패널 다
+  // 똑같은데, 준비안된상태면 … 로딩창같은거 해당패널중앙에 위젯 띄우도록」.
+  testWidgets('🗣️a file still opening stands the loading widget in the '
+      'well, and its picture drawn takes it down — nothing selected loads '
+      'nothing', (tester) async {
+    final loading = find.byKey(
+      const ValueKey<String>('import-preview-loading'),
+    );
+    await pump(tester);
+    expect(loading, findsNothing, reason: 'nothing was asked for');
+
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('anicel-preview'),
+    );
+    deleteAfterSessionEnds(dir!);
+    final png = await tester.runAsync(
+      () => writeSolidPng(dir, 'a.png', width: 4, height: 4),
+    );
+    await pump(tester, path: png);
+    expect(loading, findsOneWidget, reason: '↩️the well stood empty');
+    expect(
+      find.byKey(const ValueKey<String>('import-preview-checker')),
+      findsNothing,
+      reason: 'premise: its picture is not up yet',
+    );
+
+    await settleLoadedPages(tester);
+    expect(loading, findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('import-preview-checker')),
+      findsOneWidget,
+      reason: 'its picture is up',
+    );
   });
 }

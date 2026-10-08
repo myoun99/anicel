@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
@@ -119,7 +120,7 @@ void main() {
       reason: 'premise: the file over the row draws what it would make',
     );
     await gesture.up();
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     expect(find.byType(ImportDialog), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));

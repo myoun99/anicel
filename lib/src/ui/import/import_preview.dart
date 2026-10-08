@@ -19,6 +19,7 @@ import '../media/audio_viewer_document.dart';
 import '../media/media_run.dart';
 import '../media/open_viewer_document.dart';
 import '../media/page_rasters.dart';
+import '../media/viewer_page_loading.dart';
 import '../media/viewer_raster_budget.dart';
 import '../media/viewer_render_tier.dart';
 import '../media/viewer_sound.dart';
@@ -132,6 +133,10 @@ class _ImportPreviewState extends State<ImportPreview>
   String? _loadedPath;
   bool _loadedAsSound = false;
 
+  /// Whether the file is still being opened: the zone says it is loading
+  /// until it lands, or turns out to be nothing this window reads.
+  bool _opening = false;
+
   /// The page under the playhead: a movie's project frame, a PDF's page, a
   /// GIF's frame. A sound's playhead is its run's seconds instead
   /// ([MediaRun.soundSeconds]) — a waveform is one page.
@@ -207,6 +212,7 @@ class _ImportPreviewState extends State<ImportPreview>
     _loadedPath = path;
     _loadedAsSound = asSound;
     _close();
+    _opening = path != null;
     if (path == null) {
       setState(() {});
       return;
@@ -237,7 +243,10 @@ class _ImportPreviewState extends State<ImportPreview>
       unawaited(document?.dispose());
       return;
     }
-    setState(() => _document = document);
+    setState(() {
+      _document = document;
+      _opening = false;
+    });
   }
 
   // --- The run's surface ([MediaRunSurface]) -------------------------------
@@ -318,14 +327,17 @@ class _ImportPreviewState extends State<ImportPreview>
       return _waveform(sound, frameCount);
     }
     final document = _document;
-    if (document == null || document.pageCount == 0) {
+    if (document == null) {
+      return _opening ? _loading : const SizedBox.shrink();
+    }
+    if (document.pageCount == 0) {
       return const SizedBox.shrink();
     }
     return LayoutBuilder(
       builder: (context, box) {
         final picture = _pictureOf(context, document, box.biggest);
         return picture == null
-            ? const SizedBox.shrink()
+            ? _loading
             : CheckeredPicture(
                 image: picture,
                 checkerKey: const ValueKey<String>('import-preview-checker'),
@@ -333,6 +345,12 @@ class _ImportPreviewState extends State<ImportPreview>
       },
     );
   }
+
+  /// The file still opening, or its page not drawn yet (F-315). ↩️The well
+  /// stood empty.
+  static const Widget _loading = ViewerPageLoading(
+    key: ValueKey<String>('import-preview-loading'),
+  );
 
   /// Asks for the page under the playhead at the pixels it will be drawn
   /// at — the viewer's ladder ([viewerRenderScaleFor]) over the box it is

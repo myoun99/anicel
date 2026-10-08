@@ -18,6 +18,7 @@ import '../editor_session_manager.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../media/media_run.dart';
 import '../media/page_rasters.dart';
+import '../media/viewer_page_loading.dart';
 import '../media/viewer_raster_budget.dart';
 import '../media/viewer_render_tier.dart';
 import '../media/viewer_sound.dart';
@@ -130,16 +131,6 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
 
   late int _page = widget.page;
 
-  /// The page whose picture is up — the page stood on once its own has
-  /// landed, and until then the one that was up before it.
-  ///
-  /// A hand running along the track passes frames faster than they render;
-  /// the picture stays on the last one drawn rather than going blank
-  /// between them, and the transport says which frame is stood on. (A RUN
-  /// never shows it: the playhead does not reach a frame that is not
-  /// there — [MediaRun].)
-  int? _drawn;
-
   @override
   void initState() {
     super.initState();
@@ -151,33 +142,26 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     super.didUpdateWidget(oldWidget);
     final was = oldWidget.document;
     final now = widget.document;
-    final sizeBefore = was?.pageSize(_pageIn(was, _page));
     _page = _pageIn(now, widget.page);
     if (was?.subject != now?.subject || was?.look != now?.look) {
-      _heardAnother(
-        sameSheet:
-            was?.subject == now?.subject &&
-            sizeBefore == now?.pageSize(_page),
-      );
+      _heardAnother();
     }
     if (!widget.enabled && _run.playing) {
       _run.stop();
     }
   }
 
-  /// The document is another one. The SAME SHEET drawn another way — one
-  /// subject, a setting changed or another row's drawing stood on, at the
-  /// size it was — keeps the picture that is up until the new one lands
-  /// ([PageRasters.changedLook]). Another subject, or a sheet of another
-  /// size, is another thing to look at, and nothing of the last is kept.
-  void _heardAnother({required bool sameSheet}) {
+  /// The document is another one — another subject, or the same one drawn
+  /// another way: nothing of the last is kept, and the panel says it is
+  /// loading until a page of this one lands ([_pictureUp]).
+  ///
+  /// ↩️The same sheet drawn another way kept the picture that was up until
+  /// the new one landed — F-315 (유저 2026-10-08) asked for the loading
+  /// widget in its place: 「준비안된상태면 지금 이전그림 보여주는데 그게아니라
+  /// … 로딩창같은거 해당패널중앙에 위젯 띄우도록」.
+  void _heardAnother() {
     _run.stop();
-    if (sameSheet) {
-      _rasters.changedLook(showing: _drawn);
-    } else {
-      _rasters.clear();
-    }
-    _drawn = null;
+    _rasters.clear();
   }
 
   @override
@@ -256,18 +240,14 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     checkered: widget.document?.opensAlpha ?? false,
   );
 
-  /// The picture that is up: the page's own; until it lands, the last one
-  /// drawn ([_drawn]); and across a change of look, the one held over.
-  ui.Image? _pictureUp() {
-    final own = _rasters.imageOf(_page);
-    if (own != null) {
-      _drawn = _page;
-      return own;
-    }
-    final drawn = _drawn;
-    return (drawn == null ? null : _rasters.imageOf(drawn)) ??
-        _rasters.heldOver;
-  }
+  /// The picture that is up: the page stood on, at whatever scale it
+  /// landed — and none until it lands, while the panel says it is loading
+  /// ([ViewerPageLoading]).
+  ///
+  /// ↩️Until it landed, the last page drawn stood in for it, so a hand
+  /// running along the track saw the last frame that had landed (F-315: a
+  /// press on 「다음」 showed the drawing before).
+  ui.Image? _pictureUp() => _rasters.imageOf(_page);
 
   // --- What the panel wears ------------------------------------------------
 
@@ -310,8 +290,7 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
   }
 
   /// The page stood on, asked for at the pixels the view shows it at —
-  /// never more than the file has (100% is a pixel of the file) — and the
-  /// picture that is up meanwhile ([_drawn]).
+  /// never more than the file has (100% is a pixel of the file).
   List<({Rect rect, ui.Image? image})> _pictures(
     BuildContext context,
     CanvasViewport viewport,
@@ -327,7 +306,7 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     );
     _rasters.scale = scale;
     final up = _pictureUp();
-    _rasters.shown = {_page, ?_drawn};
+    _rasters.shown = {_page};
     // ONE ask out at a time, and it is the latest: a hand running along
     // the track passes frames nobody will look at, and every one of them
     // rendered keeps the frame it stops on waiting.
@@ -367,6 +346,8 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       runsTheSelectedTool: false,
       oneFingerAction: CanvasTouchDragAction.navigate,
       canvasBase: true,
+      // F-315: the viewer's 1:1, where the viewer keeps it.
+      oneToOneOnPill: true,
       hasContentToView: document != null,
       pageStrip: _pageStrip(document),
       transport: _transport(context, document),
@@ -379,6 +360,12 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
                 ? _nothing()
                 : _picture(context, viewport, document),
           ),
+          if (document != null && _pictureUp() == null)
+            const Positioned.fill(
+              child: ViewerPageLoading(
+                key: ValueKey<String>('export-preview-loading'),
+              ),
+            ),
         ],
       ),
     );

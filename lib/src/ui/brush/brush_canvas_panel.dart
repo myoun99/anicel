@@ -254,6 +254,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.toolCursorsEnabled = true,
     this.toolInputEnabled = true,
     this.hasContentToView = true,
+    this.oneToOneOnPill = false,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.pageStrip = const <Widget>[],
@@ -966,6 +967,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the control at all" (false HIDES it); this answers "is there a view to
   /// operate right now" (false DISABLES it in place).
   final bool hasContentToView;
+
+  /// Whether the pill keeps its 1:1 out where it is seen, as the floor's
+  /// does — folded only for room — instead of behind the gear.
+  ///
+  /// 🗣️F-315 (유저 2026-10-08): 「뷰어패널에 1:1 보기버튼 넣고, 그거 동일하게
+  /// 다른 임포트/익스포트창에서도 뷰어패널 기반으로 쓰고있으니 법 통일해서
+  /// 적용되도록」 — the panels that show a FILE, where a pixel of it is what
+  /// is looked at: the viewer and the export window's preview.
+  final bool oneToOneOnPill;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -3433,6 +3443,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
 
   const _CanvasViewportBottomBar({
     this.onFloor = false,
+    this.oneToOneOnPill = false,
     this.leading = const <Widget>[],
     this.hostSettings = const <PanelFlyoutEntry>[],
     required this.viewport,
@@ -3470,6 +3481,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// Whether this pill is the FLOOR's — see the class doc. It is the one
   /// bit that decides whether a group starts on the pill or in the gear.
   final bool onFloor;
+
+  /// [BrushCanvasPanel.oneToOneOnPill]: the 1:1 starts on the pill, as the
+  /// floor's does, wherever the panel stands.
+  final bool oneToOneOnPill;
 
   /// R26 #41: host controls at the head of the pill.
   final List<Widget> leading;
@@ -3968,6 +3983,7 @@ class _PillFold {
     required double room,
     required double owed,
     required bool onFloor,
+    required bool oneToOneOnPill,
     required bool hasLeading,
     required double colorsWidth,
     required bool hasViewControls,
@@ -3979,10 +3995,11 @@ class _PillFold {
   }) {
     // WHERE EACH GROUP STARTS. The floor lays them all out; every
     // other panel starts where a floor pill ENDS UP once it has run
-    // out of room, and stays there however wide it gets.
+    // out of room, and stays there however wide it gets — except a 1:1
+    // the panel keeps out ([BrushCanvasPanel.oneToOneOnPill], F-315).
     var showColors = onFloor && colorsWidth > 0;
     var showViewControls = onFloor && hasViewControls;
-    var showReset = onFloor;
+    var showReset = onFloor || oneToOneOnPill;
     var showHostVerbs = onFloor && hostVerbsCanUnfold;
     var showZoomSteps = onFloor;
 

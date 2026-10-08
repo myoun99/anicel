@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
@@ -181,7 +182,7 @@ void main() {
     final s = await open(tester, [files['A1']!]);
     final cell = find.byKey(ValueKey<String>('import-cell-run-${files['A1']}'));
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(

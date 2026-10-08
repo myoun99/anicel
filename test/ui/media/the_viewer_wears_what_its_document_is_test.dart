@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/recording_viewer_sound.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): 「이 캔버스 베이스패널은 형식에 따라
 /// 나누기로하자. 뷰어패널이라도 pdf면 타임시트나 콘티용지패널이랑 같은
@@ -109,7 +110,7 @@ void main() {
       kind: MediaAssetKind.video,
       name: 'clip',
     );
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
   }
 
   const soundSeconds = 4.0;

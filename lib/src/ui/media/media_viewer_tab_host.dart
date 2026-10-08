@@ -44,6 +44,7 @@ import 'media_asset_drop_target.dart';
 import 'media_run.dart';
 import 'open_viewer_document.dart';
 import 'page_rasters.dart';
+import 'viewer_page_loading.dart';
 import 'viewer_raster_budget.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
@@ -1307,6 +1308,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
       canvasBase: true,
+      // F-315: a file is looked at a pixel to a pixel.
+      oneToOneOnPill: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
@@ -1372,34 +1375,52 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             )
           else
             Positioned.fill(
-              // Same shape and same reason as the conte and envelope
-              // pages: a light table that changes when you page or pan
-              // and not otherwise, which was being re-rastered on every
-              // frame the app produced for any reason at all.
               child: LayoutBuilder(
-                builder: (context, box) => StaticRaster(
-                  debugLabel: _key('page'),
-                  child: CustomPaint(
-                    key: ValueKey<String>(_key('page')),
-                    painter: ViewportPagesPainter(
-                      pages: _pagesShown(
-                        context,
-                        viewport,
-                        box.biggest,
-                        asking: !framingPending,
+                builder: (context, box) {
+                  final pages = _pagesShown(
+                    context,
+                    viewport,
+                    box.biggest,
+                    asking: !framingPending,
+                  );
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Same shape and same reason as the conte and
+                      // envelope pages: a light table that changes when
+                      // you page or pan and not otherwise, which was being
+                      // re-rastered on every frame the app produced for
+                      // any reason at all.
+                      StaticRaster(
+                        debugLabel: _key('page'),
+                        child: CustomPaint(
+                          key: ValueKey<String>(_key('page')),
+                          painter: ViewportPagesPainter(
+                            pages: pages,
+                            // PDF paper is opaque white; a transparent
+                            // image shows the checker-free paper too — the
+                            // viewer is a light table, not a compositor.
+                            ground: document != null
+                                ? ViewportPageGround.paper
+                                : ViewportPageGround.none,
+                            viewport: viewport,
+                            effectiveRatio: EffectiveDevicePixelRatio.of(
+                              context,
+                            ),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
                       ),
-                      // PDF paper is opaque white; a transparent image
-                      // shows the checker-free paper too — the viewer is
-                      // a light table, not a compositor.
-                      ground: document != null
-                          ? ViewportPageGround.paper
-                          : ViewportPageGround.none,
-                      viewport: viewport,
-                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
+                      // The file still opening, or a page on screen not
+                      // drawn yet (F-315).
+                      if (document == null ||
+                          pages.any((page) => page.image == null))
+                        ViewerPageLoading(
+                          key: ValueKey<String>(_key('loading')),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           // The playhead over a waveform — its own layer, never inside the

@@ -109,7 +109,7 @@ void main() {
       kind: MediaAssetKind.video,
       name: 'clip',
     );
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     return fake;
   }
 

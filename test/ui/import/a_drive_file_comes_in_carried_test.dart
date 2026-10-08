@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -180,7 +181,7 @@ void main() {
     );
 
     await tester.tap(fileCell(copy));
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     expect(
       find.byKey(const ValueKey<String>('import-option-file-reference')),
       findsNothing,
@@ -229,7 +230,7 @@ void main() {
     final copy = ProviderDocuments.workingCopyOf(uri)!;
 
     await tester.tap(fileCell(copy));
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     expect(
       find.byKey(const ValueKey<String>('import-option-file-reference')),
       findsNothing,
@@ -238,7 +239,7 @@ void main() {
     // Both rows selected: a cell press speaks for every selected row.
     for (final row in ['A1.png', 'local.png']) {
       await tester.tap(find.byKey(ValueKey<String>('import-row-$row')));
-      await tester.pumpAndSettle();
+      await settleLoadedPages(tester);
     }
     await tester.ensureVisible(fileCell(local));
     await tester.pumpAndSettle();

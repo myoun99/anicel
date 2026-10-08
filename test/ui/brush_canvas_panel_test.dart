@@ -65,6 +65,7 @@ Widget floorPillHarness({
   CanvasViewport? viewport,
   Rect? unframedFit,
   bool hasContentToView = true,
+  bool oneToOneOnPill = false,
   ValueChanged<CanvasViewport>? onViewportChanged,
   List<Widget> pageStrip = const [],
 }) {
@@ -80,6 +81,7 @@ Widget floorPillHarness({
     unframedFit: unframedFit,
     onViewportChanged: onViewportChanged,
     hasContentToView: hasContentToView,
+    oneToOneOnPill: oneToOneOnPill,
     paperColor: 0xFFFFFFFF,
     onPaperColorChanged: (_) {},
     pasteboardColor: 0xFF202020,
@@ -1120,6 +1122,38 @@ void main() {
       findsOneWidget,
       reason: '1:1 is in every gear — it is the zoom steps that are not',
     );
+  });
+
+  // F-315 (유저 2026-10-08): 「뷰어패널에 1:1 보기버튼 넣고 … 임포트/익스포트
+  // 창에서도 … 법 통일해서 적용되도록」.
+  testWidgets('🗣️a panel that keeps its 1:1 out shows it on the pill off the '
+      'floor — and folds it into the gear only for room', (tester) async {
+    final reset = find.byKey(const ValueKey<String>('canvas-viewport-reset'));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+
+    await tester.pumpWidget(floorPillHarness(width: 600, onFloor: false));
+    await tester.pumpAndSettle();
+    expect(reset, findsNothing, reason: 'premise: a rail pill folds it');
+
+    await tester.pumpWidget(
+      floorPillHarness(width: 600, onFloor: false, oneToOneOnPill: true),
+    );
+    await tester.pumpAndSettle();
+    expect(reset, findsOneWidget, reason: 'on the pill, the gear shut');
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+      findsNothing,
+      reason: 'the zoom steps stay the floor\'s',
+    );
+
+    await tester.pumpWidget(
+      floorPillHarness(width: 150, onFloor: false, oneToOneOnPill: true),
+    );
+    await tester.pumpAndSettle();
+    expect(reset, findsNothing, reason: 'no room for it on the pill');
+    await openViewSettings(tester);
+    expect(reset, findsOneWidget, reason: 'so the gear is where it went');
   });
 
   // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼

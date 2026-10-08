@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
@@ -453,7 +454,7 @@ void main() {
     );
     final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
@@ -574,7 +575,7 @@ void main() {
     expect(cellText(tester, 'sound', movie), 'Off', reason: 'its seed');
 
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
 

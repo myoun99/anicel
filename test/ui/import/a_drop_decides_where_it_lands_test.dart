@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
@@ -401,7 +402,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await settleLoadedPages(tester);
     }
 
     Future<void> press(WidgetTester tester, String id, String path) async {
