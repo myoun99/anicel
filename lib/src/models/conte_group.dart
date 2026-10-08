@@ -1,5 +1,6 @@
 import 'cut.dart';
 import 'layer.dart';
+import 'layer_effect.dart' show effectChainWithSharedShape;
 import 'layer_id.dart';
 import 'layer_kind.dart';
 
@@ -161,3 +162,28 @@ Layer? conteHeadRowAt(Iterable<Cut> cuts, int seat) {
   }
   return null;
 }
+
+/// [row] wearing [head]'s HEAD — everything a track's conte rows have as
+/// one: the name, the label, the blend, the static opacity, the eye, the
+/// transform switch, and the SHAPE of the fx chain laid over [row]'s own
+/// values ([effectChainWithSharedShape]).
+///
+/// 🗣️The list is the drawn proposal's (I-73, 2026-10-08): 「머리 — 이름 ·
+/// 라벨 · 블렌드 · 불투명도 · 눈 · 어태치 구성 · fx 구성 — 트랙의 모든 컷이
+/// 하나」 · 「칸 — 칸의 자리와 길이, fx 의 값과 키 — 컷마다」. What a row
+/// HOLDS stays its own: its kind, its pictures and panels, its fx values —
+/// and whether it prints on its cut's timesheet, which that list does not
+/// name.
+///
+/// A row is BORN wearing it (`plannedAddLayerCommand`); after that every
+/// head field is written to all the rows at the seat at once
+/// (`headMirrorTargets`, and `conteHeadTargets` for the eye).
+Layer layerWearingHeadOf(Layer head, Layer row) => row.copyWith(
+  name: head.name,
+  mark: head.mark,
+  blendMode: head.blendMode,
+  opacity: head.opacity,
+  isVisible: head.isVisible,
+  transformEnabled: head.transformEnabled,
+  effects: effectChainWithSharedShape(head.effects, onto: row.effects),
+);

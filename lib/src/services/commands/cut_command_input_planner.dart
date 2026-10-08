@@ -1,5 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
-import '../../models/conte_group.dart' show storyboardLayerForCut;
+import '../../models/conte_group.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteHandwritingOfACopy, conteInkRowLayerId;
 import '../../models/cut.dart';
@@ -566,19 +566,47 @@ AddLayerCommand plannedAddLayerCommand({
   required Layer layer,
   int? insertionIndex,
 }) {
+  final project = repository.requireProject();
+  final born = conteBornWearingItsHead(project, cutId: cutId, layer: layer);
   final plan = planAddLayerCommandInput(
-    project: repository.requireProject(),
+    project: project,
     cutId: cutId,
-    layer: layer,
+    layer: born,
   );
   return AddLayerCommand(
     repository: repository,
     cutId: cutId,
-    layer: layer,
+    layer: born,
     insertionIndex: insertionIndex,
     mirrors: plan.mirrors,
     linkGroupId: plan.linkGroupId,
   );
+}
+
+/// [layer] as it is born into [cutId]. A cut's CONTE is born wearing the
+/// head its track's conte rows wear (I-73 — [layerWearingHeadOf]): the one
+/// head is there before this row is, so the row arrives in it rather than
+/// with a kind's defaults that the next head edit would have to overwrite.
+/// The first conte on a track — and every other row — is born as it is.
+Layer conteBornWearingItsHead(
+  Project project, {
+  required CutId cutId,
+  required Layer layer,
+}) {
+  if (!isConteBase(layer)) {
+    return layer;
+  }
+  for (final track in project.tracks) {
+    if (!track.cuts.any((cut) => cut.id == cutId)) {
+      continue;
+    }
+    final head = conteHeadRowAt(
+      track.cuts.where((cut) => cut.id != cutId),
+      0,
+    );
+    return head == null ? layer : layerWearingHeadOf(head, layer);
+  }
+  return layer;
 }
 
 /// "Folder N" with the first free N among [cut]'s folder rows.

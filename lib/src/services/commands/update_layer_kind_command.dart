@@ -19,6 +19,9 @@ class UpdateLayerKindCommand extends LinkMirroredLayerFieldCommand<LayerKind> {
          fieldName: 'kind',
          read: (layer) => layer.kind,
          write: _writeKind,
+         // The kind is what seats a row in a conte group — not something
+         // the group's rows share ([LinkMirroredLayerFieldCommand.ofTheHead]).
+         ofTheHead: false,
        );
 
   static void _writeKind(

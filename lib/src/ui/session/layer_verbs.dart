@@ -13,6 +13,7 @@ import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
+import '../../services/project_lookup.dart' show cutIdOfLayer;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
@@ -222,14 +223,23 @@ class LayerVerbs {
     String description,
     LayerId? Function(CutId cutId, LayerId layerId) command,
   ) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null || ids.isEmpty) {
+    // Each row in the cut that HOLDS it — the active cut for a track's own
+    // row — so a row a rail draws for every cut is written wherever the
+    // session stands ([ActiveCutEdits.onCutOfRowQuietly] says why).
+    final project = _project.repository.requireProject();
+    final active = _project.activeCutOrNull?.id;
+    final rows = [
+      for (final layerId in ids)
+        if (cutIdOfLayer(project, layerId) ?? active case final cutId?)
+          (cutId: cutId, layerId: layerId),
+    ];
+    if (rows.isEmpty) {
       return;
     }
     LayerId? stand;
     _project.historyManager.runAsOneStep(description, () {
-      for (final layerId in ids) {
-        stand = command(cut.id, layerId) ?? stand;
+      for (final row in rows) {
+        stand = command(row.cutId, row.layerId) ?? stand;
       }
     });
     _changes.refreshAfterCutCommand(preferredActiveLayerId: stand ?? ids.first);
@@ -550,7 +560,9 @@ class LayerVerbs {
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {
     _project.cutCommandCoordinator.renameLayer(
-      cutId: _project.requireActiveCut.id,
+      cutId:
+          cutIdOfLayer(_project.repository.requireProject(), layerId) ??
+          _project.requireActiveCut.id,
       layerId: layerId,
       name: name,
     );

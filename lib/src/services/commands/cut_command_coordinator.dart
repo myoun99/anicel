@@ -48,6 +48,7 @@ import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
+        headMirrorTargets,
         linkCounterpartIn,
         linkMirrorTargets,
         linkedCutSiblings,
@@ -1205,8 +1206,18 @@ class CutCommandCoordinator {
       throw StateError('The camera row carries no effect chain of its own.');
     }
     final mirrorsValuesToo = layer.kind.mirrorsEffects;
-    final targets = linkMirrorTargets(
-      repository.requireProject(),
+    final project = repository.requireProject();
+    // The chain's SHAPE is part of the row's head, so it reaches every row
+    // that wears the head — a track's conte rows among them (I-73). Its
+    // VALUES cross only inside the link group: a kind that mirrors them,
+    // and the named keys' 「same name, same value」.
+    final linked = linkMirrorTargets(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+    ).toSet();
+    final targets = headMirrorTargets(
+      project,
       cutId: cutId,
       layerId: layerId,
     );
@@ -1220,15 +1231,18 @@ class CutCommandCoordinator {
         ...() {
           final current = _requireLayerAnywhere(target.layerId).effects;
           final isSource = target.cutId == cutId && target.layerId == layerId;
+          final shaped = effectChainWithSharedShape(authored, onto: current);
           // The source takes the write as authored; a sibling takes only
           // the shape unless its kind mirrors values too — plus whatever
-          // the named links carry.
-          final next = isSource || mirrorsValuesToo
+          // the named links carry. A row that only wears the head takes
+          // the shape and nothing else.
+          final next = isSource
               ? authored
-              : effectsWithNamedValues(
-                  effectChainWithSharedShape(authored, onto: current),
-                  namedChanges,
-                );
+              : !linked.contains(target)
+              ? shaped
+              : mirrorsValuesToo
+              ? authored
+              : effectsWithNamedValues(shaped, namedChanges);
           return listEquals(current, next)
               ? const <Command>[]
               : <Command>[

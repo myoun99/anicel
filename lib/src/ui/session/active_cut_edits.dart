@@ -44,8 +44,23 @@ class ActiveCutEdits {
   /// The same envelope for an edit that changes a row's ATTRIBUTES and
   /// not the shape of the cut — a mark, an effect chain. Nothing to
   /// rebuild; the repaint is the whole of the reaction.
-  void onActiveCutQuietly(void Function(CutId cutId) command) {
-    final cutId = _timeline.editingSession.activeCutId;
+  void onActiveCutQuietly(void Function(CutId cutId) command) =>
+      onCutOfRowQuietly(null, command);
+
+  /// [onActiveCutQuietly] for an edit of ONE ROW's attributes, addressed in
+  /// [cutOfRow] — the cut that HOLDS the row, which the caller looks up —
+  /// and in the active cut where none holds it: a track's own row.
+  ///
+  /// A rail that draws one row for every cut presses it wherever the
+  /// session stands, a gap included — the storyboard's conte head (I-73).
+  /// The row is some cut's whatever is active, and that cut is where its
+  /// link group and its seat are found. ↩️Every row verb was addressed in
+  /// the active cut, and stood down in a gap with it.
+  void onCutOfRowQuietly(
+    CutId? cutOfRow,
+    void Function(CutId cutId) command,
+  ) {
+    final cutId = cutOfRow ?? _timeline.editingSession.activeCutId;
     if (cutId == null) {
       return;
     }

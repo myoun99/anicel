@@ -40,14 +40,9 @@ class UpdateLayerTransformEnabledCommand implements Command {
     if (cutId == null) {
       return [layerId];
     }
-    return [
-      for (final target in linkMirrorTargets(
-        project,
-        cutId: cutId,
-        layerId: layerId,
-      ))
-        target.layerId,
-    ];
+    // The switch is part of the row's head — a track's conte rows wear it
+    // as one, with the link group ([headMirrorRows], I-73).
+    return headMirrorRows(project, cutId: cutId, layerId: layerId);
   }
 
   @override

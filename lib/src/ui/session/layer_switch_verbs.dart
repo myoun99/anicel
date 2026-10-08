@@ -7,7 +7,8 @@ import '../../models/storyboard_coverage.dart';
 import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_fill_reference_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
-import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../services/project_lookup.dart'
+    show layerAnywhereOrNull, requireLayerAnywhere;
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
 import 'row_sweep.dart';
@@ -85,12 +86,18 @@ class LayerSwitchVerbs {
   /// change are written, so a no-op pick costs nothing.
   void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
     // ⛔ONE undo step for one blend pick, however many rows it lands on.
+    //
+    // Rows are found ANYWHERE, as every other row button finds them
+    // (`SessionRowButtonPresses`): the storyboard's one conte head is some
+    // cut's row, pressed under whichever cut is active (I-73). ↩️It walked
+    // the active cut's rows, which was every row a blend chip stood on.
+    final project = _project.repository.requireProject();
     final targets = [
-      for (final layer in _project.layers)
-        if (layerIds.contains(layer.id) &&
-            layerKindShowsBlendControl(layer.kind) &&
-            layer.blendMode != mode)
-          layer.id,
+      for (final id in layerIds)
+        if (layerAnywhereOrNull(project, id) case final layer?
+            when layerKindShowsBlendControl(layer.kind) &&
+                layer.blendMode != mode)
+          id,
     ];
     if (targets.isNotEmpty) {
       _controllers.layerController.setLayersBlendMode(

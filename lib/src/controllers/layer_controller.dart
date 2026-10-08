@@ -10,6 +10,7 @@ import '../models/layer_kind.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
+import '../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
@@ -275,22 +276,33 @@ class LayerController {
     ),
   );
 
-  /// One [command] per layer of [layerIds] — addressed in this controller's
-  /// cut, so each reaches its link group — as ONE undo step. Nothing in the
-  /// gap state: [layers] is empty there.
+  /// One [command] per layer of [layerIds] — each addressed in its own cut
+  /// ([_cutOfRow]), so it reaches its link group — as ONE undo step. A row
+  /// with no cut to be addressed in is passed by.
   void _executeAcrossLinks({
     required List<LayerId> layerIds,
     required String debugLabel,
     required Command Function(CutId cutId, LayerId layerId) command,
   }) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return;
+    final commands = [
+      for (final layerId in layerIds)
+        if (_cutOfRow(layerId) case final cutId?) command(cutId, layerId),
+    ];
+    if (commands.isNotEmpty) {
+      _executeAsOneStep(debugLabel, commands);
     }
-    _executeAsOneStep(debugLabel, [
-      for (final layerId in layerIds) command(cutId, layerId),
-    ]);
   }
+
+  /// The cut a row's command is addressed in: the cut that HOLDS it, else
+  /// this controller's — a track's own row is held by none, and takes the
+  /// active cut as it always did (null in a gap: nothing to address it in).
+  ///
+  /// ↩️It was this controller's cut for every row, 「nothing in the gap
+  /// state」. The storyboard draws ONE head for a track's conte rows (I-73)
+  /// and presses it under whichever cut is active, or in a gap: the row is
+  /// some cut's, and that cut is where its link group and its seat are.
+  CutId? _cutOfRow(LayerId layerId) =>
+      cutIdOfLayer(_repository.requireProject(), layerId) ?? _cutId;
 
   void _executeDisplayBatch({
     required List<LayerId> layerIds,
@@ -323,14 +335,29 @@ class LayerController {
     // called "the visibility-toggle precedent" — but this repo already
     // undid eighteen other layer edits, including the layer's NAME, so
     // the eye was the outlier and not the rule.
-    _historyManager.execute(
-      UpdateLayerDisplayCommand(
-        repository: _repository,
-        layerId: layerId,
-        debugLabel: 'Toggle layer visibility',
-        apply: (layer) => layer.copyWith(isVisible: nextVisible),
-      ),
+    //
+    // 🚨A TRACK'S CONTE ROWS WEAR ONE EYE (I-73, 유저 2026-10-08: 「6.
+    // 이거만 눈이랑 불투명도조차 링크하도록. 그거마저 머리로서 하나로되도록
+    // 통일」) — the one row whose eye is its head's, where a link group's is
+    // still each use's own (T9, [UpdateLayerDisplayCommand]). Every row at
+    // the seat SETS the value the pressed one takes, in one step; a row in
+    // no conte group has no seat, and is written alone as it always was.
+    final seat = [
+      for (final row in conteHeadTargets(project, layerId)) row.layerId,
+    ];
+    Command show(LayerId row) => UpdateLayerDisplayCommand(
+      repository: _repository,
+      layerId: row,
+      debugLabel: 'Toggle layer visibility',
+      apply: (layer) => layer.copyWith(isVisible: nextVisible),
     );
+    if (seat.length <= 1) {
+      _historyManager.execute(show(layerId));
+      return;
+    }
+    _executeAsOneStep('Toggle layer visibility', [
+      for (final row in seat) show(row),
+    ]);
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold
@@ -353,9 +380,9 @@ class LayerController {
   /// something you did and may want back. Attach rows need no separate
   /// answer: they fold through this same `collapsed` field.
   void toggleLayerCollapsed(LayerId layerId) {
-    final cutId = _cutId;
+    final cutId = _cutOfRow(layerId);
     if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
+      return; // A track's own row in a gap: no cut to address it in.
     }
     final collapsed = requireLayerAnywhere(
       _repository.requireProject(),
@@ -419,9 +446,9 @@ class LayerController {
     required LayerId layerId,
     required LayerBlendMode blendMode,
   }) {
-    final cutId = _cutId;
+    final cutId = _cutOfRow(layerId);
     if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
+      return; // A track's own row in a gap: no cut to address it in.
     }
     _historyManager.execute(
       UpdateLayerBlendModeCommand(
@@ -441,9 +468,9 @@ class LayerController {
   /// the link」). 유저 2026-10-04 (F-278): 「불투명도도 공유하도록 …
   /// 보이기만 독립적으로 하고」 — the mirror is [UpdateLayerOpacityCommand]'s.
   void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    final cutId = _cutId;
+    final cutId = _cutOfRow(layerId);
     if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
+      return; // A track's own row in a gap: no cut to address it in.
     }
     _historyManager.execute(
       UpdateLayerOpacityCommand(
