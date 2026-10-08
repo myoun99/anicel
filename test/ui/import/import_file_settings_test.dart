@@ -283,6 +283,35 @@ void main() {
       );
     });
 
+    // I-76: a run's layer stands for many files, and a layer's reference
+    // names one — so the run is baked, as the cut folder it comes from is.
+    test('a picture whose run comes in together is baked; alone, its row '
+        'answers', () {
+      final together = resolvedImportSettings(
+        defaults,
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        lasting: true,
+        inRun: true,
+      );
+      expect(together.run, NumberedRun.together, reason: 'the default');
+      expect(together.bake, isTrue);
+
+      final alone = resolvedImportSettings(
+        defaults.copyWith(run: NumberedRun.alone),
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        lasting: true,
+        inRun: true,
+      );
+      expect(alone.bake, isFalse);
+      expect(resolve(defaults).bake, isFalse, reason: 'no run, no lock');
+    });
+
     test('merging leaves bake open', () {
       final resolved = resolve(
         defaults.copyWith(psd: PsdPlaceMode.merge),

@@ -178,6 +178,7 @@ class _ImportDialogState extends State<ImportDialog> {
       hasActiveCut: widget.session.activeCutOrNull != null,
       lasting: _lasting(path),
       spot: widget.spot,
+      inRun: _runOf(path) != null,
     );
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -214,6 +215,51 @@ class _ImportDialogState extends State<ImportDialog> {
   /// pressing Bake on a movie also turned its Link into Keep — one column
   /// changed under a press in another.
   ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
+
+  /// The folders the picked pictures live in, each read ONCE, as the
+  /// preview reads a dropped folder ([_folderEntries]) — under the parse
+  /// config they were read with ([_runConfig]).
+  final Map<String, CutFolderParseResult?> _runFolders = {};
+  CutFolderParseConfig? _runConfig;
+
+  /// The numbered run [path] is part of (`celRunOf`), when the window is
+  /// placing it — null for a file in none.
+  ///
+  /// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서」 —
+  /// the folder is read with the cut folder's own grammar and knobs
+  /// ([_parseConfig]), so a run is what the folder import would call that
+  /// picture's layer.
+  ParsedCelLayer? _runOf(String path) {
+    if (!_placing || mediaAssetKindForPath(path) != MediaAssetKind.image) {
+      return null;
+    }
+    if (_runConfig != _parseConfig) {
+      _runFolders.clear();
+      _runConfig = _parseConfig;
+    }
+    final folder = File(path).parent.path;
+    final parsed = _runFolders.putIfAbsent(folder, () {
+      try {
+        return parseCutFolderAt(
+          folder,
+          entries: cutFolderEntriesFrom(folder, Directory(folder).listSync()),
+          config: _parseConfig,
+        );
+      } on FileSystemException {
+        return null;
+      }
+    });
+    return parsed == null ? null : celRunOf(mediaFileName(path), parsed);
+  }
+
+  /// [path]'s run when its row brings the run in — the 「연번」 column's
+  /// 「함께」.
+  ParsedCelLayer? _togetherRunOf(String path) {
+    final run = _runOf(path);
+    return run != null && _settingsFor(path).run == NumberedRun.together
+        ? run
+        : null;
+  }
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
   /// conform answers, and the 「소리」 column asks only of a movie with one.
@@ -686,10 +732,20 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) report,
   ) async {
     final count = _files.length;
+    // A run two of its own pictures were picked from comes in once — the
+    // second row is already in it.
+    final runsPlaced = <ParsedCelLayer>{};
     for (final (index, path) in _files.indexed) {
       void within(double fraction) =>
           report((index + fraction.clamp(0, 1)) / count);
       within(0);
+      final run = _togetherRunOf(path);
+      if (run != null && runsPlaced.contains(run)) {
+        tally
+          ..imported += 1
+          ..done.add(path);
+        continue;
+      }
       final kind = mediaAssetKindForPath(path);
       // A PLACEMENT reads the file, so this is where the picked path
       // has to become a path that reads — the same law the two open
@@ -713,6 +769,9 @@ class _ImportDialogState extends State<ImportDialog> {
         return false;
       }
       await _placeOneFile(path, kind, tally, within);
+      if (run != null) {
+        runsPlaced.add(run);
+      }
     }
     report(1);
     return true;
@@ -740,10 +799,11 @@ class _ImportDialogState extends State<ImportDialog> {
     final failed = fileReport.failed.length;
     if (failed > 0) {
       final name = mediaFileName(path);
+      // A PDF's are pages; a movie's — and a numbered run's — are frames.
       tally.warnings.add(
-        kind == MediaAssetKind.video
-            ? AppText.strings.imFramesFailed(name, failed)
-            : AppText.strings.imPagesFailed(name, failed),
+        kind == MediaAssetKind.pdf
+            ? AppText.strings.imPagesFailed(name, failed)
+            : AppText.strings.imFramesFailed(name, failed),
       );
     }
     if (ok) {
@@ -846,6 +906,9 @@ class _ImportDialogState extends State<ImportDialog> {
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
+    if (_togetherRunOf(path) case final run?) {
+      return _placeRun(path, run, tally, fileReport);
+    }
     if (kind == MediaAssetKind.pdf) {
       return widget.session.importDoors.importPdfFile(
         path: path,
@@ -885,6 +948,42 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
   /// counts for it — under the run's one wait window ([_runImport]).
   /// ↩️It stood behind a wait window of its own, one for every movie.
+  /// [path]'s numbered [run] through the run's door
+  /// (`ProjectImportDoors.importPictureRun`), every picture of it waited for
+  /// as the picked one is — one that never arrives is named and left out.
+  Future<bool> _placeRun(
+    String path,
+    ParsedCelLayer run,
+    _ImportTally tally,
+    _FileReport fileReport,
+  ) async {
+    final folder = File(path).parent.path;
+    final files = <({String path, String label})>[];
+    for (final cel in run.cells) {
+      final file = '$folder/${cel.file}';
+      // Every picture of the run reads before it is placed, the law the
+      // picked one already went through ([_placeFiles]).
+      if (!mounted) {
+        return false;
+      }
+      if (mediaFileName(file) != mediaFileName(path) &&
+          !widget.session.projectFile.projectHoldsMediaBytes(file) &&
+          await _readableForImport(file) == null) {
+        tally.warnings.add(AppText.strings.imUnreadable(mediaFileName(file)));
+        continue;
+      }
+      files.add((path: file, label: cel.label));
+    }
+    return widget.session.importDoors.importPictureRun(
+      files: files,
+      name: run.symbol,
+      settings: _settingsFor(path),
+      spot: widget.spot,
+      onRenderProgress: fileReport.rendered,
+      onCelFailed: fileReport.failed.add,
+    );
+  }
+
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
@@ -1320,6 +1419,8 @@ class _ImportDialogState extends State<ImportDialog> {
       if (placing && any(_mayPlacePicture)) _fitColumn(placing),
       // 「PSD가 아닌파일은 PSD열 삭제」.
       if (placing && any(importPathIsPsd)) _psdColumn(placing),
+      // I-76-Q1: 「파일 표에 칸이 하나 는다(형제가 없는 줄은 「—」)」.
+      if (any((path) => _runOf(path) != null)) _runColumn(),
     ];
   }
 
@@ -1390,6 +1491,7 @@ class _ImportDialogState extends State<ImportDialog> {
           placing: placing,
           psd: _settingsFor(path).psd,
           spot: widget.spot,
+          together: _togetherRunOf(path) != null,
         ),
     onPick: (paths, value) => _setSettings(
       paths,
@@ -1493,6 +1595,32 @@ class _ImportDialogState extends State<ImportDialog> {
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => settings.copyWith(fit: value! as MediaFitMode),
+    ),
+  );
+
+  /// What of a picture's numbered run comes in: the run as one layer's
+  /// frames, or the file alone. The cell names the run it would bring
+  /// (🗣️I-76-Q1: 「「A1–A3 (3장)」처럼 이어지는 그림의 수가 보이고, 그 칸에서
+  /// 「함께 · 이 파일만」을 고른다」).
+  ImportColumn<Object?> _runColumn() => ImportColumn<Object?>(
+    id: 'run',
+    label: AppText.strings.imRun,
+    values: NumberedRun.values,
+    labelOf: (value) => importRunLabel(value! as NumberedRun),
+    wordOf: (path, value) => switch ((_runOf(path), value)) {
+      (final run?, NumberedRun.together) => AppText.strings.imRunSpan(
+        '${run.symbol}${run.cells.first.label}',
+        '${run.symbol}${run.cells.last.label}',
+        run.cells.length,
+      ),
+      _ => null,
+    },
+    valueOf: (path) => _settingsFor(path).run,
+    appliesTo: (path) => _runOf(path) != null,
+    enabledFor: (path, value) => true,
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(run: value! as NumberedRun),
     ),
   );
 

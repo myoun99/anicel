@@ -231,7 +231,20 @@ void main() {
   /// two narrow cells are taller than they are long. The other four are the
   /// marks', as they were. 🔬The lane's scan against master named that one
   /// added and nothing gone.
-  const wideSignatures = 384;
+  ///
+  /// ⚠️384 → 386 on 2026-10-08, two named as the rule above asks (I-76, a
+  /// picture's numbered run comes in as one layer):
+  /// `ProjectImportDoors.importPictureRun` (six) is a door like its
+  /// neighbours — the run's files and its layer's name, the row's answers
+  /// as ONE (`settings`, as `importVideoFile` takes them), the drop's spot,
+  /// and the two the window's % and its failure count read, as the movie
+  /// and PDF doors take them. `importBakeLocked` (five) took `together`: a
+  /// run that comes in together is baked for the reason an expanded PSD
+  /// is, and the bake column asks this one function. The window's own
+  /// `_placeRun` stayed under (four: the row's answers are read inside).
+  /// 🔬The lane's scan against master (`1018781b8`, at 384) named those
+  /// two added and nothing gone.
+  const wideSignatures = 386;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

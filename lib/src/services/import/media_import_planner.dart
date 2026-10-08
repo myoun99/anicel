@@ -230,12 +230,19 @@ SequenceLayerImportPlan planSequenceLayer({
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
   List<int>? sourceFrameIndices,
+
+  /// Each position's cel NAME, when the source names its pictures — a
+  /// numbered run's cel labels, as the cut folder names its cels
+  /// ([planCutFolderImport]). A folded run of duplicates takes its first
+  /// position's name.
+  List<String>? frameNames,
 }) {
   assert(sourceFiles.length == frameFingerprints.length);
   assert(
     sourceFrameIndices == null ||
         sourceFrameIndices.length == sourceFiles.length,
   );
+  assert(frameNames == null || frameNames.length == sourceFiles.length);
   final layerId = mint.nextLayerId();
   final frames = <Frame>[];
   final timeline = SplayTreeMap<int, TimelineExposure>();
@@ -268,7 +275,14 @@ SequenceLayerImportPlan planSequenceLayer({
     flush();
     final frameId = mint.nextFrameId(layerId);
     celOrdinal += 1;
-    frames.add(Frame(id: frameId, duration: 1, strokes: const []));
+    frames.add(
+      Frame(
+        id: frameId,
+        duration: 1,
+        strokes: const [],
+        name: frameNames?[i],
+      ),
+    );
     bakes.add(
       PlannedCelBake(
         cutId: cutId,

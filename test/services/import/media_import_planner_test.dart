@@ -49,6 +49,28 @@ void main() {
     expect(plan.assets, isEmpty, reason: 'no file was named to register');
   });
 
+  // I-76: a numbered run names its cels by their numbers, as the cut folder
+  // does — a folded duplicate keeps the first one's.
+  test('planSequenceLayer names each cel by its position\'s name', () {
+    final plan = planSequenceLayer(
+      sourceFiles: const ['A1.png', 'A2.png', 'A3a.png'],
+      frameFingerprints: const ['A', 'A', 'B'],
+      displayName: 'A',
+      cutId: const CutId('cut-1'),
+      fit: MediaFitMode.contain,
+      rasterize: true,
+      mint: mint(),
+      frameNames: const ['1', '2', '3a'],
+    );
+
+    expect([for (final frame in plan.layer.frames) frame.name], ['1', '3a']);
+    expect(
+      plan.bakes.map((bake) => bake.sourceFile),
+      ['A1.png', 'A3a.png'],
+      reason: 'each cel bakes from its own file',
+    );
+  });
+
   test('🚨rasterize REGISTERS its file too — the material of every placement '
       'is a pool entry (유저 2026-09-11: 「구워도 풀에 남음」)', () {
     final sequence = planSequenceLayer(

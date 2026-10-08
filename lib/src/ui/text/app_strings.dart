@@ -1297,6 +1297,15 @@ enum AppStrings {
   String get imBake => _s('imBake');
   String get imSound => _s('imSound');
   String get imSoundOnly => _s('imSoundOnly');
+  String get imRun => _s('imRun');
+  String get imRunTogether => _s('imRunTogether');
+  String get imRunAlone => _s('imRunAlone');
+  String imRunSpan(String first, String last, int count) => _s(
+    'imRunSpanTemplate',
+  )
+      .replaceAll('{first}', first)
+      .replaceAll('{last}', last)
+      .replaceAll('{n}', '$count');
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitContain => _s('imFitContain');
@@ -2415,6 +2424,10 @@ enum AppStrings {
     'imBake': 'Rasterize',
     'imSound': 'Sound',
     'imSoundOnly': 'Sound only',
+    'imRun': 'Run',
+    'imRunTogether': 'Together',
+    'imRunAlone': 'This file only',
+    'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitContain': 'Keep aspect',
@@ -3701,6 +3714,10 @@ enum AppStrings {
     'imBake': 'ラスタライズ',
     'imSound': '音',
     'imSoundOnly': '音のみ',
+    'imRun': '連番',
+    'imRunTogether': 'まとめて',
+    'imRunAlone': 'このファイルのみ',
+    'imRunSpanTemplate': '{first}–{last}（{n}枚）',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitContain': 'アスペクト維持',
@@ -5094,6 +5111,10 @@ enum AppStrings {
     'imBake': '굽기',
     'imSound': '소리',
     'imSoundOnly': '소리만',
+    'imRun': '연번',
+    'imRunTogether': '함께',
+    'imRunAlone': '이 파일만',
+    'imRunSpanTemplate': '{first}–{last} ({n}장)',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitContain': '비율 유지',
@@ -6587,6 +6608,10 @@ enum AppStrings {
     'imBake': 'Pixelliser',
     'imSound': 'Son',
     'imSoundOnly': 'Son seul',
+    'imRun': 'Série',
+    'imRunTogether': 'Ensemble',
+    'imRunAlone': 'Ce fichier seul',
+    'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitContain': 'Proportions',
@@ -7932,6 +7957,10 @@ enum AppStrings {
     'imBake': '栅格化',
     'imSound': '声音',
     'imSoundOnly': '仅声音',
+    'imRun': '连号',
+    'imRunTogether': '一起',
+    'imRunAlone': '仅此文件',
+    'imRunSpanTemplate': '{first}–{last}（{n}张）',
     'commonOn': '开',
     'commonOff': '关',
     'imFitContain': '保持比例',
