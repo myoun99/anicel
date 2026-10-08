@@ -62,12 +62,6 @@ void main() {
       'dragPreview': () => session.dragPreview.addListener(() {}),
       'opacityVerbs.dragPreview': () => session.opacityVerbs.dragPreview
           .addListener(() {}),
-      // The V row's preview sat beside the layer's for weeks and the list
-      // above named only one of them — it was never released.
-      'opacityVerbs.trackDragPreview': () => session
-          .opacityVerbs
-          .trackDragPreview
-          .addListener(() {}),
       'trackFrameRangeSelection': () => session.trackFrameRangeSelection
           .addListener(() {}),
       'historyManager': () => session.historyManager.addListener(() {}),

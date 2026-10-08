@@ -21,41 +21,6 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// Follows the cut under the storyboard playhead on track [trackIndex],
-  /// for the one cell of the V row that shows it — the eye
-  /// ([StoryboardTrackLabelRow.followsSubject]) — rebuilding it whenever
-  /// THAT cut changes: the cursor-layer subscription the ruler and the
-  /// playhead overlay already take (F-19), asking only what the row shows
-  /// of it. A gap follows as the active cut, as the row always did.
-  ///
-  /// I-22 ③: it rebuilt on every move of the playhead, so the row — its
-  /// buttons, their faces and tooltips — was rebuilt at the playback rate
-  /// while a cut of 96 frames kept the same subject for four seconds.
-  /// 🚨And it rebuilt the WHOLE row per crossing — at a far zoom a scrub
-  /// crosses into another cut on nearly every move, and the eye is the only
-  /// cell that shows which cut stands there (09-28): the row stands now,
-  /// and the eye follows on a tick layer of its own
-  /// ([StoryboardTrackLabelRow]'s — a layer because the row rebuilt bare in
-  /// the body's layout scope laid the body out again and repainted the
-  /// whole panel on each move, measured at 0.16px: 30ms of a 366ms scrub
-  /// sample).
-  ///
-  /// Null when there is no playhead channel: a host that never publishes
-  /// one has nothing for the subscription to listen to, and a builder that
-  /// never fires is a rebuild boundary paid for nothing.
-  Widget Function(Widget Function(Cut? subject) eye)?
-  _followsTheCutUnderThePlayhead(int trackIndex, Cut? activeCut) {
-    final playhead = _state.widget.playheadFrame;
-    if (playhead == null) {
-      return null;
-    }
-    return (eye) => _FollowsTheCutUnderThePlayhead(
-      playhead: playhead,
-      cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
-      builder: (subject) => eye(subject ?? activeCut),
-    );
-  }
-
   /// One V track's EFFECT lanes, below its Transform group — the same rows a
   /// layer's chain gets, one level up: this chain filters the whole
   /// composited cut (user 2026-08-08). Values resolve at GLOBAL frames, the
@@ -360,16 +325,17 @@ class _StoryboardRailRows {
   }
 
   /// Which rail rows a swipe SEGMENT crosses. The rail stacks three kinds
-  /// and they do NOT share a subject: a V row's eye is its CUT's picture,
+  /// and they do NOT share a subject: a V row's buttons are its TRACK's,
   /// while an S row's and the transition row's are that LAYER's own. One
   /// column, two verbs — so the row carries which it is rather than the
   /// column guessing.
   ///
   /// 🚨[layer] null means the V row. It is not "no subject": the V row's
-  /// subject is a cut and is looked up per press, because the cut under the
-  /// playhead is what its buttons act on (UI-R13 #2). [seSlot] is set only
-  /// for an S row, because its lane twirl is addressed by slot rather than
-  /// by layer.
+  /// subject is its track. (↩️Its eye's was the cut under the playhead,
+  /// looked up per press — UI-R13 #2 — until the eye left the row with
+  /// I-73; the eye column reads null there now, and a sweep down it steps
+  /// over the V rows.) [seSlot] is set only for an S row, because its lane
+  /// twirl is addressed by slot rather than by layer.
   ///
   /// ⛔Naming only V rows was WRONG and the first version did it — a swipe
   /// down the eye column then stepped over every S row it crossed, and the
@@ -432,12 +398,6 @@ class _StoryboardRailRows {
     final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
     final toggleTrackLane = _state.widget.onToggleTrackLane;
     final toggleSeRowLane = _state.widget.onToggleSeRowLane;
-
-    // The cut a V row's buttons act on — the one under the playhead on that
-    // track, which is what the row itself draws (UI-R13 #2). A track with no
-    // cut there has no subject, so the column reads null and the sweep steps
-    // over it.
-
     return railSwipeColumns<StoryboardRailRow>(
       crossExtent: _state._naturalRailWidth,
       columns: layerRailColumnWidthsIn(_state.context),
@@ -461,41 +421,19 @@ class _StoryboardRailRows {
     );
   }
 
-  Cut? _cutOf(Track track) {
-    final index = _state.widget.project.tracks.indexOf(track);
-    return index < 0 ? null : _state._standing.cutAtPlayheadOn(index);
-  }
-
-  /// The eye column's value for a row: the layer's eye, or the cut's
-  /// picture visibility on a V row — null where the column has no verb.
+  /// The eye column's value for a row: the layer's eye — null where the
+  /// column has no verb, which is the V row too since its eye left (I-73).
   bool? _rowEyeOn(StoryboardRailRow row) {
-    final toggleCutVisibility = _state.widget.onToggleCutPictureVisibility;
-    final cutVisibleOf = _state.widget.cutPictureVisibleOf;
-    final toggleLayerVisibility = _state.widget.onToggleLayerVisibility;
     final layer = row.layer;
-    if (layer != null) {
-      return toggleLayerVisibility == null
-          ? null
-          : layerRailEyeIsOn(layer, live: _state.widget.layerEyeOnOf);
-    }
-    if (toggleCutVisibility == null) {
-      return null;
-    }
-    final cut = _cutOf(row.track);
-    return cut == null ? null : (cutVisibleOf?.call(cut.id) ?? true);
+    return layer == null || _state.widget.onToggleLayerVisibility == null
+        ? null
+        : layerRailEyeIsOn(layer, live: _state.widget.layerEyeOnOf);
   }
 
   void _toggleRowEye(StoryboardRailRow row) {
-    final toggleCutVisibility = _state.widget.onToggleCutPictureVisibility;
-    final toggleLayerVisibility = _state.widget.onToggleLayerVisibility;
     final layer = row.layer;
     if (layer != null) {
-      toggleLayerVisibility?.call(layer.id);
-      return;
-    }
-    final cut = _cutOf(row.track);
-    if (cut != null) {
-      toggleCutVisibility?.call(cut.id);
+      _state.widget.onToggleLayerVisibility?.call(layer.id);
     }
   }
 
@@ -587,9 +525,8 @@ class _StoryboardRailRows {
   }
 
   List<Widget> railRowsForTrack(Track track, int index) {
-    final activeCut = _state._standing.activeCutOf(track);
     final seRows = _seRowsFor(track);
-    final vRows = _vRowsFor(track, index, activeCut);
+    final vRows = _vRowsFor(track, index);
     return [
       // The transition row heads the group. It is a FIXTURE like S1/S2 — one
       // per track, always there — so it takes no filter gate and no reorder
@@ -722,40 +659,38 @@ class _StoryboardRailRows {
     );
   }
 
-  /// The V section's rail rows for [track]: the draggable track label
-  /// row (following the playhead), and the track's effect lane rows while
-  /// its transform group is expanded.
-  List<Widget> _vRowsFor(Track track, int index, Cut? activeCut) {
+  /// The V section's rail rows for [track]: the draggable track label row,
+  /// and the track's effect lane rows while its transform group is
+  /// expanded.
+  List<Widget> _vRowsFor(Track track, int index) {
     final vRows = <Widget>[
       _withTrackLaneSplitter(
         track,
         _state._rows.trackDraggable(
           track,
           index,
-          // 🚨F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
+          // ↩️F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
           // 현재 인덱스의 컷에 따라 버튼이 갱신 안되고** … **손 떼야 갱신**되서
           // 활성화되거나 하는데 어떻게 가능한가?」
           //
-          // Because of the cursor-layer split, and it was working as built:
-          // [_playheadGlobalFrame] moves per scrub move, and only the playhead
-          // overlay and the ruler subscribe to it — the panel deliberately does
-          // NOT rebuild on a tick (W4). So [_cutAtPlayheadOn] read whatever the
-          // frame had been at the last panel rebuild, which during a drag is
-          // where the drag STARTED.
+          // The button was this row's EYE, the one cell that showed which
+          // cut stands under the playhead. The panel deliberately does NOT
+          // rebuild on a tick (W4, the cursor-layer split), so the eye read
+          // the frame of the last panel rebuild — where the drag STARTED —
+          // until it took the subscription the overlay and the ruler take
+          // (09-28: on a tick layer of its own; it had been the whole row).
+          // The eye left the row with I-73 (2026-10-08, see
+          // [StoryboardTrackLabelRow.trackFxState]) and the subscription
+          // with it: nothing this row shows follows the playhead now.
           //
-          // ★So this row subscribes, the way the overlay does — through the
-          // one cell that shows which cut stands there, the eye (09-28: it
-          // was the whole row). One eye per track rebuilds per crossing —
-          // less than the ruler beside it already pays — and the
-          // alternative (rebuilding the panel) is the very thing the split
-          // exists to avoid.
-          //
-          // ⛔NOT by making the ruler switch the active cut, which is what the
-          // report wondered aloud about (「애초에 룰러에 따라 액티브컷 전환하도록
-          // 하는게 구조적 해결일까」). The scrub PARKS on purpose — the whole
-          // preview machinery (D6's no-flash rules, the territory flag) exists
-          // because the active cut does not follow a drag — and switching it
-          // per move would put a cut activation on every pointer move.
+          // ⛔What that round ruled OUT stands for whatever follows the
+          // playhead next: NOT by making the ruler switch the active cut,
+          // which is what the report wondered aloud about (「애초에 룰러에
+          // 따라 액티브컷 전환하도록 하는게 구조적 해결일까」). The scrub PARKS
+          // on purpose — the whole preview machinery (D6's no-flash rules,
+          // the territory flag) exists because the active cut does not
+          // follow a drag — and switching it per move would put a cut
+          // activation on every pointer move.
           StoryboardTrackLabelRow(
             track: track,
             trackLabel: _vRowName(index),
@@ -775,32 +710,12 @@ class _StoryboardRailRows {
             onSelectTrack: _state.widget.onSelectTrack == null
                 ? null
                 : () => _state.widget.onSelectTrack!(track.id),
-            activeCut: activeCut,
-            // UI-R13 #2: the fx/eye act on THIS track's cut at the current
-            // global index (each track independently) — no stand-down, no
-            // parked look. A gap simply means no cut exists there: the
-            // buttons stay normal and a press is a no-op.
-            subjectCut: activeCut,
-            followsSubject: _followsTheCutUnderThePlayhead(index, activeCut),
-            cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
-            onToggleCutPictureVisibility:
-                _state.widget.onToggleCutPictureVisibility,
-            // R9 #21: the track's own display columns.
+            // R9 #21: the track's own display column.
             trackFxState:
                 _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
             onToggleTrackFx: _state.widget.onToggleTrackFx == null
                 ? null
                 : () => _state.widget.onToggleTrackFx!(track),
-            trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
-            onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
-                ? null
-                : (opacity) =>
-                      _state.widget.onTrackOpacityChanged!(track, opacity),
-            onTrackOpacityChangeEnd:
-                _state.widget.onTrackOpacityChangeEnd == null
-                ? null
-                : (opacity) =>
-                      _state.widget.onTrackOpacityChangeEnd!(track, opacity),
           ),
         ),
       ),
@@ -1727,62 +1642,6 @@ class _StoryboardRailRows {
         ],
     ];
   }
-}
-
-/// Rebuilds [builder] when the cut under the playhead changes — never on a
-/// playhead move that stays inside it ([_StoryboardRailRows.
-/// _followsTheCutUnderThePlayhead]).
-class _FollowsTheCutUnderThePlayhead extends StatefulWidget {
-  const _FollowsTheCutUnderThePlayhead({
-    required this.playhead,
-    required this.cutAt,
-    required this.builder,
-  });
-
-  final ValueListenable<int?> playhead;
-  final Cut? Function() cutAt;
-  final Widget Function(Cut? subject) builder;
-
-  @override
-  State<_FollowsTheCutUnderThePlayhead> createState() =>
-      _FollowsTheCutUnderThePlayheadState();
-}
-
-class _FollowsTheCutUnderThePlayheadState
-    extends State<_FollowsTheCutUnderThePlayhead> {
-  late Cut? _subject = widget.cutAt();
-
-  void _moved() {
-    final subject = widget.cutAt();
-    if (!identical(subject, _subject)) {
-      setState(() => _subject = subject);
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.playhead.addListener(_moved);
-  }
-
-  @override
-  void didUpdateWidget(_FollowsTheCutUnderThePlayhead oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.playhead, widget.playhead)) {
-      oldWidget.playhead.removeListener(_moved);
-      widget.playhead.addListener(_moved);
-    }
-    _subject = widget.cutAt();
-  }
-
-  @override
-  void dispose() {
-    widget.playhead.removeListener(_moved);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.builder(_subject);
 }
 
 /// A track's cuts as a drag preview lays them — what its rows are built

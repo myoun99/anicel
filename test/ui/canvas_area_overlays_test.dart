@@ -1,6 +1,6 @@
 // THE CANVAS AREA STACKS ITS OVERLAYS ONLY WHEN THERE IS SOMETHING TO SHOW:
-// A GUIDE PUTS THE GUIDE OVERLAY UP, A DIMMED TRACK PUTS THE FADE WASH UP,
-// AND NEITHER IS THERE BEFORE.
+// A GUIDE PUTS THE GUIDE OVERLAY UP, A CUT AN O.L THINS PUTS THE FADE WASH
+// UP, AND NEITHER IS THERE BEFORE.
 //
 // Two mutants of the interactive-canvas build cut (2026-09-03) survived
 // every test that pumps the editor: the overlay builder replaced by null,
@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
@@ -65,15 +67,21 @@ void main() {
     expect(_guideOverlays(), findsOneWidget);
   });
 
-  testWidgets('a dimmed track puts the fade wash over the canvas', (
+  // ↩️A dimmed TRACK put it up: the V row's static opacity was the other
+  // thing that thinned a cut, until it left with its bar (I-73, 10-08).
+  testWidgets('a cut an O.L thins puts the fade wash over the canvas', (
     tester,
   ) async {
     await _pump(tester);
     final session = _sessionOf(tester);
-    expect(_fadeWashes(), findsNothing, reason: 'full opacity: no wash');
+    expect(_fadeWashes(), findsNothing, reason: 'no transition: no wash');
 
-    final trackId = session.repository.requireProject().tracks.first.id;
-    session.opacityVerbs.commitTrackOpacity(trackId, 0.5);
+    // An O.L over the cut's last six frames, and the playhead inside it.
+    final duration = session.activeCutOrNull!.duration;
+    session.transitions.updateTransitionInstructions({
+      duration - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+    });
+    session.selectFrameIndex(duration - 3);
     await tester.pumpAndSettle();
     expect(_fadeWashes(), findsOneWidget);
   });

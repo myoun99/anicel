@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
 import '../models/canvas_size.dart';
-import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart'
@@ -49,7 +48,6 @@ import 'timeline/layer_rail_columns.dart';
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/dock_edge_splitter.dart';
-import 'widgets/field_slider.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
@@ -547,13 +545,8 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneOpenOf,
     this.layerFxStateOf,
     this.onToggleLayerFx,
-    this.cutPictureVisibleOf,
-    this.onToggleCutPictureVisibility,
     this.trackFxStateOf,
     this.onToggleTrackFx,
-    this.trackOpacityOf,
-    this.onTrackOpacityChanged,
-    this.onTrackOpacityChangeEnd,
     this.onToggleTrackEffectEnabled,
     this.onResetTrackEffectGroup,
     this.onToggleLaneGroupEnabled,
@@ -1113,21 +1106,12 @@ class StoryboardPanel extends StatefulWidget {
   /// through the bar (UI-R6 #2) — not an average of the rows.
   final double legendOpacityValue;
 
-  /// The V row's eye (R9, session view state, scoped to the track's cut at
-  /// the playhead): it hides that cut's picture in the playback display.
-  /// Null hides the button. The fx switch beside it is the TRACK's — see
-  /// [trackFxStateOf].
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
-  final ValueChanged<CutId>? onToggleCutPictureVisibility;
-
-  /// R9 #21: the V row's TRACK columns — the fx master over the track's
-  /// per-cut switches, and the track's static opacity (live-following the
-  /// session's drag). Null keeps the columns reserved and empty.
+  /// R9 #21: the V row's TRACK column — the fx master over the track's fx
+  /// work. Null keeps the column reserved and empty. (↩️The row's eye and
+  /// its static opacity were handed in beside it until I-73 — see
+  /// [StoryboardTrackLabelRow.trackFxState].)
   final LayerFxState Function(Track track)? trackFxStateOf;
   final ValueChanged<Track>? onToggleTrackFx;
-  final double Function(Track track)? trackOpacityOf;
-  final void Function(Track track, double opacity)? onTrackOpacityChanged;
-  final void Function(Track track, double opacity)? onTrackOpacityChangeEnd;
 
   /// One V-track EFFECT's own bypass, from its lane group header (the twin
   /// of a layer effect's switch). Null leaves the glyph inert.
@@ -4363,16 +4347,8 @@ class StoryboardTrackLabelRow extends StatelessWidget {
     this.onToggleLane,
     this.active = false,
     this.onSelectTrack,
-    this.activeCut,
-    this.subjectCut,
-    this.followsSubject,
-    this.cutPictureVisibleOf,
-    this.onToggleCutPictureVisibility,
     this.trackFxState = LayerFxState.on,
     this.onToggleTrackFx,
-    this.trackOpacity = 1.0,
-    this.onTrackOpacityChanged,
-    this.onTrackOpacityChangeEnd,
     this.chromeless = false,
   });
 
@@ -4409,50 +4385,21 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   /// its playhead-index cut to active. Null keeps the row display-only.
   final VoidCallback? onSelectTrack;
 
-  /// The ACTIVE cut when it lives on this track (null otherwise) — the
-  /// transform-lane gating still keys off it.
-  final Cut? activeCut;
-
-  /// The fx/eye buttons' target (UI-R13 #2): THIS track's cut at the
-  /// current global index. The buttons render NORMAL always — no parked
-  /// look, no stand-down; null (a gap on this track) just makes a press
-  /// a no-op, because no cut exists at the index.
-  final Cut? subjectCut;
-
-  /// Where the subject comes from when it MOVES — the cut under the
-  /// playhead, which a scrub changes on nearly every move at a far zoom.
-  /// Handed the eye's builder, it rebuilds the eye alone, on a tick layer
-  /// of its own, and the row around it stands; [subjectCut] is not read.
-  /// Null: the eye shows [subjectCut] as given.
-  final Widget Function(Widget Function(Cut? subject) eye)? followsSubject;
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
-  final ValueChanged<CutId>? onToggleCutPictureVisibility;
-
-  /// R9 #21: the V row's own columns, describing the TRACK rather than
-  /// whichever cut happens to sit under the playhead — the fx switch as a
-  /// MASTER over the track's per-cut switches, and the static opacity that
-  /// the animated fade lane multiplies. Null keeps the row display-only.
+  /// R9 #21: the V row's own column, describing the TRACK rather than
+  /// whichever cut happens to sit under the playhead — the fx switch, a
+  /// MASTER over the track's fx work. Null keeps the row display-only.
+  ///
+  /// 🗣️I-73 (유저 2026-10-08): 「V행의 불투명도랑 비지블 필요없어보여서
+  /// 삭제하고싶은데 어때」 · 「5. 값도지움」 — ↩️the head carried an EYE too,
+  /// which hid the picture of the cut under the playhead in the playback
+  /// display (R9, UI-R13 #2), and the track's static OPACITY bar (R9 #21).
+  /// Both are gone, the opacity's stored value with its bar; their two
+  /// columns stand reserved and empty, as every rail row's do where it has
+  /// nothing to show. (The eye was the one cell of this row the playhead
+  /// moved — followed on a tick layer of its own since I-22 ③ — so the
+  /// row shows nothing of the playhead now.)
   final LayerFxState trackFxState;
   final VoidCallback? onToggleTrackFx;
-  final double trackOpacity;
-  final ValueChanged<double>? onTrackOpacityChanged;
-  final ValueChanged<double>? onTrackOpacityChangeEnd;
-
-  /// The eye on [subject] — the SAME eye the layer and folder rows mount;
-  /// this was a sixth inline copy (R28 follow-up).
-  Widget _eye(Cut? subject) => LayerVisibilityToggleButton(
-    keyValue:
-        'storyboard-cut-visibility-'
-        '${subject?.id.value ?? 'none-${track.id.value}'}',
-    subject: RailSubject.track,
-    isVisible:
-        subject == null || (cutPictureVisibleOf?.call(subject.id) ?? true),
-    onToggle: () {
-      if (subject != null) {
-        onToggleCutPictureVisibility!(subject.id);
-      }
-    },
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -4551,11 +4498,8 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                   ],
                 ),
               ),
-              // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
-              // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
-              // the current global index — no stand-down, no parked graying.
-              // Where no cut exists (a gap on this track) a press is a no-op;
-              // the button is track furniture, only its subject is absent.
+              // The shared trailing slots (UI-R5): the fx switch in its
+              // column, and the eye's and the opacity's reserved and empty.
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
                 // R9 #21: the switch in this row's fx column is the
@@ -4575,34 +4519,6 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                           state: trackFxState,
                           onToggle: onToggleTrackFx!,
                         ),
-                      ),
-                visibility: onToggleCutPictureVisibility == null
-                    ? null
-                    : RailSwipeColumnPointer(
-                        child: SizedBox(
-                          height: 26,
-                          child: switch (followsSubject) {
-                            null => _eye(subjectCut),
-                            // The one cell of the row the playhead moves
-                            // — laid out and painted alone (I-22 ③).
-                            final follow => TickLayer(child: follow(_eye)),
-                          },
-                        ),
-                      ),
-                // R9 #21: the track's STATIC opacity — this slot was empty
-                // while every other rail row had a bar. The animated fade
-                // lane multiplies it, exactly as a layer's animated
-                // opacity multiplies its static one.
-                opacity: onTrackOpacityChanged == null
-                    ? null
-                    : FieldSlider.opacity(
-                        key: ValueKey<String>(
-                          'storyboard-track-opacity-${track.id.value}',
-                        ),
-                        value: trackOpacity.clamp(0.0, 1.0).toDouble(),
-                        height: 18 + FieldSlider.growthIn(context),
-                        onChanged: onTrackOpacityChanged,
-                        onChangeEnd: onTrackOpacityChangeEnd,
                       ),
               ),
             ],

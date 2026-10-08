@@ -274,19 +274,16 @@ class ExportFrameRenderer {
     );
   }
 
-  /// Each contribution's UNIT ALPHA: its own share of the frame times its
-  /// track's static opacity and fade.
+  /// Each contribution's UNIT ALPHA: its own share of the frame. (↩️Times
+  /// its track's static opacity, until the V row lost it — I-73,
+  /// 2026-10-08.)
   ///
   /// ⚠️Both bakes below need exactly this before they can weigh anything,
   /// and they weigh it differently afterwards ([sourceOverWeights] within
   /// one canvas, [trackGroupSourceOverWeights] across tracks). The half
   /// they share is here; the half they don't stays at the call site.
   List<double> _unitAlphas(List<({Cut cut, double opacity})> contributions) {
-    return [
-      for (final contribution in contributions)
-        contribution.opacity *
-            session.opacityVerbs.trackStaticOpacityForCut(contribution.cut.id),
-    ];
+    return [for (final contribution in contributions) contribution.opacity];
   }
 
   /// Canvas-space composites for the stack bake: TRANSPARENT backing, so
@@ -594,13 +591,11 @@ class ExportFrameRenderer {
     );
     // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
     // R8 ("a bypass that vanished on reload while a per-effect bypass
-    // survived" is exactly what R8 refused). It gates the effect chain —
-    // never the STATIC opacity, which is a compositing property and not an fx
-    // (R9 #21).
+    // survived" is exactly what R8 refused). It gates the effect chain.
     final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
-    // No animated track fade any more; the transition row's ramp lands in
-    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers.
-    final fade = session.opacityVerbs.trackStaticOpacityForCut(cut.id);
+    // No track fade: the transition row's ramp lands in
+    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
+    // and the track's static opacity went with the V row's bar (I-73).
     final trackEffects = trackEffectsAt(
       session.effectsAndFx.trackEffectsForCut(cut.id),
       trackFrame,
@@ -610,7 +605,7 @@ class ExportFrameRenderer {
     // the transition mix above — ↩️its fade was simply missing from a
     // canvas-size export. Its screen lands here, on this one frame.
     final veils = _veilsOf(task);
-    if (fade >= 1 && trackEffects.isEmpty && veils.isEmpty) {
+    if (trackEffects.isEmpty && veils.isEmpty) {
       return image.clone();
     }
     return _frameOf<_BakedFrame>(
@@ -618,7 +613,7 @@ class ExportFrameRenderer {
         ground: ground,
         cut: (
           picture: ByIdentity(image),
-          weight: fade,
+          weight: 1,
           chain: ByList(trackEffects),
           veils: ByList(veils),
           canvasExtent: cut.canvasSize.width.toDouble(),

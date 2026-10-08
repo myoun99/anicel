@@ -355,8 +355,10 @@ enum RailSubject {
   /// rows.
   layer,
 
-  /// The storyboard's TRACK row: its eye shows the cut pictures, and its FX
-  /// switch is the track's own.
+  /// The storyboard's TRACK row: its FX switch is the track's own. (↩️Its
+  /// eye showed the cut pictures, and said so, until the eye left the row
+  /// — I-73, 2026-10-08. The eye is a layer row's alone now and names no
+  /// subject.)
   track,
 }
 
@@ -614,7 +616,6 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.isVisible,
     required this.onToggle,
     this.hiddenAbove = false,
-    this.subject = RailSubject.layer,
     this.tooltip,
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
@@ -625,12 +626,9 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// off colour (F-185).
   final bool hiddenAbove;
 
-  /// The row this eye stands on — what its tooltip names.
-  final RailSubject subject;
-
   /// The whole tooltip, when the caller has one of its own — the guides
   /// panel says 「가이드 표시」 rather than 'Show guide'. Null keeps the
-  /// Show/Hide pair for [subject], which is what every rail wants.
+  /// layer's Show/Hide pair, which is what every rail wants.
   final String? tooltip;
 
   /// The full widget key string ('timeline-layer-visibility-a').
@@ -643,12 +641,8 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// The x-sheet's column header runs a hair smaller than the rails.
   final double iconSize;
 
-  String _showHideFor(AppStrings strings) => switch (subject) {
-    RailSubject.layer =>
-      isVisible ? strings.railHideLayer : strings.railShowLayer,
-    RailSubject.track =>
-      isVisible ? strings.railHideCutPicture : strings.railShowCutPicture,
-  };
+  String _showHide(AppStrings strings) =>
+      isVisible ? strings.railHideLayer : strings.railShowLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -657,7 +651,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       height: 26,
       child: AppIconButton(
         keyValue: keyValue,
-        tooltip: tooltip ?? _showHideFor(AppText.strings),
+        tooltip: tooltip ?? _showHide(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),

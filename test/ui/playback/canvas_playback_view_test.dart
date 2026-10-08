@@ -133,7 +133,6 @@ void main() {
     ValueListenable<PrerenderProgress>? progress,
     Listenable? picturesLanded,
     bool Function(CutId cutId)? cutFxEnabledOf,
-    bool Function(CutId cutId)? cutPictureVisibleOf,
     Widget? trackStack,
     // The TRACK's V lanes (R4). The fixture's single cut starts at global
     // 0, so local == global and the identity frame map below is exact.
@@ -153,7 +152,6 @@ void main() {
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
-            cutPictureVisibleOf: cutPictureVisibleOf,
             trackStack: trackStack,
             transformTrackOf: transformTrack == null
                 ? null
@@ -219,32 +217,9 @@ void main() {
 
   // The pose half of the V-row display gates went with the V row's transform:
   // there is no track pose to bypass, and the animated fade it gated is F.I/F.O
-  // spans on the transition row now. The EYE is still a gate, and still here.
-  testWidgets('the V-row eye drops the picture and keeps the paper (R9)', (
-    tester,
-  ) async {
-    // eye off: the warmed composite is withheld from the painter — the
-    // paper stays, the picture doesn't draw.
-    final hidden = fixture();
-    await tester.runAsync(() async {
-      await hidden.composites.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-      );
-    });
-    hidden.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: hidden.controller,
-      composites: hidden.composites,
-      cutPictureVisibleOf: (_) => false,
-    );
-    expect(painterOf(tester).image, isNull, reason: 'picture hidden');
-
-    hidden.controller.stop();
-    await tester.pump();
-    hidden.composites.dispose();
-  });
+  // spans on the transition row now. ↩️The EYE was the gate left here — it
+  // dropped the picture and kept the paper (R9) — until it left the V row's
+  // head too (I-73, 2026-10-08).
 
   testWidgets('a playlist GAP frame is a VOID (UI-R9 #2, superseding '
       'R10-⑥): picture AND paper withheld, no fade wash — the panel '

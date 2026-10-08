@@ -1,46 +1,22 @@
 part of '../storyboard_panel.dart';
 
 /// WHERE THE STORYBOARD STANDS — the ring around the standing cell, the
-/// block under the playhead, the active cut of a track and the band a
-/// track row spans — as its own object.
+/// block under the playhead and the band a track row spans — as its own
+/// object.
 ///
 /// 🚨A collaborator carved out of `_StoryboardPanelState` (the audit's SRP
 /// cut, 2026-09-02). Measured before cutting: one State member shared.
 /// It reaches the State through `_state`.
+///
+/// ↩️It answered two more questions for the V row's head — a track's ACTIVE
+/// cut, and the cut under the playhead on a track (UI-R13 #2: the row's eye
+/// acted on that one, each track independently, a gap a no-op rather than a
+/// grey button). The eye left the head with I-73 (2026-10-08, see
+/// [StoryboardTrackLabelRow.trackFxState]) and nobody asks either any more.
 class _StoryboardStanding {
   _StoryboardStanding(this._state);
 
   final _StoryboardPanelState _state;
-
-  /// The ACTIVE cut when it lives on [track]; null otherwise (the rail's
-  /// lane controls then stand down, like the S-row layer controls).
-  Cut? activeCutOf(Track track) {
-    for (final cut in track.cuts) {
-      if (cut.id == _state.widget.activeCutId) {
-        return cut;
-      }
-    }
-    return null;
-  }
-
-  /// The cut sitting under the current global playhead on track
-  /// [trackIndex] (UI-R13 #2: the V-row fx/eye act on THIS, each track
-  /// independently). Null when the playhead is unwired or the index is a
-  /// gap on this track — the buttons then no-op, never gray out.
-  Cut? cutAtPlayheadOn(int trackIndex) {
-    final globalFrame = _state.widget.playheadFrame?.value;
-    if (globalFrame == null) {
-      return null;
-    }
-    for (final entry in buildStoryboardTimelineLayout(_state.widget.project)) {
-      if (entry.trackIndex == trackIndex &&
-          globalFrame >= entry.startFrame &&
-          globalFrame < entry.endFrame) {
-        return entry.cut;
-      }
-    }
-    return null;
-  }
 
   /// Where you STAND on this track, said to semantics and to the probes that
   /// read it: the cell under the playhead on the row you stand on. It

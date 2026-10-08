@@ -17,7 +17,6 @@ class Track {
     Layer? transitionLayer,
     List<LayerEffect> effects = const [],
     this.type = TrackType.video,
-    this.opacity = 1.0,
     this.fxEnabled = true,
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
@@ -84,16 +83,11 @@ class Track {
 
   final TrackType type;
 
-  /// The V track's STATIC opacity (R9 #21) — the resting value the
-  /// animated fade lane multiplies, exactly as a layer's static opacity
-  /// carries its animated one ([resolveOpacityTrackAt]'s contract). The
-  /// track had only the animated lane, so "make this whole track 50%"
-  /// meant authoring keys.
-  ///
-  /// Unlike the fade, this is NOT an fx: a layer's static opacity is not
-  /// gated by its fx switch either, so [fxEnabled] off still composites
-  /// at this value.
-  final double opacity;
+  // ↩️A track HAD a static opacity of its own (R9 #21) — the resting value
+  // its fade lane multiplied, set by a bar on the V row's head. The fade
+  // lane went with the transform (above), and the bar and the value went
+  // on 2026-10-08 (I-73, 유저: 「V행의 불투명도랑 비지블 필요없어보여서
+  // 삭제하고싶은데 어때」 · 「5. 값도지움」): a track is not seen through.
 
   /// The track's fx MASTER (R9 #21), persisted like every fx switch since
   /// R8. False bypasses the track's whole cut-level fx work — the pose, the
@@ -110,7 +104,6 @@ class Track {
     Layer? transitionLayer,
     List<LayerEffect>? effects,
     TrackType? type,
-    double? opacity,
     bool? fxEnabled,
   }) {
     return Track(
@@ -121,7 +114,6 @@ class Track {
       transitionLayer: transitionLayer ?? this.transitionLayer,
       effects: effects ?? this.effects,
       type: type ?? this.type,
-      opacity: opacity ?? this.opacity,
       fxEnabled: fxEnabled ?? this.fxEnabled,
     );
   }
@@ -142,9 +134,7 @@ class Track {
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     'type': type.name,
-    // R8's rule: a default is silence. Files written before R9 carry
-    // neither key and open at 1.0 / on, which is what they always were.
-    if (opacity != 1.0) 'opacity': opacity,
+    // R8's rule: a default is silence — a switch that is on writes no key.
     if (!fxEnabled) 'fxEnabled': false,
   };
 
@@ -161,7 +151,6 @@ class Track {
     final transitionLayer = transitionJson is Map<String, dynamic>
         ? Layer.fromJson(transitionJson)
         : createTrackTransitionLayer(id);
-    final opacity = (json['opacity'] as num?)?.toDouble() ?? 1.0;
     final fxEnabled = json['fxEnabled'] as bool? ?? true;
     final effectsJson = json['effects'] as List<dynamic>?;
     final effects = <LayerEffect>[
@@ -183,7 +172,6 @@ class Track {
         transitionLayer: transitionLayer,
         effects: effects,
         type: TrackType.values.byName(json['type'] as String),
-        opacity: opacity,
         fxEnabled: fxEnabled,
       );
     }
@@ -200,7 +188,6 @@ class Track {
       transitionLayer: transitionLayer,
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
-      opacity: opacity,
       fxEnabled: fxEnabled,
     );
   }
@@ -216,7 +203,6 @@ class Track {
           other.transitionLayer == transitionLayer &&
           listEquals(other.effects, effects) &&
           other.type == type &&
-          other.opacity == opacity &&
           other.fxEnabled == fxEnabled;
 
   @override
@@ -228,7 +214,6 @@ class Track {
     transitionLayer,
     Object.hashAll(effects),
     type,
-    opacity,
     fxEnabled,
   );
 

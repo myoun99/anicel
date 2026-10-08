@@ -100,12 +100,42 @@ void main() {
         ],
       );
 
-      // What a track keeps: its static opacity, its fx chain and its fx
-      // master. What it lost: the pose lanes and the fade's opacity lane.
-      expect(track.opacity, 1.0);
+      // What a track keeps: its fx chain and its fx master. What it lost:
+      // the pose lanes and the fade's opacity lane — and, with the V row's
+      // bar, its static opacity (I-73, 유저 2026-10-08: 「5. 값도지움」).
       expect(track.effects, isEmpty);
       expect(track.fxEnabled, isTrue);
       expect(track.toJson().containsKey('transform'), isFalse);
+      expect(track.toJson().containsKey('opacity'), isFalse);
+    });
+
+    test('a track carries no OPACITY — the key is neither read nor written, '
+        'and the track is seen whole', () {
+      final json = <String, dynamic>{
+        'id': const TrackId('t1').toJson(),
+        'name': 'V1',
+        'type': 'video',
+        'cuts': <dynamic>[],
+        'seLayers': <dynamic>[],
+        // The V row's static opacity (R9 #21), which a track no longer has
+        // (I-73, 유저 2026-10-08: 「5. 값도지움」).
+        'opacity': 0.4,
+        'fxEnabled': false,
+      };
+
+      final loaded = Track.fromJson(json);
+
+      expect(loaded.fxEnabled, isFalse, reason: 'the switch beside it stays');
+      expect(
+        loaded.toJson().containsKey('opacity'),
+        isFalse,
+        reason: 'and it is not written back',
+      );
+      expect(
+        loaded,
+        Track.fromJson({...json}..remove('opacity')),
+        reason: 'two files that differ in that key alone are one track',
+      );
     });
 
     test('a file written BEFORE the teardown still loads — the key is read '

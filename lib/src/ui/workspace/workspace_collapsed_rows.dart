@@ -188,9 +188,6 @@ class _WorkspaceCollapsedRows {
               trackLabel: 'V1',
               laneHeight: height,
               chromeless: true,
-              activeCut: session.activeCutOrNull,
-              subjectCut: session.activeCutOrNull,
-              cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
             ),
       frameRowBuilder: track == null
           ? null

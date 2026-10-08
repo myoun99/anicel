@@ -40,45 +40,10 @@ void main() {
     expect(() => s.requireActiveCut, throwsStateError);
   });
 
-  test('hiding the ACTIVE cut\'s picture enters the no-cut state exactly '
-      'like a gap landing (UI-R13 #2); re-showing RESTORES the parked '
-      'position (UI-R14 #2, the symmetric inverse)', () {
-    final (s, first, second, aEnd) = gappedSession();
-    addTearDown(s.dispose);
-    s.selectCut(first);
-    s.selectFrameIndex(2);
-
-    // Hiding ANOTHER cut's picture: selection untouched.
-    s.cutPictureEyes.toggle(second);
-    expect(s.activeCutId, first);
-    s.cutPictureEyes.toggle(second); // restore
-
-    // Hiding the ACTIVE cut's picture: the index shows nothing anymore —
-    // the no-cut state, parked at the exact global.
-    s.cutPictureEyes.toggle(first);
-    expect(s.cutPictureEyes.showsPicture(first), isFalse);
-    expect(s.activeCutId, isNull, reason: 'the active cut ceases');
-    expect(s.editingSession.gapGlobalFrame, 2, reason: 'parked where it stood');
-    expect(s.editingSession.playheadInGap, isTrue);
-
-    // Re-showing while parked ON the cut lands there again — as if the
-    // position were clicked (without this the eye-on read as a no-op:
-    // the editing view stayed in the void).
-    s.cutPictureEyes.toggle(first);
-    expect(s.cutPictureEyes.showsPicture(first), isTrue);
-    expect(s.activeCutId, first, reason: 'the parked position restores');
-    expect(s.currentFrameIndex, 2);
-    expect(s.editingSession.playheadInGap, isFalse);
-
-    // Parked in a REAL axis gap: re-showing a nearby cut keeps the
-    // parking (nothing to land on at that index).
-    s.selectGlobalFrame(aEnd + 1);
-    expect(s.activeCutId, isNull);
-    s.cutPictureEyes.toggle(first);
-    s.cutPictureEyes.toggle(first);
-    expect(s.activeCutId, isNull, reason: 'the gap parking survives');
-    expect(s.editingSession.gapGlobalFrame, aEnd + 1);
-  });
+  // ↩️A pin stood here for the V row's EYE: hiding the active cut's picture
+  // entered this no-cut state like a gap landing (UI-R13 #2), and
+  // re-showing it restored the parked position (UI-R14 #2). The eye left
+  // the V row's head on 2026-10-08 (I-73), and its two verbs with it.
 
   test('a gap scrub parks QUIETLY mid-drag — the deselect lands on the '
       'release (the whole drag is a preview; the old immediate deselect '

@@ -128,35 +128,36 @@ void main() {
 
   testWidgets('a swipe down past the last row shown paints nothing it '
       'cannot see — the hidden V row is not in the walk', (tester) async {
+    // ↩️The stroke ran down the EYE column and the pin was the hidden V
+    // row's cut eye, until that eye left the head (I-73, 2026-10-08). The
+    // fx column is the one a V row still answers on, so the stroke runs
+    // down that — and it has to be an ON stroke, the one that would light
+    // the very switch that hid the row: S1 starts with its fx off.
     final shown = await pumpFiltered(
       tester,
       rowFilter: const TimelineRowFilter(fxOnly: true),
-      arrange: (session) =>
-          session.effectsAndFx.toggleTrackFx(session.selectedTrackId),
+      arrange: (session) {
+        session.effectsAndFx.toggleTrackFx(session.selectedTrackId);
+        session.effectsAndFx.toggleLayerFx(
+          seLayerIdForTrack(session.selectedTrackId, 1),
+        );
+      },
     );
     final session = shown.session;
-    final cuts = [
-      for (final cut
-          in session.repository.requireProject().tracks.single.cuts)
-        cut.id,
-    ];
-    expect(cuts, isNotEmpty, reason: 'LIVENESS — the track has cuts');
-    final eyes = [
-      for (final cut in cuts) session.cutPictureEyes.showsPicture(cut),
-    ];
-
-    // From S1's eye — the last row the rail shows — down into the empty
-    // rail where the hidden V row would have stood.
-    final layerId = session.repository
-        .requireProject()
-        .tracks
-        .single
-        .seLayers
-        .first
-        .id;
-    final from = tester.getCenter(
-      keyed('storyboard-layer-visibility-$layerId'),
+    final layerId = seLayerIdForTrack(session.selectedTrackId, 1);
+    LayerFxState s1Fx() => session.effectsAndFx.layerFxState(layerId);
+    LayerFxState trackFx() =>
+        session.effectsAndFx.trackFxState(session.selectedTrackId);
+    expect(
+      [s1Fx(), trackFx()],
+      [LayerFxState.off, LayerFxState.off],
+      reason: 'the premise: both switches down, the V row hidden for it',
     );
+    expect(keyed('storyboard-track-label-row-${shown.track}'), findsNothing);
+
+    // From S1's fx switch — the last row with a switch the rail shows —
+    // down through where the hidden V row would have stood.
+    final from = tester.getCenter(keyed('storyboard-layer-fx-$layerId'));
     final gesture = await tester.startGesture(from);
     for (var step = 1; step <= 6; step += 1) {
       await gesture.moveTo(from + Offset(0, step * 12.0));
@@ -166,15 +167,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.repository.requireProject().tracks.single.seLayers.first
-          .isVisible,
-      isFalse,
-      reason: 'LIVENESS — the press hid the row it started on',
+      s1Fx(),
+      LayerFxState.on,
+      reason: 'LIVENESS — the press lit the row it started on',
     );
     expect(
-      [for (final cut in cuts) session.cutPictureEyes.showsPicture(cut)],
-      eyes,
-      reason: 'the V row is hidden, so no stroke reaches its cut eye',
+      trackFx(),
+      LayerFxState.off,
+      reason: 'the V row is hidden, so no stroke reaches its fx switch',
     );
   });
 

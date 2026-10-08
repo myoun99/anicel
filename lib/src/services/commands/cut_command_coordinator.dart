@@ -315,12 +315,10 @@ class CutCommandCoordinator {
   );
   void updateTrackDisplay({
     required TrackId trackId,
-    double? opacity,
-    bool? fxEnabled,
+    required bool fxEnabled,
     String description = 'Edit track display',
   }) => _tracks.updateTrackDisplay(
     trackId: trackId,
-    opacity: opacity,
     fxEnabled: fxEnabled,
     description: description,
   );

@@ -38,13 +38,14 @@ void main() {
     AppLanguage language,
   ) async {
     AppText.settings.value = AppLanguageSettings(programLanguage: language);
-    Widget eye(String key, RailSubject subject, bool visible) =>
-        LayerVisibilityToggleButton(
-          keyValue: key,
-          subject: subject,
-          isVisible: visible,
-          onToggle: () {},
-        );
+    // ↩️The eye took a subject too and had a TRACK arm — 'Hide cut picture'
+    // on the storyboard's V row — until that eye left the row (I-73,
+    // 2026-10-08) and its two sentences left the table.
+    Widget eye(String key, bool visible) => LayerVisibilityToggleButton(
+      keyValue: key,
+      isVisible: visible,
+      onToggle: () {},
+    );
     Widget fx(String key, RailSubject subject, LayerFxState state) =>
         FxToggleButton(
           keyValue: key,
@@ -72,10 +73,8 @@ void main() {
         home: Scaffold(
           body: Wrap(
             children: [
-              eye('eye-layer-shown', RailSubject.layer, true),
-              eye('eye-layer-hidden', RailSubject.layer, false),
-              eye('eye-track-shown', RailSubject.track, true),
-              eye('eye-track-hidden', RailSubject.track, false),
+              eye('eye-layer-shown', true),
+              eye('eye-layer-hidden', false),
               fx('fx-layer-on', RailSubject.layer, LayerFxState.on),
               fx('fx-layer-off', RailSubject.layer, LayerFxState.off),
               fx('fx-layer-mixed', RailSubject.layer, LayerFxState.mixed),
@@ -100,8 +99,6 @@ void main() {
       for (final key in [
         'eye-layer-shown',
         'eye-layer-hidden',
-        'eye-track-shown',
-        'eye-track-hidden',
         'fx-layer-on',
         'fx-layer-off',
         'fx-layer-mixed',
@@ -120,8 +117,6 @@ void main() {
   const wasEnglish = <String, String>{
     'eye-layer-shown': 'Hide layer',
     'eye-layer-hidden': 'Show layer',
-    'eye-track-shown': 'Hide cut picture',
-    'eye-track-hidden': 'Show cut picture',
     'fx-layer-on': 'Bypass layer FX',
     'fx-layer-off': 'Apply layer FX',
     'fx-layer-mixed': 'Bypass all layer FX (some are off)',
@@ -145,8 +140,6 @@ void main() {
   final keyOf = <String, String Function(AppStrings)>{
     'eye-layer-shown': (s) => s.railHideLayer,
     'eye-layer-hidden': (s) => s.railShowLayer,
-    'eye-track-shown': (s) => s.railHideCutPicture,
-    'eye-track-hidden': (s) => s.railShowCutPicture,
     'fx-layer-on': (s) => s.railBypassLayerFx,
     'fx-layer-off': (s) => s.railApplyLayerFx,
     'fx-layer-mixed': (s) => s.railBypassMixedLayerFx,
@@ -183,7 +176,7 @@ void main() {
   ) async {
     final ja = await sharedControls(tester, AppLanguage.ja);
     final ko = await sharedControls(tester, AppLanguage.ko);
-    expect(ja, hasLength(13), reason: 'LIVENESS: every arm was read');
+    expect(ja, hasLength(11), reason: 'LIVENESS: every arm was read');
     expectTranslated(ja, ko);
   });
 
@@ -253,8 +246,7 @@ void main() {
     expectTranslated(ja, ko);
   });
 
-  testWidgets('the storyboard\'s track row names the track and its cut '
-      'pictures', (tester) async {
+  testWidgets('the storyboard\'s track row names the track', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     expectTranslated(
@@ -264,9 +256,9 @@ void main() {
   });
 }
 
-/// The storyboard's TRACK row names itself — its switch is the track's FX
-/// and its eye the cut pictures — on the real storyboard, so the call sites
-/// that used to pass `'track'` and `'cut picture'` are held too.
+/// The storyboard's TRACK row names itself — its switch is the track's FX —
+/// on the real storyboard, so the call site that used to pass `'track'` is
+/// held too.
 Future<Map<String, String>> _trackRow(
   WidgetTester tester,
   AppLanguage language,
@@ -275,7 +267,6 @@ Future<Map<String, String>> _trackRow(
   final session = EditorSessionManager(initialProject: createDefaultProject());
   addTearDown(session.dispose);
   final track = session.repository.requireProject().tracks.first;
-  final cut = track.cuts.first;
   await tester.pumpWidget(
     MaterialApp(
       key: ValueKey<AppLanguage>(language),
@@ -298,8 +289,5 @@ Future<Map<String, String>> _trackRow(
   String face(String key) => tester
       .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)))
       .tooltip;
-  return {
-    'fx-track-on': face('storyboard-track-fx-${track.id.value}'),
-    'eye-track-shown': face('storyboard-cut-visibility-${cut.id.value}'),
-  };
+  return {'fx-track-on': face('storyboard-track-fx-${track.id.value}')};
 }

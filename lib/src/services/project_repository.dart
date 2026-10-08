@@ -629,19 +629,15 @@ class ProjectRepository {
     _mutate(_track, trackId, (track) => track.copyWith(effects: effects));
   }
 
-  /// The V track's DISPLAY properties (R9 #21): its static opacity and its
-  /// fx master. Both persist — R8's rule that an fx switch is model state,
-  /// applied to the one row that still kept its switch in the session.
+  /// The V track's DISPLAY property (R9 #21): its fx master. It persists —
+  /// R8's rule that an fx switch is model state, applied to the one row
+  /// that still kept its switch in the session. (↩️Its static opacity was
+  /// the other, until I-73.)
   void updateTrackDisplay({
     required TrackId trackId,
-    double? opacity,
-    bool? fxEnabled,
+    required bool fxEnabled,
   }) {
-    _mutate(
-      _track,
-      trackId,
-      (track) => track.copyWith(opacity: opacity, fxEnabled: fxEnabled),
-    );
+    _mutate(_track, trackId, (track) => track.copyWith(fxEnabled: fxEnabled));
   }
 
   void updateCutMetadata({

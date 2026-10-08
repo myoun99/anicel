@@ -863,8 +863,6 @@ void main() {
     'railFolderBlendMode': (s) => s.railFolderBlendMode,
     'railHideLayer': (s) => s.railHideLayer,
     'railShowLayer': (s) => s.railShowLayer,
-    'railHideCutPicture': (s) => s.railHideCutPicture,
-    'railShowCutPicture': (s) => s.railShowCutPicture,
     'railBypassLayerFx': (s) => s.railBypassLayerFx,
     'railApplyLayerFx': (s) => s.railApplyLayerFx,
     'railBypassMixedLayerFx': (s) => s.railBypassMixedLayerFx,

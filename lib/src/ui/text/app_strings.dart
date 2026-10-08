@@ -1648,8 +1648,6 @@ enum AppStrings {
   String get railFolderBlendMode => _s('railFolderBlendMode');
   String get railHideLayer => _s('railHideLayer');
   String get railShowLayer => _s('railShowLayer');
-  String get railHideCutPicture => _s('railHideCutPicture');
-  String get railShowCutPicture => _s('railShowCutPicture');
   String get railBypassLayerFx => _s('railBypassLayerFx');
   String get railApplyLayerFx => _s('railApplyLayerFx');
   String get railBypassMixedLayerFx => _s('railBypassMixedLayerFx');
@@ -2705,8 +2703,6 @@ enum AppStrings {
     'railFolderBlendMode': 'Folder blend mode',
     'railHideLayer': 'Hide layer',
     'railShowLayer': 'Show layer',
-    'railHideCutPicture': 'Hide cut picture',
-    'railShowCutPicture': 'Show cut picture',
     'railBypassLayerFx': 'Bypass layer FX',
     'railApplyLayerFx': 'Apply layer FX',
     'railBypassMixedLayerFx': 'Bypass all layer FX (some are off)',
@@ -4075,8 +4071,6 @@ enum AppStrings {
     'railFolderBlendMode': 'フォルダーの合成モード',
     'railHideLayer': 'レイヤーを隠す',
     'railShowLayer': 'レイヤーを表示',
-    'railHideCutPicture': 'カットの絵を隠す',
-    'railShowCutPicture': 'カットの絵を表示',
     'railBypassLayerFx': 'レイヤーFXをバイパス',
     'railApplyLayerFx': 'レイヤーFXを適用',
     'railBypassMixedLayerFx': 'レイヤーFXをすべてバイパス（一部オフ）',
@@ -5476,8 +5470,6 @@ enum AppStrings {
     'railFolderBlendMode': '폴더 블렌드 모드',
     'railHideLayer': '레이어 숨기기',
     'railShowLayer': '레이어 표시',
-    'railHideCutPicture': '컷 그림 숨기기',
-    'railShowCutPicture': '컷 그림 표시',
     'railBypassLayerFx': '레이어 FX 우회',
     'railApplyLayerFx': '레이어 FX 적용',
     'railBypassMixedLayerFx': '레이어 FX 모두 우회 (일부 꺼짐)',
@@ -6992,8 +6984,6 @@ enum AppStrings {
     'railFolderBlendMode': 'Mode de fusion du dossier',
     'railHideLayer': 'Masquer le calque',
     'railShowLayer': 'Afficher le calque',
-    'railHideCutPicture': "Masquer l'image du plan",
-    'railShowCutPicture': "Afficher l'image du plan",
     'railBypassLayerFx': 'Contourner les FX du calque',
     'railApplyLayerFx': 'Appliquer les FX du calque',
     'railBypassMixedLayerFx':
@@ -8338,8 +8328,6 @@ enum AppStrings {
     'railFolderBlendMode': '文件夹混合模式',
     'railHideLayer': '隐藏图层',
     'railShowLayer': '显示图层',
-    'railHideCutPicture': '隐藏镜头画面',
-    'railShowCutPicture': '显示镜头画面',
     'railBypassLayerFx': '旁通图层 FX',
     'railApplyLayerFx': '应用图层 FX',
     'railBypassMixedLayerFx': '旁通全部图层 FX（部分已关闭）',

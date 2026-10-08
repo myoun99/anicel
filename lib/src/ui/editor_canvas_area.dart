@@ -533,10 +533,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.
         session.opacityVerbs.dragPreview,
-        // …and the V row's, which the canvas READ (the editing fade, the
-        // track stack) and never heard: a track opacity drag reached the
-        // canvas only when something else happened to rebuild it.
-        session.opacityVerbs.trackDragPreview,
         // brushToolState is deliberately NOT here (R18 UI-2): nothing in
         // the area's derivations reads it — only the brush host consumes
         // it, through its own boundary builder below. Merging it here
@@ -676,8 +672,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-        trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-        cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
         onFrameCached:
             session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
         picturesLanded: mount.picturesLanded,
@@ -808,8 +802,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           cameraPoseOf: session.camera.cameraPoseForCut,
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
           cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-          trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-          cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
@@ -1277,7 +1269,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 ).withValues(
                   alpha: _backdropShare(
                     cutFadeOpacity,
-                    partnerShare: _shareOf(session, partners),
+                    partnerShare: _shareOf(partners),
                   ),
                 ),
                 devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -1310,17 +1302,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     ];
   }
 
-  /// How much of the frame [partners] claim — each one's ramp times its
-  /// track's own opacity, the unit alpha the track stack weighs it by.
-  double _shareOf(
-    EditorSessionManager session,
-    List<TrackStackContribution> partners,
-  ) {
+  /// How much of the frame [partners] claim — each one's ramp, the unit
+  /// alpha the track stack weighs it by.
+  static double _shareOf(List<TrackStackContribution> partners) {
     var share = 0.0;
     for (final partner in partners) {
-      share +=
-          partner.opacity *
-          session.opacityVerbs.trackStaticOpacityForCut(partner.cutId);
+      share += partner.opacity;
     }
     return share;
   }

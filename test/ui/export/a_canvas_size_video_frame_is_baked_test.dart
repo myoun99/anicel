@@ -28,10 +28,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
-/// A CANVAS-size video frame is baked: the backdrop under it, the cut
-/// thinned to its track's weight, the V row's chain through it, a
-/// transition's two cuts mixed in it, the names over it — and a still of
-/// the same frame takes none of the names.
+/// A CANVAS-size video frame is baked: the backdrop under it, the V row's
+/// chain through it, a transition's two cuts mixed in it, the names over it
+/// — and a still of the same frame takes none of the names.
 ///
 /// What a frame is made of is gathered into one value and painted from it
 /// alone (F-289); each part of that value is pinned here by the pixels it
@@ -68,7 +67,6 @@ void main() {
 
   EditorSessionManager sessionOf(
     List<Cut> cuts, {
-    double opacity = 1,
     List<LayerEffect> effects = const [],
     List<Layer> seLayers = const [],
     Layer? transitions,
@@ -85,7 +83,6 @@ void main() {
           id: trackId,
           name: 'V',
           cuts: cuts,
-          opacity: opacity,
           effects: effects,
           seLayers: seLayers,
           transitionLayer: transitions,
@@ -167,27 +164,10 @@ void main() {
     });
   });
 
-  testWidgets('🚨a track at half its weight thins the cut over the backdrop '
-      '— and over nothing under an alpha master', (tester) async {
-    await tester.runAsync(() async {
-      final session = sessionOf([cutOf('c')], opacity: 0.5);
-      addTearDown(session.dispose);
-      final task = ExportFrameTask(cut: session.requireActiveCut, frameIndex: 0);
-
-      final (r, g, b, a) = centreOf(await videoFrame(session, task));
-      expect(r, closeTo(128, 3), reason: 'half the backdrop\'s red');
-      expect(g, closeTo(128, 3), reason: 'half the paper\'s green');
-      expect((b, a), (0, 255));
-
-      // Premultiplied: half a green, and nothing under it.
-      final (clearR, clearG, _, clearA) = centreOf(
-        await videoFrame(session, task, preserveAlpha: true),
-      );
-      expect(clearR, 0);
-      expect(clearG, closeTo(128, 3));
-      expect(clearA, closeTo(128, 3));
-    });
-  });
+  // ↩️Two pins stood here and in the O.L group below — 「a track at half
+  // its weight thins the cut over the backdrop」 and 「…lets the backdrop
+  // through the mix」: the V row's static opacity, which left with its bar
+  // (I-73, 2026-10-08). A cut is thinned by a transition alone now.
 
   testWidgets('the V row\'s chain filters the cut\'s picture', (tester) async {
     await tester.runAsync(() async {
@@ -222,10 +202,9 @@ void main() {
 
   group('two cuts an O.L mixes', () {
     /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35.
-    EditorSessionManager mixing({double opacity = 1}) {
+    EditorSessionManager mixing() {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
-        opacity: opacity,
         transitions: createTrackTransitionLayer(trackId).copyWith(
           instructions: SplayTreeMap.of({
             12: const InstructionEvent(instructionId: 'ol', length: 24),
@@ -255,20 +234,6 @@ void main() {
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut, thinning');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut, coming');
         expect((r, a), (0, 255), reason: 'two whole cuts hide the backdrop');
-      });
-    });
-
-    testWidgets('a track at half its weight lets the backdrop through the '
-        'mix', (tester) async {
-      await tester.runAsync(() async {
-        final session = mixing(opacity: 0.5);
-        addTearDown(session.dispose);
-
-        final (r, _, _, a) = centreOf(
-          await videoFrame(session, midway(session)),
-        );
-        expect(r, greaterThan(60), reason: 'the backdrop\'s red, under both');
-        expect(a, 255);
       });
     });
   });

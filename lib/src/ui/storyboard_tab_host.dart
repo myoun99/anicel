@@ -1028,13 +1028,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // value instead of an average.
                     opacityDragPreview: _session.opacityVerbs.dragPreview,
                     legendOpacityValue: _session.opacityVerbs.lastMasterOpacity,
-                    // The V row's picture eye (R9): session view state the
-                    // playback display reads.
-                    cutPictureVisibleOf: _session.cutPictureEyes.showsPicture,
-                    onToggleCutPictureVisibility:
-                        _session.cutPictureEyes.toggle,
-                    // R9 #21: the TRACK's own fx master and static opacity —
-                    // persisted model state, unlike the cut toggles above.
+                    // R9 #21: the TRACK's own fx master — persisted model
+                    // state. ↩️Its picture eye and its static opacity stood
+                    // beside it on the V row's head until I-73 (2026-10-08).
                     trackFxStateOf: (track) => _session.effectsAndFx.trackFxState(track.id),
                     onToggleTrackFx: (track) =>
                         _session.effectsAndFx.toggleTrackFx(track.id),
@@ -1045,12 +1041,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // R5: AE's group Reset on the V row's chain.
                     onResetTrackEffectGroup: (track, headerLaneId) =>
                         _session.effectsAndFx.resetTrackEffectGroup(track.id, headerLaneId),
-                    trackOpacityOf: (track) =>
-                        _session.opacityVerbs.trackStaticOpacity(track.id),
-                    onTrackOpacityChanged: (track, opacity) =>
-                        _session.opacityVerbs.previewTrackOpacity(track.id, opacity),
-                    onTrackOpacityChangeEnd: (track, opacity) =>
-                        _session.opacityVerbs.commitTrackOpacity(track.id, opacity),
                     // S-row range selection: the SAME track-axis selection the
                     // cut row paints, one row up. The timeline mounts its range
                     // gesture on every layer row (UI-R20 #2) and these rows had

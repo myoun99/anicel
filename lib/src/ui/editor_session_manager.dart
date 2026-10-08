@@ -117,7 +117,6 @@ import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
-import 'session/cut_picture_eyes.dart';
 import 'session/cut_under_playhead.dart';
 import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
@@ -1795,16 +1794,10 @@ class EditorSessionManager extends ChangeNotifier
   // the GLOBAL axis, exactly like the pose and the fade beside it, so these
   // verbs take a TrackId and no cut is ever in the loop.
 
-  // ── the V row's eyes: their own object, in their own file ────────────
-  //
-  // A collaborator (session/cut_picture_eyes.dart, the audit's
-  // twenty-third family). Callers name it — `session.cutPictureEyes`.
-  late final CutPictureEyes cutPictureEyes = CutPictureEyes(
-    selection: this,
-    timeline: this,
-    changes: this,
-    park: parkGlobalFrame,
-  );
+  // ↩️The V row's EYES stood here (`CutPictureEyes`, the audit's
+  // twenty-third family): the cuts whose picture the playback display hid.
+  // They left with the V row's head on 2026-10-08 (I-73, 유저: 「V행의
+  // 불투명도랑 비지블 필요없어보여서 삭제하고싶은데 어때」).
 
   /// Steps history and puts the session back where the new layer list says
   /// it should be.

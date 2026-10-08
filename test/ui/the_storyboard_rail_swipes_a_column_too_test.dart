@@ -124,16 +124,16 @@ void main() {
     return session;
   }
 
+  /// The eye of [trackId]'s S row. ↩️The cases below pressed the V row's
+  /// eye, which hid its cut's picture — that eye left the head with I-73
+  /// (유저 2026-10-08: 「V행의 불투명도랑 비지블 필요없어보여서 삭제하고싶은데
+  /// 어때」). The eye column is the S rows' and the transition rows' now,
+  /// and a V row is a row the sweep steps over.
   Finder eyeOf(String trackId) =>
-      find.byKey(ValueKey<String>('storyboard-cut-visibility-$trackId-cut'));
+      find.byKey(ValueKey<String>('storyboard-layer-visibility-$trackId-s1'));
 
-  List<bool> pictureVisibility(EditorSessionManager session) => [
-    for (final id in const ['t1-cut', 't2-cut', 't3-cut'])
-      session.cutPictureEyes.showsPicture(CutId(id)),
-  ];
-
-  /// The transition rows, the THIRD kind the rail stacks — one more eye on
-  /// the same column, this one on the track's transition layer.
+  /// The transition rows, the other kind that carries the eye column — this
+  /// one on the track's transition layer.
   List<bool> transitionVisibility(EditorSessionManager session) => [
     for (final track in session.repository.requireProject().tracks)
       track.transitionLayer.isVisible,
@@ -163,8 +163,7 @@ void main() {
       track.seLayers.single.onTimesheet,
   ];
 
-  /// The S rows the sweep CROSSES on its way down. They carry the SAME eye
-  /// column, acting on the SE layer rather than a cut.
+  /// The S rows' own eyes, the layers' — what [eyeOf] presses.
   List<bool> seVisibility(EditorSessionManager session) => [
     for (final track in session.repository.requireProject().tracks)
       track.seLayers.single.isVisible,
@@ -203,18 +202,27 @@ void main() {
     );
   });
 
-  testWidgets('a drag DOWN from one eye hides every track it crosses', (
-    tester,
-  ) async {
+  testWidgets('a drag DOWN from one eye hides every row it crosses — and '
+      'steps over the V rows, which have none', (tester) async {
     final session = await pumpRail(tester);
     expect(
-      pictureVisibility(session),
-      [true, true, true],
+      [...seVisibility(session), ...transitionVisibility(session)],
+      everyElement(isTrue),
       reason: 'the fixture starts visible, or the sweep proves nothing',
     );
-
     final first = tester.getCenter(eyeOf('t1'));
     final last = tester.getCenter(eyeOf('t3'));
+    for (final id in const ['t1', 't2']) {
+      final head = tester.getRect(
+        find.byKey(ValueKey<String>('storyboard-track-label-row-$id')),
+      );
+      expect(
+        head.center.dy,
+        allOf(greaterThan(first.dy), lessThan(last.dy)),
+        reason: 'LIVENESS: $id\'s V row lies in the stroke\'s way',
+      );
+    }
+
     final gesture = await tester.startGesture(first);
     // Step down the rail so every row in between is crossed — a swipe
     // paints what it passes, and one jump to the end would not say whether
@@ -229,29 +237,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      pictureVisibility(session),
+      seVisibility(session),
       [false, false, false],
       reason:
           '유저 2026-08-24 I-1: 「탭 다운 한 채로 아래로 드래그하면 해당 '
           '다른 레이어들도 같은 버튼조작되도록」 — the storyboard rail is '
-          'not a different rail',
-    );
-    expect(
-      seVisibility(session),
-      [true, false, false],
-      reason:
-          '⛔the sweep CROSSED t2 and t3, and their S rows carry the SAME '
-          'eye — acting on the SE layer instead of a cut. t1 stays visible '
-          'because its S row sits ABOVE its V row, where the drag began. A '
-          'resolver naming only V rows painted NONE of them, and the cut '
-          'assertion above still passed: 「초록이 빈 것을 쟀다」',
+          'not a different rail. ⛔And two V rows stood between the first S '
+          'row and the last: a row with no eye is stepped over, it does not '
+          'end the stroke (a resolver that named only one kind once painted '
+          'none of the others — 「초록이 빈 것을 쟀다」)',
     );
     expect(
       transitionVisibility(session),
       [true, false, false],
       reason:
-          'the third row kind, on the same column and the same sweep — a '
-          'rail that stacks three kinds has to name all three',
+          'the other row kind on the same column and the same sweep. t1\'s '
+          'stays lit because it stands ABOVE its S row, where the drag began',
     );
   });
 
@@ -260,17 +261,26 @@ void main() {
   ) async {
     // The control, and it is the case a band that covered the whole row
     // would fail: the name area is not a column, so a drag from there is
-    // the row's business and the eyes must be untouched.
+    // the row's business and the eyes must be untouched. It starts on an S
+    // row — a row that HAS the eye — or a whole-row band would have nothing
+    // to paint with and pass for the wrong reason.
     final session = await pumpRail(tester);
-    final row = tester.getRect(
-      find.byKey(const ValueKey<String>('storyboard-track-label-row-t1')),
+    final from = tester.getCenter(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('storyboard-se-label-t1-1')),
+        matching: find.text('S1'),
+      ),
     );
     final eye = tester.getRect(eyeOf('t1'));
-    final from = Offset(row.left + 24, row.center.dy);
     expect(
       eye.contains(from),
       isFalse,
       reason: 'the press must genuinely miss the eye',
+    );
+    expect(
+      from.dy,
+      inInclusiveRange(eye.top, eye.bottom),
+      reason: 'and it is on the eye\'s own row',
     );
 
     final gesture = await tester.startGesture(from);
@@ -281,11 +291,38 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(pictureVisibility(session), [
-      true,
-      true,
-      true,
-    ], reason: 'a swipe only runs from a column it has');
+    expect(
+      [...seVisibility(session), ...transitionVisibility(session)],
+      everyElement(isTrue),
+      reason: 'a swipe only runs from a column it has',
+    );
+  });
+
+  testWidgets('⛔a press where the V row\'s eye stood starts no sweep — the '
+      'row has none', (tester) async {
+    // The column still runs over the V row, reserved and empty (I-73). A
+    // press in it lands on no control, so there is no value to latch and
+    // nothing under it may be painted — a row that READ one there would
+    // spread it down every S row and transition row below.
+    final session = await pumpRail(tester);
+    final head = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-track-label-row-t1')),
+    );
+    final from = Offset(tester.getCenter(eyeOf('t1')).dx, head.center.dy);
+
+    final gesture = await tester.startGesture(from);
+    for (var step = 1; step <= 12; step += 1) {
+      await gesture.moveBy(const Offset(0, 25));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      [...seVisibility(session), ...transitionVisibility(session)],
+      everyElement(isTrue),
+      reason: 'the V row has no eye, so there is nothing to spread',
+    );
   });
 
   testWidgets('🚨the SHEET column sweeps too — every button, not a list', (
@@ -435,15 +472,28 @@ void main() {
   /// the eye claimed on V rows only.
   ///
   /// ⛔This loop is the guard. Every row kind that MOUNTS the eye has to be
-  /// able to start from it.
-  for (final start in const <({String label, String key})>[
-    (label: 'V row (the cut eye)', key: 'storyboard-cut-visibility-t1-cut'),
-    (label: 'S row (the layer eye)', key: 'storyboard-layer-visibility-t1-s1'),
-  ]) {
-    testWidgets('🚨a sweep can START on the ${start.label}', (tester) async {
+  /// able to start from it. (↩️The V row was one of the two until its eye
+  /// left the head with I-73; the transition row, the kind the loop had
+  /// never named, stands in its place.)
+  for (final start
+      in <({String label, String Function(Track first) keyOf})>[
+        (
+          label: 'transition row',
+          keyOf: (first) =>
+              'storyboard-layer-visibility-${first.transitionLayer.id}',
+        ),
+        (
+          label: 'S row',
+          keyOf: (first) => 'storyboard-layer-visibility-${first.id.value}-s1',
+        ),
+      ]) {
+    testWidgets('🚨a sweep can START on the ${start.label}\'s eye', (
+      tester,
+    ) async {
       final session = await pumpRail(tester);
-      final from = find.byKey(ValueKey<String>(start.key));
-      expect(from, findsOneWidget, reason: 'the fixture mounts ${start.key}');
+      final key = start.keyOf(session.repository.requireProject().tracks.first);
+      final from = find.byKey(ValueKey<String>(key));
+      expect(from, findsOneWidget, reason: 'the fixture mounts $key');
 
       final gesture = await tester.startGesture(tester.getCenter(from));
       for (var step = 1; step <= 12; step += 1) {
@@ -454,18 +504,18 @@ void main() {
       await tester.pumpAndSettle();
 
       // Whatever it started on, SOMETHING below it must have been painted —
-      // the two eye columns are the same column and the sweep runs down
-      // through both kinds.
+      // the two kinds' eyes are the same column and the sweep runs down
+      // through both.
       final painted = [
-        ...pictureVisibility(session),
+        ...transitionVisibility(session),
         ...seVisibility(session),
       ].where((visible) => !visible).length;
       expect(
         painted,
         greaterThan(1),
         reason:
-            'a press on ${start.key} has to be able to BEGIN a sweep, not '
-            'only be crossed by one — 유저: 「버튼이면 다 가능하도록」',
+            'a press on $key has to be able to BEGIN a sweep, not only be '
+            'crossed by one — 유저: 「버튼이면 다 가능하도록」',
       );
     });
   }

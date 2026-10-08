@@ -56,8 +56,6 @@ class CanvasTrackStackView extends StatefulWidget {
     this.cameraViewEnabled = true,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
-    this.trackStaticOpacityOf,
-    this.cutPictureVisibleOf,
     this.onFrameCached,
     this.picturesLanded,
     this.viewport,
@@ -103,15 +101,11 @@ class CanvasTrackStackView extends StatefulWidget {
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
   seNameTagsOf;
 
-  /// The storyboard V-row display gates (R9), exactly as playback applies
-  /// them: fx off bypasses the cut-level pose AND fade, the eye off hides
-  /// the cut's picture. Null = always on.
+  /// The storyboard V row's display gate (R9), exactly as playback applies
+  /// it: fx off bypasses the cut-level fx work. Null = always on. (↩️The
+  /// eye and the static opacity it stood beside left the V row's head with
+  /// I-73 — see [CanvasPlaybackView.cutFxEnabledOf].)
   final bool Function(CutId cutId)? cutFxEnabledOf;
-
-  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
-  /// while the V row's slider is in flight. Null keeps every track opaque.
-  final double Function(CutId cutId)? trackStaticOpacityOf;
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// Called after each on-demand composite lands in the cache (the
   /// session's budget trim): the parked state has no warmer running its
@@ -361,14 +355,11 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
 
     final layers = <Widget>[?floor];
-    // The unit alpha of each contribution: its transition share times the
-    // track's own opacity and fade. The weights that follow turn those into
-    // source-over alphas — see [sourceOverWeights] for why they are not the
-    // same number.
+    // The unit alpha of each contribution: its transition share. The
+    // weights that follow turn those into source-over alphas — see
+    // [sourceOverWeights] for why they are not the same number.
     final unitAlphas = <double>[
-      for (final position in positions)
-        position.opacity *
-            (widget.trackStaticOpacityOf?.call(position.cut.id) ?? 1.0),
+      for (final position in positions) position.opacity,
     ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
     for (var i = 0; i < positions.length; i++) {
@@ -388,8 +379,6 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
-      final cutPictureVisible =
-          widget.cutPictureVisibleOf?.call(cut.id) ?? true;
 
       final globalFrame = position.globalFrameIndex;
       final weight = weights[i];
@@ -421,9 +410,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           // rather than the stage moving as one. That variant is
           // unambiguous.
           painter: PlaybackFramePainter(
-            image:
-                cutPictureVisible &&
-                    _heldCanvasSizes[cut.id] == cut.canvasSize
+            image: _heldCanvasSizes[cut.id] == cut.canvasSize
                 ? _heldFrames[cut.id]
                 : null,
             canvasSize: cut.canvasSize,
@@ -438,9 +425,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             cameraPose: cameraView
                 ? widget.cameraPoseOf(cut, localFrame)
                 : null,
-            seNameTags: cutPictureVisible
-                ? widget.seNameTagsOf?.call(cut, localFrame) ?? const []
-                : const [],
+            seNameTags: widget.seNameTagsOf?.call(cut, localFrame) ?? const [],
             cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
             // No cutPose/cutAnchorPoint: the V row has no transform. The
             // camera is what moves the picture on the stage.

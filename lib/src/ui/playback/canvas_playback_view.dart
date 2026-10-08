@@ -43,8 +43,6 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.cameraPoseOf,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
-    this.trackStaticOpacityOf,
-    this.cutPictureVisibleOf,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
@@ -72,17 +70,15 @@ class CanvasPlaybackView extends StatefulWidget {
   /// by the session, drawn over the composite in canvas space.
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf;
 
-  /// The storyboard V-row display gates (session view state, R9). FX off
-  /// bypasses the cut-level Transform group — pose AND fade — in this
-  /// display; the eye off hides the cut's PICTURE (the paper stays). Null
-  /// = always on. Display aids only: the MP4 bake and thumbnails never
-  /// consult these.
+  /// The storyboard V row's display gate (R9): FX off bypasses the
+  /// cut-level fx work in this display. Null = always on. A display aid
+  /// only: the MP4 bake and thumbnails never consult it.
+  ///
+  /// ↩️The V row had two more — an eye that hid a cut's PICTURE here (the
+  /// paper stayed) and the track's static opacity. Both left its head on
+  /// 2026-10-08 (I-73, 유저: 「V행의 불투명도랑 비지블 필요없어보여서
+  /// 삭제하고싶은데 어때」 · 「5. 값도지움」).
   final bool Function(CutId cutId)? cutFxEnabledOf;
-
-  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
-  /// while the V row's slider is in flight. Null keeps every track opaque.
-  final double Function(CutId cutId)? trackStaticOpacityOf;
-  final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// The panel's live pan/zoom (canvas mode); identity when null.
   final CanvasViewport? viewport;
@@ -234,13 +230,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         widget.controller.globalFrameIndexListenable.value != null &&
         position == null;
 
-    // The storyboard V-row display gates (R9): fx off bypasses the whole
-    // cut-level Transform group (pose + fade) in this display; the eye off
-    // drops the picture (paper only).
+    // The storyboard V row's display gate (R9): fx off bypasses the whole
+    // cut-level fx work in this display.
     final cutFxEnabled =
         cut == null || (widget.cutFxEnabledOf?.call(cut.id) ?? true);
-    final cutPictureVisible =
-        cut == null || (widget.cutPictureVisibleOf?.call(cut.id) ?? true);
 
     // No TRACK-level pose any more: the V row has no transform, so the camera
     // is the only thing that moves the picture on the stage.
@@ -276,8 +269,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
             // cycle, so the thing to watch here is a raster hitch right
             // after a drawing lands — not a hop.
             painter: PlaybackFramePainter(
-              image:
-                  !inGap && cutPictureVisible && _heldCanvasSize == canvasSize
+              image: !inGap && _heldCanvasSize == canvasSize
                   ? _heldFrame
                   : null,
               canvasSize: canvasSize,
@@ -291,11 +283,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)
                   : null,
-              // The cut-picture eye hides the tags too — the stack view's
-              // answer, and the defensible one: with the picture withheld
-              // the annotation names nothing.
-              seNameTags:
-                  inGap || cut == null || position == null || !cutPictureVisible
+              seNameTags: inGap || cut == null || position == null
                   ? const []
                   : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
                         const [],
@@ -325,14 +313,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               // here as on the editing canvas — on screen only.
               pasteboardNone: widget.pasteboardNone,
               checkersAbsentPlanes: true,
-              // R9 #21: the track's STATIC opacity, which is not an fx and so
-              // survives the bypass. The ANIMATED fade it used to carry is
-              // F.I/F.O spans on the transition row now — single-cut playback
-              // shows one cut and so cannot show a cross-boundary ramp; the
-              // all-cuts track stack is where a transition plays.
-              fadeOpacity: inGap || cut == null || position == null
-                  ? 1
-                  : (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0),
+              // No fade here: single-cut playback shows one cut and so
+              // cannot show a cross-boundary ramp — the all-cuts track
+              // stack is where a transition plays. ↩️The track's STATIC
+              // opacity thinned this unit (R9 #21) until I-73 took it off
+              // the V row.
             ),
           ),
           _prerenderProgressBar(context),
