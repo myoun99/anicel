@@ -250,8 +250,10 @@ class _StoryboardRowsAndLabels {
   /// [StoryboardPanel.cameraDimOpacity]); its label and its fx switch are the
   /// layer's own.
   ///
-  /// ⚠️Whether the head is ONE for the track's cuts, as the conte rows' is,
-  /// nobody has said: it is the cut stood in's, as the timeline's is.
+  /// The head is the cut stood in's camera, as the timeline's is. 🗣️유저
+  /// 2026-10-09 (I-73-camera-row-Q1): its name and its fx switch are ONE
+  /// for the track's cuts, its colour label each cut's own — ⚠️not yet: an
+  /// edit on it still reaches that cut's camera alone.
   ///
   /// A press picks the ROW ([trackCameraRowId]) — never the head's layer —
   /// and the session lands it on the camera layer of the cut it stands in.

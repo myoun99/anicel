@@ -200,7 +200,10 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.descendant(of: label, matching: find.text('Camera')), findsOneWidget);
+      expect(
+        find.descendant(of: label, matching: find.text('Camera')),
+        findsOneWidget,
+      );
     });
   });
 
@@ -212,7 +215,11 @@ void main() {
         rowFilter: const TimelineRowFilter(kinds: {LayerKind.se}),
       );
       expect(label, findsNothing, reason: 'a camera is no SE row');
-      expect(key('storyboard-camera-row-t1'), findsNothing, reason: 'nor its strip');
+      expect(
+        key('storyboard-camera-row-t1'),
+        findsNothing,
+        reason: 'nor its strip',
+      );
     });
 
     testWidgets('…and the row stood on stays', (tester) async {
@@ -274,7 +281,9 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey<String>('legend-sections')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey<String>('legend-section-camera')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('legend-section-camera')),
+      );
       await tester.pumpAndSettle();
 
       expect(

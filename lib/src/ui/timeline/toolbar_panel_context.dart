@@ -784,7 +784,9 @@ class StoryboardToolbarPanelContext
     // lands on the band's row at the playhead or refuses (F-186).
     final cellBand = _cellBand;
     if (cellBand != null) {
-      return cellBand.canEditInstance ? const StoryboardEditTimelineCells() : null;
+      return cellBand.canEditInstance
+          ? const StoryboardEditTimelineCells()
+          : null;
     }
     if (_bandMissesTheStandingRow) {
       return null;

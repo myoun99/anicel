@@ -52,12 +52,10 @@ void main() {
   test('a step slopes across its edge, six pixels either side', () {
     // The lower line (73%) up to the middle (50%) at cell 4's edge — an
     // arriving cut leaving its O.L.
-    expectCourse(course(crossFraction: 0.73, steps: const [(edge: 4, to: 0.5)]), [
-      (12, 21.9),
-      (90, 21.9),
-      (102, 15),
-      (228, 15),
-    ]);
+    expectCourse(
+      course(crossFraction: 0.73, steps: const [(edge: 4, to: 0.5)]),
+      [(12, 21.9), (90, 21.9), (102, 15), (228, 15)],
+    );
   });
 
   test('in a narrow cell the slope reaches half a cell, not six pixels', () {

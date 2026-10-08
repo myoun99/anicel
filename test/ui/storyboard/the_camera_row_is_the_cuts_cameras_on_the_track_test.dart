@@ -194,8 +194,8 @@ void main() {
       );
 
   /// The line between [camera]'s keys, as the row hands it its course.
-  TimelineLaneKeysLine lineOf(WidgetTester tester, String camera) =>
-      tester.widget<TimelineLaneKeysLine>(key('storyboard-camera-line-$camera'));
+  TimelineLaneKeysLine lineOf(WidgetTester tester, String camera) => tester
+      .widget<TimelineLaneKeysLine>(key('storyboard-camera-line-$camera'));
 
   /// The row's ground, as its painter lays it down.
   StoryboardCameraRowPainter ground(WidgetTester tester) =>
