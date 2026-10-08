@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/panels/panel_collapsed_scope.dart';
 import 'package:anicel/src/ui/panels/panel_flash.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_editor_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_axis_follower.dart';
@@ -364,6 +365,67 @@ void main() {
         lessThan(grown),
         reason: 'the settle is the one moment it may shrink',
       );
+    });
+  });
+
+  group('keepWhereShown — the one write both axes keep theirs through', () {
+    Future<ScrollController> pumpIn(
+      WidgetTester tester, {
+      required bool folded,
+      ScrollController? controller,
+    }) async {
+      final scroll = controller ?? ScrollController();
+      if (controller == null) {
+        addTearDown(scroll.dispose);
+      }
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PanelCollapsedScope(
+            collapsed: folded,
+            child: SizedBox(
+              height: 400,
+              child: ListView(
+                controller: scroll,
+                children: const [SizedBox(height: 4000)],
+              ),
+            ),
+          ),
+        ),
+      );
+      return scroll;
+    }
+
+    testWidgets('a shown scrollable hands the axis where it stands', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(0);
+      addTearDown(kept.dispose);
+      final controller = await pumpIn(tester, folded: false);
+      controller.jumpTo(300);
+
+      keepWhereShown(controller.position, kept);
+
+      expect(kept.value, 300);
+    });
+
+    testWidgets('🚨one folded away hands it NOTHING — its place is not where '
+        'anybody turned the axis', (tester) async {
+      final kept = ValueNotifier<double>(120);
+      addTearDown(kept.dispose);
+      final controller = await pumpIn(tester, folded: true);
+      controller.jumpTo(300);
+
+      keepWhereShown(controller.position, kept);
+
+      expect(
+        kept.value,
+        120,
+        reason: 'the row on screen owns the frame axis while folded, and a '
+            'layer axis folded away is not being looked at',
+      );
+      await pumpIn(tester, folded: false, controller: controller);
+      keepWhereShown(controller.position, kept);
+      expect(kept.value, 300, reason: 'and unfolded, it is written again');
     });
   });
 

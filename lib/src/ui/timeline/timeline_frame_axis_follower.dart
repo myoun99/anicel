@@ -98,7 +98,7 @@ class TimelineFrameAxisFollower {
     if (offset == frameAxisOffset.value) {
       return;
     }
-    keepWhereShown(controller, frameAxisOffset);
+    keepWhereShown(controller.position, frameAxisOffset);
     _standAt(offset);
   }
 

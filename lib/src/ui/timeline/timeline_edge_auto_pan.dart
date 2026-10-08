@@ -166,14 +166,13 @@ bool scrollableIsShown(ScrollPosition position) =>
     position.hasViewportDimension &&
     !PanelCollapsedScope.isFolded(position.context.storageContext);
 
-/// Writes where [controller]'s scrollable stands into [kept], the host's
-/// record of the axis — while it [scrollableIsShown]. Folded away, clamped
-/// to its own range or pulled there by its own layout, it would hand the
-/// axis a place nobody turned it to. Both axes keep theirs through this:
-/// the frames ([TimelineFrameAxisFollower]) and the layers (F-267).
-void keepWhereShown(ScrollController controller, ValueNotifier<double> kept) {
-  if (controller.positions.singleOrNull case final position?
-      when position.hasPixels && scrollableIsShown(position)) {
+/// Writes where [position] stands into [kept], the host's record of the
+/// axis — while it [scrollableIsShown]. Folded away, clamped to its own
+/// range or pulled there by its own layout, it would hand the axis a place
+/// nobody turned it to. Both axes keep theirs through this: the frames
+/// ([TimelineFrameAxisFollower]) and the layers (F-267).
+void keepWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
+  if (scrollableIsShown(position)) {
     kept.value = position.pixels;
   }
 }

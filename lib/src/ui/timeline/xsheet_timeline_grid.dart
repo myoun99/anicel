@@ -319,7 +319,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The layer axis's listener: where the columns stand, kept (F-267).
   void _keepLayerAxis() {
     if (_keptLayerAxis case final kept?) {
-      keepWhereShown(_layerScrollController, kept);
+      keepWhereShown(_layerScrollController.position, kept);
     }
   }
 
