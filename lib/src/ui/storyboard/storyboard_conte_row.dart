@@ -230,40 +230,46 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
       ),
       geometry: frameGeometry,
       axis: Axis.horizontal,
-      // The row closes the identity in, by ordinal — the grip hooks
-      // themselves know nothing about cuts or panels.
-      grips: TimelineRowGripCallbacks(
-        onBegin: (_, ordinal, edge) {
-          if (ordinal < 0 || ordinal >= grips.length) {
-            return false;
-          }
-          // R10 R4: no impersonation. A grip reports the edge it IS, and
-          // the rule that decides what moves lives one layer down, in the
-          // session — which is where the "a front edge inside a cut is
-          // really the previous back edge" trick belonged all along.
-          final grip = grips[ordinal];
-          if (edge == TimelineBlockEdge.start) {
-            return stripEdges.onCutEdgeBegin(
-              grip.cutId,
-              TimelineBlockEdge.start,
-              grip.panelIndex,
-            );
-          }
-          final commaKey = grip.commaBlockKey;
-          return commaKey == null
-              ? stripEdges.onCutEdgeBegin(
-                  grip.cutId,
-                  TimelineBlockEdge.end,
-                  grip.panelIndex,
-                )
-              : stripEdges.onCommaBegin(grip.cutId, commaKey);
-        },
-        onUpdate: stripEdges.onUpdate,
-        onEnd: stripEdges.onEnd,
-        onCancel: stripEdges.onCancel,
-      ),
+      grips: _gripVerbs(stripEdges, grips),
       runEdit: null,
     ),
+  );
+
+  /// What each grip begins. The row closes the identity in, by ordinal —
+  /// the grip hooks themselves know nothing about cuts or panels.
+  ///
+  /// R10 R4: no impersonation. A grip reports the edge it IS, and the rule
+  /// that decides what moves lives one layer down, in the session — which
+  /// is where the "a front edge inside a cut is really the previous back
+  /// edge" trick belonged all along.
+  TimelineRowGripCallbacks _gripVerbs(
+    StoryboardStripEdgeCallbacks stripEdges,
+    List<_StoryboardStripGrip> grips,
+  ) => TimelineRowGripCallbacks(
+    onBegin: (_, ordinal, edge) {
+      if (ordinal < 0 || ordinal >= grips.length) {
+        return false;
+      }
+      final grip = grips[ordinal];
+      if (edge == TimelineBlockEdge.start) {
+        return stripEdges.onCutEdgeBegin(
+          grip.cutId,
+          TimelineBlockEdge.start,
+          grip.panelIndex,
+        );
+      }
+      final commaKey = grip.commaBlockKey;
+      return commaKey == null
+          ? stripEdges.onCutEdgeBegin(
+              grip.cutId,
+              TimelineBlockEdge.end,
+              grip.panelIndex,
+            )
+          : stripEdges.onCommaBegin(grip.cutId, commaKey);
+    },
+    onUpdate: stripEdges.onUpdate,
+    onEnd: stripEdges.onEnd,
+    onCancel: stripEdges.onCancel,
   );
 
   /// The panels' half of the shared range gesture.
@@ -383,9 +389,6 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final baseTextStyle = DefaultTextStyle.of(context).style;
-    final law = TimelineGridLaw.maybeOf(context);
     final shown = trackConteRowShown(track.id, layoutEntries);
     final stripGesture = _stripGesture();
     final stripEdges = this.stripEdges;
@@ -400,71 +403,11 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
       height: height,
       child: Stack(
         children: [
-          // THE blocks — the timeline's own row painter, on the cuts' conte
-          // layers as one row ([trackConteRowShown]): one painter for the
-          // whole film, windowed like the V row's above it.
-          //
-          // Held to the cuts that HAVE a conte layer. The row's painter
-          // marks the first cell of every empty run (the timesheet's X),
-          // and here a stretch with no block is not an empty drawing — it
-          // is a cut with no conte layer, which wears its button, or a gap,
-          // where there is no cut at all.
-          Positioned.fill(
-            child: ClipPath(
-              clipBehavior: Clip.hardEdge,
-              clipper: _ConteCutsClip(
-                geometry: frameGeometry,
-                spans: _cutSpans(withConteLayer: true),
-              ),
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: ValueKey<String>(
-                    'storyboard-conte-cells-${track.id.value}',
-                  ),
-                  painter: TimelineRowCellsPainter(
-                    layer: shown,
-                    geometry: frameGeometry,
-                    crossAxisExtent: height,
-                    exposureStateForLayer: timelineOwnCelsStateAt,
-                    frameNameForLayer: timelineOwnCelNameAt,
-                    colorScheme: colorScheme,
-                    baseTextStyle: baseTextStyle,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                    // I-44: the HOST's ground and lines, stated once by its
-                    // law — as the timeline's rows read them.
-                    paperGround: law?.ground,
-                    blockFrameLines: law?.blockFrameLines ?? false,
-                    framesPerSecond: law?.framesPerSecond ?? 0,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _cells(context, shown),
           // Each panel's length at its end — the timeline row's own print
           // (F-228), over the paper and under everything that answers.
           _runLabels(context, shown),
-          // The button of every cut that has no conte layer.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: ValueKey<String>(
-                    'storyboard-conte-create-${track.id.value}',
-                  ),
-                  painter: StoryboardConteCreatePainter(
-                    spans: _cutSpans(withConteLayer: false),
-                    geometry: frameGeometry,
-                    crossAxisExtent: height,
-                    colorScheme: colorScheme,
-                    baseTextStyle: baseTextStyle,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _createButtons(context),
           // The cells' press — the S rows' and the transition row's own
           // layer, addressed to this row ([trackConteRowId], the id the
           // row's shown layer wears). Translucent and mounted BEFORE the
@@ -480,49 +423,9 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
               onRowFramePress: _pressed,
               onEdit: edit,
             ),
-          // THE range gesture — the timeline's, not a copy of it: a pan
-          // paints a run of panels, a pan starting inside the selection
-          // slides it. Mounted UNDER the grips so the edges keep priority.
-          if (stripGesture != null)
-            Positioned.fill(
-              key: ValueKey<String>(
-                'storyboard-strip-gesture-slot-${track.id.value}',
-              ),
-              // Hit-testing gates the gesture to frames that HAVE panels:
-              // its pan claims the arena at DOWN (eager), so a press it
-              // cannot answer — a gap, a cut without a conte layer — must
-              // never reach it, or that press dies silently under it (the
-              // real-device "no selection where there is no cut block").
-              child: _FrameHitGate(
-                claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
-                // The gesture layer fills its Stack, so it needs one of its
-                // own here — a second Positioned around it would be two
-                // ParentDataWidgets on one render object.
-                child: Stack(
-                  children: [
-                    TimelineFrameRangeGestureLayer(
-                      row: LayerRowAddress(shown.id),
-                      geometry: frameGeometry,
-                      crossAxisExtent: height,
-                      callbacks: stripGesture,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          // D30: the panels' own selection band — the timeline's ONE band
-          // decoration, drawn from the cut-local selection's own numbers.
-          // One listener for the ROW, never one a cut (old-tablet law),
-          // pointer-transparent like every band.
-          if (stripSelect != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
-                  valueListenable: stripSelect.selection,
-                  builder: (context, selection, _) => _rangeBand(selection),
-                ),
-              ),
-            ),
+          // Mounted UNDER the grips so the edges keep priority.
+          if (stripGesture != null) _gestureSlot(shown, stripGesture),
+          if (stripSelect != null) _selectionBand(stripSelect),
           // THE EDGES ride ABOVE the range gesture so an edge keeps its
           // priority over it; the middles keep the rest.
           if (stripEdges != null)
@@ -531,6 +434,115 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
       ),
     );
   }
+
+  /// THE blocks — the timeline's own row painter, on the cuts' conte layers
+  /// as one row ([trackConteRowShown]): one painter for the whole film,
+  /// windowed like the V row's above it.
+  ///
+  /// Held to the cuts that HAVE a conte layer. The row's painter marks the
+  /// first cell of every empty run (the timesheet's X), and here a stretch
+  /// with no block is not an empty drawing — it is a cut with no conte
+  /// layer, which wears its button, or a gap, where there is no cut at all.
+  Widget _cells(BuildContext context, Layer shown) {
+    // I-44: the HOST's ground and lines, stated once by its law — as the
+    // timeline's rows read them.
+    final law = TimelineGridLaw.maybeOf(context);
+    return Positioned.fill(
+      child: ClipPath(
+        clipBehavior: Clip.hardEdge,
+        clipper: _ConteCutsClip(
+          geometry: frameGeometry,
+          spans: _cutSpans(withConteLayer: true),
+        ),
+        child: RepaintBoundary(
+          child: CustomPaint(
+            key: ValueKey<String>('storyboard-conte-cells-${track.id.value}'),
+            painter: TimelineRowCellsPainter(
+              layer: shown,
+              geometry: frameGeometry,
+              crossAxisExtent: height,
+              exposureStateForLayer: timelineOwnCelsStateAt,
+              frameNameForLayer: timelineOwnCelNameAt,
+              colorScheme: Theme.of(context).colorScheme,
+              baseTextStyle: DefaultTextStyle.of(context).style,
+              windowBucket: windowBucket,
+              viewportMainExtent: viewportWidth,
+              paperGround: law?.ground,
+              blockFrameLines: law?.blockFrameLines ?? false,
+              framesPerSecond: law?.framesPerSecond ?? 0,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The button of every cut that has no conte layer
+  /// ([StoryboardConteCreatePainter]) — drawn, never pressed: the cells'
+  /// press under it answers ([_pressed]).
+  Widget _createButtons(BuildContext context) => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: ValueKey<String>('storyboard-conte-create-${track.id.value}'),
+          painter: StoryboardConteCreatePainter(
+            spans: _cutSpans(withConteLayer: false),
+            geometry: frameGeometry,
+            crossAxisExtent: height,
+            colorScheme: Theme.of(context).colorScheme,
+            baseTextStyle: DefaultTextStyle.of(context).style,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// THE range gesture — the timeline's, not a copy of it: a pan paints a
+  /// run of panels, a pan starting inside the selection slides it.
+  ///
+  /// Hit-testing gates the gesture to frames that HAVE panels: its pan
+  /// claims the arena at DOWN (eager), so a press it cannot answer — a gap,
+  /// a cut without a conte layer — must never reach it, or that press dies
+  /// silently under it (the real-device "no selection where there is no cut
+  /// block").
+  Widget _gestureSlot(
+    Layer shown,
+    TimelineRangeGestureCallbacks stripGesture,
+  ) => Positioned.fill(
+    key: ValueKey<String>('storyboard-strip-gesture-slot-${track.id.value}'),
+    child: _FrameHitGate(
+      claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
+      // The gesture layer fills its Stack, so it needs one of its own here
+      // — a second Positioned around it would be two ParentDataWidgets on
+      // one render object.
+      child: Stack(
+        children: [
+          TimelineFrameRangeGestureLayer(
+            row: LayerRowAddress(shown.id),
+            geometry: frameGeometry,
+            crossAxisExtent: height,
+            callbacks: stripGesture,
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// D30: the panels' own selection band — the timeline's ONE band
+  /// decoration, drawn from the cut-local selection's own numbers. One
+  /// listener for the ROW, never one a cut (old-tablet law),
+  /// pointer-transparent like every band.
+  Widget _selectionBand(StoryboardStripSelectCallbacks stripSelect) =>
+      Positioned.fill(
+        child: IgnorePointer(
+          child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
+            valueListenable: stripSelect.selection,
+            builder: (context, selection, _) => _rangeBand(selection),
+          ),
+        ),
+      );
 
   /// The cuts that have a conte layer — or have none — in order, each as
   /// its frames `[start, endExclusive)` on the track's axis.

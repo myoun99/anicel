@@ -1485,28 +1485,34 @@ class _StoryboardRailRows {
           ))
             strip,
       ],
-      // The CONTE row, on the cuts as this step lays them: a cut's panels
-      // ride its trim and its move with the block above them.
-      if (_showsConteRow(track))
-        _StoryboardConteRow(
-          track: track,
-          layoutEntries: entries,
-          width: width,
-          height: _state._rowHeights.conte,
-          timelineScale: scale,
-          frameGeometry: _state._frameGeometry,
-          windowBucket: _state._horizontalWindowBucket,
-          viewportWidth: _state._stripViewportWidth,
-          showSeconds: _state.widget.showSeconds,
-          projectFrameRate: _state.widget.projectFrameRate,
-          onRowFramePress: _state.widget.onRowFramePress,
-          stripEdges: _state.widget.stripEdges,
-          stripSelect: _state.widget.stripSelect,
-          onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
-          onEditConteBlock: _state.widget.onEditConteBlock,
-        ),
+      if (_showsConteRow(track)) _conteStripRow(track, entries, width, scale),
     ];
   }
+
+  /// The CONTE row's strip, on the cuts as this step lays them: a cut's
+  /// panels ride its trim and its move with the block above them.
+  Widget _conteStripRow(
+    Track track,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+  ) => _StoryboardConteRow(
+    track: track,
+    layoutEntries: entries,
+    width: width,
+    height: _state._rowHeights.conte,
+    timelineScale: scale,
+    frameGeometry: _state._frameGeometry,
+    windowBucket: _state._horizontalWindowBucket,
+    viewportWidth: _state._stripViewportWidth,
+    showSeconds: _state.widget.showSeconds,
+    projectFrameRate: _state.widget.projectFrameRate,
+    onRowFramePress: _state.widget.onRowFramePress,
+    stripEdges: _state.widget.stripEdges,
+    stripSelect: _state.widget.stripSelect,
+    onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+    onEditConteBlock: _state.widget.onEditConteBlock,
+  );
 
   /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
   /// track-global content, built from the base layout.

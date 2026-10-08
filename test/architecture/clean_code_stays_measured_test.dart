@@ -515,7 +515,14 @@ void main() {
   /// cut's verbs are one conversation (its header says why), and folding
   /// the anchor verb into the offset one would move the anchor's sum into
   /// every caller that resizes about the middle.
-  const longClasses = 61;
+  ///
+  /// ⚠️61 → 60 on 2026-10-08, following one down (I-73, the conte row):
+  /// `_StoryboardTrackRow` left the count. Everything a conte PANEL answers
+  /// to — its press, its sweep, its edges, the button that makes a conte
+  /// layer — went to a row of its own (`_StoryboardConteRow`), and the cut
+  /// row kept what is the cut's. 🔬`clean_code_diff` between master and the
+  /// lane names that one gone and none added.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {
