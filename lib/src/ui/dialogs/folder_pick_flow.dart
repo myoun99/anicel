@@ -527,9 +527,17 @@ Future<HandOver> handOverFilesForUser(
   BuildContext context, {
   required List<String> paths,
 }) async {
+  // What a hand-over that failed half way left where it was made — the
+  // rest is where the user put it.
+  List<String> left() => [
+    for (final path in paths)
+      if (FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound)
+        path,
+  ];
   final placed = await placedOrLetGo(
     context,
-    () => _placedThroughItsRoad(context, paths),
+    () => _placedThroughItsRoad(context, left()),
+    anythingLeft: () => left().isNotEmpty,
   );
   return placed == null ? HandOver.declined : HandOver.placed;
 }
@@ -588,18 +596,33 @@ Future<Object?> _placedThroughItsRoad(
 /// its cancel, or a grant the user had to leave the app to give, and the
 /// export had to be run again (F-221-Q2).
 ///
-/// ⚠️What [window] THROWS is not asked about — a move that failed half way
-/// has placed some of what it was handed, and that is the caller's to say.
+/// 🗣️AND A HAND-OVER THAT FAILS IS ASKED THE SAME (F-221-Q7, 유저
+/// 2026-10-08: 「오류 때도 같은 질문 — 남은 것만 [다시 고르기] · [버리기]」).
+/// What [window] throws is said in the question, and 「다시 고르기」 opens
+/// the window for what is still here — [anythingLeft]: a move that failed
+/// half way has put the rest where the user chose, and there it stays.
+/// ↩️It was the caller's to say, and what was left went with the error.
+/// A failure that left nothing to place is still the caller's: there is
+/// nothing to ask about.
 Future<T?> placedOrLetGo<T extends Object>(
   BuildContext context,
-  Future<T?> Function() window,
-) async {
+  Future<T?> Function() window, {
+  required bool Function() anythingLeft,
+}) async {
   while (true) {
-    final placed = await window();
-    if (placed != null || !context.mounted) {
-      return placed;
+    Object? failed;
+    try {
+      final placed = await window();
+      if (placed != null || !context.mounted) {
+        return placed;
+      }
+    } on Object catch (error) {
+      if (!context.mounted || !anythingLeft()) {
+        rethrow;
+      }
+      failed = error;
     }
-    if (!await _wouldPickAgain(context)) {
+    if (!await _wouldPickAgain(context, failed: failed)) {
       return null;
     }
   }
@@ -614,7 +637,11 @@ Future<T?> placedOrLetGo<T extends Object>(
 /// stands: a window taken down from outside (a pop meant for some other
 /// route) answered nothing, and the window is opened again rather than the
 /// output let go.
-Future<bool> _wouldPickAgain(BuildContext context) async {
+///
+/// After a hand-over that [failed], the question first says why — in the
+/// line a failed export run ends on, above the question and not folded
+/// under it: it is what the person is being asked about.
+Future<bool> _wouldPickAgain(BuildContext context, {Object? failed}) async {
   final strings = AppText.strings;
   final again = await askUntilAnswered(
     context,
@@ -627,7 +654,9 @@ Future<bool> _wouldPickAgain(BuildContext context) async {
       // The export window's own name and mark: this is still that export.
       title: strings.exExport,
       titleIcon: Icons.upload_file_outlined,
-      message: strings.exHandOverPending,
+      message: failed == null
+          ? strings.exHandOverPending
+          : '${strings.exFailed(failed)}\n${strings.exHandOverPending}',
     ),
     accept: ConfirmChoice(strings.exHandOverPickAgain),
     decline: ConfirmChoice(
@@ -1003,7 +1032,7 @@ Future<FolderGrant?> placeStagedFileForUser(
     );
     final grant = keepsSavingThere
         ? await window()
-        : await placedOrLetGo(context, window);
+        : await placedOrLetGo(context, window, anythingLeft: staged.existsSync);
     final document = grant?.document;
     return keepsSavingThere && document != null
         ? FolderGrant.granted(

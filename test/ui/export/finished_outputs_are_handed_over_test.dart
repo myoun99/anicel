@@ -675,17 +675,36 @@ void main() {
       expect(filesWrittenUnder(placed), isEmpty);
     });
 
-    testWidgets('outputs that fail on their way say the failure, and are let '
-        'go all the same', (tester) async {
-      FolderPicker.debugFilesExporter = (sourcePaths) async =>
-          throw const FileSystemException('the picker lost them');
+    testWidgets('🗣️outputs that fail on their way are ASKED about, the '
+        'failure said (F-221-Q7) — and 버리기 lets them go', (tester) async {
+      var tried = 0;
+      FolderPicker.debugFilesExporter = (sourcePaths) async {
+        tried += 1;
+        throw const FileSystemException('the picker lost them');
+      };
       final state = await open(tester, 'ios');
       await pickPngSequence(tester);
 
-      await tester.runAsync(state.export);
-      await tester.pump();
+      final (whole: exporting) = await begun(
+        tester,
+        state.export,
+        () => tried == 1,
+      );
+      expect(
+        find.textContaining(
+          AppText.strings.exFailed(
+            const FileSystemException('the picker lost them'),
+          ),
+        ),
+        findsOneWidget,
+        reason: 'the failure is said in the question',
+      );
+      expect(leftIn(outbox()), isNotEmpty, reason: 'nothing is let go unasked');
+      await tapKey(tester, 'hand-over-pending-discard');
+      await ended(tester, exporting);
 
-      expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
+      expect(status(tester), AppText.strings.exHandOverDeclined);
+      expect(tried, 1, reason: 'the window was not opened again');
       expect(leftIn(outbox()), isEmpty);
     });
 

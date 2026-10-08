@@ -347,25 +347,105 @@ void main() {
       expect(File('${picked.path}/CUT001/0001.png').readAsStringSync(), 'b');
     });
 
-    testWidgets('what the window THROWS is not asked about — it is the '
-        'caller\'s to say, with whatever a half-done move left', (
-      tester,
-    ) async {
-      debugOperatingSystemOverride = 'ios';
-      FolderPicker.debugFilesExporter = (sourcePaths) async =>
-          throw const FileSystemException('the picker lost them');
-      Object? thrown;
+    group('🗣️a hand-over that FAILS half way is asked the same (F-221-Q7, '
+        '유저 2026-10-08: 「오류 때도 같은 질문 — 남은 것만 [다시 고르기] · '
+        '[버리기]」)', () {
+      const failure = FileSystemException('the disk filled');
 
-      await start(tester, (context) async {
-        try {
-          await handOverFilesForUser(context, paths: [file]);
-        } on FileSystemException catch (error) {
-          thrown = error;
-        }
+      /// The iOS export picker, which moves the FIRST of what it is handed
+      /// and then fails, [failing] times — and moves all of it after that.
+      List<List<String>> failingPicker({int failing = 1}) {
+        debugOperatingSystemOverride = 'ios';
+        final asked = <List<String>>[];
+        FolderPicker.debugFilesExporter = (sourcePaths) async {
+          asked.add([...sourcePaths]);
+          moveIntoFolder(sourcePaths.first, picked.path);
+          if (asked.length <= failing) {
+            throw failure;
+          }
+          for (final source in sourcePaths.skip(1)) {
+            moveIntoFolder(source, picked.path);
+          }
+          return FolderGrant.granted(path: picked.path);
+        };
+        return asked;
+      }
+
+      testWidgets('🎯it says why, and 다시 고르기 opens the window for what is '
+          'still here — what made it stays where it was put', (tester) async {
+        final asked = failingPicker();
+
+        await handOver(tester, [file, folder]);
+
+        expect(find.byKey(question), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(question),
+            matching: find.textContaining(AppText.strings.exFailed(failure)),
+          ),
+          findsOneWidget,
+          reason: 'the error is said, above the question',
+        );
+        await press(tester, pickAgain);
+
+        expect(asked, [
+          [file, folder],
+          [folder],
+        ], reason: 'the second window is handed what the first left');
+        expect(handed, HandOver.placed);
+        expect(File('${picked.path}/frame_0001.png').readAsStringSync(), 'a');
+        expect(File('${picked.path}/CUT001/0001.png').readAsStringSync(), 'b');
       });
 
-      expect(thrown, isA<FileSystemException>());
-      expect(find.byKey(question), findsNothing);
+      testWidgets('버리기 lets go of what is left — what made it stays', (
+        tester,
+      ) async {
+        failingPicker(failing: everyTime);
+
+        await handOver(tester, [file, folder]);
+        await press(tester, discard);
+
+        expect(handed, HandOver.declined);
+        expect(File('${picked.path}/frame_0001.png').existsSync(), isTrue);
+        expect(Directory(folder).existsSync(), isTrue, reason: 'the caller '
+            'lets go of what is left (HandOver.declined)');
+      });
+
+      testWidgets('a backing out is asked about without a failure said', (
+        tester,
+      ) async {
+        iosPicker(backedOut: 1);
+
+        await handOver(tester, [file]);
+
+        expect(
+          find.descendant(
+            of: find.byKey(question),
+            matching: find.text(AppText.strings.exHandOverPending),
+          ),
+          findsOneWidget,
+          reason: 'the question alone — nothing failed',
+        );
+        await press(tester, pickAgain);
+        expect(handed, HandOver.placed);
+      });
+
+      testWidgets('a failure that left NOTHING to place is the caller\'s to '
+          'say: there is nothing to ask about', (tester) async {
+        failingPicker();
+        Object? thrown;
+
+        await start(tester, (context) async {
+          try {
+            await handOverFilesForUser(context, paths: [file]);
+          } on FileSystemException catch (error) {
+            thrown = error;
+          }
+        });
+
+        expect(thrown, failure);
+        expect(find.byKey(question), findsNothing);
+      });
     });
   });
 
@@ -426,6 +506,43 @@ void main() {
 
       expect(opened, hasLength(2));
       expect(opened.last, opened.first);
+      expect(placed?.path, '${picked.path}/take.wav');
+    });
+
+    testWidgets('🗣️an export whose window FAILS is asked about too, the '
+        'written file still in hand (F-221-Q7) — 다시 고르기 hands it to the '
+        'window again', (tester) async {
+      FolderPicker.debugFileExporter = ({
+        required String sourcePath,
+        String? suggestedName,
+      }) async {
+        opened.add((
+          path: sourcePath,
+          holds: File(sourcePath).readAsStringSync(),
+        ));
+        if (opened.length == 1) {
+          throw const FileSystemException('the picker lost it');
+        }
+        return FolderGrant.granted(
+          path: '${picked.path}/$suggestedName',
+          kind: GrantKind.file,
+        );
+      };
+      FolderGrant? placed;
+
+      await start(tester, (context) async {
+        placed = await placeStagedFileForUser(
+          context,
+          suggestedName: 'take.wav',
+          write: writeTake,
+        );
+      });
+
+      expect(find.byKey(question), findsOneWidget);
+      await press(tester, pickAgain);
+
+      expect(opened, hasLength(2));
+      expect(opened.last, opened.first, reason: 'the same written file');
       expect(placed?.path, '${picked.path}/take.wav');
     });
 
