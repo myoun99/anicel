@@ -3351,6 +3351,7 @@ class EditorSessionManager extends ChangeNotifier
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
     playback: playbackRig,
+    timelineZoom: timelineZoom,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

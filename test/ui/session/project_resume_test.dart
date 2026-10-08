@@ -36,4 +36,35 @@ void main() {
     expect(back.frameIndex, 0, reason: 'a negative frame is no frame');
     expect(back.tools, isEmpty, reason: 'not a map: no tools were saved');
   });
+
+  group('each cut\'s timeline zoom (F-253 → F-267)', () {
+    test('round-trips through the JSON', () {
+      final resume = ProjectResume(
+        timelineZoom: {const CutId('c2'): 37.5, const CutId('c3'): 6},
+      );
+      expect(ProjectResume.fromJson(resume.toJson()).timelineZoom, {
+        const CutId('c2'): 37.5,
+        const CutId('c3'): 6.0,
+      });
+    });
+
+    test('🚨a zoom that cannot be read is dropped ALONE', () {
+      final back = ProjectResume.fromJson({
+        'timelineZoom': {
+          'c2': 'wide',
+          'c3': -1,
+          'c4': 0,
+          '': 3,
+          'c5': double.infinity,
+          'c6': 20,
+        },
+      });
+      expect(back.timelineZoom, {const CutId('c6'): 20.0});
+      expect(
+        ProjectResume.fromJson({'timelineZoom': 'wide'}).timelineZoom,
+        isEmpty,
+        reason: 'not a map: no zoom was saved',
+      );
+    });
+  });
 }

@@ -245,4 +245,45 @@ void main() {
     expect(reopened.playbackRig.playbackMode, picked);
     reopened.dispose();
   });
+
+  test('🚨each cut comes back at the timeline zoom it was left at — through '
+      'the append too — and a cut nobody zoomed is handed none (F-253 → '
+      'F-267, 유저 2026-10-01: 「프로젝트와 같이 저장되도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final first = s.activeCutId!;
+    s.timelineZoom.remember(const CutId('c2'), 37.5);
+    // A cut deleted since it was zoomed: the memory keeps no list of cuts.
+    s.timelineZoom.remember(const CutId('gone'), 9);
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'zooming is no edit — the zoom rides beside the project',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.timelineZoom.remember(const CutId('c2'), 12);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.timelineZoom.zoomOf(const CutId('c2')), 12);
+    expect(
+      reopened.timelineZoom.zoomOf(first),
+      isNull,
+      reason: 'it opens at the default, not at another cut\'s zoom',
+    );
+    expect(
+      reopened.timelineZoom.byCut.keys,
+      [const CutId('c2')],
+      reason: 'a cut the project no longer has falls back alone, as the '
+          'cut a resume names does',
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
 }

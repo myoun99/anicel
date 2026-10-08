@@ -57,6 +57,7 @@ import 'media_pool.dart';
 import 'playback_rig.dart';
 import 'project_file.dart';
 import 'rail_view.dart' show StandingLaw;
+import 'timeline_zoom_memory.dart';
 import 'visibility_solo.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
@@ -127,8 +128,10 @@ class ProjectFileDoor {
     required FailedSaveCopies failedCopies,
     required StandingLaw keepStandingShown,
     required PlaybackRig playback,
+    required TimelineZoomMemory timelineZoom,
   }) : _file = file,
        _playback = playback,
+       _timelineZoom = timelineZoom,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -151,6 +154,10 @@ class ProjectFileDoor {
   /// Whose playback mode a save keeps and an open puts back
   /// ([ProjectResume.playbackMode]).
   final PlaybackRig _playback;
+
+  /// Whose cuts' zooms a save keeps and an open puts back
+  /// ([ProjectResume.timelineZoom]).
+  final TimelineZoomMemory _timelineZoom;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -853,6 +860,7 @@ class ProjectFileDoor {
     frameIndex: _selection.currentFrameIndex,
     tools: toolChoice?.read() ?? const {},
     playbackMode: _playback.playbackMode,
+    timelineZoom: _timelineZoom.byCut,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1106,6 +1114,14 @@ class ProjectFileDoor {
     _resumeTools(resume.tools);
     // A file that says nothing plays as a new project does.
     _playback.setPlaybackMode(resume.playbackMode ?? defaultPlaybackMode);
+    // Each cut at the zoom it was left at — a cut that is gone is no cut to
+    // show at one.
+    for (final MapEntry(key: cut, value: zoom)
+        in resume.timelineZoom.entries) {
+      if (cutPositionOf(project, cut) != null) {
+        _timelineZoom.remember(cut, zoom);
+      }
+    }
   }
 }
 

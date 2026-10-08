@@ -35,6 +35,7 @@ class ProjectResume {
     this.frameIndex = 0,
     this.tools = const {},
     this.playbackMode,
+    this.timelineZoom = const {},
   });
 
   static const ProjectResume none = ProjectResume();
@@ -57,12 +58,20 @@ class ProjectResume {
   /// file still keeps it. Null when the file says nothing.
   final PlaybackMode? playbackMode;
 
+  /// The timeline zoom each cut was left at (F-253 → F-267, 유저 2026-10-01:
+  /// 「프로젝트와 같이 저장되도록」) — a cut nobody zoomed is not here.
+  final Map<CutId, double> timelineZoom;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
     if (frameIndex > 0) 'frameIndex': frameIndex,
     if (tools.isNotEmpty) 'tools': tools,
     if (playbackMode != null) 'playbackMode': playbackMode!.name,
+    if (timelineZoom.isNotEmpty)
+      'timelineZoom': {
+        for (final entry in timelineZoom.entries) entry.key.value: entry.value,
+      },
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -81,6 +90,12 @@ class ProjectResume {
       playbackMode: PlaybackMode.values
           .where((mode) => mode.name == json['playbackMode'])
           .firstOrNull,
+      timelineZoom: {
+        for (final MapEntry(:key, :value)
+            in anicelObjectMapField(json['timelineZoom']).entries)
+          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
+            CutId(key): value.toDouble(),
+      },
     );
   }
 }
