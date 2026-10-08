@@ -202,6 +202,44 @@ void main() {
     expect(marked, ['canvas-size-preset-1280x720']);
   });
 
+  // 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
+  // 150, 200 and 300 dpi, a line, then HD · FHD · 2K · 4K; 「용지는 특히
+  // 홀수만 아니면됨」.
+  testWidgets('the list holds the paper sizes, a line, then the video sizes '
+      '— none of them odd', (tester) async {
+    await pumpOpenDialog(tester);
+    final entries = tester
+        .widget<PanelFlyoutButton>(
+          find.byKey(const ValueKey<String>('canvas-size-presets')),
+        )
+        .entriesBuilder();
+
+    expect(
+      [
+        for (final entry in entries)
+          if (entry is PanelFlyoutItem) entry.keyValue else '—',
+      ],
+      [
+        'canvas-size-preset-1754x1240',
+        'canvas-size-preset-2340x1654',
+        'canvas-size-preset-3508x2480',
+        '—',
+        'canvas-size-preset-1280x720',
+        'canvas-size-preset-1920x1080',
+        'canvas-size-preset-2560x1440',
+        'canvas-size-preset-3840x2160',
+      ],
+    );
+    for (final row in entries.whereType<PanelFlyoutItem>()) {
+      final size = RegExp(r'(\d+)x(\d+)$').firstMatch(row.keyValue)!;
+      expect(
+        int.parse(size[1]!).isEven && int.parse(size[2]!).isEven,
+        isTrue,
+        reason: row.keyValue,
+      );
+    }
+  });
+
   testWidgets('⛔no caption explains the anchor grid', (tester) async {
     await pumpOpenDialog(tester);
     expect(

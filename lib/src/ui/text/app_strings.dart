@@ -506,7 +506,6 @@ enum AppStrings {
 
   /// '{min}'/'{max}' are the dimension bounds.
   String get canvasSizePresets => _s('canvasSizePresets');
-  String get canvasPresetDefault => _s('canvasPresetDefault');
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
@@ -1920,7 +1919,6 @@ enum AppStrings {
     'cameraSizeTitle': 'Camera size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
-    'canvasPresetDefault': 'Default',
     'canvasSizePresets': 'Presets',
     'commonResize': 'Resize',
     'inputTitle': 'Input settings',
@@ -3074,7 +3072,6 @@ enum AppStrings {
     'cameraSizeTitle': 'カメラサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
-    'canvasPresetDefault': '既定',
     'canvasSizePresets': 'プリセット',
     'commonResize': 'サイズ変更',
     'inputTitle': '入力設定',
@@ -4450,7 +4447,6 @@ enum AppStrings {
     'cameraSizeTitle': '카메라 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
-    'canvasPresetDefault': '기본',
     'canvasSizePresets': '프리셋',
     'commonResize': '크기 변경',
     'inputTitle': '입력 설정',
@@ -5829,7 +5825,6 @@ enum AppStrings {
     'cameraSizeTitle': 'Taille de la caméra',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
-    'canvasPresetDefault': 'Par défaut',
     'canvasSizePresets': 'Préréglages',
     'commonResize': 'Redimensionner',
     'inputTitle': 'Paramètres de saisie',
@@ -7253,7 +7248,6 @@ enum AppStrings {
     'cameraSizeTitle': '摄影机尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
-    'canvasPresetDefault': '默认',
     'canvasSizePresets': '预设',
     'commonResize': '调整尺寸',
     'inputTitle': '输入设置',
