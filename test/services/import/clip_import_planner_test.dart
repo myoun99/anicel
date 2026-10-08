@@ -37,6 +37,7 @@ void main() {
     int composite = 0,
     bool drawn = true,
     ClipLayerKind kind = ClipLayerKind.raster,
+    List<String> vectorData = const [],
   }) {
     nextId += 1;
     return ClipLayer(
@@ -56,6 +57,7 @@ void main() {
       render: drawn ? picture : null,
       original: null,
       originalTransform: null,
+      vectorData: vectorData,
       children: const [],
     );
   }
@@ -873,6 +875,26 @@ void main() {
     expect(blocks(row(cut, 'words')), [(0, 1, 'words')]);
     expect(row(cut, 'odd').blendMode, LayerBlendMode.normal);
     expect(result.bakes.single.source.name, 'odd');
+  });
+
+  test('a vector layer with strokes is baked like any picture — and what its '
+      'round pen leaves out is said', () {
+    final result = plan(
+      root([
+        layer(
+          'lines',
+          kind: ClipLayerKind.vector,
+          drawn: false,
+          vectorData: const ['strokes'],
+        ),
+      ]),
+      [timeline(const [])],
+    );
+
+    expect([for (final warning in result.warnings) warning.key], [
+      'clipVector',
+    ]);
+    expect(result.bakes.single.source.name, 'lines');
   });
 
   test('a cel holding folders says its layers\' names are not kept, and '

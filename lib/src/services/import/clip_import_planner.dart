@@ -946,12 +946,13 @@ final class _Planner {
     }
   }
 
-  /// Says what a layer of a kind with no picture here leaves out.
+  /// Says what a layer of [layer]'s kind leaves out here.
   void _sayWhatIsNotDrawn(ClipLayer layer, String name) {
     final (key, template) = switch (layer.kind) {
       ClipLayerKind.vector => (
         'clipVector',
-        '{name}: vector layer — not drawn.',
+        '{name}: vector layer — drawn with a round pen; its brush\'s shape '
+            'and texture are not kept.',
       ),
       ClipLayerKind.lettering => (
         'clipText',

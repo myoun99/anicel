@@ -87,9 +87,6 @@ typedef ClipCelTarget = ({
 /// or null for a picture that is not colour: a grey or monochrome layer,
 /// which this reader does not turn into colour.
 ///
-/// What falls off the canvas is dropped, and a tile with no ink is not
-/// there at all — the shape the drawing store gives an empty tile.
-///
 /// Pure, so it runs on a worker: the two byte lists are all it is given.
 List<ClipCelTile>? clipCelTiles(
   Uint8List attribute,
@@ -101,19 +98,34 @@ List<ClipCelTile>? clipCelTiles(
   if (rgba == null) {
     return null;
   }
+  return clipCelTilesOf(
+    (rgba: rgba, width: shape.width, height: shape.height),
+    target,
+  );
+}
+
+/// [picture] — straight RGBA — as cel tiles on [target]: a stored picture
+/// once decoded ([clipCelTiles]), and a vector layer once drawn.
+///
+/// What falls off the canvas is dropped, and a tile with no ink is not
+/// there at all — the shape the drawing store gives an empty tile.
+List<ClipCelTile> clipCelTilesOf(
+  ({Uint8List rgba, int width, int height}) picture,
+  ClipCelTarget target,
+) {
   final size = target.tileSize;
   // The picture's part on the canvas, in canvas pixels.
   final on = (
     left: math.max(0, target.left),
     top: math.max(0, target.top),
-    right: math.min(target.canvasWidth, target.left + shape.width),
-    bottom: math.min(target.canvasHeight, target.top + shape.height),
+    right: math.min(target.canvasWidth, target.left + picture.width),
+    bottom: math.min(target.canvasHeight, target.top + picture.height),
   );
   final tiles = <ClipCelTile>[];
   for (var ty = on.top ~/ size; ty * size < on.bottom; ty += 1) {
     for (var tx = on.left ~/ size; tx * size < on.right; tx += 1) {
       final pixels = _tileOf(
-        (rgba: rgba, width: shape.width),
+        (rgba: picture.rgba, width: picture.width),
         target,
         (x: tx, y: ty),
         on,

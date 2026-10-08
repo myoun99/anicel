@@ -3703,7 +3703,10 @@ enum AppStrings {
     'importWarning.clipNoSuchCel': '{name}: フォルダーにないセルを指すキーが{count}個あります。',
     'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
     'importWarning.clipSpread': '{name}: {count}枚のセルで、フォルダーの不透明度や合成モードを中の各レイヤーに分けて付けました — レイヤーが重なる所は見え方が変わることがあります。',
-    'importWarning.clipVector': '{name}: ベクターレイヤー — 描画していません。',
+    'importWarning.clipVector':
+        '{name}: ベクターレイヤー — 丸ペンで描画しました。ブラシの形と質感は再現していません。',
+    'importWarning.clipVectorUnread':
+        '{name}: 読めない種類のベクター線 {count} 本 — 描画していません。',
     'importWarning.clipText': '{name}: テキストレイヤー — 描画していません。',
     'importWarning.clipPaper': '{name}: 用紙レイヤー — 色は適用していません。',
     'importWarning.clipFill': '{name}: 塗りつぶしレイヤー — 描画していません。',
@@ -5127,7 +5130,10 @@ enum AppStrings {
     'importWarning.clipNoSuchCel': '{name}: 폴더에 없는 셀을 가리키는 키가 {count}개 있습니다.',
     'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
     'importWarning.clipSpread': '{name}: 셀 {count}장에서 폴더의 불투명도나 합성 모드를 안의 레이어마다 나눠 줬습니다 — 레이어가 겹치는 자리는 다르게 보일 수 있습니다.',
-    'importWarning.clipVector': '{name}: 벡터 레이어 — 그리지 않았습니다.',
+    'importWarning.clipVector':
+        '{name}: 벡터 레이어 — 둥근 펜으로 그렸습니다. 브러시의 모양과 질감은 옮기지 못했습니다.',
+    'importWarning.clipVectorUnread':
+        '{name}: 읽지 못하는 종류의 벡터 선 {count}개 — 그리지 않았습니다.',
     'importWarning.clipText': '{name}: 텍스트 레이어 — 그리지 않았습니다.',
     'importWarning.clipPaper': '{name}: 용지 레이어 — 색은 적용하지 않았습니다.',
     'importWarning.clipFill': '{name}: 채우기 레이어 — 그리지 않았습니다.',
@@ -6643,7 +6649,12 @@ enum AppStrings {
         '{name} : dans {count} cellulo(s), l\'opacité ou le mode de fusion '
         'd\'un dossier a été donné à chacun de ses calques — là où ils se '
         'chevauchent, le rendu peut différer.',
-    'importWarning.clipVector': '{name} : calque vectoriel — non dessiné.',
+    'importWarning.clipVector':
+        '{name} : calque vectoriel — dessiné au stylo rond ; la forme et la '
+        'texture de la brosse ne sont pas reprises.',
+    'importWarning.clipVectorUnread':
+        '{name} : {count} traits vectoriels d’un type illisible — non '
+        'dessinés.',
     'importWarning.clipText': '{name} : calque de texte — non dessiné.',
     'importWarning.clipPaper':
         '{name} : calque papier — sa couleur n\'est pas appliquée.',
@@ -8033,7 +8044,8 @@ enum AppStrings {
     'importWarning.clipNoSuchCel': '{name}：有 {count} 个关键帧指向文件夹中不存在的赛璐珞。',
     'importWarning.clipCelLayers': '{name}：赛璐珞中的图层按从上往下的位置分成了行——各自的名称和文件夹不保留。',
     'importWarning.clipSpread': '{name}：在 {count} 张赛璐珞中，文件夹的不透明度或混合模式分给了其中的每个图层——图层重叠处看起来可能不同。',
-    'importWarning.clipVector': '{name}：矢量图层——未绘制。',
+    'importWarning.clipVector': '{name}：矢量图层——已用圆头笔绘制；笔刷的形状和质感未能保留。',
+    'importWarning.clipVectorUnread': '{name}：{count} 条无法读取的矢量线——未绘制。',
     'importWarning.clipText': '{name}：文字图层——未绘制。',
     'importWarning.clipPaper': '{name}：纸张图层——未应用其颜色。',
     'importWarning.clipFill': '{name}：填充图层——未绘制。',

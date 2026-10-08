@@ -28,6 +28,7 @@ import '../../services/import/clip_cel_raster.dart';
 import '../../services/import/clip_container.dart';
 import '../../services/import/clip_document.dart';
 import '../../services/import/clip_import_planner.dart';
+import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart' show bakeCelTiles;
 import '../../services/persistence/folder_grant.dart'
@@ -165,12 +166,13 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   );
 }
 
-/// One picture to bake, the cut it lands in, and where its bytes are.
+/// One picture to bake, the cut it lands in, and where its bytes are — a
+/// stored picture's blocks, or a vector layer's strokes ([picture] null).
 typedef _ClipWork = ({
   ClipCelBake bake,
   Cut cut,
-  ClipPicture picture,
-  ClipPlace blocks,
+  ClipPicture? picture,
+  List<ClipPlace> places,
 });
 
 /// The CLIP STUDIO door.
@@ -230,21 +232,18 @@ final class ClipImportDoor {
       final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
-        final windows = <Uint8List>[];
+        final windows = <List<Uint8List>>[];
         for (final item in wave) {
-          await reader.setPosition(item.blocks.offset);
-          windows.add(await reader.read(item.blocks.length));
+          final bytes = <Uint8List>[];
+          for (final place in item.places) {
+            await reader.setPosition(place.offset);
+            bytes.add(await reader.read(place.length));
+          }
+          windows.add(bytes);
         }
         final decoded = await Future.wait([
           for (var w = 0; w < wave.length; w += 1)
-            _decodeOnWorker(windows[w], wave[w].picture.source.attribute, (
-              left: wave[w].picture.left,
-              top: wave[w].picture.top,
-              canvasWidth: wave[w].cut.canvasSize.width,
-              canvasHeight: wave[w].cut.canvasSize.height,
-              alpha: wave[w].bake.alpha,
-              tileSize: defaultCelTileSize,
-            )),
+            _decodeOne(wave[w], windows[w]),
         ]);
         for (var w = 0; w < wave.length; w += 1) {
           _bakeDecoded(decoded[w], wave[w], warnings);
@@ -272,8 +271,27 @@ final class ClipImportDoor {
     final turned = <int>{};
     for (final bake in plan.bakes) {
       final cut = _project.cutById(bake.cutId);
+      if (cut == null) {
+        continue;
+      }
+      // A vector layer is drawn from its strokes: the render it keeps beside
+      // them has no blocks in the file.
+      if (bake.source.vectorData case final data when data.isNotEmpty) {
+        final places = [for (final id in data) container.externals[id]];
+        if (places.contains(null)) {
+          warnings.add(_unreadable(bake, 'its strokes are not in the file'));
+          continue;
+        }
+        work.add((
+          bake: bake,
+          cut: cut,
+          picture: null,
+          places: [...places.nonNulls],
+        ));
+        continue;
+      }
       final picture = clipPictureOf(bake.source);
-      if (cut == null || picture == null) {
+      if (picture == null) {
         continue;
       }
       final blocks = container.externals[picture.source.blocksId];
@@ -290,9 +308,28 @@ final class ClipImportDoor {
           ),
         );
       }
-      work.add((bake: bake, cut: cut, picture: picture, blocks: blocks));
+      work.add((bake: bake, cut: cut, picture: picture, places: [blocks]));
     }
     return work;
+  }
+
+  /// [item] decoded on a worker of its own out of [bytes] — its blocks, or
+  /// its strokes.
+  Future<Object?> _decodeOne(_ClipWork item, List<Uint8List> bytes) {
+    final picture = item.picture;
+    final target = (
+      left: picture?.left ?? 0,
+      top: picture?.top ?? 0,
+      canvasWidth: item.cut.canvasSize.width,
+      canvasHeight: item.cut.canvasSize.height,
+      alpha: item.bake.alpha,
+      tileSize: defaultCelTileSize,
+    );
+    if (picture == null) {
+      final layer = item.bake.source;
+      return _drawOnWorker(bytes, (x: layer.offsetX, y: layer.offsetY), target);
+    }
+    return _decodeOnWorker(bytes.single, picture.source.attribute, target);
   }
 
   /// Lands one decoded picture, or says why it could not be landed. No
@@ -302,6 +339,23 @@ final class ClipImportDoor {
     _ClipWork item,
     List<ImportWarning> warnings,
   ) {
+    if (decoded case (
+      tiles: final List<ClipCelTile> tiles,
+      unread: final int unread,
+    )) {
+      if (unread > 0) {
+        warnings.add(
+          ImportWarning(
+            'clipVectorUnread',
+            '{name}: {count} vector strokes of a kind this import does not '
+                'read — not drawn.',
+            {'name': item.bake.label, 'count': '$unread'},
+          ),
+        );
+      }
+      _bakeTiles(tiles, item);
+      return;
+    }
     if (decoded == null) {
       warnings.add(
         ImportWarning(
@@ -316,7 +370,11 @@ final class ClipImportDoor {
       warnings.add(_unreadable(item.bake, '$decoded'));
       return;
     }
-    if (decoded.isEmpty) {
+    _bakeTiles(decoded, item);
+  }
+
+  void _bakeTiles(List<ClipCelTile> tiles, _ClipWork item) {
+    if (tiles.isEmpty) {
       return;
     }
     bakeCelTiles(
@@ -327,7 +385,7 @@ final class ClipImportDoor {
         item.bake.frameId,
       ),
       item.cut.canvasSize,
-      decoded,
+      tiles,
     );
   }
 
@@ -355,6 +413,23 @@ Future<Object?> _decodeOnWorker(
     } on ClipFormatException catch (error) {
       return error;
     } on FormatException catch (error) {
+      return error;
+    }
+  });
+}
+
+/// One vector layer drawn on a worker of its own ([clipVectorTiles]) — its
+/// tiles and its unread strokes, or the reason its strokes would not read.
+/// Its own function for the same reason as [_decodeOnWorker].
+Future<Object?> _drawOnWorker(
+  List<Uint8List> bodies,
+  ({int x, int y}) offset,
+  ClipCelTarget target,
+) {
+  return Isolate.run<Object?>(() {
+    try {
+      return clipVectorTiles(bodies, offset, target);
+    } on ClipFormatException catch (error) {
       return error;
     }
   });

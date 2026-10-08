@@ -62,6 +62,7 @@ final class ClipLayer {
     required this.render,
     required this.original,
     required this.originalTransform,
+    this.vectorData = const [],
     required this.children,
   });
 
@@ -111,6 +112,11 @@ final class ClipLayer {
   /// `ResizableImageInfo` — how [original] is placed.
   final Uint8List? originalTransform;
 
+  /// The external chunks a vector layer's strokes are in, in the file's
+  /// order — its picture, drawn here: the render it keeps beside them has
+  /// no blocks in the file (the one sample with vectors, all seven layers).
+  final List<String> vectorData;
+
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
 
@@ -118,9 +124,10 @@ final class ClipLayer {
   bool get isFolder => folderFlags != 0 || kind == ClipLayerKind.root;
   bool get isCollapsed => folderFlags & 16 != 0;
 
-  /// Whether a picture of it is stored: a render, or a dropped picture's
-  /// original. A vector, a text or a paper layer stores none.
-  bool get hasPicture => render != null || original != null;
+  /// Whether it has a picture: a render, a dropped picture's original, or
+  /// a vector layer's strokes. A text or a paper layer has none.
+  bool get hasPicture =>
+      render != null || original != null || vectorData.isNotEmpty;
 
   /// This layer and every layer under it, this one first.
   Iterable<ClipLayer> get everyLayer sync* {
@@ -407,23 +414,27 @@ final class _DocumentReader {
     return out;
   }
 
-  Set<int> _vectorLayerIds() {
-    if (!_columnsOf('VectorObjectList').contains('LayerId')) {
+  /// Each layer's vector data (`VectorObjectList.VectorData` — the external
+  /// chunk its strokes are in), in the file's order.
+  Map<int, List<String>> _vectorDataByLayer() {
+    final columns = _columnsOf('VectorObjectList');
+    if (!columns.contains('LayerId') || !columns.contains('VectorData')) {
       return const {};
     }
-    return {
-      for (final row in database.select(
-        'SELECT DISTINCT LayerId FROM VectorObjectList',
-      ))
-        _int(row['LayerId']),
-    };
+    final out = <int, List<String>>{};
+    for (final row in database.select(
+      'SELECT LayerId, VectorData FROM VectorObjectList ORDER BY rowid',
+    )) {
+      (out[_int(row['LayerId'])] ??= []).add(_text(row['VectorData']));
+    }
+    return out;
   }
 
   /// What every step of the tree walk asks: the layer table, the 100%
-  /// pictures, and the layers that hold vectors.
+  /// pictures, and the layers' vector data.
   late final _layerRows = _rows('Layer', _layerColumns);
   late final _pictures = _picturesById();
-  late final _vectorLayers = _vectorLayerIds();
+  late final _vectorData = _vectorDataByLayer();
 
   /// The layers the walk has reached — a chain that loops stops there.
   final _walked = <int>{};
@@ -449,7 +460,7 @@ final class _DocumentReader {
     return ClipLayer(
       id: id,
       name: _text(row['LayerName']),
-      kind: _kindOf(row, _vectorLayers.contains(id)),
+      kind: _kindOf(row, _vectorData.containsKey(id)),
       visibility: _int(row['LayerVisibility']),
       opacity: _int(row['LayerOpacity']),
       composite: _int(row['LayerComposite']),
@@ -463,6 +474,7 @@ final class _DocumentReader {
       render: pictures[_int(row['LayerRenderMipmap'])],
       original: pictures[_int(row['ResizableOriginalMipmap'])],
       originalTransform: transform is Uint8List ? transform : null,
+      vectorData: _vectorData[id] ?? const [],
       children: children,
     );
   }

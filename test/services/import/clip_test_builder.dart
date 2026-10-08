@@ -396,7 +396,50 @@ const clipSchema = '''
   CREATE TABLE TimeLineLabel(_PW_ID INTEGER PRIMARY KEY,
     MainId INTEGER, LabelFrame INTEGER, LabelType INTEGER,
     LabelNextIndex INTEGER);
+  CREATE TABLE VectorObjectList(_PW_ID INTEGER PRIMARY KEY,
+    MainId INTEGER, CanvasId INTEGER, LayerId INTEGER, VectorData BLOB);
 ''';
+
+/// One stroke record of a vector layer's data (memory
+/// `csp-clip-format-notes` §7): a [head]-byte head (88 or 92) and its
+/// [points] — x, y and the radius's factor there — with a curve tool's
+/// 104-byte points when [bends] gives each its control point (null =
+/// straight).
+Uint8List vectorStrokeBytes(
+  List<(double, double, double)> points, {
+  (int, int, int) colour = (0, 0, 0),
+  double opacity = 1,
+  double radius = 2,
+  int head = 92,
+  int flags = 1,
+  List<(double, double)?>? bends,
+}) {
+  final pointSize = bends == null ? 88 : 104;
+  final data = ByteData(head + points.length * pointSize)
+    ..setUint32(0, head)
+    ..setUint32(8, pointSize)
+    ..setUint32(16, points.length)
+    ..setUint32(20, flags)
+    ..setUint8(40, colour.$1)
+    ..setUint8(44, colour.$2)
+    ..setUint8(48, colour.$3)
+    ..setFloat64(64, opacity)
+    ..setFloat64(head == 92 ? 80 : 76, radius);
+  for (var p = 0; p < points.length; p += 1) {
+    final at = head + p * pointSize;
+    final (x, y, factor) = points[p];
+    data
+      ..setFloat64(at, x)
+      ..setFloat64(at + 8, y)
+      ..setFloat32(at + 56, factor);
+    if (bends?[p] case (final bx, final by)) {
+      data
+        ..setFloat64(at + 88, bx)
+        ..setFloat64(at + 96, by);
+    }
+  }
+  return data.buffer.asUint8List();
+}
 
 /// The bytes of a database [build] fills, made in [folder] (the file goes
 /// as soon as it is read).
