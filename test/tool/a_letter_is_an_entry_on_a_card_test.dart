@@ -69,6 +69,59 @@ void main() {
       expect(after.owner, theirs, reason: '`to` is not `owner`');
     });
 
+    // 🚨The pin above FAILED for one hour on 2026-10-08, between 10:00 and
+    // 11:00: its card's 하는 중 (10-07 10:00) had gone quiet a day ago and
+    // its letter (10-07 11:00) had not — and the letter was counted as the
+    // card's newest entry, so the card with the letter was still 진행 중 and
+    // the card without it was not. A letter had moved the card.
+    // ⚠️Off the real clock here: a claim lapses a day after the card's last
+    // word, so a fixed date measures nothing once it is a day old.
+    group('and renews no claim', () {
+      String ago(Duration time) =>
+          DateTime.now().subtract(time).toIso8601String();
+      String claimed(String ts) =>
+          '{"kind":"item","id":"W","at":"하는 중","owner":"$theirs",'
+          '"title":"작업","note":"시작","ts":"$ts"}';
+
+      test('🚨a holder who went quiet a day ago is not kept in 진행 중 by a '
+          'word left for them', () {
+        final quiet = claimed(ago(const Duration(hours: 30)));
+        final leftSince = letter(ago(const Duration(hours: 1)));
+        expect(
+          statusOf(board([quiet]).single),
+          isNot(BoardStatus.doing),
+          reason: '⛔premise: the claim has lapsed',
+        );
+
+        expect(
+          statusOf(board([quiet, leftSince]).single),
+          statusOf(board([quiet]).single),
+        );
+      });
+
+      test('a claim the holder still keeps stays kept, letter or none', () {
+        final live = claimed(ago(const Duration(hours: 2)));
+        final leftSince = letter(ago(const Duration(hours: 1)));
+
+        expect(statusOf(board([live]).single), BoardStatus.doing);
+        expect(statusOf(board([live, leftSince]).single), BoardStatus.doing);
+      });
+
+      test('the holder\'s own word after a letter is the card\'s word — it '
+          'is the letter that is not counted, not what follows it', () {
+        final quiet = claimed(ago(const Duration(hours: 30)));
+        final leftSince = letter(ago(const Duration(hours: 3)));
+        final working =
+            '{"kind":"item","id":"W","note":"이어서 한다",'
+            '"ts":"${ago(const Duration(hours: 1))}"}';
+
+        expect(
+          statusOf(board([quiet, leftSince, working]).single),
+          BoardStatus.doing,
+        );
+      });
+    });
+
     test('⛔the same words again are another letter — to a second 담당, or '
         'to the same one twice', () {
       final w = board([

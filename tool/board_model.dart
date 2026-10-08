@@ -843,9 +843,17 @@ String lastSection(BoardCard e) {
 /// silence. ⚠️Measured from the NEWEST entry of all, not from the claim: a
 /// session that is still writing notes is still working, whatever it last
 /// called the section.
+///
+/// ⚠️A LETTER IS NOT THE CARD'S OWN WORD, so it is not counted here. ↩️It
+/// was: a word left FOR the holder by another session kept a claim alive a
+/// day longer — a letter moved the card after all, against its own law
+/// ([BoardLog.to]: it stands in the story and moves nothing). Found
+/// 2026-10-08: the pin 「it moves the card nowhere」 failed for the one hour
+/// in which its fixture's claim had lapsed and its letter's had not.
 bool wentQuiet(BoardCard e) {
-  if (e.log.isEmpty) return true;
-  final last = DateTime.tryParse(e.log.last.ts);
+  final own = e.log.where((entry) => !entry.isLetter);
+  if (own.isEmpty) return true;
+  final last = DateTime.tryParse(own.last.ts);
   // No timestamp at all means an old record that predates the field. Those
   // cannot be renewed, so they cannot hold a claim either.
   if (last == null) return true;
