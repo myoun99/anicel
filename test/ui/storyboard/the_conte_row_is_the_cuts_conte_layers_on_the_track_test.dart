@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -19,9 +20,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart'
+    show StoryboardConteCreatePainter;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 
 /// 🗣️I-73 (유저 2026-10-08): 「v행 아래에 콘티행 만들어서 거기서」 · 「콘티행도
 /// 동일하게 하고싶으니까」 — the storyboard draws the cuts' conte layers as
@@ -366,5 +371,53 @@ void main() {
     expect(trackIdOfConteRow(trackConteRowId(trackId)), trackId);
     expect(trackIdOfConteRow(const LayerId('sb-a')), isNull);
     expect(trackIdOfConteRow(const LayerId('v-track:t')), isNull);
+  });
+
+  test('a create button is laid only inside the window — a cut with no '
+      'conte layer far off the screen costs no plate', () {
+    // Two cuts with no conte layer, 50 000 frames apart on a 10px cell.
+    const cell = 10.0;
+    const far = 50000;
+    final geometry = TimelineFrameGeometryHandle(
+      const TimelineFrameGeometry(
+        frameCellExtent: cell,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 100000,
+      ),
+    );
+    addTearDown(geometry.dispose);
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    List<RRect> plates({double viewport = 400}) => StoryboardConteCreatePainter(
+      spans: const [
+        (start: 0, endExclusive: 10),
+        (start: far, endExclusive: far + 10),
+      ],
+      geometry: geometry,
+      crossAxisExtent: 30,
+      colorScheme: const ColorScheme.light(),
+      baseTextStyle: const TextStyle(),
+      windowBucket: bucket,
+      viewportMainExtent: viewport,
+    ).plates();
+
+    expect(
+      [for (final plate in plates()) plate.left],
+      [0],
+      reason: 'at the head of the track, the far cut is past the window',
+    );
+
+    bucket.value = far ~/ timelineFrameWindowSpanFor(cell);
+    expect(
+      [for (final plate in plates()) plate.left],
+      [geometry.value.edgeAt(far)],
+      reason: 'and out there, the first cut is before it',
+    );
+
+    expect(
+      plates(viewport: 0),
+      hasLength(2),
+      reason: 'CONTROL: with no viewport to window by, both are laid',
+    );
   });
 }

@@ -796,10 +796,12 @@ Future<void> _dragTimelineGrip(
   await tester.pumpAndSettle();
 }
 
-/// The same blocks on a plate of other bands, or of another corner, hang
-/// their triangles elsewhere — so the row must not keep the old resolver.
+/// The same blocks on a plate of other bands hang their triangles elsewhere
+/// — so the row must not keep the old resolver. (↩️Or of another CORNER,
+/// while the plate's corner was handed in beside its bands; the grips read
+/// the block law's themselves now, which is the plate's.)
 void _sameBlocksOtherPaper() {
-  TimelineRowChromeResolver resolver({double band = 13, double corner = 8}) =>
+  TimelineRowChromeResolver resolver({double band = 13}) =>
       TimelineRowChromeResolver(
         gripBlocks: const [
           (
@@ -823,7 +825,7 @@ void _sameBlocksOtherPaper() {
         crossAxisExtent: 64,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: (cornerRadius: corner, band: band),
+        gripBand: band,
       );
   final row = resolver();
   expect(row.matches(resolver()), isTrue);
@@ -831,11 +833,6 @@ void _sameBlocksOtherPaper() {
     row.matches(resolver(band: 20)),
     isFalse,
     reason: 'bands of another depth hang the triangles elsewhere (I-52)',
-  );
-  expect(
-    row.matches(resolver(corner: 4)),
-    isFalse,
-    reason: 'a plate rounded otherwise cuts their tips otherwise',
   );
 }
 

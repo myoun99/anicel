@@ -65,8 +65,7 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
   final int blockOrdinal;
 
   /// The corner of the paper the grip sits in — the block's own at this
-  /// zoom ([blockEdgeGripCornerRadius]), or, when a row's grips sit on a
-  /// paper of its own, that paper's ([TimelineGripPaper]).
+  /// zoom ([blockEdgeGripCornerRadius]).
   final double paperCorner;
 
   @override
@@ -183,19 +182,6 @@ typedef TimelineChromeGripBlock = ({
   bool endGrip,
 });
 
-/// The paper a row's grips sit on when it is not the timeline's block
-/// paper — the storyboard's cut row, whose blocks are cuts and whose paper
-/// is each cut's plate: the corner the plate wears at its two ends
-/// ([cornerRadius]), where the row's grips all stand. Its pictures lie
-/// between label bands [band] deep, and its triangles stand in those bands
-/// alone (I-52 — [timelineBlockEdgeGripPlacement]).
-///
-/// ↩️It also named the frames where a plate starts and ends, while the cut
-/// row's blocks were the PANELS and a grip between two of them stood on the
-/// plate's straight edge. The panels' grips are the conte row's now (I-73),
-/// on blocks that are their own paper.
-typedef TimelineGripPaper = ({double cornerRadius, double band});
-
 /// A stretch of a row whose ground is not the row's `gripGround` — one of
 /// the storyboard cut row's label bands, or a panel's picture on its plate.
 typedef TimelineChromeGround = ({Rect rect, Color color});
@@ -264,7 +250,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
   required double crossAxisExtent,
   required Axis axis,
   required bool includeRunEdges,
-  TimelineGripPaper? gripPaper,
+  double? gripBand,
 }) {
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
@@ -303,7 +289,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
             endIndexExclusive: block.endIndexExclusive,
           ),
           crossAxisExtent: crossAxisExtent,
-          band: gripPaper?.band,
+          band: gripBand,
         ),
         geometry,
         crossAxisExtent: crossAxisExtent,
@@ -316,13 +302,11 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
           edge: edge,
           blockStartIndex: block.startIndex,
           blockOrdinal: block.ordinal,
-          paperCorner:
-              gripPaper?.cornerRadius ??
-              blockEdgeGripCornerRadius(
-                rect,
-                axis: axis,
-                frameCellExtent: frameCellExtent,
-              ),
+          paperCorner: blockEdgeGripCornerRadius(
+            rect,
+            axis: axis,
+            frameCellExtent: frameCellExtent,
+          ),
         ),
       );
     }
@@ -395,7 +379,7 @@ class TimelineRowChromeResolver {
     required this.crossAxisExtent,
     required this.axis,
     required this.includeRunEdges,
-    this.gripPaper,
+    this.gripBand,
   });
 
   final List<TimelineChromeGripBlock> gripBlocks;
@@ -409,9 +393,21 @@ class TimelineRowChromeResolver {
   final Axis axis;
   final bool includeRunEdges;
 
-  /// The paper the grips sit on when the blocks are not their own; null on
-  /// every row whose blocks are.
-  final TimelineGripPaper? gripPaper;
+  /// How deep the label bands are on a row whose blocks carry pictures
+  /// between two of them — the storyboard's cut row, whose blocks are the
+  /// cuts' plates. The triangles stand in those bands alone (I-52 —
+  /// [timelineBlockEdgeGripPlacement]). Null on every row whose grips take
+  /// half the paper.
+  ///
+  /// ↩️It was a record, the plate's PAPER: its bands, and the corner the
+  /// plate wears at its two ends — a constant 8px until the plate took the
+  /// block law (F-219, 유저 2026-09-28), since when a grip's own corner
+  /// ([blockEdgeGripCornerRadius]) has been that corner at every zoom, and
+  /// the one handed in a second spelling of it. ↩️And before I-73 it named
+  /// the frames where a plate starts and ends, while the cut row's blocks
+  /// were the PANELS and a grip between two of them stood on the plate's
+  /// straight edge.
+  final double? gripBand;
 
   TimelineFrameGeometry? _lastGeometry;
   TimelineRowEditChromeModel? _lastModel;
@@ -426,7 +422,7 @@ class TimelineRowChromeResolver {
       other.crossAxisExtent == crossAxisExtent &&
       other.axis == axis &&
       other.includeRunEdges == includeRunEdges &&
-      other.gripPaper == gripPaper;
+      other.gripBand == gripBand;
 
   TimelineRowEditChromeModel resolve(TimelineFrameGeometry geometry) {
     final cached = _lastModel;
@@ -442,7 +438,7 @@ class TimelineRowChromeResolver {
       crossAxisExtent: crossAxisExtent,
       axis: axis,
       includeRunEdges: includeRunEdges,
-      gripPaper: gripPaper,
+      gripBand: gripBand,
     );
     _lastGeometry = geometry;
     _lastModel = model;

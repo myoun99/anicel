@@ -6,7 +6,6 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
-import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
@@ -361,13 +360,18 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
 
   /// …and a CONTE block's: the frame block's own double tap
   /// ([activateCellOnDoubleTap]) on the cell it is — its cut's storyboard
-  /// row at the cut's own frame. The press that lands is the whole pick:
-  /// standing on the conte row seats the cut's conte layer
-  /// ([Standing.layerAConteStandSeats]), so the cell is in hand the way the
-  /// timeline's is when its double tap opens it. ↩️The press stood on the
-  /// CUT, which seated the conte layer while the conte blocks were the cut
-  /// block's (F-187, 「컷에서면 콘티레이어가 있다면 콘티레이어에 서도록」);
-  /// they are the conte row's now (I-73).
+  /// row at the cut's own frame. The first click was the pick: the conte
+  /// row's cells are pressed like the timeline's, so the row is stood on
+  /// and the cut's conte layer seated ([Standing.layerAConteStandSeats])
+  /// before the second click arrives — the cell is in hand the way the
+  /// timeline's is when its double tap opens it, and nothing is pressed
+  /// here. ↩️This door pressed first, on the CUT, while the conte blocks
+  /// were the cut block's (F-187, 「컷에서면 콘티레이어가 있다면
+  /// 콘티레이어에 서도록」) — a first press inside a cut selection stood
+  /// nowhere there, as [_editCutBlock]'s still may. The blocks are the
+  /// conte row's now (I-73), whose press always lands (🧪2026-10-08: with
+  /// the press gone no double click opened another cell or stood
+  /// elsewhere).
   ///
   /// ⚠️In a cut an O.L arrives into, the frame the storyboard's seek leaves
   /// the session on is short of the row's own by the のりしろ, so the cell
@@ -376,19 +380,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// every verb at once — board `I-73-ol-index-space`. ⛔Not here: adding
   /// the のりしろ to the frame handed on moved the playhead, and the name
   /// still landed where the session stood.
-  Future<void> _editConteBlock(
-    TrackId trackId,
-    LayerId layerId,
-    int globalFrame,
-  ) {
-    _pressRowFrameHere(LayerRowAddress(trackConteRowId(trackId)), globalFrame);
-    return activateCellOnDoubleTap(
-      context,
-      _session,
-      layerId: layerId,
-      frameIndex: _session.currentFrameIndex,
-    );
-  }
+  Future<void> _editConteBlock(TrackId _, LayerId layerId, int _) =>
+      activateCellOnDoubleTap(
+        context,
+        _session,
+        layerId: layerId,
+        frameIndex: _session.currentFrameIndex,
+      );
 
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.

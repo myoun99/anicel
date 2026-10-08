@@ -319,6 +319,62 @@ void main() {
     expect(selection.endIndexExclusive, 4);
   });
 
+  testWidgets('a selection is its own cut\'s: a press on ANOTHER cut\'s '
+      'panel, at a frame the selection covers by number, is a press '
+      'outside it', (tester) async {
+    await _openStoryboard(tester);
+    // Cut 1's first panel: its own frames [0,5).
+    await _drag(tester, _contePoint(tester, 1), _contePoint(tester, 2));
+    expect(
+      _panel(tester).stripSelect!.selection.value!.layerId,
+      const LayerId('cut-1-sb'),
+      reason: 'the premise',
+    );
+
+    // Cut 2 begins at global 10, so global 11 is its own frame 1 — a NUMBER
+    // cut 1's selection covers. It is not inside that selection, and what
+    // tells the two apart is the PRESS: outside lets the selection go there
+    // and then, inside waits to see whether the hand moves it.
+    final press = await tester.startGesture(
+      _contePoint(tester, 11),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(
+      _panel(tester).stripSelect!.selection.value,
+      isNull,
+      reason: 'let go at the press, before it is a tap or a drag',
+    );
+
+    await press.moveTo(_contePoint(tester, 16));
+    await tester.pump();
+    await press.up();
+    await tester.pumpAndSettle();
+    final selection = _panel(tester).stripSelect!.selection.value!;
+    expect(selection.layerId, const LayerId('cut-2-sb'));
+    expect(selection.startIndex, 0);
+    expect(
+      selection.endIndexExclusive,
+      10,
+      reason: 'both of cut 2\'s panels, [0,4) and [4,10), snapped whole',
+    );
+  });
+
+  testWidgets('a tap on a panel drops the panels\' selection', (tester) async {
+    await _openStoryboard(tester);
+    await _drag(tester, _contePoint(tester, 1), _contePoint(tester, 2));
+    expect(
+      _panel(tester).stripSelect!.selection.value,
+      isNotNull,
+      reason: 'the premise',
+    );
+
+    await tester.tapAt(_contePoint(tester, 7), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+
+    expect(_panel(tester).stripSelect!.selection.value, isNull);
+  });
+
   // 🗣️I-73 (유저 2026-10-08): 「선택도 내부 콘티쪽 조작해도 지금
   // 콘티블록이 선택되는데 그게아니라 컷 선택만 되도록」 — drawn in the
   // proposal that answer took as 「어디를 잡아도 컷입니다. 칸에 서지 않고,

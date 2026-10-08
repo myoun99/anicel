@@ -504,9 +504,12 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
   ///
   /// Hit-testing gates the gesture to frames that HAVE panels: its pan
   /// claims the arena at DOWN (eager), so a press it cannot answer — a gap,
-  /// a cut without a conte layer — must never reach it, or that press dies
-  /// silently under it (the real-device "no selection where there is no cut
-  /// block").
+  /// a cut without a conte layer — never reaches it. ↩️On the cut block that
+  /// press died silently under it (the real-device "no selection where there
+  /// is no cut block"): the cut's own gesture lay beneath. Nothing of THIS
+  /// row answers a drag where it holds no panel (🧪2026-10-08: with the gate
+  /// open every press, sweep and double click here read the same), so the
+  /// gate is what keeps it that way for whatever is laid under the row next.
   Widget _gestureSlot(
     Layer shown,
     TimelineRangeGestureCallbacks stripGesture,

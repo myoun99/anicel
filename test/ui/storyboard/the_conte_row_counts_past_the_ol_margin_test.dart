@@ -172,15 +172,25 @@ void main() {
 
   testWidgets('the band stands over the panel that was swept', (tester) async {
     await open(tester);
-    await sweep(tester, 38, 39);
-
     final row = conteRowRect(tester, trackId);
     final ppf = panel(tester).pixelsPerFrame;
-    final band = tester.getRect(
+    Rect band() => tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-strip-range-selection')),
     );
-    expect(band.left, moreOrLessEquals(row.left + 36 * ppf));
-    expect(band.width, moreOrLessEquals(12 * ppf));
+
+    // The first panel, [6, 18) of the row: BOTH its ends lie inside the
+    // cut, so neither is the cut's edge standing in for it.
+    await sweep(tester, 26, 28);
+    expect(band().left, moreOrLessEquals(row.left + 24 * ppf));
+    expect(
+      band().width,
+      moreOrLessEquals(12 * ppf),
+      reason: 'it ends where the second panel begins, not a のりしろ later',
+    );
+
+    await sweep(tester, 38, 39);
+    expect(band().left, moreOrLessEquals(row.left + 36 * ppf));
+    expect(band().width, moreOrLessEquals(12 * ppf));
   });
 
   testWidgets('a press inside the selection is inside it: a drag from the '

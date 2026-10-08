@@ -54,9 +54,6 @@ bool timelineEmptyRunStartsAt({
 /// which made the answer the session's to give: a row drawn outside a cut
 /// had nobody to ask.
 TimelineCellExposureState timelineOwnCelsStateAt(Layer layer, int frameIndex) {
-  if (frameIndex < 0) {
-    return TimelineCellExposureState.uncovered;
-  }
   if (layer.timeline[frameIndex]?.isDrawing ?? false) {
     return TimelineCellExposureState.drawingStart;
   }
@@ -75,9 +72,6 @@ TimelineCellExposureState timelineOwnCelsStateAt(Layer layer, int frameIndex) {
 /// block covering it — or null where none covers it or the cel is unnamed.
 /// [timelineOwnCelsStateAt]'s twin, for the same rows.
 String? timelineOwnCelNameAt(Layer layer, int frameIndex) {
-  if (frameIndex < 0) {
-    return null;
-  }
   final cel = coveringDrawingBlockAt(layer.timeline, frameIndex)?.frameId;
   return cel == null ? null : layer.frameById(cel)?.name;
 }

@@ -67,6 +67,11 @@ void main() {
   Finder keyed(String key) => find.byKey(ValueKey<String>(key));
 
   void expectOneRow(WidgetTester tester, String label, String strip) {
+    // SHOWN, said as an expectation: measuring a row that is not there
+    // throws out of the finder, which reads as a broken test rather than as
+    // the row having been hidden.
+    expect(keyed(label), findsOneWidget, reason: 'the row\'s label is shown');
+    expect(keyed(strip), findsOneWidget, reason: 'and its strip beside it');
     final labelRect = tester.getRect(keyed(label));
     final stripRect = tester.getRect(keyed(strip));
     expect(stripRect.top, closeTo(labelRect.top, 0.5), reason: label);

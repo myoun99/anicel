@@ -118,7 +118,6 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
     show
-        TimelineGripPaper,
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
         TimelineRowGripCallbacks;
@@ -4805,14 +4804,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   StoryboardTimelineLayoutEntry? _cutAtFrame(int frame) =>
       _cutEntryAt(layoutEntries, frame);
 
-  /// The plates the row's grips stand on: every cut starts a plate and ends
-  /// it, in the plate's round corners — the corner the painter rounds the
-  /// plate by ([StoryboardCutBlocksPainter.plateCorner]).
-  TimelineGripPaper _gripPaper(StoryboardCutBlocksPainter blocksPainter) => (
-    cornerRadius: blocksPainter.plateCorner.x,
-    band: StoryboardCutBlocksPainter.bandHeight,
-  );
-
   /// THE ROW'S EDGES — each cut's two ends, in its plate's corners.
   ///
   /// 🗣️I-73 (유저 2026-10-08): 「띠 둘만 이사로 가자. 여기서 그럼 v행에
@@ -4886,7 +4877,10 @@ class _StoryboardTrackRow extends StatelessWidget {
         crossAxisExtent: laneHeight,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: _gripPaper(blocksPainter),
+        // Every cut starts a plate and ends it, and the grips stand in the
+        // plate's bands — in its round corners, which the block law rounds
+        // for the plate and the grip alike.
+        gripBand: StoryboardCutBlocksPainter.bandHeight,
       ),
       geometry: frameGeometry,
       axis: Axis.horizontal,
