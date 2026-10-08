@@ -377,6 +377,9 @@ mirror_trunk() {
   echo "lane: ⚠️THE MIRROR PUSH FAILED — $TRUNK is on this disk only." >&2
   echo "lane:   The merge landed; it is the COPY that is missing. Retry with:" >&2
   echo "lane:   bash tool/lane.sh backup" >&2
+  # Said, and ANSWERED: `land` goes on whatever this returns — nothing of
+  # its own depends on the copy — and `backup` fails on it.
+  return 1
 }
 
 # Every open lane too, not just the trunk: a lane's commits live in its branch
@@ -388,8 +391,14 @@ mirror_trunk() {
 # back from here would overwrite whatever its author sent since. The
 # trunk's machine therefore leaves every lane under a machine's name alone,
 # and an away machine pushes only the ones under its own.
+# ⛔A BACKUP SAYS WHAT REACHED THE MIRROR, AND FAILS WHEN ITS COPY DID NOT.
+# ↩️It ended on 「mirrored master and N open lane(s)」 and on 0, whatever
+# had happened. 2026-10-08: the mirror's login was gone, both pushes failed,
+# and that line stood under their two warnings — on the one command whose
+# whole job is the copy.
 cmd_backup() {
-  mirror_trunk
+  local missed=
+  mirror_trunk || missed=1
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
   if away; then
     # First take the trunk and let go of what landed there — a lane the
@@ -401,7 +410,7 @@ cmd_backup() {
     (cmd_sync) || true
     git -C "$ROOT" push --quiet "$MIRROR" \
       "+refs/heads/work/$MACHINE/*:refs/heads/work/$MACHINE/*" \
-      || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+      || die "the open lanes did not reach $MIRROR — nothing was copied"
     echo "lane: mirrored $(git -C "$ROOT" for-each-ref \
       --format='%(refname)' "refs/heads/work/$MACHINE/**" | wc -l) open lane(s)"
     return 0
@@ -414,9 +423,12 @@ cmd_backup() {
     --format='+%(refname):%(refname)' 'refs/heads/work/*')"
   if [ -n "$own" ]; then
     # shellcheck disable=SC2086
-    git -C "$ROOT" push --quiet "$MIRROR" $own \
-      || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+    git -C "$ROOT" push --quiet "$MIRROR" $own || {
+      echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+      missed=1
+    }
   fi
+  [ -z "$missed" ] || die "the backup did not reach $MIRROR — what is said above is what is missing"
   echo "lane: mirrored $TRUNK and $(printf '%s' "$own" | grep -c .) open lane(s)"
 }
 

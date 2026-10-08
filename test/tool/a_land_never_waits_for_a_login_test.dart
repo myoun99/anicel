@@ -23,6 +23,32 @@ void main() {
     expect(pushes.single, contains('GCM_INTERACTIVE=Never'));
   });
 
+  // 2026-10-08: the mirror's login was gone. `backup` printed its two
+  // warnings, then 「mirrored master and 24 open lane(s)」, and returned 0 —
+  // the one command whose whole job is the copy, saying it had made it.
+  test('🚨a backup says 「mirrored」 only after its copies reached the '
+      'mirror, and fails when they did not', () {
+    final lane = LaneScript(File('tool/lane.sh').readAsStringSync());
+    final backup = lane.codeOf('cmd_backup');
+    int at(String text) => backup.indexWhere((line) => line.contains(text));
+
+    expect(at('mirror_trunk || missed=1'), isNot(-1));
+    final refused = at(r'[ -z "$missed" ] || die');
+    expect(refused, isNot(-1));
+    expect(at(r'echo "lane: mirrored $TRUNK and'), greaterThan(refused));
+
+    final awayRefused = at(r'|| die "the open lanes did not reach $MIRROR');
+    expect(awayRefused, isNot(-1));
+    expect(at(r'echo "lane: mirrored $(git'), greaterThan(awayRefused));
+
+    expect(
+      lane.codeOf('mirror_trunk').lastWhere((line) => line.trim().isNotEmpty),
+      '  return 1',
+      reason: 'a push that failed is ANSWERED as one — the land goes on '
+          'whatever it returns, the backup fails on it',
+    );
+  });
+
   test('backup, which a person runs, still asks', () {
     expect(body('cmd_backup'), contains('mirror_trunk'));
     for (final function in ['cmd_backup', 'mirror_trunk']) {

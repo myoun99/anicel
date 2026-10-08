@@ -38,6 +38,12 @@
 # ⚠️It takes minutes, not seconds: the scratch lanes are real worktrees,
 # and one section waits out the script's own twenty seconds.
 #
+# 🆕And the copy (2026-10-08, card the-mirror-login-lapsed — section R, 99
+# checks in all): a backup that cannot reach the mirror says so, calls
+# nothing mirrored and fails, on either machine; a land whose copy fails has
+# still landed. ⚠️The script before THAT fails 4 of the 13 there: it ended
+# on 「mirrored …」 and on 0 with both pushes failed.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
@@ -320,6 +326,32 @@ if command -v powershell.exe >/dev/null 2>&1; then
 else
   echo "  (not Windows: nothing is lowered here)"
 fi
+
+say "R a backup that cannot reach the mirror SAYS so and fails — and a land whose copy fails has still landed"
+git -C "$E/home" remote set-url backup "$E/nowhere.git"
+O=$(out "$E/home" backup)
+has "the trunk's push says it failed" "$O" "THE MIRROR PUSH FAILED"
+lacks "and nothing is called mirrored" "$O" "lane: mirrored"
+has "the command fails" "$O" "[exit 1]"
+quiet "$E/home" open y; commit "$HW/lane-y" y.txt "y"
+O=$(out "$E/home" land y)
+has "a land still lands" "$O" "merged work/y"
+has "and says its copy is missing" "$O" "THE MIRROR PUSH FAILED"
+has "with a land's own exit" "$O" "[exit 0]"
+git -C "$E/away" remote set-url backup "$E/nowhere.git"
+quiet "$E/away" open z 2>/dev/null; commit "$AW/lane-surface11-z" z.txt "z"
+O=$(out "$E/away" backup)
+lacks "an away backup that cannot reach it calls nothing mirrored either" "$O" "lane: mirrored"
+has "and fails" "$O" "[exit 1]"
+git -C "$E/home" remote set-url backup "$E/mirror.git"
+git -C "$E/away" remote set-url backup "$E/mirror.git"
+O=$(out "$E/home" backup)
+has "with the mirror back, a backup says what it copied" "$O" "lane: mirrored master and"
+has "and succeeds" "$O" "[exit 0]"
+check "the mirror has the trunk" "$(git -C "$E/mirror.git" rev-parse master)" "$(git -C "$E/home" rev-parse master)"
+O=$(out "$E/away" backup)
+has "and so does the away machine's, of its own lanes" "$O" "lane: mirrored"
+has "which succeeds" "$O" "[exit 0]"
 
 echo
 echo "== $FAILS failed"
