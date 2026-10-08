@@ -307,6 +307,23 @@ void main() {
     cursorNotices.clear();
   });
 
+  testWidgets('an outline over a stretch of the page with nothing on it '
+      'cuts nothing — and says so too', (tester) async {
+    document = FakePdfDocument(pageSizes: const [pageSize], clear: true);
+    await pumpViewer(tester);
+
+    await cutDrag(tester);
+
+    expect(
+      document.regionReads,
+      hasLength(1),
+      reason: '⛔premise: the page under the outline was read',
+    );
+    expect(held.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
+  });
+
   testWidgets('an outline on a viewer with nothing open cuts nothing — and '
       'says so too', (tester) async {
     await pumpViewer(tester, opens: false);

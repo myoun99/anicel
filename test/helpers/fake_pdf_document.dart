@@ -13,7 +13,12 @@ class FakePdfDocument implements ViewerDocument {
     required this.pageSizes,
     this.framesPerSecond,
     this.cancelsWhenDisposed = false,
+    this.clear = false,
   });
+
+  /// Every pixel a region read hands back is clear — a picture with nothing
+  /// on it where the outline lies (a transparent image's empty stretch).
+  final bool clear;
 
   /// A render the document is disposed under fails, as pdfrx's does
   /// (「PDF page render was cancelled.」) — for a test of what the viewer does
@@ -132,6 +137,9 @@ class FakePdfDocument implements ViewerDocument {
       await gate.future;
     }
     final rgba = Uint8List(width * height * 4);
+    if (clear) {
+      return rgba;
+    }
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
         rgba.setAll(
