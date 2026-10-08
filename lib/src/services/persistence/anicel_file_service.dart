@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -60,7 +62,7 @@ class _CelWork {
   const _CelWork({
     required this.key,
     required this.name,
-    this.hotEntry,
+    this.hot,
     this.refPath,
     this.refOffset = 0,
     this.refLength = 0,
@@ -68,7 +70,20 @@ class _CelWork {
 
   final BrushFrameKey key;
   final String name;
-  final AnicelCelEntry? hotEntry;
+
+  /// A cel still in RAM: its payload serialised straight off the surface
+  /// and handed over as one flat buffer that crosses into the isolate
+  /// without being written out again — the park road's shape
+  /// ([compressAnicelPayloadInWorker]).
+  ///
+  /// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이
+  /// 멈추고」. ↩️It was an [AnicelCelEntry] — a defensive copy of every
+  /// tile — and the isolate's message copied all of it again. 🧪Measured
+  /// on 40 whole-canvas cels: the two copies were the whole freeze, 773ms
+  /// and 1,211ms of the 2,005ms the UI isolate could not answer (benchmark
+  /// `a_heavy_save_holds_the_screen_benchmark_test`).
+  final ({TransferableTypedData payload, CanvasSize canvasSize, int tileSize})?
+  hot;
 
   /// 🪦A `coldBlob` rode here while the cold tier was RAM. Cooled cels are
   /// files in the run's 이사대기 room now, so they arrive as a ref like
@@ -110,8 +125,13 @@ class _CelWork {
   /// rename is, and still refused it stops the save: the old file stands
   /// with the cel in it, and the session still holds everything drawn since.
   AnicelCelBlob? resolveBlob() {
-    if (hotEntry != null) {
-      return AnicelCelBlob.encode(hotEntry!);
+    if (hot case final hot?) {
+      return AnicelCelBlob.ofPayload(
+        key: key,
+        canvasSize: hot.canvasSize,
+        tileSize: hot.tileSize,
+        payload: hot.payload.materialize().asUint8List(),
+      );
     }
     final file = File(refPath!);
     for (var attempt = 0; ; attempt += 1) {
@@ -324,14 +344,19 @@ Future<R> _reportingProgress<R>(
 class AnicelFileService {
   const AnicelFileService();
 
+  /// Test hook: told after each cel a save serialised on the UI isolate,
+  /// once the screen has had its turn ([_workForDirtyKey]) — what lets a
+  /// pin see that the event loop really ran between two cels.
+  @visibleForTesting
+  static void Function()? debugAfterScreenTurn;
+
   /// The main store and its aux stores, their snapshots, and those
   /// snapshots merged.
   ///
   /// ⛔THE AUX STORES RIDE THE SAME ARCHIVE (the conte sheet ink, R5):
   /// their keys live in their own namespace, so the snapshots merge
   /// without collision and each store adopts back exactly its own refs.
-  /// The save and the recovery overlay both need that, and only one of
-  /// them used to say why. The per-store snapshots come back too, because
+  /// The per-store snapshots come back too, because
   /// adopting back is per store — the merge is for writing, the list is
   /// for handing each store its own.
   static ({
@@ -642,14 +667,11 @@ class AnicelFileService {
   /// Splits the dirty set into the cels that still have content and the
   /// entry names of the ones that no longer do.
   ///
-  /// The overlay and the incremental save both start here; the way they
-  /// spell the removals differs (a list in the JSON, a set to subtract
-  /// from the layout) but the partition itself is one law.
-  ///
   /// ⛔Not _saveFull's loop: that one walks ALL keys, and a clean
   /// file-backed key there becomes a stream-through work rather than a
   /// removal.
-  static ({List<_CelWork> works, List<String> removedNames}) _dirtyCelWork(
+  static Future<({List<_CelWork> works, List<String> removedNames})>
+  _dirtyCelWork(
     Set<BrushFrameKey> dirty,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
@@ -657,11 +679,11 @@ class AnicelFileService {
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
-  ) {
+  ) async {
     final works = <_CelWork>[];
     final removedNames = <String>[];
     for (final key in dirty) {
-      final work = _workForDirtyKey(key, baked);
+      final work = await _workForDirtyKey(key, baked);
       if (work == null) {
         removedNames.add(anicelCelEntryName(key));
       } else {
@@ -673,7 +695,13 @@ class AnicelFileService {
 
   /// Resolves a dirty key's current content to a [_CelWork], or null for
   /// a removed cel (its entry name must vanish from the archive).
-  static _CelWork? _workForDirtyKey(
+  ///
+  /// 🚨A cel still in RAM is serialised HERE, on the UI isolate, and that
+  /// is the save's one stretch of work there — so after each one the
+  /// screen gets its turn (a frame, the save window's spinner its next
+  /// step) before the next cel is taken (F-304: 「멈추는게 아니라 뭔가
+  /// 하고있다라는걸 제대로 표시하기위해」).
+  static Future<_CelWork?> _workForDirtyKey(
     BrushFrameKey key,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
@@ -681,15 +709,24 @@ class AnicelFileService {
       Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
-  ) {
+  ) async {
     final name = anicelCelEntryName(key);
-    final hot = baked.hot[key];
-    if (hot != null) {
-      return _CelWork(
+    final surface = baked.hot[key];
+    if (surface != null) {
+      final work = _CelWork(
         key: key,
         name: name,
-        hotEntry: AnicelCelEntry.fromSurface(key, hot),
+        hot: (
+          payload: TransferableTypedData.fromList([
+            encodeCelEntryFromSurface(key, surface),
+          ]),
+          canvasSize: surface.canvasSize,
+          tileSize: surface.tileSize,
+        ),
       );
+      await Future<void>.delayed(Duration.zero);
+      debugAfterScreenTurn?.call();
+      return work;
     }
     final cold = baked.cold[key];
     if (cold != null) {
@@ -881,7 +918,7 @@ class AnicelFileService {
     /// over — see `save`'s `moveRefs`.
     required void Function(Map<int, AnicelRelocation> moved) onMoveRefs,
   }) async {
-    final (:works, :removedNames) = _dirtyCelWork(dirty, baked);
+    final (:works, :removedNames) = await _dirtyCelWork(dirty, baked);
     // Scalars only, resolved HERE: the isolate closure must not capture
     // [baked] — its hot surfaces are native-backed and cannot cross.
     final cleanRefsToVerify = <(String, int, int)>[
@@ -1262,7 +1299,7 @@ class AnicelFileService {
           ),
         );
       } else {
-        works.add(_workForDirtyKey(key, baked)!);
+        works.add((await _workForDirtyKey(key, baked))!);
       }
     }
 

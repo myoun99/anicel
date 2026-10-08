@@ -320,12 +320,28 @@ class AnicelCelBlob {
     return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry) {
-    final compressed = compressAnicelPayload(encodeCelEntry(entry));
+  factory AnicelCelBlob.encode(AnicelCelEntry entry) => AnicelCelBlob.ofPayload(
+    key: entry.key,
+    canvasSize: entry.canvasSize,
+    tileSize: entry.tileSize,
+    payload: encodeCelEntry(entry),
+  );
+
+  /// The blob of a cel's uncompressed [payload] — the bytes [encodeCelEntry]
+  /// writes, or [encodeCelEntryFromSurface] straight off a surface —
+  /// compressed here. The save isolate's shape: a hot cel arrives there
+  /// already serialised, because a surface cannot cross.
+  factory AnicelCelBlob.ofPayload({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required int tileSize,
+    required Uint8List payload,
+  }) {
+    final compressed = compressAnicelPayload(payload);
     return AnicelCelBlob.fromCompressedBody(
-      key: entry.key,
-      canvasSize: entry.canvasSize,
-      tileSize: entry.tileSize,
+      key: key,
+      canvasSize: canvasSize,
+      tileSize: tileSize,
       codec: compressed.codec,
       body: compressed.bytes,
     );
