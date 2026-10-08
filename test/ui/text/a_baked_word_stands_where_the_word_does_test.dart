@@ -236,6 +236,11 @@ void main() {
         fontSize: 12,
       ))!;
       expect(
+        (squat.width, squat.height),
+        (whole.box.width, (word.height * 0.5).ceil() + 2),
+        reason: 'the box is the squat word and a pixel round',
+      );
+      expect(
         squat.alpha,
         hasLength(squat.width * squat.height),
         reason: 'the box it is blitted by, not the raster it came from',

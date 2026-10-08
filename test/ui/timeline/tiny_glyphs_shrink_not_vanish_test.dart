@@ -144,17 +144,21 @@ void main() {
 
   test('a pixel told what it covers takes that — and what lies past the '
       'source\'s edge is empty, not left out of the mean', () {
-    // Two source pixels each, starting one pixel before the source.
+    // Two source pixels each, starting one pixel before the source: a row's
+    // first pixel is half empty, and so is its last. A row's end is the
+    // source's edge too — the pixel after it in memory is the next row's
+    // first, and no pixel reads it (the last two bytes are a row past the
+    // source, there so that a read too far has something to read).
     expect(
       boxFilterA8(
-        Uint8List.fromList([80, 40]),
+        Uint8List.fromList([80, 40, 200, 100, 9, 9]),
         2,
-        1,
         2,
-        1,
+        2,
+        2,
         along: (origin: -1, step: 2),
       ),
-      [40, 20],
+      [40, 20, 100, 50],
     );
     // Half a pixel on: each row is half of two, and the last half is past
     // the end.
@@ -168,21 +172,6 @@ void main() {
         down: (origin: 0.5, step: 1),
       ),
       [75, 25],
-    );
-    // A row's end is the source's edge too: the pixel after it in memory is
-    // the next row's first, and no pixel reads it (the last two bytes are a
-    // row past the source, there so that a read too far has something to
-    // read).
-    expect(
-      boxFilterA8(
-        Uint8List.fromList([80, 40, 200, 100, 9, 9]),
-        2,
-        2,
-        2,
-        2,
-        along: (origin: -1, step: 2),
-      ),
-      [40, 20, 100, 50],
     );
   });
 
