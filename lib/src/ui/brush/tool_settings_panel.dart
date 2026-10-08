@@ -391,92 +391,101 @@ class _ShapeToolSettings extends StatelessWidget {
   void _set(ShapeToolOptions options) =>
       onChanged(state.copyWith(shapeOptions: options));
 
+  ShapeToolOptions get _options => state.shapeOptions;
+
+  /// Whether what is chosen lays a LINE — and whether that line is the
+  /// tool's own plain one.
+  bool get _laysLine => state.shapePart == ShapePart.line;
+  bool get _laysPlainLine => _laysLine && _options.type == ShapeLineType.plain;
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final options = state.shapeOptions;
-    final laysLine = state.shapePart == ShapePart.line;
-    final laysPlainLine = laysLine && options.type == ShapeLineType.plain;
-    final hasInside = canvasShapeEncloses(state.drawShape);
     return ToolSettingsSection(
       tool: 'shape',
       title: strings.toolShape,
       children: [
-        ToolSettingChoiceRow<ShapePart>(
-          tool: 'shape-tool',
-          name: 'part',
-          label: strings.shapeToolDraws,
-          current: state.shapePart,
-          answers: [
-            (
-              value: ShapePart.line,
-              key: 'line',
-              label: strings.shapeToolStroke,
-            ),
-            (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
-          ],
-          onPick: (part) => part == ShapePart.fill && !hasInside
-              ? null
-              : () => _set(options.copyWith(part: part)),
-        ),
-        ToolSettingChoiceRow<ShapeLineType>(
-          tool: 'shape-tool',
-          name: 'type',
-          label: strings.shapeToolType,
-          current: options.type,
-          answers: [
-            (
-              value: ShapeLineType.brush,
-              key: 'brush',
-              label: strings.toolBrush,
-            ),
-            (
-              value: ShapeLineType.plain,
-              key: 'plain',
-              label: strings.shapeToolTypePlain,
-            ),
-          ],
-          onPick: (type) =>
-              laysLine ? () => _set(options.copyWith(type: type)) : null,
-        ),
-        ToolSettingChoiceRow<ShapeCorners>(
-          tool: 'shape-tool',
-          name: 'corners',
-          label: strings.shapeToolCorners,
-          current: options.corners,
-          answers: [
-            (
-              value: ShapeCorners.sharp,
-              key: 'sharp',
-              label: strings.shapeToolCornersSharp,
-            ),
-            (
-              value: ShapeCorners.round,
-              key: 'round',
-              label: strings.shapeToolCornersRound,
-            ),
-          ],
-          onPick: (corners) => laysPlainLine
-              ? () => _set(options.copyWith(corners: corners))
-              : null,
-        ),
+        _partRow(strings),
+        _typeRow(strings),
+        _cornersRow(strings),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
           label: strings.brAntiAlias,
-          value: options.antiAlias,
+          value: _options.antiAlias,
           onChanged: state.shapeDrawsWithTheBrush
               ? null
-              : (value) => _set(options.copyWith(antiAlias: value)),
+              : (value) => _set(_options.copyWith(antiAlias: value)),
         ),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('shape-tool-ratio-lock-switch'),
           label: strings.shapeToolRatioLock,
-          value: options.ratioLock,
-          onChanged: (value) => _set(options.copyWith(ratioLock: value)),
+          value: _options.ratioLock,
+          onChanged: (value) => _set(_options.copyWith(ratioLock: value)),
         ),
       ],
     );
   }
+
+  /// 「그리기」: the line, or the inside. Under the line tile there is no
+  /// inside to fill, and that answer takes no press.
+  Widget _partRow(AppStrings strings) {
+    final hasInside = canvasShapeEncloses(state.drawShape);
+    return ToolSettingChoiceRow<ShapePart>(
+      tool: 'shape-tool',
+      name: 'part',
+      label: strings.shapeToolDraws,
+      current: state.shapePart,
+      answers: [
+        (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
+        (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+      ],
+      onPick: (part) => part == ShapePart.fill && !hasInside
+          ? null
+          : () => _set(_options.copyWith(part: part)),
+    );
+  }
+
+  /// 「타입」: what lays the line — it takes a press only where a line is
+  /// laid.
+  Widget _typeRow(AppStrings strings) => ToolSettingChoiceRow<ShapeLineType>(
+    tool: 'shape-tool',
+    name: 'type',
+    label: strings.shapeToolType,
+    current: _options.type,
+    answers: [
+      (value: ShapeLineType.brush, key: 'brush', label: strings.toolBrush),
+      (
+        value: ShapeLineType.plain,
+        key: 'plain',
+        label: strings.shapeToolTypePlain,
+      ),
+    ],
+    onPick: (type) =>
+        _laysLine ? () => _set(_options.copyWith(type: type)) : null,
+  );
+
+  /// 「모서리」: the plain line's alone.
+  Widget _cornersRow(AppStrings strings) => ToolSettingChoiceRow<ShapeCorners>(
+    tool: 'shape-tool',
+    name: 'corners',
+    label: strings.shapeToolCorners,
+    current: _options.corners,
+    answers: [
+      (
+        value: ShapeCorners.sharp,
+        key: 'sharp',
+        label: strings.shapeToolCornersSharp,
+      ),
+      (
+        value: ShapeCorners.round,
+        key: 'round',
+        label: strings.shapeToolCornersRound,
+      ),
+    ],
+    onPick: (corners) => _laysPlainLine
+        ? () => _set(_options.copyWith(corners: corners))
+        : null,
+  );
 }
 
 class _CutGrabSettings extends StatelessWidget {
