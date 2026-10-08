@@ -10,6 +10,17 @@ DirtyRegion? dirtyRegionForBrushDab(BrushDab dab) {
   if (dab.size == 0 || dab.opacity == 0 || dab.flow == 0) {
     return null;
   }
+  // A STAMP lands 1:1 on its own rect ([BrushStampImage.landingRect]), and
+  // that rect is its reach. The square of its size only covers it — and a
+  // fill's piece is a row of tiles, as wide as a page and a tile or less
+  // high, so the square reached far above and below it: a stroke that
+  // needs the whole stroke as one buffer (a blend, 뒤에 그리기, a stroke
+  // opacity) rasterized and composited all of that for nothing
+  // (an-area-dab-costs-its-box, 2026-10-09).
+  final stamp = dab.stamp;
+  if (stamp != null) {
+    return stamp.landingRect(dab.center);
+  }
 
   final radius = dab.size / 2.0;
   var halfExtentX = radius;

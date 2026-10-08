@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/dirty_region.dart';
@@ -72,6 +75,32 @@ void main() {
         dab(x: 10.25, y: 12.75, size: 5, tipShape: BrushTipShape.square),
       );
       expect(round, square);
+    });
+
+    // an-area-dab-costs-its-box (2026-10-09): a fill's piece is a row of
+    // tiles — as wide as a page, a tile or less high — and the square of its
+    // size reached far above and below it.
+    test('a STAMP reaches its own rect, not the square of its size', () {
+      final stamp = BrushStampImage(
+        id: 'a-row-of-tiles',
+        width: 328,
+        height: 12,
+        rgba: Uint8List(328 * 12 * 4),
+      );
+      final piece = dab(x: 260, y: 122, size: 328).copyWith(stamp: stamp);
+      expect(
+        dirtyRegionForBrushDab(piece),
+        stamp.landingRect(piece.center),
+      );
+      expect(
+        dirtyRegionForBrushDab(piece),
+        DirtyRegion(
+          left: 96,
+          top: 116,
+          rightExclusive: 424,
+          bottomExclusive: 128,
+        ),
+      );
     });
   });
 
