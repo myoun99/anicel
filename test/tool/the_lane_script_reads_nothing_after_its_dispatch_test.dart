@@ -30,7 +30,7 @@ void main() {
     final dispatch = text.substring(opens.single.start);
     expect(dispatch, endsWith('\nesac; exit; }'));
     expect(
-      RegExp(r'^esac', multiLine: true).allMatches(dispatch),
+      RegExp('^esac', multiLine: true).allMatches(dispatch),
       hasLength(1),
       reason: 'the group closes on the one case it holds',
     );
