@@ -16,7 +16,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/draw_on_current_frame.dart';
 
 void main() {
   CanvasSize sizeOf(EditorSessionManager s, CutId id) =>
@@ -115,5 +118,47 @@ void main() {
       reason: 'one undo puts the size back with the link — the resize and '
           'the convert are one step, not two',
     );
+  });
+
+  // The conversion resizes the target to the origin's canvas MET AT THE
+  // CENTRE (`CanvasResizeAnchor.center`, said as an offset since I-79):
+  // a picture the target keeps through the conversion keeps its middle.
+  // ⛔Nothing pinned it — a conversion that met at the top left passed.
+  test('🚨a picture the converted cut keeps stays centred on the canvas it '
+      'takes', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    final origin = s.requireActiveCut.id;
+    s.cutVerbs.duplicateActiveCut();
+    final target = s.requireActiveCut.id;
+    s.selectCut(target);
+    const from = CanvasSize(width: 1920, height: 1080);
+    s.cutVerbs.resizeActiveCutCanvas(from);
+    drawOnCurrentFrame(s);
+    ({int left, int top, int rightExclusive, int bottomExclusive}) ink() {
+      final drawn = s.editingCanvas.activeBrushEditorSelection!;
+      return bitmapSurfaceContentBounds(
+        s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+          s.brushFrameKeyForCut(
+            s.requireActiveCut,
+            drawn.layerId,
+            drawn.frameId,
+          ),
+        )!,
+      )!;
+    }
+
+    final before = ink();
+    final to = sizeOf(s, origin);
+    expect(to, isNot(from), reason: '⛔전제: out of step');
+
+    s.selectCut(origin);
+    s.cutVerbs.convertActiveCutToLinked(target);
+    s.selectCut(target);
+
+    final after = ink();
+    expect(after.left - before.left, (to.width - from.width) ~/ 2);
+    expect(after.top - before.top, (to.height - from.height) ~/ 2);
   });
 }
