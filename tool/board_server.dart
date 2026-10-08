@@ -334,10 +334,90 @@ Future<void> answerAll(HttpServer server) async {
       await _handle(request);
     } on Object catch (e) {
       stderr.writeln('board: request failed: $e');
+      _noteFailed(request, e);
       request.response.statusCode = 500;
       await request.response.close();
     }
   }
+}
+
+/// The file a request that broke the server leaves its line in, beside the
+/// records — this machine's, like the flags.
+///
+/// 🚨`board_up.sh` starts the server with its stderr thrown away, so until
+/// 2026-10-09 a 500 said nothing about itself: the phone was told 「500」 at
+/// the door with the right secret typed, and the exception that did it
+/// existed for a moment in a stream nobody read. The line is the only record
+/// of a request the server could not answer.
+const kRequestFailureLog = '.board_server.failures.log';
+
+/// Past this size the file starts over: it is a place to look at the last
+/// few failures, not a history.
+const _kFailureLogCeiling = 256 * 1024;
+
+/// Headers whose VALUE is somebody's key — only that it came is written.
+const _kHeadersKeptOut = {'cookie', 'authorization', 'proxy-authorization'};
+
+/// One line for a request that failed: when, what was asked, by whom, the
+/// error, and every header it carried — how many times, and what each said.
+///
+/// ⚠️HOW MANY TIMES is the part a 500 at the door needed: a header sent
+/// twice and a body that is not text look the same from the page. The secret
+/// itself is never written (the cookie and the bearer give their length), and
+/// neither is the body.
+String requestFailureLine({
+  required DateTime at,
+  required String method,
+  required String path,
+  required String? from,
+  required Map<String, List<String>> headers,
+  required Object error,
+}) {
+  String oneLine(String s, int most) {
+    final flat = s.replaceAll(RegExp(r'[\r\n\t]+'), ' ');
+    return flat.length <= most ? flat : '${flat.substring(0, most)}…';
+  }
+
+  String carriedOf(MapEntry<String, List<String>> header) {
+    final keptOut = _kHeadersKeptOut.contains(header.key.toLowerCase());
+    final said = keptOut
+        ? '<${header.value.join().length} chars>'
+        : oneLine(header.value.join(' ⏎ '), 160);
+    return '${header.key}×${header.value.length}=$said';
+  }
+
+  final carried = headers.entries.map(carriedOf).join(' | ');
+  return '${at.toIso8601String()} $method ${oneLine(path, 120)} '
+      'from ${from ?? '?'} — ${oneLine('$error', 300)} — $carried';
+}
+
+/// Appends [line] to [log]; starts the file over past the ceiling.
+/// ⛔Never throws: a failure to note a failure must not take the answer with it.
+void noteRequestFailure(File log, String line) {
+  try {
+    if (log.existsSync() && log.lengthSync() > _kFailureLogCeiling) {
+      log.deleteSync();
+    }
+    log.writeAsStringSync('$line\n', mode: FileMode.append);
+  } on Object catch (_) {}
+}
+
+void _noteFailed(HttpRequest request, Object error) {
+  try {
+    final headers = <String, List<String>>{};
+    request.headers.forEach((name, values) => headers[name] = values);
+    noteRequestFailure(
+      File('${File(_recordsPath).parent.path}/$kRequestFailureLog'),
+      requestFailureLine(
+        at: DateTime.now(),
+        method: request.method,
+        path: request.uri.path,
+        from: request.connectionInfo?.remoteAddress.address,
+        headers: headers,
+        error: error,
+      ),
+    );
+  } on Object catch (_) {}
 }
 
 String? _flag(List<String> args, String name) {
@@ -354,9 +434,9 @@ Future<void> _handle(HttpRequest req) async {
   // browser — see [asksFromTheBoardItself].
   if (req.method == 'POST' &&
       !asksFromTheBoardItself(
-        fetchSite: req.headers.value('sec-fetch-site'),
-        origin: req.headers.value('origin'),
-        host: req.headers.value(HttpHeaders.hostHeader),
+        fetchSite: oneValueOf(req.headers['sec-fetch-site']),
+        origin: oneValueOf(req.headers['origin']),
+        host: oneValueOf(req.headers[HttpHeaders.hostHeader]),
       )) {
     req.response.statusCode = HttpStatus.forbidden;
     await req.response.close();
@@ -823,7 +903,10 @@ Future<bool> _letIn(HttpRequest req, String path) async {
     return true;
   }
   if (req.method == 'POST' && path == '/enter') {
-    final shown = (await utf8.decoder.bind(req).join()).trim();
+    // 🚨A stranger's body is decoded leniently: bytes that are not text are a
+    // secret that does not match (401), never an exception (500).
+    final shown =
+        (await const Utf8Decoder(allowMalformed: true).bind(req).join()).trim();
     if (doorAdmits(_door, fromThisMachine: false, shown: shown)) {
       req.response
         ..cookies.add(doorCookie(shown))

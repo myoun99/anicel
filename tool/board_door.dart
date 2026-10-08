@@ -90,6 +90,26 @@ InternetAddress doorListensOn(BoardDoor door) => switch (door) {
   LanDoor() => InternetAddress.anyIPv4,
 };
 
+/// The one value a header says — or, when it was sent more than once with
+/// different values, what no page and no tool says, so it is refused rather
+/// than guessed at.
+///
+/// 🚨`HttpHeaders.value` THROWS when a header arrives twice. The door read
+/// `Origin` and `Sec-Fetch-Site` with it before it looked at anything else,
+/// so a request that repeated one never reached a 401 or a 403: it fell into
+/// the loop's catch-all and the phone was told only 「500」 (유저 2026-10-09,
+/// from the phone, with the right secret typed). A proxy or a VPN on the way
+/// is enough to repeat a header, and none of them is the secret's fault.
+///
+/// The same value twice is one value. Different values are joined — a string
+/// that equals no address and no `same-origin`, so [asksFromTheBoardItself]
+/// says no to it and the door answers 403, which the page can name.
+String? oneValueOf(List<String>? values) {
+  if (values == null || values.isEmpty) return null;
+  final distinct = values.toSet();
+  return distinct.length == 1 ? distinct.single : values.join(', ');
+}
+
 /// Whether a write is asked by a tool or by the board's own page — and not
 /// by a page of some OTHER site, open in a browser that can reach the board.
 ///
@@ -152,7 +172,7 @@ bool sameSecret(String a, String b) {
 /// The secret a request shows: a tool sends it as a bearer, a browser as the
 /// cookie the server gave it.
 String? secretShown(HttpRequest request) {
-  final bearer = request.headers.value(HttpHeaders.authorizationHeader);
+  final bearer = oneValueOf(request.headers[HttpHeaders.authorizationHeader]);
   if (bearer != null && bearer.startsWith('Bearer ')) {
     return bearer.substring('Bearer '.length).trim();
   }
