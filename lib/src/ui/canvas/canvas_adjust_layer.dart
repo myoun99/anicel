@@ -22,9 +22,16 @@ import 'row_transform_box.dart';
 /// what it adjusts — the canvas here, as it stands under the transform box.
 /// I-79-Q2: no anchor is shown; the edge across from the one dragged stays.
 ///
-/// While it is up it binds [onLand] as the adjust's landing
-/// ([CanvasAdjust.land]), which Enter and the rail's ↵ reach through 확정.
-class CanvasAdjustLayer extends StatefulWidget {
+/// Its ✓ lands the edges through [onLand] — the one landing Enter and the
+/// rail's ↵ reach through 확정 too (`landCanvasAdjust`).
+///
+/// ↩️The layer once bound its [onLand] into the adjust for 확정 to find,
+/// and rebound it whenever its parent rebuilt it with a new closure: the
+/// rebinding told the adjust's listeners, the parent among them, which
+/// rebuilt it again — the app froze the moment the adjust opened
+/// (2026-10-08, caught by `a_canvas_adjust_runs_through_the_app_test`).
+/// Nothing on the canvas is bound now; the home page hands 확정 the landing.
+class CanvasAdjustLayer extends StatelessWidget {
   const CanvasAdjustLayer({
     super.key,
     required this.adjust,
@@ -43,37 +50,10 @@ class CanvasAdjustLayer extends StatefulWidget {
   final VoidCallback onLand;
 
   @override
-  State<CanvasAdjustLayer> createState() => _CanvasAdjustLayerState();
-}
-
-class _CanvasAdjustLayerState extends State<CanvasAdjustLayer> {
-  @override
-  void initState() {
-    super.initState();
-    widget.adjust.bind(this, widget.onLand);
-  }
-
-  @override
-  void didUpdateWidget(CanvasAdjustLayer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.adjust, widget.adjust) ||
-        oldWidget.onLand != widget.onLand) {
-      oldWidget.adjust.unbind(this);
-      widget.adjust.bind(this, widget.onLand);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.adjust.unbind(this);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.adjust,
+    listenable: adjust,
     builder: (context, _) {
-      final edges = widget.adjust.shown;
+      final edges = adjust.shown;
       if (edges == null) {
         return const SizedBox.shrink();
       }
@@ -94,15 +74,15 @@ class _CanvasAdjustLayerState extends State<CanvasAdjustLayer> {
                   y: edges.center.dy,
                 ),
               ),
-              canvasSize: widget.canvasSize,
-              viewport: widget.viewport,
+              canvasSize: canvasSize,
+              viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.
               claimsCanvas: false,
-              onCancelled: widget.adjust.dropShowing,
+              onCancelled: adjust.dropShowing,
               scale: RowBoxEdges((
-                changed: widget.adjust.show,
-                committed: widget.adjust.move,
+                changed: adjust.show,
+                committed: adjust.move,
               )),
             ),
           ),
@@ -111,7 +91,7 @@ class _CanvasAdjustLayerState extends State<CanvasAdjustLayer> {
               keyValue: 'canvas-adjust-pill',
               target: pointsBounds([
                 for (final corner in corners)
-                  widget.viewport.canvasToViewportOffset(corner),
+                  viewport.canvasToViewportOffset(corner),
               ]),
               children: [
                 Padding(
@@ -127,14 +107,14 @@ class _CanvasAdjustLayerState extends State<CanvasAdjustLayer> {
                   shortcuts: const [EditorActionIds.confirm],
                   tooltip: AppText.strings.commonApply,
                   icon: const Icon(Icons.check),
-                  onPressed: widget.onLand,
+                  onPressed: onLand,
                 ),
                 AppIconButton(
                   keyValue: 'canvas-adjust-cancel',
                   shortcuts: const [EditorActionIds.selectionTransformCancel],
                   tooltip: AppText.strings.commonCancel,
                   icon: const Icon(Icons.close),
-                  onPressed: widget.adjust.end,
+                  onPressed: adjust.end,
                 ),
               ],
             ),

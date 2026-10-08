@@ -17,13 +17,16 @@ class CanvasAdjust extends ChangeNotifier {
   CutId? _cut;
   Rect? _edges;
   Rect? _showing;
-  Object? _owner;
-  VoidCallback? _land;
 
   /// The cut whose canvas is being adjusted; null when none is.
   CutId? get cut => _cut;
 
   bool get isOpen => _edges != null;
+
+  /// Whether it is open on [cut]'s canvas. Its edges are that canvas's
+  /// alone: one left open on a cut the canvas no longer shows is let go of,
+  /// never shown or landed on the cut it shows now.
+  bool isOpenOn(CutId? cut) => isOpen && _cut == cut;
 
   /// The edges as the canvas shows them — mid-drag where the hand has them.
   Rect? get shown => _showing ?? _edges;
@@ -87,29 +90,6 @@ class CanvasAdjust extends ChangeNotifier {
     _cut = null;
     _edges = null;
     _showing = null;
-    notifyListeners();
-  }
-
-  /// What lands the adjust while its box is on screen: the box binds it,
-  /// because landing waits in the app's wait window, as the size window's
-  /// resize does, and a window needs the screen the box is on.
-  ///
-  /// ⛔Null while no box is up — 확정 is then grey for it, never a door that
-  /// does nothing (`ConfirmVerb`).
-  VoidCallback? get land => isOpen ? _land : null;
-
-  void bind(Object owner, VoidCallback land) {
-    _owner = owner;
-    _land = land;
-    notifyListeners();
-  }
-
-  void unbind(Object owner) {
-    if (!identical(_owner, owner)) {
-      return;
-    }
-    _owner = null;
-    _land = null;
     notifyListeners();
   }
 }

@@ -33,6 +33,7 @@ void main() {
   final tool = ValueNotifier(BrushToolState.defaults);
   final options = ValueNotifier(TransformToolOptions.defaults);
   final adjust = CanvasAdjust();
+  var landed = 0;
   final verb = ConfirmVerb(
     selection: selection,
     text: CelTextCommands(),
@@ -40,6 +41,7 @@ void main() {
     tool: tool,
     transformOptions: options,
     canvasAdjust: () => adjust,
+    landCanvasAdjust: () => landed += 1,
   );
   final owner = Object();
 
@@ -50,6 +52,7 @@ void main() {
 
   setUp(() {
     applied = 0;
+    landed = 0;
     reinputs = 0;
     canApply = false;
     sessionOpen = false;
@@ -99,16 +102,12 @@ void main() {
   });
 
   // I-79: a canvas adjusted on the canvas is the mode the user stepped
-  // into — 확정 lands it, and is grey while no box is up to land it from.
-  test('🚨an open canvas adjust is what 확정 lands — before everything else, '
-      'grey with no box up', () {
+  // into — 확정 lands it.
+  test('🚨an open canvas adjust is what 확정 lands — before everything else',
+      () {
     selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
     adjust.begin(const CutId('c'), const CanvasSize(width: 8, height: 8));
-    expect(verb.canConfirm, isFalse, reason: 'no box to land it from');
 
-    var landed = 0;
-    final box = Object();
-    adjust.bind(box, () => landed += 1);
     expect(verb.canConfirm, isTrue);
     verb.confirm();
     expect(landed, 1);
@@ -118,7 +117,11 @@ void main() {
       reason: '⛔the polygon waits: the adjust was the newer step',
     );
     expect(reinputs, 0);
-    adjust.unbind(box);
+
+    adjust.end();
+    verb.confirm();
+    expect(landed, 1, reason: 'closed, it is not what 확정 lands');
+    expect(selection.hasOpenPolygon, isFalse);
   });
 
   test('an open polygon is closed first — and nothing else happens', () {
@@ -151,6 +154,7 @@ void main() {
       tool: tool,
       transformOptions: options,
       canvasAdjust: () => adjust,
+      landCanvasAdjust: () => landed += 1,
     );
     expect(hand.tool.session, isNotNull, reason: '⛔fixture: in hand');
 

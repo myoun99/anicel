@@ -28,11 +28,16 @@ class ConfirmVerb {
     required this.tool,
     required this.transformOptions,
     required this.canvasAdjust,
+    required this.landCanvasAdjust,
   });
 
   /// The canvas adjusted on the canvas (I-79) — the project on screen's,
   /// asked each time because the project on screen changes.
   final CanvasAdjust Function() canvasAdjust;
+
+  /// Lands it (`landCanvasAdjust`) — behind the app's wait window, which
+  /// stands on the screen the caller hands in.
+  final VoidCallback landCanvasAdjust;
 
   final CanvasSelectionCommands selection;
 
@@ -62,11 +67,9 @@ class ConfirmVerb {
 
   VoidCallback? _action() {
     // A canvas being adjusted on the canvas is a step the user took into
-    // its own mode (I-79): confirming lands it — grey while no box is up to
-    // land it from ([CanvasAdjust.land]).
-    final adjust = canvasAdjust();
-    if (adjust.isOpen) {
-      return adjust.land;
+    // its own mode (I-79): confirming lands it.
+    if (canvasAdjust().isOpen) {
+      return landCanvasAdjust;
     }
     // An open polygon outline is the newest thing a confirm can be closing,
     // and it is what the user is looking at (유저 확정 — 폴리곤 확정은 확정

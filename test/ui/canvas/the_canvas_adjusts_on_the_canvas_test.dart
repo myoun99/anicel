@@ -153,7 +153,6 @@ void main() {
   testWidgets('✓ lands the edges; ✕ closes the adjust for nothing',
       (tester) async {
     await pumpLayer(tester);
-    expect(adjust.land, isNotNull, reason: 'the layer up binds its landing');
 
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-adjust-confirm')),

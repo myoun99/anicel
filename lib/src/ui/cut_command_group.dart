@@ -103,6 +103,10 @@ Future<void> landCanvasAdjust(
   if (size == null || offset == null) {
     return;
   }
+  if (!adjust.isOpenOn(session.activeCutOrNull?.id)) {
+    adjust.end();
+    return;
+  }
   await _resizeBehindTheWaitWindow(context, () {
     session.cutVerbs.placeActiveCutCanvas(size, contentOffset: offset);
     adjust.end();

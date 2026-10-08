@@ -744,7 +744,7 @@ class _InteractiveCanvasBuild {
     if (!adjust.isOpen) {
       return null;
     }
-    if (adjust.cut != session.activeCutOrNull?.id) {
+    if (!adjust.isOpenOn(session.activeCutOrNull?.id)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => adjust.end());
       return null;
     }

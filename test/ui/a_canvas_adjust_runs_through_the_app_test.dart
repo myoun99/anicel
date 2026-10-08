@@ -121,4 +121,35 @@ void main() {
     expect(session.canvasAdjust.isOpen, isFalse);
     expect(pill, findsNothing);
   });
+
+  testWidgets('🚨Enter on an adjust whose cut is no longer shown lets it go '
+      '— the cut shown keeps its canvas', (tester) async {
+    final session = await pumpApp(tester);
+    final cut = session.requireActiveCut;
+    session.canvasAdjust
+      ..begin(cut.id, cut.canvasSize)
+      ..move(
+        Rect.fromLTRB(
+          0,
+          0,
+          cut.canvasSize.width + 30.0,
+          cut.canvasSize.height.toDouble(),
+        ),
+      );
+    await tester.pump();
+    session.cutVerbs.createCut();
+    final shown = session.requireActiveCut;
+    expect(shown.id, isNot(cut.id), reason: '⛔전제: another cut is shown');
+    expect(
+      session.canvasAdjust.isOpen,
+      isTrue,
+      reason: '⛔전제: no frame has let it go yet',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await pumpPastTheWait(tester);
+
+    expect(session.requireActiveCut.canvasSize, shown.canvasSize);
+    expect(session.canvasAdjust.isOpen, isFalse);
+  });
 }

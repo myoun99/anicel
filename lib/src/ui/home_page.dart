@@ -52,6 +52,7 @@ import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
+import 'cut_command_group.dart' show landCanvasAdjust;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
@@ -303,6 +304,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     tool: _brushTool,
     transformOptions: _transformOptions,
     canvasAdjust: () => _session.canvasAdjust,
+    landCanvasAdjust: () => landCanvasAdjust(context, _session),
   );
 
   /// Undo and redo — the keys, the finger taps and a mapped button here,
