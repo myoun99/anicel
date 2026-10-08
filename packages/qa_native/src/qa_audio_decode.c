@@ -289,7 +289,9 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
 //
 // Reached only AFTER dr_libs declined the container, so WAV/FLAC/MP3 keep
 // their byte-pinned single decoder on every platform and only the formats
-// dr_libs cannot read ride the platform's stack.
+// dr_libs cannot read ride the platform's stack — or once the container's
+// head has said no bundled decoder can be right for it (a QuickTime movie:
+// see `qa_audio_bundled_candidates`).
 // ---------------------------------------------------------------------------
 
 #if defined(_WIN32)
@@ -805,19 +807,6 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
 
 #endif
 
-// Decodes a whole container — wherever its bytes are — to interleaved
-// float32 at its OWN sample rate. Resampling to the project rate is a
-// separate step: it is a quality decision, and burying it here would make it
-// invisible.
-//
-// Format is detected by TRYING each decoder rather than sniffing magic
-// bytes — a WAV with a junk chunk before `fmt `, or an MP3 with a fat ID3
-// tag, defeats a naive sniff, and each library already knows how to
-// recognize its own container.
-//
-// Returns the QA_AUDIO_FORMAT_* that succeeded, or 0 when nothing could
-// read it. On success the caller owns *out_samples and must release it
-// with qa_audio_decode_free.
 /// stb_vorbis over [cursor]'s container, or UNKNOWN.
 ///
 /// ⚠️The one decoder with no callback form — memory or a `FILE*` — so the
@@ -907,6 +896,98 @@ static int32_t qa_audio_decode_vorbis(qa_audio_cursor* cursor,
   return result;
 }
 
+/// Whether [head]'s second word is one of the boxes a QuickTime movie can
+/// open with — `ftyp` is the ISO file's first box, and the older movies
+/// start with whatever the editor wrote first.
+static int qa_audio_head_is_a_movie_box(const uint8_t* head) {
+  static const char boxes[][4] = {
+      {'f', 't', 'y', 'p'}, {'m', 'o', 'o', 'v'}, {'m', 'd', 'a', 't'},
+      {'w', 'i', 'd', 'e'}, {'f', 'r', 'e', 'e'}, {'s', 'k', 'i', 'p'},
+      {'p', 'n', 'o', 't'}};
+  for (size_t index = 0; index < sizeof(boxes) / sizeof(boxes[0]);
+       index += 1) {
+    if (memcmp(head + 4, boxes[index], 4) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/// The bundled decoders [cursor]'s container may be handed, as
+/// `1 << QA_AUDIO_FORMAT_*` bits, read off its first bytes:
+///
+///  * a WAV family head (`RIFF` · `RIFX` · `RF64` + `WAVE`, W64's `riff`,
+///    `FORM` + `AIFF` · `AIFC` — what dr_wav reads): dr_wav;
+///  * any other `RIFF` · `RIFX` · `RF64` · `FORM` (an AVI, ...): none;
+///  * `fLaC`: dr_flac; `OggS`: dr_flac (an ogg FLAC) and stb_vorbis;
+///  * `ID3`, or an MPEG audio frame header dr_mp3 itself calls valid: dr_mp3;
+///  * a QuickTime box (MP4 · MOV · M4A · 3GP): none;
+///  * anything else: every one of them, in the chain's order — as before.
+///
+/// ⛔The OS stack is not in the mask: it stays every container's last resort,
+/// the place it always had, and the only reader of a head that leaves none.
+static int32_t qa_audio_bundled_candidates(qa_audio_cursor* cursor) {
+  const int32_t wav = 1 << QA_AUDIO_FORMAT_WAV;
+  const int32_t flac = 1 << QA_AUDIO_FORMAT_FLAC;
+  const int32_t vorbis = 1 << QA_AUDIO_FORMAT_VORBIS;
+  const int32_t mp3 = 1 << QA_AUDIO_FORMAT_MP3;
+  uint8_t head[12];
+  memset(head, 0, sizeof(head));
+  if (qa_media_span_read(cursor->span, 0, head, sizeof(head)) < 8) {
+    return wav | flac | vorbis | mp3;
+  }
+  if (memcmp(head, "RIFF", 4) == 0 || memcmp(head, "RIFX", 4) == 0 ||
+      memcmp(head, "RF64", 4) == 0) {
+    return memcmp(head + 8, "WAVE", 4) == 0 ? wav : 0;
+  }
+  if (memcmp(head, "FORM", 4) == 0) {
+    return memcmp(head + 8, "AIFF", 4) == 0 || memcmp(head + 8, "AIFC", 4) == 0
+               ? wav
+               : 0;
+  }
+  if (memcmp(head, "riff", 4) == 0) {
+    return wav;
+  }
+  if (memcmp(head, "fLaC", 4) == 0) {
+    return flac;
+  }
+  if (memcmp(head, "OggS", 4) == 0) {
+    return flac | vorbis;
+  }
+  if (memcmp(head, "ID3", 3) == 0 || drmp3_hdr_valid(head)) {
+    return mp3;
+  }
+  if (qa_audio_head_is_a_movie_box(head)) {
+    return 0;
+  }
+  return wav | flac | vorbis | mp3;
+}
+
+// Decodes a whole container — wherever its bytes are — to interleaved
+// float32 at its OWN sample rate. Resampling to the project rate is a
+// separate step: it is a quality decision, and burying it here would make it
+// invisible.
+//
+// Format is detected by TRYING each decoder rather than sniffing magic
+// bytes — a WAV with a junk chunk before `fmt `, or an MP3 with a fat ID3
+// tag, defeats a naive sniff, and each library already knows how to
+// recognize its own container.
+//
+// 🚨★★★**THE TRYING STAYS — THE CONTAINER'S FIRST BYTES SAY WHO MAY TRY**
+// (user 2026-10-09, board sound-lands-on-its-exact-sample-Q2: 「파일 머리를
+// 먼저 본다」). dr_mp3's frame-sync scan finds frames in the quiet stretches
+// of uncompressed sound, whose small negative samples are `FF Fx` bytes: a
+// 30-minute H.264 + PCM reel came back as a tenth of a second of noise
+// (2026-10-06), and the OS stack, which reads that file exactly, was never
+// asked — it can only come after dr_mp3, and dr_mp3 said yes. Trying dr_mp3
+// last of the bundled decoders was the old guard, and it was not enough.
+// Neither objection above reaches the sniff: it reads only the container's
+// own magic at its first byte, never a chunk inside it, and an ID3 tag is
+// itself a head that says MP3.
+//
+// Returns the QA_AUDIO_FORMAT_* that succeeded, or 0 when nothing could
+// read it. On success the caller owns *out_samples and must release it
+// with qa_audio_decode_free.
 static int32_t qa_audio_decode_cursor(
     qa_audio_cursor* cursor,
     float** out_samples,
@@ -915,8 +996,9 @@ static int32_t qa_audio_decode_cursor(
     int32_t* out_sample_rate) {
   unsigned int channels = 0;
   unsigned int sample_rate = 0;
+  const int32_t candidates = qa_audio_bundled_candidates(cursor);
 
-  {
+  if (candidates & (1 << QA_AUDIO_FORMAT_WAV)) {
     drwav_uint64 frames = 0;
     qa_cursor_rewind(cursor);
     float* samples = drwav_open_and_read_pcm_frames_f32(
@@ -930,7 +1012,7 @@ static int32_t qa_audio_decode_cursor(
       return QA_AUDIO_FORMAT_WAV;
     }
   }
-  {
+  if (candidates & (1 << QA_AUDIO_FORMAT_FLAC)) {
     drflac_uint64 frames = 0;
     qa_cursor_rewind(cursor);
     float* samples = drflac_open_and_read_pcm_frames_f32(
@@ -948,14 +1030,14 @@ static int32_t qa_audio_decode_cursor(
   // strict recognizer, while dr_mp3's frame-sync scan is the most
   // permissive of the bunch — it must always try LAST of the bundled
   // decoders or it will happily "decode" someone else's container.
-  {
+  if (candidates & (1 << QA_AUDIO_FORMAT_VORBIS)) {
     const int32_t vorbis = qa_audio_decode_vorbis(
         cursor, out_samples, out_frame_count, out_channels, out_sample_rate);
     if (vorbis != QA_AUDIO_FORMAT_UNKNOWN) {
       return vorbis;
     }
   }
-  {
+  if (candidates & (1 << QA_AUDIO_FORMAT_MP3)) {
     drmp3_config config;
     memset(&config, 0, sizeof(config));
     drmp3_uint64 frames = 0;
@@ -970,8 +1052,9 @@ static int32_t qa_audio_decode_cursor(
       return QA_AUDIO_FORMAT_MP3;
     }
   }
-  // Nothing dr_libs reads: hand the container to the OS codec stack
-  // (AAC/m4a per the decided format table). The OS path allocates with
+  // Nothing dr_libs reads, or nothing the head let it try: hand the container
+  // to the OS codec stack (AAC/m4a per the decided format table; a movie's
+  // uncompressed sound by its head). The OS path allocates with
   // malloc, so the one qa_audio_decode_free below releases either origin.
   qa_cursor_rewind(cursor);
   return qa_audio_decode_os(cursor, out_samples, out_frame_count, out_channels,

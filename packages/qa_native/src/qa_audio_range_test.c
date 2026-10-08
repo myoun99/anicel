@@ -14,6 +14,13 @@
 // ⛔NOT a test of the OS codec stack. That one needs a real AAC file and a
 // platform to decode it, and `qa_audio_os_decoder_test.dart` already does it
 // from Dart, where the fixtures live.
+//
+// 🚨★★★**AND WHO A CONTAINER'S HEAD LETS TRY** (section 7). dr_mp3 finds
+// frames wherever they are — which is how a movie's uncompressed sound came
+// back as noise — so that fixture is real MPEG frames, and the head written
+// in front of them decides whether dr_mp3 may be asked. Portable for the same
+// reason: whatever the platform's stack makes of those files, the answer
+// checked is only that it is not dr_mp3's.
 
 #include <stdint.h>
 #include <stdio.h>
@@ -24,6 +31,7 @@
 
 #define QA_AUDIO_FORMAT_UNKNOWN 0
 #define QA_AUDIO_FORMAT_WAV 1
+#define QA_AUDIO_FORMAT_MP3 3
 
 extern int32_t qa_audio_decode_span(const char* path,
                                     int64_t offset,
@@ -168,6 +176,52 @@ static int write_between_junk(const char* path, const uint8_t* body,
   return 1;
 }
 
+// ---------------------------------------------------------------------------
+// Real MPEG frames: silent MPEG-1 Layer III, a header and zeros — no side
+// information, so every granule decodes to silence and dr_mp3 reads them
+// wherever they sit.
+
+#define MP3_FRAMES 24
+#define MP3_FRAME_BYTES 417  // 128 kbps at 44100 Hz, no padding
+
+static size_t build_mp3_frames(uint8_t* out) {
+  for (int frame = 0; frame < MP3_FRAMES; frame += 1) {
+    uint8_t* at = out + frame * MP3_FRAME_BYTES;
+    memset(at, 0, MP3_FRAME_BYTES);
+    at[0] = 0xFF;
+    at[1] = 0xFB;  // MPEG-1, Layer III, no CRC
+    at[2] = 0x90;  // 128 kbps, 44100 Hz
+  }
+  return (size_t)MP3_FRAMES * MP3_FRAME_BYTES;
+}
+
+/// [head] and then [body], as a whole file: which decoder read it.
+static int32_t format_behind(const uint8_t* head, size_t head_bytes,
+                             const uint8_t* body, size_t body_bytes) {
+  const char* path = "qa_audio_head_fixture.bin";
+  FILE* file = fopen(path, "wb");
+  if (file == NULL) {
+    printf("FAIL fixture: could not write %s\n", path);
+    g_failures += 1;
+    return -1;
+  }
+  if (head_bytes > 0) {
+    fwrite(head, 1, head_bytes, file);
+  }
+  fwrite(body, 1, body_bytes, file);
+  fclose(file);
+  float* samples = NULL;
+  int64_t frames = 0;
+  int32_t channels = 0;
+  int32_t rate = 0;
+  const int32_t format =
+      qa_audio_decode_span(path, 0, (int64_t)(head_bytes + body_bytes), 0,
+                           &samples, &frames, &channels, &rate);
+  qa_audio_decode_free(samples);
+  remove(path);
+  return format;
+}
+
 int main(void) {
   static uint8_t wav[44 + FIXTURE_FRAMES * FIXTURE_CHANNELS * 2];
   const size_t wav_bytes = build_wav(wav);
@@ -243,6 +297,65 @@ int main(void) {
     } else {
       printf("FAIL fixture: could not write %s\n", plain);
       g_failures += 1;
+    }
+  }
+
+  // 7. WHO A HEAD LETS TRY.
+  {
+    static uint8_t frames[MP3_FRAMES * MP3_FRAME_BYTES];
+    const size_t frame_bytes = build_mp3_frames(frames);
+    // The controls: these ARE an MP3 — bare, behind an ID3 tag, and behind a
+    // head nobody knows, which still runs the whole chain. Without them, a
+    // sniff that turned dr_mp3 away from everything would pass the rest.
+    expect_int("bare frames are an MP3",
+               format_behind(NULL, 0, frames, frame_bytes),
+               QA_AUDIO_FORMAT_MP3);
+    static const uint8_t id3[10] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0};
+    expect_int("frames behind an ID3 tag are an MP3",
+               format_behind(id3, sizeof(id3), frames, frame_bytes),
+               QA_AUDIO_FORMAT_MP3);
+    static const uint8_t nobody[16] = {0};
+    expect_int("frames behind a head nobody knows are still an MP3",
+               format_behind(nobody, sizeof(nobody), frames, frame_bytes),
+               QA_AUDIO_FORMAT_MP3);
+
+    // The law: a head that names another container keeps dr_mp3 away from
+    // it, whatever is inside.
+    static const char movie_boxes[][5] = {"ftyp", "moov", "mdat", "wide",
+                                          "free", "skip", "pnot"};
+    for (size_t index = 0; index < sizeof(movie_boxes) / sizeof(movie_boxes[0]);
+         index += 1) {
+      uint8_t box[16] = {0, 0, 0, 16};
+      memcpy(box + 4, movie_boxes[index], 4);
+      char label[96];
+      snprintf(label, sizeof(label),
+               "frames in a movie that opens with `%s` are not dr_mp3's",
+               movie_boxes[index]);
+      expect_int(label,
+                 format_behind(box, sizeof(box), frames, frame_bytes) ==
+                     QA_AUDIO_FORMAT_MP3,
+                 0);
+    }
+    static const struct {
+      const char* name;
+      const char* head;
+      size_t bytes;
+    } others[] = {
+        {"an AVI's RIFF", "RIFF\x10\0\0\0AVI ", 12},
+        {"a WAV's RIFF", "RIFF\x10\0\0\0WAVE", 12},
+        {"FLAC's fLaC", "fLaC", 4},
+        {"ogg's OggS", "OggS", 4},
+    };
+    for (size_t index = 0; index < sizeof(others) / sizeof(others[0]);
+         index += 1) {
+      char label[96];
+      snprintf(label, sizeof(label), "frames behind %s are not dr_mp3's",
+               others[index].name);
+      expect_int(label,
+                 format_behind((const uint8_t*)others[index].head,
+                               others[index].bytes, frames, frame_bytes) ==
+                     QA_AUDIO_FORMAT_MP3,
+                 0);
     }
   }
 

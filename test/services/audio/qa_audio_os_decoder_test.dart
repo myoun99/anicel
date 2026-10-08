@@ -13,6 +13,7 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/pcm_movie.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The OS decoder (AAC/m4a), driven for real against the platform codec
@@ -162,6 +163,47 @@ void main() {
       QaAudioFormat.wav,
       reason: 'WAV must stay on dr_wav on every platform',
     );
+  }, skip: skip);
+
+  test('a movie\'s uncompressed sound is never dr_mp3\'s — and where the OS '
+      'stack reads it, it lands sample for sample', () {
+    // 🚨The head decides who may try (user 10-09, board
+    // sound-lands-on-its-exact-sample-Q2). This movie's quiet half is what
+    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz,
+    // and the OS stack — which reads it exactly — was never asked.
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final samples = _roomToneThenTone();
+    final decoded = decodeAudioBytes(pcmMovie(samples));
+
+    expect(
+      decoded?.format,
+      isNot(QaAudioFormat.mp3),
+      reason: 'a QuickTime head must keep dr_mp3 away from the movie',
+    );
+    if (Platform.isLinux) {
+      expect(decoded, isNull, reason: 'no OS stack to read it here');
+      return;
+    }
+    if (decoded == null && !Platform.isWindows) {
+      // Media Foundation was measured (10-06, 10-09); the other stacks have
+      // not met a movie's PCM yet.
+      markTestSkipped('this OS stack does not read a movie\'s PCM');
+      return;
+    }
+    expect(decoded, isNotNull, reason: 'Media Foundation reads it');
+    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded.sampleRate, 48000);
+    expect(decoded.channels, 2);
+    expect(decoded.length, samples.length ~/ 2, reason: 'not a frame more');
+    // Uncompressed: every sample is the one written, so the first lands on
+    // frame 0 and the tone on its own frame.
+    for (var index = 0; index < samples.length; index += 1) {
+      final got = (decoded.samples[index] * 32768).round();
+      if (got != samples[index]) {
+        fail('sample $index is $got, written ${samples[index]}');
+      }
+    }
   }, skip: skip);
 
   // -------------------------------------------------------------------------
@@ -554,4 +596,24 @@ Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
     ),
     ...pcm,
   ]);
+}
+
+/// One second of 48 kHz stereo: half a second of room tone — the few steps
+/// either side of zero a quiet stretch of a recording has — then a 440 Hz
+/// tone at -6 dB.
+Int16List _roomToneThenTone() {
+  const frames = 48000;
+  final dither = math.Random(1);
+  final samples = Int16List(frames * 2);
+  for (var frame = 0; frame < frames; frame += 1) {
+    for (var channel = 0; channel < 2; channel += 1) {
+      samples[frame * 2 + channel] = frame < frames ~/ 2
+          ? dither.nextInt(6) - 3
+          : (math.sin(2 * math.pi * 440 * (frame - frames ~/ 2) / 48000) *
+                  0.5 *
+                  32767)
+              .round();
+    }
+  }
+  return samples;
 }
