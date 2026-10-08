@@ -27,6 +27,29 @@ import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
+/// Empties [file], once nothing else holds it mapped.
+///
+/// ⚠️A file just written is read by the machine's virus scan, which maps
+/// it: a write while the scan holds the map fails with
+/// ERROR_USER_MAPPED_FILE (1224). 🔬2026-10-08: a cloud-wait test failed so
+/// in a loaded run, then passed three times alone and in another lane's
+/// run — and the window's own preview holding the file was measured and
+/// ruled out (its viewer document open, the write went through). The
+/// emptying is the fixture's, not what the test measures, so it waits.
+Future<void> emptyWhenFree(File file) async {
+  for (var attempt = 1; ; attempt += 1) {
+    try {
+      await file.writeAsBytes(const <int>[]);
+      return;
+    } on FileSystemException catch (error) {
+      if (error.osError?.errorCode != 1224 || attempt == 50) {
+        rethrow;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+}
+
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
 /// and Import runs the session verbs.
@@ -1448,8 +1471,8 @@ void main() {
     await tester.pump();
     // Both turn into placeholders only now — see the test below for why.
     await tester.runAsync(() async {
-      await File(first).writeAsBytes(const <int>[]);
-      await File(second).writeAsBytes(const <int>[]);
+      await emptyWhenFree(File(first));
+      await emptyWhenFree(File(second));
     });
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
 
@@ -1546,7 +1569,7 @@ void main() {
     // placement destination at all, and the test would be measuring the
     // setup rather than the import: what a cloud pick actually does is
     // answer the window and then not read at the moment of import.
-    await tester.runAsync(() => File(path).writeAsBytes(const <int>[]));
+    await tester.runAsync(() => emptyWhenFree(File(path)));
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
 
     // It waits rather than failing, and the line names the cloud — on the
