@@ -40,9 +40,12 @@ class _BrushEditShapeShow implements ShapeShow {
   final _InteractiveBrushEditCanvasViewState _state;
 
   /// The dabs one step blends, and the tiles one step pictures — a step
-  /// stays well inside a frame's share.
-  static const int _dabsPerStep = 32;
-  static const int _tilesPerStep = 8;
+  /// stays well inside a frame's share (an advance is a stretch of
+  /// [_waypointSpan] at most). 🔬Measured on the desktop's VM (2026-10-09,
+  /// a 2340×1654 cel on 128px tiles): a tile pictured 0.5–0.9ms, a dab
+  /// blended 25µs at 4px and 85µs at 200px.
+  static const int _dabsPerStep = 8;
+  static const int _tilesPerStep = 1;
 
   // ── an area ──────────────────────────────────────────────────────────
 
@@ -284,10 +287,11 @@ class _BrushEditShapeShow implements ShapeShow {
   /// Takes [laying] one step on, and answers whether there is more to do —
   /// false once it is whole. A step is one of: the stroke started at the
   /// path's first point, a share of the dabs it made blended into the live
-  /// rasterizer, the stroke taken to the path's next point, or a share of
-  /// its tiles pictured off screen.
+  /// rasterizer, the stroke taken to its next waypoint, or a share of its
+  /// tiles pictured off screen.
   bool _stepStroke(_StrokeLaying laying) {
     final stroke = _state._stroke;
+    final waypoints = laying.waypoints;
     if (laying.reached == 0) {
       if (!_strokeOpen) {
         stroke.openToolStroke();
@@ -296,7 +300,7 @@ class _BrushEditShapeShow implements ShapeShow {
       // One path, one roll: the same shape laid again rolls the same
       // scatter and jitter — and lands as the shape laid in one go does.
       stroke.startToolStrokeAt(
-        laying.path.first,
+        waypoints.first,
         dice: Object.hashAll(laying.path),
       );
       _state._overlay._overlayModel.dropStaged();
@@ -319,8 +323,8 @@ class _BrushEditShapeShow implements ShapeShow {
       }
       return true;
     }
-    if (laying.reached < laying.path.length) {
-      stroke.advanceStrokeTo(laying.path[laying.reached]);
+    if (laying.reached < waypoints.length) {
+      stroke.advanceStrokeTo(waypoints[laying.reached]);
       laying.reached += 1;
       // The stroke queued its dabs for the per-frame flush, which puts
       // tiles up as it blends them; this show is the flush for its stroke,
@@ -430,11 +434,14 @@ class _ShapeLaying {
 
 /// One stroke being laid off screen ([_BrushEditShapeShow._stepStroke]).
 class _StrokeLaying {
-  _StrokeLaying(this.path);
+  _StrokeLaying(this.path) : waypoints = _strokeWaypoints(path);
 
   final List<CanvasPoint> path;
 
-  /// How many of [path]'s points the stroke has been taken through — none
+  /// The points the stroke is taken through ([_strokeWaypoints]).
+  final List<CanvasPoint> waypoints;
+
+  /// How many of [waypoints] the stroke has been taken through — none
   /// until it is started at the first.
   int reached = 0;
 

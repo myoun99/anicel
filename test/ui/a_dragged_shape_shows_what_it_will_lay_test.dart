@@ -207,7 +207,7 @@ void main() {
     final env = await pumpPanel(tester);
 
     final gesture = await press(tester, const Offset(50, 50));
-    await moveTo(tester, gesture, const Offset(330, 250));
+    await moveTo(tester, gesture, const Offset(330, 290));
     var frames = 0;
     while (!env.overlay.hasStrokeContent) {
       await tester.pump();
@@ -215,9 +215,9 @@ void main() {
       expect(frames, lessThan(40), reason: 'it comes up');
     }
     // The rectangle's outline crosses three rows of tiles: a piece for the
-    // top row, two for each side row, one for the bottom — never all in
-    // one frame when a frame lays one.
-    expect(frames, greaterThan(2), reason: 'it took a frame a piece');
+    // top row, one for each side in the middle row, one for the bottom —
+    // never all in one frame when a frame lays one.
+    expect(frames, greaterThan(3), reason: 'it took a frame a piece');
     final shown = env.overlay.tileImages.keys.toSet();
     await tester.pump();
     expect(
@@ -273,14 +273,14 @@ void main() {
     final before = celOf(env.coordinator);
 
     final gesture = await press(tester, const Offset(50, 50));
-    await moveTo(tester, gesture, const Offset(330, 250));
-    await tester.pump(); // one piece laid
+    await moveTo(tester, gesture, const Offset(330, 290));
+    await tester.pump(); // one of its four pieces laid
     expect(env.overlay.hasStrokeContent, isFalse, reason: '⛔premise');
     await gesture.up();
     await tester.pump();
 
     expect(
-      firstDifference(celOf(env.coordinator), laidStraight(before, 330, 250)),
+      firstDifference(celOf(env.coordinator), laidStraight(before, 330, 290)),
       isNull,
     );
     expect(env.overlay.hasStrokeContent, isFalse);
@@ -323,6 +323,27 @@ void main() {
     expect(alphaAt(env.coordinator, 50, 50), 0);
   });
 
+  testWidgets('the hand resting on the shape it shows lays nothing again', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+
+    final gesture = await press(tester, const Offset(50, 50));
+    await moveTo(tester, gesture, const Offset(330, 250));
+    for (var frame = 0; frame < 40 && !env.overlay.hasStrokeContent; frame++) {
+      await tester.pump();
+    }
+    final shown = Map.of(env.overlay.tileImages);
+    expect(shown, isNotEmpty, reason: '⛔premise');
+    await moveTo(tester, gesture, const Offset(330, 250));
+    for (var frame = 0; frame < 10; frame += 1) {
+      await tester.pump();
+    }
+    expect(env.overlay.tileImages, shown, reason: 'the very same pictures');
+    await gesture.up();
+    await tester.pump();
+  });
+
   testWidgets('let go on a shape the hand reached after the one on screen, '
       'its tiles are pictured as themselves — never as the old shape', (
     tester,
@@ -350,26 +371,32 @@ void main() {
     );
   });
 
-  testWidgets('a tool switched away mid-drag takes back what it showed', (
-    tester,
-  ) async {
-    final env = await pumpPanel(tester);
+  // The brush takes the selection layer away; the move tool keeps it.
+  for (final tool in [CanvasTool.brush, CanvasTool.move]) {
+    testWidgets('a tool switched away mid-drag (${tool.name}) takes back '
+        'what it showed', (tester) async {
+      final env = await pumpPanel(tester);
 
-    final gesture = await press(tester, const Offset(50, 50));
-    await moveTo(tester, gesture, const Offset(330, 250));
-    for (var frame = 0; frame < 40 && !env.overlay.hasStrokeContent; frame++) {
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      for (
+        var frame = 0;
+        frame < 40 && !env.overlay.hasStrokeContent;
+        frame++
+      ) {
+        await tester.pump();
+      }
+      expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise');
+      env.brush.value = env.brush.value.copyWith(tool: tool);
       await tester.pump();
-    }
-    expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise');
-    env.brush.value = env.brush.value.copyWith(tool: CanvasTool.brush);
-    await tester.pump();
-    await tester.pump();
+      await tester.pump();
 
-    expect(env.overlay.hasStrokeContent, isFalse);
-    await gesture.up();
-    await tester.pump();
-    expect(alphaAt(env.coordinator, 50, 50), 0);
-  });
+      expect(env.overlay.hasStrokeContent, isFalse);
+      await gesture.up();
+      await tester.pump();
+      expect(alphaAt(env.coordinator, 50, 50), 0);
+    });
+  }
 
   /// A line of the BRUSH type is THE stroke of the brush in hand (I-69), so
   /// what comes up under its outline is that stroke, laid by the stroke's
@@ -422,6 +449,24 @@ void main() {
         firstDifference(await laidInOneGo(tester), shownThenLanded),
         isNull,
       );
+    });
+
+    testWidgets('the hand resting on the stroke it shows lays nothing '
+        'again', (tester) async {
+      final env = await pumpPanel(tester, options: brushLine);
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await untilShown(tester, env.overlay);
+      final shown = Map.of(env.overlay.tileImages);
+      expect(shown, isNotEmpty, reason: '⛔premise');
+      await moveTo(tester, gesture, const Offset(330, 250));
+      for (var frame = 0; frame < 10; frame += 1) {
+        await tester.pump();
+      }
+      expect(env.overlay.tileImages, shown, reason: 'the very same pictures');
+      await gesture.up();
+      await tester.pump();
     });
 
     testWidgets('a cancelled drag takes back what it showed and lands '

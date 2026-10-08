@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -510,6 +512,38 @@ void main() {
       ]);
       expect(host.committed, hasLength(1));
       expect(host.active, [true, false]);
+    });
+
+    testWidgets('a long stretch is laid a share at a time — no frame lays a '
+        'tenth of it — and lands as the stroke laid in one go', (tester) async {
+      shapeShowFrameShare = Duration.zero;
+      final wide = BitmapSurface(
+        canvasSize: const CanvasSize(width: 2048, height: 64),
+        tileSize: 128,
+      );
+      final long = [p(10, 32), p(2030, 32)];
+      final once = _Host();
+      await _pump(tester, once, _brush(), cel: wide);
+      once.show!.landStroke(long);
+
+      final host = _Host();
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      await _pump(tester, host, _brush(), overlay: overlay, cel: wide);
+      final laid = debugStrokeDabsLaid = <BrushDab>[];
+      host.show!.showStroke(long);
+      var most = 0;
+      for (var frame = 0; frame < 4000 && !overlay.hasStrokeContent; frame++) {
+        final before = laid.length;
+        await tester.pump();
+        most = math.max(most, laid.length - before);
+      }
+      expect(overlay.hasStrokeContent, isTrue, reason: 'it comes up');
+      expect(most, lessThan(laid.length ~/ 10), reason: 'a share a frame');
+
+      host.show!.landStroke(long);
+      expect(_look(host.committed.single), _look(once.committed.single));
+      expect(_tiles(host.data.single), _tiles(once.data.single));
     });
 
     testWidgets('given up for another path while it was being pictured, none '
