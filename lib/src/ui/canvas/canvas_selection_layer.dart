@@ -22,8 +22,6 @@ import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
 import '../../models/app_input_settings.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../text/app_strings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -46,9 +44,7 @@ import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'tile_pyramid.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
-import '../widgets/app_icon_button.dart';
 import 'canvas_press.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
@@ -3353,13 +3349,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// ⛔Cancel is wired to [_cancelTransform], which is Escape's own verb —
   /// one law, two entrances. It is not a second way of ending a session.
+  ///
+  /// The box's ✓ is 적용 — [_applyTransform], the verb Enter and the tool
+  /// settings button reach too (confirm-button: 「입구 하나」). ↩️It carried
+  /// a branch of its own, and that is how Enter and this button came to
+  /// answer the same box two ways.
+  ///
+  /// ⚠️Its ON state (`changed`) is 「this session has changes」 — the same
+  /// fact the ants and the box already show in the session's red. The
+  /// BUTTON says it the app's own way instead of wearing a colour of its
+  /// own.
   Widget _confirmPill(
     CanvasSelectionRegion displayShape,
     SelectionTransformChrome? chrome,
   ) => CanvasTargetPill(
     keyValue: 'selection-confirm-pill',
     target: _pillTarget(displayShape, chrome),
-    children: [_confirmButton(displayShape), _cancelButton()],
+    children: targetPillVerbs(
+      'selection-move',
+      onConfirm: _applyAction() == null ? null : _applyTransform,
+      onCancel: _cancelTransform,
+      changed: _sessionHasChanges,
+    ),
   );
 
   /// What the pill stands under: the box's outline as the screen draws it,
@@ -3391,42 +3402,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _mapCanvasToViewportOffset(CanvasPoint(x: x, y: y)),
     ]);
   }
-
-  /// ⛔**THE APP'S ONE BUTTON** (「앱에 버튼은 한 종류」), reused rather than
-  /// re-made — 유저 2026-09-22: 「확정/취소버튼은 **우리 ui 있는거
-  /// 재사용할수있는거 하고** 아니면 우리스타일로 맞춰서 공용화해서 만들고」.
-  ///
-  /// ↩️It was a private Material + InkWell + [ControlPressClaim] circle in
-  /// this file, wearing the session's red/green. That is a second button to
-  /// keep in step with the app's forever, and the colour was chrome talking
-  /// about chrome — which [AppIconButton] already refuses (see its
-  /// `danger`). The pair says what it is with its ICON, and the box, the
-  /// ink, the tooltip and the press law all come from the one widget.
-  Widget _cancelButton() => AppIconButton(
-    keyValue: 'selection-move-cancel',
-    shortcuts: const [EditorActionIds.selectionTransformCancel],
-    tooltip: AppText.strings.commonCancel,
-    icon: const Icon(Icons.close),
-    onPressed: _cancelTransform,
-  );
-
-  /// The box's ✓ is 적용 — [_applyTransform], the verb Enter and the tool
-  /// settings button reach too (confirm-button: 「입구 하나」). ↩️It carried
-  /// a branch of its own, and that is how Enter and this button came to
-  /// answer the same box two ways.
-  ///
-  /// ⚠️[isSelected] is the ON state, and 「this session has changes」 is
-  /// exactly that — the same fact the ants and the box already show in the
-  /// session's red. The BUTTON says it the app's own way instead of
-  /// wearing a colour of its own.
-  Widget _confirmButton(CanvasSelectionRegion displayShape) => AppIconButton(
-    keyValue: 'selection-move-confirm',
-    shortcuts: const [EditorActionIds.confirm],
-    tooltip: AppText.strings.commonApply,
-    icon: const Icon(Icons.check),
-    isSelected: _sessionHasChanges,
-    onPressed: _applyAction() == null ? null : _applyTransform,
-  );
 
   Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, SelectionTransformChrome? chrome) {
     return Positioned.fill(

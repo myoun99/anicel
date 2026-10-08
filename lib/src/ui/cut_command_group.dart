@@ -12,6 +12,7 @@ import 'dialogs/app_progress_dialog.dart';
 import 'dialogs/dialog_verb.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'editor_session_manager.dart';
+import 'session/canvas_adjust.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'text/app_strings.dart';
@@ -79,7 +80,9 @@ Future<void> _resizeActiveCutCanvas(
   session.activeCutOrNull,
   dialog: (cut) => CanvasSizeDialog(
     initialSize: cut.canvasSize,
-    onAdjustOnCanvas: () => session.canvasAdjust.begin(cut.id, cut.canvasSize),
+    onAdjustOnCanvas: () => session.canvasAdjust.begin(
+      CanvasEdgesDraft.of(cut.id, cut.canvasSize),
+    ),
   ),
   commit: (request) => _resizeBehindTheWaitWindow(
     context,
@@ -90,27 +93,35 @@ Future<void> _resizeActiveCutCanvas(
   ),
 );
 
-/// Lands the canvas adjusted on the canvas (I-79): the size its edges make,
-/// the picture moved by the edges pulled out on the left and the top —
-/// behind the same wait window as a size typed into the window.
+/// Lands what is adjusted on the canvas. A canvas (I-79): the size its
+/// edges make, the picture moved by the edges pulled out on the left and the
+/// top — behind the same wait window as a size typed into the window. The
+/// camera's frame (I-80): the project camera takes its size, as the camera
+/// size window's 적용 gives it.
 Future<void> landCanvasAdjust(
   BuildContext context,
   EditorSessionManager session,
 ) async {
   final adjust = session.canvasAdjust;
-  final size = adjust.size;
-  final offset = adjust.contentOffset;
-  if (size == null || offset == null) {
-    return;
-  }
   if (!adjust.isOpenOn(session.activeCutOrNull?.id)) {
     adjust.end();
     return;
   }
-  await _resizeBehindTheWaitWindow(context, () {
-    session.cutVerbs.placeActiveCutCanvas(size, contentOffset: offset);
-    adjust.end();
-  });
+  switch (adjust.draft) {
+    case CameraSizeDraft(:final size):
+      session.camera.setProjectCameraSize(size);
+      adjust.end();
+    case CanvasEdgesDraft(:final size, :final contentOffset):
+      await _resizeBehindTheWaitWindow(context, () {
+        session.cutVerbs.placeActiveCutCanvas(
+          size,
+          contentOffset: contentOffset,
+        );
+        adjust.end();
+      });
+    case null:
+      return;
+  }
 }
 
 /// A canvas resize, the one way every door runs it.

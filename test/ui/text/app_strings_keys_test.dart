@@ -232,6 +232,8 @@ void main() {
     'canvasHeightLabel': (s) => s.canvasHeightLabel,
     'canvasSizePresets': (s) => s.canvasSizePresets,
     'canvasAdjustOnCanvas': (s) => s.canvasAdjustOnCanvas,
+    'cameraRatioFree': (s) => s.cameraRatioFree,
+    'cameraRatioCurrent': (s) => s.cameraRatioCurrent,
     'commonResize': (s) => s.commonResize,
     'inputTitle': (s) => s.inputTitle,
     'inputPressureHeading': (s) => s.inputPressureHeading,

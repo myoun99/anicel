@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../text/app_strings.dart';
+import '../widgets/app_icon_button.dart';
 import 'canvas_capsule.dart';
 
 /// How far a target pill stands off its target's edge.
@@ -93,6 +96,50 @@ class CanvasTargetPill extends StatelessWidget {
     ),
   );
 }
+
+/// 확정 and 취소, the pill's last two: ✓ the verb Enter reaches too
+/// ([EditorActionIds.confirm]), ✕ Escape's
+/// ([EditorActionIds.selectionTransformCancel]) — keyed
+/// `<keyPrefix>-confirm` and `<keyPrefix>-cancel`. [changed] lights the ✓
+/// (its ON state) while what the pill stands under has changes to land.
+///
+/// ★THE PAIR, WRITTEN ONCE (I-80, 2026-10-08): the transform box's pill,
+/// the canvas adjusted on the canvas (I-79) and the camera frame adjusted
+/// on the canvas each spelled the two buttons out, and the third made it
+/// one.
+///
+/// ⛔**THE APP'S ONE BUTTON** (「앱에 버튼은 한 종류」), reused rather than
+/// re-made — 유저 2026-09-22: 「확정/취소버튼은 **우리 ui 있는거
+/// 재사용할수있는거 하고** 아니면 우리스타일로 맞춰서 공용화해서 만들고」.
+///
+/// ↩️It was a private Material + InkWell + [ControlPressClaim] circle in
+/// the selection layer, wearing the session's red/green. That is a second
+/// button to keep in step with the app's forever, and the colour was chrome
+/// talking about chrome — which [AppIconButton] already refuses (see its
+/// `danger`). The pair says what it is with its ICON, and the box, the
+/// ink, the tooltip and the press law all come from the one widget.
+List<Widget> targetPillVerbs(
+  String keyPrefix, {
+  required VoidCallback? onConfirm,
+  required VoidCallback onCancel,
+  bool changed = false,
+}) => [
+  AppIconButton(
+    keyValue: '$keyPrefix-confirm',
+    shortcuts: const [EditorActionIds.confirm],
+    tooltip: AppText.strings.commonApply,
+    icon: const Icon(Icons.check),
+    isSelected: changed,
+    onPressed: onConfirm,
+  ),
+  AppIconButton(
+    keyValue: '$keyPrefix-cancel',
+    shortcuts: const [EditorActionIds.selectionTransformCancel],
+    tooltip: AppText.strings.commonCancel,
+    icon: const Icon(Icons.close),
+    onPressed: onCancel,
+  ),
+];
 
 /// What the canvas's pills keep out from under: the edges of the panel's
 /// tool layers that something else stands on — a panel lying on the floor,

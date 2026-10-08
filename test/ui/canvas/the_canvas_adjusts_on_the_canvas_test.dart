@@ -19,13 +19,20 @@ void main() {
   late int landed;
 
   setUp(() {
-    adjust = CanvasAdjust()..begin(const CutId('c'), canvas);
+    adjust = CanvasAdjust()
+      ..begin(CanvasEdgesDraft.of(const CutId('c'), canvas));
     landed = 0;
   });
   tearDown(() {
     adjust.dispose();
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
+
+  /// The edges as the canvas shows them.
+  CanvasEdgesDraft shown() => adjust.shown! as CanvasEdgesDraft;
+
+  /// The edges as the last grab let them go.
+  CanvasEdgesDraft kept() => adjust.draft! as CanvasEdgesDraft;
 
   /// The layer over a view where a canvas pixel is a screen pixel, the
   /// canvas's top left at the layer's.
@@ -86,9 +93,9 @@ void main() {
     final origin = await pumpLayer(tester);
     await drag(tester, origin + const Offset(400, 150), const Offset(100, 30));
 
-    expect(adjust.shown, const Rect.fromLTRB(0, 0, 500, 300));
+    expect(shown().edges, const Rect.fromLTRB(0, 0, 500, 300));
     expect(sizeShown(tester), '500 × 300');
-    expect(adjust.contentOffset, (dx: 0.0, dy: 0.0), reason: 'nothing moved');
+    expect(kept().contentOffset, (dx: 0.0, dy: 0.0), reason: 'nothing moved');
   });
 
   testWidgets('🚨the top left corner pulled out moves the picture by as '
@@ -96,9 +103,9 @@ void main() {
     final origin = await pumpLayer(tester);
     await drag(tester, origin, const Offset(-50, -20));
 
-    expect(adjust.shown, const Rect.fromLTRB(-50, -20, 400, 300));
-    expect(adjust.size, const CanvasSize(width: 450, height: 320));
-    expect(adjust.contentOffset, (dx: 50.0, dy: 20.0));
+    expect(shown().edges, const Rect.fromLTRB(-50, -20, 400, 300));
+    expect(kept().size, const CanvasSize(width: 450, height: 320));
+    expect(kept().contentOffset, (dx: 50.0, dy: 20.0));
   });
 
   testWidgets('the edges keep to whole pixels — a view at 200% moves them '
@@ -129,7 +136,7 @@ void main() {
     // The right edge's middle, at 200%: (800, 300) on screen.
     await drag(tester, origin + const Offset(800, 300), const Offset(3, 0));
 
-    final right = adjust.shown!.right;
+    final right = shown().edges.right;
     expect(right, isNot(400), reason: '⛔전제: the edge moved');
     expect(right, right.roundToDouble());
   });
@@ -139,7 +146,7 @@ void main() {
     final origin = await pumpLayer(tester);
     await drag(tester, origin + const Offset(400, 150), const Offset(-900, 0));
 
-    expect(adjust.size, const CanvasSize(width: 1, height: 300));
+    expect(kept().size, const CanvasSize(width: 1, height: 300));
   });
 
   testWidgets('a press on the canvas away from the handles is not the box\'s',
@@ -147,7 +154,7 @@ void main() {
     final origin = await pumpLayer(tester);
     await drag(tester, origin + const Offset(200, 150), const Offset(60, 40));
 
-    expect(adjust.shown, const Rect.fromLTRB(0, 0, 400, 300));
+    expect(shown().edges, const Rect.fromLTRB(0, 0, 400, 300));
   });
 
   testWidgets('✓ lands the edges; ✕ closes the adjust for nothing',

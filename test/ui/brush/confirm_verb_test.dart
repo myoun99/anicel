@@ -106,7 +106,12 @@ void main() {
   test('🚨an open canvas adjust is what 확정 lands — before everything else',
       () {
     selection.addPolygonPoint(CanvasPoint(x: 0, y: 0));
-    adjust.begin(const CutId('c'), const CanvasSize(width: 8, height: 8));
+    adjust.begin(
+      CanvasEdgesDraft.of(
+        const CutId('c'),
+        const CanvasSize(width: 8, height: 8),
+      ),
+    );
 
     expect(verb.canConfirm, isTrue);
     verb.confirm();

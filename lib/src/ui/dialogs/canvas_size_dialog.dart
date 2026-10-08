@@ -5,7 +5,6 @@ import '../../models/canvas_size.dart';
 import '../../services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
 import '../widgets/app_window.dart';
-import '../widgets/panel_flyout.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
@@ -85,47 +84,21 @@ class CanvasSizeDialog extends StatefulWidget {
 
 class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
   /// The sizes the presets list offers, each with its name: the paper's,
-  /// a line, then the video's.
+  /// a line, then the video's ([videoSizePresets]).
   ///
   /// 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서 여러 프리셋
-  /// 준비하고」 — the app's one picking list ([PanelFlyoutButton]).
+  /// 준비하고」 — the app's one picking list ([SizePresetsRow]).
   /// ↩️They were four chips in a row.
   ///
   /// 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
   /// 150, 200 (a new cut's, [defaultCutCanvasSize]) and 300 dpi, then
   /// HD · FHD · 2K · 4K. 「현장마다 용지 크기 다름 … 용지는 특히 홀수만
   /// 아니면됨」: a studio types its own, and no size here is odd.
-  static const _paperPresets = [
-    ('A4 150dpi', CanvasSize(width: 1754, height: 1240)),
-    ('A4 200dpi', defaultCutCanvasSize),
-    ('A4 300dpi', CanvasSize(width: 3508, height: 2480)),
+  static const _paperPresets = <SizePreset>[
+    (name: 'A4 150dpi', size: CanvasSize(width: 1754, height: 1240)),
+    (name: 'A4 200dpi', size: defaultCutCanvasSize),
+    (name: 'A4 300dpi', size: CanvasSize(width: 3508, height: 2480)),
   ];
-  static const _videoPresets = [
-    ('HD', CanvasSize(width: 1280, height: 720)),
-    ('FHD', CanvasSize(width: 1920, height: 1080)),
-    ('2K', CanvasSize(width: 2560, height: 1440)),
-    ('4K', CanvasSize(width: 3840, height: 2160)),
-  ];
-
-  /// The presets list's rows, the one the fields hold [entered] marked.
-  List<PanelFlyoutEntry> _presetRows(CanvasSize? entered) {
-    List<PanelFlyoutEntry> rows(List<(String, CanvasSize)> presets) =>
-        presets.asFlyoutValueChoices(
-          current: presets
-              .where((preset) => preset.$2 == entered)
-              .firstOrNull,
-          choiceOf: (preset) => PanelFlyoutChoice(
-            key: 'canvas-size-preset-${preset.$2.width}x${preset.$2.height}',
-            label: '${preset.$1} ${preset.$2.width}×${preset.$2.height}',
-          ),
-          onPicked: (preset) => _applyPreset(preset.$2),
-        );
-    return [
-      ...rows(_paperPresets),
-      const PanelFlyoutDivider(),
-      ...rows(_videoPresets),
-    ];
-  }
 
   late final TextEditingController _widthController = TextEditingController(
     text: '${widget.initialSize.width}',
@@ -152,17 +125,6 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
       size: CanvasSize(width: width, height: height),
       anchor: _anchor,
     );
-  }
-
-  /// The window closes and the canvas shows its adjust.
-  VoidCallback? get _adjustOnCanvas {
-    final open = widget.onAdjustOnCanvas;
-    return open == null
-        ? null
-        : () {
-            Navigator.of(context).pop();
-            open();
-          };
   }
 
   void _applyPreset(CanvasSize size) {
@@ -195,23 +157,12 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              PanelFlyoutButton(
-                key: const ValueKey<String>('canvas-size-presets'),
-                label: strings.canvasSizePresets,
-                entriesBuilder: () => _presetRows(enteredRequest?.size),
-              ),
-              const SizedBox(width: 8),
-              ControlPressClaim(
-                onPressed: _adjustOnCanvas,
-                child: OutlinedButton(
-                  key: const ValueKey<String>('canvas-size-adjust-on-canvas'),
-                  onPressed: silentPress(_adjustOnCanvas),
-                  child: Text(strings.canvasAdjustOnCanvas),
-                ),
-              ),
-            ],
+          SizePresetsRow(
+            keyPrefix: 'canvas-size',
+            groups: const [_paperPresets, videoSizePresets],
+            entered: enteredRequest?.size,
+            onPicked: _applyPreset,
+            onAdjustOnCanvas: widget.onAdjustOnCanvas,
           ),
           const SizedBox(height: 12),
           // ⛔No caption beside the grid: the rule against explaining a

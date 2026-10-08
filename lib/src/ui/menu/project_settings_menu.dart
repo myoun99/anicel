@@ -7,6 +7,7 @@ import '../../models/project_frame_rate.dart';
 import '../dialogs/camera_size_dialog.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
+import '../session/canvas_adjust.dart' show CameraSizeDraft;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart';
@@ -135,6 +136,9 @@ class ProjectSettingsMenu {
     final size = await showCameraSizeDialog(
       context,
       initialSize: session.camera.cameraFrameSize,
+      onAdjustOnCanvas: () => session.canvasAdjust.begin(
+        CameraSizeDraft(size: session.camera.cameraFrameSize),
+      ),
     );
     if (size != null) {
       session.camera.setProjectCameraSize(size);

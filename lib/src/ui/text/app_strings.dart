@@ -513,6 +513,8 @@ enum AppStrings {
   /// '{min}'/'{max}' are the dimension bounds.
   String get canvasSizePresets => _s('canvasSizePresets');
   String get canvasAdjustOnCanvas => _s('canvasAdjustOnCanvas');
+  String get cameraRatioFree => _s('cameraRatioFree');
+  String get cameraRatioCurrent => _s('cameraRatioCurrent');
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
@@ -1950,6 +1952,8 @@ enum AppStrings {
     'canvasHeightLabel': 'Height (px)',
     'canvasSizePresets': 'Presets',
     'canvasAdjustOnCanvas': 'Adjust on canvas',
+    'cameraRatioFree': 'Free',
+    'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
@@ -3120,6 +3124,8 @@ enum AppStrings {
     'canvasHeightLabel': '高さ（px）',
     'canvasSizePresets': 'プリセット',
     'canvasAdjustOnCanvas': 'キャンバスで調整',
+    'cameraRatioFree': '自由',
+    'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
@@ -4528,6 +4534,8 @@ enum AppStrings {
     'canvasHeightLabel': '높이 (px)',
     'canvasSizePresets': '프리셋',
     'canvasAdjustOnCanvas': '캔버스에서 조정',
+    'cameraRatioFree': '자유',
+    'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
@@ -5939,6 +5947,8 @@ enum AppStrings {
     'canvasHeightLabel': 'Hauteur (px)',
     'canvasSizePresets': 'Préréglages',
     'canvasAdjustOnCanvas': 'Ajuster sur la toile',
+    'cameraRatioFree': 'Libre',
+    'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
@@ -7414,6 +7424,8 @@ enum AppStrings {
     'canvasHeightLabel': '高度（px）',
     'canvasSizePresets': '预设',
     'canvasAdjustOnCanvas': '在画布上调整',
+    'cameraRatioFree': '自由',
+    'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',

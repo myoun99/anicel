@@ -40,8 +40,10 @@ import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
+import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
+import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/selection_float_overlay.dart';
 import 'canvas/flip_hud_controller.dart';
@@ -1203,23 +1205,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// The camera's frame — the dim outside it and its hairline — drawn for
   /// every row. It takes no press: on the camera row the frame's box does
-  /// ([_cameraBox]), over the tools.
+  /// ([_cameraBox]), over the tools. While its size is adjusted on the
+  /// canvas (I-80) it is the size being dragged, so the dim and the box
+  /// stand on one frame.
   Positioned _cameraOverlay(
     EditorSessionManager session,
     CanvasViewport viewport,
   ) {
     return Positioned.fill(
-      child: _atTheCameraPose(
-        session,
-        (pose) => CameraFrameOverlay(
-          pose: pose,
-          cameraFrameSize: session.camera.cameraFrameSize,
-          viewport: viewport,
-          // Dim belongs to camera-view mode; plain manipulation keeps the
-          // artwork undimmed.
-          dimOpacity: widget.cameraViewEnabled.value
-              ? widget.cameraDimOpacity.value
-              : 0,
+      child: ListenableBuilder(
+        listenable: session.canvasAdjust,
+        builder: (context, _) => _atTheCameraPose(
+          session,
+          (pose) => CameraFrameOverlay(
+            pose: pose,
+            cameraFrameSize:
+                session.canvasAdjust.cameraSizeShown ??
+                session.camera.cameraFrameSize,
+            viewport: viewport,
+            // Dim belongs to camera-view mode; plain manipulation keeps the
+            // artwork undimmed.
+            dimOpacity: widget.cameraViewEnabled.value
+                ? widget.cameraDimOpacity.value
+                : 0,
+          ),
         ),
       ),
     );

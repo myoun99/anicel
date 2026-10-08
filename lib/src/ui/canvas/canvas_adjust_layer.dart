@@ -6,9 +6,6 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../session/canvas_adjust.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
-import '../text/app_strings.dart';
-import '../widgets/app_icon_button.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
 import 'row_transform_box.dart';
@@ -53,10 +50,13 @@ class CanvasAdjustLayer extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: adjust,
     builder: (context, _) {
-      final edges = adjust.shown;
-      if (edges == null) {
+      final shown = adjust.shown;
+      if (shown is! CanvasEdgesDraft) {
         return const SizedBox.shrink();
       }
+      final edges = shown.edges;
+      CanvasEdgesDraft to(Rect edges) =>
+          CanvasEdgesDraft(cut: shown.cut, edges: edges);
       final corners = [
         CanvasPoint(x: edges.left, y: edges.top),
         CanvasPoint(x: edges.right, y: edges.top),
@@ -81,8 +81,8 @@ class CanvasAdjustLayer extends StatelessWidget {
               claimsCanvas: false,
               onCancelled: adjust.dropShowing,
               scale: RowBoxEdges((
-                changed: adjust.show,
-                committed: adjust.move,
+                changed: (edges) => adjust.show(to(edges)),
+                committed: (edges) => adjust.move(to(edges)),
               )),
             ),
           ),
@@ -102,19 +102,10 @@ class CanvasAdjustLayer extends StatelessWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                AppIconButton(
-                  keyValue: 'canvas-adjust-confirm',
-                  shortcuts: const [EditorActionIds.confirm],
-                  tooltip: AppText.strings.commonApply,
-                  icon: const Icon(Icons.check),
-                  onPressed: onLand,
-                ),
-                AppIconButton(
-                  keyValue: 'canvas-adjust-cancel',
-                  shortcuts: const [EditorActionIds.selectionTransformCancel],
-                  tooltip: AppText.strings.commonCancel,
-                  icon: const Icon(Icons.close),
-                  onPressed: adjust.end,
+                ...targetPillVerbs(
+                  'canvas-adjust',
+                  onConfirm: onLand,
+                  onCancel: adjust.end,
                 ),
               ],
             ),

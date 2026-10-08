@@ -3077,6 +3077,32 @@ void main() {
     ]);
   });
 
+  // The ✓'s ON state is 「this session has changes」 — the fact the ants
+  // and the box show in the session's red (`targetPillVerbs`' `changed`).
+  testWidgets('the box\'s ✓ is lit once the box has changes', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformValues!.tx, isNot(0), reason: '⛔전제: 옮김');
+
+    expect(
+      tester
+          .appIconButton(
+            find.byKey(const ValueKey<String>('selection-move-confirm')),
+          )
+          .isSelected,
+      isTrue,
+    );
+  });
+
   testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {
     final env = await pumpSelectionPanel(
       tester,
@@ -5602,6 +5628,15 @@ void main() {
             .onPressed,
         isNull,
         reason: '할 게 없으면 회색',
+      );
+      expect(
+        tester
+            .appIconButton(
+              find.byKey(const ValueKey<String>('selection-move-confirm')),
+            )
+            .isSelected,
+        isFalse,
+        reason: 'nothing changed: the ✓ is not lit',
       );
     });
 

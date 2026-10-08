@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/session/canvas_adjust.dart';
 
 import '../helpers/draw_on_current_frame.dart';
 import 'flyout_test_helpers.dart' show tapCommandButton;
@@ -84,13 +85,16 @@ void main() {
 
     final inkBefore = ink();
     session.canvasAdjust
-      ..begin(cut.id, before)
+      ..begin(CanvasEdgesDraft.of(cut.id, before))
       ..move(
-        Rect.fromLTRB(
-          -10,
-          0,
-          before.width.toDouble(),
-          before.height + 20.0,
+        CanvasEdgesDraft(
+          cut: cut.id,
+          edges: Rect.fromLTRB(
+            -10,
+            0,
+            before.width.toDouble(),
+            before.height + 20.0,
+          ),
         ),
       );
     await tester.pump();
@@ -116,7 +120,7 @@ void main() {
       'go of', (tester) async {
     final session = await pumpApp(tester);
     final cut = session.requireActiveCut;
-    session.canvasAdjust.begin(cut.id, cut.canvasSize);
+    session.canvasAdjust.begin(CanvasEdgesDraft.of(cut.id, cut.canvasSize));
     await tester.pump();
     expect(pill, findsOneWidget, reason: '⛔전제: open');
 
@@ -137,13 +141,16 @@ void main() {
     final session = await pumpApp(tester);
     final cut = session.requireActiveCut;
     session.canvasAdjust
-      ..begin(cut.id, cut.canvasSize)
+      ..begin(CanvasEdgesDraft.of(cut.id, cut.canvasSize))
       ..move(
-        Rect.fromLTRB(
-          0,
-          0,
-          cut.canvasSize.width + 30.0,
-          cut.canvasSize.height.toDouble(),
+        CanvasEdgesDraft(
+          cut: cut.id,
+          edges: Rect.fromLTRB(
+            0,
+            0,
+            cut.canvasSize.width + 30.0,
+            cut.canvasSize.height.toDouble(),
+          ),
         ),
       );
     await tester.pump();

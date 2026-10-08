@@ -168,13 +168,16 @@ const _ringsOfTheirOwn = <String, String>{
 
 /// 🚨THE LEDGER. Measured 2026-09-23: one file wears a check, and it is a
 /// verb.
+///
+/// ↩️2026-10-08: the transform box's pill, the canvas adjusted on the
+/// canvas (I-79) and the camera frame adjusted on the canvas (I-80) each
+/// wore one; the pill's pair is written once now (`targetPillVerbs`), so
+/// one file wears it again.
 const _checkMarkVerbs = <String, String>{
-  'lib/src/ui/canvas/canvas_selection_layer.dart':
-      'the APPLY button of a move/transform session — it commits, and shows '
-      'no state of its own',
-  'lib/src/ui/canvas/canvas_adjust_layer.dart':
-      'the APPLY button of a canvas adjusted on the canvas (I-79) — it lands '
-      'the edges, and shows no state of its own',
+  'lib/src/ui/canvas/canvas_target_pill.dart':
+      'the APPLY button of the pill a canvas verb wears — a move/transform '
+      'session, a canvas or the camera frame adjusted on the canvas: it '
+      'lands what the pill stands under',
 };
 
 /// Every line of [source] (named [path]) where [pattern] matches CODE — a

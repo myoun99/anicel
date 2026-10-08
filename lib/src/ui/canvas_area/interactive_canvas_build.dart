@@ -718,9 +718,10 @@ class _InteractiveCanvasBuild {
   /// its standing lane declares one. It follows a drag itself
   /// ([_followingTheDrag]), as the overlay does.
   ///
-  /// ⚠️A canvas adjusted on the canvas (I-79) stands in the row's box's
-  /// place while it is open: its handles are the canvas's edges then, and a
-  /// row's box under them would take the presses that are theirs.
+  /// ⚠️What is adjusted on the canvas — its canvas (I-79) or the camera's
+  /// frame (I-80) — stands in the row's box's place while it is open: its
+  /// handles are the edges then, and a row's box under them would take the
+  /// presses that are theirs.
   Widget _controls(
     BuildContext context,
     CanvasViewport viewport,
@@ -732,8 +733,9 @@ class _InteractiveCanvasBuild {
         _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame)),
   );
 
-  /// The canvas's adjust when it is open on the cut this canvas shows —
-  /// and one left open on a cut the canvas no longer shows is let go of.
+  /// What is adjusted on the canvas, when it is open on the cut this canvas
+  /// shows — the camera's frame where the camera stands at this frame — and
+  /// a canvas left open on a cut the canvas no longer shows is let go of.
   Widget? _canvasAdjust(
     BuildContext context,
     CanvasViewport viewport,
@@ -748,12 +750,25 @@ class _InteractiveCanvasBuild {
       WidgetsBinding.instance.addPostFrameCallback((_) => adjust.end());
       return null;
     }
-    return CanvasAdjustLayer(
-      adjust: adjust,
-      viewport: viewport,
-      canvasSize: _canvasSize,
-      onLand: () => landCanvasAdjust(context, session),
-    );
+    void land() => landCanvasAdjust(context, session);
+    return switch (adjust.draft) {
+      CameraSizeDraft() => _state._atTheCameraPose(
+        session,
+        (pose) => CameraAdjustLayer(
+          adjust: adjust,
+          pose: pose,
+          viewport: viewport,
+          canvasSize: _canvasSize,
+          onLand: land,
+        ),
+      ),
+      _ => CanvasAdjustLayer(
+        adjust: adjust,
+        viewport: viewport,
+        canvasSize: _canvasSize,
+        onLand: land,
+      ),
+    };
   }
 
   Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
