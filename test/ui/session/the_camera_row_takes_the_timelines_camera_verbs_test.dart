@@ -20,8 +20,12 @@ import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
+    show PlaybackScope;
 import 'package:anicel/src/ui/storyboard_layer_policy.dart'
     show projectedLayerInHand;
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
+    show seekStoryboardCutFrame;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「카메라 행 범위는 키표시/이동/레인 등 모든거
@@ -185,6 +189,23 @@ void main() {
         reason: 'at $globalFrame',
       );
     }
+  });
+
+  test('a press names a cut and a frame of its own — while it plays, the '
+      'clock goes to where that frame plays', () {
+    final session = open();
+    seekStoryboardCutFrame(session, b, 6);
+    expect((session.activeCutId, session.currentFrameIndex), (b, 6));
+
+    final playing = open()..selectCut(b);
+    final playback = playing.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    addTearDown(playback.stop);
+
+    seekStoryboardCutFrame(playing, b, 6);
+
+    expect(playback.playlistFrame, 6);
+    expect(playing.playheadCursors.trackFrameNow(), 30);
   });
 
   test('＋ keys the cell it stands on', () {

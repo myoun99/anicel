@@ -637,12 +637,11 @@ class StoryboardToolbarPanelContext
       session.storyboardCursor.createStoryboardPanelAtCursor();
       return;
     }
-    // …any other projection row stood on, the timeline's ＋ on its cell.
+    // …any other projection row stood on, the timeline's ＋ on its cell —
+    // behind the gate its button and its key read, as the timeline's is.
     final projectedCell = _projectedCell;
     if (projectedCell != null) {
-      if (projectedCell.canCreateInstance) {
-        projectedCell.createInstance();
-      }
+      projectedCell.createInstance();
       return;
     }
     // Self-gated: only a standing S row with an EMPTY cursor frame authors.

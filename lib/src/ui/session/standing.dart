@@ -22,7 +22,6 @@ import '../timeline/layer_timeline_display_adapter.dart'
 import '../timeline/property_lane_model.dart'
     show LayerRowHiddenBy, layerRowHiddenBy;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
-import '../../models/conte_group.dart' show conteRowAtSeat;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
@@ -799,26 +798,24 @@ class Standing {
   }
 
   /// The layer standing on a CONTE CELL of the active cut seats (F-187):
-  /// the cut's conte row when it has one ([conteRowAtSeat]); else
-  /// [before] — the layer you stood on — when the cut shows it (a track's S
-  /// row does, in every cut); else null, and nothing is done: the cut's own
-  /// landing ([selectCut]'s memory) stands (「컷에설때 콘티레이어가 없다면
-  /// 마지막에 선 레이어 그냥 그대로둠. 아무것도 안하고」).
+  /// the cut's conte when it has one; else [before] — the layer you stood
+  /// on — when the cut shows it (a track's S row does, in every cut); else
+  /// null, and nothing is done: the cut's own landing ([selectCut]'s
+  /// memory) stands (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
+  /// 그대로둠. 아무것도 안하고」).
   ///
-  /// [seat] is the row of the conte group stood on ([conteRowAtSeat]): the
-  /// conte itself, or an attach row riding it — the storyboard's rail draws
-  /// one row a seat (I-73).
-  ///
-  /// ★One answer for every door that stands on a conte cell — the
-  /// storyboard's conte rows and the conte preview's cells. ↩️The
-  /// storyboard's V row was one of them until I-73 (10-08): it stands on
-  /// the CUT, which seats no row ([_seatTimelineOnStoryboardStand]).
-  LayerId? layerAConteStandSeats({required LayerId? before, int seat = 0}) =>
+  /// ★One answer for every door that stands on a conte cell — the conte
+  /// preview's cells here, the storyboard's conte rows at their seats
+  /// ([layerAProjectionStandSeats], one body). ↩️The storyboard's V row was
+  /// one of them until I-73 (10-08): it stands on the CUT, which seats no
+  /// row ([_seatTimelineOnStoryboardStand]). ↩️It took a SEAT while the
+  /// storyboard's conte rows came through here (I-73); they ask
+  /// [layerAProjectionStandSeats] now, and the preview's cells are the
+  /// conte's own.
+  LayerId? layerAConteStandSeats({required LayerId? before}) =>
       layerAProjectionStandSeats(
         before: before,
-        row: LayerRowAddress(
-          trackConteRowId(_selection.selectedTrackId, seat: seat),
-        ),
+        row: LayerRowAddress(trackConteRowId(_selection.selectedTrackId)),
       );
 
   /// The layer standing on a cell of the PROJECTION ROW [row] in the active

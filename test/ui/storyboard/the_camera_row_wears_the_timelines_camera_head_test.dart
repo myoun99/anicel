@@ -232,6 +232,31 @@ void main() {
       expect(key('storyboard-camera-row-t1'), findsOneWidget);
     });
 
+    testWidgets('…and in a gap, with no head, it is judged by its kind', (
+      tester,
+    ) async {
+      void standInTheGap(EditorSessionManager session) => session.standOnRow(
+        const TrackRowAddress(trackId),
+        panel: WorkingPanel.storyboard,
+        globalFrameIndex: 50,
+      );
+
+      final session = await pumpPanel(
+        tester,
+        rowFilter: const TimelineRowFilter(kinds: {LayerKind.se}),
+        before: standInTheGap,
+      );
+      expect(session.activeCutOrNull, isNull, reason: '⛔전제');
+      expect(label, findsNothing);
+
+      await pumpPanel(
+        tester,
+        rowFilter: const TimelineRowFilter(kinds: {LayerKind.camera}),
+        before: standInTheGap,
+      );
+      expect(label, findsOneWidget, reason: 'LIVENESS: its own kind passes');
+    });
+
     testWidgets('the ↑/↓ walk and the flip window take it first in its group',
         (tester) async {
       final channel = StoryboardRowsChannel();

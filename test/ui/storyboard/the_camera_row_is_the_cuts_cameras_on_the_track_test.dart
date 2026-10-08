@@ -46,8 +46,9 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
 ///
 /// Cuts a [0, 24) and b [24, 48), four frames of gap, then c [52, 64). a's
 /// camera keys 0, 12 (named IN), 20 and 30 — the last past its end; b's 2
-/// (named OUT) and 6; c has none. With the O.L, a 12-frame span at [18, 30)
-/// joins a and b: a is drawn to 30, b from 18.
+/// (named OUT), 6 and 12; c has none. With the O.L, a 12-frame span at
+/// [18, 30) joins a and b: a is drawn to 30, b from 18 — and b's key 12
+/// plays at 30, the first frame past the O.L.
 void main() {
   const trackId = TrackId('t1');
   const a = CutId('a');
@@ -118,26 +119,27 @@ void main() {
         name: 'V1',
         cuts: [
           cutOf('a', 24, [0, 12, 20, 30], names: {12: 'IN'}),
-          cutOf('b', 24, [2, 6], names: {2: 'OUT'}),
+          cutOf('b', 24, [2, 6, 12], names: {2: 'OUT'}),
           cutOf('c', 12, const [], gap: 4),
         ],
       ),
     ],
   );
 
+  /// The 12-frame O.L across a|b.
+  const ol = {18: InstructionEvent(instructionId: 'ol', length: 12)};
+
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester, {
     Set<TimelineSection> hiddenSections = const {},
-    bool withOl = false,
+    Map<int, InstructionEvent> transitions = const {},
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: film());
     addTearDown(session.dispose);
-    if (withOl) {
-      session.transitions.updateTransitionInstructions({
-        18: const InstructionEvent(instructionId: 'ol', length: 12),
-      });
+    if (transitions.isNotEmpty) {
+      session.transitions.updateTransitionInstructions(transitions);
     }
     await tester.pumpWidget(
       MaterialApp(
@@ -196,6 +198,18 @@ void main() {
   /// The line between [camera]'s keys, as the row hands it its course.
   TimelineLaneKeysLine lineOf(WidgetTester tester, String camera) => tester
       .widget<TimelineLaneKeysLine>(key('storyboard-camera-line-$camera'));
+
+  /// A painted PATH that runs across from [top] to [bottom] — a line that
+  /// steps; a straight one is painted as a line, not a path.
+  PaintPatternPredicate pathBetween(double top, double bottom) =>
+      (method, arguments) {
+        if (method != #drawPath) {
+          return false;
+        }
+        final bounds = (arguments.first as Path).getBounds();
+        return (bounds.top - top).abs() < 0.01 &&
+            (bounds.bottom - bottom).abs() < 0.01;
+      };
 
   /// The row's ground, as its painter lays it down.
   StoryboardCameraRowPainter ground(WidgetTester tester) =>
@@ -266,7 +280,7 @@ void main() {
       await pumpPanel(tester);
 
       expect(marksOf(tester, 'a-cam'), [0, 12, 20]);
-      expect(marksOf(tester, 'b-cam'), [26, 30], reason: 'b stands at 24');
+      expect(marksOf(tester, 'b-cam'), [26, 30, 36], reason: 'b stands at 24');
       expect(marksOf(tester, 'c-cam'), isEmpty);
       expect(lineOf(tester, 'b-cam').endsAtKey, isTrue);
       expect(lineOf(tester, 'b-cam').crossFraction, 0.5, reason: 'one line');
@@ -314,7 +328,7 @@ void main() {
       expect(word('IN'), findsOneWidget, reason: 'a\'s key 12, one line');
       expect(word('OUT'), findsOneWidget, reason: 'b\'s key 2, one line');
 
-      await pumpPanel(tester, withOl: true);
+      await pumpPanel(tester, transitions: ol);
       expect(word('IN'), findsOneWidget, reason: 'still before the O.L');
       expect(
         word('OUT'),
@@ -336,9 +350,27 @@ void main() {
       expect(ground(tester).sharedMiddles(), isEmpty);
     });
 
+    testWidgets('a のりしろ into a gap is washed on the whole row — no '
+        'neighbour shares it', (tester) async {
+      // An O.L across c's start, where only the gap stands before it.
+      await pumpPanel(
+        tester,
+        transitions: const {
+          50: InstructionEvent(instructionId: 'ol', length: 4),
+        },
+      );
+
+      final row = tester.getRect(cameraStrip);
+      final px = ppf(tester);
+      expect(ground(tester).noriShiroWashes(), [
+        Rect.fromLTRB(50 * px, 0, 52 * px, row.height),
+      ]);
+      expect(sharedFrames(tester), isEmpty);
+    });
+
     testWidgets('🚨an O.L splits the row — the leaving cut above, the arriving '
         'below, each のりしろ washed on its own half', (tester) async {
-      await pumpPanel(tester, withOl: true);
+      await pumpPanel(tester, transitions: ol);
 
       final row = tester.getRect(cameraStrip);
       // a's key 12 is before the O.L: the one line, in the middle.
@@ -349,7 +381,7 @@ void main() {
       // a's key 20 is inside it: a leaves, above.
       expect(markRect(tester, 'a-cam', 20).center.dy, lessThan(row.center.dy));
       // b's own frame 2 plays at 20, inside it too: b arrives, below.
-      expect(marksOf(tester, 'b-cam'), [20, 24]);
+      expect(marksOf(tester, 'b-cam'), [20, 24, 30]);
       expect(
         markRect(tester, 'b-cam', 2).center.dy,
         greaterThan(row.center.dy),
@@ -361,12 +393,24 @@ void main() {
       );
 
       // a's line starts in the middle and steps up where a starts to leave;
-      // b's runs on the lower line, all of it inside the O.L.
+      // b's starts on the lower line and steps to the middle where the O.L
+      // ends — at the leading edge of its last key's cell, counted from its
+      // own first.
       expect(lineOf(tester, 'a-cam').crossFraction, 0.5);
       expect(lineOf(tester, 'a-cam').steps, [(edge: 18, to: 0.27)]);
       expect(lineOf(tester, 'a-cam').endsAtKey, isFalse);
       expect(lineOf(tester, 'b-cam').crossFraction, 0.73);
-      expect(lineOf(tester, 'b-cam').steps, isEmpty);
+      expect(lineOf(tester, 'b-cam').steps, [(edge: 10, to: 0.5)]);
+      // …and each line is painted as it is handed: a's climbs from the
+      // middle to the upper line, b's from the lower to the middle.
+      expect(
+        key('storyboard-camera-line-a-cam'),
+        paints..something(pathBetween(row.height * 0.27, row.height * 0.5)),
+      );
+      expect(
+        key('storyboard-camera-line-b-cam'),
+        paints..something(pathBetween(row.height * 0.5, row.height * 0.73)),
+      );
 
       final washes = ground(tester).noriShiroWashes();
       final px = ppf(tester);
@@ -389,7 +433,7 @@ void main() {
     testWidgets('🚨an O.L\'s edge dragged moves the stretch it splits, live', (
       tester,
     ) async {
-      final session = await pumpPanel(tester, withOl: true);
+      final session = await pumpPanel(tester, transitions: ol);
       expect(sharedFrames(tester), [(18.0, 30.0)], reason: '⛔전제');
 
       expect(
@@ -412,7 +456,7 @@ void main() {
     testWidgets('🚨a cut\'s end dragged carries the O.L it crosses, live', (
       tester,
     ) async {
-      final session = await pumpPanel(tester, withOl: true);
+      final session = await pumpPanel(tester, transitions: ol);
 
       expect(
         session.edgeDrag.beginCutEdgeDrag(
@@ -451,7 +495,7 @@ void main() {
     });
 
     testWidgets('🚨over an O.L the line pressed names the cut', (tester) async {
-      final session = await pumpPanel(tester, withOl: true);
+      final session = await pumpPanel(tester, transitions: ol);
 
       await tester.tapAt(at(tester, 20, across: 0.8));
       await tester.pumpAndSettle();
@@ -493,7 +537,11 @@ void main() {
 
       await clickTwice(tester, at(tester, 28));
 
-      expect(keysOf(session, b), [2, 4, 6], reason: 'b\'s own frame at 28');
+      expect(
+        keysOf(session, b),
+        [2, 4, 6, 12],
+        reason: 'b\'s own frame at 28',
+      );
       expect(keysOf(session, a), [0, 12, 20, 30]);
     });
 
@@ -503,7 +551,7 @@ void main() {
       await clickTwice(tester, at(tester, 30));
 
       expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
-      expect(keysOf(session, b), [2, 6], reason: 'nothing made');
+      expect(keysOf(session, b), [2, 6, 12], reason: 'nothing made');
     });
   });
 }
