@@ -232,7 +232,12 @@ void main() {
     carry = null; // left for a link to the file itself
     expect(store.durationSecondsFor('a.wav'), isNull);
     await pumpEventQueue();
-    expect(conformedAs, ['c1', 'c2', 'c1', null]);
+    expect(conformedAs, [
+      wholeCarry('a.wav', 'c1').token,
+      wholeCarry('a.wav', 'c2').token,
+      wholeCarry('a.wav', 'c1').token,
+      null,
+    ]);
     store.dispose();
   });
 
