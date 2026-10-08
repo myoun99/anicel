@@ -30,6 +30,9 @@ import '../models/import/tvpp_test_builder.dart';
 void main() {
   late Directory folder;
   late Map<String, String> documents;
+  // How many writes into a document have FINISHED — the moment a reader may
+  // open it (see the save below).
+  var written = 0;
 
   Future<Map<Object?, Object?>?> provider(
     String method,
@@ -52,6 +55,7 @@ void main() {
       case 'writeDocument':
         final uri = arguments['uri']! as String;
         File(arguments['sourcePath']! as String).copySync(documents[uri]!);
+        written++;
         return {
           'status': 'granted',
           'items': [
@@ -67,6 +71,7 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_drive_tabs_');
     documents = {};
+    written = 0;
     ProviderDocuments.debugChannel = provider;
   });
 
@@ -194,14 +199,17 @@ void main() {
     opened.cutVerbs.createCut();
     await tester.pump();
 
+    final writes = written;
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-save')));
-    var saved = before;
-    final deadline = DateTime.now().add(patience);
-    while (saved == before && DateTime.now().isBefore(deadline)) {
-      await beat(tester);
-      saved = await cutsIn(tester, documents[drive.uri]!);
-    }
+    // 🚨THE DOCUMENT IS READ ONCE, AFTER ITS WRITE — never during it. This
+    // read every beat while the save was in flight, and on Windows
+    // `copySync` deletes its target before it copies: a read in that gap
+    // found no file, or one held by the copy (OS 32), and failed the test
+    // under load (10-06 · 10-07 · 10-08; board
+    // `the-drive-tab-test-reads-its-document-while-it-is-rewritten`).
+    await until(tester, () => written > writes);
+    final saved = await cutsIn(tester, documents[drive.uri]!);
     // The save's window lingers a beat after it lands, then goes.
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
