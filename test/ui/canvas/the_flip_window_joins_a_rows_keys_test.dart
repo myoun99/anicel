@@ -62,9 +62,16 @@ void main() {
     expect(lines, hasLength(1));
     final (from, to) = lines.single;
     expect(from.dy, to.dy, reason: 'along the strip');
+    // The strip centres the current frame's slot — frame 3's — so key 1's
+    // middle stands two slots left of the strip's middle.
+    const cell = FlipHudMetrics.frameCellWidth;
+    final size = FlipHudMetrics.sizeFor(FlipHudAxis.frame);
+    final stripMiddle =
+        FlipHudMetrics.railWidth + (size.width - FlipHudMetrics.railWidth) / 2;
+    expect(from.dx, closeTo(stripMiddle - 2 * cell, 1e-6));
     expect(
       to.dx - from.dx,
-      closeTo(4 * FlipHudMetrics.frameCellWidth, 1e-6),
+      closeTo(4 * cell, 1e-6),
       reason: 'the middle of key 1\'s slot to the middle of key 5\'s',
     );
   });

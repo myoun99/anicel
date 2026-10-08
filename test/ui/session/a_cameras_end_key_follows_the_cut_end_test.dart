@@ -199,6 +199,24 @@ void main() {
     });
   });
 
+  test('🚨the floor counts the のりしろ an O.L asks as no length to trim', () {
+    final session = open();
+    session.transitions.updateTransitionInstructions({
+      18: const InstructionEvent(instructionId: 'ol', length: 12),
+    });
+    expect(keysOf(session, a), {0: 0, 12: 12, 29: 23}, reason: '⛔전제');
+
+    trim(session, a, TimelineBlockEdge.end, -20);
+
+    expect(
+      cutIn(session, a).duration,
+      8,
+      reason: 'drawn for 14 — key 12, then the end key — six of them the '
+          'のりしろ',
+    );
+    expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+  });
+
   test('🚨drawn out from the front, the glued cut in front gives no frame '
       'past its own keys', () {
     final session = open();
@@ -211,6 +229,35 @@ void main() {
       reason: 'a gives ten — its key 12 stays, and its end key takes 13',
     );
     expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+  });
+
+  test('…the gap between them spent first', () {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('gap'),
+        name: 'Gap',
+        createdAt: DateTime.utc(2026, 10, 9),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [
+              cutOf('a', [0, 12, 23]),
+              cutOf('b', [2, 23]).copyWith(leadingGapFrames: 4),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+
+    trim(session, b, TimelineBlockEdge.start, -20);
+
+    expect(
+      (cutIn(session, a).duration, cutIn(session, b).duration),
+      (14, 38),
+      reason: 'b takes the four of the gap, then the ten a can give',
+    );
   });
 
   group('a cut with a conte', () {
