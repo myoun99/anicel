@@ -69,3 +69,11 @@ class CutCamera {
   @override
   String toString() => 'CutCamera(keyframes: $keyframes)';
 }
+
+/// Whether a camera key can stand on [frame] of a cut drawn for
+/// [drawnFrameCount] frames — its own frames, the のりしろ an O.L asks
+/// included. 🗣️I-73-camera-row-Q2 (유저 2026-10-09: 「콘티처럼 컷밖으로
+/// 못나가게 클리핑」 → `own-frames`): a camera key lives there and nowhere
+/// else, so the verbs that make one ask this first.
+bool cameraKeyFits(int frame, {required int drawnFrameCount}) =>
+    frame >= 0 && frame < drawnFrameCount;

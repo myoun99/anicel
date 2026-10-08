@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
+import '../../models/cut_camera.dart' show cameraKeyFits;
 import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -12,6 +13,7 @@ import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_transform_lane_carrier.dart';
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/camera_pose_resolver.dart';
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../../services/cut_frame_composite_plan.dart';
@@ -279,6 +281,36 @@ class LaneVerbs {
         _standingSpan(layerId, transformGroupHeaderLane.laneId),
       _ => null,
     };
+  }
+
+  /// Whether [lane] holds a frame a key can be made on
+  /// ([_keyableFrames]) — the ＋'s gate, asked of the span it presses.
+  bool canCreateLaneKeysFor(TimelineLaneSelection lane) {
+    final layer = laneVerbLayerFor(lane.layerId);
+    return layer == null || _keyableFrames(layer, lane).isNotEmpty;
+  }
+
+  /// The frames of [lane] a key can be made on: none before frame 0, and on
+  /// the CAMERA's lanes none its cut is not drawn for — 🗣️I-73-camera-row-Q2
+  /// (유저 2026-10-09: 「콘티처럼 컷밖으로 못나가게 클리핑」 → `own-frames`).
+  List<int> _keyableFrames(Layer layer, TimelineLaneSelection lane) {
+    final cutId = _project.activeCutId;
+    final drawn = _transformHomeOf(layer) == _TransformHome.cutCamera
+        ? (cutId == null
+              ? 0
+              : cutDrawnFrameCount(_project.repository.requireProject(), cutId))
+        : null;
+    return [
+      for (
+        var frame = lane.startIndex;
+        frame < lane.endIndexExclusive;
+        frame += 1
+      )
+        if (drawn == null
+            ? frame >= 0
+            : cameraKeyFits(frame, drawnFrameCount: drawn))
+          frame,
+    ];
   }
 
   /// The row you are STANDING on, as a one-frame span at the playhead.
@@ -1467,14 +1499,7 @@ class LaneVerbs {
       return;
     }
     final layer = scope.layer;
-    final frames = [
-      for (
-        var frame = lane.startIndex;
-        frame < lane.endIndexExclusive;
-        frame += 1
-      )
-        if (frame >= 0) frame,
-    ];
+    final frames = _keyableFrames(layer, lane);
     // R6: an EFFECT-lane selection freezes keys on the effect chain
     // instead — same rule, same single undo.
     if (scope.effectLanes) {
