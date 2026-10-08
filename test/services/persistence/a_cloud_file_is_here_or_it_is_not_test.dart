@@ -101,6 +101,7 @@ void main() {
       },
     );
     final seen = <Duration>[];
+    final real = Stopwatch()..start();
 
     await expectLater(
       FolderPicker.materializeOpenedFile(
@@ -117,6 +118,33 @@ void main() {
       reason: 'every second, none skipped, all the way to the deadline — '
           'while the probes backed off to two seconds apart',
     );
+    expect(
+      real.elapsed,
+      lessThan(const Duration(seconds: 2)),
+      reason: 'counted on the clock held here, not four real seconds',
+    );
+  });
+
+  test('the real clock sleeps its slices — a short wait is told the time a '
+      'handful of times, not on every turn of the loop', () async {
+    final path = at('never-either.anicel');
+    File(path).writeAsBytesSync(const <int>[]);
+    FolderPicker.debugDownloadRequester = (_) async {};
+    var told = 0;
+
+    await expectLater(
+      FolderPicker.materializeOpenedFile(
+        path,
+        within: const Duration(milliseconds: 300),
+        step: const Duration(milliseconds: 100),
+        onWaiting: (_, _) => told += 1,
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    // At 100 and 300 ms by the schedule — a slow machine only tells it
+    // fewer times. A slice that did not sleep tells it on every turn.
+    expect(told, inInclusiveRange(1, 4));
   });
 
   test('🚨the wait reports WHAT IT SAW, so the sentence can be true', () async {
