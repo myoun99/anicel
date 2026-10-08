@@ -544,21 +544,19 @@ class _WorkspaceBrushPresets {
     }
     final message = await _state._presetLibrary.exportPresets(
       presets,
-      pickDestination: (suggestedName) async {
-        // The suffix a name typed bare lacks, and the replace question it
-        // re-opens, are the save window's door's ([pickSaveFileForUser]) —
-        // not the library's, which has no business knowing which platform
-        // asked. ↩️This appended the suffix itself, at the write, and so
-        // wrote over whatever stood at the suffixed name unasked.
-        final grant = await pickSaveFileForUser(
-          _state.context,
-          suggestedName: suggestedName,
-          acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
-        );
-        return grant?.path;
-      },
-      write: (path, contents) =>
-          File(path).writeAsString(contents, flush: true),
+      // The door every finished file leaves by: where a save window answers
+      // with a path it asks there — the suffix a name typed bare lacks, and
+      // the replace question it re-opens, are that window's door's
+      // ([pickSaveFileForUser]) — and where none does it writes in the app
+      // first and the export window places it. ↩️This appended the suffix
+      // itself, at the write, and so wrote over whatever stood at the
+      // suffixed name unasked.
+      hand: (suggestedName, write) => handWrittenFileToUser(
+        _state.context,
+        suggestedName: suggestedName,
+        acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
+        write: write,
+      ),
     );
     if (message != null) {
       await _notice(message);

@@ -640,9 +640,7 @@ void _exportRoundTripTests() {
     final path = '${tempDirectory.path}/one.anibrush';
     final message = await source.exportPresets(
       [saved],
-      pickDestination: (_) async => path,
-      write: (destination, contents) =>
-          File(destination).writeAsString(contents),
+      hand: (_, write) async => await write(path) ? path : null,
     );
 
     expect(message, contains('Exported'));
@@ -753,14 +751,90 @@ void _exportRoundTripTests() {
     expect(
       await library.exportPresets(
         const [],
-        pickDestination: (_) async {
+        hand: (_, _) async {
           picked = true;
           return null;
         },
-        write: (_, _) async {},
       ),
       isNull,
     );
     expect(picked, isFalse);
+  });
+
+  group('🚨the export hands its file to the door — it asks for no path '
+      'itself (brush-export-has-no-road-where-no-save-window-answers-a-path)',
+      () {
+    BrushPresetLibrary exporting() {
+      final library = libraryOf(
+        service: BrushPresetFileService(
+          filePath: '${tempDirectory.path}/library.json',
+        ),
+      );
+      addTearDown(library.dispose);
+      library.saveCurrent(BrushSettings(size: 7));
+      return library;
+    }
+
+    test('🎯where no save window answers with a path, the door writes in '
+        'the app first and places it — the brush arrives whole', () async {
+      final library = exporting();
+      final staged = '${tempDirectory.path}/staged.anibrush';
+      final placed = '${tempDirectory.path}/placed.anibrush';
+      String? named;
+
+      final message = await library.exportPresets(
+        library.presets,
+        hand: (name, write) async {
+          named = name;
+          if (!await write(staged)) return null;
+          File(staged).renameSync(placed);
+          return placed;
+        },
+      );
+
+      expect(named, '${library.presets.single.name}.anibrush');
+      expect(message, contains('Exported'));
+      expect(
+        decodeBrushPack(File(placed).readAsStringSync()).presets.single.name,
+        library.presets.single.name,
+      );
+    });
+
+    test('a person who backs out is told nothing', () async {
+      final library = exporting();
+
+      expect(
+        await library.exportPresets(
+          library.presets,
+          hand: (_, _) async => null,
+        ),
+        isNull,
+      );
+    });
+
+    test('a write that fails says so, why included', () async {
+      final library = exporting();
+
+      final message = await library.exportPresets(
+        library.presets,
+        hand: (_, write) async =>
+            await write('${tempDirectory.path}/no/such/folder/a.anibrush')
+            ? 'landed'
+            : null,
+      );
+
+      expect(message, startsWith('Could not write the brush file: '));
+    });
+
+    test('a door that fails says so', () async {
+      final library = exporting();
+
+      final message = await library.exportPresets(
+        library.presets,
+        hand: (_, _) async => throw StateError('no window'),
+      );
+
+      expect(message, 'Could not choose where to save: Bad state: no window');
+    });
   });
 }

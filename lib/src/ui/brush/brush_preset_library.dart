@@ -326,11 +326,23 @@ class BrushPresetLibrary extends ChangeNotifier {
   /// lost. The two entry points are the user's own split (`H25-Q1`, 답
   /// both-by-selection): one brush, or the group it sits in.
   ///
+  /// [hand] puts a file called its first argument in the person's hands:
+  /// it asks where, has its second write the file at a path — there, or in
+  /// the app first where no save window answers with a path — and answers
+  /// where it landed, null when the person would not have it.
+  /// 🚨brush-export-has-no-road-where-no-save-window-answers-a-path
+  /// (2026-10-08): it asked the save window for a path itself, and on the
+  /// iPad and Android, which have no such window, every export ended in an
+  /// error.
+  ///
   /// Returns the user-facing message, or null when the save was cancelled.
   Future<String?> exportPresets(
     List<BrushPreset> presets, {
-    required Future<String?> Function(String suggestedName) pickDestination,
-    required Future<void> Function(String path, String contents) write,
+    required Future<String?> Function(
+      String suggestedName,
+      Future<bool> Function(String path) write,
+    )
+    hand,
   }) async {
     if (presets.isEmpty) {
       return null;
@@ -351,19 +363,28 @@ class BrushPresetLibrary extends ChangeNotifier {
     final suggested =
         '${presets.length == 1 ? presets.single.name : _groupNameFor(groupIds)}'
         '.$anicelBrushExtension';
-    final String? path;
+    Object? writeFailed;
+    Future<bool> write(String path) async {
+      try {
+        await File(path).writeAsString(encodeBrushPack(pack), flush: true);
+        return true;
+      } on Object catch (error) {
+        writeFailed = error;
+        return false;
+      }
+    }
+
+    final String? landed;
     try {
-      path = await pickDestination(suggested);
+      landed = await hand(suggested, write);
     } on Object catch (error) {
       return 'Could not choose where to save: $error';
     }
-    if (path == null || _disposed) {
-      return null;
+    if (writeFailed != null) {
+      return 'Could not write the brush file: $writeFailed';
     }
-    try {
-      await write(path, encodeBrushPack(pack));
-    } on Object catch (error) {
-      return 'Could not write the brush file: $error';
+    if (landed == null || _disposed) {
+      return null;
     }
     return presets.length == 1
         ? 'Exported "${presets.single.name}".'

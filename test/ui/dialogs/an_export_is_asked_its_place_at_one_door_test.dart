@@ -200,5 +200,23 @@ void main() {
       ];
       expect(callers, ['lib/src/ui/dialogs/folder_pick_flow.dart']);
     });
+
+    test('🚨and past the flow only Save As asks that door for a path — the '
+        'one caller with a road of its own where no save window answers '
+        'with one. A file that is handed over and never written again '
+        'leaves by `handWrittenFileToUser`', () {
+      // brush-export-has-no-road-where-no-save-window-answers-a-path
+      // (2026-10-08): the brush export asked for a path here itself, and on
+      // the iPad and Android every export of a brush ended in an error.
+      final callers = [
+        for (final file in dartFilesUnder('lib'))
+          if (libPath(file) != 'lib/src/ui/dialogs/folder_pick_flow.dart')
+            for (final _ in 'pickSaveFileForUser('.allMatches(
+              file.readAsStringSync(),
+            ))
+              libPath(file),
+      ];
+      expect(callers, ['lib/src/ui/menu/editor_top_strip.dart']);
+    });
   });
 }
