@@ -1139,26 +1139,41 @@ FloodFillRegion? _gapCloseFloodRegion({
 
 /// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):
 /// the outline the user just drew, filled with [color] whatever is under
-/// it.
+/// it — [buildRegionFillDab] for one outline.
+BrushDab? buildShapeFillDab({
+  required CanvasSelectionShape shape,
+  required int color,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) => buildRegionFillDab(
+  region: CanvasSelectionRegion.shape(shape),
+  color: color,
+  opacity: opacity,
+  options: options,
+);
+
+/// An AREA laid as ONE dab: every pixel [region] covers, painted [color]
+/// whatever is under it and whoever asked — the fill tool's shape fill
+/// ([buildShapeFillDab]), and what the shape tool lays without the brush:
+/// its fill and its plain line (I-69).
 ///
 /// It shares the flood's tail rather than resembling it. Once there is a
 /// coverage mask the two are the same problem, so the expand and
 /// anti-alias passes are literally [_cropAndFinishFloodRegion] — which is
 /// why "AA follows the fill" (유저 확정) needed no new rasterizer: the
 /// bucket's AA has always been a post-pass over a binary mask, and a
-/// polygon's mask is binary too.
+/// region's mask is binary too.
 ///
 /// What it does NOT share is the front: no lazy compose, no seed, no
-/// tolerance. A shape fill never looks at the picture, so it never pays to
+/// tolerance. An area never looks at the picture, so it never pays to
 /// composite one — this is markedly cheaper than a flood, not a variant of
-/// it. Null when the outline covers no pixels at all.
-BrushDab? buildShapeFillDab({
-  required CanvasSelectionShape shape,
+/// it. Null when the region covers no pixels at all.
+BrushDab? buildRegionFillDab({
+  required CanvasSelectionRegion region,
   required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
 }) {
-  final region = CanvasSelectionRegion.shape(shape);
   final bounds = region.coverageBounds;
   final left = bounds.left.floor();
   final top = bounds.top.floor();

@@ -15,6 +15,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -25,6 +26,8 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/plain_line_region.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -502,19 +505,85 @@ void main() {
     );
   });
 
-  group('buildShapeFillDab', () {
-    int alphaAt(BrushDab dab, int x, int y) {
-      final stamp = dab.stamp!;
-      final left = (dab.center.x - stamp.width / 2).round();
-      final top = (dab.center.y - stamp.height / 2).round();
-      final lx = x - left;
-      final ly = y - top;
-      if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
-        return 0;
-      }
-      return stamp.rgba[(ly * stamp.width + lx) * 4 + 3];
+  int alphaAt(BrushDab dab, int x, int y) {
+    final stamp = dab.stamp!;
+    final left = (dab.center.x - stamp.width / 2).round();
+    final top = (dab.center.y - stamp.height / 2).round();
+    final lx = x - left;
+    final ly = y - top;
+    if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
+      return 0;
     }
+    return stamp.rgba[(ly * stamp.width + lx) * 4 + 3];
+  }
 
+  // What the shape tool lays without the brush (I-69): its fill is one
+  // outline — the group below — and its plain line an area of many pieces
+  // with a hole in the middle.
+  group('buildRegionFillDab', () {
+    // A rectangle (10,10)–(40,30) drawn six wide: the band runs three
+    // either side of the trace.
+    CanvasSelectionRegion ring() => plainLineRegion(
+      points: [
+        CanvasPoint(x: 10, y: 10),
+        CanvasPoint(x: 40, y: 10),
+        CanvasPoint(x: 40, y: 30),
+        CanvasPoint(x: 10, y: 30),
+      ],
+      closed: true,
+      width: 6,
+      corners: ShapeCorners.sharp,
+    )!;
+
+    test('an area of many pieces is laid as ONE: whole across where they '
+        'meet, and its hole stays a hole', () {
+      final dab = buildRegionFillDab(
+        region: ring(),
+        color: 0xFF3366CC,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      )!;
+
+      // Along the top band, from the corner piece on one side across both
+      // ends of the side's own box to the corner piece on the other.
+      for (var x = 7; x <= 42; x += 1) {
+        expect(alphaAt(dab, x, 7), 255, reason: 'the outer row at $x');
+        expect(alphaAt(dab, x, 12), 255, reason: 'the inner row at $x');
+      }
+      expect(alphaAt(dab, 6, 10), 0, reason: 'three wide and no more');
+      expect(alphaAt(dab, 25, 13), 0, reason: 'the hole begins');
+      expect(alphaAt(dab, 25, 20), 0, reason: 'the hole');
+      expect(dab.color, 0xFF3366CC);
+    });
+
+    test('the edge is softened once, round the whole area — a join inside '
+        'it is not an edge', () {
+      final dab = buildRegionFillDab(
+        region: ring(),
+        color: 0xFF000000,
+        options: const FloodFillOptions(expandPx: 0, antiAlias: true),
+      )!;
+
+      for (var x = 8; x <= 41; x += 1) {
+        expect(alphaAt(dab, x, 9), 255, reason: 'inside the band at $x');
+        expect(alphaAt(dab, x, 10), 255, reason: 'inside the band at $x');
+      }
+      expect(alphaAt(dab, 25, 7), inExclusiveRange(0, 255), reason: 'an edge');
+      expect(alphaAt(dab, 25, 12), inExclusiveRange(0, 255));
+    });
+
+    test('an area that covers no pixel lays nothing', () {
+      // A sliver between two rows of pixel centres.
+      final dab = buildRegionFillDab(
+        region: CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 0.6, right: 10, bottom: 1.4),
+        ),
+        color: 0xFF000000,
+      );
+      expect(dab, isNull);
+    });
+  });
+
+  group('buildShapeFillDab', () {
     test('fills the outline with the colour, corners and all', () {
       // 유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다. There is no
       // picture in this test at all, which is the point: a shape fill has

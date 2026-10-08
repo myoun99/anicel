@@ -30,6 +30,10 @@ import '../../services/selection_placement.dart';
 import '../../services/stamp_carry.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/shape_tool_options.dart';
+import '../../services/canvas_flood_fill.dart'
+    show FloodFillOptions, buildRegionFillDab;
+import '../../services/plain_line_region.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/drawing_guide.dart';
@@ -2333,12 +2337,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// shape becomes a stroke ([_drawTracedShape]).
   PathStroker? _pathStroker;
 
-  /// Draw a finished shape-tool drag (I-69): [path] as ONE STROKE of the
-  /// brush in hand, laid by the drawing view through the stroke's own code
-  /// — so the selection clips it, symmetry copies it, undo covers it and it
-  /// is saved as the stroke it is.
+  /// Draw a finished shape-tool drag (I-69) — [path], as the tool is set to
+  /// lay it:
+  ///
+  /// - a line of the BRUSH type as ONE STROKE of the brush in hand, laid by
+  ///   the drawing view through the stroke's own code — so the selection
+  ///   clips it, symmetry copies it, undo covers it and it is saved as the
+  ///   stroke it is;
+  /// - everything else — 「채움」, and a line of the 「일반」 type — as ONE
+  ///   AREA ([_shapeToolArea]), down the funnel a shape fill lands by.
   void _drawTracedShape(DrawnShapePath path) {
-    // Traced on the canvas, stroked in the row's own artwork where the row
+    // Traced on the canvas, drawn in the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
     final onTheRow = <CanvasPoint>[];
     for (final point in path.points) {
@@ -2349,8 +2358,51 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       }
       onTheRow.add(there);
     }
-    _pathStroker?.call([...onTheRow, if (path.closed) onTheRow.first]);
+    if (_brush.shapeDrawsWithTheBrush) {
+      _pathStroker?.call([...onTheRow, if (path.closed) onTheRow.first]);
+      return;
+    }
+    _layArea((color) {
+      final area = _shapeToolArea((points: onTheRow, closed: path.closed));
+      // Exactly the area — it grows by nothing — at the tool's OWN opacity
+      // and with the tool's own edge: no brush is read (유저 답 I-69-Q8:
+      // 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은 타입과
+      // 무관하다」).
+      return area == null
+          ? null
+          : buildRegionFillDab(
+              region: area,
+              color: color,
+              opacity: _brush.activeOpacity,
+              options: FloodFillOptions(
+                expandPx: 0,
+                antiAlias: _brush.shapeOptions.antiAlias,
+              ),
+            );
+    });
   }
+
+  /// What the shape tool lays where it does not draw with the brush, as
+  /// the area it covers — [onTheRow] being the traced path in the row's
+  /// own artwork:
+  ///
+  /// - 「채움」 (유저 답 I-69-Q7 메모): the shape's inside. Only a shape that
+  ///   HAS one gets here ([BrushToolState.shapePart]), and its path is its
+  ///   outline;
+  /// - a line of the 「일반」 type: the line's own area, as wide as the tool
+  ///   says and turning as it says ([plainLineRegion]).
+  CanvasSelectionRegion? _shapeToolArea(DrawnShapePath onTheRow) =>
+      switch (_brush.shapePart) {
+        ShapePart.fill => CanvasSelectionRegion.shape(
+          CanvasSelectionShape(onTheRow.points),
+        ),
+        ShapePart.line => plainLineRegion(
+          points: onTheRow.points,
+          closed: onTheRow.closed,
+          width: _brush.shapeOptions.size,
+          corners: _brush.shapeOptions.corners,
+        ),
+      };
 
   /// Paint a finished shape-fill outline.
   ///
@@ -2363,12 +2415,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
     final onTheRow = _selectionSeat.shapeOnTheRow(shape);
-    if (build == null ||
-        widget._editableCoordinator == null ||
-        onTheRow == null) {
+    if (build == null || onTheRow == null) {
       return;
     }
-    final dab = build(onTheRow, _brush.color);
+    _layArea((color) => build(onTheRow, color));
+  }
+
+  /// Lays an AREA as one dab, whichever tool drew it — the fill tool's
+  /// shape fill, the shape tool's fill, its plain line: the dab is
+  /// [build]'s, and everything after it is one road.
+  void _layArea(BrushDab? Function(int color) build) {
+    if (widget._editableCoordinator == null) {
+      return;
+    }
+    final dab = build(_brush.color);
     if (dab == null) {
       return;
     }

@@ -17,6 +17,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -117,6 +118,10 @@ void main() {
     CanvasTool tool = CanvasTool.select,
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    ShapeToolOptions shapeOptions = const ShapeToolOptions(),
+    // The brush in hand, for a case about what a tool does NOT read of it.
+    // Null = the defaults.
+    BrushToolState Function(BrushToolState defaults)? brushInHand,
     TransformMode transformMode = TransformMode.normal,
     CanvasViewport? viewport,
     // Extra committed ink, mounted with the fixture. `null` replaces the
@@ -182,8 +187,10 @@ void main() {
     var liveTool = tool;
     // ONE brush, HELD, the way the workspace holds it: a tool switch is a
     // change IN HAND that the panel hears (H40 ②), not a new panel.
+    final inHand =
+        brushInHand?.call(BrushToolState.defaults) ?? BrushToolState.defaults;
     final brush = ValueNotifier(
-      BrushToolState.defaults.copyWith(
+      inHand.copyWith(
         tool: tool,
         // Each verb takes the shape only if it speaks it: a line is the
         // shape tool's alone.
@@ -194,6 +201,7 @@ void main() {
             : null,
         fillBlendMode: blendMode,
         shapeBlendMode: blendMode,
+        shapeOptions: shapeOptions,
       ),
     );
     addTearDown(brush.dispose);
@@ -7143,6 +7151,475 @@ void main() {
       await tester.pump();
 
       expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+    });
+
+    // 유저 답 I-69-Q7 메모 (2026-10-08): 「새 도형도구에서도 선/채움을 고르는
+    // 줄을 넣음. 즉 두곳에 존재하지만 승인. 법만 최대한 하나로 통일」 · Q9:
+    // 「채움은 타입과 무관하다」.
+    group('「채움」', () {
+      // The fixture's fill tool lays an exact shape with a hard edge at
+      // full opacity (the harness's own `shapeFillDabFor`).
+      const exactFill = ShapeToolOptions(
+        part: ShapePart.fill,
+        antiAlias: false,
+      );
+
+      testWidgets('🚨lays the traced shape\'s INSIDE as one area, in one '
+          'step — pixel for pixel what the fill tool\'s shape fill lays', (
+        tester,
+      ) async {
+        const probes = [
+          (150, 140),
+          (101, 101),
+          (199, 179),
+          (100, 100),
+          (200, 180),
+          (150, 99),
+          (150, 181),
+          (90, 140),
+          (210, 140),
+        ];
+        Future<List<int>> laidBy(
+          CanvasTool tool,
+          ShapeToolOptions options,
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: tool,
+            shapeOptions: options,
+          );
+          final before = env.history.undoCount;
+          await dragOnLayer(
+            tester,
+            const Offset(100, 100),
+            const Offset(200, 180),
+          );
+          await tester.pump();
+          expect(env.history.undoCount, before + 1, reason: '$tool: one step');
+          expect(env.commands.region, isNull, reason: 'nothing is selected');
+          return [for (final (x, y) in probes) inkAt(env.coordinator, x, y)];
+        }
+
+        final byTheShapeTool = await laidBy(CanvasTool.shape, exactFill);
+        expect(byTheShapeTool.first, isNonZero, reason: 'the middle is filled');
+        expect(byTheShapeTool.last, 0, reason: 'and nothing outside it');
+
+        final byTheFillTool = await laidBy(
+          CanvasTool.fillShape,
+          const ShapeToolOptions(),
+        );
+        expect(byTheShapeTool, byTheFillTool);
+      });
+
+      testWidgets('🚨at the tool\'s OWN opacity — the brush\'s is not read', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: exactFill.copyWith(opacity: 0.5),
+        );
+
+        await dragOnLayer(tester, const Offset(100, 100), const Offset(200, 180));
+        await tester.pump();
+
+        final alpha = inkAt(env.coordinator, 150, 140) & 0xFF;
+        expect(
+          alpha,
+          inInclusiveRange(126, 129),
+          reason: 'half: the brush in hand is at full opacity',
+        );
+      });
+
+      testWidgets('with the edge switch off every pixel is in or out; with '
+          'it on the edge is smoothed', (tester) async {
+        Future<int> partlyCovered(bool antiAlias) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.ellipse,
+            shapeOptions: exactFill.copyWith(antiAlias: antiAlias),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(300, 100),
+            const Offset(400, 180),
+          );
+          await tester.pump();
+          var partly = 0;
+          for (var x = 295; x <= 405; x += 1) {
+            for (var y = 95; y <= 185; y += 1) {
+              final alpha = inkAt(env.coordinator, x, y) & 0xFF;
+              if (alpha != 0 && alpha != 0xFF) {
+                partly += 1;
+              }
+            }
+          }
+          expect(
+            inkAt(env.coordinator, 350, 140) & 0xFF,
+            0xFF,
+            reason: 'the middle of the ellipse is filled either way',
+          );
+          return partly;
+        }
+
+        expect(await partlyCovered(false), 0);
+        expect(await partlyCovered(true), greaterThan(0));
+      });
+
+      testWidgets('on the erase blend it clears the area', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          blendMode: BrushBlendMode.erase,
+          shapeOptions: exactFill,
+        );
+        expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink');
+
+        await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+      });
+
+      testWidgets('🚨a line has no inside: under the line tile the tool '
+          'draws the line, whatever was chosen', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: exactFill,
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 160, 200), isNonZero, reason: 'the line');
+        expect(inkAt(env.coordinator, 160, 230), 0);
+      });
+
+      // a-marquee-on-a-posed-row, for an area as for a stroke.
+      testWidgets('on a posed row it fills the artwork its trace shows', (
+        tester,
+      ) async {
+        const size = BrushCanvasFixture.canvasSize;
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: exactFill,
+          placement: (
+            pose: TransformPose(
+              center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+            ),
+            anchorPoint: null,
+          ),
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(200, 100),
+          const Offset(300, 180),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(env.coordinator, 150, 140),
+          isNonZero,
+          reason: 'the canvas box (200..300) shows artwork (100..200)',
+        );
+        expect(inkAt(env.coordinator, 250, 140), 0);
+      });
+    });
+
+    // 유저 답 I-69-Q8 (2026-10-08): 「둘 다 (설정에 「모서리: 각지게 | 둥글게」)」
+    // · 「일반은 브러시랑 전혀 관계없는 독립적인것임」.
+    group('「일반」', () {
+      // Ten wide and hard-edged: a pixel is the line's or it is not. A
+      // trace through (x, y) covers the pixels five either side of it —
+      // x - 5 to x + 4.
+      const plain = ShapeToolOptions(
+        type: ShapeLineType.plain,
+        size: 10,
+        antiAlias: false,
+      );
+
+      testWidgets('🚨a rectangle is a ring of the tool\'s OWN width whose '
+          'corners are corners — one area, in one step', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: plain,
+        );
+        final ink = env.coordinator;
+        final before = env.history.undoCount;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 180),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 150, 95), isNonZero, reason: 'the top, outside');
+        expect(inkAt(ink, 150, 104), isNonZero, reason: 'and inside');
+        expect(inkAt(ink, 150, 94), 0, reason: 'five and no more');
+        expect(inkAt(ink, 150, 105), 0);
+        expect(inkAt(ink, 95, 140), isNonZero, reason: 'the left');
+        expect(inkAt(ink, 204, 140), isNonZero, reason: 'the right');
+        expect(inkAt(ink, 150, 184), isNonZero, reason: 'the bottom');
+        expect(inkAt(ink, 150, 140), 0, reason: 'a line: nothing is filled');
+        expect(inkAt(ink, 95, 95), isNonZero, reason: 'the corner, whole');
+        expect(inkAt(ink, 204, 184), isNonZero);
+        expect(inkAt(ink, 94, 94), 0);
+        expect(env.commands.region, isNull, reason: 'drawing is not selecting');
+        expect(env.history.undoCount, before + 1, reason: 'one step back');
+
+        env.history.undo();
+        await tester.pump();
+        expect(inkAt(ink, 150, 95), 0, reason: 'and it goes whole');
+        expect(inkAt(ink, 95, 95), 0);
+      });
+
+      testWidgets('「둥글게」 rounds its corners by half the width', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: plain.copyWith(corners: ShapeCorners.round),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 180),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 95, 95), 0, reason: 'the corner\'s point is gone');
+        expect(inkAt(ink, 204, 184), 0);
+        expect(inkAt(ink, 97, 97), isNonZero, reason: 'within the half stays');
+        expect(inkAt(ink, 202, 182), isNonZero);
+        expect(inkAt(ink, 150, 95), isNonZero, reason: 'the sides as wide');
+        expect(inkAt(ink, 150, 94), 0);
+        expect(inkAt(ink, 150, 105), 0);
+        expect(inkAt(ink, 150, 140), 0);
+      });
+
+      testWidgets('a line is cut square AT its two ends — and 「둥글게」 '
+          'rounds them', (tester) async {
+        Future<BrushFrameEditingCoordinator> drawn(ShapeCorners corners) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.line,
+            shapeOptions: plain.copyWith(corners: corners),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(100, 200),
+            const Offset(220, 200),
+          );
+          await tester.pump();
+          return env.coordinator;
+        }
+
+        final sharp = await drawn(ShapeCorners.sharp);
+        expect(inkAt(sharp, 100, 200), isNonZero, reason: 'its first pixel');
+        expect(inkAt(sharp, 219, 200), isNonZero, reason: 'its last');
+        expect(inkAt(sharp, 99, 200), 0, reason: 'as long as it was traced');
+        expect(inkAt(sharp, 220, 200), 0);
+        expect(inkAt(sharp, 100, 195), isNonZero, reason: 'square at the end');
+        expect(inkAt(sharp, 219, 204), isNonZero);
+        expect(inkAt(sharp, 160, 194), 0, reason: 'ten wide');
+        expect(inkAt(sharp, 160, 205), 0);
+
+        final round = await drawn(ShapeCorners.round);
+        expect(inkAt(round, 97, 200), isNonZero, reason: 'past the end');
+        expect(inkAt(round, 222, 200), isNonZero);
+        expect(inkAt(round, 94, 200), 0, reason: 'by the half, no more');
+        expect(inkAt(round, 225, 200), 0);
+        expect(inkAt(round, 96, 195), 0, reason: 'no corner of a square end');
+        expect(inkAt(round, 160, 195), isNonZero, reason: 'as wide');
+        expect(inkAt(round, 160, 194), 0);
+      });
+
+      testWidgets('🚨nothing of the brush in hand is read — not its size, '
+          'not its opacity', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+          brushInHand: (defaults) => defaults.copyWith(size: 40, opacity: 0.3),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(inkAt(ink, 160, 195) & 0xFF, 0xFF, reason: 'at full strength');
+        expect(inkAt(ink, 160, 204) & 0xFF, 0xFF);
+        expect(inkAt(ink, 160, 194), 0, reason: 'ten wide, not forty');
+        expect(inkAt(ink, 160, 205), 0);
+      });
+
+      testWidgets('at the tool\'s OWN opacity', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain.copyWith(opacity: 0.5),
+        );
+
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 200),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(env.coordinator, 160, 200) & 0xFF,
+          inInclusiveRange(126, 129),
+        );
+      });
+
+      testWidgets('with the edge switch off every pixel is the line\'s or it '
+          'is not; with it on the edge is smoothed', (tester) async {
+        Future<int> partlyCovered(bool antiAlias) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeKind: CanvasShapeKind.line,
+            shapeOptions: plain.copyWith(antiAlias: antiAlias),
+          );
+          // A slope, so its edges cross the grid.
+          await dragOnLayer(
+            tester,
+            const Offset(300, 100),
+            const Offset(400, 180),
+          );
+          await tester.pump();
+          var partly = 0;
+          for (var x = 290; x <= 410; x += 1) {
+            for (var y = 90; y <= 190; y += 1) {
+              final alpha = inkAt(env.coordinator, x, y) & 0xFF;
+              if (alpha != 0 && alpha != 0xFF) {
+                partly += 1;
+              }
+            }
+          }
+          expect(
+            inkAt(env.coordinator, 350, 140) & 0xFF,
+            0xFF,
+            reason: 'the middle of the line is whole either way',
+          );
+          return partly;
+        }
+
+        expect(await partlyCovered(false), 0);
+        expect(await partlyCovered(true), greaterThan(0));
+      });
+
+      testWidgets('on the erase blend it clears along the line, and leaves '
+          'what it goes round', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          blendMode: BrushBlendMode.erase,
+          shapeOptions: plain,
+        );
+        final ink = env.coordinator;
+        expect(inkAt(ink, 45, 45), isNonZero, reason: 'ink under the line');
+        expect(inkAt(ink, 60, 60), isNonZero, reason: 'ink inside the ring');
+
+        await dragOnLayer(tester, const Offset(20, 45), const Offset(70, 90));
+        await tester.pump();
+
+        expect(inkAt(ink, 45, 45), 0, reason: 'the top side went over it');
+        expect(inkAt(ink, 60, 60), isNonZero, reason: 'the inside is not it');
+      });
+
+      // R26 #18, for an area as for a stroke.
+      testWidgets('the selection clips it', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+        );
+        env.commands.setRegion(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(
+              left: 100,
+              top: 80,
+              right: 150,
+              bottom: 220,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await dragOnLayer(
+          tester,
+          const Offset(60, 150),
+          const Offset(240, 150),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 125, 150), isNonZero, reason: 'inside');
+        expect(inkAt(env.coordinator, 80, 150), 0, reason: 'before it');
+        expect(inkAt(env.coordinator, 200, 150), 0, reason: 'past it');
+      });
+
+      // a-marquee-on-a-posed-row: its width is the row's own pixels, as a
+      // brush's is.
+      testWidgets('on a posed row it lands on the artwork its trace shows', (
+        tester,
+      ) async {
+        const size = BrushCanvasFixture.canvasSize;
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: plain,
+          placement: (
+            pose: TransformPose(
+              center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+            ),
+            anchorPoint: null,
+          ),
+        );
+        final ink = env.coordinator;
+
+        await dragOnLayer(
+          tester,
+          const Offset(200, 200),
+          const Offset(300, 200),
+        );
+        await tester.pump();
+
+        expect(
+          inkAt(ink, 150, 200),
+          isNonZero,
+          reason: 'the canvas line (200..300) shows artwork (100..200)',
+        );
+        expect(inkAt(ink, 100, 195), isNonZero, reason: 'from its first pixel');
+        expect(inkAt(ink, 99, 200), 0);
+        expect(inkAt(ink, 199, 204), isNonZero, reason: 'to its last');
+        expect(inkAt(ink, 200, 200), 0);
+        expect(inkAt(ink, 250, 200), 0);
+      });
     });
 
     // R26 #18: 「선택하고 그리면 선택 내부만 그려진다」, whatever drew it.
