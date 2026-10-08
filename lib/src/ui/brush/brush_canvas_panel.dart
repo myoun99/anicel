@@ -1305,7 +1305,24 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // it still only worked while a panel was MOUNTED to run it. Storing the
     // view in device units makes the whole sequence a no-op: see
     // [_viewport].
+    //
+    // 🆕A lock on zooming in that was set, moved or lifted holds a stored
+    // view elsewhere (I-27) — stored after the frame, for the reason a new
+    // limit is (`didUpdateWidget`): the owner hears the write, and this is
+    // its build.
+    final ceiling = CanvasZoomCeiling.of(context);
+    if (ceiling != _ceilingHeldTo) {
+      _ceilingHeldTo = ceiling;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _viewportState._holdTheStoredView();
+        }
+      });
+    }
   }
+
+  /// The lock the stored view was last held to ([CanvasZoomCeiling]).
+  double? _ceilingHeldTo;
 
   // ── the selection seat: its own object, in its own file ─────────────
   //

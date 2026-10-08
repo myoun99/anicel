@@ -57,6 +57,8 @@ class AppInputSettings {
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
     this.zoomSnapPercents = defaultZoomSnapPercents,
+    this.zoomCeilingOn = false,
+    this.zoomCeilingPercent = defaultZoomCeilingPercent,
     this.brushSizeSnaps = defaultBrushSizeSnaps,
   });
 
@@ -110,6 +112,31 @@ class AppInputSettings {
   /// Snap tables (PEN-7b) — every list user-editable.
   final double rotationSnapDegrees;
   final List<double> zoomSnapPercents;
+
+  /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능.
+  /// 100%이면 100% 넘어서 확대하지 못하게 락 거는용도. 축소는 이전처럼
+  /// 자유」. The lock on zooming IN, and the display percent it holds a view
+  /// under.
+  ///
+  /// ⚠️Two fields on purpose. Switched off, the number is KEPT: the row in
+  /// the settings window keeps its place and its value, dimmed (I-27-Q1:
+  /// 「끄면 칸은 회색으로 자리만」) — one nullable number would forget what
+  /// the user typed each time the switch went off.
+  ///
+  /// WHERE it holds is not this object's to say. The answers were 「그리기
+  /// 캔버스만」 (I-27-Q1) and, there, 「화면에 맞추기도 최대 줌에서 멈춘다」
+  /// (I-27-Q2): the drawing canvas reads [zoomCeiling] for the view under
+  /// it, and no other document view does.
+  final bool zoomCeilingOn;
+  final double zoomCeilingPercent;
+
+  /// The example the request gave — 「100%이면」 — which is also where the
+  /// number stands until the user types one.
+  static const double defaultZoomCeilingPercent = 100;
+
+  /// The percent a locked view may not be zoomed past, or null while the
+  /// lock is off.
+  double? get zoomCeiling => zoomCeilingOn ? zoomCeilingPercent : null;
   final List<double> brushSizeSnaps;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
@@ -234,6 +261,8 @@ class AppInputSettings {
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
     List<double>? zoomSnapPercents,
+    bool? zoomCeilingOn,
+    double? zoomCeilingPercent,
     List<double>? brushSizeSnaps,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
@@ -255,6 +284,8 @@ class AppInputSettings {
         navigationModifierRotationLock ?? this.navigationModifierRotationLock,
     rotationSnapDegrees: rotationSnapDegrees ?? this.rotationSnapDegrees,
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
+    zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
+    zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
     brushSizeSnaps: brushSizeSnaps ?? this.brushSizeSnaps,
   );
 
@@ -275,8 +306,17 @@ class AppInputSettings {
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
     'zoomSnapPercents': zoomSnapPercents,
+    'zoomCeilingOn': zoomCeilingOn,
+    'zoomCeilingPercent': zoomCeilingPercent,
     'brushSizeSnaps': brushSizeSnaps,
   };
+
+  /// [json] as a number above zero, or [fallback] — a lock at nothing, or
+  /// below it, is a file somebody edited by hand.
+  static double _positiveOr(Object? json, double fallback) {
+    final value = json is num ? json.toDouble() : fallback;
+    return value > 0 && value.isFinite ? value : fallback;
+  }
 
   static List<double> _doubleList(Object? json, List<double> fallback) {
     if (json is! List) {
@@ -353,6 +393,11 @@ class AppInputSettings {
       legacyDefaults: legacyZoomSnapDefaults,
       current: defaultZoomSnapPercents,
     ),
+    zoomCeilingOn: json['zoomCeilingOn'] as bool? ?? false,
+    zoomCeilingPercent: _positiveOr(
+      json['zoomCeilingPercent'],
+      defaultZoomCeilingPercent,
+    ),
     brushSizeSnaps: _upgradedList(
       _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
       legacyDefaults: legacyBrushSizeSnapDefaults,
@@ -379,6 +424,8 @@ class AppInputSettings {
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
+      other.zoomCeilingOn == zoomCeilingOn &&
+      other.zoomCeilingPercent == zoomCeilingPercent &&
       listEquals(other.brushSizeSnaps, brushSizeSnaps);
 
   @override
@@ -399,6 +446,8 @@ class AppInputSettings {
     navigationModifierRotationLock,
     rotationSnapDegrees,
     Object.hashAll(zoomSnapPercents),
+    zoomCeilingOn,
+    zoomCeilingPercent,
     Object.hashAll(brushSizeSnaps),
   );
 }

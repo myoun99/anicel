@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 
+import '../../models/app_input_settings.dart';
 import '../../models/layer_effect.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
@@ -13,6 +14,7 @@ import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/canvas_press.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -540,7 +542,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onPointerCancel: widget.onAutoFrameSettled == null
           ? null
           : (_) => widget.onAutoFrameSettled!(),
-      child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
+      // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100% 넘어서 확대하지
+      // 못하게 락」 — and, asked where it holds (I-27-Q1): 「그리기 캔버스만」.
+      // This host IS the drawing canvas, so it is the one place that says
+      // the lock to the view under it; the sheets and the viewers build the
+      // same panel and say nothing.
+      child: ValueListenableBuilder<AppInputSettings>(
+        valueListenable: AppInput.settings,
+        builder: (context, settings, panel) =>
+            CanvasZoomCeiling(percent: settings.zoomCeiling, child: panel!),
+        child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
+      ),
     );
   }
 

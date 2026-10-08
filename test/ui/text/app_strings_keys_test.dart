@@ -253,6 +253,7 @@ void main() {
     'inputRotationLockHelp': (s) => s.inputRotationLockHelp,
     'inputRotationSnap': (s) => s.inputRotationSnap,
     'inputZoomSnaps': (s) => s.inputZoomSnaps,
+    'inputZoomCeiling': (s) => s.inputZoomCeiling,
     'inputBrushSizeSnaps': (s) => s.inputBrushSizeSnaps,
     'inputTabletHeading': (s) => s.inputTabletHeading,
     'inputTabletStandard': (s) => s.inputTabletStandard,

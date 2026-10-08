@@ -534,6 +534,7 @@ enum AppStrings {
   String get inputRotationLockHelp => _s('inputRotationLockHelp');
   String get inputRotationSnap => _s('inputRotationSnap');
   String get inputZoomSnaps => _s('inputZoomSnaps');
+  String get inputZoomCeiling => _s('inputZoomCeiling');
   String get inputBrushSizeSnaps => _s('inputBrushSizeSnaps');
   String get inputTabletHeading => _s('inputTabletHeading');
   String get inputTabletStandard => _s('inputTabletStandard');
@@ -1958,6 +1959,7 @@ enum AppStrings {
         'OFF (default): it snaps the angle.',
     'inputRotationSnap': 'Rotation snap (°)',
     'inputZoomSnaps': 'Zoom snaps (%)',
+    'inputZoomCeiling': 'Max zoom lock (%)',
     'inputBrushSizeSnaps': 'Brush size snaps (px)',
     'inputTabletHeading': 'Tablet service',
     'inputTabletStandard': 'Standard (default)',
@@ -3113,6 +3115,7 @@ enum AppStrings {
         'OFF（既定）：角度をスナップします。',
     'inputRotationSnap': '回転スナップ（°）',
     'inputZoomSnaps': 'ズームスナップ（%）',
+    'inputZoomCeiling': '最大ズームをロック（%）',
     'inputBrushSizeSnaps': 'ブラシサイズのスナップ（px）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
@@ -4488,6 +4491,7 @@ enum AppStrings {
         'OFF(기본): 각도를 스냅합니다.',
     'inputRotationSnap': '회전 스냅 (°)',
     'inputZoomSnaps': '줌 스냅 (%)',
+    'inputZoomCeiling': '최대 줌 잠금 (%)',
     'inputBrushSizeSnaps': '브러시 크기 스냅 (px)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
@@ -5871,6 +5875,7 @@ enum AppStrings {
         "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
     'inputRotationSnap': 'Cran de rotation (°)',
     'inputZoomSnaps': 'Crans de zoom (%)',
+    'inputZoomCeiling': 'Verrou de zoom max (%)',
     'inputBrushSizeSnaps': 'Crans de taille de pinceau (px)',
     'inputTabletHeading': 'Service tablette',
     'inputTabletStandard': 'Standard (par défaut)',
@@ -7288,6 +7293,7 @@ enum AppStrings {
     'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
     'inputRotationSnap': '旋转吸附（°）',
     'inputZoomSnaps': '缩放吸附（%）',
+    'inputZoomCeiling': '锁定最大缩放（%）',
     'inputBrushSizeSnaps': '笔刷大小吸附（px）',
     'inputTabletHeading': '数位板服务',
     'inputTabletStandard': '标准（默认）',

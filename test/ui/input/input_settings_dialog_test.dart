@@ -76,6 +76,92 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  // 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」;
+  // I-27-Q1: one line under the zoom snaps — a switch and a number, and
+  // 「끄면 칸은 회색으로 자리만」.
+  group('the lock on zooming in', () {
+    final lockSwitch = find.byKey(
+      const ValueKey<String>('settings-zoom-ceiling'),
+    );
+    final lockNumber = find.byKey(
+      const ValueKey<String>('settings-zoom-ceiling-percent'),
+    );
+
+    Future<void> type(WidgetTester tester, String text) async {
+      await tester.ensureVisible(lockNumber);
+      await tester.pumpAndSettle();
+      await tester.enterText(lockNumber, text);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('stands right under the zoom snaps', (tester) async {
+      await pumpDialog(tester);
+      final snaps = tester.getRect(
+        find.byKey(const ValueKey<String>('settings-snap-zoom')),
+      );
+      final brushSizes = tester.getRect(
+        find.byKey(const ValueKey<String>('settings-snap-size')),
+      );
+      final number = tester.getRect(lockNumber);
+      expect(number.top, greaterThan(snaps.bottom - 1));
+      expect(number.bottom, lessThan(brushSizes.top + 1));
+      expect(number.left, snaps.left, reason: 'in the column of the fields');
+    });
+
+    testWidgets('⛔its number does not come and go with the switch: off, the '
+        'field is there, dimmed, holding its value', (tester) async {
+      await pumpDialog(tester);
+
+      expect(tester.booleanDotIn(lockSwitch).value, isFalse);
+      expect(lockNumber, findsOneWidget);
+      expect(tester.widget<TextField>(lockNumber).enabled, isFalse);
+      expect(tester.widget<TextField>(lockNumber).controller!.text, '100');
+    });
+
+    testWidgets('🚨the switch locks at the number the row holds, and a typed '
+        'number is the lock', (tester) async {
+      await pumpDialog(tester);
+      await tester.ensureVisible(lockSwitch);
+      await tester.pumpAndSettle();
+
+      await tester.tap(lockSwitch);
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomCeiling, 100);
+      expect(tester.widget<TextField>(lockNumber).enabled, isTrue);
+
+      await type(tester, '250');
+      expect(AppInput.settings.value.zoomCeiling, 250);
+
+      await tester.tap(lockSwitch);
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomCeiling, isNull);
+      expect(tester.widget<TextField>(lockNumber).controller!.text, '250');
+    });
+
+    testWidgets('a number a view cannot stand on becomes the nearest it '
+        'can, and words are not a number', (tester) async {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        zoomCeilingOn: true,
+      );
+      await pumpDialog(tester);
+
+      await type(tester, '5');
+      expect(AppInput.settings.value.zoomCeilingPercent, 10);
+      await type(tester, '9000');
+      expect(AppInput.settings.value.zoomCeilingPercent, 1600);
+      await type(tester, 'a lot');
+      expect(AppInput.settings.value.zoomCeilingPercent, 1600);
+      await type(tester, '33.3');
+      expect(AppInput.settings.value.zoomCeilingPercent, 33.3);
+      expect(
+        tester.widget<TextField>(lockNumber).controller!.text,
+        '33.3',
+        reason: 'the field shows every digit it holds',
+      );
+    });
+  });
+
   testWidgets('non-Windows hides the tablet-service section', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     await pumpDialog(tester);

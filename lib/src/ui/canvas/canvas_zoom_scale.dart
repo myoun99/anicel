@@ -35,21 +35,42 @@ import '../effective_device_pixel_ratio.dart';
 /// units; a chrome surface never asks at all.
 @immutable
 class CanvasZoomScale {
-  const CanvasZoomScale(double effectiveRatio)
+  const CanvasZoomScale(double effectiveRatio, {double? ceilingPercent})
     // Normalized in the constructor, like [DeviceGrid], so `==` stays
     // reflexive (NaN != NaN) and no consumer divides by zero.
     : ratio = effectiveRatio > 0 && effectiveRatio < double.infinity
           ? effectiveRatio
-          : 1.0;
+          : 1.0,
+      // A lock is a stop INSIDE the advertised range: whatever number was
+      // typed, the view can stand on it.
+      ceilingPercent = ceilingPercent == null
+          ? null
+          : ceilingPercent < minDisplayZoom * 100
+          ? minDisplayZoom * 100
+          : ceilingPercent > maxDisplayZoom * 100
+          ? maxDisplayZoom * 100
+          : ceilingPercent;
 
   /// The effective device-pixel ratio: monitor × UI scale.
   final double ratio;
 
+  /// 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능. 100%이면 100% 넘어서
+  /// 확대하지 못하게 락 거는용도. 축소는 이전처럼 자유」. The DISPLAY percent
+  /// this view may not be zoomed past, or null where nothing is locked.
+  ///
+  /// It is the view's, not the app's: asked where the lock holds, 유저 wrote
+  /// 「그리기 캔버스만」 (I-27-Q1) — so the drawing canvas says it for what
+  /// is under it ([CanvasZoomCeiling]) and a viewer or a sheet, which share
+  /// every line of this law, never hears of it.
+  final double? ceilingPercent;
+
   /// The scale in force for [context] — the same source every quantizer
   /// reads. ⛔Not `MediaQuery`, which reports the monitor's raw ratio and
   /// would leave a scaled UI showing a zoom percentage that means nothing.
-  static CanvasZoomScale of(BuildContext context) =>
-      CanvasZoomScale(EffectiveDevicePixelRatio.of(context));
+  static CanvasZoomScale of(BuildContext context) => CanvasZoomScale(
+    EffectiveDevicePixelRatio.of(context),
+    ceilingPercent: CanvasZoomCeiling.of(context),
+  );
 
   /// What the readout shows for [renderZoom] — device pixels per artwork
   /// pixel.
@@ -93,9 +114,13 @@ class CanvasZoomScale {
   /// ⛔Widening the text alone would only move that gap to the third digit.
   /// The ZOOM lands, and the pill writes every digit it has — what it says
   /// IS the view.
+  ///
+  /// 🆕And under the lock, where one is set ([ceilingPercent], I-27): the
+  /// top of the range is the user's number there, for every verb at once —
+  /// which is what 「법 하나로 통일」 bought.
   double landed(double renderZoom) {
     final percent = (display(renderZoom) * 100)
-        .clamp(minDisplayZoom * 100, maxDisplayZoom * 100)
+        .clamp(minDisplayZoom * 100, ceilingPercent ?? maxDisplayZoom * 100)
         .toDouble();
     return render(CanvasViewport.onReadoutGrid(percent) / 100);
   }
@@ -108,9 +133,16 @@ class CanvasZoomScale {
   /// past it — a page far larger than its window fits below 10% — and
   /// nobody has decided otherwise; an invented stop here would make Fit not
   /// fit.
+  ///
+  /// ↩️Decided since, for a LOCKED view and upward only (유저 2026-10-08,
+  /// I-27-Q2: 「화면에 맞추기도 최대 줌에서 멈춘다」): a small canvas fitted
+  /// under a lock stands at the lock, smaller than its window. Downward a
+  /// Fit is as free as it was.
   double landedToFit(double renderZoom) {
+    final asked = display(renderZoom) * 100;
+    final ceiling = ceilingPercent;
     final percent = CanvasViewport.belowOnReadoutGrid(
-      display(renderZoom) * 100,
+      ceiling != null && asked > ceiling ? ceiling : asked,
     );
     // Below the grid's first line there is nothing to land on.
     return percent > 0 ? render(percent / 100) : renderZoom;
@@ -134,6 +166,27 @@ class CanvasZoomScale {
     required double nextZoom,
     required ViewportPoint anchor,
   }) => view.zoomedAround(nextZoom: landed(nextZoom), anchor: anchor);
+
+  /// [view] as a locked view may show it (I-27): brought back to the lock
+  /// around [anchor] when it stands past it — a view stored before the lock
+  /// was set, or written by an owner — and [view] ITSELF otherwise, so a
+  /// caller tells 「nothing was held」 by identity.
+  ///
+  /// ⚠️Asked with a hair of slack: a view that LANDED on the lock reads a
+  /// rounding error past it after the trip through render units, and
+  /// holding that again would hand back a new view for no change.
+  CanvasViewport heldUnderCeiling(
+    CanvasViewport view, {
+    required ViewportPoint anchor,
+  }) {
+    final ceiling = ceilingPercent;
+    if (ceiling == null || display(view.zoom) * 100 <= ceiling + _hair) {
+      return view;
+    }
+    return zoomedTo(view, nextZoom: view.zoom, anchor: anchor);
+  }
+
+  static const double _hair = 1e-6;
 
   /// THE USER'S ZOOM STOPS (`AppInputSettings.zoomSnapPercents`), as the
   /// zooms the view can actually be on.
@@ -165,7 +218,13 @@ class CanvasZoomScale {
       _stopsTheViewCanBeOn(stopPercents),
       up: up,
     );
-    return next == null ? null : render(next / 100);
+    // A stop past the lock is no stop: the list ends there (I-27-Q1: 「잠금
+    // 보다 큰 칸에는 ±가 닿지 않는다」).
+    final ceiling = ceilingPercent;
+    if (next == null || (ceiling != null && next > ceiling + _hair)) {
+      return null;
+    }
+    return render(next / 100);
   }
 
   /// [renderZoom] held on the nearest of the user's stops — the constrained
@@ -228,11 +287,40 @@ class CanvasZoomScale {
 
   @override
   bool operator ==(Object other) =>
-      other is CanvasZoomScale && other.ratio == ratio;
+      other is CanvasZoomScale &&
+      other.ratio == ratio &&
+      other.ceilingPercent == ceilingPercent;
 
   @override
-  int get hashCode => ratio.hashCode;
+  int get hashCode => Object.hash(ratio, ceilingPercent);
 
   @override
-  String toString() => 'CanvasZoomScale($ratio)';
+  String toString() => ceilingPercent == null
+      ? 'CanvasZoomScale($ratio)'
+      : 'CanvasZoomScale($ratio, locked at $ceilingPercent%)';
+}
+
+/// The lock on zooming in that is in force for the document view under it
+/// (I-27) — null, or no such widget above, where nothing is locked.
+///
+/// ⛔ONE view places it: the drawing canvas (`MainCanvasBrushHost`), because
+/// that is where 유저 said the lock holds — 「그리기 캔버스만」. The law it
+/// feeds ([CanvasZoomScale]) is every document view's, so a second place
+/// that set this would lock a view nobody asked to lock.
+class CanvasZoomCeiling extends InheritedWidget {
+  const CanvasZoomCeiling({
+    super.key,
+    required this.percent,
+    required super.child,
+  });
+
+  final double? percent;
+
+  static double? of(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<CanvasZoomCeiling>()
+      ?.percent;
+
+  @override
+  bool updateShouldNotify(CanvasZoomCeiling oldWidget) =>
+      oldWidget.percent != percent;
 }

@@ -172,6 +172,51 @@ void main() {
     });
   });
 
+  // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100%이면 100% 넘어서
+  // 확대하지 못하게 락」; the row keeps its number while the switch is off
+  // (I-27-Q1: 「끄면 칸은 회색으로 자리만」).
+  group('the lock on zooming in', () {
+    test('is off, at the request\'s own example, until the user sets it', () {
+      const settings = AppInputSettings();
+      expect(settings.zoomCeilingOn, isFalse);
+      expect(settings.zoomCeilingPercent, 100);
+      expect(settings.zoomCeiling, isNull);
+    });
+
+    test('🚨says its number only while it is on — and keeps the number '
+        'while it is off', () {
+      final on = const AppInputSettings().copyWith(
+        zoomCeilingOn: true,
+        zoomCeilingPercent: 150,
+      );
+      expect(on.zoomCeiling, 150);
+
+      final off = on.copyWith(zoomCeilingOn: false);
+      expect(off.zoomCeiling, isNull);
+      expect(off.zoomCeilingPercent, 150);
+      expect(AppInputSettings.fromJson(off.toJson()).zoomCeilingPercent, 150);
+    });
+
+    test('a file from before the lock reads it off, and a number nobody '
+        'could have typed reads the default', () {
+      final before = const AppInputSettings().toJson()
+        ..remove('zoomCeilingOn')
+        ..remove('zoomCeilingPercent');
+      expect(AppInputSettings.fromJson(before).zoomCeilingOn, isFalse);
+      expect(AppInputSettings.fromJson(before).zoomCeilingPercent, 100);
+
+      for (final nonsense in <Object?>[0, -50, 'big', double.nan]) {
+        final edited = const AppInputSettings().toJson()
+          ..['zoomCeilingPercent'] = nonsense;
+        expect(
+          AppInputSettings.fromJson(edited).zoomCeilingPercent,
+          100,
+          reason: '$nonsense',
+        );
+      }
+    });
+  });
+
   test('🚨every field is in == and in the round trip — a missing one is a '
       'setting that cannot be changed', () {
     // ⛔THIS IS NOT PEDANTRY, it is the bug I shipped and caught in a test
@@ -201,6 +246,12 @@ void main() {
       ),
       'navigationModifierRotationLock': base.copyWith(
         navigationModifierRotationLock: !base.navigationModifierRotationLock,
+      ),
+      'zoomCeilingOn': base.copyWith(zoomCeilingOn: !base.zoomCeilingOn),
+      // Not a bool, and held to the same rule: a lock whose NUMBER was not
+      // in `==` could be typed and never stored.
+      'zoomCeilingPercent': base.copyWith(
+        zoomCeilingPercent: base.zoomCeilingPercent + 50,
       ),
     };
     flipped.forEach((field, other) {

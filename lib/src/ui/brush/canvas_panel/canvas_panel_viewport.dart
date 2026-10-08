@@ -107,11 +107,27 @@ class _CanvasPanelViewport {
 
   /// [view] held to [BrushCanvasPanel.viewLimit] in the window you look
   /// through — [view] itself on a canvas that has none.
+  ///
+  /// 🆕And under the lock on zooming in, where this view has one (I-27 —
+  /// the drawing canvas, [CanvasZoomCeiling]): a view stored past it, by an
+  /// owner or from before the lock was set, is shown AT it. 유저 on what a
+  /// lock is (I-27-Q2, of a Fit that would pass it): the lock holds without
+  /// exception — so it is held at the read, like the limit, and not only on
+  /// the roads that zoom.
   CanvasViewport _held(CanvasViewport view) {
     final limit = _state.widget.viewLimit;
+    final scale = _state._zoomScale;
+    if (limit == null && scale.ceilingPercent == null) {
+      return view;
+    }
+    final window = _resolvedVisibleRect();
+    final under = scale.heldUnderCeiling(
+      view,
+      anchor: ViewportPoint(x: window.center.dx, y: window.center.dy),
+    );
     return limit == null
-        ? view
-        : viewHeldTo(view, limit: limit, window: _resolvedVisibleRect());
+        ? under
+        : viewHeldTo(under, limit: limit, window: window);
   }
 
   /// The limit and the window it is held in, for the pan bars — null on a
@@ -134,7 +150,10 @@ class _CanvasPanelViewport {
   /// into the store before the first frame would be held — and stored —
   /// against a window that does not exist.
   void _holdTheStoredView() {
-    if (_state.widget.viewLimit == null ||
+    final nothingHolds =
+        _state.widget.viewLimit == null &&
+        _state._zoomScale.ceilingPercent == null;
+    if (nothingHolds ||
         viewportNotifier.value == null ||
         _editorViewportSize == null) {
       return;

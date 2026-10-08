@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../../services/input/wintab_pen_service.dart';
+import '../canvas/canvas_zoom_scale.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
 import '../widgets/field_slider.dart';
@@ -264,6 +265,16 @@ class InputSettingsSection extends StatelessWidget {
                 }
               },
             ),
+            _ZoomCeilingRow(
+              on: settings.zoomCeilingOn,
+              percent: settings.zoomCeilingPercent,
+              onSwitched: (on) => session.setInputSettings(
+                settings.copyWith(zoomCeilingOn: on),
+              ),
+              onSubmitted: (percent) => session.setInputSettings(
+                settings.copyWith(zoomCeilingPercent: percent),
+              ),
+            ),
             _SnapListField(
               fieldKey: 'settings-snap-size',
               label: strings.inputBrushSizeSnaps,
@@ -407,6 +418,85 @@ class _EnumChoiceRow<T extends Enum> extends StatelessWidget {
 
 /// A snap-list text row (PEN-7b): comma-separated values, committed on
 /// submit; invalid input leaves the stored list untouched.
+/// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」 — the
+/// lock on zooming in: its switch and its number on ONE line, right under
+/// the zoom snaps (I-27-Q1: 「줌 스냅 밑에 한 줄」).
+///
+/// ⛔The number does not come and go with the switch. Off, the field stays
+/// where it is, dimmed, holding what was typed (the same answer: 「끄면 칸은
+/// 회색으로 자리만」) — a field that appeared when the switch went on would
+/// be UI that pops into existence.
+class _ZoomCeilingRow extends StatelessWidget {
+  const _ZoomCeilingRow({
+    required this.on,
+    required this.percent,
+    required this.onSwitched,
+    required this.onSubmitted,
+  });
+
+  final bool on;
+  final double percent;
+  final ValueChanged<bool> onSwitched;
+  final ValueChanged<double> onSubmitted;
+
+  /// A typed number as the lock it can be: inside the range a view can
+  /// stand in, so the field never shows a number the view cannot reach.
+  static double? lockOf(String text) {
+    final value = double.tryParse(text.trim());
+    if (value == null || !value.isFinite) {
+      return null;
+    }
+    return value
+        .clamp(
+          CanvasZoomScale.minDisplayZoom * 100,
+          CanvasZoomScale.maxDisplayZoom * 100,
+        )
+        .toDouble();
+  }
+
+  /// Every digit the lock holds, and no trailing zeros.
+  static String shown(double percent) => percent == percent.roundToDouble()
+      ? percent.toStringAsFixed(0)
+      : percent.toString();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: SettingsSwitchRow(
+            tileKey: const ValueKey<String>('settings-zoom-ceiling'),
+            label: AppText.strings.inputZoomCeiling,
+            value: on,
+            onChanged: onSwitched,
+          ),
+        ),
+        SizedBox(
+          width: 180,
+          height: 28,
+          child: TextField(
+            key: const ValueKey<String>('settings-zoom-ceiling-percent'),
+            enabled: on,
+            controller: TextEditingController(text: shown(percent)),
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (text) {
+              final lock = lockOf(text);
+              if (lock != null) {
+                onSubmitted(lock);
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SnapListField extends StatelessWidget {
   const _SnapListField({
     required this.fieldKey,
