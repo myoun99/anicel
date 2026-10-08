@@ -468,11 +468,11 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
-      // P6 fill: the flood region as ONE mask dab; the panel commits it
+      // P6 fill: the flood region as stamp pieces; the panel commits them
       // through the stroke funnel onto the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillDabAt: (point, color, symmetry) => buildFillDab(
+      fillDabsAt: (point, color, symmetry) => buildFillDabs(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
@@ -505,7 +505,7 @@ class _InteractiveCanvasBuild {
       // drawn outline is filled whatever is under it, so it never
       // reads the picture — which is why this line is short and
       // the one above is not.
-      shapeFillDabFor: (shape, color) => buildShapeFillDab(
+      shapeFillDabsFor: (shape, color) => buildShapeFillDabs(
         shape: shape,
         color: color,
         opacity: _state.widget.brushToolState.value.activeOpacity,

@@ -15,8 +15,9 @@ class BrushDabSequence {
   ///
   /// ⚠️A dab's own `opacity` is what remains PER DAB: the pressure curve and
   /// the jitter, which are variation rather than a ceiling. The tool's
-  /// setting moved here. A single-stamp verb (the fill) keeps its opacity on
-  /// its dab, because one stamp accumulates with nothing.
+  /// setting moved here. A stamp verb (the fill) keeps its opacity on its
+  /// dabs, because nothing of it accumulates: a stamp lands once, and a
+  /// fill's pieces share no pixel.
   final double opacity;
 
   final List<BrushDab> _dabs;

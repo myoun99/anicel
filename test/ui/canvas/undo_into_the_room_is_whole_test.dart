@@ -323,7 +323,7 @@ class _Walk {
             )),
             selectionCommands: selectionCommands,
             viewport: view,
-            shapeFillDabFor: (shape, color) => buildShapeFillDab(
+            shapeFillDabsFor: (shape, color) => buildShapeFillDabs(
               shape: shape,
               color: color,
               options: const FloodFillOptions(expandPx: 0, antiAlias: false),

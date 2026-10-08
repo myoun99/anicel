@@ -32,7 +32,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
-    show FloodFillOptions, buildRegionFillDab;
+    show FloodFillOptions, buildRegionFillDabs;
 import '../../services/plain_line_region.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -62,7 +62,6 @@ import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
 import '../../models/app_input_settings.dart';
 import '../debug/input_inspector.dart' show InputInspector;
-import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -234,8 +233,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.fillDabAt,
-    this.shapeFillDabFor,
+    this.fillDabsAt,
+    this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -822,21 +821,22 @@ class BrushCanvasPanel extends StatefulWidget {
   /// coordinates the gesture reports its anchor in.
   final FlipHudController? flipHud;
 
-  /// Builds the fill-region dab for a tap (P6); the panel commits it
-  /// through the exact stroke funnel. Null disables the fill tool.
-  final BrushDab? Function(
+  /// Builds the fill region's stamp pieces for a tap (P6); the panel
+  /// commits them through the exact stroke funnel. Null disables the fill
+  /// tool.
+  final List<BrushDab> Function(
     CanvasPoint point,
     int color,
     SymmetryShape? symmetry,
   )?
-  fillDabAt;
+  fillDabsAt;
 
-  /// Builds the dab for a finished SHAPE FILL outline. Supplied by the
-  /// host for the same reason [fillDabAt] is — the fill's knobs live up
-  /// there, and the panel commits whatever comes back. Null disables the
-  /// shape fill.
-  final BrushDab? Function(CanvasSelectionShape shape, int color)?
-  shapeFillDabFor;
+  /// Builds the stamp pieces of a finished SHAPE FILL outline. Supplied by
+  /// the host for the same reason [fillDabsAt] is — the fill's knobs live
+  /// up there, and the panel commits whatever comes back. Null disables
+  /// the shape fill.
+  final List<BrushDab> Function(CanvasSelectionShape shape, int color)?
+  shapeFillDabsFor;
 
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
   /// Null/absent keeps the classic byte-preserving hard mask.
@@ -2099,8 +2099,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (the result tiles on the tap frame, landed like a pen-up) instead
       // of the panel tap layer.
-      fillDabAt: _brush.tool == CanvasTool.fill
-          ? widget.fillDabAt
+      fillDabsAt: _brush.tool == CanvasTool.fill
+          ? widget.fillDabsAt
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
@@ -2385,8 +2385,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은 타입과
       // 무관하다」).
       return area == null
-          ? null
-          : buildRegionFillDab(
+          ? const []
+          : buildRegionFillDabs(
               region: area,
               color: color,
               opacity: _brush.activeOpacity,
@@ -2422,12 +2422,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// Paint a finished shape-fill outline.
   ///
-  /// Straight through the stroke funnel like the bucket's own dab, so the
-  /// live selection clips it, undo covers it and serialization is free —
-  /// the fill has landed this way since P6 and the shape fill is the same
-  /// dab from a different source.
+  /// Straight through the stroke funnel like the bucket's own pieces, so
+  /// the live selection clips it, undo covers it and serialization is free
+  /// — the fill has landed this way since P6 and the shape fill is the same
+  /// stamp from a different source.
   void _fillDrawnShape(CanvasSelectionShape shape) {
-    final build = widget.shapeFillDabFor;
+    final build = widget.shapeFillDabsFor;
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
     final onTheRow = _selectionSeat.shapeOnTheRow(shape);
@@ -2437,28 +2437,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _layArea((color) => build(onTheRow, color));
   }
 
-  /// Lays an AREA as one dab, whichever tool drew it — the fill tool's
-  /// shape fill, the shape tool's fill, its plain line: the dab is
-  /// [build]'s, and everything after it is one road.
-  void _layArea(BrushDab? Function(int color) build) {
+  /// Lays an AREA as one stroke, whichever tool drew it — the fill tool's
+  /// shape fill, the shape tool's fill, its plain line: the stamp pieces
+  /// are [build]'s, and everything after them is one road.
+  void _layArea(List<BrushDab> Function(int color) build) {
     if (widget._editableCoordinator == null) {
       return;
     }
-    final dab = build(_brush.color);
-    if (dab == null) {
+    final dabs = build(_brush.color);
+    if (dabs.isEmpty) {
       return;
     }
     final blend = _brush.activeBlendMode;
     _commitSourceStroke(
       BrushStrokeCommitData(
-        // ERASE rides a flag on the DAB, not the blend mode: the
-        // materializer reads `dab.erase` per dab and the erase blend takes
-        // the plain path, so passing the mode alone would paint the shape
-        // instead of clearing it. This is what makes 사각형/올가미 지우개
-        // out of the erase entry in the blend list.
-        sourceDabs: [
-          if (blend == BrushBlendMode.erase) dab.copyWith(erase: true) else dab,
-        ],
+        sourceDabs: [for (final dab in dabs) dab.underBlend(blend)],
         blendMode: blend,
       ),
     );

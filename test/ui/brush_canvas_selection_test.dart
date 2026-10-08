@@ -242,7 +242,7 @@ void main() {
                 selectionCommands: commands,
                 viewport: liveViewport,
                 onViewportChanged: onViewportChanged,
-                shapeFillDabFor: (shape, color) => buildShapeFillDab(
+                shapeFillDabsFor: (shape, color) => buildShapeFillDabs(
                   shape: shape,
                   color: color,
                   options: const FloodFillOptions(
@@ -7198,7 +7198,7 @@ void main() {
     // 「채움은 타입과 무관하다」.
     group('「채움」', () {
       // The fixture's fill tool lays an exact shape with a hard edge at
-      // full opacity (the harness's own `shapeFillDabFor`).
+      // full opacity (the harness's own `shapeFillDabsFor`).
       const exactFill = ShapeToolOptions(
         part: ShapePart.fill,
         antiAlias: false,

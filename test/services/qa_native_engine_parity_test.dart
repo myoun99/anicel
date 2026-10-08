@@ -723,9 +723,9 @@ void main() {
     );
 
     // End to end: the whole fill tap (compose + flood + stamp build)
-    // must produce the identical dab through both paths.
+    // must produce the identical pieces through both paths.
     QaNativeEngine.debugForceDartFallback = true;
-    final dartDab = buildFillDab(
+    final dartDab = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
@@ -734,7 +734,7 @@ void main() {
       options: const FloodFillOptions(tolerance: 40),
     );
     QaNativeEngine.debugForceDartFallback = false;
-    final nativeDab = buildFillDab(
+    final nativeDab = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
@@ -743,16 +743,18 @@ void main() {
       options: const FloodFillOptions(tolerance: 40),
     );
 
-    expect(nativeDab, isNotNull);
-    expect(dartDab, isNotNull);
-    expect(nativeDab!.center, dartDab!.center);
-    expect(nativeDab.stamp!.width, dartDab.stamp!.width);
-    expect(nativeDab.stamp!.height, dartDab.stamp!.height);
-    expect(
-      nativeDab.stamp!.rgba,
-      dartDab.stamp!.rgba,
-      reason: 'the whole fill tap must be byte-identical end to end',
-    );
+    expect(nativeDab, isNotEmpty);
+    expect(nativeDab.length, dartDab.length);
+    for (var i = 0; i < nativeDab.length; i += 1) {
+      expect(nativeDab[i].center, dartDab[i].center, reason: 'piece $i');
+      expect(nativeDab[i].stamp!.width, dartDab[i].stamp!.width);
+      expect(nativeDab[i].stamp!.height, dartDab[i].stamp!.height);
+      expect(
+        nativeDab[i].stamp!.rgba,
+        dartDab[i].stamp!.rgba,
+        reason: 'the whole fill tap must be byte-identical end to end',
+      );
+    }
   });
 
   test('native premultiply == Dart reference, byte for byte (randomized)', () {

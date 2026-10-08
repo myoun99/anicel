@@ -19,6 +19,8 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 
+import '../helpers/fill_pieces.dart';
+
 /// 🚨I-36 — 「이 과정에서 법 다른거 통일」: the fill reads a POSED layer
 /// through its pose, as the eyedropper has since R28 #7. P5+P6 skipped posed
 /// layers in both tools as a 「v1」; only the fill kept the skip, so line art
@@ -112,7 +114,7 @@ void main() {
     LayerPoseSample? space,
     String? active,
   }) {
-    final dab = buildFillDab(
+    final dabs = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id.value],
@@ -121,8 +123,9 @@ void main() {
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: active == null ? null : LayerId(active),
       space: space == null ? null : placementOf(space, cut.canvasSize),
-    )!;
-    return (dab.stamp!.width, dab.stamp!.height);
+    );
+    final reach = piecesBox(dabs);
+    return (reach.width, reach.height);
   }
 
   test('a posed line layer walls the fill where it is DRAWN — it used to be '
@@ -200,7 +203,7 @@ void main() {
       cel('paint', scale: 0.5),
     ]);
     final line = box(left: 9, top: 13, side: 6);
-    final dab = buildFillDab(
+    final dabs = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
@@ -216,12 +219,13 @@ void main() {
         ),
         anchorPoint: null,
       ), cut.canvasSize),
-    )!;
+    );
 
-    expect(dab.stamp!.width, inInclusiveRange(8, 12));
-    expect(dab.stamp!.height, inInclusiveRange(8, 12));
-    expect(dab.center.x, closeTo(17, 1.5));
-    expect(dab.center.y, closeTo(17, 1.5));
+    final reach = piecesBox(dabs);
+    expect(reach.width, inInclusiveRange(8, 12));
+    expect(reach.height, inInclusiveRange(8, 12));
+    expect(reach.left + reach.width / 2, closeTo(17, 1.5));
+    expect(reach.top + reach.height / 2, closeTo(17, 1.5));
   });
 
   test('a line layer moved sideways walls the fill where it is drawn — a '
@@ -267,7 +271,7 @@ void main() {
       anchorPoint: null,
     ), wide);
 
-    final dab = buildFillDab(
+    final dabs = buildFillDabs(
       cut: cutOf([cel('line'), cel('paint')], canvas: wide),
       frameIndex: 0,
       surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
@@ -283,15 +287,15 @@ void main() {
         lineCount: 4,
         lineSymmetry: false,
       ),
-    )!;
+    );
 
     // The four insides and nothing else: 19 across and 19 down on the
     // canvas, so twice as many across in the paint layer's pixels.
     // ⚠️Turned in the paint layer's own pixels instead, the seed's quarter
     // turn shows at (32, 46) — under the lower box, in the open — and the
     // fill runs over the whole picture.
-    final stamp = dab.stamp!;
-    expect(stamp.height, inInclusiveRange(15, 23));
-    expect(stamp.width, inInclusiveRange(30, 46));
+    final reach = piecesBox(dabs);
+    expect(reach.height, inInclusiveRange(15, 23));
+    expect(reach.width, inInclusiveRange(30, 46));
   });
 }

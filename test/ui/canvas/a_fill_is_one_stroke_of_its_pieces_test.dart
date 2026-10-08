@@ -33,11 +33,12 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
-/// 🚨★★★A FILL IS A STROKE OF ONE DAB (유저 절대규칙 2026-09-17: 「보이는
-/// 중이랑 결과랑 절대로 다르면 안 되」). The tap makes the tiles the commit
-/// will land, the overlay shows them as its pre-blended result tiles, and
-/// the commit installs the same objects — so what the fill shows before it
-/// commits is the commit, byte for byte, at every level.
+/// 🚨★★★A FILL IS ONE STROKE OF ITS STAMP PIECES (유저 절대규칙 2026-09-17:
+/// 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The tap makes the tiles the
+/// commit will land, the overlay shows them as its pre-blended result tiles,
+/// and the commit installs the same objects — so what the fill shows before
+/// it commits is the commit, byte for byte, at every level. A fill inside one
+/// tile row is one piece, which is all these canvases hold.
 void main() {
   const tileSize = 8;
   const canvasSize = CanvasSize(width: 32, height: 32);
@@ -130,9 +131,9 @@ void main() {
       CanvasSelectionShape.rect(left: 2, top: 2, right: 14, bottom: 14),
     );
     final dab = fillDab(opacity: 0.5);
-    final promoted = promoteFillDab(
+    final promoted = promoteFillDabs(
       surface: base,
-      dab: dab,
+      dabs: [dab],
       blendMode: BrushBlendMode.color,
       selection: region,
       layerId: layerId,
@@ -184,9 +185,9 @@ void main() {
       CanvasSelectionShape.rect(left: 24, top: 24, right: 32, bottom: 32),
     );
     expect(
-      promoteFillDab(
+      promoteFillDabs(
         surface: base,
-        dab: fillDab(),
+        dabs: [fillDab()],
         blendMode: BrushBlendMode.color,
         selection: outside,
         layerId: layerId,
@@ -270,9 +271,9 @@ void main() {
     addTearDown(buffers.dispose);
     final base = columns();
     final dab = fillDab();
-    final promoted = promoteFillDab(
+    final promoted = promoteFillDabs(
       surface: base,
-      dab: dab,
+      dabs: [dab],
       blendMode: BrushBlendMode.color,
       selection: null,
       layerId: layerId,

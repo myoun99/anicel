@@ -96,7 +96,7 @@ void main() {
             brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
             )),
-            fillDabAt: (_, color, _) => fillDab(color),
+            fillDabsAt: (_, color, _) => [fillDab(color)],
           ),
         ),
       );
@@ -148,9 +148,11 @@ void main() {
             // under the first. ⛔Not the seed point — the canvas is 2340px
             // wide inside a small viewport, so a local offset is nowhere
             // near the canvas coordinate of the same name.
-            fillDabAt: (_, color, _) => fillDab(color).copyWith(
-              center: CanvasPoint(x: 4 + 20.0 * fills++, y: 4),
-            ),
+            fillDabsAt: (_, color, _) => [
+              fillDab(color).copyWith(
+                center: CanvasPoint(x: 4 + 20.0 * fills++, y: 4),
+              ),
+            ],
           ),
         ),
       );
@@ -243,7 +245,7 @@ void main() {
             tool: CanvasTool.fill,
             fillBlendMode: BrushBlendMode.erase,
           )),
-          fillDabAt: (_, color, _) => fillDab(color),
+          fillDabsAt: (_, color, _) => [fillDab(color)],
         ),
       ),
     );
@@ -271,7 +273,7 @@ void main() {
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           sampleColorAt: (_) => 0xFF123456,
           onEyedropperPick: (_) {},
-          fillDabAt: (_, color, _) => fillDab(color),
+          fillDabsAt: (_, color, _) => [fillDab(color)],
         ),
       ),
     );
@@ -511,9 +513,9 @@ void main() {
             tool: CanvasTool.fill,
             color: 0xFF3366CC,
           )),
-          fillDabAt: (point, color, _) {
+          fillDabsAt: (point, color, _) {
             fillColors.add(color);
-            return fillDab(color);
+            return [fillDab(color)];
           },
         ),
       ),
@@ -580,11 +582,13 @@ void main() {
           brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
           )),
-          fillDabAt: (_, color, _) => fillDab(color).copyWith(
-            center: CanvasPoint(x: 0, y: 0),
-            size: 64,
-            stamp: stamp,
-          ),
+          fillDabsAt: (_, color, _) => [
+            fillDab(color).copyWith(
+              center: CanvasPoint(x: 0, y: 0),
+              size: 64,
+              stamp: stamp,
+            ),
+          ],
         ),
       ),
     );
@@ -632,7 +636,7 @@ void main() {
           brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
           )),
-          fillDabAt: (_, _, _) => null,
+          fillDabsAt: (_, _, _) => const [],
         ),
       ),
     );

@@ -733,7 +733,7 @@ class CanvasSelectionRegion {
   /// gap is the whole complaint. This walks the boundary of the pixels
   /// themselves, so the ants sit on the edges of what will actually move.
   ///
-  /// ★It reads the row runs [maskFor] fills ([_pixelRuns]) rather than
+  /// ★It reads the row runs [maskFor] fills ([pixelRunsFor]) rather than
   /// re-deriving the fold: 「어느 픽셀이 들어오나」 already has an answer, and
   /// a second one written next to it would be a rule that can drift.
   /// ↩️It read [maskFor] itself — one byte per pixel of the selected box —
@@ -814,10 +814,10 @@ class CanvasSelectionRegion {
     if (width <= 0 || height <= 0) {
       return <List<CanvasPoint>>[];
     }
-    final edges = _boundaryEdges([
-      for (var row = 0; row < height; row += 1)
-        _pixelRuns(top + row + 0.5, left, width),
-    ], width);
+    final edges = _boundaryEdges(
+      pixelRunsFor(left: left, top: top, width: width, height: height),
+      width,
+    );
     CanvasPoint at(int v) => CanvasPoint(
       x: (left + v % (width + 1)).toDouble(),
       y: (top + v ~/ (width + 1)).toDouble(),
@@ -974,6 +974,25 @@ class CanvasSelectionRegion {
     }
     return mask;
   }
+
+  /// [maskFor]'s rows as RUNS instead of bytes: for each row of the pixel
+  /// box `[left, left+width) × [top, top+height)`, the `[start, end, …]`
+  /// columns it fills, counted from [left] ([_pixelRuns]).
+  ///
+  /// The same answer without a byte per pixel of the box — for a reader
+  /// that wants WHERE the pixels are rather than the pixels: the outline
+  /// walk ([pixelOutlineIn]), and an area laid in pieces
+  /// (`buildRegionFillDabs`), which finds the tiles it reaches from these
+  /// and fills only theirs.
+  List<List<int>> pixelRunsFor({
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) => [
+    for (var row = 0; row < height; row += 1)
+      _pixelRuns(top + row + 0.5, left, width),
+  ];
 
   /// What the fold selects on the scanline at [scanY]: every operand's
   /// spans combined under its step's mode, left to right — [containsPoint]

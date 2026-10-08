@@ -237,15 +237,15 @@ class _BrushEditPress {
   /// block, or said 「프레임이 존재하지 않습니다」). ⛔The fill's alone: a
   /// stroke that starts beyond the wall can still come inside it.
   bool fillSpendsNothingAt(CanvasPoint canvasPosition) =>
-      _state.widget.fillDabAt != null &&
+      _state.widget.fillDabsAt != null &&
       !_state._isInsidePasteboard(canvasPosition);
 
   /// With the fill tool armed the press IS the fill: off the pasteboard
   /// it does nothing, on touch it waits for the release (a two-finger
   /// navigation may follow), else it runs at once. True when consumed.
   bool _pressAsFillTap(PointerDownEvent event, CanvasPoint canvasPosition) {
-    final fillDabAt = _state.widget.fillDabAt;
-    if (fillDabAt != null) {
+    final fillDabsAt = _state.widget.fillDabsAt;
+    if (fillDabsAt != null) {
       // Off-canvas fill taps flow through: the default (stage-bounded)
       // raster answers null for them, the extended raster fills — the
       // fill's own boundary options decide, not the pointer.

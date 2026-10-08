@@ -107,7 +107,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
-    this.fillDabAt,
+    this.fillDabsAt,
     this.selectionRegion,
     this.overlayModel,
     this.paintsContent = true,
@@ -259,13 +259,17 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
-  /// primary tap builds the flood's stamp dab here and the view runs it
-  /// as a stroke of one dab (`promoteFillDab`): the overlay shows the
-  /// result tiles the very next frame and the commit lands them through
+  /// primary tap builds the flood's stamp pieces here and the view runs
+  /// them as one stroke (`promoteFillDabs`): the overlay shows the result
+  /// tiles the very next frame and the commit lands them through
   /// [onSourceStrokeCommitted] with their pictures already made — no
   /// tile-by-tile reveal on big fills.
-  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
-  fillDabAt;
+  final List<BrushDab> Function(
+    CanvasPoint point,
+    int color,
+    SymmetryShape? symmetry,
+  )?
+  fillDabsAt;
 
   /// R26 #18: the live selection region (canvas coordinates). Non-null
   /// confines the stroke to it — the region goes to the RASTERIZER, which
@@ -734,11 +738,11 @@ class _InteractiveBrushEditCanvasViewState
         (_activeStrokeInputSettings ?? widget.inputSettings()).opacity;
   }
 
-  /// A fill shown and not yet committed: its dab, the surface its result
-  /// tiles were made against, and those tiles ([_BrushEditFill]). The
-  /// post-frame commit lands them; a second tap while this is set is the
-  /// busy case.
-  ({BrushDab dab, BitmapSurface base, List<PromotedStrokeTile> tiles})?
+  /// A fill shown and not yet committed: its stamp pieces, the surface its
+  /// result tiles were made against, and those tiles ([_BrushEditFill]).
+  /// The post-frame commit lands them; a second tap while this is set is
+  /// the busy case.
+  ({List<BrushDab> dabs, BitmapSurface base, List<PromotedStrokeTile> tiles})?
   _pendingFill;
 
   /// The touch pointer whose lift will run a fill, and where it landed.

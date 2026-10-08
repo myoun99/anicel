@@ -51,8 +51,9 @@ class BrushStrokeCommitData {
   /// has been set since.
   ///
   /// ⚠️A stamp route (the bucket, a shape fill, a pasted piece) leaves this
-  /// at 1 and keeps its opacity on its DAB: one stamp accumulates with
-  /// nothing, so there is nothing for a ceiling to cap.
+  /// at 1 and keeps its opacity on its DABS: a stamp lands once and a
+  /// fill's pieces share no pixel, so nothing accumulates for a ceiling to
+  /// cap.
   final double strokeOpacity;
 
   /// The cel surface the promoted tiles were blended against.

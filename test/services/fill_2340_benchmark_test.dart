@@ -115,14 +115,14 @@ void main() {
 
       for (final gapClose in [0, 4]) {
         final tapWatch = Stopwatch()..start();
-        final dab = buildFillDab(
+        final dabs = buildFillDabs(
           cut: cut,
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
           color: 0xFF3366CC,
           options: FloodFillOptions(gapClosePx: gapClose),
-        )!;
+        );
         tapWatch.stop();
 
         final coordinator = BrushFrameEditingCoordinator(
@@ -135,14 +135,14 @@ void main() {
           historyPolicy: const BrushHistoryPolicy(),
         );
         final commitWatch = Stopwatch()..start();
-        coordinator.commitSourceStroke(sourceDabs: [dab]);
+        coordinator.commitSourceStroke(sourceDabs: dabs);
         commitWatch.stop();
 
         // ignore: avoid_print
         print(
           'FILL2340 gapClose=$gapClose tap=${tapWatch.elapsedMilliseconds}ms '
           'commit=${commitWatch.elapsedMilliseconds}ms '
-          'stamp=${dab.stamp!.width}x${dab.stamp!.height}',
+          'pieces=${dabs.length}',
         );
       }
     },

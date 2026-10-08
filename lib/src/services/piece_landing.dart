@@ -146,14 +146,9 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
     if (inside == null) {
       continue;
     }
-    // 🚨ERASE rides a flag on the DAB, not the blend mode — the materializer
-    // reads `dab.erase` per dab and the erase blend takes the plain path, so
-    // passing the mode alone paints the piece instead of clearing with it.
-    // The trap was hit three times, a caller each (bucket, shape fill, the
-    // stamp); every road a piece lands by passes this line.
-    final dab = stamp.blend == BrushBlendMode.erase
-        ? inside.copyWith(erase: true)
-        : inside;
+    // 🚨ERASE rides a flag on the DAB ([BrushDab.underBlend] says why);
+    // every road a piece lands by passes this line.
+    final dab = inside.underBlend(stamp.blend);
     landed[cel] = (
       dab: dab,
       landing: BrushLiftMoveHistoryCommand(

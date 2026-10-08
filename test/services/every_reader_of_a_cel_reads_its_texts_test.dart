@@ -143,28 +143,28 @@ void main() {
   group('the fill', () {
     test('🚨stops at letters as it stops at a drawn line: a box written as '
         'text encloses its inside', () {
-      final dab = buildFillDab(
+      final dab = buildFillDabs(
         cut: cut,
         frameIndex: 0,
         surfaceResolver: (_, _) => cel(letters: boxOutline([0, 0, 0, 255])),
         point: CanvasPoint(x: 3, y: 3),
         color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
+      ).single;
 
       expect(dab.size, 2, reason: 'the inside of the box, and no more');
       expect(dab.center, CanvasPoint(x: 4, y: 4));
     });
 
     test('fixture: with no letters the same tap floods the whole page', () {
-      final dab = buildFillDab(
+      final dab = buildFillDabs(
         cut: cut,
         frameIndex: 0,
         surfaceResolver: (_, _) => cel(),
         point: CanvasPoint(x: 3, y: 3),
         color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
+      ).single;
 
       expect(dab.size, 8);
     });

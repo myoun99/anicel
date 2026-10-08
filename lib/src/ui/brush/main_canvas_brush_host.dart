@@ -96,8 +96,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.fillDabAt,
-    this.shapeFillDabFor,
+    this.fillDabsAt,
+    this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -275,17 +275,17 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The flip HUD's state, threaded down to the panel that mounts it.
   final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
-  final BrushDab? Function(
+  final List<BrushDab> Function(
     CanvasPoint point,
     int color,
     SymmetryShape? symmetry,
   )?
-  fillDabAt;
+  fillDabsAt;
 
-  /// Forwarded to [BrushCanvasPanel]: builds the dab for a drawn shape
-  /// fill.
-  final BrushDab? Function(CanvasSelectionShape shape, int color)?
-  shapeFillDabFor;
+  /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
+  /// shape fill.
+  final List<BrushDab> Function(CanvasSelectionShape shape, int color)?
+  shapeFillDabsFor;
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
@@ -626,8 +626,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
-      fillDabAt: widget.fillDabAt,
-      shapeFillDabFor: widget.shapeFillDabFor,
+      fillDabsAt: widget.fillDabsAt,
+      shapeFillDabsFor: widget.shapeFillDabsFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,

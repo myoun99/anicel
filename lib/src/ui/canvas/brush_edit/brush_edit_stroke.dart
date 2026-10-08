@@ -458,7 +458,7 @@ class _BrushEditStroke {
   }
 
   /// 🚨★★★THE ONE LANDING OF PROMOTED TILES — a stroke's at pen-up, a
-  /// fill's after its tap frame (`promoteFillDab`): hand each committed
+  /// fill's after its tap frame (`promoteFillDabs`): hand each committed
   /// tile the overlay image that shows exactly its pixels, commit, drop
   /// the overlay — all in this one call, so the very next frame paints
   /// committed tiles that already have their pictures and not one byte on

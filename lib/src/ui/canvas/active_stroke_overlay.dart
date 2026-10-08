@@ -130,7 +130,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   bool get hasStrokeContent => _tileImages.isNotEmpty;
 
   /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
-  /// 2026-09-17, `promoteFillDab`): the tiles the commit will install,
+  /// 2026-09-17, `promoteFillDabs`): the tiles the commit will install,
   /// each pictured from its own bytes and shown at its coordinate exactly
   /// as a stroke's pre-blended tiles are — so the pen-up handoff takes
   /// them at [fillPromotionRevision] and nothing is pictured twice. Every
