@@ -1936,6 +1936,12 @@ Future<bool> saveProjectShowingProgress(
   EditorSessionManager session,
   String path,
 ) async {
+  // 🗣️F-304 (유저 2026-10-06): 「…그게아니라 저장준비중 이라는 창을 띄우는게
+  // 좋을듯」. Until the write first counts, the save is gathering what it
+  // writes — on this isolate, and for a heavy session long — and the
+  // window's changing line says so; the first count hands the line back to
+  // the running label.
+  final preparing = ValueNotifier<String>(AppText.strings.savePrepareRunning);
   try {
     await runWithAppProgress<void>(
       context: context,
@@ -1944,11 +1950,15 @@ Future<bool> saveProjectShowingProgress(
       runningLabel: AppText.strings.saveProgressRunning,
       doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
+      runningStatus: preparing,
       task: (report) =>
           session.projectDoor.saveProjectToFile(
             path,
             asked: SaveAsked.byAPerson,
-            onProgress: report,
+            onProgress: (fraction) {
+              preparing.value = '';
+              report(fraction);
+            },
           ),
     );
     if (context.mounted) {
@@ -1965,6 +1975,8 @@ Future<bool> saveProjectShowingProgress(
       showFileError(context, error);
     }
     return false;
+  } finally {
+    preparing.dispose();
   }
 }
 

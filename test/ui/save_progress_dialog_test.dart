@@ -74,6 +74,58 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🚨F-304: when the work starts the window is SHOWN — whole, '
+      'not fading up from nothing', (tester) async {
+    late BuildContext pageContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            pageContext = context;
+            return const Scaffold(body: SizedBox());
+          },
+        ),
+      ),
+    );
+    const window = ValueKey<String>('save-progress-dialog');
+    // Read off the element tree: the work starts inside a pump, where the
+    // tester's own finders may not be called.
+    double? shownAsTheWorkStarts;
+    final run = runWithAppProgress<void>(
+      context: pageContext,
+      title: 'Save',
+      runningLabel: 'Saving…',
+      doneLabel: 'Saved',
+      windowKey: window,
+      doneLinger: const Duration(milliseconds: 40),
+      task: (_) async {
+        final found = find.byKey(window).evaluate();
+        var shown = found.isEmpty ? 0.0 : 1.0;
+        for (final element in found.take(1)) {
+          element.visitAncestorElements((ancestor) {
+            if (ancestor.widget case FadeTransition(:final opacity)) {
+              shown *= opacity.value;
+            }
+            return true;
+          });
+        }
+        shownAsTheWorkStarts = shown;
+      },
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      shownAsTheWorkStarts,
+      1,
+      reason: '「무거운 상태에서 저장버튼누르면 화면이 멈추고, 그 상태에서 시간 '
+          '지나면 저장창 뜨는데」 — work that holds the main isolate from its '
+          'first line froze a window still fading up from 0',
+    );
+    await tester.pumpAndSettle();
+    await run;
+  });
+
   testWidgets('it counts, and the count reads as a percentage', (tester) async {
     final run = await showOver(tester);
     // Nothing reported yet: the spinner turns, and no number is claimed.

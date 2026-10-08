@@ -264,6 +264,15 @@ Future<T> runWithAppProgress<T>({
 
 /// The window half: the window goes up, and the work starts after the
 /// first frame.
+///
+/// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이 멈추고,
+/// 그 상태에서 시간 지나면 저장창 뜨는데 … 멈추는게 아니라 뭔가 하고있다
+/// 라는걸 제대로 표시하기위해」. So the window comes up WHOLE on its first
+/// frame, with no fade: a dialog fades in from nothing, and the work starts
+/// right after that first frame — so it started under a window drawn at
+/// opacity 0, and work that holds the main isolate from its first line (a
+/// save gathering a heavy session's cels) froze the screen with nothing on
+/// it until it let go.
 Future<T> _awaitBehindWindow<T>({
   required BuildContext context,
   required String title,
@@ -283,6 +292,7 @@ Future<T> _awaitBehindWindow<T>({
     context: context,
     barrierDismissible: false,
     useRootNavigator: true,
+    animationStyle: AnimationStyle.noAnimation,
     builder: (dialogContext) {
       windowContext = dialogContext;
       return PopScope(
