@@ -787,7 +787,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       next = AppInput.snapToList(next, AppInput.settings.value.brushSizeSnaps);
     }
     widget.onBrushToolStateChanged?.call(
-      widget.brushToolState.value.copyWith(size: next),
+      widget.brushToolState.value.withActiveSize(next),
     );
   }
 

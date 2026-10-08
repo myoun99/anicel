@@ -15,11 +15,11 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
-import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
 import 'text_tool_settings_values.dart';
+import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 
 /// The TEXT tool's settings (R9-rest) — mounted by the tool settings panel
@@ -365,7 +365,7 @@ class _LetterRows extends StatelessWidget {
 
   Widget _colour() {
     final colour = values.letter((style) => style.color);
-    return _SettingRow(
+    return ToolSettingRow(
       label: AppText.strings.textToolColor,
       child: ColorSwatchButton(
         keyValue: 'text-tool-color',
@@ -387,7 +387,7 @@ class _LetterRows extends StatelessWidget {
       (style) => style.copyWith(outlineColor: argb),
       settled: false,
     );
-    return _SettingRow(
+    return ToolSettingRow(
       label: AppText.strings.textToolOutline,
       child: ColorSwatchButton(
         keyValue: 'text-tool-outline',
@@ -636,7 +636,8 @@ class _BoxRows extends StatelessWidget {
   /// 진행해도될듯」.
   Widget _writing() {
     final strings = AppText.strings;
-    return _ChoiceRow<bool>(
+    return ToolSettingChoiceRow<bool>(
+      tool: 'text-tool',
       name: 'writing',
       label: strings.textToolWriting,
       current: values.vertical,
@@ -656,7 +657,8 @@ class _BoxRows extends StatelessWidget {
   Widget _alignment() {
     final strings = AppText.strings;
     final columns = values.vertical;
-    return _ChoiceRow<TextCelAlign>(
+    return ToolSettingChoiceRow<TextCelAlign>(
+      tool: 'text-tool',
       name: 'align',
       label: strings.textToolAlign,
       current: values.align,
@@ -683,7 +685,8 @@ class _BoxRows extends StatelessWidget {
   /// text in hand: with none, neither is lit and neither is taken.
   Widget _boxWidth() {
     final strings = AppText.strings;
-    return _ChoiceRow<bool>(
+    return ToolSettingChoiceRow<bool>(
+      tool: 'text-tool',
       name: 'box-width',
       label: strings.textToolBoxWidth,
       current: values.wraps,
@@ -713,7 +716,7 @@ class _BoxRows extends StatelessWidget {
     onChangeEnd: values.setLineHeight,
   );
 
-  Widget _background() => _SettingRow(
+  Widget _background() => ToolSettingRow(
     label: AppText.strings.textToolBackground,
     child: ColorSwatchButton(
       keyValue: 'text-tool-background',
@@ -722,74 +725,6 @@ class _BoxRows extends StatelessWidget {
       onChanged: (argb) => values.setBackgroundColor(argb, settled: false),
       onNone: () => values.setBackgroundColor(null, settled: false),
       onSettled: values.settle,
-    ),
-  );
-}
-
-/// A setting that is ONE OF A FEW ANSWERS, as the app's one grouped choice
-/// ([PillStrip]) at the end of its line: the answer it is at lit, each
-/// answer taking a press or refusing it as [onPick] says of that answer.
-class _ChoiceRow<T> extends StatelessWidget {
-  const _ChoiceRow({
-    required this.name,
-    required this.label,
-    required this.answers,
-    required this.current,
-    required this.onPick,
-  });
-
-  /// What the strip and its pills are keyed by: `text-tool-<name>`, and
-  /// `text-tool-<name>-<key>` for each answer.
-  final String name;
-  final String label;
-  final List<({T value, String key, String label})> answers;
-
-  /// The answer the setting is at — null where it is at none of them, and
-  /// no pill is lit.
-  final T? current;
-
-  /// What a press on [answer] does; null where that answer is refused —
-  /// the pill keeps its place and loses its tap.
-  final VoidCallback? Function(T answer) onPick;
-
-  @override
-  Widget build(BuildContext context) => _SettingRow(
-    label: label,
-    child: PillStrip(
-      key: ValueKey<String>('text-tool-$name'),
-      items: [
-        for (final answer in answers)
-          PillItem(
-            keyValue: 'text-tool-$name-${answer.key}',
-            label: answer.label,
-            selected: answer.value == current,
-            onTap: onPick(answer.value),
-          ),
-      ],
-    ),
-  );
-}
-
-/// A setting whose control stands at the end of its line — a swatch, a
-/// strip of pills — its name where the line begins: the row the brush's
-/// settings write a labelled picker in.
-class _SettingRow extends StatelessWidget {
-  const _SettingRow({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Align(alignment: Alignment.centerRight, child: child),
-        ),
-      ],
     ),
   );
 }

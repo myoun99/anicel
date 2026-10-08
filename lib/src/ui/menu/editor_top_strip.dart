@@ -1060,7 +1060,7 @@ class _BrushValueBars extends StatelessWidget {
         state.supports(ToolParameter.size),
         state.supports(ToolParameter.opacity),
         state.supports(ToolParameter.pressure),
-        BrushToolState.clampSize(state.size),
+        BrushToolState.clampSize(state.activeSize),
         BrushToolState.clampOpacity(state.activeOpacity),
         state.shape.copyWith(color: 0),
       ),
@@ -1093,11 +1093,12 @@ class _BrushValueBars extends StatelessWidget {
             width: widths.size,
             height: _barHeight,
             child: _sizeBar(
-              value: BrushToolState.clampSize(state.size),
+              // The ACTIVE tool's size, as the bar beside it is the active
+              // tool's opacity: the shape tool's plain line keeps its own.
+              value: BrushToolState.clampSize(state.activeSize),
               onChanged: sizeOn
-                  ? (value) => brushTool.value = brushTool.value.copyWith(
-                      size: value,
-                    )
+                  ? (value) => brushTool.value = brushTool.value
+                        .withActiveSize(value)
                   : null,
             ),
           ),

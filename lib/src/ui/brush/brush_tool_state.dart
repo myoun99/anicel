@@ -10,6 +10,7 @@ import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/shape_tool_options.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 
 /// The strip's standing hand settings — the group whose members a tool
@@ -350,6 +351,7 @@ class BrushToolState {
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
+    ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
     double cutStampOpacity = 1.0,
   }) {
@@ -397,6 +399,7 @@ class BrushToolState {
       fillBlendMode: fillBlendMode,
       cutStampBlendMode: cutStampBlendMode,
       shapeBlendMode: shapeBlendMode,
+      shapeOptions: shapeOptions,
       fillOpacity: fillOpacity,
       cutStampOpacity: cutStampOpacity,
     );
@@ -413,6 +416,7 @@ class BrushToolState {
     this.fillBlendMode = BrushBlendMode.color,
     this.cutStampBlendMode = BrushBlendMode.color,
     this.shapeBlendMode = BrushBlendMode.color,
+    this.shapeOptions = const ShapeToolOptions(),
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
     this.presetId,
@@ -438,6 +442,7 @@ class BrushToolState {
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
+    ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
     double cutStampOpacity = 1.0,
   }) {
@@ -452,6 +457,7 @@ class BrushToolState {
       fillBlendMode: fillBlendMode,
       cutStampBlendMode: cutStampBlendMode,
       shapeBlendMode: shapeBlendMode,
+      shapeOptions: shapeOptions,
       fillOpacity: clampOpacity(fillOpacity),
       cutStampOpacity: clampOpacity(cutStampOpacity),
     );
@@ -505,6 +511,7 @@ class BrushToolState {
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? shapeBlendMode,
+    ShapeToolOptions? shapeOptions,
     double? fillOpacity,
     double? cutStampOpacity,
   }) {
@@ -561,6 +568,7 @@ class BrushToolState {
       fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
       cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
       shapeBlendMode: shapeBlendMode ?? BrushBlendMode.color,
+      shapeOptions: shapeOptions ?? const ShapeToolOptions(),
       fillOpacity: fillOpacity ?? 1.0,
       cutStampOpacity: cutStampOpacity ?? 1.0,
     );
@@ -815,6 +823,27 @@ class BrushToolState {
   /// under ([fillBlendMode]).
   final BrushBlendMode shapeBlendMode;
 
+  /// The SHAPE tool's own settings — what it lays, what lays its line, and
+  /// the values it draws by where it does not draw with the brush
+  /// ([ShapeToolOptions]). One value, so the tool keeps one field for all
+  /// of them.
+  final ShapeToolOptions shapeOptions;
+
+  /// What the shape tool lays NOW. 🚨A line has no inside: under the line
+  /// tile it is the line, whatever the setting says — and the setting
+  /// keeps, for the shapes that have one (유저 답 I-69-Q9: 「채움은 타입과
+  /// 무관하다」; that the line tile cannot take 「채움」 was put to 유저
+  /// with that question).
+  ShapePart get shapePart =>
+      canvasShapeEncloses(drawShape) ? shapeOptions.part : ShapePart.line;
+
+  /// Whether the shape tool draws with the BRUSH in hand now: a line, of
+  /// the brush type. Everything else it lays is its own — 「일반은 브러시랑
+  /// 전혀 관계없는 독립적인것임」 (유저 답 I-69-Q8).
+  bool get shapeDrawsWithTheBrush =>
+      shapePart == ShapePart.line &&
+      shapeOptions.type == ShapeLineType.brush;
+
   /// The FILL's opacity, and the STAMP's (TP1).
   ///
   /// 유저: *"툴마다 기억하게해서 필 툴도 불투명도 설정하면 그거대로 채워지게
@@ -847,6 +876,7 @@ class BrushToolState {
   double get activeOpacity => switch (tool) {
     CanvasTool.fill || CanvasTool.fillShape => fillOpacity,
     CanvasTool.cutStamp => cutStampOpacity,
+    CanvasTool.shape when !shapeDrawsWithTheBrush => shapeOptions.opacity,
     _ => opacity,
   };
 
@@ -854,7 +884,27 @@ class BrushToolState {
   BrushToolState withActiveOpacity(double value) => switch (tool) {
     CanvasTool.fill || CanvasTool.fillShape => copyWith(fillOpacity: value),
     CanvasTool.cutStamp => copyWith(cutStampOpacity: value),
+    CanvasTool.shape when !shapeDrawsWithTheBrush => copyWith(
+      shapeOptions: shapeOptions.copyWith(opacity: clampOpacity(value)),
+    ),
     _ => copyWith(opacity: value),
+  };
+
+  /// The size the ACTIVE tool draws by: the brush's, or the shape tool's
+  /// own where it does not draw with the brush. One reader, as
+  /// [activeOpacity] is — the strip's bar, the size list and the size drag
+  /// never have to name a tool.
+  double get activeSize => switch (tool) {
+    CanvasTool.shape when !shapeDrawsWithTheBrush => shapeOptions.size,
+    _ => size,
+  };
+
+  /// This state with the ACTIVE tool's size set to [value].
+  BrushToolState withActiveSize(double value) => switch (tool) {
+    CanvasTool.shape when !shapeDrawsWithTheBrush => copyWith(
+      shapeOptions: shapeOptions.copyWith(size: clampSize(value)),
+    ),
+    _ => copyWith(size: value),
   };
 
   /// The blend the ACTIVE tool composites with — the brush's own, or the
@@ -918,13 +968,19 @@ class BrushToolState {
   ///   down at all.
   /// - text: none. Its letters have a size and a colour of their own, in the
   ///   tool settings — the brush's are not read (유저 2026-10-06).
-  /// - shape: blend (its own) + size + opacity (the brush's, which it draws
-  ///   with — 유저 2026-10-04: 「브러시 값 따르기 마련(사이즈나 불투명도나
-  ///   전부다)」). Not pressure — the tool lays the stroke, and no pen is
-  ///   read while it does.
+  /// - shape: blend (its own) + size + opacity — the brush's where it draws
+  ///   with the brush (유저 2026-10-04: 「브러시 값 따르기 마련(사이즈나
+  ///   불투명도나 전부다)」), its own where it does not ([activeSize],
+  ///   [activeOpacity]). Not size where it lays a FILL: the area is the
+  ///   drawn shape's, as the fill tool's is. Not pressure — the tool lays
+  ///   the stroke, and no pen is read while it does.
   bool supports(ToolParameter parameter) => switch (tool) {
     CanvasTool.brush || CanvasTool.eraser => true,
-    CanvasTool.shape => parameter != ToolParameter.pressure,
+    CanvasTool.shape => switch (parameter) {
+      ToolParameter.pressure => false,
+      ToolParameter.size => shapePart == ShapePart.line,
+      _ => true,
+    },
     CanvasTool.fill || CanvasTool.fillShape || CanvasTool.cutStamp =>
       parameter == ToolParameter.blend || parameter == ToolParameter.opacity,
     _ => false,
@@ -1097,6 +1153,7 @@ class BrushToolState {
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? shapeBlendMode,
+    ShapeToolOptions? shapeOptions,
     double? fillOpacity,
     double? cutStampOpacity,
   }) {
@@ -1168,6 +1225,7 @@ class BrushToolState {
       fillBlendMode: fillBlendMode ?? this.fillBlendMode,
       cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
       shapeBlendMode: shapeBlendMode ?? this.shapeBlendMode,
+      shapeOptions: shapeOptions ?? this.shapeOptions,
       fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
@@ -1224,6 +1282,7 @@ class BrushToolState {
     fillBlendMode: fillBlendMode,
     cutStampBlendMode: cutStampBlendMode,
     shapeBlendMode: shapeBlendMode,
+    shapeOptions: shapeOptions,
     fillOpacity: fillOpacity,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
@@ -1360,6 +1419,7 @@ class BrushToolState {
           other.fillBlendMode == fillBlendMode &&
           other.cutStampBlendMode == cutStampBlendMode &&
           other.shapeBlendMode == shapeBlendMode &&
+          other.shapeOptions == shapeOptions &&
           other.fillOpacity == fillOpacity &&
           other.cutStampOpacity == cutStampOpacity &&
           // H25-again: which brush a state holds is part of the state — two
@@ -1378,6 +1438,7 @@ class BrushToolState {
     fillBlendMode,
     cutStampBlendMode,
     shapeBlendMode,
+    shapeOptions,
     fillOpacity,
     cutStampOpacity,
     presetId,

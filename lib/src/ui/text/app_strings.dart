@@ -1461,6 +1461,15 @@ enum AppStrings {
   String get toolShapeCutTemplate => _s('toolShapeCutTemplate');
   String get toolShapeFillTemplate => _s('toolShapeFillTemplate');
   String get toolShapeDrawTemplate => _s('toolShapeDrawTemplate');
+  String get shapeToolDraws => _s('shapeToolDraws');
+  String get shapeToolStroke => _s('shapeToolStroke');
+  String get shapeToolFill => _s('shapeToolFill');
+  String get shapeToolType => _s('shapeToolType');
+  String get shapeToolTypePlain => _s('shapeToolTypePlain');
+  String get shapeToolCorners => _s('shapeToolCorners');
+  String get shapeToolCornersSharp => _s('shapeToolCornersSharp');
+  String get shapeToolCornersRound => _s('shapeToolCornersRound');
+  String get shapeToolRatioLock => _s('shapeToolRatioLock');
   /// A built-in brush's or group's name, by its `builtin-*` id — written ONCE,
   /// when the library makes the built-ins. 유저 2026-09-15
   /// (brush-preset-names-language-Q1): 「만들 때 그 언어로 적는다」. From then
@@ -2538,6 +2547,15 @@ enum AppStrings {
     'toolShapeCutTemplate': '{shape} Cut',
     'toolShapeFillTemplate': '{shape} Fill',
     'toolShapeDrawTemplate': 'Draw {shape}',
+    'shapeToolDraws': 'Draw',
+    'shapeToolStroke': 'Stroke',
+    'shapeToolFill': 'Fill',
+    'shapeToolType': 'Type',
+    'shapeToolTypePlain': 'Plain',
+    'shapeToolCorners': 'Corners',
+    'shapeToolCornersSharp': 'Sharp',
+    'shapeToolCornersRound': 'Round',
+    'shapeToolRatioLock': 'Lock ratio',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
     'brCreate': 'Create',
@@ -3826,6 +3844,15 @@ enum AppStrings {
     'toolShapeCutTemplate': '{shape}カット',
     'toolShapeFillTemplate': '{shape}塗り',
     'toolShapeDrawTemplate': '{shape}描画',
+    'shapeToolDraws': '描画',
+    'shapeToolStroke': '線',
+    'shapeToolFill': '塗り',
+    'shapeToolType': '種類',
+    'shapeToolTypePlain': '通常',
+    'shapeToolCorners': '角',
+    'shapeToolCornersSharp': 'シャープ',
+    'shapeToolCornersRound': '丸',
+    'shapeToolRatioLock': '比率を固定',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
     'brCreate': '作成',
@@ -5217,6 +5244,15 @@ enum AppStrings {
     'toolShapeCutTemplate': '{shape} 잘라내기',
     'toolShapeFillTemplate': '{shape} 채우기',
     'toolShapeDrawTemplate': '{shape} 그리기',
+    'shapeToolDraws': '그리기',
+    'shapeToolStroke': '선',
+    'shapeToolFill': '채움',
+    'shapeToolType': '타입',
+    'shapeToolTypePlain': '일반',
+    'shapeToolCorners': '모서리',
+    'shapeToolCornersSharp': '각지게',
+    'shapeToolCornersRound': '둥글게',
+    'shapeToolRatioLock': '비율 고정',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
     'brCreate': '만들기',
@@ -6723,6 +6759,15 @@ enum AppStrings {
     'toolShapeCutTemplate': 'Découpe {shape}',
     'toolShapeFillTemplate': 'Remplissage {shape}',
     'toolShapeDrawTemplate': 'Tracé {shape}',
+    'shapeToolDraws': 'Tracé',
+    'shapeToolStroke': 'Contour',
+    'shapeToolFill': 'Remplissage',
+    'shapeToolType': 'Type',
+    'shapeToolTypePlain': 'Simple',
+    'shapeToolCorners': 'Coins',
+    'shapeToolCornersSharp': 'Vifs',
+    'shapeToolCornersRound': 'Arrondis',
+    'shapeToolRatioLock': 'Verrouiller les proportions',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
     'brCreate': 'Créer',
@@ -8061,6 +8106,15 @@ enum AppStrings {
     'toolShapeCutTemplate': '{shape}裁剪',
     'toolShapeFillTemplate': '{shape}填充',
     'toolShapeDrawTemplate': '{shape}绘制',
+    'shapeToolDraws': '绘制',
+    'shapeToolStroke': '描边',
+    'shapeToolFill': '填充',
+    'shapeToolType': '类型',
+    'shapeToolTypePlain': '普通',
+    'shapeToolCorners': '边角',
+    'shapeToolCornersSharp': '尖角',
+    'shapeToolCornersRound': '圆角',
+    'shapeToolRatioLock': '锁定比例',
     'brBrushesTitle': '笔刷',
     'brGroupNameField': '组名称',
     'brCreate': '创建',

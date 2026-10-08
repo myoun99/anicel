@@ -709,11 +709,11 @@ class _WorkspaceTabs {
           builder: (context) => ValueListenableBuilder<BrushToolState>(
             valueListenable: _state._brushTool,
             builder: (context, tool, _) => ToolSizePresetPanel(
-              size: tool.size,
+              size: tool.activeSize,
               onSizeSelected: (size) => _state._brushTool.value = _state
                   ._brushTool
                   .value
-                  .copyWith(size: size),
+                  .withActiveSize(size),
             ),
           ),
         );

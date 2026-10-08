@@ -1,6 +1,7 @@
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/shape_tool_options.dart';
 import 'brush_tool_state.dart';
 import 'paint_tool_state_notifier.dart';
 
@@ -33,6 +34,7 @@ class ToolChoice {
     this.fillBlendMode,
     this.cutStampBlendMode,
     this.shapeBlendMode,
+    this.shapeOptions,
     this.fillOpacity,
     this.cutStampOpacity,
   });
@@ -52,6 +54,7 @@ class ToolChoice {
   final BrushBlendMode? fillBlendMode;
   final BrushBlendMode? cutStampBlendMode;
   final BrushBlendMode? shapeBlendMode;
+  final ShapeToolOptions? shapeOptions;
   final double? fillOpacity;
   final double? cutStampOpacity;
 
@@ -75,6 +78,7 @@ class ToolChoice {
     if (cutStampBlendMode != null)
       'cutStampBlendMode': cutStampBlendMode!.name,
     if (shapeBlendMode != null) 'shapeBlendMode': shapeBlendMode!.name,
+    if (shapeOptions != null) 'shapeOptions': shapeOptions!.toJson(),
     if (fillOpacity != null) 'fillOpacity': fillOpacity,
     if (cutStampOpacity != null) 'cutStampOpacity': cutStampOpacity,
   };
@@ -101,6 +105,7 @@ class ToolChoice {
       _string(json['cutStampBlendMode']),
     ),
     shapeBlendMode: BrushBlendMode.named(_string(json['shapeBlendMode'])),
+    shapeOptions: ShapeToolOptions.fromJson(json['shapeOptions']),
     fillOpacity: _opacity(json['fillOpacity']),
     cutStampOpacity: _opacity(json['cutStampOpacity']),
   );
@@ -155,6 +160,7 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
     fillBlendMode: live.fillBlendMode,
     cutStampBlendMode: live.cutStampBlendMode,
     shapeBlendMode: live.shapeBlendMode,
+    shapeOptions: live.shapeOptions,
     fillOpacity: live.fillOpacity,
     cutStampOpacity: live.cutStampOpacity,
   );
@@ -190,6 +196,7 @@ void resumeToolChoice(
     fillBlendMode: choice.fillBlendMode,
     cutStampBlendMode: choice.cutStampBlendMode,
     shapeBlendMode: choice.shapeBlendMode,
+    shapeOptions: choice.shapeOptions,
     fillOpacity: choice.fillOpacity,
     cutStampOpacity: choice.cutStampOpacity,
   );

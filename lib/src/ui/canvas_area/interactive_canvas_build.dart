@@ -464,7 +464,7 @@ class _InteractiveCanvasBuild {
       // (this widget owns the tool state channel).
       onInvokeAction: _state.widget.onInvokeAction,
       onBrushSizeDragStart: () => _state._brushSizeDragStartSize =
-          _state.widget.brushToolState.value.size,
+          _state.widget.brushToolState.value.activeSize,
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,

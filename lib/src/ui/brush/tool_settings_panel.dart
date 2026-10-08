@@ -8,6 +8,7 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/shape_tool_options.dart';
 import '../../models/transform_values.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
@@ -20,6 +21,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
@@ -246,11 +248,14 @@ class ToolSettingsPanel extends StatelessWidget {
           shapeKind: state.activeShapeKind,
           selectionCommands: selectionCommands,
         ),
-        // I-69: the shape tool draws with the brush in hand, so what there
-        // is to set about its line is the brush's — on the strip, and in the
-        // brush's own panel. ⚠️The card's 「일반」 type (a plain line of the
-        // tool's own width) is not built yet; its controls come here.
-        CanvasTool.shape => const _ShapeToolSettings(),
+        // I-69: what the shape tool lays and what lays its line. A line of
+        // the brush type is drawn by the brush in hand — its size and
+        // opacity are the strip's, the rest the brush's own panel's; the
+        // tool's own values are the strip's too, wherever it draws by them.
+        CanvasTool.shape => _ShapeToolSettings(
+          state: state,
+          onChanged: onChanged,
+        ),
         // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
         CanvasTool.eyedropper => _EyedropperSettings(
           source: eyedropperSource,
@@ -362,16 +367,114 @@ class _ShapeFillSettings extends StatelessWidget {
   }
 }
 
+/// The SHAPE tool's settings (I-69, 유저 답 Q1 · Q5 · Q7 · Q8 · Q9 —
+/// 2026-10-08).
+///
+/// Five rows, always there (「없다가 생기는 UI 금지」). A row that means
+/// nothing for what is chosen keeps its place and loses its tap:
+///
+/// - 「채움」 has no line, so the type and the corners are off (Q9: 「채움은
+///   타입과 무관하다」);
+/// - the corners are the PLAIN line's (Q8), and so is the edge switch —
+///   with the fill's. A line of the brush type has the brush's own edge;
+/// - under the line tile there is no inside to fill: that answer is off,
+///   and the line is what is lit, whatever was chosen for the other shapes.
+///
+/// ⛔No size and no opacity here: those are the strip's for every tool
+/// (`BrushToolState.activeSize`, `activeOpacity`).
 class _ShapeToolSettings extends StatelessWidget {
-  const _ShapeToolSettings();
+  const _ShapeToolSettings({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  void _set(ShapeToolOptions options) =>
+      onChanged(state.copyWith(shapeOptions: options));
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    final options = state.shapeOptions;
+    final laysLine = state.shapePart == ShapePart.line;
+    final laysPlainLine = laysLine && options.type == ShapeLineType.plain;
+    final hasInside = canvasShapeEncloses(state.drawShape);
     return ToolSettingsSection(
       tool: 'shape',
-      title: AppText.strings.toolShape,
-      scrolls: false,
-      children: const [],
+      title: strings.toolShape,
+      children: [
+        ToolSettingChoiceRow<ShapePart>(
+          tool: 'shape-tool',
+          name: 'part',
+          label: strings.shapeToolDraws,
+          current: state.shapePart,
+          answers: [
+            (
+              value: ShapePart.line,
+              key: 'line',
+              label: strings.shapeToolStroke,
+            ),
+            (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+          ],
+          onPick: (part) => part == ShapePart.fill && !hasInside
+              ? null
+              : () => _set(options.copyWith(part: part)),
+        ),
+        ToolSettingChoiceRow<ShapeLineType>(
+          tool: 'shape-tool',
+          name: 'type',
+          label: strings.shapeToolType,
+          current: options.type,
+          answers: [
+            (
+              value: ShapeLineType.brush,
+              key: 'brush',
+              label: strings.toolBrush,
+            ),
+            (
+              value: ShapeLineType.plain,
+              key: 'plain',
+              label: strings.shapeToolTypePlain,
+            ),
+          ],
+          onPick: (type) =>
+              laysLine ? () => _set(options.copyWith(type: type)) : null,
+        ),
+        ToolSettingChoiceRow<ShapeCorners>(
+          tool: 'shape-tool',
+          name: 'corners',
+          label: strings.shapeToolCorners,
+          current: options.corners,
+          answers: [
+            (
+              value: ShapeCorners.sharp,
+              key: 'sharp',
+              label: strings.shapeToolCornersSharp,
+            ),
+            (
+              value: ShapeCorners.round,
+              key: 'round',
+              label: strings.shapeToolCornersRound,
+            ),
+          ],
+          onPick: (corners) => laysPlainLine
+              ? () => _set(options.copyWith(corners: corners))
+              : null,
+        ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
+          label: strings.brAntiAlias,
+          value: options.antiAlias,
+          onChanged: state.shapeDrawsWithTheBrush
+              ? null
+              : (value) => _set(options.copyWith(antiAlias: value)),
+        ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('shape-tool-ratio-lock-switch'),
+          label: strings.shapeToolRatioLock,
+          value: options.ratioLock,
+          onChanged: (value) => _set(options.copyWith(ratioLock: value)),
+        ),
+      ],
     );
   }
 }
