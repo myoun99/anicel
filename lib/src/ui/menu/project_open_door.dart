@@ -3,6 +3,7 @@ import 'dart:io' show FileSystemException;
 import 'package:flutter/material.dart';
 
 import '../../models/import/import_warning.dart';
+import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart'
@@ -64,6 +65,78 @@ bool opensAsProject(String path) {
   return projectOpenExtensions.any((extension) => name.endsWith('.$extension'));
 }
 
+/// How far a bake has come, 0 … 1.
+typedef _Progress = void Function(double fraction);
+
+/// What a converting door hands back: the project the file becomes, and
+/// the bake that fills the session born for it with the file's pictures.
+typedef _Converted = ({
+  Project project,
+  Future<List<ImportWarning>> Function(
+    EditorSessionManager session,
+    _Progress onProgress,
+  )
+  bake,
+});
+
+/// One kind of file that converts into a project of its own: how it is
+/// read, what the window says when the file is not one, and the key the
+/// notice of what could not come over stands under.
+final class _Conversion {
+  const _Conversion({
+    required this.read,
+    required this.notOne,
+    required this.noticeKey,
+  });
+
+  final Future<_Converted?> Function(String path, CloudWait wait) read;
+  final String Function() notOne;
+  final String noticeKey;
+}
+
+/// The files 「열기」 converts, by extension ([projectOpenExtensions] names
+/// them for the window and the drop).
+final _conversions = <String, _Conversion>{
+  'tvpp': _Conversion(
+    read: (path, wait) async {
+      final read = await readTvppProject(
+        tvppPath: path,
+        onWaiting: wait.report,
+        isCancelled: wait.isCancelled,
+      );
+      if (read == null) {
+        return null;
+      }
+      return (
+        project: read.project,
+        bake: (EditorSessionManager session, _Progress onProgress) =>
+            session.tvppDoor.bake(read, onProgress: onProgress),
+      );
+    },
+    notOne: () => AppText.strings.imNotTvpp,
+    noticeKey: 'tvpp-import-warnings-notice',
+  ),
+  'clip': _Conversion(
+    read: (path, wait) async {
+      final read = await readClipProject(
+        clipPath: path,
+        onWaiting: wait.report,
+        isCancelled: wait.isCancelled,
+      );
+      if (read == null) {
+        return null;
+      }
+      return (
+        project: read.project,
+        bake: (EditorSessionManager session, _Progress onProgress) =>
+            session.clipDoor.bake(read, onProgress: onProgress),
+      );
+    },
+    notOne: () => AppText.strings.imNotClip,
+    noticeKey: 'clip-import-warnings-notice',
+  ),
+};
+
 /// THE OPEN DOOR — the one way a picked project file becomes a tab, with
 /// every guard on the way. Every entrance comes through it: the Project
 /// menu's Open, a Recent row, and a project file dropped on the window
@@ -95,13 +168,12 @@ final class ProjectOpenDoor {
     final path = pick.path;
     // By NAME: a provider document's URI says nothing of what it is (PICK-7).
     final name = ProviderDocuments.nameOf(path).toLowerCase();
-    if (name.endsWith('.tvpp')) {
-      await _openTvppAsProject(context, path);
-      return;
-    }
-    if (name.endsWith('.clip')) {
-      await _openClipAsProject(context, path);
-      return;
+    for (final MapEntry(key: extension, value: conversion)
+        in _conversions.entries) {
+      if (name.endsWith('.$extension')) {
+        await _openConverted(context, path, conversion);
+        return;
+      }
     }
     // A file already open is SHOWN, not opened again: two sessions on one
     // file would be two writers on one archive. A document's session is
@@ -227,24 +299,30 @@ final class ProjectOpenDoor {
     }
   }
 
-  /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
-  /// several cuts), in a tab of its own like any open (I-7). No recents
-  /// entry — the result is a NEW unsaved project until its first save.
-  Future<void> _openTvppAsProject(BuildContext context, String path) async {
+  /// A file that converts into a project of its own opens AS A PROJECT, in
+  /// a tab of its own like any open (I-7) — the user's rule for a .tvpp,
+  /// which holds several cuts, and a .clip's every timeline is a cut too.
+  /// No recents entry — the result is a NEW unsaved project until its first
+  /// save.
+  Future<void> _openConverted(
+    BuildContext context,
+    String path,
+    _Conversion conversion,
+  ) async {
     // Decoding and baking a whole project is a save-sized wait; a frozen
     // screen before the cuts appear reads as a hang (hands-on, 288's 96
     // frames × 19 layers).
     final opened =
         await _openBehindWindow<
           ({EditorSessionManager session, List<ImportWarning> warnings})?
-        >(context, (wait, report) => _convertTvpp(path, wait, report));
+        >(context, (wait, report) => _convert(path, conversion, wait, report));
     if (opened == null) {
       return;
     }
     final converted = opened.value;
     if (converted == null) {
       if (context.mounted) {
-        showFileError(context, AppText.strings.imNotTvpp);
+        showFileError(context, conversion.notOne());
       }
       return;
     }
@@ -256,7 +334,7 @@ final class ProjectOpenDoor {
     if (converted.warnings.isNotEmpty) {
       await showAppNotice(
         context,
-        windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
+        windowKey: ValueKey<String>(conversion.noticeKey),
         title: AppText.strings.commonNotice,
         message: converted.warnings
             .take(6)
@@ -266,105 +344,27 @@ final class ProjectOpenDoor {
     }
   }
 
-  /// The .tvpp read and converted, and the session born for the project it
-  /// became with every cel baked into it — not in a tab yet, the .anicel
-  /// open's reason. Null when the file is not a TVPaint project.
+  /// The file read as [conversion] reads it, and the session born for the
+  /// project it became with every picture baked into it — not in a tab
+  /// yet, the .anicel open's reason. Null when the file is not one.
   Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
-  _convertTvpp(
+  _convert(
     String path,
+    _Conversion conversion,
     CloudWait wait,
     void Function(double) report,
   ) async {
-    final read = await readTvppProject(
-      tvppPath: path,
-      onWaiting: wait.report,
-      isCancelled: wait.isCancelled,
-    );
+    final read = await conversion.read(path, wait);
     if (read == null) {
       return null;
     }
     final session = projects.prepare(read.project);
     try {
-      final warnings = await session.tvppDoor.bake(
-        read,
-        onProgress: (fraction) {
-          // Baking has started, so the waiting line has nothing left to
-          // say.
-          wait.ended();
-          report(fraction);
-        },
-      );
-      return (session: session, warnings: warnings);
-    } on Object {
-      projects.discard(session);
-      rethrow;
-    }
-  }
-
-  /// A CLIP STUDIO file opens AS A PROJECT — every timeline a cut — in a
-  /// tab of its own, the way a .tvpp does (the second of its kind: what the
-  /// two say is the same, and the third that asks for it will make one of
-  /// them). No recents entry — the result is a NEW unsaved project until its
-  /// first save.
-  Future<void> _openClipAsProject(BuildContext context, String path) async {
-    final opened =
-        await _openBehindWindow<
-          ({EditorSessionManager session, List<ImportWarning> warnings})?
-        >(context, (wait, report) => _convertClip(path, wait, report));
-    if (opened == null) {
-      return;
-    }
-    final converted = opened.value;
-    if (converted == null) {
-      if (context.mounted) {
-        showFileError(context, AppText.strings.imNotClip);
-      }
-      return;
-    }
-    if (!context.mounted) {
-      projects.discard(converted.session);
-      return;
-    }
-    projects.adopt(converted.session);
-    if (converted.warnings.isNotEmpty) {
-      await showAppNotice(
-        context,
-        windowKey: const ValueKey<String>('clip-import-warnings-notice'),
-        title: AppText.strings.commonNotice,
-        message: converted.warnings
-            .take(6)
-            .map((warning) => warning.textFor(AppText.language))
-            .join('\n'),
-      );
-    }
-  }
-
-  /// The .clip read and planned, and the session born for the project it
-  /// became with every picture baked into it. Null when the file is not a
-  /// CLIP STUDIO file.
-  Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
-  _convertClip(
-    String path,
-    CloudWait wait,
-    void Function(double) report,
-  ) async {
-    final read = await readClipProject(
-      clipPath: path,
-      onWaiting: wait.report,
-      isCancelled: wait.isCancelled,
-    );
-    if (read == null) {
-      return null;
-    }
-    final session = projects.prepare(read.project);
-    try {
-      final warnings = await session.clipDoor.bake(
-        read,
-        onProgress: (fraction) {
-          wait.ended();
-          report(fraction);
-        },
-      );
+      final warnings = await read.bake(session, (fraction) {
+        // Baking has started, so the waiting line has nothing left to say.
+        wait.ended();
+        report(fraction);
+      });
       return (session: session, warnings: warnings);
     } on Object {
       projects.discard(session);

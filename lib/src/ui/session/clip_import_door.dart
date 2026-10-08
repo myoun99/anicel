@@ -11,7 +11,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/camera_pose.dart';
@@ -21,7 +20,6 @@ import '../../models/import/import_warning.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/project_id.dart';
-import '../../models/tile_coord.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_migration.dart';
@@ -31,7 +29,7 @@ import '../../services/import/clip_container.dart';
 import '../../services/import/clip_document.dart';
 import '../../services/import/clip_import_planner.dart';
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
-import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
+import '../../services/import/raster_cel_import.dart' show bakeCelTiles;
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker;
 import '../../services/persistence/provider_documents.dart'
@@ -321,20 +319,15 @@ final class ClipImportDoor {
     if (decoded.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    bakeCelTiles(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(
         item.cut,
         item.bake.layerId,
         item.bake.frameId,
       ),
-      BitmapSurface(canvasSize: item.cut.canvasSize).putTiles([
-        for (final tile in decoded)
-          (
-            coord: TileCoord(x: tile.x, y: tile.y),
-            tile: BitmapTile(size: defaultCelTileSize, pixels: tile.pixels),
-          ),
-      ]),
+      item.cut.canvasSize,
+      decoded,
     );
   }
 

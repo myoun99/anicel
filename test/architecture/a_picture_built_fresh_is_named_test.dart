@@ -65,16 +65,15 @@ void main() {
       why: 'the empty picture that takes a forked cel away again',
     ),
     'lib/src/services/import/raster_cel_import.dart': (
-      count: 2,
-      why: 'a picture imported from an image — it begins here',
+      count: 3,
+      why:
+          'a picture imported from an image — it begins here; and the cel '
+          'a decoding door\'s tiles begin as (`bakeCelTiles` — a .tvpp\'s, '
+          'a .clip\'s)',
     ),
     'lib/src/ui/canvas/canvas_selection_layer.dart': (
       count: 1,
       why: 'a scratch surface the selection\'s outline is stamped on',
-    ),
-    'lib/src/ui/session/tvpp_import_door.dart': (
-      count: 1,
-      why: 'a picture imported from a TVPaint project — it begins here',
     ),
   };
 

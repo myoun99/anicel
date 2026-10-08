@@ -128,7 +128,7 @@ void main() {
       // render, animation.
       for (final row in <List<Object?>>[
         [1, '', 256, 1, 0, '', 0, 0, 2, 0, 0, 0],
-        [2, 'BG', 1, 0, 0, uuidBg, 100, 50, 0, 3, 100, 0],
+        [2, 'BG', 1, 0, 0, uuidBg, 120, 50, 0, 3, 100, 0],
         [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, if (troubled) 8 else 0, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
         [5, 'under', 1, 0, 0, '', 0, 0, 0, 6, 101, 0],
@@ -332,6 +332,18 @@ void main() {
     final surface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       session.brushFrameKeyForCut(cut, base.id, cel2),
     )!;
+
+    // BG stands at (120, 50): its 10 × 10 square of ink, 120 … 129 across,
+    // reaches over the first tile's edge at 128 into the second column, and
+    // stays in the first row.
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    final bgSurface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+      session.brushFrameKeyForCut(cut, bg.id, bg.frames.single.id),
+    )!;
+    expect(
+      {for (final coord in bgSurface.tiles.keys) (coord.x, coord.y)},
+      {(0, 0), (1, 0)},
+    );
 
     // Cel 「2」 stands at (20, 30): its 8 × 8 square covers 20 … 27, 30 … 37,
     // inside the first tile.

@@ -15,15 +15,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/import/tvpp_convert.dart';
 import '../../models/import/tvpp_parse.dart';
 import '../../models/project.dart';
 import '../../models/project_id.dart';
-import '../../models/tile_coord.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_migration.dart';
@@ -169,20 +166,11 @@ class TvppImportDoor {
     if (tiles == null || tiles.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    bakeCelTiles(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
-      BitmapSurface(canvasSize: cut.canvasSize).putTiles([
-        for (final tile in tiles)
-          (
-            coord: TileCoord(x: tile.x, y: tile.y),
-            tile: BitmapTile(
-
-              size: defaultCelTileSize,
-              pixels: tile.pixels,
-            ),
-          ),
-      ]),
+      cut.canvasSize,
+      tiles,
     );
   }
 
