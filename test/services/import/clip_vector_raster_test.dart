@@ -101,10 +101,34 @@ void main() {
         () => parseClipVectorBody(Uint8List.sublistView(stroke, 0, 100)),
         throwsA(isA<ClipFormatException>()),
       );
-      final odd = Uint8List.fromList(stroke);
-      ByteData.sublistView(odd).setUint32(0, 96);
+      // Four bytes longer, so the odd head still ends at the data's end and
+      // only its size is what is refused.
+      final oddHead = Uint8List.fromList([...stroke, 0, 0, 0, 0]);
+      ByteData.sublistView(oddHead).setUint32(0, 96);
       expect(
-        () => parseClipVectorBody(odd),
+        () => parseClipVectorBody(oddHead),
+        throwsA(isA<ClipFormatException>()),
+      );
+      final oddPoint = Uint8List.fromList([...stroke, 0, 0, 0, 0, 0, 0, 0, 0]);
+      ByteData.sublistView(oddPoint).setUint32(8, 96);
+      expect(
+        () => parseClipVectorBody(oddPoint),
+        throwsA(isA<ClipFormatException>()),
+      );
+    });
+
+    test('a point that is not a number is refused, not drawn into a crash', () {
+      expect(
+        () => parseClipVectorBody(vectorStrokeBytes([(double.nan, 1, 1)])),
+        throwsA(isA<ClipFormatException>()),
+      );
+      expect(
+        () => parseClipVectorBody(
+          vectorStrokeBytes(
+            [(0, 0, 1), (9, 0, 1)],
+            bends: [(double.infinity, 0), null],
+          ),
+        ),
         throwsA(isA<ClipFormatException>()),
       );
     });
@@ -178,6 +202,28 @@ void main() {
 
       expect(pixel(full.tiles, 30, 20).$4, closeTo(128, 1));
       expect(pixel(faint.tiles, 30, 20).$4, closeTo(64, 1));
+    });
+
+    test('a point with no width lays no dab — the rest of its stroke is '
+        'still drawn', () {
+      final drawn = clipVectorTiles(
+        [
+          vectorStrokeBytes([
+            (10, 20, 1),
+            (30, 20, 0),
+            (50, 20, -1),
+          ], radius: 3),
+        ],
+        (x: 0, y: 0),
+        canvas(),
+      );
+      expect(
+        pixel(drawn.tiles, 10, 19).$4,
+        greaterThan(100),
+        reason: 'the one dab the point with a width lays',
+      );
+      expect(pixel(drawn.tiles, 40, 19).$4, 0, reason: 'nothing past the '
+          'last point with a width');
     });
 
     test('a stroke off the canvas lands nothing — and the strokes it cannot '

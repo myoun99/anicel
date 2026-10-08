@@ -62,10 +62,15 @@ void main() {
   /// blocks the file does not hold.
   ///
   /// [vector] puts a vector layer 「lines」 on top instead, moved to (30, 40):
-  /// one stroke 0 … 40 across at its row 10, six across — and beside it a
-  /// render whose blocks the file does not hold, as the one sample with
-  /// vectors keeps.
-  String writeClip({bool troubled = false, bool vector = false}) {
+  /// one stroke 0 … 40 across at its row 10, six across, and one record of
+  /// a kind not drawn — and beside them a render whose blocks the file does
+  /// not hold, as the one sample with vectors keeps. [strokesLost] names
+  /// strokes the file does not hold instead.
+  String writeClip({
+    bool troubled = false,
+    bool vector = false,
+    bool strokesLost = false,
+  }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
       height: 64,
@@ -79,7 +84,10 @@ void main() {
       externalId(4): square(0, 8, (200, 200, 200)),
       externalId(5): square(0, 2, (9, 9, 9)),
       externalId(6): blockRecordsBytes({0: null}),
-      externalId(20): vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
+      externalId(20): [
+        ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
+        ...vectorStrokeBytes([(0, 0, 1)], flags: 2),
+      ],
       // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
       // ticks a frame at 30 fps), to tick 24 (frame 12). BG throughout.
       externalId(10): trackDataBytes(
@@ -170,7 +178,11 @@ void main() {
           ..execute(
             'INSERT INTO VectorObjectList(MainId, CanvasId, LayerId, '
             'VectorData) VALUES (1, 1, 11, ?)',
-            [Uint8List.fromList(externalId(20).codeUnits)],
+            [
+              Uint8List.fromList(
+                externalId(strokesLost ? 97 : 20).codeUnits,
+              ),
+            ],
           );
       }
       if (troubled) {
@@ -425,8 +437,13 @@ void main() {
         for (final warning in opened.warnings)
           (warning.key, warning.values['name'] ?? warning.values['file']),
       ],
-      unorderedEquals([('clipCelLayers', 'A'), ('clipVector', 'lines')]),
-      reason: 'drawn with a round pen is said; 「could not be read」 is not',
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('clipVectorUnread', 'lines'),
+      ]),
+      reason: 'drawn with a round pen is said, and the record it does not '
+          'draw; 「could not be read」 is not',
     );
     final cut = session.repository.requireProject().tracks.single.cuts.first;
     final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
@@ -439,6 +456,28 @@ void main() {
     expect(alphaAt(50, 49), closeTo(255, 1));
     expect(alphaAt(50, 45), 0, reason: 'six across, not more');
     expect(alphaAt(20, 9), 0, reason: 'not where it is stored');
+  });
+
+  test('strokes the file does not hold are said by name, and the layer '
+      'stays, empty', () async {
+    final opened = await openedClip(writeClip(vector: true, strokesLost: true));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('celUnreadable', 'lines'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
   });
 
   test('a file that is not a CLIP STUDIO file is not one', () async {

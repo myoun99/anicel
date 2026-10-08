@@ -117,10 +117,16 @@ _StoredPoint _pointAt(ByteData data, int at, int pointSize, double radius) {
     y: data.getFloat64(at + 8),
     width: 2 * radius * data.getFloat32(at + 56),
   );
+  if (!point.x.isFinite || !point.y.isFinite || !point.width.isFinite) {
+    throw ClipFormatException('a vector point that is not a number at $at');
+  }
   if (pointSize < 104) {
     return (point: point, bend: null);
   }
   final bend = (x: data.getFloat64(at + 88), y: data.getFloat64(at + 96));
+  if (!bend.x.isFinite || !bend.y.isFinite) {
+    throw ClipFormatException('a control point that is not a number at $at');
+  }
   return (point: point, bend: bend.x == 0 && bend.y == 0 ? null : bend);
 }
 
@@ -226,6 +232,8 @@ List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
   final dabs = <BrushDab>[];
   BrushDab? previous;
   for (final point in stroke.points) {
+    // A point with no width lays no dab — and a dab cannot be narrower
+    // than nothing.
     if (point.width <= 0) {
       continue;
     }
