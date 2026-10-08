@@ -267,7 +267,8 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: List<ui.Size>.filled(2, const ui.Size(595, 842)),
     );
-    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    final opened = Completer<FakePdfDocument>();
+    PdfRenderService.debugOpenerOverride = (_) => opened.future;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -305,6 +306,9 @@ void main() {
         name: 'conte',
       ),
     );
+    await tester.pump();
+    expect(live(), isTrue, reason: 'a file asked for closes while it opens');
+    opened.complete(fake);
     await tester.pumpAndSettle();
     expect(live(), isTrue);
 

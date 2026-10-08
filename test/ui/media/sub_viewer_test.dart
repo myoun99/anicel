@@ -193,6 +193,34 @@ void main() {
     );
   });
 
+  // 🗣️I-83-Q1 (유저 2026-10-09): 「알약의 「파일 열기」 옆」.
+  testWidgets('🗣️a viewer\'s close button empties it — and only it', (
+    tester,
+  ) async {
+    await _pumpEditor(tester);
+    await _openMediaPool(tester);
+    await _openSubViewer(tester);
+    await _openRowMenu(tester, _conte);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-menu-open')),
+    );
+    await tester.pumpAndSettle();
+    await _openRowMenu(tester, _layout);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-menu-open-sub')),
+    );
+    await tester.pumpAndSettle();
+    expect(_pageTextIn(tester, _subViewer()), '1 / 5');
+
+    await _tapPill(tester, 'media-viewer-sub-close-file-button');
+    expect(_pageTextIn(tester, _subViewer()), _emptyReadout);
+    expect(
+      _pageTextIn(tester, _mainViewer()),
+      '1 / 2',
+      reason: 'the other viewer keeps its file',
+    );
+  });
+
   testWidgets('a viewer takes a dropped browser row (유저 확정 ⑬)', (tester) async {
     // The panel and ONE draggable row, so the drop is the only thing
     // under test. Driving the same drag through the real rail is a
