@@ -429,6 +429,31 @@ Future<void> _handle(HttpRequest req) async {
     return;
   }
 
+  // 🆕AN ACK, through the server (card an-away-machine-cannot-ack-the-gate,
+  // 10-08): a gate run on another machine is judged here, by the acks beside
+  // the records, so it is here that it has to be able to write one. What
+  // becomes of the asking is the very function `board_ack` runs on this
+  // machine. `{"key":…,"why":…}` leaves a key alone; `/unack` takes it back.
+  if (req.method == 'POST' && (path == '/ack' || path == '/unack')) {
+    final asked = jsonDecode(await utf8.decoder.bind(req).join());
+    final key = asked is Map ? '${asked['key'] ?? ''}' : '';
+    final records = File(_recordsPath);
+    final refusal = path == '/ack'
+        ? ackOnBoard(
+            records,
+            key,
+            asked is Map ? '${asked['why'] ?? ''}' : '',
+            DateTime.now(),
+          )
+        : unackOnBoard(records, key);
+    req.response
+      ..statusCode = refusal == null ? HttpStatus.ok : HttpStatus.badRequest
+      ..headers.contentType = ContentType.text
+      ..write(refusal ?? '');
+    await req.response.close();
+    return;
+  }
+
   if (req.method == 'POST') {
     final body =
         jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;

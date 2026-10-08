@@ -760,8 +760,8 @@ Iterable<String> _answersNobodyRead(
   if (waiting.isNotEmpty) {
     yield '하루 넘게 답을 기다리는 질문: ${waiting.join(', ')}\n'
         '이 대화에서 이미 답이 나오지 않았는지 확인하세요 — 채팅으로 온 답은 '
-        '보드가 모릅니다. 아직 진짜로 열려 있으면 그 id 를 .gate-ack 에 '
-        '한 줄로 적으세요.';
+        '보드가 모릅니다. 아직 진짜로 열려 있으면 그 id 를 이유와 함께 '
+        'ack 하세요: $kAckCommand <id> <이유>';
   }
 }
 
@@ -843,7 +843,7 @@ Iterable<String> _deadAcks(List<BoardCard> cards, Set<String> acks) sync* {
   if (settled.isEmpty) return;
   yield '카드가 생긴 착지의 ack: ${settled.join(', ')}\n'
       'ack 는 「이 착지는 카드 없이 지나간다」는 뜻인데 그 PR을 든 카드가 이제 '
-      '있습니다 — `.gate-ack` 에서 그 줄을 지우세요.';
+      '있습니다 — 그 줄을 거두세요: $kAckCommand --drop <번호>';
 }
 /// Drawn on the board as a card at all.
 ///
@@ -910,14 +910,93 @@ bool _saysSomething(BoardCard c) => c.log.any((l) {
 /// lines still silence: rejecting them outright would have re-fired
 /// thirty-four complaints in one turn.
 Set<String> _acks(File records) {
-  final file = File('${records.parent.path}/.gate-ack');
+  final file = gateAckFile(records);
   if (!file.existsSync()) return const {};
-  final out = <String>{};
-  for (final raw in file.readAsLinesSync()) {
-    final line = raw.trim();
-    if (line.isEmpty || line.startsWith('#')) continue;
-    final gap = line.indexOf(RegExp(r'\s'));
-    out.add(gap < 0 ? line : line.substring(0, gap));
+  return {
+    for (final raw in file.readAsLinesSync())
+      if (_ackKeyOf(raw) case final key?) key,
+  };
+}
+
+/// Where the acks are kept: beside the records, on the machine that holds
+/// the board.
+File gateAckFile(File records) => File('${records.parent.path}/.gate-ack');
+
+/// The key a line of the acks names, or null for a comment or a blank.
+String? _ackKeyOf(String raw) {
+  final line = raw.trim();
+  if (line.isEmpty || line.startsWith('#')) return null;
+  final gap = line.indexOf(RegExp(r'\s'));
+  return gap < 0 ? line : line.substring(0, gap);
+}
+
+// ───────────────────────────────────────────── 9. ack 를 적는 길 하나
+
+// 🆕카드 an-away-machine-cannot-ack-the-gate(서피스 저장 세션, 10-08): the
+// gate on a machine that does not hold the board asks this machine's server,
+// and the server judges by the acks beside the records — so the exit the
+// complaint names, 「그 id 를 .gate-ack 에」, was a file the asking machine
+// did not have, and its Stop hook held the turn until somebody here wrote the
+// line for it. The acks are the board's, like the records: ONE file on the
+// machine that holds them, written by these two functions, which the tool
+// (`tool/board_ack.dart`) runs here and the server runs for everybody else.
+
+/// The command a complaint names as its exit — the same on every machine.
+const kAckCommand = r'dart run tool/board_ack.dart "$ANICEL_BOARD"';
+
+/// Why [key] cannot be left alone for [why], or null if it can.
+String? ackRefusal(String key, String why) {
+  if (key.isEmpty || key.contains(RegExp(r'\s'))) {
+    return 'ack 의 키는 카드 id 나 PR 번호 하나입니다(받은 것: 「$key」).';
   }
-  return out;
+  if (key.startsWith('#')) {
+    return '「#」 로 시작하는 줄은 주석입니다 — PR 번호는 # 없이 적습니다.';
+  }
+  if (why.trim().isEmpty) {
+    return 'ack 는 이유와 함께 적습니다 — 이유가 없는 줄은 다음에 읽는 '
+        '쪽이 「남의 세션 착지」와 「내가 안 한 것」을 가리지 못합니다.';
+  }
+  if (why.contains('\n') || why.contains('\r')) {
+    return 'ack 의 이유는 한 줄입니다.';
+  }
+  return null;
+}
+
+/// Writes 「leave [key] alone, because [why]」 beside [records], dated by
+/// [now] as the lines before it are — or says why it did not.
+///
+/// ⚠️A key that is acked already is refused rather than written twice: a
+/// second line would leave two reasons for one decision, and `unack` takes
+/// both back at once.
+String? ackOnBoard(File records, String key, String why, DateTime now) {
+  final refusal = ackRefusal(key, why);
+  if (refusal != null) return refusal;
+  final file = gateAckFile(records);
+  final lines = file.existsSync() ? file.readAsLinesSync() : const <String>[];
+  for (final line in lines) {
+    if (_ackKeyOf(line) == key) return '이미 있습니다: ${line.trim()}';
+  }
+  final text = file.existsSync() ? file.readAsStringSync() : '';
+  final day = now.toIso8601String().substring(0, 10);
+  file.writeAsStringSync(
+    '${text.isEmpty || text.endsWith('\n') ? '' : '\n'}'
+    '$key ${why.trim()} $day\n',
+    mode: FileMode.append,
+  );
+  return null;
+}
+
+/// Takes every ack of [key] beside [records] back, leaving every other line
+/// as it was — or says why there was nothing to take.
+String? unackOnBoard(File records, String key) {
+  final file = gateAckFile(records);
+  if (!file.existsSync()) return 'ack 가 하나도 없습니다.';
+  final lines = file.readAsStringSync().split('\n');
+  final kept = [
+    for (final line in lines)
+      if (_ackKeyOf(line) != key) line,
+  ];
+  if (kept.length == lines.length) return '「$key」 의 ack 가 없습니다.';
+  file.writeAsStringSync(kept.join('\n'));
+  return null;
 }

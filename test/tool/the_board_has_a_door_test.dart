@@ -454,6 +454,8 @@ void main() {
         ('/say', line),
         ('/submit', '{"id":"T-1","memo":"from elsewhere"}'),
         ('/intake', '{"kind":"idea","text":"from elsewhere"}'),
+        ('/ack', '{"key":"T-1","why":"from elsewhere"}'),
+        ('/unack', '{"key":"T-1"}'),
         ('/enter', secret),
       ]) {
         for (final saying in const [
