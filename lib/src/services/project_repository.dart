@@ -5,6 +5,7 @@ import '../models/audio_clip.dart';
 import '../models/se_name_tag.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
+import '../models/conte_group.dart' show storyboardLayerForCut;
 import '../models/covering_image_normalize.dart';
 import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
@@ -302,14 +303,7 @@ class ProjectRepository {
   /// changed or whose のりしろ it moved, not every cut of the project.
   Map<CutId, _Settled> _settled = const {};
 
-  static LayerId? _conteRowIdOf(Cut cut) {
-    for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.storyboard) {
-        return layer.id;
-      }
-    }
-    return null;
-  }
+  static LayerId? _conteRowIdOf(Cut cut) => storyboardLayerForCut(cut)?.id;
 
   /// The five invariants above, in their stated order, over one cut of
   /// [project] — the project being settled, read for the two things a cut
@@ -912,7 +906,7 @@ class ProjectRepository {
       final updatedCut = updateLayerInCut(cut, layerId, (layer) {
         if (kind == LayerKind.storyboard &&
             layer.kind != LayerKind.storyboard &&
-            cut.layers.any((other) => other.kind == LayerKind.storyboard)) {
+            storyboardLayerForCut(cut) != null) {
           throw StateError('Cut $cutId already has a storyboard layer.');
         }
         return layer.copyWith(kind: kind);

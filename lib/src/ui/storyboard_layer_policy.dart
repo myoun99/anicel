@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../models/conte_group.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -15,25 +16,17 @@ import '../models/track_id.dart';
 import 'text/app_strings.dart';
 import 'text/model_vocabulary.dart';
 
-/// The cut's storyboard row, or null when it has none.
-///
-/// A cut may hold at most ONE (the conte has one strip per cut, and the
-/// coverage rule has one row to tile it). The verbs that could make a
-/// second refuse — see [cutAcceptsAnotherStoryboardLayer] — but this does
-/// NOT throw when it finds one anyway: it is read from painters and row
-/// builds, and a throw there took the whole frame down with a red screen
-/// (user, 2026-07-28). A file written by an older build, or a path nobody
-/// guarded yet, must degrade to "the first one is the row" rather than to
-/// no editor at all. [storyboardLayersOfCut] is how a caller that wants to
-/// SAY something about the duplicate finds it.
-Layer? storyboardLayerForCut(Cut cut) {
-  for (final layer in cut.layers) {
-    if (layer.kind == LayerKind.storyboard) {
-      return layer;
-    }
-  }
-  return null;
-}
+/// ⚠️Which row is a cut's conte — [storyboardLayerForCut] and its two
+/// neighbours — moved inward (`models/conte_group.dart`) so that the
+/// commands and the repository ask the same question: `services/` cannot
+/// import this file, and each had spelled 「the first storyboard row」 for
+/// itself. Re-exported here because this is where the storyboard's layer
+/// questions are looked up.
+export '../models/conte_group.dart'
+    show
+        cutAcceptsAnotherStoryboardLayer,
+        storyboardLayerForCut,
+        storyboardLayersOfCut;
 
 /// THE CONTE LAYER THE STORYBOARD'S CONTE ROW HAS IN HAND: [cut]'s conte
 /// layer, while it is the layer the timeline stands on ([activeLayerId]).
@@ -180,27 +173,6 @@ int conteRowGlobalFrameOf(
   Layer row,
   int ownFrame,
 ) => entry.startFrame + ownFrame - storyboardConteStart(row.timeline);
-
-/// Every storyboard row on [cut] — one in every reachable state, more only
-/// where something already went wrong.
-List<Layer> storyboardLayersOfCut(Cut cut) => [
-  for (final layer in cut.layers)
-    if (layer.kind == LayerKind.storyboard) layer,
-];
-
-/// Whether [cut] may take another storyboard row — false once it has one.
-///
-/// [exceptLayerId] is the layer being CONVERTED, which does not count
-/// against itself: re-applying the kind to the row that already is one is
-/// a no-op, not a second row.
-bool cutAcceptsAnotherStoryboardLayer(Cut cut, {LayerId? exceptLayerId}) {
-  for (final layer in cut.layers) {
-    if (layer.kind == LayerKind.storyboard && layer.id != exceptLayerId) {
-      return false;
-    }
-  }
-  return true;
-}
 
 /// The shortest [cut] may become without leaving a storyboard drawing
 /// outside it (user's rule 2026-07-27).

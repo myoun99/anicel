@@ -101,8 +101,7 @@ class LayerStack {
     if (cut == null) {
       return false;
     }
-    return !kind.isSingletonPerCut ||
-        !cut.layers.any((layer) => layer.kind == kind);
+    return !kind.isSingletonPerCut || !holdsSingletonOfKind(cut.layers, kind);
   }
 
   /// Kind-explicit Add Layer (the split button's ▾ list): the same naming

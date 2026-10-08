@@ -1,4 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/conte_group.dart' show storyboardLayerForCut;
 import '../../models/conte/conte_ink_keys.dart'
     show conteHandwritingOfACopy, conteInkRowLayerId;
 import '../../models/cut.dart';
@@ -113,9 +114,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     _copyOf(frameId, on: newLayerId, into: frameIdMap);
   }
 
-  final hasStoryboardLayer = targetCut.layers.any(
-    (layer) => layer.kind == LayerKind.storyboard,
-  );
+  final hasStoryboardLayer = storyboardLayerForCut(targetCut) != null;
   // Kinds survive the paste except storyboard (unique per cut — extra copies
   // land as animation) and camera (refused upstream).
   final pastedKind = switch (payload.kind) {
@@ -510,11 +509,15 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 
   final mirrors = <AddLayerMirror>[];
   for (final sibling in siblings) {
+    // The ONE row of its kind, that is — a row riding another is not it
+    // ([holdsSingletonOfKind]), so the conte row's attach rows mirror like
+    // any drawing row's.
     if (layer.kind.isSingletonPerCut &&
-        requireCut(
-          project,
-          sibling,
-        ).layers.any((row) => row.kind == layer.kind)) {
+        !isAttachedLayer(layer) &&
+        holdsSingletonOfKind(
+          requireCut(project, sibling).layers,
+          layer.kind,
+        )) {
       continue;
     }
     final folder = layer.folderId;

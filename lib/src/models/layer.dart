@@ -563,6 +563,16 @@ bool layerAcceptsBrushInput(Layer layer) =>
 /// unchanged.
 bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
 
+/// Whether [layers] already hold the ONE row a singleton kind allows a cut
+/// ([LayerKind.isSingletonPerCut]).
+///
+/// 🚨A row riding another is NOT that row. An attach row takes its base's
+/// kind, so the conte row's attach rows are storyboard rows — and asked of
+/// the kind alone, each of them answered for the cut's one conte. The one
+/// row is the one that stands by itself (I-73, 2026-10-08).
+bool holdsSingletonOfKind(Iterable<Layer> layers, LayerKind kind) =>
+    layers.any((layer) => layer.kind == kind && !isAttachedLayer(layer));
+
 /// Whether a clipboard can hold [layer] as a row of its own — what a copy
 /// and a duplicate both ask first.
 ///

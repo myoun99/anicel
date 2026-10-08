@@ -182,8 +182,13 @@ Map<LayerId, Layer> _partnersByOrigin({
   required List<Layer> targets,
   required bool Function(Layer origin, Layer target) alreadyLinked,
 }) {
+  // A cut's ONE row of a kind pairs by that kind; a row riding another is
+  // not it — the conte row's attach rows are storyboard rows, and pair by
+  // name like every row ([holdsSingletonOfKind]).
   Object pairingKey(Layer layer) =>
-      layer.kind.isSingletonPerCut ? layer.kind : (layer.kind, layer.name);
+      layer.kind.isSingletonPerCut && !isAttachedLayer(layer)
+      ? layer.kind
+      : (layer.kind, layer.name);
   final targetsByKey = <Object, List<Layer>>{};
   for (final target in targets) {
     targetsByKey.putIfAbsent(pairingKey(target), () => []).add(target);

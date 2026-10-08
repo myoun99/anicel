@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -115,6 +117,43 @@ void main() {
           'rows are per-use fixtures every cut already has',
     );
     expect(session.layerVerbs.isLayerLinked(session.activeLayer!.id), isFalse);
+  });
+
+  test('🚨an attach row added on the CONTE of a 겸용 cut appears in its '
+      'sibling too — a storyboard row riding the conte is not the cut\'s one '
+      'conte', () {
+    // A singleton kind mirrors only into a sibling that has none, and the
+    // question was asked of the KIND: the sibling's conte answered for the
+    // attach row, which takes its base's kind, and the row stayed this
+    // cut's alone (I-73, 2026-10-08).
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
+    final pair = makeLinkedPair();
+    final conte = storyboardLayerForCut(cutById(pair.linked))!;
+    final sourceConte = storyboardLayerForCut(cutById(pair.source))!;
+    final sourceBefore = {
+      for (final layer in cutById(pair.source).layers) layer.id,
+    };
+    session.selectLayer(conte.id);
+
+    session.folders.addAttachedLayer(AttachedPlacement.above);
+
+    final added = session.activeLayer!;
+    expect(
+      (added.kind, added.attachedToLayerId),
+      (LayerKind.storyboard, conte.id),
+      reason: 'the premise: a storyboard row, riding the conte',
+    );
+    final appeared = [
+      for (final layer in cutById(pair.source).layers)
+        if (!sourceBefore.contains(layer.id)) layer,
+    ];
+    expect(appeared, hasLength(1), reason: 'existence is shared');
+    expect(
+      (appeared.single.name, appeared.single.attachedToLayerId),
+      (added.name, sourceConte.id),
+      reason: 'the same row, riding the SIBLING\'s own conte',
+    );
+    expect(session.layerVerbs.isLayerLinked(added.id), isTrue);
   });
 
   test('an UNLINKED cut is untouched by the mirror path', () {

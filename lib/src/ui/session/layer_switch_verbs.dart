@@ -271,9 +271,11 @@ class LayerSwitchVerbs {
       return true;
     }
 
-    return !_controllers.layerController.layers.any(
-      (layer) =>
-          layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
+    // The cut's ONE conte ([holdsSingletonOfKind]) — the target is not a
+    // storyboard row here, so it cannot be the one found.
+    return !holdsSingletonOfKind(
+      _controllers.layerController.layers,
+      LayerKind.storyboard,
     );
   }
 
