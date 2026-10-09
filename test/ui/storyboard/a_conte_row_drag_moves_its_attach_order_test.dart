@@ -109,7 +109,12 @@ Finder _name(String text) =>
 
 /// A mouse drag from [from]'s name to [to] — a point on the rail — in
 /// steps, the way a hand moves.
-Future<void> _drag(WidgetTester tester, String from, Offset to) async {
+Future<void> _drag(
+  WidgetTester tester,
+  String from,
+  Offset to, {
+  void Function()? held,
+}) async {
   final start = tester.getCenter(_name(from));
   final gesture = await tester.startGesture(
     start,
@@ -117,9 +122,12 @@ Future<void> _drag(WidgetTester tester, String from, Offset to) async {
   );
   await tester.pump(const Duration(milliseconds: 16));
   for (var step = 1; step <= 4; step += 1) {
-    await gesture.moveTo(Offset.lerp(start, Offset(start.dx, to.dy), step / 4)!);
+    await gesture.moveTo(
+      Offset.lerp(start, Offset(start.dx, to.dy), step / 4)!,
+    );
     await tester.pump(const Duration(milliseconds: 16));
   }
+  held?.call();
   await gesture.up();
   await tester.pumpAndSettle();
 }
@@ -191,6 +199,44 @@ void main() {
       session.rowSelection.value,
       [_seat(3)],
       reason: 'the selection follows the row it held to its new seat',
+    );
+  });
+
+  testWidgets('…and while it is carried the rail draws the drag: the row '
+      'lifts, and the caret stands where it would land', (tester) async {
+    await _pump(tester);
+    await _select(tester, 'Under');
+
+    await _drag(
+      tester,
+      'Under',
+      tester.getRect(_name('High')).topCenter - const Offset(0, 2),
+      held: () {
+        final carets = find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'timeline-row-caret-',
+              ),
+        );
+        expect(carets, findsOneWidget);
+        final high = tester.getRect(
+          find.byKey(const ValueKey<String>('storyboard-conte+2-label-t1')),
+        );
+        expect(tester.getRect(carets).center.dy, closeTo(high.top, 2));
+        expect(
+          find.ancestor(
+            of: find.byKey(
+              const ValueKey<String>('storyboard-conte-1-label-t1'),
+            ),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Opacity && widget.opacity < 1,
+            ),
+          ),
+          findsOneWidget,
+          reason: 'the held row lifts',
+        );
+      },
     );
   });
 
