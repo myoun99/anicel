@@ -376,8 +376,9 @@ class _CanvasViewportGestureLayerState
   bool _navModifierActive = false;
   double? _navModifierLockRotation;
 
-  // Brush-size state.
-  bool _brushSizeActive = false;
+  // Brush-size state: where the drag measures from, taken where it was
+  // recognised (`_updateBrushSize`). Until then the drag has not started.
+  Offset? _brushSizeOrigin;
 
   /// PEN-14: the viewport as the engine last EMITTED it. Mid-gesture,
   /// `widget.viewport` lags the emissions by however long the parent
@@ -586,14 +587,22 @@ class _CanvasViewportGestureLayerState
           anchor: _groupCentroid(_groupDownPositions),
           frameStep: _flipFrameStep,
         );
+      // 🗣️F-260 (유저 10-02): 「시작되면 그때까지 입력된 이동 값이 한번에
+      // 입력되서 화면이 갑자기 순간적으로 크게이동되는데 … 시작되기로 인식한
+      // 순간 … 을 기점으로 시작하게하면 부드럽게 이동시작할거같은데」.
+      // ↩️The view anchored at the DOWN positions, so the slop this lock had
+      // waited out landed in one frame — the merged engine kept the old
+      // draw-mode pinch's whole-travel reading (PEN-12b), nobody's ask.
+      // ★A continuous action starts where it was RECOGNISED, as the twist
+      // already did past its dead zone and as a scroller's drag does. Its
+      // origin is taken at the end of THIS batch (`_updateNavigate`,
+      // `_updateBrushSize`), off every finger's freshest position: read
+      // here, a pinch's other finger is still a frame behind, and the zoom
+      // measured against it would stay wrong for the whole gesture (F-11).
+      // ⛔Not the flip: its lock IS its first step (H30), so it already
+      // starts there.
       case CanvasTouchDragAction.navigate:
-        // Anchor at the DOWN positions: the whole travel since touchdown
-        // counts (the legacy pinch contract — nothing swallowed by the
-        // lock slop, and a single-event jump still navigates in full).
-        _anchorNavigate(fromDownPositions: true);
       case CanvasTouchDragAction.brushSize:
-        _brushSizeActive = true;
-        widget.onBrushSizeDragStart?.call();
       // The brush view owns a DRAW group's stroke; the engine stands by.
       case CanvasTouchDragAction.draw:
       case CanvasTouchDragAction.none:
@@ -676,11 +685,10 @@ class _CanvasViewportGestureLayerState
     widget.flipHud?.refresh(frameStep: _flipFrameStep);
   }
 
-  void _anchorNavigate({bool fromDownPositions = false}) {
-    final source = fromDownPositions ? _groupDownPositions : _touchPositions;
+  void _anchorNavigate() {
     final positions = {
       for (final pointer in _groupPointers)
-        pointer: source[pointer] ?? Offset.zero,
+        pointer: _touchPositions[pointer] ?? Offset.zero,
     };
     _navStartFocal = _groupCentroid(positions);
     if (_groupPointers.length >= 2) {
@@ -742,6 +750,9 @@ class _CanvasViewportGestureLayerState
     final startFocal = _navStartFocal;
     final startViewport = _navStartViewport;
     if (startFocal == null || startViewport == null) {
+      // The batch that locked the group: the gesture starts here (F-260,
+      // `_lockGroup`), and nothing has moved since.
+      _anchorNavigate();
       return;
     }
     final settings = AppInput.settings.value;
@@ -831,11 +842,18 @@ class _CanvasViewportGestureLayerState
   }
 
   void _updateBrushSize() {
-    final downCentroid = _groupCentroid(_groupDownPositions);
     final nowCentroid = _groupCentroid(_touchPositions);
+    final origin = _brushSizeOrigin;
+    if (origin == null) {
+      // The batch that locked the group: the drag starts here (F-260,
+      // `_lockGroup`).
+      _brushSizeOrigin = nowCentroid;
+      widget.onBrushSizeDragStart?.call();
+      return;
+    }
     // Vertical only (가로축은 의도적으로 비움): up = bigger.
     widget.onBrushSizeDragUpdate?.call(
-      downCentroid.dy - nowCentroid.dy,
+      origin.dy - nowCentroid.dy,
       snap:
           _modifierPointers.isNotEmpty &&
           AppInput.settings.value.extraFingerModifier,
@@ -851,7 +869,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
     // Any BASE finger lifting ends the gesture whole.
-    if (_brushSizeActive) {
+    if (_brushSizeOrigin != null) {
       widget.onBrushSizeDragEnd?.call();
     }
     _resetControlEngine();
@@ -875,7 +893,7 @@ class _CanvasViewportGestureLayerState
     _navStartViewport = null;
     _navModifierActive = false;
     _navModifierLockRotation = null;
-    _brushSizeActive = false;
+    _brushSizeOrigin = null;
   }
 
   static double _touchAngleDegrees(Offset first, Offset second) {

@@ -80,6 +80,8 @@ void main() {
       await tester.pump();
       await first.moveBy(const Offset(-40, 0));
       await second.moveBy(const Offset(40, 0));
+      // Recognised on the move above; the view moves from there (F-260).
+      await second.moveBy(const Offset(10, 0));
       await tester.pump();
       await first.up();
       await second.up();

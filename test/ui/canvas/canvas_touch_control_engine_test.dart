@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
+import '../../helpers/pinch_recognised_at.dart';
+
 /// PEN-7b: the CONTROL-mode touch engine — finger-count slots, the
 /// lock-then-modifier rule, snap constraints. Everything runs under the
 /// control mode (the product default); the corpus baseline elsewhere is
@@ -400,15 +402,11 @@ void main() {
     // Two fingers pinch OUT to 2×. The harness never rebuilds the layer
     // with the emitted viewport (widget.viewport stays 1.0) — exactly
     // the mid-gesture staleness a real parent shows between frames.
-    final first = await tester.startGesture(
+    final (first, second) = await pinchRecognisedAt(
+      tester,
       const Offset(200, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 31,
-    );
-    final second = await tester.startGesture(
       const Offset(300, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 32,
+      pointer: 31,
     );
     await first.moveBy(const Offset(-50, 0));
     await second.moveBy(const Offset(50, 0));

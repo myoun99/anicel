@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/pinch_recognised_at.dart';
 
 /// P8: canvas view rotation + horizontal flip — toolbar buttons, the
 /// shortcut command channel, Fit's reset, pointer round-trip through a
@@ -337,9 +338,13 @@ void main() {
   });
 
   group('two-finger rotation gesture', () {
+    /// The second finger sweeps from (200, 100) around the first at
+    /// (100, 100) — from where the pinch was RECOGNISED there (F-260), or,
+    /// with [recognised] false, from where the two fingers merely landed.
     Future<CanvasViewport?> runTwoFingerArc(
       WidgetTester tester, {
       required Offset secondFingerEnd,
+      bool recognised = true,
     }) async {
       CanvasViewport? emitted;
       await tester.pumpWidget(
@@ -352,14 +357,20 @@ void main() {
         ),
       );
 
-      final first = await tester.startGesture(
-        const Offset(100, 100),
-        kind: PointerDeviceKind.touch,
-      );
-      final second = await tester.startGesture(
-        const Offset(200, 100),
-        kind: PointerDeviceKind.touch,
-      );
+      const firstAt = Offset(100, 100);
+      const secondAt = Offset(200, 100);
+      final (first, second) = recognised
+          ? await pinchRecognisedAt(tester, firstAt, secondAt)
+          : (
+              await tester.startGesture(
+                firstAt,
+                kind: PointerDeviceKind.touch,
+              ),
+              await tester.startGesture(
+                secondAt,
+                kind: PointerDeviceKind.touch,
+              ),
+            );
       await tester.pump();
       await second.moveTo(secondFingerEnd);
       await tester.pump();
@@ -383,10 +394,9 @@ void main() {
     });
 
     testWidgets('inside the deadzone a pinch stays level', (tester) async {
-      // PEN-12 #4 (engine contract): the finger must CROSS the 18px lock
-      // slop to navigate at all, so the sweep rides a mostly-radial move
-      // — ~1.4° of angle on a 40px travel: below the 5° deadzone, no
-      // rotation (the zoom may change, that is not this pin).
+      // A mostly-radial move — ~1.4° of angle on a 40px travel: below the
+      // 5° deadzone, no rotation (the zoom may change, that is not this
+      // pin).
       final emitted = await runTwoFingerArc(
         tester,
         secondFingerEnd: const Offset(240, 103.42),
@@ -414,6 +424,7 @@ void main() {
         tester,
         // ~5px of travel: under the 18px lock slop.
         secondFingerEnd: const Offset(199.86, 105.23),
+        recognised: false,
       );
       expect(emitted, isNull);
     });

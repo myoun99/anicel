@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/pinch_recognised_at.dart';
 import 'brush_canvas_test_helpers.dart';
 
 /// Everything a floor pill shows that a rail pill folds away — in the order
@@ -2081,14 +2082,11 @@ void main() {
       );
       await tester.pump();
 
-      final firstFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
+      final (firstFinger, secondFinger) = await pinchRecognisedAt(
+        tester,
+        viewportPoint(tester, const Offset(40, 50)),
+        viewportPoint(tester, const Offset(80, 50)),
       );
-      final secondFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await firstFinger.down(viewportPoint(tester, const Offset(40, 50)));
-      await secondFinger.down(viewportPoint(tester, const Offset(80, 50)));
 
       // Pinch out: distance 40 → 80 doubles the zoom around the start
       // focal (60,50); the new focal (80,50) drags the view 20px along x.
@@ -2141,17 +2139,11 @@ void main() {
 
       // Finger 1 starts what looks like a stroke; finger 2 turns the
       // interaction into navigation (the view cancels the stroke).
-      final firstFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
+      final (firstFinger, secondFinger) = await pinchRecognisedAt(
+        tester,
+        viewportPoint(tester, const Offset(40, 40)),
+        viewportPoint(tester, const Offset(80, 40)),
       );
-      await firstFinger.down(viewportPoint(tester, const Offset(40, 40)));
-      final secondFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await secondFinger.down(viewportPoint(tester, const Offset(80, 40)));
-      // The view cancels the touch stroke synchronously; the panel's
-      // strokeActive flag clears on the next frame — pump before moving.
-      await tester.pump();
 
       await secondFinger.moveTo(viewportPoint(tester, const Offset(100, 40)));
       await firstFinger.up();
