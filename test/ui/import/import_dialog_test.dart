@@ -354,6 +354,7 @@ void main() {
         'offers the pool on the row', (tester) async {
       final path = await tester.runAsync(() => writePng('drop.png'));
       await pumpWindow(tester, path!, poolOnly: false);
+      await settleLoadedPages(tester);
       final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
 
       expect(
@@ -792,9 +793,10 @@ void main() {
       await pump(tester, [a!, b!]);
 
       expect(cellText(tester, 'file', a), 'Keep');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-file')),
-      );
+      final header = find.byKey(const ValueKey<String>('import-column-file'));
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('import-option-file-reference')),
@@ -944,8 +946,9 @@ void main() {
     });
 
     testWidgets('an expanded PSD locks its BAKE on — one of them baked means '
-        'all of them are — and leaves how the file is kept alone; merged, '
-        'the bake is its own question again', (tester) async {
+        'all of them are — so its file stays out of the pool and is not '
+        'asked how it is kept; merged, the bake is its own question again, '
+        'and so is the file', (tester) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
       // The preview reads a Photoshop file whole, through an awaited read
@@ -970,7 +973,12 @@ void main() {
         reason: 'a PSD comes in as its layers (F-306-Q1)',
       );
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
-      expect(cellText(tester, 'file', psd), 'Keep');
+      expect(
+        cellText(tester, 'file', psd),
+        '—',
+        reason: 'baked, it keeps no entry (F-282-Q6, 유저 2026-10-09: 「구우면 '
+            '풀에 안 남긴다」)',
+      );
 
       await pickCell(tester, column: 'option', path: psd, option: 'merge');
 
@@ -978,13 +986,17 @@ void main() {
       expect(cellText(tester, 'file', psd), 'Keep');
     });
 
+    // ↩️The 넣을 곳 column went with them (09-11); it stands now, 「미디어」
+    // locked — the window mock the user started this from (2026-10-09: 「미디어
+    // 패널의 경우엔 굽기 맞춤 옵션안넣어도되 … 그거만 해서 시작해도되」), and
+    // pinned beside the browser's door above.
     testWidgets('🚨the pool asks nothing about placement — the questions a '
         'placement asks are not there at all (유저 2026-09-11: 「플레이스가 '
         '풀이면 넣을곳 맞춤 PSD 열 삭제」)', (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       await pump(tester, [png!], poolOnly: true);
 
-      for (final id in ['bake', 'into', 'fit', 'psd']) {
+      for (final id in ['bake', 'fit', 'option']) {
         expect(
           find.byKey(ValueKey<String>('import-column-$id')),
           findsNothing,
@@ -1237,6 +1249,91 @@ void main() {
       File(piecePath).existsSync(),
       isFalse,
       reason: 'the file the door read is gone — the staged copy is the only one',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯BAKED, a PDF placed with a range is drawn from the file '
+      'itself — no piece is cut for an entry it will not keep (F-282-Q6)', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final fake = FakePdfDocument(
+      pageSizes: List.filled(5, const ui.Size(595, 842)),
+    );
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return normalizedMediaPath(file.path);
+    });
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    final cutFrom = <(String, int, int)>[];
+    PdfRenderService.debugPageSpanOverride = (path, first, count) async {
+      cutFrom.add((path, first, count));
+      return Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]);
+    };
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-in-input')),
+      '3',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-out-input')),
+      '4',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final bake = find.byKey(ValueKey<String>('import-cell-bake-$pdfPath'));
+    await tester.ensureVisible(bake);
+    await tester.pumpAndSettle();
+    await tester.tap(bake);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    int cutCount() => s.repository.requireProject().tracks.first.cuts.length;
+    for (var tries = 0; tries < 200 && cutCount() == cutsBefore; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    // Named for the file: no piece was cut to lend it a span's name.
+    final cut = s.repository.requireProject().tracks.first.cuts.last;
+    final layer = cut.layers.firstWhere((layer) => layer.name == 'conte');
+    expect(layer.mediaReference, isNull, reason: 'CONTROL: baked');
+    expect(layer.frames, hasLength(2), reason: 'two pages, not five');
+    expect(
+      cutFrom,
+      isEmpty,
+      reason: 'a piece is a pool entry\'s to be, and a baked placement keeps '
+          'none — its span is drawn from the file through the door\'s IN/OUT',
+    );
+    expect(
+      s.repository.requireProject().mediaAssets,
+      isEmpty,
+      reason: 'baked, it keeps no entry (유저 2026-10-09: 「구우면 풀에 안 '
+          '남긴다」)',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });

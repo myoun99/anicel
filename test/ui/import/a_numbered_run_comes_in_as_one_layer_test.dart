@@ -133,22 +133,9 @@ void main() {
     expect(word.didExceedMaxLines, isFalse, reason: 'the word fits its line');
   });
 
-  testWidgets('a folder with no run asks nothing about one', (tester) async {
-    final path = (await tester.runAsync(
-      () => writeSolidPng(tempDir, 'A1.png'),
-    ))!;
-    await open(tester, [path]);
-
-    expect(
-      find.byKey(const ValueKey<String>('import-column-option')),
-      findsNothing,
-      reason: 'a column stands only when some row has to answer it',
-    );
-  });
-
   testWidgets('🚨together, the run is ONE layer named by its symbol, its '
       'frames by their numbers — the same picture twice is one cel held '
-      'twice, and every file is in the pool', (tester) async {
+      'twice, and baked, no file of it is in the pool', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
 
@@ -170,8 +157,9 @@ void main() {
     for (final name in ['A1', 'A2', 'A3']) {
       expect(
         project.mediaAssetByPath(normalizedMediaPath(files[name]!)),
-        isNotNull,
-        reason: '$name registers on its own',
+        isNull,
+        reason: '$name is baked into the run — a baked placement registers '
+            'nothing (F-282-Q6; ↩️each registered on its own)',
       );
     }
   });

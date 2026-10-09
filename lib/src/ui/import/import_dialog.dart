@@ -677,14 +677,8 @@ class _ImportDialogState extends State<ImportDialog> {
       }
       // Each row as its 넣을 곳 says: the ones that only register, then the
       // ones that are placed — one count over both, a file each.
-      final registering = [
-        for (final path in _files)
-          if (_registersOnly(path)) path,
-      ];
-      final placing = [
-        for (final path in _files)
-          if (!_registersOnly(path)) path,
-      ];
+      final registering = _files.where(_registersOnly).toList();
+      final placing = _files.where(_placing).toList();
       final share = _share(registering.length, _files.length);
       if (registering.isNotEmpty) {
         // The pool: every kind registers, movies included. Two batches
@@ -840,10 +834,29 @@ class _ImportDialogState extends State<ImportDialog> {
   /// and a file the pool carries is inside already, every byte of it — a
   /// piece of it would be a second copy (유저 08-27: 「사본 남으면 진짜
   /// 용서안할게」). Placing a stretch of it takes the pooled file as it is.
+  ///
+  /// A piece is a pool entry's to be: a row that leaves none (baked,
+  /// F-282-Q6) bakes its span from the file through its door's IN/OUT.
   bool _comesInAsAPiece(String path, ImportFileSettings settings) =>
       settings.isTrimmed &&
       settings.mode == ImportFileMode.keepInside &&
-      _poolEntryFor(path) == null;
+      _poolEntryFor(path) == null &&
+      _keepsAPoolEntry(path);
+
+  /// Whether [path]'s row leaves its file in the media pool: a row that
+  /// only registers, and a placement that does by [placementRegisters] —
+  /// one the layer draws from, or a movie whose sound lands beside its
+  /// baked picture.
+  bool _keepsAPoolEntry(String path) {
+    final settings = _settingsFor(path);
+    return settings.intoPool ||
+        placementRegisters(
+          baked: settings.bake,
+          soundReadsIt:
+              _asksSound(path) &&
+              settings.movieParts == MovieParts.pictureAndSound,
+        );
+  }
 
   /// [path] through its door — or, when it comes in as its PIECE
   /// ([_comesInAsAPiece]), the span cut into a file of its own and placed
@@ -1109,7 +1122,6 @@ class _ImportDialogState extends State<ImportDialog> {
     final expanded = await session.importDoors.importPsdExpanded(
       path: path,
       destination: settings.into,
-      copyIntoProject: settings.mode == ImportFileMode.keepInside,
       fit: settings.fit,
       spot: widget.spot,
     );
@@ -1398,7 +1410,9 @@ class _ImportDialogState extends State<ImportDialog> {
     values: ImportFileMode.values,
     labelOf: (value) => importModeLabel(value! as ImportFileMode),
     valueOf: (path) => _settingsFor(path).mode,
-    appliesTo: (path) => true,
+    // Asked only of a row that leaves an entry — a baked one leaves none
+    // (F-282-Q6: 「굽는 줄의 「파일」은 「—」」).
+    appliesTo: _keepsAPoolEntry,
     enabledFor: (path, value) {
       // A pooled file in a mixed batch shows the pool's answer, locked.
       if (_poolEntryFor(path) != null) {
@@ -1469,16 +1483,7 @@ class _ImportDialogState extends State<ImportDialog> {
       MovieParts.picture,
       MovieParts.sound,
     ],
-    valuesFor: (path) => switch (_optionAsked(path)) {
-      _OptionAsked.run => NumberedRun.values,
-      _OptionAsked.psd => const [PsdPlaceMode.expand, PsdPlaceMode.merge],
-      _OptionAsked.sound => const [
-        MovieParts.pictureAndSound,
-        MovieParts.picture,
-        MovieParts.sound,
-      ],
-      null => const [],
-    },
+    valuesFor: _optionAnswers,
     labelOf: (value) => switch (value) {
       final NumberedRun run => importRunLabel(run),
       final PsdPlaceMode psd => importPsdLabel(psd),
@@ -1495,15 +1500,7 @@ class _ImportDialogState extends State<ImportDialog> {
       ),
       _ => null,
     },
-    valueOf: (path) {
-      final settings = _settingsFor(path);
-      return switch (_optionAsked(path)) {
-        _OptionAsked.run => settings.run,
-        _OptionAsked.psd => settings.psd,
-        _OptionAsked.sound => settings.movieParts,
-        null => null,
-      };
-    },
+    valueOf: _optionAnswerOf,
     appliesTo: (path) => _optionAsked(path) != null,
     enabledFor: (path, value) => switch (value) {
       // A row's frames take the merged picture (expanding makes layers,
@@ -1528,6 +1525,29 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
+  /// What [path]'s row may answer in the 「옵션」 column: its own kind's.
+  List<Object?> _optionAnswers(String path) => switch (_optionAsked(path)) {
+    _OptionAsked.run => NumberedRun.values,
+    _OptionAsked.psd => const [PsdPlaceMode.expand, PsdPlaceMode.merge],
+    _OptionAsked.sound => const [
+      MovieParts.pictureAndSound,
+      MovieParts.picture,
+      MovieParts.sound,
+    ],
+    null => const [],
+  };
+
+  /// [path]'s answer in the 「옵션」 column, its own kind's.
+  Object? _optionAnswerOf(String path) {
+    final settings = _settingsFor(path);
+    return switch (_optionAsked(path)) {
+      _OptionAsked.run => settings.run,
+      _OptionAsked.psd => settings.psd,
+      _OptionAsked.sound => settings.movieParts,
+      null => null,
+    };
+  }
+
   /// Which question the 「옵션」 column asks [path]'s row, if any — only of
   /// a placed row: registering brings the file in as it is.
   _OptionAsked? _optionAsked(String path) {
@@ -1549,10 +1569,6 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the row).
   ImportColumn<Object?> _intoColumn() {
     final spot = widget.spot;
-    // A drop that answered the cut shows that answer locked; the canvas's
-    // spot is a default and leaves the cut to this column
-    // (pool-drop-picks-layer-or-cut, 유저 2026-09-12).
-    final answering = spot?.answeredDestination == null ? null : spot;
     return ImportColumn<Object?>(
       id: 'into',
       label: AppText.strings.imInto,
@@ -1561,23 +1577,7 @@ class _ImportDialogState extends State<ImportDialog> {
         const _SoundOnSeRows(),
         const _IntoThePool(),
       ],
-      // A drop's answer is the ONE value, so the cell shows it and opens
-      // nothing — the shape every locked answer in this table has. So is a
-      // pool's door's: every row there registers.
-      valuesFor: (path) {
-        if (widget.poolOnly) {
-          return const [_IntoThePool()];
-        }
-        if (_landsAsSound(path)) {
-          return [
-            if (spot is SeCellSpot) spot else const _SoundOnSeRows(),
-            if (answering == null) const _IntoThePool(),
-          ];
-        }
-        return answering == null
-            ? const [...ImportDestination.values, _IntoThePool()]
-            : [answering];
-      },
+      valuesFor: _intoAnswers,
       labelOf: (value) => switch (value) {
         final ImportDestination into => importIntoLabel(into),
         final ImportLayerSpot dropped => _spotLabel(dropped),
@@ -1593,7 +1593,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ? const _IntoThePool()
           : _landsAsSound(path)
           ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
-          : answering ?? _settingsFor(path).into,
+          : _answeredSpot ?? _settingsFor(path).into,
       appliesTo: (path) => true,
       enabledFor: (path, value) => switch (value) {
         // A file the pool already holds has nothing left to register.
@@ -1614,6 +1614,35 @@ class _ImportDialogState extends State<ImportDialog> {
         },
       ),
     );
+  }
+
+  /// The drop's place when it answered the cut, shown locked; the canvas's
+  /// spot is a default and leaves the cut to the 「넣을 곳」 column
+  /// (pool-drop-picks-layer-or-cut, 유저 2026-09-12).
+  ImportLayerSpot? get _answeredSpot {
+    final spot = widget.spot;
+    return spot?.answeredDestination == null ? null : spot;
+  }
+
+  /// What [path]'s row may answer in the 「넣을 곳」 column. A drop's answer
+  /// is the ONE value, so the cell shows it and opens nothing — the shape
+  /// every locked answer in this table has. So is a pool's door's: every
+  /// row there registers.
+  List<Object?> _intoAnswers(String path) {
+    final spot = widget.spot;
+    final answering = _answeredSpot;
+    if (widget.poolOnly) {
+      return const [_IntoThePool()];
+    }
+    if (_landsAsSound(path)) {
+      return [
+        if (spot is SeCellSpot) spot else const _SoundOnSeRows(),
+        if (answering == null) const _IntoThePool(),
+      ];
+    }
+    return answering == null
+        ? const [...ImportDestination.values, _IntoThePool()]
+        : [answering];
   }
 
   /// A drop's answer in words: 「새 레이어」 for the canvas, 「새 컷」 for the

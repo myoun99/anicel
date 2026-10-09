@@ -265,10 +265,24 @@ void main() {
     });
   });
 
-  testWidgets('a movie row is asked the bake question, starting unbaked — '
-      'and pressing Bake leaves its File answer alone', (tester) async {
+  testWidgets('a movie row is asked the bake question, starting unbaked — and '
+      'baked it is still asked how its file is kept while its sound comes '
+      'with it; its picture alone, it keeps no entry (F-282-Q6)', (
+    tester,
+  ) async {
     final movie = await writeMovie(tester, 'take.mp4');
     await open(tester, [movie]);
+    await settle(
+      tester,
+      () =>
+          cellText(tester, 'option', movie) ==
+          AppText.strings.imPictureAndSound,
+    );
+    expect(
+      cellText(tester, 'option', movie),
+      AppText.strings.imPictureAndSound,
+      reason: 'CONTROL: its sound comes with it',
+    );
 
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOff);
     expect(
@@ -284,7 +298,24 @@ void main() {
     expect(
       cellText(tester, 'file', movie),
       AppText.strings.imModeKeep,
-      reason: 'a press in one column answers that column only',
+      reason: 'its sound lands beside the baked picture and reads the file, '
+          'so the file keeps its entry',
+    );
+
+    final option = find.byKey(ValueKey<String>('import-cell-option-$movie'));
+    await tester.ensureVisible(option);
+    await settleLoadedPages(tester);
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-option-picture')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      cellText(tester, 'file', movie),
+      '—',
+      reason: 'baked and silent, nothing reads the file: no entry, so no '
+          'question (유저 2026-10-09: 「구우면 풀에 안 남긴다」)',
     );
   });
 

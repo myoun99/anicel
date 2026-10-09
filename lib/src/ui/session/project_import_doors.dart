@@ -116,8 +116,8 @@ class ProjectImportDoors {
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps
-  /// [Layer.mediaReference]; rasterize bakes and stamps nothing. Both
-  /// REGISTER the asset (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut is
+  /// [Layer.mediaReference] and REGISTERS the asset; rasterize bakes,
+  /// stamps nothing and registers nothing ([placementRegisters]). A NEW cut is
   /// made at the file's own size. One undo step; the baked cels display
   /// through the ordinary store paths. Returns false when nothing imported
   /// — including when the row a drop aimed at ([spot]) takes no frames.
@@ -226,7 +226,9 @@ class ProjectImportDoors {
         displayName: arrival.displayName,
         cutId: cutId,
         fit: fit,
-        rasterize: rasterize,
+        // Frames on a row are that row's own pixels (「셀에 떨어뜨리면 항상
+        // 굽기」) — baked, whatever was asked.
+        rasterize: rasterize || spot is RowFramesSpot,
         mint: arrival.mint,
         referencePath: source,
         identity: identity,
@@ -252,10 +254,9 @@ class ProjectImportDoors {
       return false;
     }
     // 🔑 AFTER the registration. The bytes were read to decode them, so the
-    // hash costs no I/O. A RASTERIZING import used to skip it because it
-    // registered nothing; it registers now (유저 2026-09-11: 「구워도 풀에
-    // 남음」), and a registered file is one that can go missing and have to
-    // be found again — `A1.png` repeats in every cut folder on a real drive.
+    // hash costs no I/O. A registered file is one that can go missing and
+    // have to be found again — `A1.png` repeats in every cut folder on a
+    // real drive — and a baked one is not registered (F-282-Q6).
     if (assets.isNotEmpty) {
       _fingerprints.rememberMediaFingerprint(source, bytes);
     }
@@ -291,9 +292,9 @@ class ProjectImportDoors {
   /// 프레임으로 인식하는 느낌」.
   ///
   /// Always baked: a layer's reference names ONE file, and these are many
-  /// — the cut folder's law, which always bakes. Each file registers on its
-  /// own (유저 2026-09-11: 「구워도 풀에 남음」): a pooled `A1.png` is one
-  /// picture, not a sequence of three.
+  /// — the cut folder's law, which always bakes. So nothing registers
+  /// ([placementRegisters], F-282-Q6). ↩️Each file registered on its own
+  /// (유저 2026-09-11: 「구워도 풀에 남음」).
   ///
   /// One file is decoded at a time — to fold, then again to bake — so a run
   /// of full-page scans never sits in memory whole.
@@ -335,13 +336,11 @@ class ProjectImportDoors {
       mint: arrival.mint,
       frameNames: [for (final file in files) file.label],
     );
-    final assets = _eachRegistered(sources, settings);
-    await _pool.holdCarriedBytes(assets);
     if (!_landing.land(
       [plan.layer],
       arrival: arrival,
       duration: _sequenceLength(plan.layer),
-      assets: assets,
+      assets: const [],
     )) {
       return false;
     }
@@ -359,25 +358,13 @@ class ProjectImportDoors {
     return true;
   }
 
-  /// Each of [sources] as the pool's own picture, kept as [settings] say.
-  List<MediaAsset> _eachRegistered(
-    List<String> sources,
-    ImportFileSettings settings,
-  ) => [
-    for (final source in sources)
-      importedMediaAsset(
-        path: source,
-        kind: MediaAssetKind.image,
-        fit: settings.fit,
-        identity: readMediaIdentity(source),
-        carried: settings.mode == ImportFileMode.keepInside,
-      ),
-  ];
-
   /// What the fold reads of each of [sources]' pictures ([_foldBytes]), and
   /// the first one's size — one file decoded at a time; null when one does
-  /// not read. Each one's bytes are fingerprinted on the way: they were read
-  /// anyway, and the ledger takes a path not registered yet.
+  /// not read.
+  ///
+  /// ↩️Each one's bytes were fingerprinted on the way, for the pool entry
+  /// each file was — the run registers nothing now (F-282-Q6), and a
+  /// fingerprint is how a REGISTERED file is found again.
   Future<({List<Object?> fingerprints, CanvasSize firstSize})?> _foldRun(
     List<String> sources,
   ) async {
@@ -388,7 +375,6 @@ class ProjectImportDoors {
       if (still == null) {
         return null;
       }
-      _fingerprints.rememberMediaFingerprint(source, still.bytes);
       try {
         firstSize ??= CanvasSize(
           width: still.image.width,
@@ -441,10 +427,10 @@ class ProjectImportDoors {
   /// the user set: a half-linked stack would take original updates on some
   /// rows and not others, and a reorder in Photoshop would break the match
   /// for the rest. So nothing keeps a reference — the merged reading
-  /// ([importImageFile]) is the one that stays live. The FILE still
-  /// registers, carried or linked as the window said: a baked file is the
-  /// pool's to offer again (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut
-  /// is made at the document's size.
+  /// ([importImageFile]) is the one that stays live. Baked, so the FILE
+  /// registers nothing ([placementRegisters], F-282-Q6). ↩️It registered,
+  /// carried or linked as the window said (유저 2026-09-11: 「구워도 풀에
+  /// 남음」). A NEW cut is made at the document's size.
   ///
   /// Returns the warnings (colour conversions, blends we have no
   /// equivalent for, adjustment layers left behind), or null when the
@@ -453,7 +439,6 @@ class ProjectImportDoors {
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
-    required bool copyIntoProject,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
     ImportLayerSpot? spot,
@@ -495,23 +480,12 @@ class ProjectImportDoors {
         ? gate.withCanvasSize(expansion.canvas)
         : gate;
 
-    final assets = [
-      importedMediaAsset(
-        path: arrival.source,
-        kind: MediaAssetKind.image,
-        fit: fit,
-        identity: readMediaIdentity(arrival.source),
-        carried: copyIntoProject,
-      ),
-    ];
-    await _pool.holdCarriedBytes(assets);
     _landing.land(
       expansion.layers,
       arrival: arrival,
       duration: duration,
-      assets: assets,
+      assets: const [],
     );
-    _fingerprints.rememberMediaFingerprint(arrival.source, bytes);
 
     // Pixels after the structure, like every other import: the cel keys
     // resolve their owner through the cut that now exists.
@@ -641,7 +615,9 @@ class ProjectImportDoors {
           displayName: arrival.displayName,
           cutId: cutId,
           fit: fit,
-          rasterize: rasterize,
+          // Frames on a row are that row's own pixels (「셀에 떨어뜨리면 항상
+          // 굽기」) — baked, whatever was asked.
+          rasterize: rasterize || spot is RowFramesSpot,
           mint: arrival.mint,
           referencePath: source,
           identity: identity,
@@ -755,23 +731,24 @@ class ProjectImportDoors {
     }
     try {
       final info = opened.info;
-      final planned = _planMovieLayer(
-        gate,
-        info,
-        settings,
-        rasterize: settings.bake || spot is RowFramesSpot,
-      );
+      final baked = settings.bake || spot is RowFramesSpot;
+      final planned = _planMovieLayer(gate, info, settings, rasterize: baked);
       final arrival = planned.arrival;
       final source = arrival.source;
-      final asset = _movieAsset(source, info, settings, sourcePath);
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
-      await _pool.holdCarriedBytes([asset]);
-      if (!_landMovieWithSound(planned, asset, withSound: withMovieSound)) {
+      // A baked picture leaves the file nothing to be for — unless its
+      // sound lands beside it, which reads the file ([placementRegisters]).
+      final assets = [
+        if (placementRegisters(baked: baked, soundReadsIt: withMovieSound))
+          _movieAsset(source, info, settings, sourcePath),
+      ];
+      await _pool.holdCarriedBytes(assets);
+      if (!_landMovieWithSound(planned, assets, withSound: withMovieSound)) {
         return false;
       }
       await _bakeLandedCels(
@@ -871,9 +848,10 @@ class ProjectImportDoors {
     );
   }
 
-  /// The pool entry a placed movie registers — baked or not (유저
-  /// 2026-09-11: 「구워도 풀에 남음」) — ONE entry, which the sound points
-  /// at too.
+  /// The pool entry a placed movie registers when it does
+  /// ([placementRegisters]: unbaked, or with its sound beside it) — ONE
+  /// entry, which the sound points at too. ↩️Baked or not (유저 2026-09-11:
+  /// 「구워도 풀에 남음」), until F-282-Q6.
   MediaAsset _movieAsset(
     String source,
     QaVideoInfo info,
@@ -896,7 +874,7 @@ class ProjectImportDoors {
   /// only when [withSound] says the movie brought one.
   bool _landMovieWithSound(
     _MoviePlacement planned,
-    MediaAsset asset, {
+    List<MediaAsset> assets, {
     required bool withSound,
   }) {
     final arrival = planned.arrival;
@@ -907,7 +885,7 @@ class ProjectImportDoors {
         [planned.layer],
         arrival: arrival,
         duration: kept.count,
-        assets: [asset],
+        assets: assets,
       );
       if (!landed || !withSound) {
         return;
@@ -936,7 +914,9 @@ class ProjectImportDoors {
   /// one per movie frame the sound's clock shows there, consecutive
   /// duplicates folded into held exposure (「중복 접기」, the fold the
   /// placement window's bake uses) — the reference is let go of, and the
-  /// pool entry stays (「구워도 풀에 남음」).
+  /// pool entry stays: it was made when the reference was placed, and a
+  /// later bake does not empty the pool (「구워도 풀에 남음」 — what a
+  /// PLACEMENT registers is [placementRegisters]'s, F-282-Q6).
   ///
   /// ⚠️HERE rather than beside [RasterizeLayerReferenceCommand], because
   /// this is where a movie's pixels come in: the reader, the sound's clock,

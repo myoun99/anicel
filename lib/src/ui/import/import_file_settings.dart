@@ -112,8 +112,9 @@ class ImportFileSettings {
   /// Whether the placed layer is BAKED into cels instead of drawing from the
   /// file — the layer's question, asked only where something is placed.
   ///
-  /// Baking still registers the file: the material of every placement is a
-  /// pool entry (user 2026-09-11: 「구워도 풀에 남음」).
+  /// A baked placement registers nothing, so its file column says 「—」
+  /// (`placementRegisters`, F-282-Q6). ↩️Baking still registered the file
+  /// (user 2026-09-11: 「구워도 풀에 남음」).
   final bool bake;
 
   /// Where a PLACED file lands. Ignored when the window is registering

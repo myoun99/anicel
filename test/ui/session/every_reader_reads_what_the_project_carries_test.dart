@@ -105,7 +105,6 @@ void main() {
               await s.importDoors.importPsdExpanded(
                 path: path,
                 destination: ImportDestination.activeCutLayer,
-                copyIntoProject: true,
               ) !=
               null,
         ),

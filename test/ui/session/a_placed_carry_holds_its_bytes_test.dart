@@ -15,7 +15,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
-import '../../helpers/psd_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -109,33 +108,9 @@ void main() {
         copyIntoProject: keep,
       ),
     ),
-    (
-      name: 'an expanded PSD',
-      write: () async => writeBytes(
-        'bg.psd',
-        buildPsd(
-          width: 8,
-          height: 8,
-          layers: [
-            PsdTestLayer(
-              name: 'bg',
-              left: 0,
-              top: 0,
-              right: 8,
-              bottom: 8,
-              planes: psdSolidPlanes(8, 8, [10, 20, 30]),
-            ),
-          ],
-        ),
-      ),
-      place: (s, path, keep) async =>
-          await s.importDoors.importPsdExpanded(
-            path: path,
-            destination: ImportDestination.activeCutLayer,
-            copyIntoProject: keep,
-          ) !=
-          null,
-    ),
+    // ↩️An expanded PSD stood here: always baked, it registers nothing now
+    // (F-282-Q6, 유저 2026-10-09: 구우면 풀에 안 남긴다) — there is no carry
+    // to hold.
     (
       name: 'a movie',
       write: () async {

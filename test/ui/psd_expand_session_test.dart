@@ -90,16 +90,15 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.activeCutLayer,
-        copyIntoProject: false,
       );
     });
 
     expect(warnings, isNotNull);
     expect(
-      s.mediaPool.mediaAssets.single.name,
-      'BG_a12',
-      reason: 'the stack is baked, and its FILE still registers (유저 '
-          '2026-09-11: 「구워도 풀에 남음」)',
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'the stack is baked, so its file registers nothing (F-282-Q6, '
+          '유저 2026-10-09: 구우면 풀에 안 남긴다 — ↩️「구워도 풀에 남음」)',
     );
     final after = s.activeCutOrNull!;
     final added = after.layers.where(
@@ -131,11 +130,6 @@ void main() {
     final undone = s.activeCutOrNull!;
     expect(undone.layers.length, layersBefore);
     expect(
-      s.mediaPool.mediaAssets,
-      isEmpty,
-      reason: 'the registration rides the same undo',
-    );
-    expect(
       undone.layers.any((layer) => layer.name == 'BG_a12'),
       isFalse,
     );
@@ -162,7 +156,6 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
-        copyIntoProject: false,
       );
     });
 
@@ -181,7 +174,6 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.newCut,
-        copyIntoProject: false,
       );
     });
 

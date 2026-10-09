@@ -71,8 +71,8 @@ void main() {
     );
   });
 
-  test('🚨rasterize REGISTERS its file too — the material of every placement '
-      'is a pool entry (유저 2026-09-11: 「구워도 풀에 남음」)', () {
+  test('🚨a BAKED placement registers nothing — the pixels are the layer\'s '
+      'own (F-282-Q6, 유저 2026-10-09: 구우면 풀에 안 남긴다)', () {
     final sequence = planSequenceLayer(
       sourceFiles: const ['a.gif', 'a.gif'],
       frameFingerprints: const ['A', 'B'],
@@ -88,7 +88,7 @@ void main() {
       isNull,
       reason: 'baked: nothing points at the file',
     );
-    expect(sequence.assets.single.path, 'C:/media/a.gif');
+    expect(sequence.assets, isEmpty);
 
     final still = planStillImageLayer(
       sourceFile: 'C:/media/b.png',
@@ -100,7 +100,17 @@ void main() {
       mint: mint(),
     );
     expect(still.layer.mediaReference, isNull);
-    expect(still.assets.single.path, 'C:/media/b.png');
+    expect(still.assets, isEmpty);
+
+    // ↩️「구워도 풀에 남음」 (09-11): both registered their file.
+  });
+
+  test('the law: a placement registers when the layer draws from the file, '
+      'or when a sound placed beside a baked picture still reads it', () {
+    expect(placementRegisters(baked: false), isTrue);
+    expect(placementRegisters(baked: true), isFalse);
+    expect(placementRegisters(baked: true, soundReadsIt: true), isTrue);
+    expect(placementRegisters(baked: false, soundReadsIt: true), isTrue);
   });
 
   test('a sequence in REFERENCE mode registers one asset with the frame '

@@ -107,13 +107,13 @@ void main() {
     );
     expect(
       s.mediaPool.mediaAssets,
-      hasLength(1),
-      reason: '「구워도 풀에 남음」 — the material of a placement is a pool entry',
+      isEmpty,
+      reason: 'frames on a row are its own pixels — baked, so the file '
+          'registers nothing (F-282-Q6; ↩️「구워도 풀에 남음」)',
     );
 
     s.undo();
     expect(blocksOf(s.layerById(row.id)!), blocksOf(row));
-    expect(s.mediaPool.mediaAssets, isEmpty);
     // A landing wakes the playback pre-render; let it finish its turn.
     await tester.pumpAndSettle();
   });
@@ -227,6 +227,12 @@ void main() {
     expect(after.timeline[4]?.length, 1);
     expect(after.timeline[5], isNull, reason: 'its first frame is outside');
     expect(after.frames, hasLength(3), reason: 'the held cel and the two');
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'frames on a row are its own pixels, a sequence\'s too — '
+          'baked, so the file registers nothing (F-282-Q6)',
+    );
     await tester.pumpAndSettle();
   });
 
@@ -260,6 +266,12 @@ void main() {
       pdf.renderRequests.map((request) => request.$1).toSet(),
       {1, 2},
       reason: 'the second and third pages — the span, from its first page',
+    );
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'pages on a row are its own pixels — baked, so the file '
+          'registers nothing (F-282-Q6)',
     );
     await tester.pumpAndSettle();
   });
@@ -384,12 +396,18 @@ void main() {
         .evaluate()
         .isNotEmpty;
 
+    /// A pool row let go on [spot] — the window every drop that answers a
+    /// place opens ([ImportDialog.placeOnly]). Its file is one the pool
+    /// holds, so the row has nothing left to register: its 「미디어」 is off.
     Future<void> open(
       WidgetTester tester,
       EditorSessionManager s,
       String path,
       ImportLayerSpot spot,
     ) async {
+      await tester.runAsync(
+        () => s.mediaPool.importMediaFiles([path], copyIntoProject: false),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

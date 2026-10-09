@@ -12,10 +12,13 @@ import '../project_repository.dart';
 /// ↩️It also unregistered the asset when this was the last layer pointing at
 /// it — 「§3: baked = unregistered」, from the 07-30 import design
 /// (`98f529fc`). The user reversed that on 2026-09-11 (미디어 배치 라운드 6:
-/// 「구워도 풀에 남음」): the material of every placement is a pool entry,
-/// and a baked layer's file is still the pool's to offer again. The
-/// placement window's bake keeps it for the same reason, so the two doors to
-/// this one verb say the same thing.
+/// 「구워도 풀에 남음」), and it stays reversed HERE: the entry was made when
+/// the reference was placed, and the pool is not this verb's to empty.
+///
+/// ⚠️What a placement REGISTERS is another question: a placement baked in
+/// the import window registers nothing since F-282-Q6 (유저 2026-10-09, 가 —
+/// `placementRegisters`). That keeps an entry from being made for pixels
+/// that never draw from the file; it does not take away one that exists.
 class RasterizeLayerReferenceCommand implements Command {
   RasterizeLayerReferenceCommand({
     required this.repository,

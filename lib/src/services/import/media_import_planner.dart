@@ -103,15 +103,28 @@ class ImageLayerImportPlan {
   final List<MediaAsset> assets;
 }
 
+/// Whether a placement leaves its file in the media pool: NOT when it is
+/// BAKED — the pixels are the layer's own then, and nothing draws from the
+/// file — unless something placed beside the bake still reads it: a
+/// movie's sound on the SE rows, which is no bake ([soundReadsIt]).
+///
+/// 🗣️F-282-Q6 (유저 2026-10-09, 가): 구우면 풀에 안 남긴다 — the file
+/// column of a baked row says 「—」. ↩️「구워도 풀에 남음」 (09-11): baked or
+/// not, the file registered, and a carried one's bytes went into the
+/// project a second time beside the cels baked from them. That reversed
+/// 「pixels absorbed = no entry」 (§3, 07-30), which this returns to.
+///
+/// ⚠️A reference rasterized LATER keeps its entry
+/// (`RasterizeLayerReferenceCommand`): it was registered when it was
+/// placed, and the pool is not the command's to empty.
+bool placementRegisters({required bool baked, bool soundReadsIt = false}) =>
+    !baked || soundReadsIt;
+
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
-/// Reference mode stamps [Layer.mediaReference]; rasterize mode bakes and
-/// stamps nothing. Both REGISTER the asset.
-///
-/// ↩️Rasterize registered nothing until 2026-09-11 (§3: 「pixels absorbed =
-/// no entry」). The user decided the material of every placement is a pool
-/// entry — 「구워도 풀에 남음」: a baked file is still the pool's to offer
-/// again.
+/// Reference mode stamps [Layer.mediaReference] and REGISTERS the asset;
+/// rasterize mode bakes and stamps nothing, and registers nothing
+/// ([placementRegisters]).
 ImageLayerImportPlan planStillImageLayer({
   required String sourceFile,
   required String displayName,
@@ -150,16 +163,17 @@ ImageLayerImportPlan planStillImageLayer({
       ),
     ],
     assets: [
-      importedMediaAsset(
-        path: sourceFile,
-        kind: assetKind,
-        fit: fit,
-        sourcePath: sourcePath,
-        sourceStamp: sourceStamp,
-        identity: identity,
-        carried: carried,
-        pageCount: pageCount,
-      ),
+      if (placementRegisters(baked: rasterize))
+        importedMediaAsset(
+          path: sourceFile,
+          kind: assetKind,
+          fit: fit,
+          sourcePath: sourcePath,
+          sourceStamp: sourceStamp,
+          identity: identity,
+          carried: carried,
+          pageCount: pageCount,
+        ),
     ],
   );
 }
@@ -167,8 +181,9 @@ ImageLayerImportPlan planStillImageLayer({
 /// The pool entry an import registers for [path].
 ///
 /// ⛔ONE spelling of it. The still and the sequence planners each built this
-/// record by hand, and the expanded PSD — which registers now too — would
-/// have been the third.
+/// record by hand, and the expanded PSD — which registered too until a
+/// baked placement stopped registering (F-282-Q6) — would have been the
+/// third.
 ///
 /// A [carried] one is a NEW carry ([mintMediaCarry]): an import is the
 /// moment a carry is made, even of a path the project carried before.
@@ -317,8 +332,9 @@ SequenceLayerImportPlan planSequenceLayer({
   return SequenceLayerImportPlan(
     layer: layer,
     bakes: bakes,
-    // Baked or not, the file registers (유저 2026-09-11: 「구워도 풀에 남음」).
-    assets: referencePath == null
+    // A layer that draws from the file registers it; a baked one does not
+    // ([placementRegisters]).
+    assets: referencePath == null || !placementRegisters(baked: rasterize)
         ? const []
         : [
             importedMediaAsset(

@@ -351,8 +351,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('in the window a sound\'s Into is the SE rows, locked, and it '
-      'asks no fit — pressing Import lands it on S1', (tester) async {
+  testWidgets('in the window a sound\'s Into is the SE rows — pressing Import '
+      'lands it on S1', (tester) async {
     final path = await tester.runAsync(() => writeSound('door.wav', 1));
     final s = session();
     final start = s.activeCutGlobalStartFrame;
@@ -369,11 +369,6 @@ void main() {
           .widget<Text>(find.descendant(of: into, matching: find.byType(Text)))
           .data,
       AppText.strings.imIntoSeRow,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-column-fit')),
-      findsNothing,
-      reason: 'only a sound in the batch: no fit to ask',
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));

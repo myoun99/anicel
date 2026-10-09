@@ -262,6 +262,39 @@ void main() {
     expect(column('file'), findsOneWidget);
   });
 
+  testWidgets('🎯a BAKED row is asked nothing about keeping its file — the '
+      'file column is a dash, and the file stays out of the pool '
+      '(F-282-Q6, 유저 2026-10-09: 구우면 풀에 안 남긴다)', (tester) async {
+    final png = await tester.runAsync(() => writePng('baked.png'));
+    final s = session();
+    final layersBefore = s.requireActiveCut.layers.length;
+    await open(tester, s, [png!]);
+    expect(
+      cellWord(tester, 'file', png),
+      AppText.strings.imModeKeep,
+      reason: 'CONTROL: a row the layer draws from is asked',
+    );
+
+    await tester.ensureVisible(cell('bake', png));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('bake', png));
+    await tester.pumpAndSettle();
+    expect(cellWord(tester, 'bake', png), AppText.strings.commonOn);
+    expect(cellWord(tester, 'file', png), '—');
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    await tester.pumpAndSettle();
+
+    expect(s.requireActiveCut.layers.length, layersBefore + 1);
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'the pixels are the layer\'s own — ↩️「구워도 풀에 남음」',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('🎯one window places one file and registers another — each row '
       'as its 넣을 곳 says (F-282: 「풀/타임라인 이걸 하나로 합치는게 통일」)', (
     tester,
@@ -299,5 +332,6 @@ void main() {
       containsAll(['kept.png']),
       reason: 'the other only registered',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 }
