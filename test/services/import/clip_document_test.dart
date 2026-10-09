@@ -537,6 +537,63 @@ void main() {
     ]);
   });
 
+  test('🎯every chain the file keeps is walked one way: a row it names that '
+      'is not there is said, a chain that comes back on itself stops, and a '
+      'layer two chains name is walked once — the second time said', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex) '
+          'VALUES (1, 40, 0)',
+        )
+        // Timeline 40, then 41, which is not there.
+        ..execute(
+          'INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, '
+          'FrameRate, StartFrame, EndFrame, FirstTrack) '
+          "VALUES (40, 41, 'one', 24.0, 0, 12, 0)",
+        );
+      db.prepare(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerFirstChildIndex, LayerNextIndex) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        // The root's children: A, B, then A again.
+        ..execute([1, '', 256, 1, 2, 0])
+        ..execute([2, 'A', 0, 1, 4, 3])
+        ..execute([3, 'B', 0, 1, 4, 2])
+        // Both folders' first child is C, whose next is 9 — not there.
+        ..execute([4, 'C', 1, 0, 0, 9])
+        ..close();
+    });
+
+    final document = readClipDocument(write(database, {}), scratch: folder);
+
+    expect(
+      [
+        for (final layer in document.root.children)
+          [layer.name, for (final child in layer.children) child.name],
+      ],
+      [
+        ['A', 'C'],
+        ['B'],
+      ],
+      reason: 'the root\'s chain stops where it comes back to A',
+    );
+    expect([for (final timeline in document.timelines) timeline.name], [
+      'one',
+    ]);
+    expect(document.warnings, [
+      'a layer chain names layer 9, which is not there',
+      'a layer chain names layer 4 a second time',
+      'a layer chain names layer 9, which is not there',
+      'the timeline chain names timeline 41, which is not there',
+    ]);
+  });
+
   test('the shooting frame: its size, and its centre the canvas\'s moved by '
       'the crop\'s offset and the inner frame\'s', () {
     final database = databaseBytes((db) {
