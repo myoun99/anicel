@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_faces.dart';
@@ -773,6 +774,110 @@ void main() {
       expect(tester.getSize(find.text('Same words')), app);
       await mouse.moveTo(const Offset(790, 590));
       await settleTooltip(tester);
+    });
+  });
+
+  // The mark's and the take's plates (I-57 ①): the plate draws itself, and
+  // the ONE render object around it is the button a [RailGlyphButton] is.
+  group('a pressed PLATE is the same press', () {
+    Widget plate({required VoidCallback onRow, required VoidCallback onPick}) =>
+        SizedBox(
+          width: 300,
+          child: GestureDetector(
+            key: const ValueKey<String>('row'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onRow,
+            child: Row(
+              children: [
+                const SizedBox(width: 100, height: 40),
+                RailFlyoutTrigger(
+                  keyValue: 'plate',
+                  tooltip: 'Plate tip',
+                  semanticLabel: 'Plate',
+                  entriesBuilder: () => [
+                    PanelFlyoutItem(
+                      keyValue: 'plate-pick',
+                      label: 'Pick',
+                      onSelected: onPick,
+                    ),
+                  ],
+                  child: const ColoredBox(
+                    color: Colors.white,
+                    child: SizedBox(width: 30, height: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+    testWidgets('🚨a tap opens the shared list through the claim — and does '
+        'NOT also tap the row around it', (tester) async {
+      var rowTaps = 0;
+      var picks = 0;
+      await pump(
+        tester,
+        plate(onRow: () => rowTaps += 1, onPick: () => picks += 1),
+      );
+      await tester.tap(byKey('plate'));
+      await tester.pumpAndSettle();
+      expect(byKey('plate-pick'), findsOneWidget, reason: 'the list opened');
+      expect(rowTaps, 0, reason: 'the row must not answer its plate\'s press');
+      await tester.tap(byKey('plate-pick'));
+      await tester.pumpAndSettle();
+      expect(picks, 1);
+    });
+
+    testWidgets('a hover summons the one window with its words, and the '
+        'cursor says it is pressed', (tester) async {
+      await pump(tester, plate(onRow: () {}, onPick: () {}));
+      final mouse = await mouseAt(tester, Offset.zero);
+      await mouse.moveTo(tester.getCenter(byKey('plate')));
+      await settleTooltip(tester);
+      expect(SummonedTooltip.debugShownMessage, 'Plate tip');
+      expect(
+        tester.renderObject<RenderRailPlateFace>(byKey('plate')).cursor,
+        SystemMouseCursors.click,
+      );
+      await mouse.moveTo(const Offset(790, 590));
+      await settleTooltip(tester);
+      expect(SummonedTooltip.debugShownMessage, isNull);
+    });
+
+    testWidgets('ONE node for a screen reader: a button with its name and '
+        'its tooltip, whose activation opens the list', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pump(tester, plate(onRow: () {}, onPick: () {}));
+      final node = tester.getSemantics(byKey('plate'));
+      final data = node.getSemanticsData();
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.label, 'Plate');
+      expect(data.tooltip, 'Plate tip');
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      tester.binding.renderViews.first.owner!.semanticsOwner!.performAction(
+        node.id,
+        SemanticsAction.tap,
+      );
+      await tester.pumpAndSettle();
+      expect(byKey('plate-pick'), findsOneWidget, reason: 'the list opened');
+      semantics.dispose();
+    });
+
+    testWidgets('🚨the press is the claim and ONE render object around the '
+        'plate', (tester) async {
+      await pump(tester, plate(onRow: () {}, onPick: () {}));
+      var renderObjects = 0;
+      void visit(Element element) {
+        if (element is RenderObjectElement) {
+          renderObjects += 1;
+        }
+        element.visitChildren(visit);
+      }
+
+      visit(tester.element(find.byType(RailFlyoutTrigger)));
+      // The claim's three and the face — and the plate's own two (a colour
+      // and a box) under it.
+      expect(renderObjects, lessThanOrEqualTo(6));
     });
   });
 }

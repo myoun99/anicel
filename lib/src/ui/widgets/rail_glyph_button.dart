@@ -296,54 +296,62 @@ final class RailGlyphSpec {
   );
 }
 
-/// The rail button's face: its box, its state layer and its glyph, its
-/// hover and press, its cursor, its semantics node, and the tooltip it
-/// summons.
-class RenderRailGlyphFace extends RenderBox
+/// What every rail press face is besides what it shows: the hover and the
+/// press, the cursor, the do-nothing tap it enters into the arena, the
+/// tooltip it summons and the one semantics node a button is — so the
+/// glyph face ([RenderRailGlyphFace]) and the plate face
+/// ([RenderRailPlateFace]) are one press under two pictures.
+mixin RailPressFace on RenderBox
     implements MouseTrackerAnnotation, SummonedTooltipTarget {
-  RenderRailGlyphFace({
-    required RailGlyphSpec spec,
-    required BuildContext tooltipContext,
-  }) : _spec = spec,
-       _tooltipContext = tooltipContext;
+  /// Whether a press does anything: a dead face shows no press, enters no
+  /// tap and wears the basic cursor.
+  @protected
+  bool get pressEnabled;
 
-  RailGlyphSpec _spec;
-  RailGlyphSpec get spec => _spec;
-  set spec(RailGlyphSpec value) {
-    if (value == _spec) {
-      return;
-    }
-    final relayout = !value.laysOutAs(_spec);
-    final repaint = !value.paintsAs(_spec);
-    _spec = value;
-    // A button that goes dead mid-press must not keep looking pressed.
-    // (Hover is kept, as M3 keeps it.)
-    if (!value.enabled) {
-      _pressed = false;
-    }
-    if (relayout) {
-      markNeedsLayout();
-    } else if (repaint) {
-      markNeedsPaint();
-    }
-    markNeedsSemanticsUpdate();
-  }
+  /// The ON state, as a screen reader hears it.
+  @protected
+  bool get pressSelected;
 
-  BuildContext _tooltipContext;
+  /// What a screen reader calls a face whose picture says what it is.
+  @protected
+  String? get pressSemanticLabel;
+
+  /// What a screen reader's activation calls — the REAL callback, since a
+  /// screen reader's tap never reaches the claim ([RailGlyphButton]).
+  @protected
+  VoidCallback? get pressSemanticTap;
+
+  @protected
+  TextDirection get pressTextDirection;
+
+  @protected
+  TooltipTriggerMode get pressTriggerMode;
+
+  BuildContext? _tooltipContext;
   set tooltipContext(BuildContext value) => _tooltipContext = value;
 
   bool _hovered = false;
   bool _pressed = false;
+
+  @protected
+  bool get hovered => _hovered;
+
+  @protected
+  bool get pressed => _pressed;
 
   /// What the hover and the press look like right now — for tests.
   @visibleForTesting
   ({bool hovered, bool pressed}) get debugState =>
       (hovered: _hovered, pressed: _pressed);
 
-  /// The colour the glyph is painted in right now — for tests.
-  @visibleForTesting
-  Color? get debugGlyphInk =>
-      _glyphPainter(_spec.ink.foreground(_states)).text?.style?.color;
+  /// The hover or the press changed — a face that shows them repaints.
+  @protected
+  void pressLookChanged() {}
+
+  /// A face that went dead mid-press must not keep looking pressed. (Hover
+  /// is kept, as M3 keeps it.)
+  @protected
+  void letGoOfThePress() => _setPressed(false);
 
   /// The do-nothing tap entered into the arena on every enabled press —
   /// "THE ARENA" on [AppIconButton]. ⚠️Its `onTap` is REQUIRED: a recogniser
@@ -370,11 +378,202 @@ class RenderRailGlyphFace extends RenderBox
     ..onLongPressCancel = _onLongPressCancel;
   int? _longPressPointer;
 
+  // ── hover and press ────────────────────────────────────────────────
+
+  @override
+  MouseCursor get cursor =>
+      pressEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
+
+  @override
+  PointerEnterEventListener? get onEnter => _onEnter;
+
+  @override
+  PointerExitEventListener? get onExit => _onExit;
+
+  @override
+  bool get validForMouseTracker => attached;
+
+  void _onEnter(PointerEnterEvent event) {
+    _setHovered(true);
+    SummonedTooltip.hover(this);
+  }
+
+  void _onExit(PointerExitEvent event) {
+    _setHovered(false);
+    SummonedTooltip.unhover(this);
+  }
+
+  void _setHovered(bool value) {
+    if (_hovered != value) {
+      _hovered = value;
+      pressLookChanged();
+    }
+  }
+
+  void _setPressed(bool value) {
+    if (_pressed != value) {
+      _pressed = value;
+      pressLookChanged();
+    }
+  }
+
+  @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    if (event is PointerDownEvent) {
+      if (pressEnabled) {
+        _setPressed(true);
+        _arenaTap.addPointer(event);
+      }
+      if (pressTriggerMode == TooltipTriggerMode.longPress) {
+        _longPress.addPointer(event);
+      }
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _setPressed(false);
+    }
+  }
+
+  void _onLongPress() {
+    final pointer = _longPress.primaryPointer;
+    if (pointer == null) {
+      return;
+    }
+    _longPressPointer = pointer;
+    SummonedTooltip.longPressed(this, pointer);
+  }
+
+  void _onLongPressUp() {
+    _longPressPointer = null;
+    SummonedTooltip.lifted(this);
+  }
+
+  /// A press that moved off or was taken before it was long: whatever this
+  /// face had summoned goes, as a tooltip's own cancel dismisses it.
+  void _onLongPressCancel() {
+    _longPressPointer = null;
+    SummonedTooltip.forget(this);
+  }
+
+  // ── the summoned tooltip ───────────────────────────────────────────
+
+  @override
+  Rect? get tooltipGlobalRect => attached && hasSize
+      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
+      : null;
+
+  @override
+  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
+
+  // ── semantics ──────────────────────────────────────────────────────
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // ONE node per button: a boundary, so a row of six does not collapse
+    // into one, with the tooltip hung on it — as an [AppIconButton]'s.
+    config
+      ..isSemanticBoundary = true
+      ..isButton = true
+      ..isEnabled = pressEnabled
+      ..isSelected = pressSelected
+      ..tooltip = tooltipMessage
+      // A node that carries text says which way it reads.
+      ..textDirection = pressTextDirection;
+    if (pressSemanticLabel case final label?) {
+      config.label = label;
+    }
+    if (pressSemanticTap case final onTap?) {
+      config.onTap = onTap;
+    }
+  }
+
+  // ── lifecycle ──────────────────────────────────────────────────────
+
+  @override
+  void detach() {
+    _hovered = false;
+    _pressed = false;
+    if (_longPressPointer != null) {
+      _longPressPointer = null;
+    }
+    SummonedTooltip.forget(this);
+    super.detach();
+  }
+
+  @override
+  void dispose() {
+    _arenaTap.dispose();
+    _longPress.dispose();
+    super.dispose();
+  }
+}
+
+/// The rail button's face: its box, its state layer and its glyph, as one
+/// render object, on the press every rail face is ([RailPressFace]).
+class RenderRailGlyphFace extends RenderBox with RailPressFace {
+  RenderRailGlyphFace({
+    required RailGlyphSpec spec,
+    required BuildContext tooltipContext,
+  }) : _spec = spec {
+    this.tooltipContext = tooltipContext;
+  }
+
+  RailGlyphSpec _spec;
+  RailGlyphSpec get spec => _spec;
+  set spec(RailGlyphSpec value) {
+    if (value == _spec) {
+      return;
+    }
+    final relayout = !value.laysOutAs(_spec);
+    final repaint = !value.paintsAs(_spec);
+    _spec = value;
+    if (!value.enabled) {
+      letGoOfThePress();
+    }
+    if (relayout) {
+      markNeedsLayout();
+    } else if (repaint) {
+      markNeedsPaint();
+    }
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  bool get pressEnabled => _spec.enabled;
+
+  @override
+  bool get pressSelected => _spec.isSelected;
+
+  @override
+  String? get pressSemanticLabel => _spec.semanticLabel;
+
+  @override
+  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
+
+  @override
+  TextDirection get pressTextDirection => _spec.textDirection;
+
+  @override
+  TooltipTriggerMode get pressTriggerMode => _spec.triggerMode;
+
+  @override
+  String get tooltipMessage => _spec.tooltip;
+
+  @override
+  void pressLookChanged() => markNeedsPaint();
+
+  /// The colour the glyph is painted in right now — for tests.
+  @visibleForTesting
+  Color? get debugGlyphInk =>
+      _glyphPainter(_spec.ink.foreground(_states)).text?.style?.color;
+
   Set<WidgetState> get _states => <WidgetState>{
     if (!_spec.enabled) WidgetState.disabled,
     if (_spec.isSelected) WidgetState.selected,
-    if (_pressed) WidgetState.pressed,
-    if (_hovered) WidgetState.hovered,
+    if (pressed) WidgetState.pressed,
+    if (hovered) WidgetState.hovered,
   };
 
   // ── layout ──────────────────────────────────────────────────────────
@@ -467,140 +666,142 @@ class RenderRailGlyphFace extends RenderBox
     ),
   };
 
-  // ── hover and press ────────────────────────────────────────────────
-
-  @override
-  MouseCursor get cursor =>
-      _spec.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
-
-  @override
-  PointerEnterEventListener? get onEnter => _onEnter;
-
-  @override
-  PointerExitEventListener? get onExit => _onExit;
-
-  @override
-  bool get validForMouseTracker => attached;
-
-  void _onEnter(PointerEnterEvent event) {
-    _setHovered(true);
-    SummonedTooltip.hover(this);
-  }
-
-  void _onExit(PointerExitEvent event) {
-    _setHovered(false);
-    SummonedTooltip.unhover(this);
-  }
-
-  void _setHovered(bool value) {
-    if (_hovered != value) {
-      _hovered = value;
-      markNeedsPaint();
-    }
-  }
-
-  void _setPressed(bool value) {
-    if (_pressed != value) {
-      _pressed = value;
-      markNeedsPaint();
-    }
-  }
-
-  @override
-  bool hitTestSelf(Offset position) => true;
-
-  @override
-  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
-    if (event is PointerDownEvent) {
-      if (_spec.enabled) {
-        _setPressed(true);
-        _arenaTap.addPointer(event);
-      }
-      if (_spec.triggerMode == TooltipTriggerMode.longPress) {
-        _longPress.addPointer(event);
-      }
-    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _setPressed(false);
-    }
-  }
-
-  void _onLongPress() {
-    final pointer = _longPress.primaryPointer;
-    if (pointer == null) {
-      return;
-    }
-    _longPressPointer = pointer;
-    SummonedTooltip.longPressed(this, pointer);
-  }
-
-  void _onLongPressUp() {
-    _longPressPointer = null;
-    SummonedTooltip.lifted(this);
-  }
-
-  /// A press that moved off or was taken before it was long: whatever this
-  /// button had summoned goes, as a tooltip's own cancel dismisses it.
-  void _onLongPressCancel() {
-    _longPressPointer = null;
-    SummonedTooltip.forget(this);
-  }
-
-  // ── the summoned tooltip ───────────────────────────────────────────
-
-  @override
-  String get tooltipMessage => _spec.tooltip;
-
-  @override
-  Rect? get tooltipGlobalRect => attached && hasSize
-      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
-      : null;
-
-  @override
-  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
-
-  // ── semantics ──────────────────────────────────────────────────────
-
-  @override
-  void describeSemanticsConfiguration(SemanticsConfiguration config) {
-    super.describeSemanticsConfiguration(config);
-    // ONE node per button: a boundary, so a row of six does not collapse
-    // into one, with the tooltip hung on it — as an [AppIconButton]'s.
-    config
-      ..isSemanticBoundary = true
-      ..isButton = true
-      ..isEnabled = _spec.enabled
-      ..isSelected = _spec.isSelected
-      ..tooltip = _spec.tooltip
-      // A node that carries text says which way it reads.
-      ..textDirection = _spec.textDirection;
-    if (_spec.semanticLabel case final label?) {
-      config.label = label;
-    }
-    if (_spec.onSemanticTap case final onTap?) {
-      config.onTap = onTap;
-    }
-  }
-
-  // ── lifecycle ──────────────────────────────────────────────────────
-
-  @override
-  void detach() {
-    _hovered = false;
-    _pressed = false;
-    if (_longPressPointer != null) {
-      _longPressPointer = null;
-    }
-    SummonedTooltip.forget(this);
-    super.detach();
-  }
 
   @override
   void dispose() {
-    _arenaTap.dispose();
-    _longPress.dispose();
     _boxPainter?.dispose();
     super.dispose();
   }
+}
+
+/// A rail PLATE that is pressed — the mark's and the take's ([RailPlateFace]).
+/// What it shows is its child's own: the plate paints itself, opaque, so no
+/// state layer would show over it — and the [InkWell] the plate used to wear
+/// drew its ink UNDER it, unseen. Everything else is the press every rail
+/// face is ([RailPressFace]).
+class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
+  RenderRailPlateFace({
+    required RailPlateSpec spec,
+    required BuildContext tooltipContext,
+  }) : _spec = spec {
+    this.tooltipContext = tooltipContext;
+  }
+
+  RailPlateSpec _spec;
+  RailPlateSpec get spec => _spec;
+  set spec(RailPlateSpec value) {
+    if (value == _spec) {
+      return;
+    }
+    _spec = value;
+    if (!value.enabled) {
+      letGoOfThePress();
+    }
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  bool get pressEnabled => _spec.enabled;
+
+  @override
+  bool get pressSelected => false;
+
+  @override
+  String? get pressSemanticLabel => _spec.semanticLabel;
+
+  @override
+  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
+
+  @override
+  TextDirection get pressTextDirection => _spec.textDirection;
+
+  @override
+  TooltipTriggerMode get pressTriggerMode => _spec.triggerMode;
+
+  @override
+  String get tooltipMessage => _spec.tooltip;
+}
+
+/// Everything a [RenderRailPlateFace] says, resolved from the context by
+/// its widget.
+@immutable
+final class RailPlateSpec {
+  const RailPlateSpec({
+    required this.tooltip,
+    required this.onSemanticTap,
+    required this.semanticLabel,
+    required this.textDirection,
+    required this.triggerMode,
+  });
+
+  final String tooltip;
+  final VoidCallback? onSemanticTap;
+  final String? semanticLabel;
+  final TextDirection textDirection;
+  final TooltipTriggerMode triggerMode;
+
+  bool get enabled => onSemanticTap != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RailPlateSpec &&
+      other.tooltip == tooltip &&
+      other.onSemanticTap == onSemanticTap &&
+      other.semanticLabel == semanticLabel &&
+      other.textDirection == textDirection &&
+      other.triggerMode == triggerMode;
+
+  @override
+  int get hashCode => Object.hash(
+    tooltip,
+    onSemanticTap,
+    semanticLabel,
+    textDirection,
+    triggerMode,
+  );
+}
+
+/// The face of a pressed rail plate: [child] is the plate, and this one
+/// render object around it is the button — cursor, tooltip, semantics and
+/// the arena's tap. The press itself is its [ControlPressClaim]'s, as a
+/// [RailGlyphButton]'s is ([RailFlyoutTrigger]).
+class RailPlateFace extends SingleChildRenderObjectWidget {
+  const RailPlateFace({
+    super.key,
+    required this.tooltip,
+    required this.onSemanticTap,
+    this.semanticLabel,
+    required super.child,
+  });
+
+  final String tooltip;
+
+  /// What a screen reader's activation calls; null is a dead plate.
+  final VoidCallback? onSemanticTap;
+  final String? semanticLabel;
+
+  @override
+  RenderRailPlateFace createRenderObject(BuildContext context) =>
+      RenderRailPlateFace(spec: _specIn(context), tooltipContext: context);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderRailPlateFace renderObject,
+  ) {
+    renderObject
+      ..spec = _specIn(context)
+      ..tooltipContext = context;
+  }
+
+  RailPlateSpec _specIn(BuildContext context) => RailPlateSpec(
+    tooltip: tooltip,
+    onSemanticTap: onSemanticTap,
+    semanticLabel: semanticLabel,
+    textDirection: Directionality.of(context),
+    triggerMode:
+        TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+  );
 }
 
 /// The glyphs the rail buttons draw, each laid out ONCE for the app — six

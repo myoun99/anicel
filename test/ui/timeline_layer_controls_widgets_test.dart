@@ -346,7 +346,10 @@ void main() {
         findsOneWidget,
         reason: 'the rail key survives the migration',
       );
-      expect(tester.widget(chip), isA<PanelFlyoutTrigger>());
+      // The rail's plate face ([RailFlyoutTrigger]), which opens the shared
+      // list as [PanelFlyoutTrigger] does — the row height below says it is
+      // that list. ↩️It was a [PanelFlyoutTrigger] of its own (I-57 ①).
+      expect(tester.widget(chip), isA<RailPlateFace>());
 
       await tester.tap(chip);
       await tester.pumpAndSettle();

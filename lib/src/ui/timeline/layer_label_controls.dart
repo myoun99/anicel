@@ -1150,20 +1150,16 @@ class LayerMarkChip extends StatelessWidget {
   /// a take is an ORDER, not a kind, and nine colours would fight the
   /// stage's.
   Widget _takeTrigger(BuildContext context) {
-    return PanelFlyoutTrigger(
-      key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
+    return RailFlyoutTrigger(
+      keyValue: '$keyPrefix-layer-take-$layerId',
       tooltip: AppText.strings.tlLayerTake,
-      padding: EdgeInsets.zero,
+      semanticLabel: AppText.strings.tlLayerTake,
       entriesBuilder: () => layerTakeFlyoutEntries(
         selectedTake: mark.take,
         onSelected: (take) =>
             onMarkSelected(layerId, (current) => current.withTake(take!)),
       ),
-      child: Semantics(
-        label: AppText.strings.tlLayerTake,
-        button: true,
-        child: LayerTakeText(mark: mark, axis: axis),
-      ),
+      child: LayerTakeText(mark: mark, axis: axis),
     );
   }
 
@@ -1172,13 +1168,13 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return PanelFlyoutTrigger(
-      key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
+    return RailFlyoutTrigger(
+      keyValue: '$keyPrefix-layer-mark-$layerId',
       tooltip: AppText.strings.tlLayerMark,
-      // ZERO, not the trigger's usual 8: the mark sits in a fixed
-      // `layerMarkSlotWidth` rail column, so padding here would not grow a
-      // hit area — it would push every slot after it out of the rail.
-      padding: EdgeInsets.zero,
+      semanticLabel: AppText.strings.tlLayerMark,
+      // No padding: the mark sits in a fixed `layerMarkSlotWidth` rail
+      // column, so padding would not grow a hit area — it would push every
+      // slot after it out of the rail.
       // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
       // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
       // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
@@ -1195,11 +1191,7 @@ class LayerMarkChip extends StatelessWidget {
       entriesBuilder: () => layerMarkFlyoutEntries(
         onSelected: (option) => onMarkSelected(layerId, (_) => option),
       ),
-      child: Semantics(
-        label: AppText.strings.tlLayerMark,
-        button: true,
-        child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
-      ),
+      child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
     );
   }
 }

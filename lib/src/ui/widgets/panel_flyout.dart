@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
+import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
 ///
@@ -1188,6 +1189,53 @@ class PanelFlyoutTrigger extends StatelessWidget {
       return button;
     }
     return AppTooltip(message: message, child: button);
+  }
+}
+
+/// [PanelFlyoutTrigger] for a rail's PLATE — the layer row's mark and take
+/// ([RailPlateFace]): the claim and ONE render object around the plate,
+/// instead of a tooltip, a portal, a [Material], a physical model and an
+/// [InkWell] of their own — ~45 elements a plate, mounted anew for every
+/// row on every cut switch (I-57 ①, measured on the user's project).
+///
+/// The ink is not lost: the plate is opaque, and the ink was drawn on the
+/// [Material] UNDER it. A screen reader's activation opens the list too —
+/// the face carries the real opener, as a [RailGlyphButton]'s node does.
+class RailFlyoutTrigger extends StatelessWidget {
+  const RailFlyoutTrigger({
+    super.key,
+    required this.keyValue,
+    required this.tooltip,
+    required this.entriesBuilder,
+    required this.child,
+    this.semanticLabel,
+  });
+
+  /// Stable widget key (the tests' handle) — it lands on the
+  /// [RailPlateFace], the box the user sees and presses.
+  final String keyValue;
+  final String tooltip;
+  final List<PanelFlyoutEntry> Function() entriesBuilder;
+
+  /// The plate.
+  final Widget child;
+
+  /// What a screen reader calls it.
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    void open() => showPanelFlyout(context, entries: entriesBuilder());
+    return ControlPressClaim(
+      onPressed: open,
+      child: RailPlateFace(
+        key: ValueKey<String>(keyValue),
+        tooltip: tooltip,
+        onSemanticTap: open,
+        semanticLabel: semanticLabel,
+        child: child,
+      ),
+    );
   }
 }
 
