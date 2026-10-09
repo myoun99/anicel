@@ -735,10 +735,20 @@ FloodFillRegion? floodFillRegion({
         gapClosePx: options.gapClosePx,
       );
       if (result != null) {
-        final cropLeft = math.max(0, result.minX - options.expandPx);
-        final cropTop = math.max(0, result.minY - options.expandPx);
-        final cropRight = math.min(width - 1, result.maxX + options.expandPx);
-        final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+        final (
+          left: cropLeft,
+          top: cropTop,
+          right: cropRight,
+          bottom: cropBottom,
+        ) = _floodFinishBox(
+          minX: result.minX,
+          maxX: result.maxX,
+          minY: result.minY,
+          maxY: result.maxY,
+          width: width,
+          height: height,
+          options: options,
+        );
         return FloodFillRegion(
           left: cropLeft,
           top: cropTop,
@@ -792,12 +802,22 @@ FloodFillRegion? floodFillRegion({
     if (result != null) {
       // The finish (crop + expand + anti-alias) runs natively too
       // (A-2d): the verification lab showed these full-region passes
-      // were most of what remained in the fill.flood probe. Same crop
-      // math as the Dart tail below.
-      final cropLeft = math.max(0, result.minX - options.expandPx);
-      final cropTop = math.max(0, result.minY - options.expandPx);
-      final cropRight = math.min(width - 1, result.maxX + options.expandPx);
-      final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+      // were most of what remained in the fill.flood probe. The crop is
+      // the Dart tail's own ([_floodFinishBox]).
+      final (
+        left: cropLeft,
+        top: cropTop,
+        right: cropRight,
+        bottom: cropBottom,
+      ) = _floodFinishBox(
+        minX: result.minX,
+        maxX: result.maxX,
+        minY: result.minY,
+        maxY: result.maxY,
+        width: width,
+        height: height,
+        options: options,
+      );
       return FloodFillRegion(
         left: cropLeft,
         top: cropTop,
@@ -927,6 +947,42 @@ FloodFillRegion? floodFillRegion({
   );
 }
 
+/// How far past its coverage a fill's finish reaches: [FloodFillOptions.
+/// expandPx] generations of growth — and, with the anti-alias, one pixel
+/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge
+/// ([softenMaskBoundary], unclamped), so a box a fill is finished in holds
+/// that pixel on every side.
+///
+/// 🗣️유저 답 the-fill-ramp-is-cut-at-its-box-Q1 (10-09): 「상자를 한 칸 넓혀
+/// 어디서나 번지게」. ↩️The box was the coverage grown by the expand alone,
+/// and a ramp that met its edge was cut there — the shape tool's 4px
+/// horizontal line read `86 · 100 · 100 · 86 · 14%`, the spread on one side
+/// only, and the bucket's lost it at the last cells of what it filled.
+int fillFinishReach(FloodFillOptions options) =>
+    options.expandPx + (options.antiAlias ? 1 : 0);
+
+/// The box a flood's coverage `[minX, maxX] × [minY, maxY]` is finished
+/// in: its bounds grown by what the finish reaches ([fillFinishReach]), cut
+/// at the canvas — the one box the Dart tail and both native finishes are
+/// handed.
+({int left, int top, int right, int bottom}) _floodFinishBox({
+  required int minX,
+  required int maxX,
+  required int minY,
+  required int maxY,
+  required int width,
+  required int height,
+  required FloodFillOptions options,
+}) {
+  final reach = fillFinishReach(options);
+  return (
+    left: math.max(0, minX - reach),
+    top: math.max(0, minY - reach),
+    right: math.min(width - 1, maxX + reach),
+    bottom: math.min(height - 1, maxY + reach),
+  );
+}
+
 /// The shared post-flood tail: crop to the flooded bounds, then the
 /// expand and anti-alias passes region-locally (both the Dart and the
 /// native flood produce the same `filled` set, so this tail is common).
@@ -940,13 +996,23 @@ FloodFillRegion _cropAndFinishFloodRegion({
   required int maxY,
   required FloodFillOptions options,
 }) {
-  // Crop FIRST (with room for the expand growth), then run the expand and
-  // anti-alias passes region-locally: the old grow pass copied and scanned
-  // a full-canvas array per pass.
-  final cropLeft = math.max(0, minX - options.expandPx);
-  final cropTop = math.max(0, minY - options.expandPx);
-  final cropRight = math.min(width - 1, maxX + options.expandPx);
-  final cropBottom = math.min(height - 1, maxY + options.expandPx);
+  // Crop FIRST (with room for what the finish reaches), then run the
+  // expand and anti-alias passes region-locally: the old grow pass copied
+  // and scanned a full-canvas array per pass.
+  final (
+    left: cropLeft,
+    top: cropTop,
+    right: cropRight,
+    bottom: cropBottom,
+  ) = _floodFinishBox(
+    minX: minX,
+    maxX: maxX,
+    minY: minY,
+    maxY: maxY,
+    width: width,
+    height: height,
+    options: options,
+  );
   final regionWidth = cropRight - cropLeft + 1;
   final regionHeight = cropBottom - cropTop + 1;
   final mask = Uint8List(regionWidth * regionHeight);
@@ -1173,9 +1239,9 @@ FloodFillRegion? _gapCloseFloodRegion({
 /// passes reach — `expandPx` 4-neighbour generations, then one soften —
 /// and the sheet's edges were its box's. A window is its tile grown by
 /// that reach and cut at that same box, so every pixel of the tile reads
-/// exactly what the sheet read, and the box keeps the edge the sheet had:
-/// the ramp cut at it is the-fill-ramp-is-cut-at-its-box-Q1's to change,
-/// not this.
+/// exactly what the sheet read. The box itself holds all the finish reaches
+/// ([fillFinishReach]), the ramp past the expand included, so nothing of
+/// the area is cut at it.
 List<BrushDab> buildRegionFillDabs({
   required CanvasSelectionRegion region,
   required int color,
@@ -1213,16 +1279,15 @@ Iterable<BrushDab> regionFillPieces({
     height: height,
   );
   final hard = (rows: rows, left: left, top: top);
-  final grow = options.expandPx;
-  // The sheet the area used to be finished as: the coverage box, with room
-  // for the expand to grow into.
+  final reach = fillFinishReach(options);
+  // The sheet the area is finished as: the coverage box, with room for all
+  // the finish reaches — the expand AND the ramp past it.
   final sheet = DirtyRegion(
-    left: left - grow,
-    top: top - grow,
-    rightExclusive: left + width + grow,
-    bottomExclusive: top + height + grow,
+    left: left - reach,
+    top: top - reach,
+    rightExclusive: left + width + reach,
+    bottomExclusive: top + height + reach,
   );
-  final reach = grow + (options.antiAlias ? 1 : 0);
   final reached = _tilesReached(hard, sheet: sheet, reach: reach);
   yield* _stampPieces(
     sheet,

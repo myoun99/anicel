@@ -55,8 +55,9 @@ void main() {
   CanvasPoint p(double x, double y) => CanvasPoint(x: x, y: y);
 
   /// The area finished as ONE SHEET over its whole box — how it was laid
-  /// before it was cut: the coverage box grown by the expand, the hard mask
-  /// in it, then the expand's generations and the soften over all of it.
+  /// before it was cut: the coverage box grown by all the finish reaches,
+  /// the hard mask in it, then the expand's generations and the soften over
+  /// all of it.
   ({int left, int top, int width, int height, Uint8List mask}) sheetOf(
     CanvasSelectionRegion region,
     FloodFillOptions options,
@@ -67,17 +68,21 @@ void main() {
     final width = bounds.right.ceil() - left;
     final height = bounds.bottom.ceil() - top;
     final grow = options.expandPx;
+    // The box holds all the finish reaches: the expand, and the ramp's one
+    // pixel past it (유저 답 the-fill-ramp-is-cut-at-its-box-Q1, 「상자를 한
+    // 칸 넓혀 어디서나 번지게」).
+    final reach = grow + (options.antiAlias ? 1 : 0);
     final hard = region.maskFor(
       left: left,
       top: top,
       width: width,
       height: height,
     );
-    final sheetWidth = width + grow * 2;
-    final sheetHeight = height + grow * 2;
+    final sheetWidth = width + reach * 2;
+    final sheetHeight = height + reach * 2;
     final mask = Uint8List(sheetWidth * sheetHeight);
     for (var y = 0; y < height; y += 1) {
-      final at = (y + grow) * sheetWidth + grow;
+      final at = (y + reach) * sheetWidth + reach;
       mask.setRange(at, at + width, hard, y * width);
     }
     dilateMask4(mask, width: sheetWidth, height: sheetHeight, passes: grow);
@@ -90,8 +95,8 @@ void main() {
       );
     }
     return (
-      left: left - grow,
-      top: top - grow,
+      left: left - reach,
+      top: top - reach,
       width: sheetWidth,
       height: sheetHeight,
       mask: mask,

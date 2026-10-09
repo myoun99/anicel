@@ -119,7 +119,8 @@ void main() {
       expect(maskAt(region, 2, 2), 0);
     });
 
-    test('anti-alias softens the mask edge only', () {
+    test('anti-alias softens the mask edge only — and its ramp spreads one '
+        'pixel past it, on every side', () {
       final region = floodFillRegion(
         rgb: rasterWithInk(boxOutline()),
         width: 8,
@@ -129,12 +130,21 @@ void main() {
         options: const FloodFillOptions(expandPx: 0, antiAlias: true),
       )!;
 
-      for (final value in region.mask) {
-        expect(value, greaterThan(0));
-        expect(value, lessThan(256));
-      }
+      // The box holds the ramp past the fill (유저 답
+      // the-fill-ramp-is-cut-at-its-box-Q1): the 2×2 grown by one pixel.
+      expect(
+        (region.left, region.top, region.width, region.height),
+        (2, 2, 4, 4),
+      );
       // Every pixel of the 2×2 region borders the outside → all softened.
-      expect(region.mask, everyElement(lessThan(255)));
+      for (final (x, y) in [(3, 3), (4, 3), (3, 4), (4, 4)]) {
+        expect(maskAt(region, x, y), inExclusiveRange(0, 255));
+      }
+      // 4-neighbour spread: the edge midpoints catch the ramp, the corners
+      // do not.
+      expect(maskAt(region, 3, 2), greaterThan(0));
+      expect(maskAt(region, 5, 4), greaterThan(0));
+      expect(maskAt(region, 2, 2), 0);
     });
 
     test('an out-of-bounds seed fills nothing', () {
