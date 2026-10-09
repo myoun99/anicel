@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -9,6 +11,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -45,6 +48,7 @@ void main() {
   Future<CanvasSelectionCommands> pumpPanel(
     WidgetTester tester, {
     required CutGuides? guides,
+    CanvasShapeKind shape = CanvasShapeKind.rect,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -62,6 +66,7 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.select,
+              selectShape: shape,
             )),
             selectionCommands: commands,
             guides: guides,
@@ -169,5 +174,39 @@ void main() {
     final xs = [for (final shape in shapes) shape.points.first.x];
     expect(xs.any((x) => x < 100), isTrue);
     expect(xs.any((x) => x > 100), isTrue);
+  });
+
+  // a-polygon-being-tapped-shows-no-copies (10-09): a polygon closed into
+  // every copy, but while it was tapped out only the hand's own trace and
+  // its band to the cursor showed.
+  testWidgets('a POLYGON being tapped out shows every copy too — its trace, '
+      'and its band to the cursor carried as the trace is', (tester) async {
+    await pumpPanel(
+      tester,
+      guides: mirrorGuides(),
+      shape: CanvasShapeKind.polygon,
+    );
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    await tester.tapAt(origin + const Offset(20, 20));
+    await tester.pump();
+    await tester.tapAt(origin + const Offset(60, 20));
+    await tester.pump();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: origin + const Offset(40, 60));
+    await mouse.moveTo(origin + const Offset(50, 60));
+    await tester.pump();
+
+    final ants = antsOn(tester);
+    expect(ants.openTrails, hasLength(2), reason: 'the hand\'s and its mirror');
+    expect(
+      ants.openTrails[1].first.x,
+      closeTo(180, 1e-6),
+      reason: 'the first vertex, x 20, mirrors to 180',
+    );
+    final cursor = ants.viewport.viewportOffsetToCanvas(ants.bandEndOf(0)!);
+    final mirrored = ants.viewport.viewportOffsetToCanvas(ants.bandEndOf(1)!);
+    expect(mirrored.x, closeTo(200 - cursor.x, 1e-6));
+    expect(mirrored.y, closeTo(cursor.y, 1e-6));
   });
 }

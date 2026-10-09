@@ -3219,17 +3219,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// original first and itself — [_symmetryCopies] for a path, which is
   /// what the shape tool draws and what a trace still being dragged is.
   List<List<CanvasPoint>> _guideCopiesOf(List<CanvasPoint> points) {
-    final symmetry = widget.symmetry;
-    if (symmetry == null) {
+    final carries = _guideCarries;
+    if (carries.isEmpty) {
       return [points];
     }
     return [
-      for (final copy in symmetryTransforms(symmetry))
+      for (final copy in carries)
         if (copy.isIdentity)
           points
         else
           [for (final point in points) copy.apply(point)],
     ];
+  }
+
+  /// The carries [_guideCopiesOf] makes its copies by, in its order — the
+  /// first the identity; none without a guide.
+  List<GuideTransform> get _guideCarries {
+    final symmetry = widget.symmetry;
+    return symmetry == null ? const [] : symmetryTransforms(symmetry);
   }
 
   /// Adopts a committed region — called by the selection history command
@@ -3604,13 +3611,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final copy in _symmetryCopies(_marqueeDrag?.shape()))
                 ?copy.clippedTo(widget.canvasSize.pasteboardRect),
             ],
-            // A trail still being dragged — the lasso's, the line's two
-            // ends — with every copy the guide makes of it, the promise
-            // [marqueeShapes] keeps for an outline. ⚠️The polygon's trace
-            // is one: its band runs to the cursor, which no guide copies.
-            openTrails: _tapsVertices
-                ? [widget.selectionCommands?.polygonPoints ?? const []]
-                : _guideCopiesOf(_marqueeDrag?.openTrail ?? const []),
+            // A trail still being drawn — the lasso's, the line's two
+            // ends, the polygon's vertices — with every copy the guide
+            // makes of it, the promise [marqueeShapes] keeps for an
+            // outline; the polygon's band rides each copy's carry to the
+            // cursor (a-polygon-being-tapped-shows-no-copies).
+            openTrails: _guideCopiesOf(
+              _tapsVertices
+                  ? widget.selectionCommands?.polygonPoints ?? const []
+                  : _marqueeDrag?.openTrail ?? const [],
+            ),
+            trailCarries: _guideCarries,
             // TS6: from the FIRST vertex, not from the third. It used
             // to wait for `canClosePolygon` so the ring never offered
             // a tap that would do nothing — and the answer to that was
