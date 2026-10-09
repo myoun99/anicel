@@ -92,6 +92,18 @@ void main() {
     expect(cells[6].label, 'PAN', reason: '3 → 9, its middle row');
   });
 
+  test('a move toward a key past the sheet\'s rows is not written: its line '
+      'is not on the sheet either', () {
+    // A key the O.L that asked for it has since let go of can lie past the
+    // cut — and past the page the sheet rounds the cut up to.
+    final document = sheetOf({2: at(0), 300: at(90)});
+    final cells = document.columns[cameraColumnOf(document)].cells;
+
+    expect(cells.length, lessThan(300), reason: '⛔전제');
+    expect([for (final cell in cells) ?cell.label], isEmpty);
+    expect(cells[3].kind, TimesheetCellKind.empty, reason: 'no line either');
+  });
+
   /// How many pixels the sheet prints right of the first CAM column's line,
   /// over the rows from 2 to 14.
   Future<int> inkedBesideTheLine(
