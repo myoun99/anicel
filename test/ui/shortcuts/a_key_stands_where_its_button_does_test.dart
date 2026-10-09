@@ -28,6 +28,39 @@ void main() {
       ShortcutShelf.topStrip,
       ShortcutShelf.inAPanel,
     ]);
+    expect(ShortcutShelf.canvas.shelves, [
+      ShortcutShelf.tools,
+      ShortcutShelf.toolTiles,
+      ShortcutShelf.blendModes,
+      ShortcutShelf.selection,
+      ShortcutShelf.edit,
+      ShortcutShelf.view,
+    ]);
+    expect(ShortcutShelf.timeline.shelves, [
+      ShortcutShelf.moves,
+      ShortcutShelf.playback,
+      ShortcutShelf.pills,
+      ShortcutShelf.layerHeader,
+      ShortcutShelf.timelineBar,
+    ]);
+    expect(ShortcutShelf.toolLibrary.shelves, [
+      ShortcutShelf.brushLibrary,
+      ShortcutShelf.brushToolBrushes,
+      ShortcutShelf.eraserToolBrushes,
+      ShortcutShelf.guides,
+      ShortcutShelf.texts,
+    ]);
+    expect(ShortcutShelf.topStrip.shelves, [
+      ShortcutShelf.file,
+      ShortcutShelf.settings,
+      ShortcutShelf.panels,
+      ShortcutShelf.debug,
+    ]);
+    expect(ShortcutShelf.inAPanel.shelves, [
+      ShortcutShelf.media,
+      ShortcutShelf.timesheet,
+      ShortcutShelf.conteSheet,
+    ]);
     expect(ShortcutShelf.pills.path, [
       ShortcutShelf.timeline,
       ShortcutShelf.pills,
