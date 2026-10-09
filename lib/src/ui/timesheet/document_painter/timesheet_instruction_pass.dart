@@ -24,16 +24,12 @@ class _TimesheetInstructionPass {
   /// [rows] are the top and the bottom of the grid this row is printed in —
   /// its half page — which the writing stays on.
   void paintInstructionRow(
-    Canvas canvas, {
-    required TimesheetCell cell,
-    required double columnLeft,
-    required double columnWidth,
-    required double centerX,
-    required double cellTop,
+    Canvas canvas,
+    _CellSlot slot, {
     required ({double top, double bottom}) rows,
   }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final cellBottom = cellTop + rowHeight;
+    final _CellSlot(:cell, :columnWidth, :centerX, :cellTop, :cellBottom) =
+        slot;
     final spanLength = cell.spanLength ?? 1;
     final offset = cell.spanOffset ?? 0;
     final isFirst = offset == 0;
@@ -157,17 +153,34 @@ class _TimesheetInstructionPass {
         maxWidth: columnWidth - 2,
       );
     }
-    if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
-      paintSpanName(
-        canvas,
-        cell.label!,
-        columnLeft: columnLeft,
-        columnWidth: columnWidth,
-        spanTop: cellTop - offset * rowHeight,
-        spanLength: spanLength,
-        rows: rows,
-      );
+    paintSpanNameOn(canvas, slot, rows: rows);
+  }
+
+  /// The NAME of the span [slot]'s row lies in, on the row that is the
+  /// span's middle ([paintSpanName]) — an instruction row's, and the
+  /// camera's move in the camera column (I-73 ⑤): both carry their span on
+  /// its rows, and the name is written once.
+  void paintSpanNameOn(
+    Canvas canvas,
+    _CellSlot slot, {
+    required ({double top, double bottom}) rows,
+  }) {
+    final cell = slot.cell;
+    final label = cell.label;
+    final spanLength = cell.spanLength ?? 1;
+    final offset = cell.spanOffset ?? 0;
+    if (offset != (spanLength - 1) ~/ 2 || label == null || label.isEmpty) {
+      return;
     }
+    paintSpanName(
+      canvas,
+      label,
+      columnLeft: slot.columnLeft,
+      columnWidth: slot.columnWidth,
+      spanTop: slot.cellTop - offset * TimesheetDocumentLayout.rowHeight,
+      spanLength: spanLength,
+      rows: rows,
+    );
   }
 
   /// A span's NAME, written DOWN the column beside its mark — the x-sheet's

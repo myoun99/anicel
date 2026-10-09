@@ -146,7 +146,7 @@ class TimesheetCell {
   /// Cel number for [TimesheetCellKind.drawing] cells — empty when the
   /// drawing has none and wears its [mark] instead; the writing for
   /// [TimesheetCellKind.instructionStart] cells; the camera's move on the
-  /// middle row of a stretch it makes in the camera column.
+  /// rows of a stretch it makes in the camera column.
   final String? label;
 
   /// The in-between mark the cell wears: a [TimesheetCellKind.mark] row's
@@ -161,8 +161,8 @@ class TimesheetCell {
   final int? spanLength;
 
   /// This row's distance from its instruction span's start row (instruction
-  /// cells, and a camera move's named row) — with [spanLength] it places
-  /// the row inside the span's mark geometry.
+  /// cells, and a camera move's rows) — with [spanLength] it places the row
+  /// inside the span's mark geometry.
   final int? spanOffset;
 
   /// The span's mark shape from its def (instruction cells only); null
@@ -737,9 +737,11 @@ class TimesheetDocument {
 
   /// The first camera column: keyframe rows with motion lines between
   /// successive keyframes, and over each stretch the camera moves along
-  /// its move's name ([cameraMoves], I-73 ⑤) — on the stretch's middle
-  /// row, with the stretch's rows, as an instruction column carries a
-  /// span's name (「타임시트 CAM 첫 칸에도 같은 이름」).
+  /// its move's name ([cameraMoves], I-73 ⑤) — on the stretch's rows with
+  /// their place in it, as an instruction column carries a span's name, to
+  /// be written once on its middle row (「타임시트 CAM 첫 칸에도 같은
+  /// 이름」). The key that ends a stretch begins the next, so it carries the
+  /// next one.
   static List<TimesheetCell> _cameraCells({
     required Cut cut,
     required int rowCount,
@@ -764,15 +766,15 @@ class TimesheetDocument {
       if (move.to >= rowCount) {
         continue; // Its line is not on the sheet either.
       }
-      final spanLength = move.to - move.from + 1;
-      final offset = (spanLength - 1) ~/ 2;
-      final row = move.from + offset;
-      cells[row] = TimesheetCell(
-        cells[row].kind,
-        label: instructionTermName(move.term, defById?.call(move.term)),
-        spanLength: spanLength,
-        spanOffset: offset,
-      );
+      final word = instructionTermName(move.term, defById?.call(move.term));
+      for (var row = move.from; row < move.to; row += 1) {
+        cells[row] = TimesheetCell(
+          cells[row].kind,
+          label: word,
+          spanLength: move.to - move.from + 1,
+          spanOffset: row - move.from,
+        );
+      }
     }
     return cells;
   }

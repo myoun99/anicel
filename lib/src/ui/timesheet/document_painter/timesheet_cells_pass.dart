@@ -542,33 +542,6 @@ class _TimesheetCellsPass {
     }
   }
 
-  /// The camera's move over the stretch [slot]'s row is the middle of —
-  /// written as an instruction's name is, down the column beside its line
-  /// ([_TimesheetInstructionPass.paintSpanName]) — where the camera column
-  /// carries one there (I-73 ⑤).
-  void _paintCameraMoveName(
-    Canvas canvas,
-    _CellSlot slot, {
-    required int rowCount,
-  }) {
-    final cell = slot.cell;
-    final word = cell.label;
-    final spanLength = cell.spanLength;
-    final offset = cell.spanOffset;
-    if (word == null || spanLength == null || offset == null) {
-      return;
-    }
-    _painter._instructions.paintSpanName(
-      canvas,
-      word,
-      columnLeft: slot.columnLeft,
-      columnWidth: slot.columnWidth,
-      spanTop: slot.cellTop - offset * TimesheetDocumentLayout.rowHeight,
-      spanLength: spanLength,
-      rows: _gridOf(slot, rowCount: rowCount),
-    );
-  }
-
   /// One non-empty cell, by kind: a drawing's label (or the SE entry
   /// start), a hold's exposure bar past the threshold (or the SE red bar
   /// at its end), the camera span line, a mark, a repeat's label and word,
@@ -595,7 +568,11 @@ class _TimesheetCellsPass {
             ..color = TimesheetDocumentPainter._ink
             ..strokeWidth = 1.6,
         );
-        _paintCameraMoveName(canvas, slot, rowCount: rowCount);
+        _painter._instructions.paintSpanNameOn(
+          canvas,
+          slot,
+          rows: _gridOf(slot, rowCount: rowCount),
+        );
       case TimesheetCellKind.mark:
         // Block-owned inbetween dot: FILLED ● (same glyph as the
         // timeline cells), not the legacy hollow ○.
@@ -632,7 +609,11 @@ class _TimesheetCellsPass {
           3.4,
           Paint()..color = TimesheetDocumentPainter._ink,
         );
-        _paintCameraMoveName(canvas, slot, rowCount: rowCount);
+        _painter._instructions.paintSpanNameOn(
+          canvas,
+          slot,
+          rows: _gridOf(slot, rowCount: rowCount),
+        );
       case TimesheetCellKind.instructionStart:
       case TimesheetCellKind.instructionSpan:
       case TimesheetCellKind.instructionEnd:
@@ -642,11 +623,7 @@ class _TimesheetCellsPass {
         // the writing centers on the span's middle slot.row.
         _painter._instructions.paintInstructionRow(
           canvas,
-          cell: slot.cell,
-          columnLeft: slot.columnLeft,
-          columnWidth: slot.columnWidth,
-          centerX: slot.centerX,
-          cellTop: slot.cellTop,
+          slot,
           rows: _gridOf(slot, rowCount: rowCount),
         );
       case TimesheetCellKind.empty:

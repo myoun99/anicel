@@ -52,8 +52,8 @@ void main() {
   int cameraColumnOf(TimesheetDocument document) => document.columns
       .indexWhere((column) => column.kind == TimesheetColumnKind.camera);
 
-  test('each stretch the camera moves along carries its name on its middle '
-      'row, with the stretch\'s rows', () {
+  test('each stretch the camera moves along carries its name on its rows, '
+      'with their place in it', () {
     final document = sheetOf(moving);
     final cells = document.columns[cameraColumnOf(document)].cells;
 
@@ -71,8 +71,8 @@ void main() {
         for (var row = 0; row < 24; row += 1)
           if (cells[row].label != null) row,
       ],
-      [5, 11],
-      reason: 'a key\'s row writes nothing of its own',
+      [for (var row = 2; row < 14; row += 1) row],
+      reason: 'the key that ends a stretch begins the next; the last ends',
     );
   });
 
