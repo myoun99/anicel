@@ -7,7 +7,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/visibility_solo.dart';
 
-/// 🚨F-129 — STANDING ON A FOLDER, SOLO SHOWS EVERYTHING IT HOLDS.
+/// 🚨F-129 — STANDING ON A FOLDER, SOLO SHOWS WHAT IT HOLDS.
 ///
 /// 유저 2026-09-14: 「활성레이어 솔로 시, 폴더에 서있으면 폴더 내용물 전부 on해서
 /// 보여주도록. 중첩이 몇개있던 관계없이 내용물 전부」.
@@ -15,6 +15,11 @@ import 'package:anicel/src/ui/session/visibility_solo.dart';
 /// Solo kept the active row and the folders above it on. Standing on a
 /// folder, that was the folder alone — a box with every row in it switched
 /// off — so soloing a group showed nothing of the group.
+///
+/// 🚨F-324 — …AS IT WAS. 유저 2026-10-09: 「폴더 비지블솔로시, 내부 레이어
+/// 모든게 on되서 보이는데, 그게아니라 내부에서 off해둔 레이어는 그거 유지해서
+/// 보여주도록」. ↩️Everything it held was turned ON, the rows hidden inside
+/// it with the rest; each keeps the eye it had before the solo now.
 void main() {
   /// Held by its own type — `tool/mutation_run.dart` picks a file's
   /// witnesses by which tests IMPORT it.
@@ -79,20 +84,41 @@ void main() {
       if (layer.isVisible) layer.id,
   };
 
-  test('standing on a folder, every row under it is on — the nested folder, '
-      'the row in it whose own eye was off, the sibling — and nothing '
-      'outside it', () {
+  test('standing on a folder, every row under it shows as it was — the '
+      'nested folder and the sibling on, the row whose own eye was off still '
+      'off — and nothing outside it', () {
     final (:s, :deep) = nested();
     s.selectLayer(outer);
 
     soloOf(s).toggleLayerVisibilitySolo();
 
-    expect(shownIn(s), {outer, near, inner, deep});
+    expect(
+      shownIn(s),
+      {outer, near, inner},
+      reason: '$deep was hidden inside the folder, and stays hidden (F-324)',
+    );
+  });
+
+  test('a row the solo hid while you stood elsewhere comes back with the eye '
+      'it had BEFORE the solo, not the one the solo gave it', () {
+    final (:s, deep: _) = nested();
+    s.selectLayer(near);
+    soloOf(s).toggleLayerVisibilitySolo();
+    expect(
+      shownIn(s),
+      {outer, near},
+      reason: 'the premise: standing on the sibling, the inner folder is off',
+    );
+
+    s.selectLayer(outer);
+
+    expect(shownIn(s), {outer, near, inner});
   });
 
   test('standing on the inner folder: what it holds and the folder above '
       'it, not the sibling beside it', () {
     final (:s, :deep) = nested();
+    s.layerSwitches.toggleLayerVisibility(deep);
     s.selectLayer(inner);
 
     soloOf(s).toggleLayerVisibilitySolo();

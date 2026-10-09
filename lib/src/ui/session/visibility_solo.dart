@@ -80,7 +80,8 @@ class VisibilitySolo {
   /// the snapshot with their pre-flip eye so exiting restores them too.
   void _applyVisibilitySolo() {
     final activeId = _selection.activeLayerId;
-    if (activeId == null) {
+    final snapshot = _visibilitySoloSnapshot;
+    if (activeId == null || snapshot == null) {
       return;
     }
     final stack = _project.layers;
@@ -89,18 +90,26 @@ class VisibilitySolo {
     // off turned its folders off with them, so soloing a row inside a folder
     // hid the very thing it was soloing. On the editing canvas that read as
     // "nothing happened"; in playback and export the frame came out EMPTY.
-    //
-    // 🚨AND STANDING ON A FOLDER SOLOS WHAT IT HOLDS (F-129, 유저 2026-09-14:
-    // 「폴더에 서있으면 폴더 내용물 전부 on해서 보여주도록. 중첩이 몇개있던
-    // 관계없이 내용물 전부」) — its whole subtree, the folders nested in it
-    // and their rows too, whatever their own eyes said before. A row that
-    // holds nothing has an empty subtree, so every row asks this one way.
     final keepShown = <LayerId>{
       activeId,
       for (final folder in stack.ancestryOf(
         stack.where((layer) => layer.id == activeId).firstOrNull?.folderId,
       ))
         folder.id,
+    };
+    // 🚨AND STANDING ON A FOLDER SOLOS WHAT IT HOLDS (F-129, 유저 2026-09-14:
+    // 「폴더에 서있으면 폴더 내용물 전부 on해서 보여주도록. 중첩이 몇개있던
+    // 관계없이 내용물 전부」) — its whole subtree, the folders nested in it
+    // and their rows too. A row that holds nothing has an empty subtree, so
+    // every row asks this one way.
+    //
+    // ↩️F-324 (유저 2026-10-09): 「폴더 비지블솔로시, 내부 레이어 모든게
+    // on되서 보이는데, 그게아니라 내부에서 off해둔 레이어는 그거 유지해서
+    // 보여주도록」. The subtree was turned ON whatever its own eyes said, so
+    // a row hidden inside the folder came up with it. Each row it holds
+    // shows the eye it had BEFORE the solo — the snapshot's, not the one the
+    // solo gave it while you stood somewhere else.
+    final heldByIt = {
       for (final member in stack.subtreeMembersOf(activeId)) member.id,
     };
     // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
@@ -110,8 +119,10 @@ class VisibilitySolo {
     // "is this row shown" is a place a hidden folder can be forgotten.
     final flips = <LayerId, bool>{};
     for (final layer in stack) {
-      _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
-      final shouldShow = keepShown.contains(layer.id);
+      final before = snapshot.putIfAbsent(layer.id, () => layer.isVisible);
+      final shouldShow = heldByIt.contains(layer.id)
+          ? before
+          : keepShown.contains(layer.id);
       if (layer.isVisible == shouldShow) {
         continue;
       }
