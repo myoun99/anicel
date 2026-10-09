@@ -524,7 +524,7 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-track-label-row-track-a')),
       nudge: const Offset(0, 12),
     );
-    expect([for (final item in vRow) item.label], ['V1']);
+    expect([for (final item in vRow) item.label], [storyboardVideoRowName(0)]);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('storyboard-track-lane-toggle-track-a')),
