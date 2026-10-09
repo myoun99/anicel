@@ -74,7 +74,9 @@ void main() {
         if (depth == 0) break;
       }
     }
-    return RegExp("'$prefix\\.([A-Za-z0-9-]+)'")
+    // A category may be two words (`Layer Header`, I-40) — a key the old
+    // `[A-Za-z0-9-]` never saw, so a tabled heading read as missing.
+    return RegExp("'$prefix\\.([A-Za-z0-9 -]+)'")
         .allMatches(source.substring(open, i))
         .map((match) => match.group(1)!)
         .toSet();

@@ -192,64 +192,74 @@ class TimelineLegendMenus {
   /// One column's flyout: its BULK OPS, then — only where the host shows
   /// row solos — a divider and the SOLO entries. A solo half that comes
   /// back EMPTY takes its divider with it, so a host with row solos on but
-  /// nothing to solo never shows a stray line.
+  /// nothing to solo never shows a stray line. No legend, no flyout.
   ///
   /// The template four columns spell out (timesheet, mark, fill-ref, fx).
   /// [kind] deliberately does not: its whole flyout is solos with no bulk
   /// half, so it opens nothing outright — an all-or-nothing law, not this
   /// one.
-  List<PanelFlyoutEntry> _bulkThenSolos(
-    List<PanelFlyoutEntry> bulk,
-    List<PanelFlyoutEntry> Function() solos,
+  LegendFlyout? _bulkThenSolos(
+    List<PanelFlyoutEntry> Function(LayerLegendCallbacks legend) bulk,
+    List<PanelFlyoutEntry> Function(LayerLegendCallbacks legend) solos,
   ) {
-    final solo = showRowSolos ? solos() : const <PanelFlyoutEntry>[];
-    return [
-      ...bulk,
-      if (solo.isNotEmpty) const PanelFlyoutDivider(),
-      ...solo,
-    ];
-  }
-
-  LegendFlyout? get sheet {
     final legend = this.legend;
     if (legend == null) return null;
-    return () => _bulkThenSolos(
-      [
-        PanelFlyoutItem(
-          keyValue: 'legend-sheet-all-on',
-          label: AppText.strings.tlAllOnTimesheet,
-          shortcuts: const [RailLegendActionIds.sheetAllOn],
-          icon: Icons.table_chart,
-          onSelected: legend.onSheetAllOn,
-        ),
-        PanelFlyoutItem(
-          keyValue: 'legend-sheet-all-off',
-          label: AppText.strings.tlAllOffTimesheet,
-          shortcuts: const [RailLegendActionIds.sheetAllOff],
-          icon: Icons.table_chart_outlined,
-          onSelected: legend.onSheetAllOff,
-        ),
-      ],
-      () => [
-        PanelFlyoutItem(
-          keyValue: 'legend-filter-sheet',
-          label: AppText.strings.tlSoloSheetOnRows,
-          shortcuts: const [RailLegendActionIds.soloSheet],
-          icon: Icons.center_focus_strong_outlined,
-          checked: rowFilter.onTimesheetOnly,
-          onSelected: legend.onToggleSheetOnlyFilter,
-        ),
-      ],
-    );
+    return () {
+      final solo = showRowSolos ? solos(legend) : const <PanelFlyoutEntry>[];
+      return [
+        ...bulk(legend),
+        if (solo.isNotEmpty) const PanelFlyoutDivider(),
+        ...solo,
+      ];
+    };
   }
 
-  LegendFlyout? get mark {
-    final legend = this.legend;
-    if (legend == null) return null;
-    return () => _bulkThenSolos([
-      _markFilterReset(legend),
-    ], () => _markSolos(legend));
-  }
+  /// A column's SOLO row — the one solo glyph, ticked while it holds.
+  PanelFlyoutItem _soloRow({
+    required String keyValue,
+    required String label,
+    required String actionId,
+    required bool checked,
+    required VoidCallback onSelected,
+  }) => PanelFlyoutItem(
+    keyValue: keyValue,
+    label: label,
+    shortcuts: [actionId],
+    icon: Icons.center_focus_strong_outlined,
+    checked: checked,
+    onSelected: onSelected,
+  );
+
+  LegendFlyout? get sheet => _bulkThenSolos(
+    (legend) => [
+      PanelFlyoutItem(
+        keyValue: 'legend-sheet-all-on',
+        label: AppText.strings.tlAllOnTimesheet,
+        shortcuts: const [RailLegendActionIds.sheetAllOn],
+        icon: Icons.table_chart,
+        onSelected: legend.onSheetAllOn,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'legend-sheet-all-off',
+        label: AppText.strings.tlAllOffTimesheet,
+        shortcuts: const [RailLegendActionIds.sheetAllOff],
+        icon: Icons.table_chart_outlined,
+        onSelected: legend.onSheetAllOff,
+      ),
+    ],
+    (legend) => [
+      _soloRow(
+        keyValue: 'legend-filter-sheet',
+        label: AppText.strings.tlSoloSheetOnRows,
+        actionId: RailLegendActionIds.soloSheet,
+        checked: rowFilter.onTimesheetOnly,
+        onSelected: legend.onToggleSheetOnlyFilter,
+      ),
+    ],
+  );
+
+  LegendFlyout? get mark =>
+      _bulkThenSolos((legend) => [_markFilterReset(legend)], _markSolos);
 
   /// 🚨THE FILTER'S OWN WAY BACK, not the labels' eraser
   /// (clear-all-marks-meaning-Q1, 유저 2026-09-25: 「마크 모두 지우기를 삭제.
@@ -324,62 +334,52 @@ class TimelineLegendMenus {
     ];
   }
 
-  LegendFlyout? get fillReference {
-    final legend = this.legend;
-    if (legend == null) return null;
-    return () => _bulkThenSolos(
-      [
-        PanelFlyoutItem(
-          keyValue: 'legend-fill-ref-clear',
-          label: AppText.strings.tlClearAllFillRefs,
-          shortcuts: const [RailLegendActionIds.fillReferenceClear],
-          icon: Icons.format_color_reset_outlined,
-          onSelected: legend.onClearAllFillReferences,
-        ),
-      ],
-      () => [
-        PanelFlyoutItem(
-          keyValue: 'legend-filter-fill-ref',
-          label: AppText.strings.tlSoloFillReferences,
-          shortcuts: const [RailLegendActionIds.soloFillReference],
-          icon: Icons.center_focus_strong_outlined,
-          checked: rowFilter.fillReferenceOnly,
-          onSelected: legend.onToggleFillReferenceOnlyFilter,
-        ),
-      ],
-    );
-  }
+  LegendFlyout? get fillReference => _bulkThenSolos(
+    (legend) => [
+      PanelFlyoutItem(
+        keyValue: 'legend-fill-ref-clear',
+        label: AppText.strings.tlClearAllFillRefs,
+        shortcuts: const [RailLegendActionIds.fillReferenceClear],
+        icon: Icons.format_color_reset_outlined,
+        onSelected: legend.onClearAllFillReferences,
+      ),
+    ],
+    (legend) => [
+      _soloRow(
+        keyValue: 'legend-filter-fill-ref',
+        label: AppText.strings.tlSoloFillReferences,
+        actionId: RailLegendActionIds.soloFillReference,
+        checked: rowFilter.fillReferenceOnly,
+        onSelected: legend.onToggleFillReferenceOnlyFilter,
+      ),
+    ],
+  );
 
-  LegendFlyout? get fx {
-    final legend = this.legend;
-    if (legend == null) return null;
-    return () => _bulkThenSolos(
-      [
-        PanelFlyoutItem(
-          keyValue: 'legend-fx-enable-all',
-          label: AppText.strings.tlApplyAllFx,
-          shortcuts: const [RailLegendActionIds.fxEnableAll],
-          onSelected: legend.onEnableAllFx,
-        ),
-        PanelFlyoutItem(
-          keyValue: 'legend-fx-bypass-all',
-          label: AppText.strings.tlBypassAllFx,
-          shortcuts: const [RailLegendActionIds.fxBypassAll],
-          onSelected: legend.onBypassAllFx,
-        ),
-      ],
-      () => [
-        PanelFlyoutItem(
-          keyValue: 'legend-filter-fx',
-          label: AppText.strings.tlSoloFxOnRows,
-          shortcuts: const [RailLegendActionIds.soloFx],
-          icon: Icons.center_focus_strong_outlined,
-          checked: rowFilter.fxOnly,
-          onSelected: legend.onToggleFxOnlyFilter,
-        ),
-      ],
-    );
-  }
+  LegendFlyout? get fx => _bulkThenSolos(
+    (legend) => [
+      PanelFlyoutItem(
+        keyValue: 'legend-fx-enable-all',
+        label: AppText.strings.tlApplyAllFx,
+        shortcuts: const [RailLegendActionIds.fxEnableAll],
+        onSelected: legend.onEnableAllFx,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'legend-fx-bypass-all',
+        label: AppText.strings.tlBypassAllFx,
+        shortcuts: const [RailLegendActionIds.fxBypassAll],
+        onSelected: legend.onBypassAllFx,
+      ),
+    ],
+    (legend) => [
+      _soloRow(
+        keyValue: 'legend-filter-fx',
+        label: AppText.strings.tlSoloFxOnRows,
+        actionId: RailLegendActionIds.soloFx,
+        checked: rowFilter.fxOnly,
+        onSelected: legend.onToggleFxOnlyFilter,
+      ),
+    ],
+  );
 
   /// The onion column's flyout (UI-R17 #5) — only where the host wires the
   /// sweep: the storyboard's rail carries no onion column.
@@ -429,12 +429,11 @@ class TimelineLegendMenus {
         icon: Icons.visibility_off,
         onSelected: legend.onHideAllLayers,
       ),
-      PanelFlyoutItem(
+      _soloRow(
         keyValue: 'legend-eye-solo',
         // The registry's name: `=` presses this item (I-19).
         label: editorActionLabel(EditorActionIds.layerVisibilitySolo),
-        shortcuts: const [EditorActionIds.layerVisibilitySolo],
-        icon: Icons.center_focus_strong_outlined,
+        actionId: EditorActionIds.layerVisibilitySolo,
         checked: visibilitySoloEnabled,
         onSelected: legend.onToggleVisibilitySolo,
       ),
