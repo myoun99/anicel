@@ -122,6 +122,23 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 }
 
+/// A cel a FOLDER's move session holds lifted (I-37): drawn by [surface] —
+/// the cel with the hole the lift cut — and [float] over it, in its own
+/// row's slot, with its own row's opacity, blend and effects.
+///
+/// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. A folder's rows
+/// show at the SAME frame, so each one's hole and each one's float have to
+/// be on screen while the box is open — one float merged from all of them
+/// would composite differently from what each row lands as.
+///
+/// ⛔Not a live row: a row stays live because a stroke draws into it, and a
+/// lifted row only shows. While one is up the display keeps no buffer —
+/// exactly as while the active row's float is up ([SelectionFloatPaint]).
+typedef LiftedRowPaint = ({
+  BitmapSurfacePainter surface,
+  SelectionFloatOverlay float,
+});
+
 /// What a view showing a RUN takes from the run's maker
 /// ([CanvasLayerStackView.run]): the signal that a picture landed, and the
 /// rows it gave up on — a frame waits for nothing that will not come.
@@ -210,6 +227,7 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.viewport,
     this.activeSurfacePainter,
     this.floatOverlay,
+    this.liftedRows = const {},
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
     this.debugDisableBake = false,
@@ -289,6 +307,11 @@ class CanvasLayerStackView extends StatefulWidget {
   /// The selection's floating pixels (TS1), drawn in the active layer's slot
   /// so the rows above it occlude them. Null = nothing to draw there.
   final SelectionFloatOverlay? floatOverlay;
+
+  /// The cels a folder's move session holds lifted (I-37), by the cel each
+  /// image row in [nodes] names: such a row draws its lifted surface and its
+  /// float instead of its cel's image ([LiftedRowPaint]).
+  final Map<BrushFrameKey, LiftedRowPaint> liftedRows;
 
   /// The composite tree, bottom → top.
   final List<CompositeNode<CanvasStackRow>> nodes;
@@ -1035,6 +1058,20 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   _PaintRow? _paintRowFor(CanvasStackRow row) {
     switch (row) {
+      // A row a folder's lift holds draws its lifted surface — whether or
+      // not its image is held: that is the cel as it stands, and the lift
+      // is what shows while the box is open (I-37).
+      case final CanvasLayerImageRequest request
+          when widget.liftedRows.containsKey(request.frameKey):
+        return _PaintLiftedSurface(
+          lifted: widget.liftedRows[request.frameKey]!,
+          opacity: request.opacity,
+          blendMode: request.blendMode,
+          placement: request.placement,
+          // The PAINT half only, as the live row's: the lifted surface's
+          // painter carries the row's leading keys.
+          effects: request.paintEffects,
+        );
       case final CanvasLayerImageRequest request:
         final held = _images[request.frameKey];
         if (held == null) {
@@ -1320,6 +1357,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,
           floatOverlay: widget.floatOverlay,
+          liftedRows: widget.liftedRows,
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
@@ -1479,6 +1517,25 @@ final class _PaintImage extends _PaintRow {
   );
 }
 
+/// A row drawn as a SURFACE — the live one, or one a folder's lift holds —
+/// and what its layer composites with, for the one body that draws both
+/// ([_LayerStackPaintPass._paintSurfaceRow]).
+sealed class _SurfaceRow extends _PaintRow {
+  const _SurfaceRow();
+
+  double get opacity;
+  LayerBlendMode get blendMode;
+  LayerPlacement? get placement;
+  List<ResolvedLayerEffect> get effects;
+
+  _SurfaceRowPaint get paint => (
+    opacity: opacity,
+    blendMode: blendMode,
+    placement: placement,
+    effects: effects,
+  );
+}
+
 /// 🪦The first-activation stand-in (device report 2026-08-17 → 2026-09-17)
 /// held the just-deactivated route's layer image over the active slot
 /// until every tile of the promoted surface had decoded: activation
@@ -1488,7 +1545,7 @@ final class _PaintImage extends _PaintRow {
 /// activation frame itself and nothing stands in. (The active row's
 /// `frameKey` named the cel so this could find the image to hold; it has
 /// another reader now — see [CanvasActiveLayerRow.frameKey].)
-final class _PaintActiveSurface extends _PaintRow {
+final class _PaintActiveSurface extends _SurfaceRow {
   const _PaintActiveSurface({
     required this.opacity,
     required this.blendMode,
@@ -1499,14 +1556,18 @@ final class _PaintActiveSurface extends _PaintRow {
   /// ㊱: the active row's display opacity. It reached the node all along and
   /// stopped here — the field did not exist, so the live surface drew at full
   /// strength while every OTHER row honoured its slider.
+  @override
   final double opacity;
 
   /// The same story as [opacity], one field over and one round later: the
   /// blend had no field on the node either, so it could not stop here — it
   /// never started. See [CanvasActiveLayerNode.blendMode].
+  @override
   final LayerBlendMode blendMode;
 
+  @override
   final LayerPlacement? placement;
+  @override
   final List<ResolvedLayerEffect> effects;
 
   // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
@@ -1524,6 +1585,53 @@ final class _PaintActiveSurface extends _PaintRow {
   @override
   int get signature =>
       Object.hash(opacity, blendMode, placement, Object.hashAll(effects));
+}
+
+/// A row a folder's move session holds lifted ([LiftedRowPaint]): drawn by
+/// its lifted surface with its float over it, by the same body the active
+/// row is drawn with — in its own slot, with its own row's paint.
+final class _PaintLiftedSurface extends _SurfaceRow {
+  const _PaintLiftedSurface({
+    required this.lifted,
+    required this.opacity,
+    required this.blendMode,
+    required this.placement,
+    required this.effects,
+  });
+
+  final LiftedRowPaint lifted;
+  @override
+  final double opacity;
+  @override
+  final LayerBlendMode blendMode;
+  @override
+  final LayerPlacement? placement;
+  @override
+  final List<ResolvedLayerEffect> effects;
+
+  // The surface and the float by IDENTITY, as an image is: the float's
+  // value moves under the hand without this node changing, which is why a
+  // view holding a lifted row keeps no buffer ([_LayerStackPainter.
+  // _bufferKey]) and repaints on each float ([_LayerStackPainter.repaint]).
+  @override
+  bool matches(_PaintRow other) =>
+      other is _PaintLiftedSurface &&
+      identical(lifted.surface, other.lifted.surface) &&
+      identical(lifted.float, other.lifted.float) &&
+      opacity == other.opacity &&
+      blendMode == other.blendMode &&
+      placement == other.placement &&
+      listEquals(effects, other.effects);
+
+  @override
+  int get signature => Object.hash(
+    identityHashCode(lifted.surface),
+    identityHashCode(lifted.float),
+    opacity,
+    blendMode,
+    placement,
+    Object.hashAll(effects),
+  );
 }
 
 /// Whether [a] draws the same picture as [b] — the STRUCTURE compared
@@ -1633,6 +1741,7 @@ bool? debugLiveLayerRodeTheDraws;
 Rect _paintNodeExtent(
   CompositeNode<_PaintRow> node, {
   required Rect Function() activeSurfaceExtent,
+  required Rect Function(_PaintLiftedSurface row) liftedExtent,
 }) {
   Rect placed(Rect rect, LayerPlacement? placement) => placement == null
       ? rect
@@ -1650,6 +1759,8 @@ Rect _paintNodeExtent(
       payload: _PaintActiveSurface(:final placement),
     ):
       return placed(activeSurfaceExtent(), placement);
+    case CompositeLeaf(payload: final _PaintLiftedSurface row):
+      return placed(liftedExtent(row), row.placement);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
       var union = Rect.zero;
@@ -1657,6 +1768,7 @@ Rect _paintNodeExtent(
         final childRect = _paintNodeExtent(
           child,
           activeSurfaceExtent: activeSurfaceExtent,
+          liftedExtent: liftedExtent,
         );
         if (childRect.isEmpty) {
           continue;
@@ -1755,6 +1867,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.nodes,
     required this.activeSurfacePainter,
     required this.floatOverlay,
+    this.liftedRows = const {},
     required this.canvasSize,
     required this.viewport,
     required this.paintPaper,
@@ -1768,6 +1881,12 @@ class _LayerStackPainter extends CustomPainter {
          repaint: Listenable.merge(<Listenable?>[
            activeSurfacePainter,
            floatOverlay,
+           // A lifted row's surface and float move as the live row's do —
+           // a drag step reaches the canvas without a widget rebuild.
+           for (final lifted in liftedRows.values) ...[
+             lifted.surface,
+             lifted.float,
+           ],
          ]),
        );
 
@@ -1802,6 +1921,9 @@ class _LayerStackPainter extends CustomPainter {
   /// the repaint above for the same reason the surface painter is — a drag
   /// step has to reach the canvas without a widget rebuild.
   final SelectionFloatOverlay? floatOverlay;
+
+  /// See [CanvasLayerStackView.liftedRows].
+  final Map<BrushFrameKey, LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
@@ -2019,7 +2141,9 @@ class _LayerStackPainter extends CustomPainter {
     // Not cheap-and-narrow (hash the float's value) on purpose: the float is
     // a transient editing state, so declining to cache costs only what the
     // uncached path already cost, and it cannot go stale.
-    if (floatOverlay?.value != null) {
+    // A folder's lift (I-37) floats on each of its rows — the same reason,
+    // as many times as it has rows.
+    if (floatOverlay?.value != null || liftedRows.isNotEmpty) {
       return null;
     }
     final surfacePainter = activeSurfacePainter;
@@ -2093,6 +2217,8 @@ class _LayerStackPainter extends CustomPainter {
         CompositeAdjustment(:final children) =>
           children.any(_enclosesActiveSurface),
         CompositeLeaf(payload: _PaintImage()) => false,
+        // A lifted row only shows; nothing draws into it.
+        CompositeLeaf(payload: _PaintLiftedSurface()) => false,
       };
 
   @override
