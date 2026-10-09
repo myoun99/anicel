@@ -7,8 +7,8 @@ import '../../models/import/import_warning.dart';
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
-import '../../services/persistence/anicel_project_archive.dart'
-    show anicelProjectExtension;
+import '../../services/persistence/file_type_groups.dart'
+    show OpenedAs, openedAs, projectOpenExtensions;
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/recent_projects.dart';
@@ -37,34 +37,8 @@ import '../text/model_vocabulary.dart' show ImportWarningWords;
 /// second time is at best waste — see [promptSaveProjectAs].
 typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 
-/// What 「열기」 opens — and what a file dropped on the window is asked by,
-/// so the two entrances read one list (F-247, 유저 2026-09-30: 「드래그앤드롭으로
-/// 외부파일 임포트시 확장자?에 맞도록. anicel이면 배치창이아니라 새 프로젝트로
-/// 열도록. tvpp도 똑같이」).
-///
-/// TVPaint projects open through the same door (the user's call: ONE
-/// entry, the Open button — the import pickers retire later). A .tvpp
-/// converts into cuts rather than loading as a project. So does a CLIP
-/// STUDIO file: every timeline a cut (card `csp-clip-import-analysis` — a
-/// cut container opens AS A PROJECT).
-///
-/// 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
-/// 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
-/// 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
-/// 선택할수 있게」.
-const List<String> projectOpenExtensions = [
-  anicelProjectExtension,
-  'tvpp',
-  'clip',
-];
-
-/// Whether [path] names a file 「열기」 opens ([projectOpenExtensions]) —
-/// by NAME, the way the door tells a .tvpp: a provider document's URI says
-/// nothing of what it is (PICK-7).
-bool opensAsProject(String path) {
-  final name = ProviderDocuments.nameOf(path).toLowerCase();
-  return projectOpenExtensions.any((extension) => name.endsWith('.$extension'));
-}
+/// Whether [path] names a file 「열기」 opens as a project ([openedAs]).
+bool opensAsProject(String path) => openedAs(path) == OpenedAs.project;
 
 /// How far a bake has come, 0 … 1.
 typedef _Progress = void Function(double fraction);

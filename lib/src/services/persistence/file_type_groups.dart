@@ -33,10 +33,12 @@ import '../../models/media_asset.dart'
     show
         audioFileExtensions,
         imageFileExtensions,
+        mediaAssetKindForPath,
         pdfFileExtensions,
         videoFileExtensions;
 import '../brush_pack_file.dart';
 import 'anicel_project_archive.dart';
+import 'provider_documents.dart';
 
 /// The exported type for a project file — the identifier declared in both
 /// Apple Info.plists. Public because a test pins the two together.
@@ -76,6 +78,91 @@ const List<String> brushFileExtensions = [
   'abr',
   'sut',
   'sutg',
+];
+
+/// Font files this device's letters can be set in — the text tool's
+/// library. A collection is read as its first face (`font_file_reader`).
+const List<String> fontFileExtensions = ['ttf', 'otf', 'ttc'];
+
+/// What 「열기」 opens — and what a file dropped on the window is asked by,
+/// so the two entrances read one list (F-247, 유저 2026-09-30: 「드래그앤드롭으로
+/// 외부파일 임포트시 확장자?에 맞도록. anicel이면 배치창이아니라 새 프로젝트로
+/// 열도록. tvpp도 똑같이」).
+///
+/// TVPaint projects open through the same door (the user's call: ONE
+/// entry, the Open button — the import pickers retire later). A .tvpp
+/// converts into cuts rather than loading as a project. So does a CLIP
+/// STUDIO file: every timeline a cut (card `csp-clip-import-analysis` — a
+/// cut container opens AS A PROJECT).
+///
+/// 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
+/// 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
+/// 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
+/// 선택할수 있게」.
+const List<String> projectOpenExtensions = [
+  anicelProjectExtension,
+  'tvpp',
+  'clip',
+];
+
+/// What a file OPENS AS — the one judgement every door a file comes in
+/// through asks: the menu's 「파일 열기…」, a drop on the window, the media
+/// panel's ＋ and the viewer's 「미디어에 등록」 (F-282, 유저 2026-10-09:
+/// 「열기랑 임포트랑 되도록 하나로 합치고싶고, 드래그앤드롭으로 파일
+/// 여는거라던가 풀에 등록할떄? 등 관련 임포트 전부 점검」 · 「최대한
+/// 통일하고싶음」).
+///
+/// ⚠️A FOLDER is no name's answer: the door that holds the path asks the
+/// disk, and a folder comes in through the import window as a cut folder.
+enum OpenedAs {
+  /// Opens in a tab of its own ([projectOpenExtensions]).
+  project,
+
+  /// Comes in through the import window — a picture, a movie, a sound, a
+  /// PDF ([mediaAssetKindForPath]).
+  media,
+
+  /// Goes into the brush library ([brushFileExtensions]).
+  brush,
+
+  /// Goes into this device's fonts ([fontFileExtensions]).
+  font,
+}
+
+/// What the file [pathOrUri] names opens as — null for a file nothing in the
+/// app opens, which every door says by name.
+///
+/// By NAME, the way every door tells a file: a provider document's URI says
+/// nothing of what it is (PICK-7), so its own name is read.
+OpenedAs? openedAs(String pathOrUri) {
+  final name = ProviderDocuments.nameOf(pathOrUri);
+  final dot = name.lastIndexOf('.');
+  if (dot < 0) {
+    return null;
+  }
+  final extension = name.substring(dot + 1).toLowerCase();
+  if (projectOpenExtensions.contains(extension)) {
+    return OpenedAs.project;
+  }
+  if (brushFileExtensions.contains(extension)) {
+    return OpenedAs.brush;
+  }
+  if (fontFileExtensions.contains(extension)) {
+    return OpenedAs.font;
+  }
+  return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
+}
+
+/// Every extension some door takes ([openedAs]) — what 「파일 열기…」
+/// accepts, and what the notice for a file it does not names.
+const List<String> openableExtensions = [
+  ...projectOpenExtensions,
+  ...imageFileExtensions,
+  ...videoFileExtensions,
+  ...audioFileExtensions,
+  ...pdfFileExtensions,
+  ...brushFileExtensions,
+  ...fontFileExtensions,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has
