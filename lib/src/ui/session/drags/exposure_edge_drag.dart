@@ -740,6 +740,21 @@ void commitWithCutSync({
   description: description,
 );
 
+/// The fewest frames [cut] may keep for its camera's keys
+/// (I-73-camera-row-Q4, [minimumCutDurationForCamera]): a conte edit's end
+/// stops short of them, as a trim's does. Its keys are not the drag's, so
+/// the committed camera is the right one to read; a row that would end
+/// sooner is tiled out to the cut's end again by the write (and by the
+/// preview, which settles as the write does).
+int _cameraFloorOf(ProjectAccess project, Cut? cut) => cut == null
+    ? 1
+    : minimumCutDurationForCamera(
+        cut,
+        drawnFrameCount:
+            cutDrawnFrameCount(project.repository.requireProject(), cut.id) ??
+            cut.duration,
+      );
+
 /// The synced durations/gaps for the row's end having moved to
 /// [afterRow]'s end, or null when it has not moved.
 ///
@@ -792,23 +807,10 @@ CutResize? cutSyncResizeFor({
       : minimumCutDurationForStoryboardRow(
           divisionRow.id == afterRow.id ? afterRow : divisionRow,
         );
-  // …and the camera's (I-73-camera-row-Q4, [minimumCutDurationForCamera]):
-  // the end stops short of its keys. Its keys are not this drag's, so the
-  // committed camera is the right one to read; a row that would end sooner
-  // is tiled out to the cut's end again by the write (and by the preview,
-  // which settles as the write does).
-  final cameraFloor = syncedCut == null
-      ? 1
-      : minimumCutDurationForCamera(
-          syncedCut,
-          drawnFrameCount:
-              cutDrawnFrameCount(
-                project.repository.requireProject(),
-                sync.cutId,
-              ) ??
-              syncedCut.duration,
-        );
-  final duration = math.max(math.max(floor, cameraFloor), afterRowEnd);
+  final duration = math.max(
+    math.max(floor, _cameraFloorOf(project, syncedCut)),
+    afterRowEnd,
+  );
   return (
     durations: {sync.cutId: duration},
     gaps: {

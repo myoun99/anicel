@@ -441,6 +441,29 @@ void main() {
   });
 
   group('while a drag is in flight', () {
+    testWidgets('🚨a cut\'s end dragged takes the key on its last frame along, '
+        'live — 🗣️I-73-camera-row-Q4', (tester) async {
+      // c [52, 64), keyed on its first frame and its last.
+      final session = await pumpPanel(tester, cKeys: [0, 11]);
+      expect(marksOf(tester, 'c-cam'), [52, 63], reason: '⛔전제');
+
+      expect(
+        session.edgeDrag.beginCutEdgeDrag(
+          cutId: const CutId('c'),
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+        reason: '⛔전제',
+      );
+      session.edgeDrag.updateCutEdgeDrag(3);
+      await tester.pumpAndSettle();
+      expect(marksOf(tester, 'c-cam'), [52, 66], reason: 'with the end');
+
+      session.edgeDrag.cancelCutEdgeDrag();
+      await tester.pumpAndSettle();
+      expect(marksOf(tester, 'c-cam'), [52, 63]);
+    });
+
     testWidgets('🚨an O.L\'s edge dragged moves the stretch it splits, live', (
       tester,
     ) async {

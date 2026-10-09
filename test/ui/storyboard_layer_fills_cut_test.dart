@@ -86,7 +86,13 @@ void main() {
     test('with no storyboard row the floor is one frame', () {
       final session = sessionFor();
 
-      expect(minimumCutDurationFor(session.requireActiveCut), 1);
+      expect(
+        minimumCutDurationFor(
+          session.requireActiveCut,
+          drawnFrameCount: session.activeCutDrawnFrameCount,
+        ),
+        1,
+      );
     });
 
     test('the floor is the LAST division plus one', () {
@@ -95,7 +101,13 @@ void main() {
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
 
-      expect(minimumCutDurationFor(session.requireActiveCut), 6);
+      expect(
+        minimumCutDurationFor(
+          session.requireActiveCut,
+          drawnFrameCount: session.activeCutDrawnFrameCount,
+        ),
+        6,
+      );
     });
 
     test('an END trim stops at that floor instead of at one frame', () {
@@ -131,7 +143,13 @@ void main() {
       // at 5, so [minimumCutDurationFor] would let the cut shrink to 6; the
       // first panel has 4 frames to give, so the real floor is 4 less than
       // the duration.
-      expect(minimumCutDurationFor(session.requireActiveCut), 6);
+      expect(
+        minimumCutDurationFor(
+          session.requireActiveCut,
+          drawnFrameCount: session.activeCutDrawnFrameCount,
+        ),
+        6,
+      );
 
       session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
       session.edgeDrag.updateCutEdgeDrag(100);

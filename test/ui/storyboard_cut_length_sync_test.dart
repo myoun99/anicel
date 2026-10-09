@@ -164,7 +164,15 @@ void main() {
       // at 24, which put the second panel's division AT the cut end — the
       // conte silently dropped that panel while the data stayed real.
       expect(cut.duration, 44);
-      expect(cut.duration, greaterThanOrEqualTo(minimumCutDurationFor(cut)));
+      expect(
+        cut.duration,
+        greaterThanOrEqualTo(
+          minimumCutDurationFor(
+            cut,
+            drawnFrameCount: session.activeCutDrawnFrameCount,
+          ),
+        ),
+      );
       expect(
         storyboardCoverageCells(
           timeline: storyboardLayerForCut(cut)!.timeline,
@@ -189,7 +197,13 @@ void main() {
       final cut = session.requireActiveCut;
       expect(rowOf(session, storyboardId), {0: 5, 5: 1});
       expect(cut.duration, 6);
-      expect(cut.duration, minimumCutDurationFor(cut));
+      expect(
+        cut.duration,
+        minimumCutDurationFor(
+          cut,
+          drawnFrameCount: session.activeCutDrawnFrameCount,
+        ),
+      );
     });
 
     test('the FOLLOWING cut rides that end: a shrink hands its frames to a '
@@ -277,7 +291,15 @@ void main() {
           .map((entry) => entry.key + entry.value!)
           .reduce((a, b) => a > b ? a : b);
       expect(cut.duration, rowEnd);
-      expect(cut.duration, greaterThanOrEqualTo(minimumCutDurationFor(cut)));
+      expect(
+        cut.duration,
+        greaterThanOrEqualTo(
+          minimumCutDurationFor(
+            cut,
+            drawnFrameCount: session.activeCutDrawnFrameCount,
+          ),
+        ),
+      );
     });
   });
 
@@ -311,7 +333,13 @@ void main() {
       // while reading the end off the previewed one made `max()` compare two
       // different rows and pin the duration at 21 — an 11-frame hole that
       // the strip hid and the timeline painted.
-      expect(minimumCutDurationFor(session.requireActiveCut), 21);
+      expect(
+        minimumCutDurationFor(
+          session.requireActiveCut,
+          drawnFrameCount: session.activeCutDrawnFrameCount,
+        ),
+        21,
+      );
 
       session.edgeDrag.beginStoryboardCommaDrag(cutId: cutId, blockStartIndex: 5);
       session.edgeDrag.updateCutEdgeDrag(-14);

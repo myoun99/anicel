@@ -1,7 +1,7 @@
 import '../../models/conte_group.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer.dart' show LayerStackQueries, isAttachedLayer;
+import '../../models/layer.dart' show Layer, LayerStackQueries, isAttachedLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
@@ -85,18 +85,34 @@ List<LayerId> linkMirrorRows(
 List<({CutId cutId, LayerId layerId})> conteHeadTargets(
   Project project,
   LayerId layerId,
-) {
+) => _rowsAtOnePlace(
+  project,
+  layerId,
+  placeOf: (cut) => conteSeatOf(cut, layerId),
+  rowAt: conteRowAtSeat,
+);
+
+/// Every (cut, row) of the track that holds [layerId] — the row itself
+/// first — at the place [placeOf] finds it at in its cut: the rows ONE head
+/// is worn by across a track ([conteHeadTargets], [cameraHeadTargets]).
+/// Empty where no cut holds it at such a place.
+List<({CutId cutId, LayerId layerId})> _rowsAtOnePlace<P extends Object>(
+  Project project,
+  LayerId layerId, {
+  required P? Function(Cut cut) placeOf,
+  required Layer? Function(Cut cut, P place) rowAt,
+}) {
   for (final track in project.tracks) {
     for (final cut in track.cuts) {
-      final seat = conteSeatOf(cut, layerId);
-      if (seat == null) {
+      final place = placeOf(cut);
+      if (place == null) {
         continue;
       }
       return [
         (cutId: cut.id, layerId: layerId),
         for (final other in track.cuts)
           if (other.id != cut.id)
-            if (conteRowAtSeat(other, seat) case final row?)
+            if (rowAt(other, place) case final row?)
               (cutId: other.id, layerId: row.id),
       ];
     }
@@ -123,23 +139,13 @@ List<({CutId cutId, LayerId layerId})> conteHeadTargets(
 List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
   Project project,
   LayerId layerId,
-) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      if (cut.layers.cameraLayer?.id != layerId) {
-        continue;
-      }
-      return [
-        (cutId: cut.id, layerId: layerId),
-        for (final other in track.cuts)
-          if (other.id != cut.id)
-            if (other.layers.cameraLayer case final camera?)
-              (cutId: other.id, layerId: camera.id),
-      ];
-    }
-  }
-  return const [];
-}
+) => _rowsAtOnePlace(
+  project,
+  layerId,
+  // A cut has one camera row: its place is the row itself.
+  placeOf: (cut) => cut.layers.cameraLayer?.id == layerId ? () : null,
+  rowAt: (cut, _) => cut.layers.cameraLayer,
+);
 
 /// The addresses a HEAD edit lands on: the row's link group
 /// ([linkMirrorTargets]) and, of a row of a conte group, the rows at its

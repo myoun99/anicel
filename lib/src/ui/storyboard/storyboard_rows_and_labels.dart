@@ -248,8 +248,8 @@ class _StoryboardRowsAndLabels {
   ///
   /// The head is the cut stood in's camera, as the timeline's is. 🗣️유저
   /// 2026-10-09 (I-73-camera-row-Q1): its name and its fx switch are ONE
-  /// for the track's cuts, its colour label each cut's own — ⚠️not yet: an
-  /// edit on it still reaches that cut's camera alone.
+  /// for the track's cuts, its colour label each cut's own — the commands
+  /// carry the two to every camera of the track (`cameraHeadTargets`).
   ///
   /// A press picks the ROW ([trackCameraRowId]) — never the head's layer —
   /// and the session lands it on the camera layer of the cut it stands in.

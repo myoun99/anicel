@@ -279,19 +279,7 @@ class ProjectRepository {
                 cut,
                 project: project,
                 handles: handles,
-                // The conte row the last write tiled, if this is still it:
-                // its blocks sit where that write put them, whatever an edit
-                // since did to its first panel. A row it never saw says
-                // where it was tiled from itself.
-                previousConteStart:
-                    last != null && last.conteRowId == _conteRowIdOf(cut)
-                    ? last.handles.head
-                    : null,
-                // Where the cut's last frame was when the last write settled
-                // it — the one its camera's end key stood on.
-                previousDrawnFrameCount: last == null
-                    ? null
-                    : drawnFrameCountOf(last.cut, last.handles),
+                last: last,
               );
         settled[cut.id] = (
           cut: next,
@@ -320,15 +308,27 @@ class ProjectRepository {
   /// The six invariants above, in their stated order, over one cut of
   /// [project] — the project being settled, read for the two things a cut
   /// cannot say alone: the instruction a bare direction block takes, and a
-  /// linked attach row's group.
+  /// linked attach row's group — and over what the [last] write settled of
+  /// it, where there was one.
   static Cut _normalizedCut(
     Cut cut, {
     required Project project,
     required CutTransitionHandles handles,
-    required int? previousConteStart,
-    required int? previousDrawnFrameCount,
+    required _Settled? last,
   }) {
     final drawnFrameCount = drawnFrameCountOf(cut, handles);
+    // The conte row the last write tiled, if this is still it: its blocks
+    // sit where that write put them, whatever an edit since did to its
+    // first panel. A row it never saw says where it was tiled from itself.
+    final previousConteStart =
+        last != null && last.conteRowId == _conteRowIdOf(cut)
+        ? last.handles.head
+        : null;
+    // Where the cut's last frame was when the last write settled it — the
+    // one its camera's end key stood on.
+    final previousDrawnFrameCount = last == null
+        ? null
+        : drawnFrameCountOf(last.cut, last.handles);
     final shaped = cutWithSpansOnTheirBlocks(
       cutWithReconciledAttachedMirrors(
         cutWithCoveringStoryboardRow(
