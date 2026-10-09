@@ -248,6 +248,40 @@ void main() {
     );
   });
 
+  testWidgets('🚨the page let go is the one FARTHEST from the page on screen '
+      '— not the one read first', (tester) async {
+    // Read 0, 1, 2 and stand on 0 again: the oldest page beside it is 1,
+    // the farthest is 2. Only the run's distance tells the two apart (the
+    // one wiring's `distance:`, ViewerPagesAndRun) — a cache that let go of
+    // what it read first would keep the far page and drop the near one.
+    ViewerRasterBudget.debugPageBytesOverride = await measureOnePage(tester);
+    final fake = await openConte(tester, pages: 3);
+    await turnTo(tester, 1);
+    await turnTo(tester, 2);
+    await turnTo(tester, 0);
+    expect(
+      reRendered(fake),
+      isEmpty,
+      reason: 'fixture: three pages fit in a four-page budget',
+    );
+
+    session.respondToMemoryPressure();
+    await tester.pumpAndSettle();
+
+    await turnTo(tester, 1);
+    expect(
+      reRendered(fake),
+      isEmpty,
+      reason: 'the near page stayed: 1 is one away from 0',
+    );
+    await turnTo(tester, 2);
+    expect(
+      reRendered(fake),
+      [2],
+      reason: 'the far page was the one let go: 2 is two away from 0',
+    );
+  });
+
   /// 🚨**A CACHE THIS BIG MUST APPEAR IN THE PANEL THAT SAYS WHERE MEMORY
   /// GOES** (유저 요청: 「이 앱이 쓰는 메모리의 총합 … 어떤항목이 얼만큼」).
   ///
