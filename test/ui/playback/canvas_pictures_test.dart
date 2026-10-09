@@ -335,6 +335,38 @@ void main() {
     expect(again((keyOf('a'), PlaybackQuality.half)), 0);
     expect(again((keyOf('b'), PlaybackQuality.half)), 2);
   });
+
+  test('the budget\'s order keys each image at the level of the frames that '
+      'want it — a camera zooming through the cut wants more than one', () {
+    final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+    addTearDown(images.dispose);
+    // Frames 0..1 (cel a) drawn at full, 2..3 (cel b) at half.
+    final pictures = CanvasPictures(
+      layerImages: images,
+      rowsOf: (cut, frame) => [if (frame < 2) row('a') else row('b')],
+      qualityAt: (_, frame) =>
+          frame < 2 ? PlaybackQuality.full : PlaybackQuality.half,
+    );
+    final demand = PlayingDemand(
+      totalFrames: 4,
+      loops: () => false,
+      playhead: () => 0,
+      picturesOf: (frame) => [(cut: cut, frameIndex: frame)],
+      playlistFrameOf: (cutId, frame) => frame,
+    );
+
+    final wanted = pictures.wantedAt(demand);
+    expect(wanted((keyOf('a'), PlaybackQuality.full)), 0);
+    expect(wanted((keyOf('b'), PlaybackQuality.half)), 2);
+    expect(
+      [
+        wanted((keyOf('a'), PlaybackQuality.half)),
+        wanted((keyOf('b'), PlaybackQuality.full)),
+      ],
+      [null, null],
+      reason: 'an image at a level no frame is drawn at is wanted by none',
+    );
+  });
 }
 
 /// A layer image cache that cannot read [key]'s cel.

@@ -3,22 +3,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/camera_instruction.dart' show InstructionEvent;
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart' show PasteboardBounds;
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/outline_clipper.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
+import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/playback_run_layer.dart';
+import 'package:anicel/src/ui/repaint_props.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 
 /// playback-plays-the-screen-material ① (10-09) and ② (10-10): a cut played
@@ -39,6 +47,7 @@ void main() {
   Future<(EditorSessionManager, ValueNotifier<bool>)> pumpArea(
     WidgetTester tester, {
     bool cameraView = false,
+    void Function(EditorSessionManager session)? prepare,
   }) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -47,6 +56,7 @@ void main() {
     // A cel under the playhead: the row the canvas draws live, standing
     // still.
     session.createDrawingAtCurrentFrame();
+    prepare?.call(session);
     final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     final camera = ValueNotifier<bool>(cameraView);
     final dim = ValueNotifier<double>(0.5);
@@ -246,6 +256,108 @@ void main() {
     await tester.pump();
     expect(shotOf().shot, isNull);
     expect(s.renderCaches.canvasLook.value.camera, isNull);
+    await drain(tester);
+  });
+
+  /// What one of the overlay's private painters paints with, read through
+  /// the one face they show ([RepaintOnProps.props]) — the order is theirs.
+  Object propsOf(WidgetTester tester, String painter) =>
+      (tester
+                  .widget<CustomPaint>(
+                    find.byWidgetPredicate(
+                      (widget) =>
+                          widget is CustomPaint &&
+                          widget.painter.runtimeType.toString() == painter,
+                    ),
+                  )
+                  .painter!
+              as RepaintOnProps)
+          .props;
+
+  testWidgets('🚨seen through the camera, what is over the picture is in the '
+      'camera\'s frame with it: the SE tags ride the camera, the fade\'s unit '
+      'is the frame, the O.L\'s other cut is seen through the camera too, and '
+      'nothing of them shows past the frame', (tester) async {
+    late int boundary;
+    final (s, _) = await pumpArea(
+      tester,
+      cameraView: true,
+      prepare: (s) {
+        s.cutVerbs.createCut();
+        final cuts = s.repository.requireProject().tracks.first.cuts;
+        s.selectCut(cuts[0].id);
+        boundary = cuts[0].duration;
+        // An O.L across the boundary, six frames each side.
+        s.transitions.updateTransitionInstructions({
+          boundary - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+        });
+        // A name tag on the SE row, from the first frame on.
+        s.selectLayer(
+          s.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
+        );
+        s.selectFrameIndex(0);
+        s.seEntries.createSeEntryAtCurrentFrame(name: '쿵');
+      },
+    );
+    final playback = s.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    playback.seekToGlobalFrame(boundary - 3);
+    await tester.pump();
+
+    final shotWidget = tester.widget<CameraShot>(find.byType(CameraShot));
+    final shot = shotWidget.shot!;
+    final (tagsView, _, _, _) =
+        propsOf(tester, '_SeNameTagOverlayPainter')
+            as (CanvasViewport, CanvasSize, double, Object);
+    final (washView, unit, _, _, _) =
+        propsOf(tester, '_CutFadeWashPainter')
+            as (CanvasViewport, Rect, Object, Color, double);
+    expect(
+      tagsView,
+      shot.frameView,
+      reason: 'the tags ride the camera, as the picture they name does',
+    );
+    expect(washView, shotWidget.view);
+    expect(
+      unit,
+      s.camera.cameraFrameSize.canvasRect,
+      reason: 'the fade thins the camera\'s frame — apron, paper and picture',
+    );
+    expect(
+      tester
+          .widget<CanvasTrackStackView>(
+            find.byKey(const ValueKey<String>('canvas-ol-partner')),
+          )
+          .cameraViewEnabled,
+      isTrue,
+      reason: 'the O.L\'s other cut is seen through the camera too',
+    );
+    final over = tester.widget<ClipPath>(
+      find
+          .ancestor(
+            of: find.byWidgetPredicate(
+              (widget) =>
+                  widget is CustomPaint &&
+                  widget.painter.runtimeType.toString() ==
+                      '_CutFadeWashPainter',
+            ),
+            matching: find.byType(ClipPath),
+          )
+          .first,
+    );
+    expect(over.clipBehavior, isNot(Clip.none));
+    expect(
+      (over.clipper! as OutlineClipper).corners,
+      cameraFrameOnScreen(
+        shotWidget.view,
+        shot.frameSize,
+        EffectiveDevicePixelRatio.of(tester.element(find.byType(CameraShot))),
+      ),
+      reason: 'nothing over the picture shows past the camera\'s frame',
+    );
+
+    playback.stop();
     await drain(tester);
   });
 
