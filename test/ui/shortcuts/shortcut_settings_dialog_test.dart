@@ -247,13 +247,12 @@ void main() {
       expect(isOpen(tester, first.shelf), isFalse);
     });
 
-    testWidgets('a search for a shelf\'s name finds every row it holds', (
-      tester,
-    ) async {
+    testWidgets('a search for a shelf\'s name finds every row it holds, on '
+        'the shelves under it too', (tester) async {
       final bindings = await pump(tester);
-      const shelf = ShortcutShelf.cutPill;
-      await tester.enterText(search, shelf.label);
+      await tester.enterText(search, ShortcutShelf.pills.label);
       await tester.pump();
+      const shelf = ShortcutShelf.cutPill;
       for (final row in bindings.definitions.where((r) => r.shelf == shelf)) {
         expect(
           listed(tester),
