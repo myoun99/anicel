@@ -15,6 +15,8 @@ import 'package:anicel/src/services/stamp_carry.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/float_warp.dart'
+    show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 
 /// I-37 — ONE BOX CARRIES EVERY FLOAT.
@@ -64,6 +66,7 @@ void main() {
       List<List<BrushDab>> confirmed,
       List<StampCarry?> carries,
       List<int> reverted,
+      Future<void> Function() walkOntoAnEmptyCel,
     })
   >
   pumpLayer(
@@ -82,8 +85,11 @@ void main() {
     final confirmed = <List<BrushDab>>[];
     final carries = <StampCarry?>[];
     final reverted = <int>[];
-    await tester.pumpWidget(
-      MaterialApp(
+    // The cel the layer stands on: one whose rows hold A and B, then — once
+    // walked — one with nothing under the outline.
+    var frame = 'frame';
+    Widget layer() {
+      return MaterialApp(
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
@@ -94,7 +100,7 @@ void main() {
                 tool: CanvasSelectionTool.move,
                 viewport: CanvasViewport(),
                 canvasSize: canvasSize,
-                frameToken: 'frame',
+                frameToken: frame,
                 selectionCommands: commands,
                 alwaysShowTransformBox: true,
                 transformOptions: TransformToolOptions(mode: mode),
@@ -104,13 +110,15 @@ void main() {
                   rightExclusive: 240,
                   bottomExclusive: 140,
                 ),
-                onLiftRequested: (region) => (
-                  liftToken: 7,
-                  floats: [
-                    (stampDab: a, showsOn: slotA),
-                    (stampDab: b, showsOn: slotB),
-                  ],
-                ),
+                onLiftRequested: (region) => frame != 'frame'
+                    ? null
+                    : (
+                        liftToken: 7,
+                        floats: [
+                          (stampDab: a, showsOn: slotA),
+                          (stampDab: b, showsOn: slotB),
+                        ],
+                      ),
                 onLiftConfirmed: (token, stamps, carry) {
                   confirmed.add(stamps);
                   carries.add(carry);
@@ -120,8 +128,10 @@ void main() {
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    await tester.pumpWidget(layer());
     await tester.pump();
     return (
       commands: commands,
@@ -130,6 +140,12 @@ void main() {
       confirmed: confirmed,
       carries: carries,
       reverted: reverted,
+      walkOntoAnEmptyCel: () async {
+        frame = 'empty';
+        await tester.pumpWidget(layer());
+        await tester.pump();
+        await tester.pump();
+      },
     );
   }
 
@@ -176,6 +192,40 @@ void main() {
       findsNothing,
       reason: 'a float with a slot is drawn there, not over every row here',
     );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a scale resamples EVERY float for the screen — each slot shows '
+      'its own picture through the box, where it will land', (tester) async {
+    final env = await pumpLayer(tester);
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
+    await tester.pump();
+    // The decodes are real: let them land.
+    final watch = Stopwatch()..start();
+    while ((env.slotA.value?.image == null ||
+            env.slotB.value?.image == null) &&
+        watch.elapsed < const Duration(seconds: 15)) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump();
+    }
+
+    final shownA = env.slotA.value;
+    final shownB = env.slotB.value;
+    expect(shownA?.image, isNotNull, reason: 'A shows its resample');
+    expect(
+      shownB?.image,
+      isNotNull,
+      reason: 'B shows its resample — not its untransformed self under a '
+          'scaled box',
+    );
+    // ×2 about (140, 90): A lands over (-60..20, -10..30), B over
+    // (260..340, 110..190) — what the confirm writes (the pin below).
+    expect((shownA!.imageLeft, shownA.imageTop), (-60.0, -10.0));
+    expect((shownB!.imageLeft, shownB.imageTop), (260.0, 110.0));
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -257,6 +307,37 @@ void main() {
       );
       expect(landed.stamp!.rgba, carried.stamp!.rgba);
     }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a walk onto a cel with nothing to lift lets go of every float '
+      '— its slot, and its resample with it', (tester) async {
+    final env = await pumpLayer(tester);
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
+    await tester.pump();
+    expect(
+      debugLastResampledFloat,
+      isNotNull,
+      reason: '⛔premise: the scale resampled the floats',
+    );
+
+    await env.walkOntoAnEmptyCel();
+
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'the box walks with its numbers (유저 확정 2026-09-17)',
+    );
+    expect(env.reverted, [7], reason: 'the host hears the session go');
+    expect((env.slotA.value, env.slotB.value), (null, null));
+    expect(
+      debugLastResampledFloat,
+      isNull,
+      reason: 'the resample went with its session — a GPU image the size '
+          'of the selection, kept for nothing',
+    );
     await tester.pumpWidget(const SizedBox());
   });
 
