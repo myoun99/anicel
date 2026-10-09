@@ -499,6 +499,88 @@ void main() {
       );
     });
 
+    test('a cel\'s own order outranks where its rows stand on average — a '
+        'name worn high in most cels still comes under what one cel stacks '
+        'above it', () {
+      final a = animation('A', [
+        folder('1', [
+          layer('b'),
+          layer('a'),
+          layer('u2'),
+          layer('u1'),
+          layer('top1'),
+        ]),
+        folder('2', [layer('b'), layer('top2')]),
+        folder('3', [layer('b'), layer('top3')]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1'), (4, '2'), (8, '3')]),
+        ]),
+      ]);
+      final cut = result.cuts.single;
+      final rowOf = {
+        for (final bake in result.bakes)
+          if (bake.label == 'A / 1')
+            bake.source.name: cut.layers
+                .singleWhere((layer) => layer.frameById(bake.frameId) != null)
+                .name,
+      };
+
+      expect(
+        [for (final name in ['top1', 'u1', 'u2', 'a', 'b']) rowOf[name]],
+        ['A', 'A-1', 'A-2', 'A-3', 'A-4'],
+        reason: '「b」 stands second on average (cels 2 and 3) and fifth in '
+            'cel 1 — its row comes under all that cel stacks above it',
+      );
+      expect(
+        [for (final warning in result.warnings) warning.key],
+        ['clipCelLayers'],
+        reason: 'no cel\'s order crossed',
+      );
+    });
+
+    test('an attach row\'s name passes over one the file itself uses — the '
+        'first number no row wears, as the app names one (F-292)', () {
+      final a = animation('A', [
+        folder('1', [layer('under'), layer('line')]),
+      ]);
+      final result = plan(root([layer('A-1'), a]), [
+        timeline([
+          keyed(a, [(0, '1')]),
+        ]),
+      ]);
+
+      expect(names(result.cuts.single), ['A-1', 'A-2', 'A', 'A']);
+    });
+
+    test('the base is every cel\'s top layer even where it is hidden — then '
+        'its eye is off, and the layers under it come in with theirs', () {
+      final a = animation('A', [
+        folder('1', [layer('line1'), layer('rough1', shown: false)]),
+        folder('2', [layer('line2'), layer('rough2', shown: false)]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1'), (6, '2')]),
+        ]),
+      ]);
+      final cut = result.cuts.single;
+      final base = cut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation && layer.name == 'A',
+      );
+
+      expect(names(cut), ['A-1', 'A', 'A']);
+      expect((base.isVisible, row(cut, 'A-1').isVisible), (false, true));
+      expect(
+        {
+          for (final bake in result.bakes)
+            if (bake.source.name.startsWith('rough')) bake.frameId,
+        },
+        {for (final cel in base.frames) cel.id},
+      );
+    });
+
     test('🎯every cel row stands at 100%, and each cel is baked at its OWN '
         'opacity (Q5: 「그림에 구워 넣는다(행은 100%)」 — 「낮은채로 '
         '구워버려서 더이상 진해지지 못하는거 받아들기게」)', () {
