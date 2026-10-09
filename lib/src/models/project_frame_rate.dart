@@ -328,9 +328,6 @@ ProjectFrameRate? pulldownPartnerOf(
   } else {
     return null;
   }
-  if (movie.numerator <= 0 || movie.denominator <= 0) {
-    return null;
-  }
   final apart =
       (movie.numerator * partner.denominator -
               partner.numerator * movie.denominator)

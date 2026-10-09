@@ -32,6 +32,18 @@ void main() {
     );
   });
 
+  test('the bound: within a quarter of the 0.1% that parts the pair', () {
+    // 23.976 × 1.0002 and × 1.0003, over 10010.
+    expect(
+      pulldownPartnerOf(fps24, (numerator: 240048, denominator: 10010)),
+      ntsc24,
+    );
+    expect(
+      pulldownPartnerOf(fps24, (numerator: 240072, denominator: 10010)),
+      isNull,
+    );
+  });
+
   test('a decoder\'s rounder spelling of 23.976 is 23.976', () {
     for (final movie in [
       (numerator: 2997, denominator: 125),

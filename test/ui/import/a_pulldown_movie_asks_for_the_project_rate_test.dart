@@ -237,6 +237,87 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('an OUT left at the movie\'s end stays at its end — the end '
+      'of the movie on the new clock', (tester) async {
+    final movie = await write(tester, 'take.mp4');
+    final s = await open(tester, [movie]);
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-in-input')),
+      '501',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settleLoadedPages(tester);
+    expect(
+      (range(tester).inFrame, range(tester).outFrame),
+      (500, 2001),
+      reason: '⛔전제: 2000 pictures cover 2002 frames of a 24 project',
+    );
+
+    await pressImport(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-movie-rate-take')),
+    );
+    await settleAsync(
+      tester,
+      () => s.projectSettings.projectFrameRate != ProjectFrameRate.fps24,
+    );
+    await tester.pump();
+
+    expect(range(tester).inFrame, 499);
+    expect(
+      range(tester).outFrame,
+      tester.widget<TransportBar>(find.byType(TransportBar)).frameCount - 1,
+      reason: 'still at the end, wherever the end is counted',
+    );
+    await pumpPastTheWaitWindow(tester);
+    await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a movie that only registers is not asked about — it is asked '
+      'when it is placed', (tester) async {
+    final movie = await write(tester, 'take.mp4');
+    final s = await open(tester, [movie]);
+    final into = find.byKey(ValueKey<String>('import-cell-into-$movie'));
+    await tester.ensureVisible(into);
+    await tester.tap(into);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-pool')),
+    );
+    await settleLoadedPages(tester);
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().mediaAssetByPath(movie) != null,
+    );
+    await tester.pumpAndSettle();
+
+    expect(rateDialog, findsNothing);
+    expect(s.repository.requireProject().mediaAssetByPath(movie), isNotNull);
+    expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a sound alone is not asked about — a sound has no frames to '
+      'line up', (tester) async {
+    final sound = await write(tester, 'voice.wav');
+    final s = await open(tester, [sound]);
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    await tester.pumpAndSettle();
+
+    expect(rateDialog, findsNothing);
+    expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('a sound beside it keeps its moments — its IN and OUT move to '
       'the frames that begin nearest where they stood', (tester) async {
     final movie = await write(tester, 'take.mp4');
