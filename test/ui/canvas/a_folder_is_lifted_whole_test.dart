@@ -182,6 +182,18 @@ void main() {
       reason: 'while the box is open, each row shows lifted in its own '
           'place in the composite',
     );
+    // Each shows ITS OWN cel with its own hole: lifted whole, nothing of
+    // either picture is left in either row.
+    for (final MapEntry(:key, value: lifted) in stack.liftedRows.entries) {
+      expect(
+        (
+          surfacePixelRgba(lifted.surface, 25, 25) ?? 0,
+          surfacePixelRgba(lifted.surface, 75, 75) ?? 0,
+        ),
+        (0, 0),
+        reason: '${key.frameId.value} is drawn from its own cel, holed',
+      );
+    }
 
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await tester.pumpAndSettle();
