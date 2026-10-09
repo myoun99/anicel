@@ -647,7 +647,13 @@ class MediaPool {
     final entries = <MediaAsset>[];
     for (final path in paths) {
       final source = normalizedMediaPath(path);
-      final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
+      // A file no kind names is no media, and not the pool's to take: the
+      // one door names it and lets it go (F-282). ↩️It registered as a
+      // picture — an entry nothing could open (flagged 08-14).
+      final kind = mediaAssetKindForPath(source);
+      if (kind == null) {
+        continue;
+      }
       if (kind == MediaAssetKind.audio) {
         importAudioFile(source);
       }
