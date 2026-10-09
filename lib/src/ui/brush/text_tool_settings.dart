@@ -575,22 +575,16 @@ class _FaceRow extends StatelessWidget {
   /// The ＋: picks a file and brings it as a font — and the face brought is
   /// the face picked, for the ＋ stands in the list a face is picked from.
   ///
-  /// A file that is not taken says why. So does one that IS taken and may
-  /// not ride in a project (유저 2026-10-06: 「글꼴을 등록할때? 사용할때든
-  /// 뭐든 글꼴 고를때든 … 적어두자」 — when it is registered is the first of
-  /// those, and its row in the list says it from then on).
+  /// What it says is what every door a font comes in through says
+  /// ([ImportedFonts.noticeOf]) — and its row in the list says it from then
+  /// on.
   Future<void> _bring(BuildContext context, ImportedFonts fonts) async {
     final outcome = await fonts.importFromFile();
     final family = outcome.family;
     if (family != null) {
       _pick(family);
     }
-    final rides = family == null
-        ? null
-        : fonts.familyNamed(family)?.ridesInEditedDocuments;
-    final notice =
-        outcome.refusal ??
-        (rides == false ? AppText.strings.textToolFontStaysOnThisDevice : null);
+    final notice = fonts.noticeOf(outcome);
     if (notice != null && context.mounted) {
       await showAppNotice(
         context,

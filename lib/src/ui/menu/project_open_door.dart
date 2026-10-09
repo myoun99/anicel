@@ -8,7 +8,7 @@ import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/file_type_groups.dart'
-    show OpenedAs, openedAs, projectOpenExtensions;
+    show projectOpenExtensions;
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/recent_projects.dart';
@@ -37,8 +37,23 @@ import '../text/model_vocabulary.dart' show ImportWarningWords;
 /// second time is at best waste — see [promptSaveProjectAs].
 typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 
-/// Whether [path] names a file 「열기」 opens as a project ([openedAs]).
-bool opensAsProject(String path) => openedAs(path) == OpenedAs.project;
+/// What a picked or handed project file opens as: its path — a provider
+/// document's URI, which opens through a working copy (PICK-7) — and the
+/// token that reopens it next launch, with nothing placed. Null for a
+/// grant that names no file.
+///
+/// 🚨The bookmark rides through: on Apple a recents entry without it is
+/// refused after relaunch, and nothing would say so until then.
+ProjectPick? projectPickOf(FolderGrant grant) {
+  if (grant.document case final document?) {
+    return (path: document.uri, folderBookmark: null, placed: false);
+  }
+  final path = grant.path;
+  if (path == null) {
+    return null;
+  }
+  return (path: path, folderBookmark: grant.bookmark, placed: false);
+}
 
 /// How far a bake has come, 0 … 1.
 typedef _Progress = void Function(double fraction);

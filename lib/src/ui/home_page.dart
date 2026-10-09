@@ -87,6 +87,7 @@ import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'workspace/workspace_bar_commands.dart';
+import 'workspace/workspace_door_commands.dart';
 import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
@@ -320,6 +321,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
   final WorkspaceBarCommands _workspaceBar = WorkspaceBarCommands();
 
+  /// The one door (F-282) as the top strip's 「파일 열기…」 · 「폴더 열기…」
+  /// reach it: the workspace binds it, holding what the door hands files to.
+  final WorkspaceDoorCommands _workspaceDoor = WorkspaceDoorCommands();
+
   /// The flip HUD's state (R10 hand-feel): shown while a one-finger flip
   /// is live. Shell-owned like the nav channel above — a live-drag verb
   /// parked in a panel's State is how a release silently fails to land.
@@ -356,6 +361,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     projects: _projects,
     onCloseProject: (session) => unawaited(_closeProject(session)),
     panelsMenu: _panelsMenu,
+    door: _workspaceDoor,
     brushTool: _brushTool,
     colorBackground: _colorWheelBackground,
     colorPalette: _colorPalette,
@@ -1382,8 +1388,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 Expanded(
                                   child: EditorWorkspace(
                                     session: _session,
-                                    onProjectFilesDropped: (paths) =>
-                                        unawaited(_openDroppedProjects(paths)),
+                                    onOpenProjects: _openProjectPicks,
                                     layoutStore: widget.layoutStore,
                                     presetFileService: widget.presetFileService,
                                     tipLibraryService: widget.tipLibraryService,
@@ -1408,6 +1413,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     history: _history,
                                     layerNav: _timelineLayerNav,
                                     barCommands: _workspaceBar,
+                                    doorCommands: _workspaceDoor,
                                     flipHud: _flipHud,
                                     brushKeys: _brushKeys,
                                     onInvokeAction: _invokeAction,
@@ -1516,20 +1522,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return ensureUnsavedWorkSettled(context, session);
   }
 
-  /// Project files dropped on the window (F-247): through the Open door —
-  /// the one the Project menu and the Recent rows use — one after another,
-  /// each in a tab of its own.
-  Future<void> _openDroppedProjects(List<String> paths) async {
+  /// Project files the one door was handed (F-247, F-282) — opened, dropped
+  /// on the window, picked through the media panel's ＋: through the Open
+  /// door the Recent rows use too, one after another, each in a tab of its
+  /// own.
+  Future<void> _openProjectPicks(List<ProjectPick> picks) async {
     final door = ProjectOpenDoor(_projects);
-    for (final path in paths) {
+    for (final pick in picks) {
       if (!mounted) {
         return;
       }
-      await door.open(context, (
-        path: path,
-        folderBookmark: null,
-        placed: false,
-      ));
+      await door.open(context, pick);
     }
   }
 

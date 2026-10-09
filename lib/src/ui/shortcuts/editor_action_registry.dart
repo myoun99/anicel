@@ -670,8 +670,8 @@ abstract final class EditorActionIds {
   /// has always been keyed and worded by (`menu-<id>`).
   static const fileNew = 'file-new';
   static const fileOpen = 'file-open';
+  static const fileOpenFolder = 'file-open-folder';
   static const fileBackUpFailedCopy = 'file-back-up-failed-copy';
-  static const fileImport = 'file-import';
   static const fileExport = 'file-export';
   static const workSettings = 'work-settings';
   static const keyboardShortcuts = 'edit-keyboard-shortcuts';
@@ -1053,7 +1053,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpen,
-    label: 'Open…',
+    label: 'Open File…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileOpenFolder,
+    label: 'Open Folder…',
     category: 'File',
     defaultActivators: [],
     menuRow: true,
@@ -1080,13 +1087,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.fileBackUpFailedCopy,
     label: 'Back up failed copy…',
-    category: 'File',
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.fileImport,
-    label: 'Import / Place…',
     category: 'File',
     defaultActivators: [],
     menuRow: true,

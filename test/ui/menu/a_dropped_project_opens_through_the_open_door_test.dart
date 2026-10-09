@@ -11,9 +11,6 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
-import 'package:anicel/src/services/persistence/file_type_groups.dart'
-    show projectOpenExtensions;
-import 'package:anicel/src/ui/menu/project_open_door.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -114,23 +111,12 @@ void main() {
 
   final waitWindow = find.byKey(const ValueKey<String>('open-progress-dialog'));
 
-  test('「열기」 opens what its one list names — by name, in any case', () {
-    expect(opensAsProject('C:/work/Cut 12.anicel'), isTrue);
-    expect(opensAsProject('/work/CUT 12.ANICEL'), isTrue);
-    expect(opensAsProject('/work/clip.tvpp'), isTrue);
-    expect(opensAsProject('/work/Clip.TVPP'), isTrue);
-    for (final extension in projectOpenExtensions) {
-      expect(opensAsProject('/work/x.$extension'), isTrue, reason: extension);
-    }
-    expect(opensAsProject('/work/picture.png'), isFalse);
-    expect(opensAsProject('/work/movie.mp4'), isFalse);
-    expect(opensAsProject('/work/notes.anicel.txt'), isFalse);
-    expect(
-      opensAsProject('/work/anicel'),
-      isFalse,
-      reason: 'a folder named like the extension is not a project file',
-    );
-  });
+  /// The paths the import window was handed — the door's grants.
+  List<String?> handedTo(WidgetTester tester) => [
+    for (final grant
+        in tester.widget<ImportDialog>(find.byType(ImportDialog)).picked)
+      grant.path,
+  ];
 
   testWidgets('🎯a dropped .anicel opens in a tab of its own — the import '
       'window never comes up', (tester) async {
@@ -213,9 +199,7 @@ void main() {
 
     await drop(tester, [path]);
 
-    expect(tester.widget<ImportDialog>(find.byType(ImportDialog)).initialPaths, [
-      path,
-    ]);
+    expect(handedTo(tester), [path]);
     expect(waitWindow, findsNothing);
   });
 
@@ -229,7 +213,7 @@ void main() {
 
     final window = find.byType(ImportDialog);
     expect(
-      tester.widget<ImportDialog>(window).initialPaths,
+      handedTo(tester),
       [picture],
       reason: 'the project is not one of the files taken in',
     );

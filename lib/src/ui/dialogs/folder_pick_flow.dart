@@ -168,10 +168,12 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   required List<String> supportedExtensions,
   bool allowMultiple = false,
   bool acceptsDocuments = false,
+  String? initialDirectory,
 }) async {
   final grants = await _pickedFileGrants(
     context,
     allowMultiple: allowMultiple,
+    initialDirectory: initialDirectory,
   );
   if (grants == null || !context.mounted) {
     return const [];

@@ -44,6 +44,7 @@ class ImportDialog extends StatefulWidget {
     super.key,
     required this.session,
     this.initialPaths = const [],
+    this.picked = const [],
     this.poolOnly = false,
     this.placeOnly = false,
     this.spot,
@@ -53,8 +54,15 @@ class ImportDialog extends StatefulWidget {
 
   final EditorSessionManager session;
 
-  /// Sources handed in by drag-and-drop (files or one folder).
+  /// Files the app already holds, handed in by path (files or one folder) —
+  /// a media row placed, a drag from the pool.
   final List<String> initialPaths;
+
+  /// What the one door handed in (F-282): a pick's grants — the token that
+  /// reopens a referenced file next launch, a document with no filesystem
+  /// path (PICK-7) — a drop's and the viewer's paths, or a folder. Taken in
+  /// as [initialPaths] are, the documents through copies of this window's.
+  final List<FolderGrant> picked;
 
   /// Opened from the media pool, whose job is to REGISTER a file for
   /// later rather than place it now — so the destination starts on the
@@ -338,7 +346,24 @@ class _ImportDialogState extends State<ImportDialog> {
     if (widget.poolOnly) {
       _destination = null;
     }
-    for (final path in widget.initialPaths) {
+    // A grant's path is taken now, as a path handed in is — the first frame
+    // shows the files, not an empty window that fills a frame later. Its
+    // token is kept for the run ([_pickedGrants]); a document's bytes come
+    // after, under the wait a pick's always came under.
+    final grantedPaths = [for (final grant in widget.picked) ?grant.path];
+    _pickedGrants.addAll([
+      for (final grant in widget.picked)
+        if (grant.path != null) grant,
+    ]);
+    final documents = [
+      for (final grant in widget.picked)
+        if (grant.document != null) grant,
+    ];
+    if (documents.isNotEmpty) {
+      // Once this build is done: the wait the copies go under redraws.
+      unawaited(Future<void>.microtask(() => _takeDocuments(documents)));
+    }
+    for (final path in [...widget.initialPaths, ...grantedPaths]) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
           _folder = path;
@@ -428,6 +453,24 @@ class _ImportDialogState extends State<ImportDialog> {
     _letGoOfUnlistedCopies();
     // A picked movie is asked about its sound as a dropped one is — the
     // 「소리」 column used to open only for movies handed in at the start.
+    paths.forEach(_probeMovieSound);
+  }
+
+  /// The documents the door handed in, listed once their copies have come
+  /// ([_readablePathsOf]) — beside a folder they are left out, as a file
+  /// handed in with one is.
+  Future<void> _takeDocuments(List<FolderGrant> documents) async {
+    final paths = await _readablePathsOf(documents);
+    if (paths.isEmpty || !mounted) {
+      return;
+    }
+    setState(() {
+      if (_folder != null) {
+        _ignoredSources.addAll(paths);
+      } else {
+        _files.addAll(paths);
+      }
+    });
     paths.forEach(_probeMovieSound);
   }
 

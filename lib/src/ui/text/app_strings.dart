@@ -1417,6 +1417,11 @@ enum AppStrings {
       _s('textToolFontStaysOnThisDevice');
   String get textToolFontNotOnThisDevice => _s('textToolFontNotOnThisDevice');
 
+  /// A font file opened or dropped like any other file (F-282) went into
+  /// this device's fonts — said, because nothing on screen shows it.
+  String fontBrought(String family) =>
+      _s('fontBroughtTemplate').replaceAll('{family}', family);
+
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
   String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
@@ -2636,6 +2641,7 @@ enum AppStrings {
     'brExportFallbackName': 'Brushes',
     'brImportUnreadable': 'This file could not be read as a brush file.',
     'brImportPickFailedTemplate': 'Could not open the file: {error}',
+    'fontBroughtTemplate': 'Added the font "{family}" to this device.',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -3031,8 +3037,8 @@ enum AppStrings {
     'topStripSettings': '設定',
     'menuPlay': '再生',
     'menuPause': '一時停止',
-    'shortcutAction.file-open': '開く…',
-    'shortcutAction.file-import': '読み込み／配置…',
+    'shortcutAction.file-open': 'ファイルを開く…',
+    'shortcutAction.file-open-folder': 'フォルダを開く…',
     'shortcutAction.file-export': '書き出し…',
     'menuAction.edit-undo': '元に戻す',
     'menuAction.edit-redo': 'やり直す',
@@ -4011,6 +4017,7 @@ enum AppStrings {
     'brExportFallbackName': 'ブラシ',
     'brImportUnreadable': 'このファイルはブラシファイルとして読み込めませんでした。',
     'brImportPickFailedTemplate': 'ファイルを開けませんでした: {error}',
+    'fontBroughtTemplate': 'フォント「{family}」をこの端末に読み込みました。',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -4446,8 +4453,8 @@ enum AppStrings {
     'topStripSettings': '설정',
     'menuPlay': '재생',
     'menuPause': '일시정지',
-    'shortcutAction.file-open': '열기…',
-    'shortcutAction.file-import': '가져오기/배치…',
+    'shortcutAction.file-open': '파일 열기…',
+    'shortcutAction.file-open-folder': '폴더 열기…',
     'shortcutAction.file-export': '내보내기…',
     'menuAction.edit-undo': '실행 취소',
     'menuAction.edit-redo': '다시 실행',
@@ -5417,6 +5424,7 @@ enum AppStrings {
     'brExportFallbackName': '브러시',
     'brImportUnreadable': '이 파일은 브러시 파일로 읽을 수 없습니다.',
     'brImportPickFailedTemplate': '파일을 열지 못했습니다: {error}',
+    'fontBroughtTemplate': '「{family}」 글꼴을 이 기기에 가져왔습니다.',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -5864,8 +5872,8 @@ enum AppStrings {
     'topStripSettings': 'Paramètres',
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
-    'shortcutAction.file-open': 'Ouvrir…',
-    'shortcutAction.file-import': 'Importer / Placer…',
+    'shortcutAction.file-open': 'Ouvrir un fichier…',
+    'shortcutAction.file-open-folder': 'Ouvrir un dossier…',
     'shortcutAction.file-export': 'Exporter…',
     'menuAction.edit-undo': 'Annuler',
     'menuAction.edit-redo': 'Rétablir',
@@ -6953,6 +6961,7 @@ enum AppStrings {
     'brImportUnreadable':
         'Ce fichier n’a pas pu être lu comme un fichier de brosses.',
     'brImportPickFailedTemplate': 'Impossible d’ouvrir le fichier : {error}',
+    'fontBroughtTemplate': 'Police « {family} » ajoutée à cet appareil.',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -7358,8 +7367,8 @@ enum AppStrings {
     'topStripSettings': '设置',
     'menuPlay': '播放',
     'menuPause': '暂停',
-    'shortcutAction.file-open': '打开…',
-    'shortcutAction.file-import': '导入/放置…',
+    'shortcutAction.file-open': '打开文件…',
+    'shortcutAction.file-open-folder': '打开文件夹…',
     'shortcutAction.file-export': '导出…',
     'menuAction.edit-undo': '撤销',
     'menuAction.edit-redo': '重做',
@@ -8294,6 +8303,7 @@ enum AppStrings {
     'brExportFallbackName': '画笔',
     'brImportUnreadable': '无法将此文件读取为画笔文件。',
     'brImportPickFailedTemplate': '无法打开文件：{error}',
+    'fontBroughtTemplate': '已将字体“{family}”导入此设备。',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',

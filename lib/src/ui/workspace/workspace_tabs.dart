@@ -125,19 +125,15 @@ class _WorkspaceTabs {
           brushTool: _state._brushTool,
           cutPieceSlot: _state._cutPieceSlot,
           // 유저 확정 ⑱: the promote button calls the SAME import every
-          // other entrance calls, and takes the SAME copy-or-reference
-          // default the import window opens on — a viewer-only policy
-          // here would be a third import surface nobody remembers to fix.
-          //
-          // ⚠️The same default the import window starts on: the project
-          // carries what it can. This button exists to promote a loose
-          // path into something that travels with the project, so a
-          // reference here would be the one answer it cannot mean.
-          onRegisterAsset: (path) => unawaited(
-            _state.widget.session.mediaPool.importMediaFiles([
-              path,
-            ], copyIntoProject: true),
-          ),
+          // other entrance calls — a viewer-only policy here would be a
+          // third import surface nobody remembers to fix. Since F-282-Q4
+          // (유저 2026-10-09, 가) that is literally the same window: the
+          // file goes through the one door to the pool's import window.
+          // ↩️It registered on the spot until then, carried — the default
+          // the window opens on, which it still is.
+          onRegisterAsset: (path) => _state._door.open(_state.context, [
+            handedPath(path),
+          ], toPool: true),
           isPathRegistered: (path) =>
               _state.widget.session.repository.currentProject?.mediaAssetByPath(
                 path,
@@ -738,7 +734,8 @@ class _WorkspaceTabs {
                       framePlace: _state.widget.session.framePlaceLabel,
                     ),
                   ),
-              onImportRequested: () => _state._openImportWindow(poolOnly: true),
+              onImportRequested: () =>
+                  unawaited(_state._pickAndOpen(toPool: true)),
               onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {
                 // The token first: the relink itself is undoable and the
@@ -883,10 +880,12 @@ class _WorkspaceTabs {
                   unawaited(_state._swapReference(layerId, path));
                   return;
                 }
-                _state._openImportWindow(
-                  initialPaths: [path],
-                  placeOnly: true,
-                  spot: spot,
+                unawaited(
+                  _state._openImportWindow(
+                    initialPaths: [path],
+                    placeOnly: true,
+                    spot: spot,
+                  ),
                 );
               },
               // A pool row let go on the LAYER AREA: a new layer at the gap
@@ -901,10 +900,12 @@ class _WorkspaceTabs {
                 if (spot == null) {
                   return;
                 }
-                _state._openImportWindow(
-                  initialPaths: [path],
-                  placeOnly: true,
-                  spot: spot,
+                unawaited(
+                  _state._openImportWindow(
+                    initialPaths: [path],
+                    placeOnly: true,
+                    spot: spot,
+                  ),
                 );
               },
               orientation: _state._timelineOrientation.value,

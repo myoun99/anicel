@@ -74,7 +74,8 @@ import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
-import 'menu/project_open_door.dart' show opensAsProject;
+import 'menu/opened_files_door.dart';
+import 'menu/project_open_door.dart' show ProjectPick;
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
@@ -158,6 +159,8 @@ import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
+import 'workspace/workspace_door_commands.dart';
+import '../services/persistence/folder_grant.dart' show FolderGrant;
 import 'camera/camera_view_toggle_button.dart' show toggleCameraView;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
@@ -198,7 +201,7 @@ class EditorWorkspace extends StatefulWidget {
   const EditorWorkspace({
     super.key,
     required this.session,
-    required this.onProjectFilesDropped,
+    required this.onOpenProjects,
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
@@ -220,6 +223,7 @@ class EditorWorkspace extends StatefulWidget {
     this.history,
     this.layerNav,
     this.barCommands,
+    this.doorCommands,
     this.onInvokeAction,
     this.flipHud,
     this.brushKeys,
@@ -227,10 +231,11 @@ class EditorWorkspace extends StatefulWidget {
 
   final EditorSessionManager session;
 
-  /// Project files dropped on the window (F-247), handed to the shell's
-  /// Open door — the shell holds the tabs a project opens into. The
-  /// workspace only tells them from the rest ([opensAsProject]).
-  final void Function(List<String> paths) onProjectFilesDropped;
+  /// Project files the door was handed (F-247, F-282) — the menu's 「파일
+  /// 열기…」, a drop on the window, the media panel's ＋ — handed on to the
+  /// shell's Open door, which holds the tabs a project opens into. The
+  /// workspace only tells them from the rest ([OpenedFilesDoor]).
+  final Future<void> Function(List<ProjectPick> picks) onOpenProjects;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -293,6 +298,10 @@ class EditorWorkspace extends StatefulWidget {
   /// The shell-owned channel to the bar buttons whose state this holds —
   /// the zooms, the ⇄ and the camera view (I-40).
   final WorkspaceBarCommands? barCommands;
+
+  /// The shell-owned channel the top strip's 「파일 열기…」 and 「폴더
+  /// 열기…」 knock on: this state holds what the door hands files to.
+  final WorkspaceDoorCommands? doorCommands;
 
   /// PEN-7b: the shell's action funnel for the canvas flip touch slot.
   final void Function(String actionId)? onInvokeAction;
@@ -1206,6 +1215,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toggleOrientation: _toggleOrientation,
       toggleCameraView: () => toggleCameraView(_views._cameraViewEnabled),
     );
+    widget.doorCommands?.bind(
+      this,
+      openFiles: () => unawaited(_pickAndOpen()),
+      openFolder: () => unawaited(_pickFolderAndOpen()),
+    );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
@@ -1709,6 +1723,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _draggingTab.dispose();
     widget.layerNav?.unbind(this);
     widget.barCommands?.unbind(this);
+    widget.doorCommands?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
     _layoutPersistence._layoutSaveTimer?.cancel();
@@ -2034,32 +2049,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ? railSpan
       : inset;
 
-  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
-  /// import/placement window opens with the dropped paths — never an
-  /// instant import. Folders drop too (the cut-folder parser's entrance).
+  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, what it
+  /// holds goes through the one door — never an instant import. Folders
+  /// drop too (the cut-folder parser's entrance).
   ///
   /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
   /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
-  /// through that door ([EditorWorkspace.onProjectFilesDropped]), each in a
-  /// tab of its own. Everything else still comes in through the window.
-  /// When one drop holds both, the window comes first — its files go into
-  /// the project the drop landed on, which an open would take off the
-  /// screen — and the projects open once it is closed.
-  void _onOsFilesDropped(DropDoneDetails details) {
-    final paths = [for (final file in details.files) file.path];
-    final projects = [for (final path in paths) if (opensAsProject(path)) path];
-    final rest = [for (final path in paths) if (!opensAsProject(path)) path];
-    void openProjects() {
-      if (projects.isNotEmpty) {
-        widget.onProjectFilesDropped(projects);
-      }
-    }
+  /// in a tab of its own, once the import window has closed
+  /// ([OpenedFilesDoor]).
+  void _onOsFilesDropped(DropDoneDetails details) => unawaited(
+    _door.open(context, [
+      for (final file in details.files) handedPath(file.path),
+    ]),
+  );
 
-    if (rest.isEmpty) {
-      openProjects();
+  /// THE ONE DOOR, with what this workspace holds for it (F-282): the
+  /// shell's Open door for projects, the import window, the brush library
+  /// and the fonts.
+  OpenedFilesDoor get _door => OpenedFilesDoor(
+    openProjects: widget.onOpenProjects,
+    importWindow: (picked, {required toPool}) =>
+        _openImportWindow(picked: picked, poolOnly: toPool),
+    bringBrushes: (name, bytes) =>
+        _presetLibrary.importFile((name: name, bytes: bytes)),
+    bringFont: (bytes) async {
+      final outcome = await _fonts.importBytes(bytes);
+      final family = outcome.family;
+      return _fonts.noticeOf(outcome) ??
+          (family == null ? null : AppText.strings.fontBrought(family));
+    },
+  );
+
+  /// The top strip's 「파일 열기…」 — and the media panel's ＋, which
+  /// [toPool] says: the files it brings register.
+  Future<void> _pickAndOpen({bool toPool = false}) async {
+    final picked = await pickFilesToOpen(context);
+    if (picked.isEmpty || !mounted) {
       return;
     }
-    _openImportWindow(initialPaths: rest, onClosed: openProjects);
+    await _door.open(context, picked, toPool: toPool);
+  }
+
+  /// The top strip's 「폴더 열기…」: a cut folder, into the import window.
+  Future<void> _pickFolderAndOpen() async {
+    final grant = await pickFolderGrantForUser(context);
+    if (grant == null || !mounted) {
+      return;
+    }
+    await _door.open(context, [grant]);
   }
 
   /// A reference row shows [path] instead of its file (I-47) — no window:
@@ -2081,34 +2118,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
-  /// The one import window, from whichever entrance asked for it.
+  /// The one import window, from whichever entrance asked for it — done
+  /// once it has closed.
   ///
-  /// [poolOnly] is the media pool's ＋: it starts on the pool because
-  /// registering for later is what that panel is for, and the other
-  /// destinations stay on offer because it is the same window. [spot] is
-  /// where a drop put the file — the window shows it locked. [onClosed] runs
-  /// once the window is gone: an OS drop that also held project files opens
-  /// them then (F-247).
-  void _openImportWindow({
+  /// [picked] is what the door handed it ([OpenedFilesDoor]); [initialPaths]
+  /// are files the app already holds (a media row, a drag from the pool).
+  /// [poolOnly] is a pool's door — the media panel's ＋, the viewer's
+  /// 「미디어에 등록」: registering for later is what was asked. [spot] is
+  /// where a drop put the file — the window shows it locked.
+  Future<void> _openImportWindow({
     List<String> initialPaths = const [],
+    List<FolderGrant> picked = const [],
     bool poolOnly = false,
     bool placeOnly = false,
     ImportLayerSpot? spot,
-    VoidCallback? onClosed,
-  }) {
-    unawaited(
-      showDialog<void>(
-        context: context,
-        builder: (context) => ImportDialog(
-          session: widget.session,
-          initialPaths: initialPaths,
-          poolOnly: poolOnly,
-          placeOnly: placeOnly,
-          spot: spot,
-        ),
-      ).then((_) => onClosed?.call()),
-    );
-  }
+  }) => showDialog<void>(
+    context: context,
+    builder: (context) => ImportDialog(
+      session: widget.session,
+      initialPaths: initialPaths,
+      picked: picked,
+      poolOnly: poolOnly,
+      placeOnly: placeOnly,
+      spot: spot,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {

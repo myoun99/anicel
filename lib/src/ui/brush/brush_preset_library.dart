@@ -322,6 +322,10 @@ class BrushPresetLibrary extends ChangeNotifier {
     import: _importBrushFile,
   );
 
+  /// The same import of a file already in hand — the one door's (F-282):
+  /// a brush file opened or dropped like any other file comes here.
+  Future<String?> importFile(PickedFile file) => _importBrushFile(file);
+
   /// Writes [presets] — and the groups they belong to — as one `.anibrush`.
   ///
   /// 🚨유저 확정 (`brush-export-format-Q1`, 답 1): our own format, nothing

@@ -50,7 +50,7 @@ import '../widgets/static_raster.dart';
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
-import '../import/import_dialog.dart';
+import '../workspace/workspace_door_commands.dart';
 import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
     show ExportSizeMode, sanitizeExportFileComponent;
@@ -87,6 +87,7 @@ class EditorTopStrip extends StatelessWidget {
     required this.projects,
     required this.onCloseProject,
     required this.panelsMenu,
+    this.door,
     this.brushTool,
     this.colorBackground,
     this.colorPalette,
@@ -104,6 +105,11 @@ class EditorTopStrip extends StatelessWidget {
   EditorSessionManager get session => projects.active;
 
   final WorkspacePanelsMenuController panelsMenu;
+
+  /// The one door the 「파일 열기…」 and 「폴더 열기…」 rows knock on
+  /// (F-282) — the workspace's, which holds what it hands files to. Null
+  /// leaves the two rows dim (focused tests).
+  final WorkspaceDoorCommands? door;
 
   /// The active tool's settings. The size and opacity bars ride the strip's
   /// right end (프로크리·카리페그 배치) because they are values you set
@@ -182,14 +188,6 @@ class EditorTopStrip extends StatelessWidget {
   ]).toList();
 
   // --- File -----------------------------------------------------------------
-
-  Future<void> _openProject(BuildContext context) async {
-    final pick = await pickProjectToOpen(context);
-    if (pick == null || !context.mounted) {
-      return;
-    }
-    await ProjectOpenDoor(projects).open(context, pick);
-  }
 
   /// PICK-4: the recent projects — ONE row that opens them, or nothing at
   /// all.
@@ -372,12 +370,23 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.note_add_outlined,
       onPressed: () => projects.open(newUntitledProject()),
     ),
+    // 🗣️F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — one
+    // door for every file, and Q1 (가): 「파일 열기…」 and 「폴더 열기…」
+    // as two rows. ↩️「열기…」 took projects alone, and 「가져오기/배치…」
+    // below opened the import window on nothing.
     _item(
       id: 'file-open',
       label: editorActionLabel(EditorActionIds.fileOpen),
       shortcuts: const [EditorActionIds.fileOpen],
+      icon: Icons.file_open_outlined,
+      onPressed: door?.openFiles,
+    ),
+    _item(
+      id: 'file-open-folder',
+      label: editorActionLabel(EditorActionIds.fileOpenFolder),
+      shortcuts: const [EditorActionIds.fileOpenFolder],
       icon: Icons.folder_open_outlined,
-      onPressed: () => unawaited(_openProject(context)),
+      onPressed: door?.openFolder,
     ),
     // The registry's names: Ctrl+S and Ctrl+Shift+S press these (I-19), and
     // the shortcut list says the same two words.
@@ -430,20 +439,6 @@ class EditorTopStrip extends StatelessWidget {
     ),
     ..._recentEntries(context),
     const PanelFlyoutDivider(),
-    _item(
-      id: 'file-import',
-      label: editorActionLabel(EditorActionIds.fileImport),
-      shortcuts: const [EditorActionIds.fileImport],
-      icon: Icons.file_download_outlined,
-      onPressed: () {
-        unawaited(
-          showDialog<void>(
-            context: context,
-            builder: (context) => ImportDialog(session: session),
-          ),
-        );
-      },
-    ),
     _item(
       id: 'file-export',
       label: editorActionLabel(EditorActionIds.fileExport),
@@ -1639,44 +1634,17 @@ class _StripPopoverButton extends StatelessWidget {
 // unblocks Google Drive: it declines folder mode outright but serves file
 // mode fine.
 
-/// Open: the project FILE itself, on every platform.
-///
-/// PICK-6: the folder grant and the chooser it fed are both gone. A project
-/// is one file now — no sibling `.assets/`, no autosave sidecar — so the
-/// permission can land on the file, and asking for a folder would be asking
-/// for more than the job needs.
-///
-/// It also unblocks Google Drive, which declines folder mode outright
-/// (measured on iOS 26.5.2) but serves file mode fine.
-@visibleForTesting
-Future<ProjectPick?> pickProjectToOpen(BuildContext context) => pickProjectFile(
-  context,
-  // One list, which a dropped file is asked by too (F-247) — the decisions
-  // behind it went with it.
-  supportedExtensions: projectOpenExtensions,
-  // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
-  // never completes under the widget-test clock, and this is the first
-  // line of the open flow.
-  //
-  // Withheld wherever grants are scoped — on macOS the sandbox makes
-  // `$HOME` the container, so this would point at
-  // `~/Library/Containers/…/Documents/Anicel` and the panel would open
-  // inside the sandbox on every Open. With no hint the Apple pickers
-  // restore wherever the user last was, which is what Files trains them
-  // to expect.
-  initialDirectory: FolderPicker.grantsAreScoped
-      ? null
-      : ensuredAppDocumentsDirectorySync(),
-);
-
 /// Points the FILE picker at a project and answers what it grants: the
 /// first file, its bookmark, and `placed: false` — nothing was written, so
 /// whoever asked still has to write it.
 ///
-/// 🚨THE ONE PICK BEHIND EVERY PROJECT DOOR. Open and Reconnect are the
-/// same act with two bound constants — which extensions the door accepts,
-/// and whether a desktop starting folder is offered — so they are one
-/// function with two arguments rather than two functions that drift.
+/// The pick behind Reconnect — a recents row pointed at its project again.
+/// What it answers for the file it is granted is what every project pick
+/// answers ([projectPickOf]).
+///
+/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기…」
+/// takes every kind now, several at once, through the one door's pick
+/// (`pickFilesToOpen`).
 Future<ProjectPick?> pickProjectFile(
   BuildContext context, {
   required List<String> supportedExtensions,
@@ -1689,14 +1657,7 @@ Future<ProjectPick?> pickProjectFile(
     supportedExtensions: supportedExtensions,
     initialDirectory: initialDirectory,
   );
-  if (grant?.document case final document?) {
-    return (path: document.uri, folderBookmark: null, placed: false);
-  }
-  final path = grant?.path;
-  if (path == null) {
-    return null;
-  }
-  return (path: path, folderBookmark: grant!.bookmark, placed: false);
+  return grant == null ? null : projectPickOf(grant);
 }
 
 /// Save As.
@@ -2318,7 +2279,7 @@ Future<void> promptSaveProjectAs(
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
   final beside = folderOfPath(session.projectFile.path ?? '');
-  // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
+  // 🚨THE SYNC TWIN, like the open door's pick (`pickFilesToOpen`) — one file
   // asking one question one way. The async spelling stood here and it is
   // documented as unusable from a widget test: 「sync dart:io works under
   // the widget-test clock; async never completes there」. So the FIRST LINE

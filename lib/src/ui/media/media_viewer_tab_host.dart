@@ -245,14 +245,15 @@ class MediaViewerTabHost extends StatefulWidget {
   final VoidCallback? onSwapViewers;
 
   /// Adds the file being viewed to the media pool (유저 확정 ⑱), through
-  /// whatever the app's one import does. Offered only for a file that is
-  /// not in the pool yet — [isPathRegistered] answers that.
+  /// whatever the app's one import does — done once that is. Offered only
+  /// for a file that is not in the pool yet — [isPathRegistered] answers
+  /// that.
   ///
   /// The point of the button: a loose path is remembered as an absolute
   /// path and breaks on another machine, while a pooled one travels with
   /// the project. This is how a person promotes the first into the
   /// second without going back to the browser to find the file again.
-  final ValueChanged<String>? onRegisterAsset;
+  final FutureOr<void> Function(String path)? onRegisterAsset;
   final bool Function(String path)? isPathRegistered;
 
   /// A media-browser row dropped on this panel (유저 확정 ⑬).
@@ -911,17 +912,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         !(widget.isPathRegistered?.call(path) ?? true);
   }
 
-  void _registerCurrent() {
+  Future<void> _registerCurrent() async {
     final path = _currentRequest?.path;
     if (path == null) {
       return;
     }
-    widget.onRegisterAsset?.call(path);
-    // The import lands synchronously and this panel does not listen to
-    // the session (a viewer that rebuilt on every session notify would
-    // be the expensive kind of panel). Ask again ourselves, so the
-    // button goes quiet the moment its work is done.
-    setState(() {});
+    await widget.onRegisterAsset?.call(path);
+    // This panel does not listen to the session (a viewer that rebuilt on
+    // every session notify would be the expensive kind of panel). Ask again
+    // ourselves once the import is done, so the button goes quiet the
+    // moment its work is.
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// Every widget key in this panel, built from [MediaViewerTabHost.viewerId]
@@ -1354,7 +1357,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             label: strings.mediaViewerRegisterAsset,
             icon: Icons.playlist_add_outlined,
             enabled: _canRegister,
-            onSelected: _registerCurrent,
+            onSelected: () => unawaited(_registerCurrent()),
           ),
         if (widget.onSwapViewers != null)
           PanelFlyoutItem(

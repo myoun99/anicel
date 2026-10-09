@@ -124,6 +124,22 @@ class ImportedFonts extends ChangeNotifier {
   ImportedFontFamily? familyNamed(String name) =>
       families.where((family) => family.name == name).firstOrNull;
 
+  /// What a font brought with [outcome] has to be said with, if anything:
+  /// why it was not taken — or, taken, that it may not ride in a project
+  /// (유저 2026-10-06: 「글꼴을 등록할때? 사용할때든 뭐든 글꼴 고를때든 …
+  /// 적어두자」 — when it is registered is the first of those).
+  ///
+  /// Every door a font comes in through says the same: the text tool's ＋
+  /// and the one door (F-282).
+  String? noticeOf(FontImportOutcome outcome) {
+    final family = outcome.family;
+    final rides = family == null
+        ? null
+        : familyNamed(family)?.ridesInEditedDocuments;
+    return outcome.refusal ??
+        (rides == false ? AppText.strings.textToolFontStaysOnThisDevice : null);
+  }
+
   /// The project on screen ([showCarried]) — null with none.
   ProjectFontsOnScreen? _carried;
 

@@ -259,7 +259,14 @@ void main() {
   /// stayed under: `timelineKeysLineCourse` takes the line it draws.
   /// 🔬The lane's scan against master named that one added and nothing
   /// gone.
-  const wideSignatures = 387;
+  ///
+  /// ⚠️387 → 388 on 2026-10-09, one named as the rule above asks (F-282,
+  /// the one door): `pickFileGrantsForUser` (five) took `initialDirectory`.
+  /// 「파일 열기…」 is that pick now — every kind, several at once — and it
+  /// keeps the starting folder the project Open had on a desktop, which
+  /// `pickProjectGrantForUser` already takes for the same reason. The Open
+  /// pick that passed it, `pickProjectToOpen`, is gone.
+  const wideSignatures = 388;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

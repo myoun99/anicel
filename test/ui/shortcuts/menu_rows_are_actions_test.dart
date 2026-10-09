@@ -78,13 +78,15 @@ void main() {
         ],
         [
           EditorActionIds.fileNew,
+          // F-282 (유저 2026-10-09): one door for every file, two rows —
+          // 「가져오기/배치…」 is gone.
           EditorActionIds.fileOpen,
+          EditorActionIds.fileOpenFolder,
           EditorActionIds.fileSave,
           EditorActionIds.fileSaveAs,
           'file-save-as-png',
           'file-save-as-jpg',
           EditorActionIds.fileBackUpFailedCopy,
-          EditorActionIds.fileImport,
           EditorActionIds.fileExport,
         ],
       );
