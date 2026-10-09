@@ -3,6 +3,7 @@ import 'package:collection/collection.dart' show IterableExtension;
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
+import '../../models/conte_group.dart' show conteHeadRowAt;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -11,9 +12,13 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_camera_head.dart' show cameraHeadOf;
+import '../../models/track_conte_row.dart' show trackConteRowOf;
+import '../../models/track_projection_row.dart' show trackIdOfProjectionRow;
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
-import '../../services/project_lookup.dart' show cutIdOfLayer;
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
@@ -123,8 +128,44 @@ class LayerVerbs {
 
   /// Of [ids] — the rows a press acted on — the ones whose NAME may be
   /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
-  List<LayerId> renameableOf(Iterable<LayerId> ids) =>
-      _layerIdsWhere(ids, _nameIsEditable);
+  ///
+  /// Wherever the row lives, as [renameRows] addresses it ([_cutWriting])
+  /// — 🗣️F-322 (유저 2026-10-09): 「더블클릭으로 레이어 이름바꾸는거 …
+  /// 타임라인이랑 통일」. The storyboard's rail names rows of every cut: a
+  /// conte row is ONE row over the track's cuts, and its name is its head's
+  /// ([_rowNamedBy]). ↩️It looked among the active cut's rows alone, so a
+  /// conte row whose head stood in another cut opened nothing.
+  List<LayerId> renameableOf(Iterable<LayerId> ids) => _layerIdsWhere(
+    [
+      for (final id in ids)
+        if (_cutWriting(_rowNamedBy(id)) != null) _rowNamedBy(id),
+    ],
+    _nameIsEditable,
+    among: projectLayersAnywhere(_project.repository.requireProject()),
+  );
+
+  /// The row whose name [rowId] shows: a storyboard projection row's head —
+  /// its seat's first row of the track's cuts, the track's first camera —
+  /// which every row it stands for wears (I-73, `headMirrorTargets`); any
+  /// other row its own.
+  LayerId _rowNamedBy(LayerId rowId) {
+    final trackId = trackIdOfProjectionRow(rowId);
+    if (trackId == null) {
+      return rowId;
+    }
+    final track = _project.repository
+        .requireProject()
+        .tracks
+        .firstWhereOrNull((track) => track.id == trackId);
+    if (track == null) {
+      return rowId;
+    }
+    final head = switch (trackConteRowOf(rowId)) {
+      final conte? => conteHeadRowAt(track.cuts, conte.seat),
+      null => cameraHeadOf(track.cuts),
+    };
+    return head?.id ?? rowId;
+  }
 
   static bool _nameIsEditable(Layer layer) => !layer.kind.isTrackFixture;
 
@@ -141,12 +182,16 @@ class LayerVerbs {
           if (row is LayerRowAddress) row.layerId,
       ], keep);
 
-  /// Of [ids], the layers of the cut that pass [keep], in order, once each.
+  /// Of [ids], the layers of the cut — or [among] — that pass [keep], in
+  /// order, once each.
   List<LayerId> _layerIdsWhere(
     Iterable<LayerId> ids,
-    bool Function(Layer layer) keep,
-  ) {
-    final byId = {for (final layer in _project.layers) layer.id: layer};
+    bool Function(Layer layer) keep, {
+    Iterable<Layer>? among,
+  }) {
+    final byId = {
+      for (final layer in among ?? _project.layers) layer.id: layer,
+    };
     final kept = <LayerId>[];
     for (final id in ids) {
       final layer = byId[id];
@@ -223,14 +268,9 @@ class LayerVerbs {
     String description,
     LayerId? Function(CutId cutId, LayerId layerId) command,
   ) {
-    // Each row in the cut that HOLDS it — the active cut for a track's own
-    // row — so a row a rail draws for every cut is written wherever the
-    // session stands ([ActiveCutEdits.onCutOfRowQuietly] says why).
-    final project = _project.repository.requireProject();
-    final active = _project.activeCutOrNull?.id;
     final rows = [
       for (final layerId in ids)
-        if (cutIdOfLayer(project, layerId) ?? active case final cutId?)
+        if (_cutWriting(layerId) case final cutId?)
           (cutId: cutId, layerId: layerId),
     ];
     if (rows.isEmpty) {
@@ -245,6 +285,15 @@ class LayerVerbs {
     _changes.refreshAfterCutCommand(preferredActiveLayerId: stand ?? ids.first);
     _changes.notifyChanged();
   }
+
+  /// The cut a row verb writes [layerId] in: the cut that HOLDS it — the
+  /// active cut for a track's own row — so a row a rail draws for every cut
+  /// is written wherever the session stands
+  /// ([ActiveCutEdits.onCutOfRowQuietly] says why); null for a track's own
+  /// row in a gap, where every row verb stands down.
+  CutId? _cutWriting(LayerId layerId) =>
+      cutIdOfLayer(_project.repository.requireProject(), layerId) ??
+      _project.activeCutOrNull?.id;
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
   /// standing on the last copy.

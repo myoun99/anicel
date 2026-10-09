@@ -477,7 +477,7 @@ class _StoryboardRowsAndLabels {
           railColumns: layerRailColumnWidthsIn(_state.context),
         ),
         onSelectLayer: (_) => select?.call(rowId),
-        labelDoubleClick: _state.widget.labelDoubleClick,
+        labelDoubleClick: _renameOn(rowId),
         onToggleLayerVisibility: verbs.toggleEye,
         onLayerOpacityChanged: verbs.setOpacity,
         onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
@@ -568,7 +568,7 @@ class _StoryboardRowsAndLabels {
         railColumns: layerRailColumnWidthsIn(_state.context),
       ),
       onSelectLayer: (_) => select?.call(rowId),
-      labelDoubleClick: _state.widget.labelDoubleClick,
+      labelDoubleClick: _renameOn(rowId),
       onToggleLayerVisibility: verbs.toggleEye,
       onLayerOpacityChanged: verbs.setOpacity,
       onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
@@ -593,6 +593,17 @@ class _StoryboardRowsAndLabels {
       ),
       onToggleGroupFold: _state.widget.onToggleAttachGroup,
     );
+  }
+
+  /// A projection row's label double click (I-48's rename), pressed on the
+  /// ROW [rowId] — what the selection holds and the press stands on — not
+  /// its head's layer, which is one cut's: the rename finds the name there
+  /// (`LayerVerbs.renameableOf`), wherever the head stands (F-322: 「더블클릭
+  /// 으로 레이어 이름바꾸는거 … 통일」). ↩️It pressed the head's layer, and
+  /// a head standing in a cut other than the active one renamed nothing.
+  TimelineLabelDoubleClick? _renameOn(LayerId rowId) {
+    final doubleClick = _state.widget.labelDoubleClick;
+    return doubleClick == null ? null : (_) => doubleClick(rowId);
   }
 
   /// A projection row's lane twirl, as its head presses it (I-73 ④ⓔ): the
