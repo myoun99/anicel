@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -14,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+
+import '../helpers/draw_on_current_frame.dart';
 
 /// I-22: the storyboard's green bar answers in stretches — each cut for
 /// its own frames, shifted to where the track lays it, the gaps ready by
@@ -128,5 +131,50 @@ void main() {
     expect(storyboardReadyRuns(s, 11, 13, layout: [at(drawn, 10)]), [
       (startIndex: 12, endIndexExclusive: 13),
     ]);
+  });
+
+  testWidgets('🚨the storyboard\'s bar counts the FILM\'s pictures: the '
+      'canvas\'s own, which a cut played alone shows, do not make it green — '
+      'the film plays on the composite view', (tester) async {
+    await tester.runAsync(() async {
+      final s = session();
+      addTearDown(s.dispose);
+      final cut = s.activeCutOrNull!;
+      inkCel(
+        s,
+        s.brushFrameKeyForCut(
+          cut,
+          const LayerId('layer'),
+          const FrameId('frame-a'),
+        ),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 4, y: 4),
+        size: 4,
+      );
+      await s.playbackRig.canvasPictures.make((
+        cut: cut,
+        frameIndex: 0,
+      ), shouldAbort: () => false);
+      expect(
+        s.playbackRig.playbackCache.playbackReadyRuns(0, 4),
+        [(startIndex: 0, endIndexExclusive: 4)],
+        reason: '⛔premise: the timeline\'s bar is green — its run plays on '
+            'the canvas, from those very pictures',
+      );
+
+      expect(
+        storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]),
+        [(startIndex: 2, endIndexExclusive: 4)],
+        reason: 'the film has no composite of the drawn frames yet',
+      );
+
+      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
+        cut: cut,
+        frameIndex: 0,
+      );
+      expect(storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]), [
+        (startIndex: 0, endIndexExclusive: 4),
+      ]);
+    });
   });
 }

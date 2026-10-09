@@ -167,6 +167,39 @@ void main() {
     expect(await middle(tester), red, reason: 'it landed: the frame goes up');
   });
 
+  testWidgets('🚨a view that stood still before the run hears its landings — '
+      'the run comes to it as an update, and the frame goes up when its rows '
+      'land', (tester) async {
+    final cache = images();
+    addTearDown(cache.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    await make(tester, cache, 'blue');
+
+    // Standing still first: the run then comes to THIS view, which the
+    // canvas keeps across a run's start (a_cut_played_alone_plays_on_the_
+    // canvas_test pins that).
+    await pumpStack(tester, cache, frameOf('blue'));
+    expect(await middle(tester), blue, reason: '⛔premise: blue is up');
+
+    await pumpStack(
+      tester,
+      cache,
+      frameOf('red'),
+      run: (landings: landings, gaveUpOn: (_) => false),
+    );
+    expect(await middle(tester), blue, reason: 'red is not made yet');
+
+    await make(tester, cache, 'red');
+    landings.value += 1;
+    await tester.pump();
+    expect(
+      await middle(tester),
+      red,
+      reason: 'it landed, and the view that took the run on heard it',
+    );
+  });
+
   testWidgets('standing still, rows come as they are made: a frame not made '
       'yet is not held back', (tester) async {
     final cache = images();

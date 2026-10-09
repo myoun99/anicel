@@ -114,6 +114,7 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
     }
     final ownFrom = axis.localIn(owner, from);
     final onTrack = from - ownFrom;
+    // The FILM's bar: no canvas — the film plays on the composite view yet.
     for (final run
         in session.playbackRig.playbackCache.playbackReadyRunsForCut(
           owner.cut,

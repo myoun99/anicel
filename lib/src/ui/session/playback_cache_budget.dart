@@ -180,7 +180,8 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The stretches of the active cut's frames in `[start, end)` that are
-  /// READY to play — the timeline ruler's green bar. None without an active
+  /// READY to play — the timeline ruler's green bar, counted in what a run
+  /// of the cut shows ([PlaybackRun.canvasShown]). None without an active
   /// cut.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
     int start,
@@ -190,7 +191,12 @@ class PlaybackCacheBudget implements PictureRoom {
     if (cut == null) {
       return const [];
     }
-    return playbackReadyRunsForCut(cut, start, end);
+    return playbackReadyRunsForCut(
+      cut,
+      start,
+      end,
+      canvas: _run.canvasShown,
+    );
   }
 
   /// [playbackReadyRuns] for an arbitrary cut — the storyboard's green
@@ -218,17 +224,24 @@ class PlaybackCacheBudget implements PictureRoom {
   /// next ask of a held picture is `identical` rather than a walk over
   /// every layer node (measured: that walk was most of what was left).
   ///
-  /// 🚨THE BAR COUNTS WHAT THE SCREEN SHOWS (playback-plays-the-screen-
-  /// material): where it shows a frame from the canvas's own images, a span
-  /// is ready when they are — the same question a run asks before it goes
-  /// on ([CanvasPictures.has]), asked of the span's first frame.
+  /// 🚨A BAR COUNTS WHAT ITS RUN SHOWS (playback-plays-the-screen-material):
+  /// [canvas] is the canvas's own pictures when the run the bar stands for
+  /// plays a frame from them — the timeline's, a cut played alone — and a
+  /// span is ready when they are, the question a run asks before it goes
+  /// on ([CanvasPictures.has]) asked of the span's first frame. Null is the
+  /// composite view's run: the storyboard's, the film, which plays on the
+  /// track stack yet.
+  ///
+  /// ↩️Both bars read the run on screen NOW, so the storyboard's went green
+  /// on a cut's canvas pictures — pictures its film never shows (the B1
+  /// complaint: a bar that claims readiness playback cannot deliver).
   List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
     Cut cut,
     int start,
-    int end,
-  ) {
+    int end, {
+    CanvasPictures? canvas,
+  }) {
     final composites = _renderCaches.cutFrameCompositeCache;
-    final canvas = _run.canvasShown;
     final signed = _signedStructuresOf(cut);
     bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
       if (structure.nodes.isEmpty) {

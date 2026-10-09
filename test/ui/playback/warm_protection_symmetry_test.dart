@@ -58,6 +58,12 @@ void main() {
     ],
   );
 
+  /// 🚨THE COMPOSITE VIEW'S RUN (playback-plays-the-screen-material): a cut
+  /// played alone plays on the canvas now, from the canvas's own pictures,
+  /// and a cel with nothing in it asks for none there. This file pins the
+  /// route the camera view and the film still play on, so its session looks
+  /// through the camera. The canvas's twin of each law:
+  /// `the_budget_keeps_what_the_canvas_shows_test` · `canvas_pictures_test`.
   EditorSessionManager session() => EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
@@ -67,7 +73,7 @@ void main() {
         Track(id: const TrackId('track'), name: 'T', cuts: [cut()]),
       ],
     ),
-  );
+  )..playbackRig.canvasShowsCuts = false;
 
   /// The budget under test, held BY ITS OWN TYPE (2026-09-08).
   ///
