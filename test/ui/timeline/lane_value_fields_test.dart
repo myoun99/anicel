@@ -92,7 +92,7 @@ void main() {
         propertyLaneValueParts(
           const TwoScales().label(CanvasPoint(x: 0.85, y: -1.2)),
         ),
-        [(number: '85', unit: ''), (number: '-120', unit: '%')],
+        [(number: '85.00', unit: ''), (number: '-120.00', unit: '%')],
       );
     });
 
@@ -166,7 +166,7 @@ void main() {
       expect(rejoined, '10, -4');
       expect(
         scrubTransformLaneValue('position', rejoined, Offset.zero),
-        '10, -4',
+        '10.00, -4.00',
         reason: '🚨the comma the user no longer types is put back here',
       );
     });

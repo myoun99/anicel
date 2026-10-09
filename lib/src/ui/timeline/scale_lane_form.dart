@@ -107,8 +107,8 @@ final class TwoScales extends ScaleLaneForm {
   /// neither, there is no one step to follow: they are what was typed.
   ///
   /// ⚠️「As it was shown」 is asked of the PRINT, not of the number: the lane
-  /// prints 133.3 for a scale of 1.3333…, and the box that was not touched
-  /// hands 133.3 back. The carry is still taken from the scale itself.
+  /// prints 133.33 for a scale of 1.3333…, and the box that was not touched
+  /// hands 133.33 back. The carry is still taken from the scale itself.
   @override
   CanvasPoint? typed(
     String input, {

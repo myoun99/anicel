@@ -65,8 +65,8 @@ void main() {
         form.typed(input, current: uniformScale(1), linked: linked);
 
     test('prints as one percent', () {
-      expect(form.label(uniformScale(1.5)), '150%');
-      expect(form.label(uniformScale(4 / 3)), '133.3%');
+      expect(form.label(uniformScale(1.5)), '150.00%');
+      expect(form.label(uniformScale(4 / 3)), '133.33%');
     });
 
     test('reads one number, with or without its percent', () {
@@ -83,11 +83,11 @@ void main() {
     });
 
     test('scrubs along the drag, half a percent a pixel', () {
-      expect(form.scrubbed('150%', const Offset(40, 0)), '170%');
-      expect(form.scrubbed('150%', const Offset(-40, 0)), '130%');
+      expect(form.scrubbed('150%', const Offset(40, 0)), '170.00%');
+      expect(form.scrubbed('150%', const Offset(-40, 0)), '130.00%');
       expect(
         form.scrubbed('150%', const Offset(0, 40)),
-        '150%',
+        '150.00%',
         reason: 'one number has no second axis',
       );
       expect(form.scrubbed('garbage', const Offset(1, 0)), isNull);
@@ -98,10 +98,14 @@ void main() {
     const form = TwoScales();
 
     test('print across, then down, the percent worn once', () {
-      expect(form.label(scale(1.5, 0.8)), '150, 80%');
-      expect(form.label(scale(-1, 1)), '-100, 100%', reason: 'flipped');
-      expect(form.label(scale(0, 1)), '0, 100%', reason: 'shown as nothing');
-      expect(form.label(scale(4 / 3, 0.5)), '133.3, 50%');
+      expect(form.label(scale(1.5, 0.8)), '150.00, 80.00%');
+      expect(form.label(scale(-1, 1)), '-100.00, 100.00%', reason: 'flipped');
+      expect(
+        form.label(scale(0, 1)),
+        '0.00, 100.00%',
+        reason: 'shown as nothing',
+      );
+      expect(form.label(scale(4 / 3, 0.5)), '133.33, 50.00%');
     });
 
     group('typed', () {
@@ -180,48 +184,63 @@ void main() {
 
       test('🔗「left as it was shown」 is asked of the PRINT, and the carry is '
           'taken from the scale itself', () {
-        // The lane prints 133.3 for 1.3333…: the box hands 133.3 back
+        // The lane prints 133.33 for 1.3333…: the box hands 133.33 back
         // untouched, and that is not a typed across.
         const third = 4 / 3;
         expect(
-          linked('133.3, 150%', scale(third, 0.75)),
+          linked('133.33, 150%', scale(third, 0.75)),
           near(third * 2, 1.5),
-          reason: 'across was left, and doubles from 1.3333…, not from 1.333',
+          reason: 'across was left: it doubles from 4/3, not from 1.3333',
         );
-        // The same down the other way: 33.3 is what 0.3333… prints as.
+        // The same down the other way: 33.33 is what 0.3333… prints as.
         expect(
-          linked('200, 33.3%', scale(1, 1 / 3)),
+          linked('200, 33.33%', scale(1, 1 / 3)),
           near(2, 2 / 3),
-          reason: 'down was left, and doubles from 0.3333…, not from 0.333',
+          reason: 'down was left: it doubles from 1/3, not from 0.3333',
         );
         // …while a number that prints differently IS typed.
         expect(
-          linked('133.4, 75%', scale(third, 0.75)),
-          near(1.334, 0.75 * (1.334 / third)),
+          linked('133.34, 75%', scale(third, 0.75)),
+          near(1.3334, 0.75 * (1.3334 / third)),
         );
       });
     });
 
     group('scrubbed', () {
       test('ONE drag scrubs ONE number — the one it runs along more', () {
-        expect(form.scrubbed('150, 80%', const Offset(40, 0)), '170, 80%');
-        expect(form.scrubbed('150, 80%', const Offset(0, 40)), '150, 100%');
+        expect(
+          form.scrubbed('150, 80%', const Offset(40, 0)),
+          '170.00, 80.00%',
+        );
+        expect(
+          form.scrubbed('150, 80%', const Offset(0, 40)),
+          '150.00, 100.00%',
+        );
         expect(
           form.scrubbed('150, 80%', const Offset(40, 10)),
-          '170, 80%',
+          '170.00, 80.00%',
           reason: 'a hand drifting off its line does not move both',
         );
-        expect(form.scrubbed('150, 80%', const Offset(10, -40)), '150, 60%');
+        expect(
+          form.scrubbed('150, 80%', const Offset(10, -40)),
+          '150.00, 60.00%',
+        );
         expect(
           form.scrubbed('150, 80%', const Offset(20, 20)),
-          '160, 80%',
+          '160.00, 80.00%',
           reason: 'even, it is across',
         );
       });
 
       test('a scrub runs through zero into a flip', () {
-        expect(form.scrubbed('10, 100%', const Offset(-20, 0)), '0, 100%');
-        expect(form.scrubbed('10, 100%', const Offset(-40, 0)), '-10, 100%');
+        expect(
+          form.scrubbed('10, 100%', const Offset(-20, 0)),
+          '0.00, 100.00%',
+        );
+        expect(
+          form.scrubbed('10, 100%', const Offset(-40, 0)),
+          '-10.00, 100.00%',
+        );
       });
 
       test('⛔a label that is not two numbers is not scrubbed', () {
@@ -241,7 +260,7 @@ void main() {
           form.label(current),
           const Offset(300, 0),
         )!;
-        expect(scrubbed, '300, 75%');
+        expect(scrubbed, '300.00, 75.00%');
         expect(
           form.typed(scrubbed, current: current, linked: true),
           near(3, 1.5),

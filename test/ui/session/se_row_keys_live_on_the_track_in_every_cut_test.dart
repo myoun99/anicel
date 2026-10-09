@@ -69,7 +69,7 @@ void main() {
       expandedGroupKeys: {laneGroupKey(se.id, transformGroupHeaderLane.laneId)},
     );
     final rotation = lanes.singleWhere((lane) => lane.laneId == 'rotation');
-    expect(rotation.valueLabel!(0), '30°');
+    expect(rotation.valueLabel!(0), '30.00°');
     expect(
       rotation.keyedFrames,
       isEmpty,
@@ -94,7 +94,7 @@ void main() {
     final size = lanes.singleWhere(
       (lane) => lane.laneId == seNameTagSizeLaneId,
     );
-    expect(size.valueLabel!(0), '20');
+    expect(size.valueLabel!(0), '20.00');
   });
 
   test('🚨the navigator ◆ in cut 2 keys the row at its GLOBAL frame, frozen at '

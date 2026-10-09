@@ -306,9 +306,9 @@ void main() {
         'opacity',
       ]);
       expect(lanes[1].keyedFrames, {2});
-      expect(lanes[1].valueLabel!(0), '10, 20');
+      expect(lanes[1].valueLabel!(0), '10.00, 20.00');
       expect(lanes[5].keyedFrames, {5});
-      expect(lanes[5].valueLabel!(0), '50%');
+      expect(lanes[5].valueLabel!(0), '50.00%');
     });
   });
 
@@ -1320,7 +1320,7 @@ void main() {
               ),
             )
             .data,
-        '150%',
+        '150.00%',
       );
 
       // Type a new scale: Enter commits and keys the value there.
@@ -1343,7 +1343,7 @@ void main() {
             )
             .controller!
             .text,
-        '150',
+        '150.00',
         reason: 'the unit is not in the box the user types in',
       );
       await tester.enterText(
@@ -1370,7 +1370,7 @@ void main() {
               ),
             )
             .data,
-        '200%',
+        '200.00%',
       );
       // The scale lane stays keyed at frame 0 with the new value; other
       // lanes are untouched.
@@ -1430,7 +1430,7 @@ void main() {
               ),
             )
             .data,
-        '$x, 77',
+        '$x, 77.00',
         reason: 'the untouched element survived the commit',
       );
       expect(_laneKey('position', 0), findsOneWidget);
@@ -1440,24 +1440,24 @@ void main() {
         'editor text form', () {
       expect(
         scrubTransformLaneValue('position', '12, -3', const Offset(10, 5)),
-        '22, 2',
+        '22.00, 2.00',
       );
       expect(
         scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
-        '-5°',
+        '-5.00°',
       );
       // The anchor lane scrubs like position; opacity clamps to 0–100.
       expect(
         scrubTransformLaneValue('anchor-point', '10, 20', const Offset(4, -6)),
-        '14, 14',
+        '14.00, 14.00',
       );
       expect(
         scrubTransformLaneValue('opacity', '100%', const Offset(-30, 0)),
-        '85%',
+        '85.00%',
       );
       expect(
         scrubTransformLaneValue('opacity', '100%', const Offset(30, 0)),
-        '100%',
+        '100.00%',
       );
       expect(
         scrubTransformLaneValue('rotation', 'garbage', const Offset(1, 0)),
@@ -1495,7 +1495,7 @@ void main() {
               ),
             )
             .data,
-        '170%',
+        '170.00%',
       );
       expect(_laneKey('scale', 0), findsOneWidget);
     });
@@ -1538,7 +1538,7 @@ void main() {
               ),
             )
             .data,
-        '170%',
+        '170.00%',
       );
     });
 
@@ -1767,7 +1767,7 @@ void main() {
           .map((text) => text.data ?? '')
           .toList();
 
-      expect(valueLines(), ['150%']);
+      expect(valueLines(), ['150.00%']);
 
       // Typing keys the value at the playhead (Enter commits).
       await tester.tap(
@@ -1788,7 +1788,7 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(valueLines(), ['200%']);
+      expect(valueLines(), ['200.00%']);
 
       // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
       // drag-axis mapping is the LANE's, identical in both orientations.
@@ -1799,7 +1799,7 @@ void main() {
         const Offset(40, 0),
       );
       await tester.pumpAndSettle();
-      expect(valueLines(), ['220%']);
+      expect(valueLines(), ['220.00%']);
       expect(laneKey('scale', 0), findsOneWidget);
     });
 

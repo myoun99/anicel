@@ -259,13 +259,13 @@ void main() {
       scaleLinked: false,
     );
 
-    expect(find.text('-150%'), findsOneWidget, reason: '가로: 반전 + 150%');
-    expect(find.text('75%'), findsOneWidget, reason: '세로: 75%');
+    expect(find.text('-150.00%'), findsOneWidget, reason: '가로: 반전 + 150%');
+    expect(find.text('75.00%'), findsOneWidget, reason: '세로: 75%');
 
     await typeInto(tester, 'move-scale-y-field', '-100');
 
     expect(applied.last, stretched.copyWith(sy: -1));
-    expect(find.text('-100%'), findsOneWidget);
+    expect(find.text('-100.00%'), findsOneWidget);
   });
 
   /// 🚨★★★**⑤ONE SCRUB IS ONE STEP BACK, not forty.**
@@ -704,7 +704,11 @@ void main() {
   ) async {
     final commands = await pumpMoveSettings(tester, applied: []);
 
-    expect(find.text('0'), findsWidgets, reason: '⛔fixture premise: identity');
+    expect(
+      find.text('0.00'),
+      findsWidgets,
+      reason: '⛔fixture premise: identity',
+    );
 
     // What the LAYER publishes while a handle is being dragged.
     commands.publishTransformValues(const TransformValues(tx: 12, ty: -4));
@@ -714,8 +718,8 @@ void main() {
       find.byKey(const ValueKey<String>('move-x-field')),
       findsOneWidget,
     );
-    expect(find.text('12'), findsOneWidget, reason: 'X followed the box');
-    expect(find.text('-4'), findsOneWidget, reason: 'Y followed the box');
+    expect(find.text('12.00'), findsOneWidget, reason: 'X followed the box');
+    expect(find.text('-4.00'), findsOneWidget, reason: 'Y followed the box');
   });
 
   testWidgets('⛔and the digits are the only thing listening', (tester) async {

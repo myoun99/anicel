@@ -124,9 +124,9 @@ void main() {
             parameterId == 'blurX' ? 8 : 0,
       );
       final lane = rows.firstWhere((row) => row.label == 'Blur Width');
-      expect(lane.valueLabel!(0), '8 px');
+      expect(lane.valueLabel!(0), '8.00 px');
       final spec = effectParametersOf(EffectKind.blur).first;
-      expect(parseEffectLaneValue(spec, '8 px'), 8);
+      expect(parseEffectLaneValue(spec, '8.00 px'), 8);
       expect(parseEffectLaneValue(spec, '12'), 12);
       expect(parseEffectLaneValue(spec, 'wide'), isNull);
       expect(
@@ -138,10 +138,16 @@ void main() {
 
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = effectParametersOf(EffectKind.hueSaturation).first;
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20°');
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)), '-40°');
+      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
+      expect(
+        scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)),
+        '-40.00°',
+      );
       // Clamped at the spec edge, never past it.
-      expect(scrubEffectLaneValue(spec, '170°', const Offset(200, 0)), '180°');
+      expect(
+        scrubEffectLaneValue(spec, '170°', const Offset(200, 0)),
+        '180.00°',
+      );
     });
   });
 

@@ -87,9 +87,9 @@ void main() {
 
       expect(
         scaleLaneOf(session, session.activeLayer!).valueLabel!(0),
-        '100, 100%',
+        '100.00, 100.00%',
       );
-      expect(scaleLaneOf(session, cameraOf(session)).valueLabel!(0), '100%');
+      expect(scaleLaneOf(session, cameraOf(session)).valueLabel!(0), '100.00%');
     });
 
     test('what a layer was keyed to, each number its own', () {
@@ -98,7 +98,7 @@ void main() {
 
       set(session, row, '150, -80%', linked: false);
 
-      expect(scaleLaneOf(session, row).valueLabel!(0), '150, -80%');
+      expect(scaleLaneOf(session, row).valueLabel!(0), '150.00, -80.00%');
     });
 
     test('and scrubs each in the form it prints', () {
@@ -110,11 +110,11 @@ void main() {
           '100, 100%',
           drag,
         ),
-        '110, 100%',
+        '110.00, 100.00%',
       );
       expect(
         scaleLaneOf(session, cameraOf(session)).scrubValue!('100%', drag),
-        '110%',
+        '110.00%',
       );
     });
   });
