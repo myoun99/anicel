@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -74,6 +76,14 @@ void main() {
   CanvasLayerStackView stackOf(WidgetTester tester) =>
       tester.widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView));
 
+  /// The cels the rows of [nodes] are images of.
+  List<BrushFrameKey> celsOf(List<CompositeNode<CanvasStackRow>> nodes) => [
+    for (final node in preorderNodes(nodes))
+      if (node is CompositeLeaf<CanvasStackRow> &&
+          node.payload is CanvasLayerImageRequest)
+        (node.payload as CanvasLayerImageRequest).frameKey,
+  ];
+
   /// Whether a row stands LIVE in the tree the canvas paints.
   bool aRowStandsLive(WidgetTester tester) =>
       preorderNodes(stackOf(tester).nodes).any(
@@ -120,6 +130,39 @@ void main() {
       scrubOf(s).active.value,
       isFalse,
       reason: 'it moves as a scrub moves; it is no scrub gesture',
+    );
+    playback.stop();
+    await drain(tester);
+  });
+
+  testWidgets('🚨a step of the run builds the picture again, not the canvas: '
+      'the host stays as the run found it, and the rows shown are the '
+      'frame\'s the run stands on', (tester) async {
+    final (s, _) = await pumpArea(tester);
+    // A second cel five frames on: the rows name the frame they are of.
+    s.selectFrameIndex(5);
+    s.createDrawingAtCurrentFrame();
+    s.selectFrameIndex(0);
+    await tester.pump();
+    final playback = s.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    final host = tester.widget(find.byType(MainCanvasBrushHost));
+    final atTheStart = celsOf(stackOf(tester).nodes);
+
+    playback.seekToGlobalFrame(5);
+    await tester.pump();
+
+    expect(
+      tester.widget(find.byType(MainCanvasBrushHost)),
+      same(host),
+      reason: 'the canvas is not built again for a step',
+    );
+    expect(celsOf(stackOf(tester).nodes), isNot(atTheStart));
+    expect(
+      celsOf(stackOf(tester).nodes),
+      celsOf(s.editingCanvas.playingStack.nodes),
+      reason: 'the picture is',
     );
     playback.stop();
     await drain(tester);

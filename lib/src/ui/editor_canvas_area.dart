@@ -507,7 +507,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // A drag in flight moves what the canvas shows (F-195;
     // canvas-follows-block-moves, 유저 2026-09-28 「따라가게」). The picture
     // and the chrome over it hear it for themselves, each in its own
-    // TickLayer (`_InteractiveCanvasBuild._followingTheDrag`); the AREA is
+    // TickLayer (`_InteractiveCanvasBuild._followingDragAndRun`); the AREA is
     // rebuilt only for what it hands the panel ([_panelShows]).
     return SlicedValueListenableBuilder<TimelineDragPreview?, Object?>(
       valueListenable: session.dragPreview,
@@ -639,6 +639,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               builder: (context, _) {
                 return _FrameRetargetScope(
                   session: session,
+                  runPlaysHere: () => _playsOnTheCanvas,
                   builder: (context) {
                     // Derived HERE (not captured above) so a seek-driven
                     // rebuild re-reads them at the new playhead.
@@ -1562,10 +1563,29 @@ class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
 /// timeline controller, so [_retargetIfFrameChanged]'s existing question —
 /// did `currentFrameIndex` actually change — is already the right one, and
 /// the stroke deferral above covers a scrub exactly like a seek.
+///
+/// 🚨A RUN THE CANVAS PLAYS IS NOT RETARGETED HERE. It steps the cursor
+/// every frame, and following it here built the whole canvas again for
+/// each — the host configured anew, the panel under it laid out — to change
+/// a picture (measured 10-09 on cut 301: the frame's build p50 22.1ms,
+/// against 5.8 for the same run on the composite view). The host takes no
+/// press while a run plays, so what shows the frame follows the run alone
+/// ([_InteractiveCanvasBuild._followingDragAndRun]). A committed seek still
+/// retargets, and the run's end builds the canvas again through the
+/// playback flag above, at the frame it stopped on.
 class _FrameRetargetScope extends StatefulWidget {
-  const _FrameRetargetScope({required this.session, required this.builder});
+  const _FrameRetargetScope({
+    required this.session,
+    required this.runPlaysHere,
+    required this.builder,
+  });
 
   final EditorSessionManager session;
+
+  /// Whether a run plays on this canvas
+  /// ([_EditorCanvasAreaState._playsOnTheCanvas]) — then a step of the
+  /// cursor is not this scope's to follow.
+  final bool Function() runPlaysHere;
   final WidgetBuilder builder;
 
   @override
@@ -1580,7 +1600,7 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   void initState() {
     super.initState();
     widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
-    widget.session.editingFrameCursor.addListener(_onSeekCommitted);
+    widget.session.editingFrameCursor.addListener(_onCursorStepped);
     widget.session.brushInputActive.addListener(_onBrushInputChanged);
   }
 
@@ -1589,10 +1609,10 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
       oldWidget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
-      oldWidget.session.editingFrameCursor.removeListener(_onSeekCommitted);
+      oldWidget.session.editingFrameCursor.removeListener(_onCursorStepped);
       oldWidget.session.brushInputActive.removeListener(_onBrushInputChanged);
       widget.session.frameSeekCommitted.addListener(_onSeekCommitted);
-      widget.session.editingFrameCursor.addListener(_onSeekCommitted);
+      widget.session.editingFrameCursor.addListener(_onCursorStepped);
       widget.session.brushInputActive.addListener(_onBrushInputChanged);
     }
   }
@@ -1600,9 +1620,16 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
   @override
   void dispose() {
     widget.session.frameSeekCommitted.removeListener(_onSeekCommitted);
-    widget.session.editingFrameCursor.removeListener(_onSeekCommitted);
+    widget.session.editingFrameCursor.removeListener(_onCursorStepped);
     widget.session.brushInputActive.removeListener(_onBrushInputChanged);
     super.dispose();
+  }
+
+  void _onCursorStepped() {
+    if (widget.runPlaysHere()) {
+      return;
+    }
+    _onSeekCommitted();
   }
 
   void _onSeekCommitted() {

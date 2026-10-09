@@ -592,36 +592,46 @@ class _InteractiveCanvasBuild {
 
   /// A part of the canvas that follows a drag on its own: [build] again,
   /// alone, for each step that changes a row it could show
-  /// ([_EditorCanvasAreaState._rowsShownBy]), inside its own [TickLayer].
+  /// ([_EditorCanvasAreaState._rowsShownBy]), inside its own [TickLayer] —
+  /// and for each frame a run the canvas plays steps the playhead to, which
+  /// the area leaves to it ([_FrameRetargetScope]).
   ///
   /// 🚨canvas-wakes-for-what-it-shows: the whole canvas AREA used to be
   /// rebuilt for a drag step, under the panel content's LayoutBuilder — so a
   /// step relaid out and repainted all of it (measured 09-29: layout was
   /// the largest share of a step, ahead of build and paint) for a picture
   /// and some chrome.
-  Widget _followingTheDrag(
+  ///
+  /// ⚠️The run's builder is there standing still too, answering nothing: a
+  /// builder that came and went with the run would remount what it holds at
+  /// the run's start and its end — the stack view's images with it.
+  Widget _followingDragAndRun(
     EditorSessionManager session,
     WidgetBuilder build,
   ) => TickLayer(
     child: SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
       valueListenable: session.dragPreview,
       slice: (preview) => _EditorCanvasAreaState._rowsShownBy(session, preview),
-      builder: (context, _) => build(context),
+      builder: (context, _) => SlicedValueListenableBuilder<int, int?>(
+        valueListenable: session.editingFrameCursor,
+        slice: (frame) => _canvasPlays ? frame : null,
+        builder: (context, _) => build(context),
+      ),
     ),
   );
 
   /// What is painted UNDER the interactive canvas: the paper and the
   /// composite tree with the active layer inside it (the parked stack in a
-  /// gap), with onion skins when the row shows them. It follows a drag
-  /// itself ([_followingTheDrag]), so the tree is asked afresh at each of
-  /// its builds.
+  /// gap), with onion skins when the row shows them. It follows a drag, and
+  /// a run the canvas plays, itself ([_followingDragAndRun]), so the tree is
+  /// asked afresh at each of its builds.
   Widget _underlay(
     BuildContext context,
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
     SelectionFloatOverlay floatOverlay,
     _HostFrame frame,
-  ) => _followingTheDrag(
+  ) => _followingDragAndRun(
     frame.session,
     (context) => _stackView(viewport, activeSurfacePainter, floatOverlay, frame),
   );
@@ -684,14 +694,14 @@ class _InteractiveCanvasBuild {
   /// What is stacked OVER the canvas inside the viewport: the guides and
   /// their edit layer, the SE name tags, the fade wash past the cut's end
   /// and the camera's frame. The row's box is not here — it sits over the
-  /// tools ([_controls]). It follows a drag itself ([_followingTheDrag]):
-  /// the tags, the fade and the frame are asked afresh at each of its
-  /// builds.
+  /// tools ([_controls]). It follows a drag, and a run the canvas plays,
+  /// itself ([_followingDragAndRun]): the tags, the fade and the frame are
+  /// asked afresh at each of its builds.
   Widget _overlay(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
-  ) => _followingTheDrag(
+  ) => _followingDragAndRun(
     frame.session,
     (context) => _overlayStack(context, viewport, frame),
   );
@@ -749,7 +759,7 @@ class _InteractiveCanvasBuild {
   /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the
   /// camera row is active, an SE row's name tag, or the active layer's while
   /// its standing lane declares one. It follows a drag itself
-  /// ([_followingTheDrag]), as the overlay does.
+  /// ([_followingDragAndRun]), as the overlay does.
   ///
   /// ⚠️What is adjusted on the canvas — its canvas (I-79) or the camera's
   /// frame (I-80) — stands in the row's box's place while it is open: its
@@ -763,7 +773,10 @@ class _InteractiveCanvasBuild {
     listenable: frame.session.canvasAdjust,
     builder: (context, _) =>
         _canvasAdjust(context, viewport, frame) ??
-        _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame)),
+        _followingDragAndRun(
+          frame.session,
+          (context) => _rowBox(viewport, frame),
+        ),
   );
 
   /// What is adjusted on the canvas, when it is open on the cut this canvas
