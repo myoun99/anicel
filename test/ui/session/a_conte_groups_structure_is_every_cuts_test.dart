@@ -67,7 +67,8 @@ void main() {
     ],
   );
 
-  EditorSessionManager open() {
+  /// The track, with [extra] cuts after d.
+  EditorSessionManager open({List<Cut> extra = const []}) {
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('structure'),
@@ -77,7 +78,13 @@ void main() {
           Track(
             id: const TrackId('t'),
             name: 'V',
-            cuts: [cutOf('a'), cutOf('b'), cutOf('c'), cutOf('d', short: true)],
+            cuts: [
+              cutOf('a'),
+              cutOf('b'),
+              cutOf('c'),
+              cutOf('d', short: true),
+              ...extra,
+            ],
           ),
         ],
       ),
@@ -166,6 +173,110 @@ void main() {
         AttachedPlacement.below,
       );
     });
+
+    // A group shaped otherwise stands down — each of the ways it can be.
+    void crossOver1(EditorSessionManager session) => place(
+      session,
+      ['a-cel', 'a-under', 'a-over1', 'a-conte', 'a-over2'],
+      moved: 'a-over1',
+      attach: const LayerAttachDrop(
+        sideChange: (
+          layerId: LayerId('a-over1'),
+          placement: AttachedPlacement.below,
+        ),
+      ),
+    );
+
+    test('🚨a group holding only the first of the seats is left as it is', () {
+      // e's seats are a's, the top one missing: the row that crosses in a
+      // would cross in e too, were the rest not asked.
+      final session = open(
+        extra: [
+          Cut(
+            id: const CutId('e'),
+            name: 'e',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: [
+              row('e-cel', kind: LayerKind.animation),
+              row(
+                'e-under',
+                ridesOn: 'e-conte',
+                placement: AttachedPlacement.below,
+              ),
+              row('e-conte'),
+              row('e-over1', ridesOn: 'e-conte'),
+            ],
+          ),
+        ],
+      );
+
+      crossOver1(session);
+
+      expect(groupOf(session, const CutId('e')), [
+        '1:over1',
+        '0:conte',
+        '-1:under',
+      ]);
+    });
+
+    test('🚨…and so is a group with a row filed in a folder, wherever the '
+        'folder stands', () {
+      final session = open(
+        extra: [
+          Cut(
+            id: const CutId('f'),
+            name: 'f',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: [
+              row('f-org', kind: LayerKind.folder),
+              row('f-cel', kind: LayerKind.animation),
+              row(
+                'f-under',
+                ridesOn: 'f-conte',
+                placement: AttachedPlacement.below,
+              ),
+              row('f-conte'),
+              row('f-over1', ridesOn: 'f-conte'),
+              row('f-over2', ridesOn: 'f-conte', folderId: 'f-org'),
+            ],
+          ),
+        ],
+      );
+
+      crossOver1(session);
+
+      expect(groupOf(session, const CutId('f')), asItWas);
+    });
+
+    test('🚨…and so is a group another row stands inside', () {
+      final session = open(
+        extra: [
+          Cut(
+            id: const CutId('g'),
+            name: 'g',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: [
+              row(
+                'g-under',
+                ridesOn: 'g-conte',
+                placement: AttachedPlacement.below,
+              ),
+              row('g-conte'),
+              row('g-over1', ridesOn: 'g-conte'),
+              row('g-cel', kind: LayerKind.animation),
+              row('g-over2', ridesOn: 'g-conte'),
+            ],
+          ),
+        ],
+      );
+
+      crossOver1(session);
+
+      expect(groupOf(session, const CutId('g')), asItWas);
+    });
   });
 
   group('a row dragged onto the conte', () {
@@ -208,6 +319,59 @@ void main() {
 
       session.undo();
       expect(groupOf(session, b), asItWas);
+    });
+
+    test('a row dragged onto ANOTHER base is born nowhere else', () {
+      final session = open();
+      // A second drawing row in a, for the first to be dragged onto.
+      final aCut = cutIn(session, a);
+      session.repository.replaceProject(
+        session.repository.requireProject().copyWith(
+          tracks: [
+            session.repository.requireProject().tracks.single.copyWith(
+              cuts: [
+                aCut.copyWith(
+                  layers: [
+                    row('a-ink', kind: LayerKind.animation),
+                    ...aCut.layers,
+                  ],
+                ),
+                ...session.repository
+                    .requireProject()
+                    .tracks
+                    .single
+                    .cuts
+                    .skip(1),
+              ],
+            ),
+          ],
+        ),
+      );
+      final layersBefore = cutIn(session, b).layers.length;
+
+      place(
+        session,
+        ['a-cel', 'a-ink', 'a-under', 'a-conte', 'a-over1', 'a-over2'],
+        moved: 'a-ink',
+        attach: const LayerAttachDrop(
+          mounts: [
+            (
+              layerId: LayerId('a-ink'),
+              baseId: LayerId('a-cel'),
+              placement: AttachedPlacement.above,
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        cutIn(session, a).layers.byId(const LayerId('a-ink'))!
+            .attachedToLayerId,
+        const LayerId('a-cel'),
+        reason: '⛔전제',
+      );
+      expect(groupOf(session, b), asItWas);
+      expect(cutIn(session, b).layers, hasLength(layersBefore));
     });
   });
 
