@@ -1402,7 +1402,14 @@ class FrameRangeMoveDrag {
         starts: starts,
         frameDelta: frameDelta,
       );
-      if (shifted == null) {
+      // …nor one that draws a cut past its camera keys: a のりしろ made
+      // shorter stops short of them (🗣️I-73-camera-row-Q7).
+      if (shifted == null ||
+          !_transitions.keepsCameraKeys(
+            row.copyWith(
+              instructions: SplayTreeMap<int, InstructionEvent>.from(shifted),
+            ),
+          )) {
         return null;
       }
       instructionShifted[row.id] = shifted;

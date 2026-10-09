@@ -231,13 +231,16 @@ class ProjectRepository {
   ///    edit derived its own; the paths that brought a cut in from OUTSIDE
   ///    did not, and an imported hold printed `H` and covered nothing. A
   ///    write-time invariant covers the next importer by construction.
-  /// 6. THE CAMERA'S END KEY ON THE END ([cameraWithItsEndKeyAt], I-73 ④):
+  /// 6. THE CAMERA'S KEYS ON ITS FRAMES ([cameraFollowingItsEnd], I-73 ④):
   ///    the key on a cut's last drawn frame stays on it whenever that frame
-  ///    moves — the same drawn end as 5, moved by the same writes. Where
-  ///    the last frame was is the last write's, read off what it settled;
-  ///    nothing is dropped, so an undo that writes the length back carries
-  ///    the key back, and one that restores the whole project starts the
-  ///    memo afresh and moves nothing.
+  ///    moves, and a shrink brings in every key on the frames it took — the
+  ///    same drawn end as 5, moved by the same writes. Where the last frame
+  ///    was is the last write's, read off what it settled. A shrink the
+  ///    hand drives stops short of the other keys, so an undo that writes
+  ///    the length back carries the end key back; the commands that take a
+  ///    のりしろ away at once put their cameras back themselves
+  ///    (`CamerasFollowTheirEnds`), and an undo that restores the whole
+  ///    project starts the memo afresh and moves nothing.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   Project _normalized(Project project) {
@@ -355,7 +358,7 @@ class ProjectRepository {
         : shaped.copyWith(layers: layers);
     final camera = previousDrawnFrameCount == null
         ? ruled.camera
-        : cameraWithItsEndKeyAt(
+        : cameraFollowingItsEnd(
             ruled.camera,
             lastFrame: drawnFrameCount - 1,
             previousLastFrame: previousDrawnFrameCount - 1,

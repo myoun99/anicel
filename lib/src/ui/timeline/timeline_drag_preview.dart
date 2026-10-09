@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/mapped_or_same.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
@@ -38,6 +39,7 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   const ExposureEdgeDragPreview({
     required this.previewLayer,
     this.globalPreviewLayer,
+    this.previewCameras = const {},
   });
 
   final Layer previewLayer;
@@ -49,13 +51,20 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   /// for cut-owned layers (both forms are the same).
   final Layer? globalPreviewLayer;
 
+  /// The cameras the release leaves otherwise than they stand — an O.L's
+  /// edge draws its cuts for other frames, and the key on a cut's last
+  /// frame goes with it (`cameraFollowingItsEnd`, I-73-camera-row-Q7) —
+  /// under the hand, as a trim's ([CutTrimDragPreview.previewCameras]).
+  final Map<CutId, CutCamera> previewCameras;
+
   LayerId get layerId => previewLayer.id;
 
   @override
   bool operator ==(Object other) =>
       other is ExposureEdgeDragPreview &&
       other.previewLayer == previewLayer &&
-      other.globalPreviewLayer == globalPreviewLayer;
+      other.globalPreviewLayer == globalPreviewLayer &&
+      mapEquals(other.previewCameras, previewCameras);
 
   @override
   int get hashCode => Object.hash(previewLayer, globalPreviewLayer);
@@ -373,7 +382,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
 
   /// The cameras the release leaves otherwise than they stand: a length
   /// change carries the key on a cut's last frame with that frame
-  /// ([cameraWithItsEndKeyAt], I-73-camera-row-Q4) — under the hand, not on
+  /// ([cameraFollowingItsEnd], I-73-camera-row-Q4) — under the hand, not on
   /// release.
   final Map<CutId, CutCamera> previewCameras;
 
@@ -427,6 +436,25 @@ CutTrimDragPreview cutTrimPreviewAsReleased(
           previewCameras: {...drawn.previewCameras, ...derived.cameras},
         );
 }
+
+/// The cameras [draft] would leave otherwise than they stand once a write
+/// settled it ([ProjectRepository.settledAsWritten]) — what a drag that
+/// is not a cut's length change, an O.L's edge, carries under the hand.
+Map<CutId, CutCamera> camerasAsReleased(
+  ProjectRepository repository,
+  Project draft,
+) => _derivedAgain(draft, repository.settledAsWritten(draft)).cameras;
+
+/// The camera a drag in flight carries for [cutId] where a length change
+/// moves its end key — a cut's trim or an O.L's edge — or null.
+CutCamera? timelineDragPreviewCarriedCamera(
+  TimelineDragPreview? preview,
+  CutId cutId,
+) => switch (preview) {
+  CutTrimDragPreview(:final previewCameras) ||
+  ExposureEdgeDragPreview(:final previewCameras) => previewCameras[cutId],
+  _ => null,
+};
 
 /// The cut rows and the cameras [settled] holds as other instances than
 /// [draft] does. The settle maps tracks and cuts in place, so the two walk
@@ -665,10 +693,13 @@ Project projectWithTimelineDragPreview(
       return project;
     case final CutTrimDragPreview trim:
       return _projectWithCutTrimPreview(project, trim);
-    case ExposureEdgeDragPreview(:final previewLayer):
-      return _projectWithLayersSubstituted(project, {
-        previewLayer.id: previewLayer,
-      });
+    case ExposureEdgeDragPreview(:final previewLayer, :final previewCameras):
+      return _projectWithCamerasCarried(
+        _projectWithLayersSubstituted(project, {
+          previewLayer.id: previewLayer,
+        }),
+        previewCameras,
+      );
     case BlockMoveDragPreview(
       :final previewLayers,
       :final cameraCutId,
@@ -723,6 +754,28 @@ Project projectWithTimelineDragPreview(
           ) ??
           withRow;
   }
+}
+
+/// [project] with each cut [cameras] names holding the camera it maps to —
+/// every other track and cut the very instance it was.
+Project _projectWithCamerasCarried(
+  Project project,
+  Map<CutId, CutCamera> cameras,
+) {
+  if (cameras.isEmpty) {
+    return project;
+  }
+  final tracks = mappedOrSame(project.tracks, (track) {
+    final cuts = mappedOrSame(
+      track.cuts,
+      (cut) => switch (cameras[cut.id]) {
+        final camera? => cut.copyWith(camera: camera),
+        null => cut,
+      },
+    );
+    return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
+  });
+  return project.copyWith(tracks: tracks);
 }
 
 Project _projectWithLayersSubstituted(

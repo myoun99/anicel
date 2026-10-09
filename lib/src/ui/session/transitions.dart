@@ -11,10 +11,16 @@ import '../../models/transition_geometry.dart';
 import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_transitions.dart';
+import '../../models/cut_camera.dart';
+import '../../models/cut_id.dart';
 import '../../services/commands/track_transition_commands.dart';
+import '../../services/project_tree_editor.dart' show updateTrackById;
 import '../timeline/instruction_span_editing.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
+    show
+        TimelineDragPreview,
+        camerasAsReleased,
+        timelineDragPreviewGlobalLayerFor;
 import 'session_roles.dart';
 import 'camera.dart';
 import 'transition_row_names.dart';
@@ -108,6 +114,39 @@ class Transitions {
 
   bool isTrackTransitionLayerId(LayerId layerId) =>
       trackTransitionOwner(layerId) != null;
+
+  /// Whether [row] — a track's transition row as a drag would leave it —
+  /// draws none of the track's cuts past its camera keys
+  /// ([transitionRowKeepsCameraKeys], I-73-camera-row-Q7): the drags that
+  /// make a のりしろ shorter stop short of them.
+  bool keepsCameraKeys(Layer row) => switch (trackTransitionOwner(row.id)) {
+    final owner? => transitionRowKeepsCameraKeys(
+      owner,
+      row,
+      _project.repository.requireProject().cameraInstructions,
+    ),
+    null => true,
+  };
+
+  /// The cameras [row] moves once written — the key on the last frame of
+  /// each cut it draws for other frames (`cameraFollowingItsEnd`,
+  /// I-73-camera-row-Q7) — so a drag shows them where its release leaves
+  /// them.
+  Map<CutId, CutCamera> camerasCarriedBy(Layer row) {
+    final owner = trackTransitionOwner(row.id);
+    if (owner == null) {
+      return const {};
+    }
+    final project = _project.repository.requireProject();
+    final draft = updateTrackById(
+      project,
+      owner.id,
+      (track) => track.copyWith(transitionLayer: row),
+    );
+    return draft == null
+        ? const {}
+        : camerasAsReleased(_project.repository, draft);
+  }
 
   /// The row as its readers SHOW it — every span named by the cuts it joins
   /// (F-229). ⛔Only for showing: this object's edits never read a name.

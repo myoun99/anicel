@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../models/camera_instruction.dart';
+import '../../../models/cut_camera.dart';
+import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
@@ -25,6 +27,8 @@ class TransitionEdgeDrag implements EditorDragSession {
     required TimelineBlockEdge edge,
     required ValueNotifier<TimelineDragPreview?> preview,
     required ({Layer shown, Layer? global}) Function(Layer row) formsOf,
+    required bool Function(Layer row) keepsCameraKeys,
+    required Map<CutId, CutCamera> Function(Layer row) camerasCarriedBy,
     required void Function(
       Map<int, InstructionEvent> instructions, {
       required String description,
@@ -35,6 +39,8 @@ class TransitionEdgeDrag implements EditorDragSession {
        _edge = edge,
        _preview = preview,
        _formsOf = formsOf,
+       _keepsCameraKeys = keepsCameraKeys,
+       _camerasCarriedBy = camerasCarriedBy,
        _commitInstructions = commitInstructions;
 
   /// Grabs [edge] of the transition span starting at [spanStartIndex]
@@ -53,6 +59,8 @@ class TransitionEdgeDrag implements EditorDragSession {
     LayerId? layerId,
     required ValueNotifier<TimelineDragPreview?> preview,
     required ({Layer shown, Layer? global}) Function(Layer row) formsOf,
+    required bool Function(Layer row) keepsCameraKeys,
+    required Map<CutId, CutCamera> Function(Layer row) camerasCarriedBy,
     required void Function(
       Map<int, InstructionEvent> instructions, {
       required String description,
@@ -71,6 +79,8 @@ class TransitionEdgeDrag implements EditorDragSession {
       edge: edge,
       preview: preview,
       formsOf: formsOf,
+      keepsCameraKeys: keepsCameraKeys,
+      camerasCarriedBy: camerasCarriedBy,
       commitInstructions: commitInstructions,
     );
   }
@@ -92,6 +102,14 @@ class TransitionEdgeDrag implements EditorDragSession {
   /// The row's two preview forms (`Transitions.previewFormsOf`).
   final ({Layer shown, Layer? global}) Function(Layer row) _formsOf;
 
+  /// Whether a row draws no cut past its camera keys
+  /// (`Transitions.keepsCameraKeys`).
+  final bool Function(Layer row) _keepsCameraKeys;
+
+  /// The cameras a row moves once written (`Transitions.camerasCarriedBy`):
+  /// the key on a cut's last frame follows the edge under the hand.
+  final Map<CutId, CutCamera> Function(Layer row) _camerasCarriedBy;
+
   /// The row's own writer on the session ([updateTransitionInstructions]):
   /// one undo step, description and all.
   final void Function(
@@ -102,13 +120,7 @@ class TransitionEdgeDrag implements EditorDragSession {
 
   @override
   void update(int cumulativeDelta) {
-    final next = instructionMapWithEdgeShifted(
-      _before.instructions,
-      spanStartIndex: _spanStartIndex,
-      startEdge: _edge == TimelineBlockEdge.start,
-      delta: cumulativeDelta,
-    );
-    final after = next == null ? null : _before.copyWith(instructions: next);
+    final after = _rowAt(cumulativeDelta);
     _after = after;
     if (after == null) {
       _preview.value = null;
@@ -118,7 +130,39 @@ class TransitionEdgeDrag implements EditorDragSession {
     _preview.value = ExposureEdgeDragPreview(
       previewLayer: forms.shown,
       globalPreviewLayer: forms.global,
+      previewCameras: _camerasCarriedBy(after),
     );
+  }
+
+  /// The row with the edge [delta] frames over — or, where that would draw
+  /// a cut past its camera keys, the nearest step back that does not: the
+  /// edge stops short of them as a cut's end does (🗣️I-73-camera-row-Q7,
+  /// 「컷 길이 줄이기와 똑같이 — 안쪽 키 앞에서 멈춤」). Null where the edge
+  /// does not move.
+  Layer? _rowAt(int delta) {
+    // A hand far past a span's own floor steps back through the one row
+    // the shift clamps it to: that row is asked once.
+    Map<int, InstructionEvent>? refused;
+    for (var step = delta; step != 0; step -= step.sign) {
+      final next = instructionMapWithEdgeShifted(
+        _before.instructions,
+        spanStartIndex: _spanStartIndex,
+        startEdge: _edge == TimelineBlockEdge.start,
+        delta: step,
+      );
+      if (next == null) {
+        return null;
+      }
+      if (refused != null && mapEquals(next, refused)) {
+        continue;
+      }
+      final row = _before.copyWith(instructions: next);
+      if (_keepsCameraKeys(row)) {
+        return row;
+      }
+      refused = next;
+    }
+    return null;
   }
 
   /// Commits the drag as ONE undo step through the row's own writer.

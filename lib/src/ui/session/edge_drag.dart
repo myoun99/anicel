@@ -97,6 +97,8 @@ class EdgeDragVerbs {
       layerId: layerId,
       preview: _roles.dragPreview,
       formsOf: _transitions.previewFormsOf,
+      keepsCameraKeys: _transitions.keepsCameraKeys,
+      camerasCarriedBy: _transitions.camerasCarriedBy,
       commitInstructions: _transitions.updateTransitionInstructions,
     );
     if (drag == null) {

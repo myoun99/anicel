@@ -19,7 +19,10 @@ import 'active_cut_edits.dart';
 import 'cut_under_playhead.dart';
 import 'session_roles.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show CutTrimDragPreview, TimelineDragPreview, laneEditInFlight;
+    show
+        TimelineDragPreview,
+        laneEditInFlight,
+        timelineDragPreviewCarriedCamera;
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -302,9 +305,9 @@ class Camera {
   /// committed camera, so dragging a camera value in its lane moved every
   /// marker and label and left the frame where it was until the release.
   ///
-  /// …and a length change in flight (I-73-camera-row-Q4): the key on the
-  /// cut's last frame moves with it under the hand
-  /// ([CutTrimDragPreview.previewCameras]).
+  /// …and a length change in flight — a trim (I-73-camera-row-Q4) or an
+  /// O.L's edge (Q7): the key on the cut's last frame moves with it under
+  /// the hand ([timelineDragPreviewCarriedCamera]).
   TransformTrack? get activeCutCameraTrack {
     final cut = _project.activeCutOrNull;
     final preview = _dragPreview.value;
@@ -312,10 +315,10 @@ class Camera {
     if (cut != null && edit?.cameraCutId == cut.id) {
       return edit!.cameraTrack;
     }
-    final trimmed = cut != null && preview is CutTrimDragPreview
-        ? preview.previewCameras[cut.id]
-        : null;
-    return _cameraKeysDragPreview ?? trimmed?.track ?? cut?.camera.track;
+    final carried = cut == null
+        ? null
+        : timelineDragPreviewCarriedCamera(preview, cut.id);
+    return _cameraKeysDragPreview ?? carried?.track ?? cut?.camera.track;
   }
 
   /// The in-flight camera-key preview the cell resolution consults

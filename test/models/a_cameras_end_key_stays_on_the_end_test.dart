@@ -9,8 +9,13 @@ import 'package:anicel/src/models/transform_track.dart';
 /// 존재못하게하는게 지금구조잖아」.
 ///
 /// The key on a camera's last frame moves with that frame, its pose, type
-/// and name its own; every other key stays — and a shrink stops short of
-/// the last of those, so none is ever put out.
+/// and name its own; every other key stays — and a shrink the hand drives
+/// stops short of the last of those, so none is ever put out.
+///
+/// 🗣️I-73-camera-row-Q7 (유저 2026-10-09): 「OL삭제한다거나 하면 키를 컷
+/// 길이 줄이는거랑 동일하게 그 사라진 코마만큼 컷길이 움직인거랑 동일한
+/// 규칙으로 키를 앞당긴다」 — a shrink that comes at once brings in every key
+/// on the frames that went, by as many frames as went.
 void main() {
   /// A camera whose POSITION lane keys [x]'s frames (x being the frame) and
   /// whose ROTATION lane keys [turns]'.
@@ -45,7 +50,7 @@ void main() {
   group('the key on the last frame', () {
     test('🚨comes out with the end when the cut grows — pose, type, name and '
         'every lane', () {
-      final moved = cameraWithItsEndKeyAt(
+      final moved = cameraFollowingItsEnd(
         cameraOf(
           [0, 12, 23],
           turns: [0, 23],
@@ -66,7 +71,7 @@ void main() {
     test('🚨comes in with the end when the cut shrinks', () {
       expect(
         positions(
-          cameraWithItsEndKeyAt(
+          cameraFollowingItsEnd(
             cameraOf([0, 12, 23]),
             lastFrame: 15,
             previousLastFrame: 23,
@@ -77,13 +82,13 @@ void main() {
     });
 
     test('and back again is the same move the other way', () {
-      final out = cameraWithItsEndKeyAt(
+      final out = cameraFollowingItsEnd(
         cameraOf([0, 12, 23]),
         lastFrame: 29,
         previousLastFrame: 23,
       );
       expect(
-        cameraWithItsEndKeyAt(out, lastFrame: 23, previousLastFrame: 29),
+        cameraFollowingItsEnd(out, lastFrame: 23, previousLastFrame: 29),
         cameraOf([0, 12, 23]),
       );
     });
@@ -92,34 +97,88 @@ void main() {
   test('a camera with no key on its last frame is the very camera back', () {
     final camera = cameraOf([0, 20]);
     expect(
-      cameraWithItsEndKeyAt(camera, lastFrame: 29, previousLastFrame: 23),
+      cameraFollowingItsEnd(camera, lastFrame: 29, previousLastFrame: 23),
       same(camera),
     );
     expect(
-      cameraWithItsEndKeyAt(camera, lastFrame: 23, previousLastFrame: 23),
+      cameraFollowingItsEnd(camera, lastFrame: 23, previousLastFrame: 23),
       same(camera),
       reason: 'nothing moved',
     );
   });
 
-  test('a lane already keyed on the new last frame keeps both where they '
-      'are', () {
+  test('a lane already keyed on the new last frame, as the cut GROWS, keeps '
+      'both where they are', () {
     expect(
       positions(
-        cameraWithItsEndKeyAt(
-          cameraOf([0, 15, 23]),
-          lastFrame: 15,
-          previousLastFrame: 23,
+        cameraFollowingItsEnd(
+          cameraOf([0, 15, 29]),
+          lastFrame: 29,
+          previousLastFrame: 15,
         ),
       ),
-      {0: 0, 15: 15, 23: 23},
+      {0: 0, 15: 15, 29: 29},
     );
+  });
+
+  group('a shrink that comes at once (I-73-camera-row-Q7)', () {
+    test('🚨brings every key on the frames that went in by as many frames — '
+        'the end key with them, every lane', () {
+      final moved = cameraFollowingItsEnd(
+        cameraOf([0, 20, 27, 29], turns: [0, 27]),
+        lastFrame: 23,
+        previousLastFrame: 29,
+      );
+
+      expect(positions(moved), {0: 0, 20: 20, 21: 27, 23: 29});
+      expect(moved.track.rotation.keys.keys, [0, 21]);
+    });
+
+    test('a key coming in onto another takes its frame (Q8)', () {
+      expect(
+        positions(
+          cameraFollowingItsEnd(
+            cameraOf([0, 15, 23]),
+            lastFrame: 15,
+            previousLastFrame: 23,
+          ),
+        ),
+        {0: 0, 15: 23},
+      );
+    });
+
+    test('a key that stood past the old end already is not for this write to '
+        'move', () {
+      expect(
+        positions(
+          cameraFollowingItsEnd(
+            cameraOf([0, 23, 40]),
+            lastFrame: 15,
+            previousLastFrame: 23,
+          ),
+        ),
+        {0: 0, 15: 23, 40: 40},
+      );
+    });
+
+    test('a key that would come in before frame 0 lands on it', () {
+      expect(
+        positions(
+          cameraFollowingItsEnd(
+            cameraOf([1, 20]),
+            lastFrame: 5,
+            previousLastFrame: 29,
+          ),
+        ),
+        {0: 20, 1: 1},
+      );
+    });
   });
 
   test('⚠️a cut of one frame keeps its key on the first', () {
     final camera = cameraOf([0]);
     expect(
-      cameraWithItsEndKeyAt(camera, lastFrame: 4, previousLastFrame: 0),
+      cameraFollowingItsEnd(camera, lastFrame: 4, previousLastFrame: 0),
       same(camera),
     );
   });

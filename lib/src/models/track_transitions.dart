@@ -9,6 +9,7 @@ library;
 
 import 'camera_instruction.dart';
 import 'cut.dart';
+import 'cut_camera.dart' show cameraDrawnFrameFloor;
 import 'cut_id.dart';
 import 'layer.dart';
 import 'project.dart';
@@ -72,6 +73,38 @@ int drawnFramesOfCutAt({
     spans: spans,
   ),
 );
+
+/// Whether [row], as [track]'s transition row, draws no cut for fewer
+/// frames than its camera keeps ([cameraDrawnFrameFloor]) where it draws
+/// one for fewer frames than the track's own row does.
+///
+/// 🗣️I-73-camera-row-Q7 (유저 2026-10-09 → `floor`): 「컷 길이 줄이기와
+/// 똑같이 — 안쪽 키 앞에서 멈춤」. A drag that makes a のりしろ shorter
+/// stops short of the camera keys on it, as a cut's end does, the key on
+/// the end coming in with it (`cameraFollowingItsEnd`). What takes a
+/// のりしろ away at once is not stopped: the keys on it come in.
+bool transitionRowKeepsCameraKeys(
+  Track track,
+  Layer row,
+  CameraInstructionSet vocabulary,
+) {
+  final before = trackTransitionSpans(track, vocabulary);
+  final after = transitionRowSpans(row, vocabulary);
+  for (final placed in cutSpansOf(track)) {
+    int drawnAmong(List<TransitionSpan> spans) => drawnFramesOfCutAt(
+      cut: placed.cut,
+      cutStart: placed.startFrame,
+      spans: spans,
+    );
+    final was = drawnAmong(before);
+    final now = drawnAmong(after);
+    if (now < was &&
+        now < cameraDrawnFrameFloor(placed.cut.camera, drawnFrameCount: was)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /// Every cut of [project] with the のりしろ its own track's transitions ask
 /// of it — before its conte (an O.L arriving) and after it (an O.L leaving).
