@@ -72,7 +72,7 @@ class ShownPictures implements PlaybackPictures {
 }
 
 /// A cut's frame as ONE picture, the cut's own size ([CutFrameCompositeCache])
-/// — what the composite view plays and the track stack shows.
+/// — what the track stack shows: the whole film.
 class CompositePictures implements PlaybackPictures {
   CompositePictures(this.composites);
 

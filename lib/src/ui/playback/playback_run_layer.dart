@@ -12,7 +12,7 @@ import 'playback_prerender_scheduler.dart';
 ///
 /// 🚨★★★THE CLOCK'S TICKER LIVES HERE, and so a run has ONE of these
 /// mounted, in one place, for as long as it is active — whatever draws the
-/// picture: the canvas, the composite view or the track stack
+/// picture: the canvas or the track stack
 /// (playback-plays-the-screen-material). It used to be the composite
 /// view's, which tied the clock to the one way of drawing a frame that the
 /// overhaul retires.

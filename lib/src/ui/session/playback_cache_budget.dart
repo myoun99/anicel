@@ -229,8 +229,8 @@ class PlaybackCacheBudget implements PictureRoom {
   /// plays a frame from them — the timeline's, a cut played alone — and a
   /// span is ready when they are, the question a run asks before it goes
   /// on ([CanvasPictures.has]) asked of the span's first frame. Null is the
-  /// composite view's run: the storyboard's, the film, which plays on the
-  /// track stack yet.
+  /// film's run — the storyboard's — which plays on the track stack, from
+  /// composites, yet.
   ///
   /// ↩️Both bars read the run on screen NOW, so the storyboard's went green
   /// on a cut's canvas pictures — pictures its film never shows (the B1

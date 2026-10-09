@@ -529,7 +529,7 @@ class _InteractiveCanvasBuild {
       // interactive view from the layer image cache — this is what makes
       // the other layers (and their visibility/opacity) visible while
       // editing. A run the canvas plays is drawn HERE too, every row an
-      // image; a run on the composite view covers everything. Under an
+      // image; the whole film, on the track stack, covers everything. Under an
       // active CUT pose (R9-B) the paper splits out of the wrap: the canvas
       // is the static stage, only the content rides the pose.
       viewportUnderlayBuilder: _isPlaybackActive && !_canvasPlays
@@ -546,7 +546,7 @@ class _InteractiveCanvasBuild {
       // [EditingCanvas.stack].
       activeSourceEffects: _layerStack.activeSourceEffects,
       interactiveContentPose: _interactivePose,
-      // The composite view renders the camera framing itself; the editing
+      // The track stack renders the camera framing itself; the editing
       // overlay would show a stale playhead pose on top of it. A scrub
       // keeps the CAMERA overlay — the preview is the current view moving
       // through time, so the frame stays visible and rides the cursor —

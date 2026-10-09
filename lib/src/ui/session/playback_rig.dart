@@ -113,8 +113,7 @@ class PlaybackRig implements PlaybackRun {
 
   // ── what the screen shows a frame from ──────────────────────────────
 
-  /// A cut's frame as one composite — the composite view's and the track
-  /// stack's.
+  /// A cut's frame as one composite — the track stack's: the whole film.
   late final CompositePictures compositePictures = CompositePictures(
     _renderCaches.cutFrameCompositeCache,
   );
