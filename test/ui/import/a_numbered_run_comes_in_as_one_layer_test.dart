@@ -361,12 +361,20 @@ void main() {
   // goes, how it fits (`importPictureRun` reads those two answers).
   for (final (differs, answerOtherwise) in <(
     String,
-    Future<void> Function(WidgetTester, String path),
+    Future<void> Function(WidgetTester, Map<String, String> files),
   )>[
     ('span\'s start', (tester, _) => span(tester, 2, 3)),
     ('span\'s end', (tester, _) => span(tester, 1, 2)),
-    ('place', (tester, path) => answer(tester, 'into', path, 'newCut')),
-    ('fit', (tester, path) => answer(tester, 'fit', path, 'none')),
+    (
+      'place',
+      (tester, files) async {
+        // A new cut takes its picture 1:1 (`importFitLocked`), so the other
+        // row is answered 1:1 too: the rows differ in where they go alone.
+        await answer(tester, 'fit', files['A3']!, 'none');
+        await answer(tester, 'into', files['A1']!, 'newCut');
+      },
+    ),
+    ('fit', (tester, files) => answer(tester, 'fit', files['A1']!, 'none')),
   ]) {
     testWidgets('two pictures of one run whose rows answer otherwise — '
         'another $differs — bring a layer each', (tester) async {
@@ -380,7 +388,7 @@ void main() {
       ];
       final before = runLayers().toSet();
       // The preview shows the first row while none is picked: A1's.
-      await answerOtherwise(tester, files['A1']!);
+      await answerOtherwise(tester, files);
 
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
