@@ -9,7 +9,6 @@ import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
-import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/camera_pose_resolver.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_cut_camera_command.dart';
@@ -251,8 +250,7 @@ class Camera {
     var camera = cut.camera;
     var changed = false;
     // Keys only on the frames the cut is drawn for (I-73-camera-row-Q2).
-    final drawn =
-        cutDrawnFrameCount(_project.repository.requireProject(), cutId) ?? 0;
+    final drawn = _project.activeCutDrawnFrameCount;
     for (
       var frame = selection.startIndex;
       frame < selection.endIndexExclusive;

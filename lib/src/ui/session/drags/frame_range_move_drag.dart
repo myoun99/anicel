@@ -1374,7 +1374,14 @@ class FrameRangeMoveDrag {
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
       );
-      if (cameraShifted == null) {
+      // …and none of them out of the cut (🗣️I-73-camera-row-Q2), the
+      // lanes' own move asks the same ([cameraWriteKeepsKeysIn]).
+      if (cameraShifted == null ||
+          !cameraWriteKeepsKeysIn(
+            cameraKeys.before,
+            cameraShifted,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
+          )) {
         return null;
       }
     }

@@ -16,8 +16,11 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformTrackWithPositionDragged;
 
 /// 🗣️I-73-camera-row-Q2 (유저 2026-10-09: 「콘티처럼 컷밖으로 못나가게
 /// 클리핑」 → `own-frames`): a camera key lives on the frames its cut is
@@ -53,7 +56,7 @@ void main() {
     ],
   );
 
-  EditorSessionManager open() {
+  EditorSessionManager open({List<int> bKeys = const [2]}) {
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('inside'),
@@ -65,7 +68,7 @@ void main() {
             name: 'V',
             cuts: [
               cutOf('a', [0]),
-              cutOf('b', [2]),
+              cutOf('b', bKeys),
             ],
           ),
         ],
@@ -92,6 +95,56 @@ void main() {
         .keyframes
         .keys,
   ];
+
+  List<int> positionKeysOf(EditorSessionManager session, CutId id) => [
+    ...session.repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .singleWhere((cut) => cut.id == id)
+        .camera
+        .track
+        .position
+        .keys
+        .keys,
+  ];
+
+  /// [frame] of b's Position lane: a ◆ toggled there, or a value typed.
+  void keyAt(EditorSessionManager session, int frame) =>
+      session.laneVerbs.toggleLaneKeyAt(
+        const LayerId('b-cam'),
+        'position',
+        frame,
+        frameIsGlobal: false,
+        description: 'Key',
+      );
+  void typeAt(EditorSessionManager session, int frame) =>
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('b-cam'),
+        'position',
+        frame,
+        '10, 10',
+        frameIsGlobal: false,
+        description: 'Type',
+        scaleLinked: true,
+      );
+
+  /// b's Position lane picked up at [frame] and slid by each of [deltas].
+  void slideLane(EditorSessionManager session, int frame, List<int> deltas) {
+    session.updateLaneRangeSelectionDrag(
+      layerId: const LayerId('b-cam'),
+      laneId: 'position',
+      anchorIndex: frame,
+      headIndex: frame,
+      spanLaneIds: const [],
+    );
+    expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    for (final delta in deltas) {
+      session.laneMove.updateLaneRangeMoveDrag(frameDelta: delta);
+    }
+    session.laneMove.endLaneRangeMoveDrag();
+  }
 
   test('the ＋ past the cut\'s end is dark, and the key it would make is '
       'not made', () {
@@ -153,5 +206,111 @@ void main() {
     expect(cameraKeyFits(23, drawnFrameCount: 24), isTrue);
     expect(cameraKeyFits(24, drawnFrameCount: 24), isFalse);
     expect(cameraKeyFits(-1, drawnFrameCount: 24), isFalse);
+  });
+
+  group('…nor put out of it: a write that would is not made', () {
+    test('a ◆ or a value at a frame past the end keys nothing, and a scrub '
+        'there shows nothing — on its own frames they key', () {
+      final session = onTheCameraRow(b, 30);
+
+      keyAt(session, 30);
+      typeAt(session, 31);
+      session.laneVerbs.previewLaneValueAt(
+        const LayerId('b-cam'),
+        'position',
+        32,
+        '10, 10',
+        frameIsGlobal: false,
+        scaleLinked: true,
+      );
+      expect(session.dragPreview.value, isNull);
+      expect(positionKeysOf(session, b), [2]);
+
+      // LIVENESS
+      keyAt(session, 20);
+      typeAt(session, 23);
+      expect(positionKeysOf(session, b), [2, 20, 23]);
+    });
+
+    test('🚨the frame dragged on the canvas past the end moves nothing, '
+        'shown or released', () {
+      final session = onTheCameraRow(b, 30);
+      TransformTrack moved(TransformTrack track, int frame) =>
+          transformTrackWithPositionDragged(
+            track,
+            frameIndex: frame,
+            position: CanvasPoint(x: 1, y: 1),
+          );
+
+      session.laneVerbs.previewLayerTransformAtPlayhead(
+        const LayerId('b-cam'),
+        moved,
+      );
+      expect(session.dragPreview.value, isNull);
+      session.laneVerbs.editLayerTransformAtPlayhead(
+        const LayerId('b-cam'),
+        moved,
+        description: 'Move camera',
+      );
+      expect(positionKeysOf(session, b), [2]);
+
+      // LIVENESS
+      session.selectFrameIndex(23);
+      session.laneVerbs.editLayerTransformAtPlayhead(
+        const LayerId('b-cam'),
+        moved,
+        description: 'Move camera',
+      );
+      expect(positionKeysOf(session, b), [2, 23]);
+    });
+
+    test('🚨a lane\'s keys slid toward the end stop on its last frame: the '
+        'step past it holds the one before', () {
+      final session = onTheCameraRow(b, 0);
+
+      slideLane(session, 2, [21, 22]);
+
+      expect(positionKeysOf(session, b), [23]);
+      expect(session.laneRangeSelection.value!.startIndex, 23);
+    });
+
+    test('🚨…and so do the keys a range of cells carries', () {
+      final session = onTheCameraRow(b, 0)
+        ..updateFrameRangeSelectionDrag(
+          layerId: const LayerId('b-cam'),
+          anchorIndex: 2,
+          headIndex: 2,
+        );
+
+      expect(
+        session.rangeMove.beginFrameRangeMoveDrag(const LayerId('b-cam')),
+        isTrue,
+      );
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 21);
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 22);
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expect(keysOf(session, b), [23]);
+    });
+
+    test('a key already out — an O.L can still leave one there — is not put '
+        'out by a write: kept while others are made, brought back in or '
+        'taken away, and not moved further out', () {
+      final session = open(bKeys: const [2, 30])..selectCut(b);
+      expect(positionKeysOf(session, b), [2, 30], reason: '⛔전제');
+
+      slideLane(session, 30, [1]);
+      expect(positionKeysOf(session, b), [2, 30], reason: 'not further out');
+
+      keyAt(session, 10);
+      expect(positionKeysOf(session, b), [2, 10, 30]);
+
+      slideLane(session, 30, [-10]);
+      expect(positionKeysOf(session, b), [2, 10, 20]);
+      session.undo();
+
+      keyAt(session, 30);
+      expect(positionKeysOf(session, b), [2, 10]);
+    });
   });
 }

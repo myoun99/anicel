@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
-import '../../models/cut_camera.dart' show cameraKeyFits;
+import '../../models/cut_camera.dart'
+    show cameraKeyFits, cameraWriteKeepsKeysIn;
 import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -13,7 +14,6 @@ import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_transform_lane_carrier.dart';
-import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/camera_pose_resolver.dart';
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../../services/cut_frame_composite_plan.dart';
@@ -294,11 +294,8 @@ class LaneVerbs {
   /// the CAMERA's lanes none its cut is not drawn for — 🗣️I-73-camera-row-Q2
   /// (유저 2026-10-09: 「콘티처럼 컷밖으로 못나가게 클리핑」 → `own-frames`).
   List<int> _keyableFrames(Layer layer, TimelineLaneSelection lane) {
-    final cutId = _project.activeCutId;
     final drawn = _transformHomeOf(layer) == _TransformHome.cutCamera
-        ? (cutId == null
-              ? 0
-              : cutDrawnFrameCount(_project.repository.requireProject(), cutId))
+        ? _project.activeCutDrawnFrameCount
         : null;
     return [
       for (
@@ -311,6 +308,20 @@ class LaneVerbs {
             : cameraKeyFits(frame, drawnFrameCount: drawn))
           frame,
     ];
+  }
+
+  /// Whether the open cut's camera can be written as [track]: it puts no
+  /// key out of the frames the cut is drawn for ([cameraWriteKeepsKeysIn],
+  /// 🗣️I-73-camera-row-Q2). Both camera arms below ask it, so what a drag
+  /// shows is what its release keeps.
+  bool _cameraTakes(TransformTrack track) {
+    final camera = _project.activeCutOrNull?.camera.track;
+    return camera != null &&
+        cameraWriteKeepsKeysIn(
+          camera,
+          track,
+          drawnFrameCount: _project.activeCutDrawnFrameCount,
+        );
   }
 
   /// The row you are STANDING on, as a one-frame span at the playhead.
@@ -812,7 +823,9 @@ class LaneVerbs {
   }) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        _updateActiveCutCameraTrack(track, description: description);
+        if (_cameraTakes(track)) {
+          _updateActiveCutCameraTrack(track, description: description);
+        }
       case _TransformHome.nowhere:
         return;
       case _TransformHome.row:
@@ -825,7 +838,8 @@ class LaneVerbs {
   }
 
   /// [track] on [layer] as a lane edit in flight shows it — the twin of
-  /// [_commitTransformTrack], home for home. Null where it shows nothing.
+  /// [_commitTransformTrack], home for home. Null where it shows nothing,
+  /// and where that commit would refuse it: a range move holds there.
   TimelineDragPreview? _laneTransformPreview(
     Layer layer,
     TransformTrack track,
@@ -833,7 +847,7 @@ class LaneVerbs {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
         final cut = _project.activeCutOrNull;
-        return cut == null
+        return cut == null || !_cameraTakes(track)
             ? null
             : LaneEditPreview.camera(
                 cameraCutId: cut.id,

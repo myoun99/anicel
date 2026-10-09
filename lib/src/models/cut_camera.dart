@@ -79,6 +79,29 @@ class CutCamera {
 bool cameraKeyFits(int frame, {required int drawnFrameCount}) =>
     frame >= 0 && frame < drawnFrameCount;
 
+/// Whether writing [after] over [before] puts no camera key out of a cut
+/// drawn for [drawnFrameCount] frames ([cameraKeyFits]): none made there,
+/// none moved there — the verbs that make a key at a frame, move a range
+/// of them or drag the frame on the canvas all ask it of what they would
+/// write.
+///
+/// A key already out there is not put out by this write, so it may stay
+/// or be taken away: an O.L edit can still leave one past the end
+/// (I-73's ② lane), and a camera that refused every write while it stood
+/// would have no way back in.
+bool cameraWriteKeepsKeysIn(
+  TransformTrack before,
+  TransformTrack after, {
+  required int drawnFrameCount,
+}) {
+  final had = before.keyedFrames;
+  return after.keyedFrames.every(
+    (frame) =>
+        had.contains(frame) ||
+        cameraKeyFits(frame, drawnFrameCount: drawnFrameCount),
+  );
+}
+
 /// [camera] with the key on [previousLastFrame] — the last frame its cut
 /// was drawn for — moved to [lastFrame], the last one it is drawn for now:
 /// on every lane that keys it and has nothing on [lastFrame] yet.
