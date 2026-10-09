@@ -1831,14 +1831,22 @@ class _StoryboardRailRows {
 /// A track's cuts as a drag preview lays them — what its rows are built
 /// from ([_StoryboardRailRows.trackGroupSection]): the same strip while it
 /// is the same cut objects in the same order, which is all a layout is
-/// made of ([cutSpansOfCuts]) — and the same transition row, which a cut
-/// edge drag carries with the boundary it crosses (the camera row reads
-/// the cuts' のりしろ off it, I-73 ④).
+/// made of ([cutSpansOfCuts]).
 ///
 /// So a step that moves none of them — an SE row's comma, whose rows are
 /// built outside (R10-③) — rebuilds none of its rows. 🔬Measured
 /// (storyboard-drags-lay-out-alone, 10-01): it rebuilt every one of them at
 /// every step.
+///
+/// It carries the track's transition row as the same preview shows it — a
+/// cut edge drag takes the O.L across the boundary it crosses — for the
+/// camera row, which reads its cuts' のりしろ off it (I-73 ④). ⛔The row is
+/// not part of what makes two strips the same: a cut edge drag moves a cut
+/// anyway, and a span's own edge drag is heard by the camera row itself
+/// ([_StoryboardRailRows._cameraStripRow]'s slice reads the preview). In
+/// the strip's sameness it would rebuild every row of the track at every
+/// step of that drag, and the mutation run (10-09) found no row drawing
+/// differently for it.
 final class _TrackStrip {
   const _TrackStrip(this.entries, this.transitionRow);
 
@@ -1847,9 +1855,7 @@ final class _TrackStrip {
 
   @override
   bool operator ==(Object other) {
-    if (other is! _TrackStrip ||
-        other.entries.length != entries.length ||
-        !identical(other.transitionRow, transitionRow)) {
+    if (other is! _TrackStrip || other.entries.length != entries.length) {
       return false;
     }
     for (var i = 0; i < entries.length; i += 1) {
@@ -1861,8 +1867,6 @@ final class _TrackStrip {
   }
 
   @override
-  int get hashCode => Object.hashAll([
-    identityHashCode(transitionRow),
-    for (final entry in entries) identityHashCode(entry.cut),
-  ]);
+  int get hashCode =>
+      Object.hashAll([for (final entry in entries) identityHashCode(entry.cut)]);
 }
