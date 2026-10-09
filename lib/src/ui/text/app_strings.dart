@@ -1285,6 +1285,15 @@ enum AppStrings {
       .replaceAll('{first}', first)
       .replaceAll('{last}', last)
       .replaceAll('{n}', '$count');
+  String imRateTitle({required String movie, required String project}) => _s(
+    'imRateTitleTemplate',
+  ).replaceAll('{movie}', movie).replaceAll('{project}', project);
+  String imRateBody(String movie) =>
+      _s('imRateBodyTemplate').replaceAll('{movie}', movie);
+  String imRateKeep(String project) =>
+      _s('imRateKeepTemplate').replaceAll('{project}', project);
+  String imRateTake(String movie) =>
+      _s('imRateTakeTemplate').replaceAll('{movie}', movie);
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitOriginal => _s('imFitOriginal');
@@ -2423,6 +2432,11 @@ enum AppStrings {
     'imPictureOnly': 'Picture only',
     'imSoundOnly': 'Sound only',
     'imRunSpanTemplate': '{first}–{last} ({n})',
+    'imRateTitleTemplate': 'Movie {movie} · project {project}',
+    'imRateBodyTemplate':
+        'Set the project to {movie}? The sound keeps its timing.',
+    'imRateKeepTemplate': 'Keep {project}',
+    'imRateTakeTemplate': 'Set to {movie}',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitOriginal': 'Original size',
@@ -3759,6 +3773,10 @@ enum AppStrings {
     'imPictureOnly': '絵のみ',
     'imSoundOnly': '音のみ',
     'imRunSpanTemplate': '{first}–{last}（{n}枚）',
+    'imRateTitleTemplate': '動画 {movie}・プロジェクト {project}',
+    'imRateBodyTemplate': 'プロジェクトを {movie} に合わせますか？音のタイミングは維持されます。',
+    'imRateKeepTemplate': '{project} のまま',
+    'imRateTakeTemplate': '{movie} に合わせる',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitOriginal': '原寸',
@@ -5204,6 +5222,10 @@ enum AppStrings {
     'imPictureOnly': '그림만',
     'imSoundOnly': '소리만',
     'imRunSpanTemplate': '{first}–{last} ({n}장)',
+    'imRateTitleTemplate': '동영상 {movie} · 프로젝트 {project}',
+    'imRateBodyTemplate': '프로젝트를 {movie} 로 맞출까요? 소리는 타이밍을 유지합니다.',
+    'imRateKeepTemplate': '{project} 그대로',
+    'imRateTakeTemplate': '{movie} 로 맞춤',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitOriginal': '원본 크기',
@@ -6759,6 +6781,11 @@ enum AppStrings {
     'imPictureOnly': 'Image seule',
     'imSoundOnly': 'Son seul',
     'imRunSpanTemplate': '{first}–{last} ({n})',
+    'imRateTitleTemplate': 'Vidéo {movie} · projet {project}',
+    'imRateBodyTemplate':
+        'Régler le projet à {movie} ? Le son garde son timing.',
+    'imRateKeepTemplate': 'Garder {project}',
+    'imRateTakeTemplate': 'Régler à {movie}',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitOriginal': 'Taille d’origine',
@@ -8151,6 +8178,10 @@ enum AppStrings {
     'imPictureOnly': '仅画面',
     'imSoundOnly': '仅声音',
     'imRunSpanTemplate': '{first}–{last}（{n}张）',
+    'imRateTitleTemplate': '视频 {movie} · 项目 {project}',
+    'imRateBodyTemplate': '将项目设为 {movie}？声音保持其时间。',
+    'imRateKeepTemplate': '保持 {project}',
+    'imRateTakeTemplate': '设为 {movie}',
     'commonOn': '开',
     'commonOff': '关',
     'imFitOriginal': '原始尺寸',

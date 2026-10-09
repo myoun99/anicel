@@ -8,8 +8,14 @@ import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show movieClockFor;
+import '../../models/project_frame_rate.dart';
+import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
+import '../../services/media/movie_bytes.dart' show openHeldMovie;
+import '../../services/media/video_decode_worker.dart'
+    show videoDecodeBackend;
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
@@ -21,6 +27,7 @@ import '../export/export_settings_modules.dart';
 import 'import_file_settings.dart';
 import 'import_file_table.dart';
 import 'import_preview.dart';
+import 'movie_rate_dialog.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
@@ -666,7 +673,7 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   Future<void> _runImport() async {
-    if (!_canImport) {
+    if (!_canImport || !await _answerMovieRates() || !mounted) {
       return;
     }
     setState(() {
@@ -714,6 +721,151 @@ class _ImportDialogState extends State<ImportDialog> {
           ? AppText.strings.imStatusNothing
           : tally.warnings.take(3).join(' · ');
     });
+  }
+
+  /// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
+  /// 「셋다 맞고」, 10-10 「1번」 — asked when Import is pressed): a movie
+  /// about to be PLACED whose rate is the project's pulldown partner
+  /// ([pulldownPartnerOf]) is named before it lands, and the project may
+  /// take its rate, the sound keeping its real time (「오디오 타이밍 유지」,
+  /// the plain rate change). A row that only registers places nothing — it
+  /// is asked when it is placed, through this window. False when the
+  /// person backed out of the import.
+  Future<bool> _answerMovieRates() async {
+    final project = widget.session.projectSettings.projectFrameRate;
+    final movie = await _pulldownPartnerAmongPlaced(project);
+    if (movie == null) {
+      return true;
+    }
+    if (!mounted) {
+      return false;
+    }
+    final answer = await showMovieRateDialog(
+      context,
+      project: project,
+      movie: movie,
+    );
+    if (answer == MovieRateAnswer.take && mounted) {
+      await _respanFor(from: project, to: movie);
+      widget.session.projectSettings.setProjectFrameRate(movie);
+    }
+    return answer != null && mounted;
+  }
+
+  /// The rate of the first placed movie that runs at [project]'s pulldown
+  /// partner, or null when none does.
+  Future<ProjectFrameRate?> _pulldownPartnerAmongPlaced(
+    ProjectFrameRate project,
+  ) async {
+    for (final path in _files.where(_placing)) {
+      if (mediaAssetKindForPath(path) != MediaAssetKind.video) {
+        continue;
+      }
+      final movie = await _movieInfoOf(path);
+      final partner = movie == null
+          ? null
+          : pulldownPartnerOf(project, (
+              numerator: movie.fpsNumerator,
+              denominator: movie.fpsDenominator,
+            ));
+      if (partner != null) {
+        return partner;
+      }
+    }
+    return null;
+  }
+
+  /// What [path]'s movie says of itself, read as its door will read it
+  /// ([openHeldMovie]) — null when it does not open.
+  Future<QaVideoInfo?> _movieInfoOf(String path) async {
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      widget.session.projectFile.holdMediaBytes,
+      path,
+    );
+    if (opened == null) {
+      return null;
+    }
+    try {
+      return opened.info;
+    } finally {
+      await opened.close();
+    }
+  }
+
+  /// Every span counted in PROJECT frames — a movie's and a sound's, whose
+  /// IN/OUT run on the sound's clock (`ProjectImportDoors.importVideoFile`)
+  /// — moved from [from]'s frames to [to]'s, so what the person stood IN
+  /// and OUT on before the rate changed is what comes in.
+  Future<void> _respanFor({
+    required ProjectFrameRate from,
+    required ProjectFrameRate to,
+  }) async {
+    for (final path in [..._files]) {
+      final settings = _settings[path];
+      if (settings == null || !settings.isTrimmed) {
+        continue;
+      }
+      final moved = switch (mediaAssetKindForPath(path)) {
+        MediaAssetKind.video => await _movieSpanAt(path, settings, from, to),
+        MediaAssetKind.audio => _spanAt(
+          settings,
+          (frame) => frameAtSameTime(frame, from: from, to: to),
+          (frame) => frameAtSameTime(frame, from: from, to: to),
+        ),
+        _ => null,
+      };
+      if (moved != null && mounted) {
+        _setSettings([path], (_) => moved);
+      }
+    }
+  }
+
+  /// [settings]' span with its IN through [first] and its OUT through
+  /// [last] — an OUT left at the end stays there.
+  ImportFileSettings _spanAt(
+    ImportFileSettings settings,
+    int Function(int frame) first,
+    int Function(int frame) last,
+  ) => settings.copyWith(
+    inFrame: first(settings.inFrame),
+    outFrame: switch (settings.outFrame) {
+      final out? => last(out),
+      null => null,
+    },
+  );
+
+  /// A movie's span kept on the same PICTURES: the movie frame each end
+  /// showed on [from]'s clock, found again on [to]'s ([movieClockFor]) —
+  /// IN at the first frame that shows its picture, OUT at the last. Null
+  /// when the movie does not open.
+  Future<ImportFileSettings?> _movieSpanAt(
+    String path,
+    ImportFileSettings settings,
+    ProjectFrameRate from,
+    ProjectFrameRate to,
+  ) async {
+    final movie = await _movieInfoOf(path);
+    if (movie == null) {
+      return null;
+    }
+    final speed = _projectAudioSpeed;
+    final before = movieClockFor(
+      projectRate: from,
+      audioSpeed: speed,
+      movie: movie,
+    );
+    final after = movieClockFor(
+      projectRate: to,
+      audioSpeed: speed,
+      movie: movie,
+    );
+    return _spanAt(
+      settings,
+      (frame) => after.projectFramesCovering(before.movieFrameAt(frame)),
+      (frame) =>
+          after.projectFramesCovering(before.movieFrameAt(frame) + 1) - 1,
+    );
   }
 
   /// Runs the picked import, whichever door it goes through, telling
