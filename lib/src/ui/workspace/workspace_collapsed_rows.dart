@@ -396,9 +396,6 @@ class _WorkspaceCollapsedRows {
     _state._foldedStoryboard.bindSession(session);
     _collapsedRowStructure = Listenable.merge([
       session,
-      // A stand is drawn on the rows' own channel, no session notify — and
-      // the folded storyboard is the row its rail stands on (F-322).
-      session.standing.currentRowListenable,
       session.railView.expandedLaneLayerIds,
       session.railView.expandedLaneGroupKeys,
       session.railView.hiddenSections,
