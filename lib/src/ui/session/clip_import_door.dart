@@ -11,11 +11,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
-import '../../models/camera_pose.dart';
 import '../../models/cut.dart';
-import '../../models/cut_camera.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
@@ -207,24 +204,12 @@ Future<ClipDocument?> _readStructure(String path, String scratch) =>
     });
 
 /// The project [plan] makes of [document]: its timelines' cuts on one
-/// track, its rate, and its shooting frame as the camera — the frame's
-/// size the project's, its centre where every cut's camera stands. A file
-/// with no frame is shot whole.
+/// track — each with the camera the plan gave it — its rate, and its
+/// shooting frame's size as the project's camera. A file with no frame is
+/// shot whole.
 Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   final frame = document.frame;
-  final camera = frame == null
-      ? null
-      : CutCamera(
-          keyframes: {
-            0: CameraPose(
-              center: CanvasPoint(x: frame.centerX, y: frame.centerY),
-            ),
-          },
-        );
-  final lifted = liftCutSeLayersToTrack(_track, [
-    for (final cut in plan.cuts)
-      if (camera == null) cut else cut.copyWith(camera: camera),
-  ]);
+  final lifted = liftCutSeLayersToTrack(_track, plan.cuts);
   final fps = plan.fps;
   return Project(
     id: ProjectId('clip-${DateTime.now().toUtc().millisecondsSinceEpoch}'),

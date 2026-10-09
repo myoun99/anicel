@@ -39,6 +39,7 @@ import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart';
+import 'camera_track.dart';
 import 'media_import_planner.dart' show ImportIdMint, PlannedCelBake;
 import '../../models/import/import_warning.dart';
 
@@ -325,19 +326,6 @@ SplayTreeMap<int, TimelineExposure> _withTvpEdgeMarks(
   return marked;
 }
 
-/// Deviations a straight line may have before the simplifier keeps the
-/// frame as its own key. Sized to stay under a quarter canvas pixel on a
-/// 2000px-ish canvas: position is already in canvas pixels; a 1e-4 zoom
-/// error moves a 2000px span by 0.2px, and 0.01° swings a 1000px radius
-/// by 0.17px.
-const double _cameraPositionTolerance = 0.25;
-const double _cameraZoomTolerance = 1e-4;
-const double _cameraRotationTolerance = 0.01;
-
-/// A key at least this often, so the simplifier's per-run rescan cannot
-/// turn quadratic on a very long clip.
-const int _cameraMaxRunFrames = 512;
-
 /// The clip's camera as a [CutCamera].
 ///
 /// **Built from the BAKED `positions`, not the authored `points`.**
@@ -349,9 +337,8 @@ const int _cameraMaxRunFrames = 512;
 /// are a lossy summary of it.
 ///
 /// A key on every frame would be unreadable on the timeline, so
-/// [_simplifyCameraTrack] drops every frame a straight line between its
-/// neighbours already reproduces: a linear pan collapses back to two keys,
-/// a hold to one, and easing keeps exactly the keys it needs.
+/// [cutCameraOfFramePoses] keeps only the keys the move needs — the one
+/// way a baked camera becomes keys, the .clip import's as well.
 ///
 /// `angle` arrives NEGATED — the two apps count rotation opposite ways.
 /// See [_cameraPoseFor] for the measurement that settled it.
@@ -386,18 +373,7 @@ CutCamera planTvpCamera({
     }
     byFrame.putIfAbsent(index, () => _cameraPoseFor(pose));
   }
-  if (byFrame.isEmpty) {
-    return CutCamera.empty();
-  }
-
-  final frames = byFrame.keys.toList();
-  final poses = byFrame.values.toList();
-  return CutCamera(
-    keyframes: {
-      for (final index in _simplifyCameraTrack(frames, poses))
-        frames[index]: poses[index],
-    },
-  );
+  return cutCameraOfFramePoses(byFrame);
 }
 
 /// One TVPaint pose in Anicel's terms. [CameraPose.center] is the view
@@ -436,59 +412,6 @@ CameraPose _cameraPoseFor(TvpCameraPose pose) {
     // Copying the sign through would mirror every rotating move.
     rotationDegrees: pose.angleDegrees.isFinite ? -pose.angleDegrees : 0,
   );
-}
-
-/// Indexes worth keeping: the ends, plus every frame a straight line
-/// between the surrounding kept frames fails to reproduce.
-List<int> _simplifyCameraTrack(List<int> frames, List<CameraPose> poses) {
-  if (poses.length <= 2) {
-    return [for (var i = 0; i < poses.length; i += 1) i];
-  }
-  final kept = <int>[0];
-  var anchor = 0;
-  for (var candidate = 2; candidate < poses.length; candidate += 1) {
-    if (frames[candidate] - frames[anchor] > _cameraMaxRunFrames ||
-        !_lineReproduces(frames, poses, anchor, candidate)) {
-      kept.add(candidate - 1);
-      anchor = candidate - 1;
-    }
-  }
-  kept.add(poses.length - 1);
-  return kept;
-}
-
-bool _lineReproduces(
-  List<int> frames,
-  List<CameraPose> poses,
-  int from,
-  int to,
-) {
-  final span = frames[to] - frames[from];
-  if (span <= 0) {
-    return false;
-  }
-  final start = poses[from];
-  final end = poses[to];
-  for (var middle = from + 1; middle < to; middle += 1) {
-    final t = (frames[middle] - frames[from]) / span;
-    final pose = poses[middle];
-    double off(double a, double b, double actual) => (a + (b - a) * t - actual)
-        .abs();
-    if (off(start.center.x, end.center.x, pose.center.x) >
-            _cameraPositionTolerance ||
-        off(start.center.y, end.center.y, pose.center.y) >
-            _cameraPositionTolerance ||
-        off(start.zoom, end.zoom, pose.zoom) > _cameraZoomTolerance ||
-        off(
-              start.rotationDegrees,
-              end.rotationDegrees,
-              pose.rotationDegrees,
-            ) >
-            _cameraRotationTolerance) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /// TVPaint's blending-mode NAME to Anicel's enum.

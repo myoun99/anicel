@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../models/property_track.dart';
 import 'clip_cmt.dart';
 
 /// Where a track shows its layer, in the timeline's frames: from [start]
@@ -30,12 +31,40 @@ typedef ClipSoundCue = ({
   bool volumeVaries,
 });
 
+/// How a 2D camera track's clip moves its camera (memory
+/// `csp-clip-format-notes` §3): each value of the camera's placement — its
+/// point, scale, turn and pivot — as keys on the timeline's frames, the way
+/// the app's own keys go ([PropertyTrack]): straight to the next, or held
+/// where the file says `Constant`. A value the clip keys no curve for holds the
+/// clip's `Param`; one with neither is empty, and the camera keeps its rest
+/// there. [scale] is 1 at the camera's own size, as a placement's is (the
+/// file keys percent). [unread] when a key names another curve — one this
+/// reader does not know, moved straight.
+typedef ClipCameraMove = ({
+  ClipSpan span,
+  PropertyTrack<double> x,
+  PropertyTrack<double> y,
+  PropertyTrack<double> scale,
+  PropertyTrack<double> degrees,
+  PropertyTrack<double> pivotX,
+  PropertyTrack<double> pivotY,
+  bool unread,
+});
+
 /// What one clip of a track says: [piece] — where it shows and the cels it
-/// keys — and, on a sound track, the [sound] it plays.
-typedef ClipTrackClip = ({ClipPiece piece, ClipSoundCue? sound});
+/// keys — and, on a sound track, the [sound] it plays; on a 2D camera's,
+/// the [camera] move.
+typedef ClipTrackClip = ({
+  ClipPiece piece,
+  ClipSoundCue? sound,
+  ClipCameraMove? camera,
+});
 
 /// `TrackKind` of a sound track.
 const int _soundTrackKind = 4001;
+
+/// `TrackKind` of a 2D camera folder's track.
+const int _cameraTrackKind = 2005;
 
 /// One clip of a [kind] track's action mixer — an `ActionNodeClip` of the
 /// track's CMT document — read on a timeline of [fps]. A key holds until
@@ -77,6 +106,7 @@ ClipTrackClip? readTrackClip(
     sound: kind == _soundTrackKind
         ? _soundCueOf(clip, span, frameAt, fps)
         : null,
+    camera: kind == _cameraTrackKind ? _cameraMoveOf(clip, span, frameAt) : null,
   );
 }
 
@@ -225,5 +255,77 @@ ClipSoundCue? _soundCueOf(
     speed: speed,
     volume: level / 100,
     volumeVaries: volumes.any((volume) => volume != volumes.first),
+  );
+}
+
+/// How a 2D camera track's [clip] moves the camera (memory
+/// `csp-clip-format-notes` §3, measured on s6): an `FCurve` per value —
+/// `ImagePosition` and `ImageCenter` by `Axis` X · Y, `ImageScale` and
+/// `ImageRotation` alone — its `Frame` ticks and `Value`s; a `Param` of the
+/// same name holds a value no curve keys (a pair for the two by axis). Its
+/// keys stand on the frames the clip's ticks land on, rounded as a cel
+/// key's are.
+ClipCameraMove _cameraMoveOf(
+  CmtNode clip,
+  ClipSpan span,
+  double Function(double tick) frameAt,
+) {
+  final anim = clip.child('AnimInfo');
+  var unread = false;
+  PropertyTrack<double> keysOf(
+    String type, {
+    String? axis,
+    int index = 0,
+    double unit = 1,
+  }) {
+    if (anim == null) {
+      return PropertyTrack.empty();
+    }
+    final curve = _childOf(anim, 'FCurve', {'Type': type, 'Axis': ?axis});
+    final ticks = _numbers(curve, 'Frame');
+    final values = _numbers(curve, 'Value');
+    if (ticks.isNotEmpty && values.isNotEmpty) {
+      final curves = switch (curve?.child('Interp')?.value) {
+        final List<Object?> named => named,
+        _ => const <Object?>[],
+      };
+      unread = unread || curves.any((named) => named != 'Constant');
+      return PropertyTrack(
+        keys: {
+          for (var i = 0; i < ticks.length && i < values.length; i += 1)
+            frameAt(ticks[i]).round(): PropertyKey(
+              values[i] / unit,
+              interpolation: i < curves.length && curves[i] == 'Constant'
+                  ? PropertyKeyInterpolation.hold
+                  : PropertyKeyInterpolation.linear,
+            ),
+        },
+      );
+    }
+    final held = switch (_childOf(anim, 'Param', {'Name': type})?.value) {
+      final num value => value,
+      final List<Object?> pair when index < pair.length => pair[index],
+      _ => null,
+    };
+    return held is num
+        ? PropertyTrack(keys: {span.start: PropertyKey(held / unit)})
+        : PropertyTrack.empty();
+  }
+
+  final x = keysOf('ImagePosition', axis: 'X');
+  final y = keysOf('ImagePosition', axis: 'Y', index: 1);
+  final scale = keysOf('ImageScale', unit: 100);
+  final degrees = keysOf('ImageRotation');
+  final pivotX = keysOf('ImageCenter', axis: 'X');
+  final pivotY = keysOf('ImageCenter', axis: 'Y', index: 1);
+  return (
+    span: span,
+    x: x,
+    y: y,
+    scale: scale,
+    degrees: degrees,
+    pivotX: pivotX,
+    pivotY: pivotY,
+    unread: unread,
   );
 }

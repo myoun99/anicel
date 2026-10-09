@@ -5,10 +5,11 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'clip_cmt.dart';
 import 'clip_container.dart';
+import 'clip_placement.dart';
 import 'clip_track_clip.dart';
 
 export 'clip_track_clip.dart'
-    show ClipCelKey, ClipPiece, ClipSoundCue, ClipSpan;
+    show ClipCameraMove, ClipCelKey, ClipPiece, ClipSoundCue, ClipSpan;
 
 /// What a CLIP STUDIO PAINT layer is, as the import tells them apart.
 enum ClipLayerKind {
@@ -81,6 +82,7 @@ final class ClipLayer {
     required this.originalTransform,
     this.vectorData = const [],
     this.sounds = const [],
+    this.camera,
     required this.children,
   });
 
@@ -139,6 +141,12 @@ final class ClipLayer {
   /// bytes the file holds the address of.
   final List<ClipSound> sounds;
 
+  /// The 2D camera this folder is (`Camera2DResizableImageInfo` — memory
+  /// `csp-clip-format-notes` §3), as it stands where no clip of its track
+  /// moves it: its picture is the shooting frame, placed by this. Null on
+  /// every other layer.
+  final ClipPlacement? camera;
+
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
 
@@ -167,10 +175,11 @@ final class ClipTrack {
     required this.pieces,
     required this.labels,
     this.sounds = const [],
+    this.cameraMoves = const [],
   });
 
   /// `TrackKind`: 2000 animation folder · 2001 layer · 1000 folder ·
-  /// 2003 paper · 4001 sound.
+  /// 2003 paper · 2005 2D camera folder · 4001 sound.
   final int kind;
 
   /// Its clips, in order of frame; outside them the layer is not shown.
@@ -181,6 +190,10 @@ final class ClipTrack {
 
   /// A sound track's clips, as what each plays — in order of frame.
   final List<ClipSoundCue> sounds;
+
+  /// A 2D camera track's clips, as how each moves the camera — in order of
+  /// frame.
+  final List<ClipCameraMove> cameraMoves;
 }
 
 /// One timeline — a cut.
@@ -426,6 +439,7 @@ final class _DocumentReader {
     'GradationFillInfo',
     'TextLayerType',
     'FirstLayerObject',
+    'Camera2DResizableImageInfo',
   ];
 
   /// A mipmap's 100% picture, by the mipmap's id.
@@ -545,6 +559,7 @@ final class _DocumentReader {
     }
     final pictures = _pictures;
     final transform = row['ResizableImageInfo'];
+    final camera = row['Camera2DResizableImageInfo'];
     final kind = _kindOf(row, _vectorData.containsKey(id));
     return ClipLayer(
       id: id,
@@ -565,6 +580,7 @@ final class _DocumentReader {
       originalTransform: transform is Uint8List ? transform : null,
       vectorData: _vectorData[id] ?? const [],
       sounds: kind == ClipLayerKind.sound ? _soundsOf(row) : const [],
+      camera: camera is Uint8List ? clipPlacementOf(camera) : null,
       children: children,
     );
   }
@@ -668,27 +684,15 @@ final class _DocumentReader {
         ? _text(track['TrackActionMixer2'])
         : _text(track['TrackActionMixer']);
     final mixer = container.externals[mixerId];
-    final pieces = <ClipPiece>[];
-    final sounds = <ClipSoundCue>[];
-    if (mixer != null) {
-      final document = cmtDocumentOfTrackData(readClipPlace(file, mixer));
-      for (final clip in document.everyNode) {
-        if (clip.name == 'ActionNodeClip') {
-          final read = readTrackClip(
-            clip,
-            fps,
-            kind: kind,
-            warnings: warnings,
-          );
-          if (read != null) {
-            pieces.add(read.piece);
-            if (read.sound case final cue?) {
-              sounds.add(cue);
-            }
-          }
-        }
-      }
-    }
+    final clips = [
+      if (mixer != null)
+        for (final node in cmtDocumentOfTrackData(
+          readClipPlace(file, mixer),
+        ).everyNode)
+          if (node.name == 'ActionNodeClip')
+            ?readTrackClip(node, fps, kind: kind, warnings: warnings),
+    ];
+    int byStart(ClipSpan a, ClipSpan b) => a.start.compareTo(b.start);
     final labelFrames = [
       for (final label in _chain(
         labels,
@@ -699,9 +703,16 @@ final class _DocumentReader {
     ];
     return ClipTrack(
       kind: kind,
-      pieces: pieces..sort((a, b) => a.span.start.compareTo(b.span.start)),
+      pieces: [
+        for (final clip in clips) clip.piece,
+      ]..sort((a, b) => byStart(a.span, b.span)),
       labels: labelFrames..sort(),
-      sounds: sounds..sort((a, b) => a.frame.compareTo(b.frame)),
+      sounds: [
+        for (final clip in clips) ?clip.sound,
+      ]..sort((a, b) => a.frame.compareTo(b.frame)),
+      cameraMoves: [
+        for (final clip in clips) ?clip.camera,
+      ]..sort((a, b) => byStart(a.span, b.span)),
     );
   }
 

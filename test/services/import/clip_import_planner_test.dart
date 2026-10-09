@@ -5,6 +5,9 @@ import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId, cutWithReconciledAttachedMirrors;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -14,10 +17,13 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
 import 'package:anicel/src/services/import/clip_import_planner.dart';
+import 'package:anicel/src/services/import/clip_placement.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 
 /// The shape a CLIP STUDIO file opens as (보드 `csp-clip-import-analysis`,
@@ -72,6 +78,7 @@ void main() {
     int composite = 30,
     bool collapsed = false,
     bool animation = false,
+    ClipPlacement? camera,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -91,6 +98,7 @@ void main() {
       render: null,
       original: null,
       originalTransform: null,
+      camera: camera,
       children: children,
     );
   }
@@ -171,6 +179,7 @@ void main() {
     ClipLayer tree,
     List<ClipTimeline> timelines, {
     Map<String, String> sounds = const {},
+    ClipFrame? frame,
   }) {
     var layers = 0;
     var frames = 0;
@@ -183,6 +192,7 @@ void main() {
         timelines: timelines,
         currentTimeline: 0,
         warnings: const [],
+        frame: frame,
       ),
       name: 'file',
       trackId: const TrackId('track'),
@@ -1368,6 +1378,293 @@ void main() {
         ['fast', 'swell'],
         reason: 'the lost one has nothing to play',
       );
+    });
+  });
+
+  group('🗣️a cut is shot through its camera, the app\'s way (유저 10-09: '
+      '「카메라는 우리방식이 제일 좋다고 생각하니 모아트는 참고만하고 '
+      '우리방식대로」)', () {
+    // The shooting frame: 200 × 100, its centre at (320, 180) on the paper.
+    const frame = (width: 200, height: 100, centerX: 320.0, centerY: 180.0);
+    final shootingFrame = CameraPose(center: CanvasPoint(x: 320, y: 180));
+
+    /// A camera at [scale] times the frame, turned [degrees], its [pivotX] ·
+    /// [pivotY] — the frame's centre unless said — placed at ([x], [y]).
+    ClipPlacement placed({
+      double x = 320,
+      double y = 180,
+      double scale = 1,
+      double degrees = 0,
+      double pivotX = 100,
+      double pivotY = 50,
+    }) => (
+      scaleX: scale,
+      scaleY: scale,
+      degrees: degrees,
+      x: x,
+      y: y,
+      pivotX: pivotX,
+      pivotY: pivotY,
+    );
+
+    PropertyTrack<double> keys(Map<int, double> values, Set<int> held) =>
+        PropertyTrack(
+          keys: {
+            for (final MapEntry(:key, :value) in values.entries)
+              key: PropertyKey(
+                value,
+                interpolation: held.contains(key)
+                    ? PropertyKeyInterpolation.hold
+                    : PropertyKeyInterpolation.linear,
+              ),
+          },
+        );
+
+    /// A clip over [span] keying the camera's point and scale; [held] keys
+    /// hold to the next.
+    ClipCameraMove move(
+      ClipSpan span, {
+      Map<int, double> x = const {},
+      Map<int, double> y = const {},
+      Map<int, double> scale = const {},
+      Set<int> held = const {},
+      bool unread = false,
+    }) => (
+      span: span,
+      x: keys(x, held),
+      y: keys(y, held),
+      scale: keys(scale, held),
+      degrees: PropertyTrack.empty(),
+      pivotX: PropertyTrack.empty(),
+      pivotY: PropertyTrack.empty(),
+      unread: unread,
+    );
+
+    /// [camera]'s track: a clip for each of [moves].
+    MapEntry<String, ClipTrack> moving(
+      ClipLayer camera,
+      List<ClipCameraMove> moves,
+    ) => MapEntry(
+      camera.uuid,
+      ClipTrack(
+        kind: 2005,
+        pieces: [for (final move in moves) (span: move.span, cels: const [])],
+        labels: const [],
+        cameraMoves: moves,
+      ),
+    );
+
+    /// The camera [cut] shows on its [frame], as the app plays it.
+    CameraPose at(Cut cut, int frame) => resolveCameraPoseAt(
+      camera: cut.camera,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      frameIndex: frame,
+    );
+
+    List<(String, Object?)> said(ClipImportPlan result) => [
+      for (final warning in result.warnings)
+        if (warning.key.startsWith('clipCamera'))
+          (warning.key, warning.values['name']),
+    ];
+
+    test('🎯with no camera folder, every cut is shot through its shooting '
+        'frame, still — one key at its centre', () {
+      final result = plan(
+        root([layer('BG')]),
+        [timeline([]), timeline([], name: 'c2')],
+        frame: frame,
+      );
+
+      for (final cut in result.cuts) {
+        expect(cut.camera.keyframes, {0: shootingFrame});
+      }
+    });
+
+    test('with no frame either, a cut keeps its own camera', () {
+      final result = plan(root([layer('BG')]), [timeline([])]);
+
+      expect(result.cuts.single.camera.isEmpty, isTrue);
+    });
+
+    test('🎯a camera the timeline does not move is the cut\'s camera at its '
+        'rest — its picture the frame, placed as a picture is: the centre '
+        'lands by its pivot and scale, and twice the frame is half the '
+        'zoom — one key', () {
+      final camera = folder(
+        'camera',
+        [layer('BG')],
+        camera: placed(x: 300, y: 200, scale: 2, pivotX: 0, pivotY: 0),
+      );
+
+      final result = plan(root([camera]), [timeline([])], frame: frame);
+
+      expect(result.cuts.single.camera.keyframes, {
+        0: CameraPose(center: CanvasPoint(x: 500, y: 300), zoom: 0.5),
+      });
+    });
+
+    test('🎯its turn is the picture\'s — clockwise on positive, the way the '
+        'app\'s camera turns', () {
+      final camera = folder(
+        'camera',
+        [layer('BG')],
+        camera: placed(x: 300, y: 200, degrees: 90, pivotX: 0, pivotY: 0),
+      );
+
+      final pose = plan(
+        root([camera]),
+        [timeline([])],
+        frame: frame,
+      ).cuts.single.camera.keyframeAt(0)!;
+
+      // The frame's centre, (100, 50) from the pivot, a quarter turn
+      // clockwise on a canvas whose y runs down: (−50, 100).
+      expect(pose.center.x, closeTo(250, 1e-9));
+      expect(pose.center.y, closeTo(300, 1e-9));
+      expect(pose.rotationDegrees, 90);
+    });
+
+    test('🎯a clip moves the cut\'s camera as its keys do — a straight pan '
+        'is its two keys again', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final cut = plan(
+        root([camera]),
+        [
+          timeline([
+            moving(camera, [
+              move((start: 0, end: 12), x: {0: 100, 11: 210}),
+            ]),
+          ]),
+        ],
+        frame: frame,
+      ).cuts.single;
+
+      expect(cut.camera.keyframes, {
+        0: CameraPose(center: CanvasPoint(x: 100, y: 180)),
+        11: CameraPose(center: CanvasPoint(x: 210, y: 180)),
+      });
+    });
+
+    test('a key CLIP STUDIO holds holds here, and a value the clip keys '
+        'nothing for stays where the camera rests', () {
+      final camera = folder(
+        'camera',
+        [layer('BG')],
+        camera: placed(y: 90, scale: 2),
+      );
+
+      final cut = plan(
+        root([camera]),
+        [
+          timeline([
+            moving(camera, [
+              move((start: 0, end: 12), x: {0: 100, 6: 160}, held: {0}),
+            ]),
+          ]),
+        ],
+        frame: frame,
+      ).cuts.single;
+
+      expect((at(cut, 3).center.x, at(cut, 6).center.x), (100, 160));
+      expect((at(cut, 3).center.y, at(cut, 3).zoom), (90, 0.5));
+    });
+
+    test('🎯between its clips a cut is shot through the shooting frame — '
+        'CLIP STUDIO shows nothing of the folder there', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final cut = plan(
+        root([camera]),
+        [
+          timeline([
+            moving(camera, [
+              move((start: 0, end: 6), x: {0: 100}),
+            ]),
+          ]),
+        ],
+        frame: frame,
+      ).cuts.single;
+
+      expect(at(cut, 2).center.x, 100);
+      expect(at(cut, 8), shootingFrame);
+    });
+
+    test('every timeline moves its own cut\'s camera — the 겸용 cuts share '
+        'their rows, not their camera\'s moves', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final cuts = plan(
+        root([camera]),
+        [
+          timeline([
+            moving(camera, [
+              move((start: 0, end: 12), x: {0: 100}),
+            ]),
+          ]),
+          timeline(name: 'c2', [
+            moving(camera, [
+              move((start: 0, end: 12), x: {0: 400}),
+            ]),
+          ]),
+        ],
+        frame: frame,
+      ).cuts;
+
+      expect([for (final cut in cuts) at(cut, 0).center.x], [100, 400]);
+    });
+
+    test('what the camera cannot bring is said: a second camera folder, and '
+        'keys on a curve it does not read', () {
+      final first = folder('camera', [layer('A')], camera: placed());
+      final second = folder('camera 2', [layer('B')], camera: placed());
+
+      final result = plan(
+        root([first, second]),
+        [
+          timeline([
+            moving(first, [move((start: 0, end: 12), unread: true)]),
+          ]),
+        ],
+        frame: frame,
+      );
+
+      expect(said(result), [
+        ('clipCameraExtra', 'camera 2'),
+        ('clipCameraCurve', 'camera'),
+      ]);
+    });
+
+    test('🎯what a cut shows outside the camera folder is said, once the '
+        'camera leaves the frame — CLIP STUDIO\'s camera does not move it, '
+        'the cut\'s does', () {
+      final camera = folder('camera', [layer('A')], camera: placed(x: 400));
+
+      final result = plan(
+        root([layer('over'), layer('hidden', shown: false), camera]),
+        [timeline([]), timeline([], name: 'c2')],
+        frame: frame,
+      );
+
+      expect(said(result), [('clipCameraOutside', 'camera')]);
+      expect(
+        result.warnings.single.values['count'],
+        '1',
+        reason: 'the hidden one is not shown',
+      );
+    });
+
+    test('⛔CONTROL: a camera that stays on the frame says nothing of what '
+        'stands outside it', () {
+      final camera = folder('camera', [layer('A')], camera: placed());
+
+      final result = plan(
+        root([layer('over'), camera]),
+        [timeline([])],
+        frame: frame,
+      );
+
+      expect(said(result), isEmpty);
     });
   });
 }

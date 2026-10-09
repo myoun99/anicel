@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/services/import/clip_container.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
 
@@ -592,6 +593,191 @@ void main() {
       'a layer chain names layer 9, which is not there',
       'the timeline chain names timeline 41, which is not there',
     ]);
+  });
+
+  test('🎯a 2D camera folder holds where it rests, and its track\'s clip how '
+      'it moves: a curve per value, a Param for a value with none, keys on '
+      'the frames the ticks land on (memory `csp-clip-format-notes` §3, '
+      'the shape of s6)', () {
+    const uuidCamera = '22223333-4444-5555-6666-777788889999';
+    // Rests at 1.5 times the frame, its pivot (100, 50) placed at (300, 200).
+    final rest = ByteData(184)
+      ..setFloat64(40, 1.5)
+      ..setFloat64(48, 1.5)
+      ..setFloat64(56, 0)
+      ..setFloat64(64, 300)
+      ..setFloat64(72, 200)
+      ..setFloat64(80, 100)
+      ..setFloat64(88, 50);
+    final cameraTrack = trackDataBytes(
+      cmtDocumentBytes(
+        clipTrackSpec([
+          const CmtSpec(
+            'ActionNodeClip',
+            'null',
+            children: [
+              // Ticks at 60 a second: the clip is frames 0 … 48 at 24 fps,
+              // and tick 60 frame 24.
+              CmtSpec(
+                'TimeClip',
+                'null',
+                children: [
+                  CmtSpec('Start', 'Double', value: 0),
+                  CmtSpec('End', 'Double', value: 120),
+                  CmtSpec('Rate', 'Double', value: 60),
+                ],
+              ),
+              CmtSpec(
+                'MotionClip',
+                'null',
+                children: [
+                  CmtSpec('Start', 'Double', value: 0),
+                  CmtSpec('End', 'Double', value: 120),
+                ],
+              ),
+              CmtSpec(
+                'AnimInfo',
+                'null',
+                children: [
+                  CmtSpec(
+                    'Param',
+                    'Double2',
+                    value: [100, 50],
+                    attributes: {'Name': 'ImageCenter'},
+                  ),
+                  CmtSpec(
+                    'FCurve',
+                    'null',
+                    attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
+                    children: [
+                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
+                      CmtSpec('Value', 'Double[]', value: [300, 360]),
+                    ],
+                  ),
+                  CmtSpec(
+                    'FCurve',
+                    'null',
+                    attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
+                    children: [
+                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
+                      CmtSpec('Value', 'Double[]', value: [200, 230]),
+                    ],
+                  ),
+                  CmtSpec(
+                    'Param',
+                    'Double',
+                    value: 150,
+                    attributes: {'Name': 'ImageScale'},
+                  ),
+                  // Held from its first key; the second names a curve the
+                  // reader does not know.
+                  CmtSpec(
+                    'FCurve',
+                    'null',
+                    attributes: {'Type': 'ImageRotation'},
+                    children: [
+                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
+                      CmtSpec('Value', 'Double[]', value: [0, 10]),
+                      CmtSpec(
+                        'Interp',
+                        'String[]',
+                        value: ['Constant', 'Bezier'],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ]),
+      ),
+    );
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'ALTER TABLE Layer ADD COLUMN Camera2DResizableImageInfo BLOB',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 640, 360, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex) '
+          'VALUES (1, 40, 0)',
+        )
+        ..execute(
+          'INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, '
+          'FrameRate, StartFrame, EndFrame, FirstTrack) '
+          "VALUES (40, 0, 'cut', 24.0, 0, 48, 50)",
+        );
+      db.prepare(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, LayerFirstChildIndex, '
+          'Camera2DResizableImageInfo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        ..execute([
+          2,
+          'camera',
+          512,
+          1,
+          1,
+          uuidCamera,
+          0,
+          rest.buffer.asUint8List(),
+        ])
+        ..close();
+      db.prepare(
+          'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+          'LayerUuidWithTrack, TrackActionMixer, TrackActionMixer2, '
+          'TrackLabelFirstIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        ..execute([50, 0, 2005, clipUuidBytes(uuidCamera), '', externalId(6), 0])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, {externalId(6): cameraTrack}),
+      scratch: folder,
+    );
+
+    final camera = document.root.children.single;
+    expect(camera.isFolder, isTrue, reason: 'a folder all the same');
+    expect(camera.camera, (
+      scaleX: 1.5,
+      scaleY: 1.5,
+      degrees: 0.0,
+      x: 300.0,
+      y: 200.0,
+      pivotX: 100.0,
+      pivotY: 50.0,
+    ));
+    final move = document.timelines.single.tracks[uuidCamera.replaceAll(
+      '-',
+      '',
+    )]!.cameraMoves.single;
+    Map<int, (double, PropertyKeyInterpolation)> keys(
+      PropertyTrack<double> track,
+    ) => {
+      for (final MapEntry(:key, :value) in track.keys.entries)
+        key: (value.value, value.interpolation),
+    };
+    const straight = PropertyKeyInterpolation.linear;
+    expect(move.span, (start: 0, end: 48));
+    expect(keys(move.x), {0: (300.0, straight), 24: (360.0, straight)});
+    expect(keys(move.y), {0: (200.0, straight), 24: (230.0, straight)});
+    expect(keys(move.scale), {0: (1.5, straight)}, reason: 'its Param');
+    expect(keys(move.pivotX), {0: (100.0, straight)}, reason: 'its pair');
+    expect(keys(move.pivotY), {0: (50.0, straight)});
+    expect(keys(move.degrees), {
+      0: (0.0, PropertyKeyInterpolation.hold),
+      24: (10.0, straight),
+    });
+    expect(move.unread, isTrue, reason: 'a curve it does not know');
   });
 
   test('the shooting frame: its size, and its centre the canvas\'s moved by '

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'clip_document.dart';
 import 'clip_offscreen.dart';
+import 'clip_placement.dart';
 
 /// One tile of a cel's picture: its place in tiles, and its straight RGBA.
 typedef ClipCelTile = ({int x, int y, Uint8List pixels});
@@ -27,15 +28,10 @@ typedef ClipPicture = ({
 /// 못했습니다」 on a sample the user opened, 10-09); one with no original
 /// falls to its render, which says so when it is not there either.
 ///
-/// The transform (`ResizableImageInfo`, big-endian — memory
-/// `csp-clip-format-notes` §4): scale x · y at @40 · @48, the turn in
-/// degrees at @56, the point the picture is placed at (px, py) at @64 ·
-/// @72, and the point in the picture that goes there (cx, cy) at @80 ·
-/// @88. A point (u, v) of the original lands at `(a·u + c·v + e, b·u + d·v
-/// + f)` with `a = cos·sx, b = sin·sx, c = −sin·sy, d = cos·sy, e = px −
-/// a·cx − c·cy, f = py − b·cx − d·cy`, moved by `LayerOffset`. The samples
-/// carry no scale or turn, so only the move is drawn (MoArt reads the
-/// rest).
+/// The transform is the picture's placement ([clipPlacementOf]): the
+/// original's top-left lands where [clipPlaced] takes its corner, moved by
+/// `LayerOffset`. The samples carry no scale or turn, so only the move is
+/// drawn (MoArt reads the rest).
 ClipPicture? clipPictureOf(ClipLayer layer) {
   final original = layer.kind == ClipLayerKind.picture ? layer.original : null;
   if (original == null) {
@@ -49,8 +45,8 @@ ClipPicture? clipPictureOf(ClipLayer layer) {
       null => null,
     };
   }
-  final transform = layer.originalTransform;
-  if (transform == null || transform.length < 96) {
+  final placement = clipPlacementOf(layer.originalTransform);
+  if (placement == null) {
     return (
       source: original,
       left: layer.offsetX,
@@ -58,26 +54,12 @@ ClipPicture? clipPictureOf(ClipLayer layer) {
       moveOnly: true,
     );
   }
-  final data = ByteData.sublistView(transform);
-  final sx = data.getFloat64(40);
-  final sy = data.getFloat64(48);
-  final turn = data.getFloat64(56) * math.pi / 180;
-  final a = math.cos(turn) * sx;
-  final b = math.sin(turn) * sx;
-  final c = -math.sin(turn) * sy;
-  final d = math.cos(turn) * sy;
-  final cx = data.getFloat64(80);
-  final cy = data.getFloat64(88);
-  const exact = 1e-6;
+  final corner = clipPlaced(placement, 0, 0);
   return (
     source: original,
-    left: layer.offsetX + (data.getFloat64(64) - a * cx - c * cy).round(),
-    top: layer.offsetY + (data.getFloat64(72) - b * cx - d * cy).round(),
-    moveOnly:
-        (a - 1).abs() < exact &&
-        b.abs() < exact &&
-        c.abs() < exact &&
-        (d - 1).abs() < exact,
+    left: layer.offsetX + corner.x.round(),
+    top: layer.offsetY + corner.y.round(),
+    moveOnly: clipPlacementOnlyMoves(placement),
   );
 }
 

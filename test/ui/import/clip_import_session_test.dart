@@ -640,6 +640,142 @@ void main() {
     );
   });
 
+  test('🎯a 2D camera folder\'s move is the cut\'s camera — its keys where the '
+      'pan needs them, through the frame it shoots (유저 10-09: 「카메라는 '
+      '우리방식이 제일 좋다고 생각하니 … 우리방식대로」)', () async {
+    const uuidCamera = '22223333-4444-5555-6666-777788889999';
+    // At rest on the shooting frame: the frame's own size, its centre
+    // (100, 50) placed on the frame's centre (320, 180).
+    final rest = ByteData(184)
+      ..setFloat64(40, 1)
+      ..setFloat64(48, 1)
+      ..setFloat64(64, 320)
+      ..setFloat64(72, 180)
+      ..setFloat64(80, 100)
+      ..setFloat64(88, 50);
+    final database = clipDatabaseBytes(temp, (db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'ALTER TABLE Layer ADD COLUMN Camera2DResizableImageInfo BLOB',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder, CropFrameInnerWidth, CropFrameInnerHeight, '
+          'CropFrameCropOffsetX, CropFrameCropOffsetY, '
+          'CropFrameInnerOffsetX, CropFrameInnerOffsetY) '
+          'VALUES (1, 640, 360, 1, 200, 100, 0, 0, 0, 0)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute('''
+          INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex)
+            VALUES (1, 40, 0);
+          INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
+            StartFrame, EndFrame, FirstTrack) VALUES
+            (40, 0, 'one', 24.0, 0, 12, 50);
+        ''');
+      db.prepare(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, LayerFirstChildIndex, '
+          'Camera2DResizableImageInfo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        ..execute([
+          2,
+          'camera',
+          512,
+          1,
+          1,
+          uuidCamera,
+          0,
+          rest.buffer.asUint8List(),
+        ])
+        ..close();
+      db.prepare(
+          'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+          'LayerUuidWithTrack, TrackActionMixer2) VALUES (?, ?, ?, ?, ?)',
+        )
+        ..execute([50, 0, 2005, clipUuidBytes(uuidCamera), externalId(6)])
+        ..close();
+    });
+    final path = '${temp.path}${Platform.pathSeparator}panned.clip';
+    File(path).writeAsBytesSync(
+      clipFileBytes(
+        database: database,
+        externals: {
+          // Ticks at 60 a second on 24 fps: the clip is frames 0 … 12, and
+          // tick 27.5 frame 11. Across from x 100 to 210; the rest held.
+          externalId(6): trackDataBytes(
+            cmtDocumentBytes(
+              clipTrackSpec([
+                const CmtSpec(
+                  'ActionNodeClip',
+                  'null',
+                  children: [
+                    CmtSpec(
+                      'TimeClip',
+                      'null',
+                      children: [
+                        CmtSpec('Start', 'Double', value: 0),
+                        CmtSpec('End', 'Double', value: 30),
+                        CmtSpec('Rate', 'Double', value: 60),
+                      ],
+                    ),
+                    CmtSpec(
+                      'MotionClip',
+                      'null',
+                      children: [
+                        CmtSpec('Start', 'Double', value: 0),
+                        CmtSpec('End', 'Double', value: 30),
+                      ],
+                    ),
+                    CmtSpec(
+                      'AnimInfo',
+                      'null',
+                      children: [
+                        CmtSpec(
+                          'FCurve',
+                          'null',
+                          attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
+                          children: [
+                            CmtSpec('Frame', 'Double[]', value: [0, 27.5]),
+                            CmtSpec('Value', 'Double[]', value: [100, 210]),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+        },
+      ),
+    );
+
+    final opened = await openedClip(path);
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    final project = session.repository.requireProject();
+    expect(
+      (project.cameraSize.width, project.cameraSize.height),
+      (200, 100),
+      reason: 'the frame it shoots is the project\'s camera',
+    );
+    final camera = project.tracks.single.cuts.single.camera;
+    expect(camera.keyframes.keys, [0, 11], reason: 'a straight pan: its ends');
+    expect(
+      [
+        for (final pose in camera.keyframes.values)
+          (pose.center.x, pose.center.y, pose.zoom),
+      ],
+      [(100.0, 180.0, 1.0), (210.0, 180.0, 1.0)],
+    );
+  });
+
   test('a file that is not a CLIP STUDIO file is not one', () async {
     final path = '${temp.path}${Platform.pathSeparator}not.clip';
     File(path).writeAsStringSync('nothing in particular');
