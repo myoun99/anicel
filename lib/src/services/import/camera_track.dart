@@ -19,24 +19,32 @@ const int _cameraMaxRunFrames = 512;
 /// The camera that holds [byFrame] — a pose on every frame, as an import
 /// bakes another program's move — in the keys it needs: every frame a
 /// straight line between its neighbours already reproduces is dropped, so
-/// a linear pan collapses back to two keys, easing keeps exactly the keys
-/// it needs, and a camera that never moves is ONE key (a hold's two ends
-/// would be a key on the last frame no one set — 288, hands-on). The
-/// TVPaint and CLIP STUDIO imports both make their cut's camera here.
+/// a linear pan collapses back to two keys and easing keeps exactly the
+/// keys it needs. A hold at either end needs no key of its own — the app
+/// holds the first key before it and the last after it — so a move that
+/// starts late or stops early is keyed where it starts and stops, and a
+/// camera that never moves is ONE key. The simplifier keeps both ends of
+/// whatever it walks, and a hold's far end was a key on a frame no one set
+/// (288, hands-on: one key on frame 1 arrived as keys on 1 and 96; s6's
+/// pan, keyed on frames 0 and 108, arrived with a third on its last
+/// frame). The TVPaint and CLIP STUDIO imports both make their cut's
+/// camera here.
 CutCamera cutCameraOfFramePoses(SplayTreeMap<int, CameraPose> byFrame) {
   if (byFrame.isEmpty) {
     return CutCamera.empty();
   }
   final frames = byFrame.keys.toList();
   final poses = byFrame.values.toList();
-  if (poses.every((pose) => _same(pose, poses.first))) {
-    return CutCamera(keyframes: {frames.first: poses.first});
+  final kept = _simplifiedTrack(frames, poses);
+  bool holds(int a, int b) => _same(poses[kept[a]], poses[kept[b]]);
+  if (kept.length > 1 && holds(kept.length - 1, kept.length - 2)) {
+    kept.removeLast();
+  }
+  if (kept.length > 1 && holds(0, 1)) {
+    kept.removeAt(0);
   }
   return CutCamera(
-    keyframes: {
-      for (final index in _simplifiedTrack(frames, poses))
-        frames[index]: poses[index],
-    },
+    keyframes: {for (final index in kept) frames[index]: poses[index]},
   );
 }
 

@@ -106,7 +106,9 @@ ClipTrackClip? readTrackClip(
     sound: kind == _soundTrackKind
         ? _soundCueOf(clip, span, frameAt, fps)
         : null,
-    camera: kind == _cameraTrackKind ? _cameraMoveOf(clip, span, frameAt) : null,
+    camera: kind == _cameraTrackKind
+        ? _cameraMoveOf(clip, span, frameAt)
+        : null,
   );
 }
 
@@ -157,7 +159,8 @@ String clipUuidKey(Object? value) => switch (value) {
       start: (timeStart * fps / rate).round(),
       end: (timeEnd * fps / rate).round(),
     ),
-    frameAt: (tick) => (timeStart + (tick - motionStart) * stretch) * fps / rate,
+    frameAt: (tick) =>
+        (timeStart + (tick - motionStart) * stretch) * fps / rate,
   );
 }
 

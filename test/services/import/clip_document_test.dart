@@ -736,7 +736,15 @@ void main() {
           'LayerUuidWithTrack, TrackActionMixer, TrackActionMixer2, '
           'TrackLabelFirstIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        ..execute([50, 0, 2005, clipUuidBytes(uuidCamera), '', externalId(6), 0])
+        ..execute([
+          50,
+          0,
+          2005,
+          clipUuidBytes(uuidCamera),
+          '',
+          externalId(6),
+          0,
+        ])
         ..close();
     });
 

@@ -67,6 +67,19 @@ void main() {
     expectPlaysBack(poses);
   });
 
+  test('a hold at either end needs no key of its own: a move that starts '
+      'late and stops early is keyed where it starts and stops (s6\'s pan, '
+      'keyed on frames 0 and 108 of 186, arrived with a third on its '
+      'last)', () {
+    final poses = baked(
+      30,
+      (f) => pose(100 + (f.clamp(10, 20) - 10) * 10.0, 80),
+    );
+
+    expect(cutCameraOfFramePoses(poses).keyframes.keys, [10, 20]);
+    expectPlaysBack(poses);
+  });
+
   test('an eased move keeps the keys its curve needs, and plays back as '
       'baked', () {
     final poses = baked(48, (f) {
