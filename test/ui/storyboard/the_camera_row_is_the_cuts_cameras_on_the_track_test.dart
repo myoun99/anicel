@@ -697,6 +697,68 @@ void main() {
       expect((band.top, band.height), (0, row.height / 2));
     });
 
+    testWidgets('a band that runs out of an O.L steps to the middle with its '
+        'line', (tester) async {
+      final session = await pumpPanel(tester, transitions: ol);
+      final row = tester.getRect(cameraStrip);
+
+      await sweep(
+        tester,
+        at(tester, 26, across: 0.8),
+        at(tester, 33, across: 0.8),
+      );
+
+      final selection = selectionOf(session)!;
+      expect(selection.layerId, const LayerId('b-cam'));
+      expect((selection.startIndex, selection.endIndexExclusive), (8, 16));
+      final pieces = bandOf(tester)..sort((x, y) => x.left.compareTo(y.left));
+      expect(pieces, hasLength(2));
+      expect(
+        (pieces[0].left / ppf(tester), pieces[0].right / ppf(tester)),
+        (26, 30),
+        reason: 'the stretch b shares with a: the lower half',
+      );
+      expect(
+        (pieces[0].top, pieces[0].height),
+        (row.height / 2, row.height / 2),
+      );
+      expect(
+        (pieces[1].left / ppf(tester), pieces[1].right / ppf(tester)),
+        (30, 34),
+      );
+      expect((pieces[1].top, pieces[1].height), (0, row.height));
+    });
+
+    testWidgets('🚨a sweep begun on another cut selects there, even on a frame '
+        'its number shares with the selection', (tester) async {
+      final session = await pumpPanel(tester);
+      await sweep(tester, at(tester, 26), at(tester, 30));
+      expect(selectionOf(session)!.layerId, const LayerId('b-cam'));
+
+      await sweep(tester, at(tester, 3), at(tester, 5));
+
+      final selection = selectionOf(session)!;
+      expect(selection.layerId, const LayerId('a-cam'));
+      expect((selection.startIndex, selection.endIndexExclusive), (3, 6));
+      expect(keysOf(session, b), [2, 6, 12], reason: 'nothing moved');
+    });
+
+    testWidgets('a selection the timeline made past the cut\'s end draws no '
+        'band here', (tester) async {
+      final session = await pumpPanel(tester);
+      session
+        ..selectCut(b)
+        ..updateFrameRangeSelectionDrag(
+          layerId: const LayerId('b-cam'),
+          anchorIndex: 26,
+          headIndex: 28,
+        );
+      await tester.pumpAndSettle();
+      expect(selectionOf(session)!.layerId, const LayerId('b-cam'));
+
+      expect(bandOf(tester), isEmpty);
+    });
+
     testWidgets('🚨a drag from inside the selection moves its keys along the '
         'cut\'s own frames', (tester) async {
       final session = await pumpPanel(tester);

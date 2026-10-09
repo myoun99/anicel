@@ -275,14 +275,16 @@ class _StoryboardCameraRow extends StatelessWidget {
       if (reach.entry.cut.layers.cameraLayer?.id != selection.layerId) {
         continue;
       }
-      final start = math.max(
-        reach.mediaStart,
-        reach.trackFrameOf(selection.startIndex),
-      );
+      // Held inside the cut: the timeline's cells run on past its end, and
+      // a selection made there names frames this row does not draw.
+      final start = reach.trackFrameOf(selection.startIndex);
       final end = math.min(
         reach.mediaEnd,
         reach.trackFrameOf(selection.endIndexExclusive),
       );
+      if (end <= start) {
+        return const SizedBox.shrink();
+      }
       final edges = {
         start,
         for (final edge in [reach.arrivingUntil, reach.leavingFrom])
