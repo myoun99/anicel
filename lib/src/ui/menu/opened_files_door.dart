@@ -52,7 +52,9 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
       case OpenedAs.font:
         fonts.add(grant);
       case null:
-        refused.add(ProviderDocuments.nameOf(named));
+        // Named as every pick's refusal names it: a file by its path, a
+        // document by its own name (its URI says nothing).
+        refused.add(grant.path ?? ProviderDocuments.nameOf(named));
     }
   }
   return (

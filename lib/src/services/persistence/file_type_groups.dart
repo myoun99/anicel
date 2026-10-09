@@ -308,25 +308,17 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: [_utiImage],
   );
 
-  /// What the media viewer can actually display today.
+  /// Everything the media pool will register, movies included — what the
+  /// one door sends to the import window, a relink's pick, and what the
+  /// media viewer's Open takes.
   ///
-  /// 🆕Movies joined on 2026-08-29 (유저: 「비디오 지금 불러오는거 못하니까
-  /// 불러와서 재생가능하게」). ⛔This list is a CLAIM about the viewer, so
-  /// it has to move when the viewer does — a picker that cannot offer a
-  /// movie makes「the viewer plays movies」untrue from the user's side, and
-  /// nothing in the viewer would have failed to say so.
-  static const XTypeGroup viewableMedia = XTypeGroup(
-    label: 'Viewable media',
-    extensions: [
-      ...imageFileExtensions,
-      ...pdfFileExtensions,
-      ...videoFileExtensions,
-    ],
-    uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiMovie],
-  );
-
-  /// Everything the media pool will register, movies included — the one
-  /// import window's picker, whichever entrance opened it, and a relink's.
+  /// ⛔The viewer's half is a CLAIM about the viewer: it opens every kind
+  /// here — a movie (2026-08-29), a sound as its waveform (09-08) — and a
+  /// picker narrower than the viewer makes that untrue from the user's
+  /// side, with nothing in the viewer failing to say so. ↩️It had a list of
+  /// its own that still left sound out, 「the one deliberate absence」, a
+  /// month after the viewer learned to open one (F-282-Q2, 유저 2026-10-09:
+  /// 받는 종류는 열기와 같게, 소리 포함).
   static const XTypeGroup poolMedia = XTypeGroup(
     label: 'Media',
     extensions: [

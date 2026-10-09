@@ -277,8 +277,8 @@ class MediaViewerTabHost extends StatefulWidget {
   /// as long as it is mounted.
   final ValueNotifier<ViewerLoudness>? loudness;
 
-  /// Injectable loose-file picker (tests).
-  final Future<String?> Function()? filePicker;
+  /// Injectable loose-file picker (tests): answers in place of the dialog.
+  final LooseFilePicker? filePicker;
 
   /// Injectable sound (tests) — the same seam as [filePicker].
   ///
@@ -887,19 +887,25 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   Future<void> _pickLooseFile() async {
     // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
     // notice after the pick, not a greyed-out file in the dialog. The
-    // widget's own [filePicker] seam still wins, so tests drive a path
-    // straight in.
-    final injected = widget.filePicker;
-    final path = injected != null
-        ? await injected()
-        : await openSupportedFile(
-            context,
-            supportedExtensions: FileTypeGroups.viewableMedia.extensions ?? [],
-          );
+    // widget's own [filePicker] seam answers in place of the dialog, and
+    // what it answers is refused the same way.
+    //
+    // 🗣️F-282-Q2 (유저 2026-10-09, 가): the viewer's Open stays a look, and
+    // takes the kinds the one door sends to the import window — sound
+    // included. ↩️Its list left sound out, 「the one deliberate absence」,
+    // after the viewer had learned to open one as its waveform (09-08).
+    final path = await openSupportedFile(
+      context,
+      supportedExtensions: FileTypeGroups.poolMedia.extensions ?? [],
+      picker: widget.filePicker,
+    );
     if (path == null || !mounted) {
       return;
     }
-    final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
+    final kind = mediaAssetKindForPath(path);
+    if (kind == null) {
+      return;
+    }
     widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
 

@@ -153,7 +153,11 @@ void main() {
           .details,
     );
 
-    expect(named, ['notes.txt']);
+    expect(
+      named,
+      ['${folder.path}/notes.txt'],
+      reason: 'named as every pick names a refusal — a file by its path',
+    );
     expect(
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsNothing,
