@@ -253,12 +253,17 @@ void main() {
       expect(keysOf(session, a).keys, [0, 20, 27, 31]);
     });
 
-    test('a key a file left past a cut\'s end holds no drag out', () {
+    test('a key a file left past a cut\'s end holds no drag out — nor in: '
+        'the keys inside are the floor', () {
       final session = open(aKeys: [0, 20, 40]);
 
       dragEdge(session, TimelineBlockEdge.end, 2);
-
       expect(spansOf(session), {18: 14});
+
+      session.undo();
+      dragEdge(session, TimelineBlockEdge.end, -5);
+      expect(spansOf(session), {18: 7}, reason: 'a is drawn for 25 — 20 kept');
+      expect(keysOf(session, a), {0: 0, 20: 20, 40: 40});
     });
   });
 }

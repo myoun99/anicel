@@ -203,6 +203,24 @@ void main() {
       );
     });
 
+    test('a key already past the end bounds nothing — the others still '
+        'do', () {
+      expect(
+        cameraDrawnFrameFloor(cameraOf([0, 12, 40]), drawnFrameCount: 24),
+        13,
+      );
+      expect(
+        cameraDrawnFrameFloor(cameraOf([0, 23, 40]), drawnFrameCount: 24),
+        2,
+        reason: 'the end key past one other inside',
+      );
+      expect(
+        cameraDrawnFrameFloor(cameraOf([23, 40]), drawnFrameCount: 24),
+        1,
+        reason: 'a lone end key inside',
+      );
+    });
+
     test('a lone end key, or no key at all, bounds nothing', () {
       expect(cameraDrawnFrameFloor(cameraOf([23]), drawnFrameCount: 24), 1);
       expect(cameraDrawnFrameFloor(cameraOf([]), drawnFrameCount: 24), 1);

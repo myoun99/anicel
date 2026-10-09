@@ -121,8 +121,8 @@ bool cameraWriteKeepsKeysIn(
 ///   ([cameraDrawnFrameFloor]), so there the end key is the one that comes
 ///   in; a shrink that comes at once — an O.L taken away, a cut moved off
 ///   its O.L — brings in all it went past. A key coming in onto another
-///   takes its frame (I-73-camera-row-Q8, `moved`, the answer
-///   recommended).
+///   takes its frame — I-73-camera-row-Q8 (→ `moved`): 「컷길이 조절할때랑
+///   같은규칙으로 최대한 통일」, the end key keeping to the end.
 ///
 /// ⚠️The step back is not this move the other way: what came in stays in
 /// as the cut grows again, so the commands that take a のりしろ away put
@@ -229,11 +229,22 @@ CutCamera _cameraWithEachLane(
 /// it is — so up to the frame after the last of those. The camera lives
 /// inside its cut, as the conte does (`minimumCutDurationFor`, 유저
 /// 2026-07-27): a shrink stops short of a key rather than putting one out.
+///
+/// A key already past the end bounds nothing: it is not the shrink's to
+/// keep in ([cameraWriteKeepsKeysIn] lets it stand for the same reason), and
+/// counting it would stop every shrink of its cut. ↩️It counted: a key a
+/// file left at frame 40 of a 30-frame cut held the cut's end and its
+/// O.L's edge where they were.
 int cameraDrawnFrameFloor(CutCamera camera, {required int drawnFrameCount}) {
   final last = drawnFrameCount - 1;
   var floor = 1;
   var keysTheEnd = false;
+  var inside = 0;
   for (final frame in camera.track.keyedFrames) {
+    if (frame > last) {
+      continue;
+    }
+    inside += 1;
     if (frame == last) {
       keysTheEnd = true;
     } else if (frame + 1 > floor) {
@@ -241,5 +252,5 @@ int cameraDrawnFrameFloor(CutCamera camera, {required int drawnFrameCount}) {
     }
   }
   // The key on the end needs a frame of its own past the others.
-  return keysTheEnd && camera.track.keyedFrames.length > 1 ? floor + 1 : floor;
+  return keysTheEnd && inside > 1 ? floor + 1 : floor;
 }
