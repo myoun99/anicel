@@ -512,14 +512,23 @@ class StoryboardToolbarPanelContext
     session.layerStack.addLayerOfKind(kind);
   }
 
+  /// 🗣️F-322 (유저 2026-10-09): 「지금 콘티패널에서 콘티행 섰을때 레이어
+  /// 종류버튼으로 어태치레이어 추가안되니 가능하도록」.
+  ///
+  /// A projection row stood on holds the timeline's own row
+  /// ([_projectedCell]), so its attach entries are the timeline's: a row of
+  /// the conte group carries one — born on its seat in every cut of the
+  /// track (`plannedAddLayerCommand`), and stood on here at that seat — and
+  /// the camera refuses, as it does there. ↩️They were grey with the
+  /// cut-scoped kinds (B8) while this rail showed no row of a cut.
   @override
-  bool get canAddAttachedLayer => false;
+  bool get canAddAttachedLayer => _projectedCell?.canAddAttachedLayer ?? false;
 
   @override
   void addAttachedLayer(
     AttachedPlacement placement, {
     AttachedMode mode = AttachedMode.synced,
-  }) {}
+  }) => _projectedCell?.addAttachedLayer(placement, mode: mode);
 
   @override
   bool get servesActiveLayerVerbs => false;

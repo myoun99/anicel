@@ -151,7 +151,9 @@ class Standing {
   /// The row you just made is the subject OF THE PANEL YOU MADE IT IN: made
   /// while working in the storyboard (whose layer pill makes S rows), it is
   /// that rail's row as well — the rail shows it, so that is where you stand.
-  void seatVerbRowOnActiveLayer() {
+  /// A row the rail shows on a projection row is stood on there by the doors
+  /// that make one ([standOnTheMadeRow]).
+  void _seatVerbRowOnActiveLayer() {
     final seated = _controllers.layerController.activeLayerId;
     if (seated == null) {
       return;
@@ -167,6 +169,31 @@ class Standing {
     if (railStands) {
       _storyboardRow = row;
     }
+    publishCurrentRow();
+  }
+
+  /// The doors that MAKE a row stand on it ([_seatVerbRowOnActiveLayer]) —
+  /// and, made while working in the storyboard, on the projection row that
+  /// shows it there: a row of the cut's conte group at its seat (I-73;
+  /// F-322, 유저 2026-10-09: 「콘티행 섰을때 레이어 종류버튼으로 어태치레이어
+  /// 추가안되니 가능하도록」).
+  ///
+  /// ⛔Not [followActiveLayer]'s to ask: a cut switch moves the active layer
+  /// too, and a cut stood on keeps the rail on the cut (「컷에 설때는
+  /// 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에 서야 콘티행에
+  /// 서도록」).
+  void standOnTheMadeRow() {
+    _seatVerbRowOnActiveLayer();
+    final seated = _controllers.layerController.activeLayerId;
+    final projection =
+        seated == null || _working.value != WorkingPanel.storyboard
+        ? null
+        : _projectionRowShowing(seated);
+    if (projection == null ||
+        _storyboardRow == LayerRowAddress(projection)) {
+      return;
+    }
+    _storyboardRow = LayerRowAddress(projection);
     publishCurrentRow();
   }
 
@@ -213,7 +240,7 @@ class Standing {
     if (active == null || row == null || row.owningLayerId == active) {
       return;
     }
-    seatVerbRowOnActiveLayer();
+    _seatVerbRowOnActiveLayer();
   }
 
   /// F-20, the DELETE half: a row whose layer no longer exists is not a
