@@ -266,11 +266,14 @@ class _StoryboardCameraRow extends StatelessWidget {
         color: layerMarkColor(camera.mark),
         endsAtKey: last == to,
         crossFraction: _cameraRowLineAt(reach.lineAt(from)),
+        // In box order: a track's spans never overlap, so a stretch shared
+        // with the cut before ends before one shared with the cut after
+        // begins — a cut an O.L covers whole has both at its ends.
         steps: [
           for (final edge in {reach.arrivingUntil, reach.leavingFrom})
             if (edge > from && edge <= to)
               (edge: edge - from, to: _cameraRowLineAt(reach.lineAt(edge))),
-        ]..sort((a, b) => a.edge.compareTo(b.edge)),
+        ],
       ),
     );
   }
@@ -366,23 +369,12 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     }
 
     for (final reach in reaches) {
-      // The のりしろ before the cut's place, and after it — each split where
-      // its line changes, so a wash never crosses from one half to the
-      // other.
-      for (final margin in [
-        (from: reach.mediaStart, to: reach.entry.startFrame),
-        (from: reach.entry.endFrame, to: reach.mediaEnd),
-      ]) {
-        final edges = {
-          margin.from,
-          for (final edge in [reach.arrivingUntil, reach.leavingFrom])
-            if (edge > margin.from && edge < margin.to) edge,
-          margin.to,
-        }.toList()..sort();
-        for (var index = 0; index + 1 < edges.length; index += 1) {
-          wash(edges[index], edges[index + 1], reach);
-        }
-      }
+      // The のりしろ before the cut's place, and after it. Each lies on one
+      // line: only a span two sides share asks for one (a fade stays inside
+      // its cut), it asks as much of the neighbour across that edge — or of
+      // the gap — and a track's spans never overlap.
+      wash(reach.mediaStart, reach.entry.startFrame, reach);
+      wash(reach.entry.endFrame, reach.mediaEnd, reach);
     }
     return rects;
   }

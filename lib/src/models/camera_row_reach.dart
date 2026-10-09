@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'storyboard_timeline_layout.dart';
 import 'transition_geometry.dart';
 
@@ -96,14 +98,12 @@ List<CameraRowReach> cameraRowReachesOf(
         entry: entries[index],
         mediaStart: own[index].start,
         mediaEnd: own[index].end,
-        arrivingUntil: index == 0 || own[index - 1].end <= own[index].start
+        arrivingUntil: index == 0
             ? own[index].start
-            : own[index - 1].end,
-        leavingFrom:
-            index == entries.length - 1 ||
-                own[index + 1].start >= own[index].end
+            : math.max(own[index].start, own[index - 1].end),
+        leavingFrom: index == entries.length - 1
             ? own[index].end
-            : own[index + 1].start,
+            : math.min(own[index].end, own[index + 1].start),
       ),
   ];
 }

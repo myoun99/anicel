@@ -164,6 +164,26 @@ void main() {
       );
     });
 
+    testWidgets('🚨it is lit only while its row is stood on, and a press on '
+        'it stands there', (tester) async {
+      final session = await pumpPanel(
+        tester,
+        before: (session) => session
+          ..selectCut(b)
+          ..selectRow(const LayerRowAddress(LayerId('b-cel'))),
+      );
+      expect(session.activeCutId, b, reason: '⛔전제');
+      expect(head(tester).active, isFalse, reason: 'another row is stood on');
+
+      await tester.tap(
+        find.descendant(of: label, matching: find.text('Camera b')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(session.selectedRow, cameraRow);
+      expect(head(tester).active, isTrue);
+    });
+
     testWidgets('its eye and its slider are the camera view\'s', (
       tester,
     ) async {

@@ -109,7 +109,7 @@ void main() {
     ],
   );
 
-  Project film() => Project(
+  Project film({List<int> cKeys = const []}) => Project(
     id: const ProjectId('camera-row'),
     name: 'Camera row',
     createdAt: DateTime.utc(2026, 10, 9),
@@ -120,7 +120,7 @@ void main() {
         cuts: [
           cutOf('a', 24, [0, 12, 20, 30], names: {12: 'IN'}),
           cutOf('b', 24, [2, 6, 12], names: {2: 'OUT'}),
-          cutOf('c', 12, const [], gap: 4),
+          cutOf('c', 12, cKeys, gap: 4),
         ],
       ),
     ],
@@ -133,10 +133,13 @@ void main() {
     WidgetTester tester, {
     Set<TimelineSection> hiddenSections = const {},
     Map<int, InstructionEvent> transitions = const {},
+    List<int> cKeys = const [],
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: film());
+    final session = EditorSessionManager(
+      initialProject: film(cKeys: cKeys),
+    );
     addTearDown(session.dispose);
     if (transitions.isNotEmpty) {
       session.transitions.updateTransitionInstructions(transitions);
@@ -342,6 +345,14 @@ void main() {
       );
     });
 
+    testWidgets('🚨a cut whose keys all lie past its own end has neither a '
+        'line nor a mark', (tester) async {
+      await pumpPanel(tester, cKeys: [14, 20]);
+
+      expect(key('storyboard-camera-line-c-cam'), findsNothing);
+      expect(marksOf(tester, 'c-cam'), isEmpty);
+    });
+
     testWidgets('a dashed line where each cut begins', (tester) async {
       await pumpPanel(tester);
 
@@ -451,6 +462,24 @@ void main() {
       session.edgeDrag.cancelTransitionEdgeDrag();
       await tester.pumpAndSettle();
       expect(sharedFrames(tester), [(18.0, 30.0)]);
+    });
+
+    testWidgets('🚨…and where it is let go, it stays', (tester) async {
+      final session = await pumpPanel(tester, transitions: ol);
+
+      session.edgeDrag.beginTransitionEdgeDrag(
+        spanStartIndex: 18,
+        edge: TimelineBlockEdge.end,
+      );
+      session.edgeDrag.updateTransitionEdgeDrag(2);
+      session.edgeDrag.endTransitionEdgeDrag();
+      await tester.pumpAndSettle();
+
+      expect(
+        sharedFrames(tester),
+        [(18.0, 32.0)],
+        reason: 'the cuts did not move, but the track\'s transitions did',
+      );
     });
 
     testWidgets('🚨a cut\'s end dragged carries the O.L it crosses, live', (
