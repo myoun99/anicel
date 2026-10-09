@@ -149,6 +149,41 @@ void main() {
       expect(plan.attach.mounts.single.baseId, const LayerId('top'));
     });
 
+    test('🚨…and nor does an empty folder of the conte\'s group', () {
+      // ⚠️A ROW riding the conte is a storyboard row (an attach row takes
+      // its base's kind), and a storyboard row mounts on nothing — so the
+      // drop above is refused before the conte is asked. An organizer
+      // folder with nothing in it yet carries its relation on its own row
+      // (F-139) and CAN mount: it is what the conte's rule has to stop.
+      final withFolder = [
+        row('cel'),
+        row('conte', kind: LayerKind.storyboard),
+        row('box', kind: LayerKind.folder, ridesOn: 'conte'),
+        row('top'),
+      ];
+      expect(
+        resolveLayerDropOnRow(
+          stack: withFolder,
+          movingId: const LayerId('box'),
+          targetId: const LayerId('cel'),
+        ),
+        isNull,
+      );
+      // LIVENESS: the same folder riding the cel goes onto another base.
+      final onTheCel = [
+        row('cel'),
+        row('box', kind: LayerKind.folder, ridesOn: 'cel'),
+        row('conte', kind: LayerKind.storyboard),
+        row('top'),
+      ];
+      final plan = resolveLayerDropOnRow(
+        stack: onTheCel,
+        movingId: const LayerId('box'),
+        targetId: const LayerId('top'),
+      )!;
+      expect(plan.attach.mounts.single.baseId, const LayerId('top'));
+    });
+
     test('inside the conte\'s group is an ordinary move', () {
       // `over` nudged one place up, past `over2`: still the group's.
       final plan = resolveLayerDrop(
