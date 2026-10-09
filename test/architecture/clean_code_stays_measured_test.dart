@@ -458,7 +458,14 @@ void main() {
   /// `_ResamplerDesign` the piece-at-a-time stream runs too. 🔬The lane's
   /// scan against its base (`e5074ed43`, at 410) named that one gone and
   /// nothing added.
-  const longBodies = 408;
+  ///
+  /// ⚠️408 → 407 on 2026-10-10, lowered as the rule asks
+  /// (playback-plays-the-screen-material ②, a run seen through the camera
+  /// plays on the canvas): the composite playback view's `build` went with
+  /// the view. 🔬The lane's scan against master (`a81501886`, at 410 before
+  /// the two lowerings above landed) named that one gone and `_cutFadeWash`
+  /// held at sixty — the camera's frame for its unit — not added.
+  const longBodies = 407;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

@@ -16,19 +16,21 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
-import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
+import 'package:anicel/src/ui/playback/camera_shot.dart';
+import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/playback_run_layer.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 
-/// playback-plays-the-screen-material ① (10-09): a cut played alone, seen
-/// without the camera, plays ON the editing canvas. The clock moves the
-/// playhead the way a scrub does and the canvas draws the frame it stands
-/// on, from the images it draws standing still — 유저 F-296-Q6: 「보인다 —
-/// 재생과 정지가 같은 그림」 · 「중복소재 안만들고 싶은것」.
+/// playback-plays-the-screen-material ① (10-09) and ② (10-10): a cut played
+/// alone plays ON the editing canvas, through the camera or not. The clock
+/// moves the playhead the way a scrub does and the canvas draws the frame
+/// it stands on, from the images it draws standing still — 유저 F-296-Q6:
+/// 「보인다 — 재생과 정지가 같은 그림」 · 「중복소재 안만들고 싶은것」.
 ///
 /// ↩️A run swapped the canvas for a composite view: a second picture of
 /// every frame, the cut's own size, made from the very images the canvas
-/// draws, with the canvas hidden under it.
+/// draws, with the canvas hidden under it — and the camera view kept that
+/// swap a day longer than the rest.
 void main() {
   /// The scrub under test, held by its own type so the mutation campaign
   /// finds this file as its witness.
@@ -95,23 +97,26 @@ void main() {
     (widget) => widget is CustomPaint && widget.painter is GuideOverlayPainter,
   );
 
-  testWidgets('🚨a cut played alone, seen without the camera, plays ON the '
-      'canvas: the canvas stays, under the run\'s layer, and no composite '
-      'view is built', (tester) async {
-    final (s, _) = await pumpArea(tester);
-    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
-    await tester.pump();
+  for (final cameraView in [false, true]) {
+    final seen = cameraView ? 'through' : 'without';
+    testWidgets('🚨a cut played alone, seen $seen the camera, plays ON the '
+        'canvas: the canvas stays, under the run\'s layer, and no composite '
+        'view is built', (tester) async {
+      final (s, _) = await pumpArea(tester, cameraView: cameraView);
+      s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
 
-    expect(find.byType(CanvasPlaybackView), findsNothing);
-    expect(find.byType(PlaybackRunLayer), findsOneWidget);
-    expect(
-      stackOf(tester).run?.landings,
-      same(s.playbackRig.prerenderScheduler.landings),
-      reason: 'the run\'s pictures are the warmer\'s',
-    );
-    s.playbackRig.playback.stop();
-    await drain(tester);
-  });
+      expect(find.byType(CanvasTrackStackView), findsNothing);
+      expect(find.byType(PlaybackRunLayer), findsOneWidget);
+      expect(
+        stackOf(tester).run?.landings,
+        same(s.playbackRig.prerenderScheduler.landings),
+        reason: 'the run\'s pictures are the warmer\'s',
+      );
+      s.playbackRig.playback.stop();
+      await drain(tester);
+    });
+  }
 
   testWidgets('🚨the playhead follows the run: the canvas stands on the frame '
       'the run shows', (tester) async {
@@ -202,26 +207,50 @@ void main() {
     await drain(tester);
   });
 
-  testWidgets('seen through the camera, the run plays on the composite view '
-      'yet, and the playhead waits for the stop', (tester) async {
+  testWidgets('🚨seen through the camera, the run is drawn through the '
+      'camera\'s view of the frame it stands on — the playhead follows it, '
+      'and a canvas that stands again is seen through none', (tester) async {
     final (s, _) = await pumpArea(tester, cameraView: true);
+    CameraShot shotOf() => tester.widget<CameraShot>(find.byType(CameraShot));
+    expect(
+      shotOf().shot,
+      isNull,
+      reason: '⛔premise: standing still, the camera\'s frame is drawn OVER '
+          'the whole canvas — the crop is playback\'s',
+    );
+    expect(stackOf(tester).viewport, shotOf().view);
+
     final playback = s.playbackRig.playback;
     playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     playback.seekToGlobalFrame(5);
     await tester.pump();
 
-    expect(find.byType(CanvasPlaybackView), findsOneWidget);
-    expect(s.editingFrameCursor.value, 0);
+    expect(s.editingFrameCursor.value, 5, reason: 'the playhead follows');
+    final shot = shotOf().shot;
+    expect(shot, isNotNull);
+    expect(shot!.pose, s.camera.cameraPoseForCut(s.requireActiveCut, 5));
+    expect(
+      stackOf(tester).viewport,
+      shot.frameView,
+      reason: 'the canvas is seen through the camera at that frame',
+    );
+    expect(
+      s.renderCaches.canvasLook.value.camera?.frameSize,
+      s.camera.cameraFrameSize,
+      reason: 'and the warmer is told so, for the frames it makes ahead',
+    );
 
     playback.stop();
     await tester.pump();
-    expect(s.editingFrameCursor.value, 5, reason: 'the stop lands there');
+    await tester.pump();
+    expect(shotOf().shot, isNull);
+    expect(s.renderCaches.canvasLook.value.camera, isNull);
     await drain(tester);
   });
 
-  testWidgets('🚨a run keeps its clock when what draws it changes under it — '
-      'the camera view turned on, and off again', (tester) async {
+  testWidgets('🚨a run keeps its clock, and the canvas its picture, when the '
+      'camera view is turned on under it, and off again', (tester) async {
     final (s, camera) = await pumpArea(tester);
     final playback = s.playbackRig.playback;
     // A clock that never waits: what moves it is its ticker alone.
@@ -229,18 +258,24 @@ void main() {
     playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
+    final view = tester.state(find.byType(CanvasLayerStackView));
 
     for (final throughTheCamera in [true, false]) {
       camera.value = throughTheCamera;
       await tester.pump();
       final before = playback.playlistFrame;
       await tester.pump(const Duration(milliseconds: 250));
+      final seen = throughTheCamera ? 'seen through it' : 'seen without it';
       expect(
         playback.playlistFrame,
         isNot(before),
-        reason: throughTheCamera
-            ? 'the composite view took over: the clock still runs'
-            : 'the canvas took over again: the clock still runs',
+        reason: '$seen, the clock still runs',
+      );
+      expect(
+        tester.state(find.byType(CanvasLayerStackView)),
+        same(view),
+        reason: '$seen, the stack that holds the run\'s images is the same — '
+            'not made again, and nothing of it made again',
       );
     }
     expect(find.byType(PlaybackRunLayer), findsOneWidget);
@@ -305,21 +340,25 @@ void main() {
     await drain(tester);
   });
 
-  testWidgets('the canvas says how it shows a cut: the warmer makes the '
-      'canvas\'s pictures, unless it looks through the camera', (
-    tester,
-  ) async {
+  testWidgets('the warmer makes the canvas\'s pictures, through the camera or '
+      'not — only the whole film is shown from composites', (tester) async {
     final (s, camera) = await pumpArea(tester);
     final rig = s.playbackRig;
     expect(rig.canvasShown, same(rig.canvasPictures));
     expect(rig.shownPictures, same(rig.canvasPictures));
 
     camera.value = true;
-    expect(rig.canvasShown, isNull);
-    expect(rig.shownPictures, same(rig.compositePictures));
-
-    camera.value = false;
-    expect(rig.canvasShown, same(rig.canvasPictures));
+    await tester.pump();
+    expect(rig.shownPictures, same(rig.canvasPictures));
+    rig.playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    expect(
+      rig.shownPictures,
+      same(rig.canvasPictures),
+      reason: 'a cut played alone through the camera is the canvas\'s too',
+    );
+    rig.playback.stop();
+    await tester.pump();
 
     rig.playback.play(scope: PlaybackScope.allCuts);
     expect(

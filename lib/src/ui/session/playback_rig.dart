@@ -120,41 +120,27 @@ class PlaybackRig implements PlaybackRun {
   );
 
   /// A cut's frame as the canvas draws it — its rows' images at the level
-  /// the canvas draws at.
+  /// the canvas draws that frame at.
   late final CanvasPictures canvasPictures = CanvasPictures(
     layerImages: _renderCaches.layerFrameImageCache,
     rowsOf: _canvasRowsOf,
-    quality: () => _renderCaches.canvasQuality.value,
+    qualityAt: (cut, frameIndex) =>
+        _renderCaches.canvasLook.value.qualityAt(cut, frameIndex),
   );
 
-  /// Whether the canvas shows a cut played alone on itself — the canvas
-  /// view says ([canvasShowsCuts]); it does unless it looks through the
-  /// camera (the composite view's, until the camera view stands on the
-  /// same pictures).
-  bool _canvasShowsCuts = true;
-
-  bool get canvasShowsCuts => _canvasShowsCuts;
-
-  /// The canvas view's word on how it shows a cut — what is made, kept and
-  /// counted follows it from here.
-  set canvasShowsCuts(bool value) {
-    if (_canvasShowsCuts == value) {
-      return;
-    }
-    _canvasShowsCuts = value;
-    _shownPicturesChanged();
-  }
-
   /// The pictures the screen shows a frame from now: the canvas's own while
-  /// it shows one cut — standing, scrubbed, or played alone — and a cut's
-  /// composite where the composite view shows it (the camera view, the
-  /// whole film).
+  /// it shows one cut — standing, scrubbed, or played alone, through the
+  /// camera or not — and a cut's composite where the track stack shows it
+  /// (the whole film).
   PlaybackPictures get shownPictures => canvasShown ?? compositePictures;
 
+  /// ↩️The camera view played on the composite view, so the canvas said
+  /// whether it looked through the camera (`canvasShowsCuts`) and a cut
+  /// played alone through it was made and counted in composites. It plays
+  /// on the canvas now, through the camera ([CanvasLook.camera]).
   @override
   CanvasPictures? get canvasShown =>
-      _canvasShowsCuts &&
-          !(playback.isActive && playback.scope == PlaybackScope.allCuts)
+      !(playback.isActive && playback.scope == PlaybackScope.allCuts)
       ? canvasPictures
       : null;
 
@@ -361,9 +347,10 @@ class PlaybackRig implements PlaybackRun {
     // may have changed: a picture landed, one was given up on, or it has
     // come to rest — which is what a run that renders first waits for.
     prerenderScheduler.changes.addListener(playback.lookAgain);
-    // The canvas draws its rows at another level: what was made at the old
-    // one is not what it will ask for.
-    _renderCaches.canvasQuality.addListener(_shownPicturesChanged);
+    // The canvas shows its frames another way — another zoom, another
+    // screen, the camera a run is seen through: what was made for the old
+    // look is not what it will ask for.
+    _renderCaches.canvasLook.addListener(_shownPicturesChanged);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -382,7 +369,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
-    _renderCaches.canvasQuality.removeListener(_shownPicturesChanged);
+    _renderCaches.canvasLook.removeListener(_shownPicturesChanged);
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

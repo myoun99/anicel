@@ -8,7 +8,9 @@ import 'layer_frame_image_cache.dart';
 import 'playback_pictures.dart';
 
 /// A frame as the editing canvas draws it: each row an image of its cel at
-/// the level the canvas draws at ([LayerFrameImageCache]) — the images the
+/// the level the canvas draws that frame at ([LayerFrameImageCache]) — the
+/// level of the view it is seen through, the camera's included while a run
+/// plays through it ([CanvasLook]) — the images the
 /// canvas holds, so a frame made here is one the canvas shows without making
 /// anything, and nothing of it is made twice
 /// (playback-plays-the-screen-material; 유저 F-296-Q6 「중복소재 안만들고
@@ -21,7 +23,7 @@ class CanvasPictures implements PlaybackPictures {
   CanvasPictures({
     required this.layerImages,
     required this.rowsOf,
-    required this.quality,
+    required this.qualityAt,
   });
 
   final LayerFrameImageCache layerImages;
@@ -31,8 +33,10 @@ class CanvasPictures implements PlaybackPictures {
   final List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
   rowsOf;
 
-  /// The level the canvas draws its rows at now.
-  final PlaybackQuality Function() quality;
+  /// The level the canvas draws a cut's frame's rows at
+  /// ([CanvasLook.qualityAt]) — one frame's own, as a camera zooming through
+  /// a cut draws its frames at more than one.
+  final PlaybackQuality Function(Cut cut, int frameIndex) qualityAt;
 
   /// Rows whose image could not be made, and the store generation and cel
   /// revision they failed at — the canvas's own `_failedRevisions`, kept by
@@ -71,7 +75,7 @@ class CanvasPictures implements PlaybackPictures {
 
   @override
   bool has(DemandedPicture picture) {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     return rowsOf(
       picture.cut,
       picture.frameIndex,
@@ -82,7 +86,7 @@ class CanvasPictures implements PlaybackPictures {
   /// could not be made.
   @override
   bool failed(DemandedPicture picture) {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     return rowsOf(picture.cut, picture.frameIndex).every(
       (row) => _rowIsThere(row, picture.cut, level) || gaveUpOn(row),
     );
@@ -94,7 +98,7 @@ class CanvasPictures implements PlaybackPictures {
   /// movie its cels show could not be read.
   @override
   void noteFailure(DemandedPicture picture) {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     for (final row in rowsOf(picture.cut, picture.frameIndex)) {
       if (!_rowIsThere(row, picture.cut, level)) {
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);
@@ -109,7 +113,7 @@ class CanvasPictures implements PlaybackPictures {
   /// after each landing measures what was made.
   @override
   int bytesToMake(DemandedPicture picture) {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     final size = scaledCanvasSize(picture.cut.canvasSize, level);
     var bytes = 0;
     for (final row in rowsOf(picture.cut, picture.frameIndex)) {
@@ -123,7 +127,7 @@ class CanvasPictures implements PlaybackPictures {
   /// A held cel is one part however many frames show it.
   @override
   int weighNew(DemandedPicture picture, Set<Object> seen) {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     var bytes = 0;
     for (final row in rowsOf(picture.cut, picture.frameIndex)) {
       final held = _held(row, picture.cut, level);
@@ -143,7 +147,7 @@ class CanvasPictures implements PlaybackPictures {
     DemandedPicture picture, {
     required bool Function() shouldAbort,
   }) async {
-    final level = quality();
+    final level = qualityAt(picture.cut, picture.frameIndex);
     final cut = picture.cut;
     (Object, StackTrace)? thrown;
     for (final row in rowsOf(cut, picture.frameIndex)) {
@@ -200,11 +204,11 @@ class CanvasPictures implements PlaybackPictures {
   Map<(BrushFrameKey, PlaybackQuality), int> _soonestSteps(
     FrameDemand demand,
   ) {
-    final level = quality();
     final soonest = <(BrushFrameKey, PlaybackQuality), int>{};
     for (var step = 0; step < demand.length; step += 1) {
       for (final picture
           in demand.picturesAt(step) ?? const <DemandedPicture>[]) {
+        final level = qualityAt(picture.cut, picture.frameIndex);
         for (final row in rowsOf(picture.cut, picture.frameIndex)) {
           soonest.putIfAbsent((row.frameKey, level), () => step);
         }

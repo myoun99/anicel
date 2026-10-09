@@ -81,7 +81,7 @@ void main() {
       if (frame < 2 || (both && frame == 3)) row('a'),
       if (frame >= 2) row('b'),
     ],
-    quality: () => quality,
+    qualityAt: (_, _) => quality,
   );
 
   DemandedPicture at(int frame) => (cut: cut, frameIndex: frame);
@@ -117,6 +117,36 @@ void main() {
     });
   });
 
+  testWidgets('each frame is made at its own level — a camera zooming through '
+      'a cut draws its frames at more than one', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      // Frames 0..1 (cel a) drawn at full, 2..3 (cel b) at half.
+      final pictures = CanvasPictures(
+        layerImages: images,
+        rowsOf: (cut, frame) => [if (frame < 2) row('a') else row('b')],
+        qualityAt: (_, frame) =>
+            frame < 2 ? PlaybackQuality.full : PlaybackQuality.half,
+      );
+
+      await pictures.make(at(0), shouldAbort: () => false);
+      await pictures.make(at(2), shouldAbort: () => false);
+
+      expect(held(images, 'a', PlaybackQuality.full), isTrue);
+      expect(held(images, 'b', PlaybackQuality.half), isTrue);
+      expect(
+        [
+          held(images, 'a', PlaybackQuality.half),
+          held(images, 'b', PlaybackQuality.full),
+        ],
+        [false, false],
+        reason: 'each cel at the level of the frames that show it, alone',
+      );
+      expect([pictures.has(at(1)), pictures.has(at(3))], [true, true]);
+    });
+  });
+
   testWidgets('a row with nothing in it is there by definition — the bar has '
       'always counted a frame that composes to nothing as made', (
     tester,
@@ -126,7 +156,7 @@ void main() {
     final pictures = CanvasPictures(
       layerImages: images,
       rowsOf: (cut, frame) => [row('nothing-drawn')],
-      quality: () => PlaybackQuality.full,
+      qualityAt: (_, _) => PlaybackQuality.full,
     );
     expect(pictures.has(at(0)), isTrue);
     expect(pictures.bytesToMake(at(0)), 0);
@@ -246,7 +276,7 @@ void main() {
               placement: const LayerPlacement(1, 0, 0, 1, 1, 0),
             ),
         ],
-        quality: () => PlaybackQuality.full,
+        qualityAt: (_, _) => PlaybackQuality.full,
       );
       await pictures.make(at(0), shouldAbort: () => false);
       expect(pictures.has(at(0)), isTrue, reason: '⛔premise: the ink is held');

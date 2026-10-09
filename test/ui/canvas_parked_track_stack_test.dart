@@ -9,7 +9,6 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
-import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
@@ -116,8 +115,6 @@ void main() {
     final landings = s.playbackRig.prerenderScheduler.landings;
     CanvasTrackStackView stack() =>
         tester.widget<CanvasTrackStackView>(find.byKey(stackKey));
-    CanvasPlaybackView playbackView() =>
-        tester.widget<CanvasPlaybackView>(find.byType(CanvasPlaybackView));
 
     s.parkGlobalFrame(1);
     await tester.pump();
@@ -126,7 +123,6 @@ void main() {
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
     expect(stack().picturesLanded, same(landings));
-    expect(playbackView().picturesLanded, same(landings));
     s.playbackRig.playback.stop();
     await tester.pump();
 

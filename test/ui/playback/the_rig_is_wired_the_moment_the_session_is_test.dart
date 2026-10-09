@@ -1,7 +1,9 @@
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -16,9 +18,11 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
+import 'package:anicel/src/ui/canvas/canvas_look.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/session/playback_rig.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,12 +98,12 @@ void main() {
 
   /// A session on one cut of four frames and TWO pictures: a cel on frames
   /// 0..1, another on 2..3 — each inked, so either screen has a picture to
-  /// make of it — shown [onTheCanvas] or on the composite view.
+  /// make of it.
   ///
   /// ⚠️The ink stays INSIDE the canvas: a dab past its edge puts the cel on
   /// the pasteboard's tiles, and the canvas's image of it is then the size
   /// of those tiles — no longer the one picture's worth [picture] counts.
-  EditorSessionManager twoPictures({required bool onTheCanvas}) {
+  EditorSessionManager twoPictures() {
     final s = twoBareCels();
     for (final cel in ['a', 'b']) {
       inkCel(
@@ -115,7 +119,6 @@ void main() {
         tipShape: BrushTipShape.square,
       );
     }
-    s.playbackRig.canvasShowsCuts = onTheCanvas;
     return s;
   }
 
@@ -227,26 +230,27 @@ void main() {
 
     expect(wantedAsItEnded, [null]);
   });
-  // The same laws on both screens a cut is shown on: the canvas, from its
-  // own pictures (playback-plays-the-screen-material), and the composite
-  // view the camera view still plays on.
-  for (final onTheCanvas in [true, false]) {
+  // The same laws on both screens a run is shown on: the canvas, from its
+  // own pictures, for a cut played alone — through the camera or not
+  // (playback-plays-the-screen-material) — and the track stack the whole
+  // film still plays on, from composites.
+  for (final scope in [PlaybackScope.activeCut, PlaybackScope.allCuts]) {
     group(
-      onTheCanvas
-          ? 'shown on the canvas'
-          : 'shown on the composite view (the camera view)',
+      scope == PlaybackScope.activeCut
+          ? 'a cut played alone, shown on the canvas'
+          : 'the whole film, shown on the track stack',
       () {
         testWidgets('🚨the playhead moving on is what wakes the warmer: under an '
             'allowance of one picture, the picture held follows a seek', (
           tester,
         ) async {
           await tester.runAsync(() async {
-            final s = twoPictures(onTheCanvas: onTheCanvas);
+            final s = twoPictures();
             addTearDown(s.dispose);
             final rig = playbackRigOf(s);
             rig.playbackCache.debugSetPlaybackCacheBudgetBytes(picture);
 
-            rig.playback.play(scope: PlaybackScope.activeCut);
+            rig.playback.play(scope: scope);
             await rested(rig);
             expect(
               [held(s, 0), held(s, 2)],
@@ -278,7 +282,7 @@ void main() {
             rig.prerenderScheduler.changes.addListener(
               () => waited.add(rig.playback.isWaiting),
             );
-            rig.playback.play(scope: PlaybackScope.activeCut);
+            rig.playback.play(scope: scope);
             waited.insert(0, rig.playback.isWaiting);
             await rested(rig);
             return waited;
@@ -287,7 +291,7 @@ void main() {
           testWidgets('🚨every picture (the default): the run waits on its first '
               'frame until THAT picture is made, and then goes', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
 
               final waited = await waitedAtEachChange(s);
@@ -312,7 +316,7 @@ void main() {
           testWidgets('🚨rendering first: the run waits until what lies ahead is '
               'made — its first picture is not enough', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
 
@@ -333,7 +337,7 @@ void main() {
               'before it goes — onto a frame whose picture is there, too: what '
               'was filled was filled for where it stood', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               final rig = playbackRigOf(s)
                 ..setPlaybackMode(PlaybackMode.renderFirst);
@@ -364,7 +368,7 @@ void main() {
           testWidgets('showing every picture, a run dragged onto a frame whose '
               'picture is there goes on at once', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               final rig = playbackRigOf(s);
               await waitedAtEachChange(s);
@@ -379,7 +383,7 @@ void main() {
           testWidgets('rendering first under an allowance of one picture: what is '
               'held is all there is to wait for', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
 
@@ -398,7 +402,7 @@ void main() {
           testWidgets('skipping frames: the run never waits, and starts each '
               'picture where the playhead will be when it lands', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               final rig = playbackRigOf(s)..setPlaybackMode(PlaybackMode.skipFrames);
 
@@ -424,11 +428,11 @@ void main() {
           testWidgets('a mode picked under a run that waits is looked at there and '
               'then', (tester) async {
             await tester.runAsync(() async {
-              final s = twoPictures(onTheCanvas: onTheCanvas);
+              final s = twoPictures();
               addTearDown(s.dispose);
               final rig = playbackRigOf(s);
 
-              rig.playback.play(scope: PlaybackScope.activeCut);
+              rig.playback.play(scope: scope);
               expect(rig.playback.isWaiting, isTrue, reason: '⛔premise');
               rig.setPlaybackMode(PlaybackMode.skipFrames);
 
@@ -441,25 +445,24 @@ void main() {
     );
   }
 
-  /// The screen changing what it shows a frame from — the camera view
-  /// turned off, the canvas drawing at another level.
+  /// The screen changing what it shows a frame from — the whole film
+  /// stopped, the canvas drawing at another level.
   group('when the screen changes', () {
-    testWidgets('🚨turned to the canvas, the composites made for the camera '
-        'view are the first the budget lets go of when the line tightens', (
+    testWidgets('🚨back on the canvas, the composites made for the whole film '
+        'are the first the budget lets go of when the line tightens', (
       tester,
     ) async {
       await tester.runAsync(() async {
-        final s = twoPictures(onTheCanvas: false);
+        final s = twoPictures();
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
         // Room for both composites AND the layer images they were made of.
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
-        rig.playback.play(scope: PlaybackScope.activeCut);
+        rig.playback.play(scope: PlaybackScope.allCuts);
         await rested(rig);
         expect([held(s, 0), held(s, 2)], [true, true], reason: '⛔premise');
         rig.playback.stop();
 
-        rig.canvasShowsCuts = true;
         await rested(rig);
         expect(
           [held(s, 0), held(s, 2)],
@@ -493,17 +496,78 @@ void main() {
     testWidgets('🚨the canvas drawing at another level, the warmer makes the '
         'images it will ask for', (tester) async {
       await tester.runAsync(() async {
-        final s = twoPictures(onTheCanvas: true);
+        final s = twoPictures();
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
         rig.playback.play(scope: PlaybackScope.activeCut);
         await rested(rig);
         expect(held(s, 0), isTrue, reason: '⛔premise');
 
-        s.renderCaches.canvasQuality.value = PlaybackQuality.half;
+        s.renderCaches.canvasLook.value = CanvasLook(
+          view: CanvasViewport(zoom: 0.4),
+          devicePixelRatio: 1,
+        );
         expect(held(s, 0), isFalse, reason: 'nothing is made at half yet');
         await rested(rig);
         expect([held(s, 0), held(s, 2)], [true, true]);
+        rig.playback.stop();
+      });
+    });
+
+    testWidgets('🚨seen through a camera that zooms out in the middle of the '
+        'cut, each frame is made at the level the camera shows it at', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+        final cut = s.requireActiveCut;
+        // Frames 0..1 at the camera's own size, 2..3 at 40% of it.
+        s.renderCaches.canvasLook.value = CanvasLook(
+          view: CanvasViewport(),
+          devicePixelRatio: 1,
+          camera: (
+            poseOf: (cut, frame) => CameraPose(
+              center: CanvasPoint(x: 128, y: 128),
+              zoom: frame < 2 ? 1 : 0.4,
+            ),
+            frameSize: cut.canvasSize,
+          ),
+        );
+        rig.playback.play(scope: PlaybackScope.activeCut);
+        await rested(rig);
+
+        LayerFrameImage? imageOf(String cel, PlaybackQuality level) =>
+            s.renderCaches.layerFrameImageCache.peek(
+              s.brushFrameKeyForCut(
+                cut,
+                const LayerId('layer'),
+                FrameId(cel),
+              ),
+              level,
+              canvasSize: cut.canvasSize,
+              sourceEffects: const [],
+              inkSuffices: true,
+            );
+        expect([held(s, 0), held(s, 2)], [true, true]);
+        expect(
+          [
+            imageOf('a', PlaybackQuality.full) != null,
+            imageOf('b', PlaybackQuality.half) != null,
+          ],
+          [true, true],
+          reason: 'each cel at the level of the frames that show it',
+        );
+        expect(
+          [
+            imageOf('a', PlaybackQuality.half) != null,
+            imageOf('b', PlaybackQuality.full) != null,
+          ],
+          [false, false],
+          reason: 'and at no other: a cel made at another level is a second '
+              'picture of it',
+        );
         rig.playback.stop();
       });
     });
@@ -512,7 +576,7 @@ void main() {
         'room is the line less what is lent; for composites they come off '
         'it', (tester) async {
       await tester.runAsync(() async {
-        final s = twoPictures(onTheCanvas: true);
+        final s = twoPictures();
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
@@ -535,8 +599,10 @@ void main() {
         );
 
         expect(rig.playbackCache.bytes, 4 * picture);
-        rig.canvasShowsCuts = false;
+        // The whole film plays on the track stack, from composites.
+        rig.playback.play(scope: PlaybackScope.allCuts);
         expect(rig.playbackCache.bytes, 3 * picture);
+        rig.playback.stop();
       });
     });
   });

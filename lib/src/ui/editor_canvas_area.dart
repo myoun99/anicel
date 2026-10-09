@@ -49,10 +49,11 @@ import 'canvas/flip_hud_controller.dart';
 import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
+import 'canvas/canvas_look.dart';
+import 'canvas/outline_clipper.dart';
 import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
-import 'playback/canvas_playback_controller.dart' show PlaybackScope;
-import 'playback/canvas_playback_view.dart';
+import 'playback/camera_shot.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
@@ -443,10 +444,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// Whether the run that plays is drawn ON THIS CANVAS — a cut played
-  /// alone, seen without the camera: the clock moves the playhead
+  /// alone, through the camera or not: the clock moves the playhead
   /// ([_followTheRun]) and the canvas draws the frame it stands on, from the
   /// images it draws standing still (playback-plays-the-screen-material).
-  /// The camera view and the whole film play on the composite view yet.
+  /// The whole film plays on the track stack yet.
   ///
   /// The rig's answer, not a copy of it: the canvas shows a frame from its
   /// own pictures exactly when the warmer makes them
@@ -455,11 +456,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final rig = widget.session.playbackRig;
     return rig.playback.isActive && rig.canvasShown != null;
   }
-
-  /// This canvas's word on how it shows a cut — on itself, or through the
-  /// camera on the composite view ([PlaybackRig.canvasShowsCuts]).
-  void _sayHowCutsShow() => widget.session.playbackRig.canvasShowsCuts =
-      !widget.cameraViewEnabled.value;
 
   /// A run this canvas plays moves the playhead, as a scrub does
   /// ([FrameScrub.followTheRun]), to the frame of the cut's own it shows.
@@ -484,8 +480,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     playback.globalFrameIndexListenable.addListener(_syncPlaybackFitCut);
     playback.isActiveListenable.addListener(_syncPlaybackFitCut);
     playback.globalFrameIndexListenable.addListener(_followTheRun);
-    widget.cameraViewEnabled.addListener(_sayHowCutsShow);
-    _sayHowCutsShow();
   }
 
   @override
@@ -494,7 +488,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     playback.globalFrameIndexListenable.removeListener(_syncPlaybackFitCut);
     playback.isActiveListenable.removeListener(_syncPlaybackFitCut);
     playback.globalFrameIndexListenable.removeListener(_followTheRun);
-    widget.cameraViewEnabled.removeListener(_sayHowCutsShow);
     _playbackFitCut.dispose();
     _playbackViewport.dispose();
     _activeStrokeOverlay.dispose();
@@ -700,20 +693,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   ));
 
   /// The editing canvas's O.L partner ([_cutFadeWash]): [partners] held at
-  /// [standing], laid OVER the live cut — so no floor of its own.
-  Widget _olPartnerStack(
-    EditorSessionManager session,
-    CanvasViewport viewport,
+  /// [standing], laid OVER the live cut — so no floor of its own — and seen
+  /// through the camera when the live cut is.
+  static _TrackStackMount _olPartnerMount(
     int standing,
-    List<TrackStackContribution> partners,
-  ) => _trackStack(session, viewport, (
+    List<TrackStackContribution> partners, {
+    required bool throughCamera,
+  }) => (
     globalFrame: AlwaysStoppedAnimation<int?>(standing),
     positionsOf: (_) => partners,
     paintsFloor: false,
-    cameraView: false,
+    cameraView: throughCamera,
     picturesLanded: null,
     key: const ValueKey<String>('canvas-ol-partner'),
-  ));
+  );
 
   /// The one construction every mount of the track stack shares.
   Widget _trackStack(
@@ -867,35 +860,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     controller: session.playbackRig.playback,
     prerenderProgress: session.playbackRig.prerenderScheduler.progress,
     child: RecordingStreamerOverlay(session: session),
-  );
-
-  /// The composite view a run plays on where the canvas does not play it —
-  /// the camera view, the whole film ([CanvasPlaybackView]).
-  Widget _playbackContent(
-    EditorSessionManager session,
-    CanvasViewport viewport,
-  ) => CanvasPlaybackView(
-    controller: session.playbackRig.playback,
-    compositeCache: session.renderCaches.cutFrameCompositeCache,
-    picturesLanded: session.playbackRig.prerenderScheduler.landings,
-    cameraViewEnabled: widget.cameraViewEnabled.value,
-    cameraFrameSize: session.camera.cameraFrameSize,
-    cameraPoseOf: session.camera.cameraPoseForCut,
-    seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-    cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-    viewport: viewport,
-    background: session.projectSettings.projectBackground,
-    pasteboardArgb: session.repository.requireProject().pasteboardArgb,
-    pasteboardNone: session.repository.requireProject().pasteboardNone,
-    trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
-    trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
-    // ALL-CUTS playback watches the whole stage: the frame is the track
-    // stack on the clock's global axis (R3a) — a selected-track gap shows
-    // what the OTHER tracks hold there instead of the void. Single-cut
-    // playback keeps its single-cut frame (the editing context).
-    trackStack: session.playbackRig.playback.scope == PlaybackScope.allCuts
-        ? _buildTrackStackView(session, viewport, ofTheRun: true)
-        : null,
   );
 
   bool _pressNeedsCel(CanvasTool tool, EditorSessionManager session) {
@@ -1314,10 +1278,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     EditorSessionManager session,
     double cutFadeOpacity,
     List<TransitionVeil> veils,
-    BuildContext context,
-  ) {
+    BuildContext context, {
+    required bool throughCamera,
+  }) {
     final standing = session.editingGlobalFrame;
     final partners = _olPartnersAt(session, standing);
+    final frame = session.camera.cameraFrameSize;
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -1326,6 +1292,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // backdrop-colored wash at (1 − fade) is
       // pixel-equal to thinning the unit, without
       // re-compositing the editing stack.
+      //
+      // A run seen through the camera has the camera's frame for its unit
+      // ([PlaybackFramePainter.veils]), and its O.L partner the camera too.
       //
       // F-192: a one-sided transition's own screen is part of the unit,
       // so it goes down FIRST and the wash thins it with the rest.
@@ -1344,7 +1313,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             CustomPaint(
               painter: _CutFadeWashPainter(
                 viewport: viewport,
-                canvasSize: canvasSize,
+                unit: throughCamera ? frame.canvasRect : canvasSize.canvasRect,
                 veils: veils,
                 color: Color(
                   session.repository.requireProject().backdropArgb,
@@ -1357,7 +1326,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
             ),
             if (partners.isNotEmpty)
-              _olPartnerStack(session, viewport, standing, partners),
+              _trackStack(
+                session,
+                viewport,
+                _olPartnerMount(
+                  standing,
+                  partners,
+                  throughCamera: throughCamera,
+                ),
+              ),
           ],
         ),
       ),
@@ -1466,22 +1443,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
-    required this.canvasSize,
+    required this.unit,
     required this.veils,
     required this.color,
     required this.devicePixelRatio,
   });
 
   final CanvasViewport viewport;
-  final CanvasSize canvasSize;
+
+  /// The cut's unit in the space [viewport] shows — the canvas, or the
+  /// camera's frame a run is seen through.
+  final Rect unit;
 
   /// The screens one-sided transitions lay over the cut (F-192), under the
   /// wash — they are the unit's, and the wash thins the unit.
   final List<TransitionVeil> veils;
   final Color color;
 
-  /// The pan-phase snap's device grid — the wash covers the canvas rect
-  /// the snapped stack painted, not a sub-pixel beside it.
+  /// The pan-phase snap's device grid — the wash covers the unit the
+  /// snapped stack painted, not a sub-pixel beside it.
   final double devicePixelRatio;
 
   @override
@@ -1493,14 +1473,13 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
-    paintTransitionVeils(canvas, canvasSize.canvasRect, veils);
-    canvas.drawRect(canvasSize.canvasRect, Paint()..color = color);
+    paintTransitionVeils(canvas, unit, veils);
+    canvas.drawRect(unit, Paint()..color = color);
     canvas.restore();
   }
 
   @override
-  Object get props =>
-      (viewport, canvasSize, ByList(veils), color, devicePixelRatio);
+  Object get props => (viewport, unit, ByList(veils), color, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same canvas-space draw

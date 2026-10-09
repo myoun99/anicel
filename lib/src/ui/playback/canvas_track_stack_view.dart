@@ -103,9 +103,13 @@ class CanvasTrackStackView extends StatefulWidget {
   seNameTagsOf;
 
   /// The storyboard V row's display gate (R9), exactly as playback applies
-  /// it: fx off bypasses the cut-level fx work. Null = always on. (↩️The
-  /// eye and the static opacity it stood beside left the V row's head with
-  /// I-73 — see [CanvasPlaybackView.cutFxEnabledOf].)
+  /// it: fx off bypasses the cut-level fx work. Null = always on. A display
+  /// aid only: the MP4 bake and thumbnails never consult it.
+  ///
+  /// ↩️The V row had two more — an eye that hid a cut's PICTURE here (the
+  /// paper stayed) and the track's static opacity. Both left its head on
+  /// 2026-10-08 (I-73, 유저: 「V행의 불투명도랑 비지블 필요없어보여서
+  /// 삭제하고싶은데 어때」 · 「5. 값도지움」).
   final bool Function(CutId cutId)? cutFxEnabledOf;
 
   /// Called after each on-demand composite lands in the cache (the
@@ -439,8 +443,11 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             ),
             paperBackground: widget.background,
             paintPaper: isStage,
-            // Nothing to letterbox against without a camera frame.
-            paintLetterbox: isStage && cameraView,
+            // Nothing to letterbox against without a camera frame — and a
+            // stack laid over another picture (the canvas's O.L partner)
+            // leaves that picture's letterbox to it: an opaque one of its
+            // own would cover the live cut it is laid over.
+            paintLetterbox: isStage && cameraView && widget.paintsFloor,
             // The apron rides the camera view, as the playback view's does:
             // it is what the camera sees past the paper.
             pasteboardColor: isStage && cameraView

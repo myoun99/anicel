@@ -31,7 +31,7 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
-import '../../models/playback_quality.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -40,6 +40,7 @@ import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
+import '../canvas/canvas_look.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'session_roles.dart';
@@ -134,15 +135,16 @@ class RenderCaches {
   /// ([livePictureBufferBytes]) rather than overwriting this.
   int canvasBufferBytes = 0;
 
-  /// The level the editing canvas draws its rows' images at — what a frame
-  /// is made of where the canvas shows it ([CanvasPictures]), so the warmer
-  /// makes the images the canvas will ask for and the ruler's bar counts
-  /// them. Full until the canvas first says, and wherever it is not shown.
+  /// How the editing canvas shows a cut's frame ([CanvasLook]) — what a
+  /// frame is made of where the canvas shows it ([CanvasPictures]), so the
+  /// warmer makes the images the canvas will ask for and the ruler's bar
+  /// counts them. Full at every frame until the canvas first says.
   ///
-  /// PUSHED, as [canvasBufferBytes] is: the level is the canvas view's own
-  /// answer for its zoom and its screen, and the session owns neither.
-  final ValueNotifier<PlaybackQuality> canvasQuality = ValueNotifier(
-    PlaybackQuality.full,
+  /// PUSHED, as [canvasBufferBytes] is: the look is the canvas view's own
+  /// answer for its zoom, its screen and the camera a run is seen through,
+  /// and the session owns none of them.
+  final ValueNotifier<CanvasLook> canvasLook = ValueNotifier(
+    CanvasLook(view: CanvasViewport(), devicePixelRatio: 1),
   );
 
   /// What each LIVE picture's display buffer holds — the conte's pictures,
@@ -358,6 +360,6 @@ class RenderCaches {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
-    canvasQuality.dispose();
+    canvasLook.dispose();
   }
 }

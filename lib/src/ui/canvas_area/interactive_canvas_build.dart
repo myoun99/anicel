@@ -579,8 +579,12 @@ class _InteractiveCanvasBuild {
       // the underlay's, the press is the run's, and nothing is drawn on.
       contentOverride: _canvasPlays
           ? (context, viewport) => const SizedBox.expand()
+          // ALL-CUTS playback watches the whole stage: the frame is the
+          // track stack on the clock's global axis (R3a) — a selected-track
+          // gap shows what the OTHER tracks hold there instead of the void.
           : _isPlaybackActive
-          ? (context, viewport) => _state._playbackContent(session, viewport)
+          ? (context, viewport) =>
+                _state._buildTrackStackView(session, viewport, ofTheRun: true)
           // The parked state (no active cut): the multitrack
           // display path — every covered track's composite stacks
           // where the void used to be, in its own CANVAS space (the
@@ -625,19 +629,92 @@ class _InteractiveCanvasBuild {
 
   /// What is painted UNDER the interactive canvas: the paper and the
   /// composite tree with the active layer inside it (the parked stack in a
-  /// gap), with onion skins when the row shows them. It follows a drag, and
-  /// a run the canvas plays, itself ([_followingDragAndRun]), so the tree is
-  /// asked afresh at each of its builds.
+  /// gap), with onion skins when the row shows them — seen through the
+  /// camera while a run plays here with the camera view on ([CameraShot]).
+  /// It follows a drag, and a run the canvas plays, itself
+  /// ([_followingDragAndRun]), so the tree is asked afresh at each of its
+  /// builds.
   Widget _underlay(
     BuildContext context,
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
     CanvasFloats floats,
     _HostFrame frame,
-  ) => _followingDragAndRun(
-    frame.session,
-    (context) => _stackView(viewport, activeSurfacePainter, floats, frame),
+  ) => _followingDragAndRun(frame.session, (context) {
+    final session = frame.session;
+    final look = _look(context, session, viewport);
+    _sayTheLook(session, look);
+    final shot = _shotAt(session, look, viewport);
+    final project = session.repository.requireProject();
+    return CameraShot(
+      view: viewport,
+      shot: shot,
+      canvasSize: _canvasSize,
+      pasteboardColor: Color(project.pasteboardArgb),
+      pasteboardNone: project.pasteboardNone,
+      // The view the frame is drawn through — the one its rows were made
+      // for ([CanvasLook.qualityAt]).
+      child: _stackView(
+        shot?.frameView ?? viewport,
+        activeSurfacePainter,
+        floats,
+        frame,
+      ),
+    );
+  });
+
+  /// How this canvas shows a cut's frame through the panel's [viewport]
+  /// ([CanvasLook]) — through the camera while a run plays here with the
+  /// camera view on (the camera view is playback's crop alone: a canvas
+  /// that stands or is scrubbed shows the camera's frame OVER it).
+  CanvasLook _look(
+    BuildContext context,
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) => CanvasLook(
+    view: viewport,
+    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+    camera: _canvasPlays && _state.widget.cameraViewEnabled.value
+        ? (
+            poseOf: session.camera.cameraPoseForCut,
+            frameSize: session.camera.cameraFrameSize,
+          )
+        : null,
   );
+
+  /// The camera a run playing here is seen through, at the frame the canvas
+  /// shows — null for a canvas seen through none ([CanvasLook.camera]).
+  CameraShotAt? _shotAt(
+    EditorSessionManager session,
+    CanvasLook look,
+    CanvasViewport viewport,
+  ) {
+    final camera = look.camera;
+    final cut = session.activeCutOrNull;
+    if (camera == null || cut == null) {
+      return null;
+    }
+    final frameIndex = session.currentFrameIndex;
+    return (
+      pose: camera.poseOf(cut, frameIndex),
+      frameSize: camera.frameSize,
+      frameView: look.frameViewThrough(viewport, cut, frameIndex),
+    );
+  }
+
+  /// Tells the session [look] ([RenderCaches.canvasLook]) — after the
+  /// frame: whoever hears it may let a waiting run go on, and a run that
+  /// goes on builds this canvas again, never from inside its build.
+  void _sayTheLook(EditorSessionManager session, CanvasLook look) {
+    if (session.renderCaches.canvasLook.value == look) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) {
+        session.renderCaches.canvasLook.value = look;
+      }
+    });
+  }
 
   Widget _stackView(
     CanvasViewport viewport,
@@ -673,8 +750,6 @@ class _InteractiveCanvasBuild {
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>
           frame.session.renderCaches.canvasBufferBytes = bytes,
-      onQualityShown: (quality) =>
-          frame.session.renderCaches.canvasQuality.value = quality,
       // A run this canvas plays: its maker makes the rows, and the frame
       // goes up whole.
       run: _canvasPlays
@@ -723,42 +798,78 @@ class _InteractiveCanvasBuild {
     // has — its SE tags and its fade — and none of the chrome about editing
     // it, the way playback has never drawn a guide or the camera's frame.
     final editing = !_isPlaybackActive;
-    return Stack(
-      children: [
-        // Guides are EDITING scaffolding: they are drawn
-        // here and nowhere else — playback, thumbnails and
-        // export never see them, the way a ruler never
-        // prints. Under the camera frame and the gizmos,
-        // which are chrome about the shot rather than about
-        // the drawing.
-        if (editing && frame.session.cutVerbs.activeCutGuides.isNotEmpty)
-          _state._guideOverlay(
-            frame.session,
-            viewport,
-            _canvasSize,
-            frame.tool,
-            context,
-          ),
-        // The handle layer mounts ONLY for the guide tool,
-        // so it never stands between the brush and the cel.
-        if (editing && frame.tool == CanvasTool.guide)
-          _state._guideEditLayer(frame.session, viewport),
-        if (seNameTags.isNotEmpty)
-          _state._seNameTagOverlay(viewport, _canvasSize, seNameTags, context),
-        if (fade != null)
-          _state._cutFadeWash(
-            viewport,
-            _canvasSize,
-            frame.session,
-            fade.opacity,
-            fade.veils,
-            context,
-          ),
-        if (editing && _cameraOverlayVisible)
-          _state._cameraOverlay(frame.session, viewport),
-      ],
+    final shot = _shotAt(session, _look(context, session, viewport), viewport);
+    return _inTheCamerasFrame(
+      context,
+      viewport,
+      shot,
+      Stack(
+        children: [
+          // Guides are EDITING scaffolding: they are drawn
+          // here and nowhere else — playback, thumbnails and
+          // export never see them, the way a ruler never
+          // prints. Under the camera frame and the gizmos,
+          // which are chrome about the shot rather than about
+          // the drawing.
+          if (editing && frame.session.cutVerbs.activeCutGuides.isNotEmpty)
+            _state._guideOverlay(
+              frame.session,
+              viewport,
+              _canvasSize,
+              frame.tool,
+              context,
+            ),
+          // The handle layer mounts ONLY for the guide tool,
+          // so it never stands between the brush and the cel.
+          if (editing && frame.tool == CanvasTool.guide)
+            _state._guideEditLayer(frame.session, viewport),
+          if (seNameTags.isNotEmpty)
+            _state._seNameTagOverlay(
+              shot?.frameView ?? viewport,
+              _canvasSize,
+              seNameTags,
+              context,
+            ),
+          if (fade != null)
+            _state._cutFadeWash(
+              viewport,
+              _canvasSize,
+              frame.session,
+              fade.opacity,
+              fade.veils,
+              context,
+              throughCamera: shot != null,
+            ),
+          if (editing && _cameraOverlayVisible)
+            _state._cameraOverlay(frame.session, viewport),
+        ],
+      ),
     );
   }
+
+  /// [over] — what is over the picture — in the camera's frame, seen
+  /// through the camera with it: the tags ride the projection, the fade
+  /// thins the frame, and nothing of either shows past it ([CameraShot]).
+  /// The clip is there either way, cutting nothing without a [shot], for
+  /// the reason the shot is.
+  Widget _inTheCamerasFrame(
+    BuildContext context,
+    CanvasViewport viewport,
+    CameraShotAt? shot,
+    Widget over,
+  ) => ClipPath(
+    clipBehavior: shot == null ? Clip.none : Clip.antiAlias,
+    clipper: shot == null
+        ? null
+        : OutlineClipper(
+            cameraFrameOnScreen(
+              viewport,
+              shot.frameSize,
+              EffectiveDevicePixelRatio.of(context),
+            ),
+          ),
+    child: over,
+  );
 
   /// The standing row's box, over every tool
   /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the

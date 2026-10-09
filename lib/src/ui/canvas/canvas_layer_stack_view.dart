@@ -202,6 +202,22 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   );
 }
 
+/// The quality — the level of the display's pyramid — a stack seen through
+/// [viewport] on a screen of [devicePixelRatio] asks its rows' images at:
+/// the level its display buffer composes at ([displayLevelOf]). Full at or
+/// above 100%, as always; half at 50–100% on screen, quarter below, so a
+/// level buffer draws them 1:1 instead of reducing a canvas-resolution
+/// picture by more than a bilinear window can hold.
+///
+/// The stack's own answer, and the warmer's for the frames it makes ahead
+/// of one ([CanvasLook.qualityAt]) — the same view, so the same level.
+PlaybackQuality rowQualityThrough(
+  CanvasViewport viewport,
+  double devicePixelRatio,
+) => PlaybackQuality.forLevel(
+  displayLevelOf(displayScaleOf(viewport.zoom, devicePixelRatio)),
+);
+
 /// Paints the editing canvas's whole composite tree from the layer-frame
 /// image cache, under the panel viewport transform — the ACTIVE layer
 /// included, drawn in place through [activeSurfacePainter].
@@ -226,7 +242,6 @@ class CanvasLayerStackView extends StatefulWidget {
     this.debugDisableSingleBuffer = false,
     this.debugBufferCache,
     this.onBufferBytes,
-    this.onQualityShown,
     this.alreadyShown = false,
     this.run,
   });
@@ -240,11 +255,6 @@ class CanvasLayerStackView extends StatefulWidget {
   /// 없어서 비어있다던가」). Null for every other view, which makes what it
   /// lacks and shows rows as they come.
   final StackRun? run;
-
-  /// Told the level this view asks its rows' images at, whenever that
-  /// changes — so what is made ahead of it is what it will ask for
-  /// ([RenderCaches.canvasQuality]). Pushed, as [onBufferBytes] is.
-  final ValueChanged<PlaybackQuality>? onQualityShown;
 
   /// Whether what this stack shows is on screen already, painted by
   /// another route this view takes over from — the conte's printed
@@ -697,17 +707,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void _syncImagesWithCache({
     Set<BrushFrameKey> shownAlready = const {},
   }) {
-    final quality = _quality;
-    if (quality != _qualityShown) {
-      _qualityShown = quality;
-      // Told after the frame: whoever hears it may let a waiting run go on,
-      // and a run that goes on tells its views — never from inside a build.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _qualityShown == quality) {
-          widget.onQualityShown?.call(quality);
-        }
-      });
-    }
     labProbe(
       'layerStackSyncSweep(${widget.layers.length})',
       () => _syncSweepBody(shownAlready),
@@ -751,18 +750,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     return true;
   }
 
-  /// The quality — the level of the display's pyramid — this view asks the
-  /// other layers' images at: the level the display buffer composes at
-  /// ([displayLevelOf]), read from the viewport and the effective ratio.
-  /// Full at or above 100%, as always; half at 50–100% on screen, quarter
-  /// below, so a level buffer draws them 1:1 instead of reducing a
-  /// canvas-resolution picture by more than a bilinear window can hold.
-  PlaybackQuality get _quality => PlaybackQuality.forLevel(
-    displayLevelOf(displayScaleOf(widget.viewport.zoom, _devicePixelRatio)),
-  );
-
-  /// The level last told ([CanvasLayerStackView.onQualityShown]).
-  PlaybackQuality? _qualityShown;
+  /// The quality this view asks the other layers' images at
+  /// ([rowQualityThrough]).
+  PlaybackQuality get _quality =>
+      rowQualityThrough(widget.viewport, _devicePixelRatio);
 
   /// The effective ratio this view composes at ([EffectiveDevicePixelRatio]),
   /// read where dependencies change — so [_quality] is right from the first

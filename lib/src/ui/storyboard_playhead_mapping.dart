@@ -66,10 +66,10 @@ void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
 /// tick (I-22). A frame belongs to the FIRST layout entry holding it, as
 /// it always has; the edges are the only places that can change.
 ///
-/// B1: a frame no cut owns is a GAP, and playback at a gap draws the
-/// background only — no picture, no fade ([CanvasPlaybackView]'s own
-/// contract) — so there is nothing to prepare and the gap is ready BY
-/// DEFINITION, the same two-kind law the in-cut answer follows. (The
+/// B1: a frame no cut owns is a GAP, and playback at a gap has no picture
+/// of its own — no cut, so no paper and no fade — so there is nothing to
+/// prepare and the gap is ready BY DEFINITION, the same two-kind law the
+/// in-cut answer follows. (The
 /// multitrack gap-PARKED preview showing other tracks is the EDITING
 /// path, not playback — this bar answers for playback.)
 List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(

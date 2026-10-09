@@ -73,24 +73,27 @@ void main() {
 
   /// What a run's maker does for a row: its image, at the level the view
   /// draws at.
-  Future<void> make(WidgetTester tester, LayerFrameImageCache cache, String cel) =>
-      tester.runAsync(
-        () => cache.prepare(
-          key: keyOf(cel),
-          canvasSize: canvasSize,
-          quality: PlaybackQuality.full,
-          sourceEffects: const [],
-          inkSuffices: true,
-        ),
-      );
+  Future<void> make(
+    WidgetTester tester,
+    LayerFrameImageCache cache,
+    String cel, {
+    PlaybackQuality quality = PlaybackQuality.full,
+  }) => tester.runAsync(
+    () => cache.prepare(
+      key: keyOf(cel),
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: const [],
+      inkSuffices: true,
+    ),
+  );
 
   Future<void> pumpStack(
     WidgetTester tester,
     LayerFrameImageCache cache,
     List<CompositeNode<CanvasStackRow>> nodes, {
     StackRun? run,
-    ValueChanged<PlaybackQuality>? onQualityShown,
-    double zoom = 1,
+    CanvasViewport? viewport,
   }) {
     // One canvas pixel a device pixel at 100%: the middle is the middle.
     tester.view.devicePixelRatio = 1;
@@ -107,12 +110,11 @@ void main() {
                 nodes: nodes,
                 imageCache: cache,
                 canvasSize: canvasSize,
-                viewport: CanvasViewport(zoom: zoom),
+                viewport: viewport ?? CanvasViewport(),
                 // The law is what this frame's paint draws, not what a kept
                 // composite re-serves.
                 debugDisableBake: true,
                 run: run,
-                onQualityShown: onQualityShown,
               ),
             ),
           ),
@@ -295,38 +297,34 @@ void main() {
     );
   });
 
-  testWidgets('the view tells the level it draws its rows at — the warmer '
-      'makes the images it will ask for', (tester) async {
+  testWidgets('under a run the view asks its rows at the level of the view it '
+      'is seen through — the one the warmer makes them at', (tester) async {
     final cache = images();
     addTearDown(cache.dispose);
-    final told = <PlaybackQuality>[];
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    // The canvas at 40%, over the middle the probe reads.
+    final view = CanvasViewport(zoom: 0.4, panX: 5, panY: 5);
+    final level = rowQualityThrough(view, 1);
+    expect(level, PlaybackQuality.half, reason: '⛔premise: 40% is a level');
 
-    await pumpStack(tester, cache, frameOf('blue'), onQualityShown: told.add);
-    await tester.pump();
-    expect(told, [PlaybackQuality.full]);
-
+    await make(tester, cache, 'blue');
     await pumpStack(
       tester,
       cache,
       frameOf('blue'),
-      onQualityShown: told.add,
-      zoom: 0.4,
+      run: (landings: landings, gaveUpOn: (_) => false),
+      viewport: view,
     );
-    await tester.pump();
-    expect(told, [PlaybackQuality.full, PlaybackQuality.half]);
-
-    await pumpStack(
-      tester,
-      cache,
-      frameOf('blue'),
-      onQualityShown: told.add,
-      zoom: 0.4,
-    );
-    await tester.pump();
     expect(
-      told,
-      [PlaybackQuality.full, PlaybackQuality.half],
-      reason: 'the level it already told is not told again',
+      await middle(tester),
+      isNot(blue),
+      reason: 'made at full, asked at half: not there yet',
     );
+
+    await make(tester, cache, 'blue', quality: level);
+    landings.value += 1;
+    await tester.pump();
+    expect(await middle(tester), blue, reason: 'made at its level, it is');
   });
 }

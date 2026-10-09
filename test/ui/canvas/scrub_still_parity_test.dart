@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -24,7 +23,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
@@ -34,8 +32,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
-import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
+import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -594,48 +591,48 @@ void main() {
       }
     });
 
-    testWidgets('the playback view', (tester) async {
+    /// ↩️This was the composite view's — the picture a run seen through the
+    /// camera played on, until it moved onto the canvas (10-10). The frame,
+    /// the letterbox and the apron around the canvas's picture are what
+    /// that view's painter still draws there.
+    testWidgets('the camera\'s shot around a run on the canvas', (
+      tester,
+    ) async {
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
-      final controller = CanvasPlaybackController(
-        resolveProject: () => Project(
-          id: projectId,
-          name: 'Project',
-          frameRate: const ProjectFrameRate.integer(10),
-          cameraSize: canvasSize,
-          tracks: [
-            Track(id: trackId, name: 'Track', cuts: [cut()]),
-          ],
-          createdAt: DateTime.utc(2026),
-        ),
-        resolveActiveCutId: () => cutId,
-        resolveActiveTrackId: () => trackId,
-        resolveFrameRate: () => const ProjectFrameRate.integer(10),
-      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CanvasPlaybackView(
-              controller: controller,
-              compositeCache: composites,
-              cameraViewEnabled: false,
-              cameraFrameSize: canvasSize,
-              cameraPoseOf: (cut, frameIndex) =>
-                  CameraPose(center: CanvasPoint(x: 4, y: 4)),
+            body: CameraShot(
+              view: CanvasViewport(),
+              shot: (
+                pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+                frameSize: canvasSize,
+                frameView: CanvasViewport(),
+              ),
+              canvasSize: canvasSize,
+              pasteboardColor: const Color(0xFF123456),
+              pasteboardNone: false,
+              child: const SizedBox.expand(),
             ),
           ),
         ),
       );
 
-      expect(playbackFramePainter(tester).devicePixelRatio, 1.25);
+      final ground = tester.widget<CustomPaint>(
+        find.descendant(
+          of: find.byType(CameraShot),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is CustomPaint && widget.painter is PlaybackFramePainter,
+          ),
+        ),
+      );
+      expect(
+        (ground.painter! as PlaybackFramePainter).devicePixelRatio,
+        1.25,
+      );
     });
   });
 }
