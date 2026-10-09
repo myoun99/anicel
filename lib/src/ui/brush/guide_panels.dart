@@ -16,6 +16,9 @@ import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/empty_state_text.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
+import 'brush_tool_state.dart' show CanvasTool;
 
 /// A fresh symmetry guide for [canvasSize].
 ///
@@ -158,6 +161,25 @@ class GuideLibraryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
+    void addSymmetry() => _add(GuideKind.symmetry);
+    void addPerspective() => _add(GuideKind.perspective);
+    // A key presses the two ＋ — as the guide tool's library (I-40).
+    return PanelKeysBinding(
+      tool: CanvasTool.guide,
+      buttons: {
+        EditorActionIds.guideAddSymmetry: addSymmetry,
+        EditorActionIds.guideAddPerspective: addPerspective,
+      },
+      child: _list(context, strings, addSymmetry, addPerspective),
+    );
+  }
+
+  Widget _list(
+    BuildContext context,
+    AppStrings strings,
+    VoidCallback addSymmetry,
+    VoidCallback addPerspective,
+  ) {
     return ContentScrollbar(
       builder: (context, controller) => ListView(
         key: const ValueKey<String>('tool-library-guide-list'),
@@ -166,8 +188,9 @@ class GuideLibraryList extends StatelessWidget {
         children: [
           _GuideGroupHeader(
             label: strings.guideKindSymmetry,
-            onAdd: () => _add(GuideKind.symmetry),
+            onAdd: addSymmetry,
             addKey: 'guide-add-symmetry',
+            action: EditorActionIds.guideAddSymmetry,
           ),
           for (final guide in guides.symmetryGuides)
             _GuideRow(
@@ -192,8 +215,9 @@ class GuideLibraryList extends StatelessWidget {
           const Divider(height: 12),
           _GuideGroupHeader(
             label: strings.guideKindPerspective,
-            onAdd: () => _add(GuideKind.perspective),
+            onAdd: addPerspective,
             addKey: 'guide-add-perspective',
+            action: EditorActionIds.guideAddPerspective,
           ),
           for (final guide in guides.perspectiveGuides)
             _GuideRow(
@@ -235,11 +259,15 @@ class _GuideGroupHeader extends StatelessWidget {
     required this.label,
     required this.onAdd,
     required this.addKey,
+    required this.action,
   });
 
   final String label;
   final VoidCallback onAdd;
   final String addKey;
+
+  /// The shortcut list's action that presses this ＋ (I-40).
+  final String action;
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +287,7 @@ class _GuideGroupHeader extends StatelessWidget {
           AppIconButton(
             keyValue: addKey,
             tooltip: AppText.strings.guideAdd,
+            shortcuts: [action],
             // The ＋ carries the accent, not the button around it.
             icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
             onPressed: onAdd,

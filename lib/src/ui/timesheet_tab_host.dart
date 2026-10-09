@@ -18,6 +18,8 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
+import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
+import 'shortcuts/panel_keys.dart';
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
@@ -257,6 +259,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       AppIconButton(
         keyValue: 'timesheet-format-button',
         tooltip: AppText.strings.sheetFormatTitle,
+        shortcuts: const [EditorActionIds.timesheetFormat],
         icon: const Icon(Icons.edit_note),
         size: AppIconButtonSize.strip,
         onPressed: _editSheetFormat,
@@ -286,12 +289,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         tooltip: _dataSheet
             ? AppText.strings.sheetModeNotation
             : AppText.strings.sheetModeData,
+        shortcuts: const [EditorActionIds.timesheetDataMode],
         icon: const Icon(Icons.receipt_long_outlined),
         isSelected: _dataSheet,
-        onPressed: () => setState(() => _dataSheet = !_dataSheet),
+        onPressed: _toggleDataSheet,
       ),
     ];
   }
+
+  /// Notation ⇄ data — the switch's press, and its key's (I-40).
+  void _toggleDataSheet() => setState(() => _dataSheet = !_dataSheet);
 
   /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
   /// 2026-08-13) rather than in the pill.
@@ -326,7 +333,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // And the page read, which the panel moves as the view scrolls.
     final listenable = Listenable.merge([session, ?inkController, _reading]);
 
-    return ListenableBuilder(
+    final sheet = ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
         final strings = AppStrings.of(
@@ -545,6 +552,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           ],
         );
       },
+    );
+    // A key presses the format window and the notation ⇄ data switch —
+    // the timesheet is one panel, whatever is in hand (I-40).
+    return PanelKeysBinding(
+      buttons: {
+        EditorActionIds.timesheetFormat: _editSheetFormat,
+        EditorActionIds.timesheetDataMode: _toggleDataSheet,
+      },
+      child: sheet,
     );
   }
 }

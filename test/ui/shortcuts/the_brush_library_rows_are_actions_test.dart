@@ -18,7 +18,6 @@ import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
-import 'package:anicel/src/ui/brush/brush_library_keys.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -26,6 +25,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
@@ -49,9 +49,8 @@ final _soft = BrushPreset(
 );
 
 /// A library panel at its fullest — every verb wired, a group open and a
-/// brush held — bound to [keys] as [tool]'s.
-Widget libraryPanel(
-  BrushLibraryKeys keys, {
+/// brush held — as [tool]'s.
+Widget libraryPanel({
   CanvasTool tool = CanvasTool.brush,
   Key? key,
   VoidCallback? onSave,
@@ -59,7 +58,6 @@ Widget libraryPanel(
 }) => BrushPresetPanel(
   key: key,
   tool: tool,
-  brushKeys: keys,
   presets: [_pen, _soft],
   groups: const [BrushGroup(id: _ink, name: 'Ink')],
   selectedPresetId: _pen.id,
@@ -76,17 +74,25 @@ Widget libraryPanel(
   onGroupExported: (_) {},
 );
 
-Future<void> pumpPanels(WidgetTester tester, List<Widget> panels) async {
+/// [panels] side by side, binding to [keys] as the shell's panels do.
+Future<void> pumpPanels(
+  WidgetTester tester,
+  PanelKeys keys,
+  List<Widget> panels,
+) async {
   await tester.binding.setSurfaceSize(const Size(1200, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
-      home: Scaffold(
-        body: Row(
-          children: [
-            for (final panel in panels)
-              SizedBox(width: 300, height: 600, child: panel),
-          ],
+      home: PanelKeysScope(
+        keys: keys,
+        child: Scaffold(
+          body: Row(
+            children: [
+              for (final panel in panels)
+                SizedBox(width: 300, height: 600, child: panel),
+            ],
+          ),
         ),
       ),
     ),
@@ -146,14 +152,13 @@ void main() {
         'registry, and every menu action of the library has its row', (
       tester,
     ) async {
-      final keys = BrushLibraryKeys();
-      addTearDown(keys.dispose);
-      await pumpPanels(tester, [libraryPanel(keys)]);
+      final keys = PanelKeys();
+      await pumpPanels(tester, keys, [libraryPanel()]);
 
       final registry = {
         for (final definition in editorActionDefinitions) definition.id,
       };
-      final rows = keys.menuRowsOf(CanvasTool.brush).toList();
+      final rows = keys.menuRows(CanvasTool.brush).toList();
       expect(rows, hasLength(13), reason: '⛔premise: the rows');
       for (final row in rows) {
         expect(row.shortcuts, hasLength(1), reason: row.keyValue);
@@ -171,9 +176,8 @@ void main() {
 
     testWidgets('the two buttons beside the ⋯ name the library\'s other '
         'two', (tester) async {
-      final keys = BrushLibraryKeys();
-      addTearDown(keys.dispose);
-      await pumpPanels(tester, [libraryPanel(keys)]);
+      final keys = PanelKeys();
+      await pumpPanels(tester, keys, [libraryPanel()]);
 
       List<String> shortcutsOf(String keyValue) => tester
           .appIconButton(find.byKey(ValueKey<String>(keyValue)))
@@ -246,24 +250,22 @@ void main() {
   group('each panel is its own tool\'s', () {
     testWidgets('two libraries on screen: a press reaches the one of the '
         'tool it names, and its menu is that panel\'s', (tester) async {
-      final keys = BrushLibraryKeys();
-      addTearDown(keys.dispose);
+      final keys = PanelKeys();
       final saved = <CanvasTool>[];
-      await pumpPanels(tester, [
-        libraryPanel(keys, onSave: () => saved.add(CanvasTool.brush)),
+      await pumpPanels(tester, keys, [
+        libraryPanel(onSave: () => saved.add(CanvasTool.brush)),
         libraryPanel(
-          keys,
           tool: CanvasTool.eraser,
           onSave: () => saved.add(CanvasTool.eraser),
         ),
       ]);
 
-      keys.saveHeldBrush(CanvasTool.eraser);
+      keys.press(BrushLibraryActionIds.saveHeldBrush, CanvasTool.eraser);
       expect(saved, [CanvasTool.eraser]);
-      keys.saveHeldBrush(CanvasTool.brush);
+      keys.press(BrushLibraryActionIds.saveHeldBrush, CanvasTool.brush);
       expect(saved, [CanvasTool.eraser, CanvasTool.brush]);
       expect(
-        keys.menuRowsOf(CanvasTool.select),
+        keys.menuRows(CanvasTool.select),
         isEmpty,
         reason: 'no library of the select tool is mounted',
       );
@@ -271,52 +273,47 @@ void main() {
 
     testWidgets('a panel that goes takes its presses with it — and only '
         'its own: one mounted in its place keeps answering', (tester) async {
-      final keys = BrushLibraryKeys();
-      addTearDown(keys.dispose);
+      final keys = PanelKeys();
       final imported = <String>[];
-      await pumpPanels(tester, [
+      await pumpPanels(tester, keys, [
         libraryPanel(
-          keys,
           key: const ValueKey<String>('first'),
           onImport: () => imported.add('first'),
         ),
       ]);
       // The first's State goes as the second's comes: the second binds in
       // its initState, before the first's dispose.
-      await pumpPanels(tester, [
+      await pumpPanels(tester, keys, [
         libraryPanel(
-          keys,
           key: const ValueKey<String>('second'),
           onImport: () => imported.add('second'),
         ),
       ]);
 
-      keys.importBrushes(CanvasTool.brush);
+      keys.press(BrushLibraryActionIds.importBrushes, CanvasTool.brush);
       expect(imported, ['second']);
 
-      await pumpPanels(tester, []);
-      keys.importBrushes(CanvasTool.brush);
+      await pumpPanels(tester, keys, []);
+      keys.press(BrushLibraryActionIds.importBrushes, CanvasTool.brush);
       expect(imported, ['second'], reason: 'no panel, nothing pressed');
-      expect(keys.menuRowsOf(CanvasTool.brush), isEmpty);
+      expect(keys.menuRows(CanvasTool.brush), isEmpty);
     });
 
     testWidgets('a panel built again for another tool is that tool\'s from '
         'then on', (tester) async {
-      final keys = BrushLibraryKeys();
-      addTearDown(keys.dispose);
+      final keys = PanelKeys();
       final saved = <String>[];
       Widget panel(CanvasTool tool) => libraryPanel(
-        keys,
         tool: tool,
         key: const ValueKey<String>('one'),
         onSave: () => saved.add(tool.name),
       );
-      await pumpPanels(tester, [panel(CanvasTool.brush)]);
-      await pumpPanels(tester, [panel(CanvasTool.eraser)]);
+      await pumpPanels(tester, keys, [panel(CanvasTool.brush)]);
+      await pumpPanels(tester, keys, [panel(CanvasTool.eraser)]);
 
-      keys.saveHeldBrush(CanvasTool.brush);
+      keys.press(BrushLibraryActionIds.saveHeldBrush, CanvasTool.brush);
       expect(saved, isEmpty, reason: 'the brush tool has no panel now');
-      keys.saveHeldBrush(CanvasTool.eraser);
+      keys.press(BrushLibraryActionIds.saveHeldBrush, CanvasTool.eraser);
       expect(saved, ['eraser']);
     });
   });

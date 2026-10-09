@@ -57,6 +57,7 @@ class EditorActionDefinition {
     this.sheetMove,
     this.brushPress,
     this.menuRow = false,
+    this.panelButton = false,
   }) : composedName = null;
 
   /// An action whose name is COMPOSED rather than tabled: [name] says it in
@@ -70,6 +71,7 @@ class EditorActionDefinition {
     this.toolPress,
     this.blendMode,
     this.menuRow = false,
+    this.panelButton = false,
   }) : label = name(AppLanguage.en),
        composedName = name,
        defaultTouchGesture = null,
@@ -179,6 +181,13 @@ class EditorActionDefinition {
   /// second time in the shell's switch — and two roads to one verb are what
   /// drift apart.
   final bool menuRow;
+
+  /// A button of a panel (I-40) — the brush library's import, the guide
+  /// list's ＋, the media pool's ＋ …: the action IS that button, and a key
+  /// presses the callback the button holds, on a panel a key reaches
+  /// (`PanelKeys` — the tool in hand's panels, and the panels of no tool).
+  /// Like [menuRow], it has no road of its own to what the button does.
+  final bool panelButton;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when
@@ -538,12 +547,14 @@ EditorActionDefinition _brushLibraryAction(
   String id,
   String Function(AppLanguage language) name, {
   bool menuRow = true,
+  bool panelButton = false,
 }) => EditorActionDefinition.composed(
   id: id,
   name: name,
   category: 'Brush Library',
   defaultActivators: const [],
   menuRow: menuRow,
+  panelButton: panelButton,
 );
 
 List<EditorActionDefinition> _brushLibraryActions() {
@@ -556,11 +567,13 @@ List<EditorActionDefinition> _brushLibraryActions() {
       BrushLibraryActionIds.importBrushes,
       (l) => s(l).brImportBrushes,
       menuRow: false,
+      panelButton: true,
     ),
     _brushLibraryAction(
       BrushLibraryActionIds.saveHeldBrush,
       (l) => s(l).brSaveAsPreset,
       menuRow: false,
+      panelButton: true,
     ),
     // The menu's rows, in its order.
     _brushLibraryAction(
@@ -728,6 +741,15 @@ abstract final class EditorActionIds {
 
   /// The sill's camera view switch (I-40).
   static const cameraViewToggle = 'camera-view-toggle';
+
+  /// Buttons of panels (I-40), pressed through `PanelKeys` on a panel a key
+  /// reaches ([EditorActionDefinition.panelButton]).
+  static const guideAddSymmetry = 'guide-add-symmetry';
+  static const guideAddPerspective = 'guide-add-perspective';
+  static const textDeleteText = 'text-delete-text';
+  static const mediaPoolImport = 'media-pool-import';
+  static const timesheetFormat = 'timesheet-format';
+  static const timesheetDataMode = 'timesheet-data-mode';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
@@ -1292,6 +1314,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.text),
   ),
+  // I-40: the text tool's settings' 🗑 — the text in hand goes.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.textDeleteText,
+    name: (language) => AppStrings.of(language).textToolDeleteText,
+    category: 'Tools',
+    defaultActivators: const [],
+    panelButton: true,
+  ),
   // I-69: no key of its own, nor its tiles' — a person binds what they
   // want.
   const EditorActionDefinition(
@@ -1309,6 +1339,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
     toolPress: RailToolPress(CanvasTool.guide),
+  ),
+  // I-40: the guide list's two ＋ — one a kind of guide.
+  const EditorActionDefinition(
+    id: EditorActionIds.guideAddSymmetry,
+    label: 'Add symmetry guide',
+    category: 'Tools',
+    defaultActivators: [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.guideAddPerspective,
+    label: 'Add perspective guide',
+    category: 'Tools',
+    defaultActivators: [],
+    panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolSelect,
@@ -1876,6 +1921,33 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: panelActionCategory,
     defaultActivators: [],
     menuRow: true,
+  ),
+  // I-40: the panels' own buttons — the media pool's ＋ (「미디어: 임포트」,
+  // the panel's name and the window's), the timesheet's format window and
+  // its notation ⇄ data switch.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.mediaPoolImport,
+    name: (language) {
+      final words = AppStrings.of(language);
+      return '${words.panelMedia}: ${words.imImport}';
+    },
+    category: panelActionCategory,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.timesheetFormat,
+    name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
+    category: panelActionCategory,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timesheetDataMode,
+    label: 'Notation / data sheet',
+    category: panelActionCategory,
+    defaultActivators: [],
+    panelButton: true,
   ),
 ];
 

@@ -7,6 +7,8 @@ import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
@@ -16,6 +18,7 @@ import '../widgets/color_swatch_button.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
+import 'brush_tool_state.dart' show CanvasTool;
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
 import 'text_tool_settings_values.dart';
@@ -119,30 +122,37 @@ class _TextInHandRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tool = commands?.tool;
     final inHand = tool?.contentInHand;
-    return Row(
-      children: [
-        Expanded(
-          child: PanelFlyoutButton(
-            key: const ValueKey<String>('text-tool-selected-text'),
-            label: inHand == null ? '' : _nameOf(inHand.text),
-            tooltip: AppText.strings.textToolSelectedText,
-            expand: true,
-            // With no text on the cel there is none to pick.
-            enabled: tool != null && tool.list.texts.isNotEmpty,
-            entriesBuilder: () => _listOf(tool),
+    final delete = inHand == null ? null : commands?.deleteText;
+    // A key presses the 🗑 — as the text tool's settings (I-40).
+    return PanelKeysBinding(
+      tool: CanvasTool.text,
+      buttons: {EditorActionIds.textDeleteText: delete},
+      child: Row(
+        children: [
+          Expanded(
+            child: PanelFlyoutButton(
+              key: const ValueKey<String>('text-tool-selected-text'),
+              label: inHand == null ? '' : _nameOf(inHand.text),
+              tooltip: AppText.strings.textToolSelectedText,
+              expand: true,
+              // With no text on the cel there is none to pick.
+              enabled: tool != null && tool.list.texts.isNotEmpty,
+              entriesBuilder: () => _listOf(tool),
+            ),
           ),
-        ),
-        const SizedBox(width: 4),
-        AppIconButton(
-          keyValue: 'text-tool-delete-text',
-          tooltip: AppText.strings.textToolDeleteText,
-          icon: Icon(
-            Icons.delete_outline,
-            color: AppColors.deleteGlyph(enabled: inHand != null),
+          const SizedBox(width: 4),
+          AppIconButton(
+            keyValue: 'text-tool-delete-text',
+            tooltip: AppText.strings.textToolDeleteText,
+            shortcuts: const [EditorActionIds.textDeleteText],
+            icon: Icon(
+              Icons.delete_outline,
+              color: AppColors.deleteGlyph(enabled: inHand != null),
+            ),
+            onPressed: delete,
           ),
-          onPressed: inHand == null ? null : commands?.deleteText,
-        ),
-      ],
+        ],
+      ),
     );
   }
 

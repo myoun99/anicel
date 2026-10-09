@@ -27,7 +27,7 @@ import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
-import 'brush_library_keys.dart';
+import '../shortcuts/panel_keys.dart';
 import 'brush_library_look.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
@@ -116,7 +116,6 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupExported,
     this.viewOptions = const BrushPresetViewOptions(),
     this.onViewOptionsChanged,
-    this.brushKeys,
   });
 
   final List<BrushPreset> presets;
@@ -194,11 +193,6 @@ class BrushPresetPanel extends StatefulWidget {
 
   /// Called with the new options whenever a toggle flips one.
   final ValueChanged<BrushPresetViewOptions>? onViewOptionsChanged;
-
-  /// Where a KEY presses this panel (I-40): it binds its menu and its two
-  /// buttons there as [tool]'s library while it is mounted. Null, a panel
-  /// no key reaches.
-  final BrushLibraryKeys? brushKeys;
 
   /// List height when the panel is laid out somewhere with no height of its
   /// own — a widget test pumping it inside a scroll view. Docked, the
@@ -753,30 +747,15 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     _springTargetIsRoot = false;
   }
 
-  /// What a key presses here (I-40): the rows the ⋯ opens and the two
-  /// buttons beside it — each the very callback its row or button runs,
-  /// read from the widget when the key comes.
-  late final BrushLibraryPanelPresses _presses = (
-    menu: _menuItems,
-    importBrushes: () => widget.onPresetImportRequested?.call(),
-    saveHeldBrush: () => widget.onPresetSaveRequested?.call(),
-  );
-
   @override
   void initState() {
     super.initState();
     _look.addListener(_onLookChanged);
-    widget.brushKeys?.bindPanel(this, widget.tool, _presses);
   }
 
   @override
   void didUpdateWidget(BrushPresetPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.brushKeys != oldWidget.brushKeys ||
-        widget.tool != oldWidget.tool) {
-      oldWidget.brushKeys?.unbindPanel(this, oldWidget.tool);
-      widget.brushKeys?.bindPanel(this, widget.tool, _presses);
-    }
     _selection.value = widget.selectedPresetId;
     if (widget.look != oldWidget.look) {
       (oldWidget.look ?? _ownLook)?.removeListener(_onLookChanged);
@@ -798,7 +777,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   @override
   void dispose() {
-    widget.brushKeys?.unbindPanel(this, widget.tool);
     (widget.look ?? _ownLook)?.removeListener(_onLookChanged);
     _ownLook?.dispose();
     _springTimer?.cancel();
@@ -1175,13 +1153,24 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final visible = _visiblePresets;
     final reorderable = widget.onPresetsReordered != null;
-    return Listener(
-      // Watches the pointer only to spring the tabs open: a reorder drag
-      // reports to the row it picked up, never to what is under it now.
-      behavior: HitTestBehavior.translucent,
-      onPointerMove: (event) => _updateSpringTarget(event.position),
-      onPointerUp: (_) => _cancelSpring(),
-      child: _buildFrame(context, colorScheme, visible, reorderable),
+    // A key presses this library's ⋯ and the two buttons beside it, as
+    // [BrushPresetPanel.tool]'s library — what the rows and the buttons
+    // hold (I-40).
+    return PanelKeysBinding(
+      tool: widget.tool,
+      buttons: {
+        BrushLibraryActionIds.importBrushes: widget.onPresetImportRequested,
+        BrushLibraryActionIds.saveHeldBrush: widget.onPresetSaveRequested,
+      },
+      menu: _menuItems,
+      child: Listener(
+        // Watches the pointer only to spring the tabs open: a reorder drag
+        // reports to the row it picked up, never to what is under it now.
+        behavior: HitTestBehavior.translucent,
+        onPointerMove: (event) => _updateSpringTarget(event.position),
+        onPointerUp: (_) => _cancelSpring(),
+        child: _buildFrame(context, colorScheme, visible, reorderable),
+      ),
     );
   }
 

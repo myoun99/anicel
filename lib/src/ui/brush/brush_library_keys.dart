@@ -4,22 +4,11 @@ import '../../models/brush_group.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
-import '../widgets/panel_flyout.dart';
 import 'brush_press.dart';
 import 'brush_tool_state.dart';
 
-/// A library panel's presses as a KEY reaches them (I-40): the rows its
-/// options menu would open now, and the two buttons beside that menu — the
-/// ones the panel itself holds, read when the key is pressed.
-typedef BrushLibraryPanelPresses = ({
-  List<PanelFlyoutEntry> Function() menu,
-  VoidCallback importBrushes,
-  VoidCallback saveHeldBrush,
-});
-
 /// The brush library as a KEY reaches it (I-56): what it holds, for the
-/// shortcut list to make rows of, and the two presses a row can make — and
-/// each paint tool's library panel, its menu and its buttons (I-40).
+/// shortcut list to make rows of, and the two presses a row can make.
 ///
 /// 🗣️유저 2026-10-01: 「브러시 그룹이나 브러시에도 단축키 명명가능하게.
 /// 단축키리스트 등록」. The shell owns the keys and the workspace owns the
@@ -65,39 +54,4 @@ class BrushLibraryKeys extends ChangeNotifier {
         openGroup?.call(tool, group);
     }
   }
-
-  /// Each paint tool's library panel, as a key presses it (I-40) — bound by
-  /// the panel while it is mounted. A key presses the panel of the tool in
-  /// hand: its menu as that panel would open it, its buttons as it shows
-  /// them. A hand holding a tool whose library is not mounted presses
-  /// nothing — there is no row or button of it to press.
-  final Map<CanvasTool, (Object, BrushLibraryPanelPresses)> _panels = {};
-
-  void bindPanel(
-    Object owner,
-    CanvasTool tool,
-    BrushLibraryPanelPresses presses,
-  ) {
-    _panels[tool] = (owner, presses);
-  }
-
-  /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
-  /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
-  void unbindPanel(Object owner, CanvasTool tool) {
-    if (_panels[tool] case (final bound, _) when identical(bound, owner)) {
-      _panels.remove(tool);
-    }
-  }
-
-  BrushLibraryPanelPresses? _panelOf(CanvasTool tool) => _panels[tool]?.$2;
-
-  /// Every row [tool]'s library menu would open right now.
-  Iterable<PanelFlyoutItem> menuRowsOf(CanvasTool tool) =>
-      flyoutRowsOf(_panelOf(tool)?.menu() ?? const []);
-
-  /// One press of [tool]'s library's import button.
-  void importBrushes(CanvasTool tool) => _panelOf(tool)?.importBrushes();
-
-  /// One press of [tool]'s library's save button.
-  void saveHeldBrush(CanvasTool tool) => _panelOf(tool)?.saveHeldBrush();
 }

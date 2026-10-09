@@ -413,9 +413,6 @@ class _WorkspaceTabs {
                             // look.
                             tool: toolState.tool,
                             look: _state._brushGroups.look,
-                            // A key presses its menu and its buttons
-                            // while this tool is in hand (I-40).
-                            brushKeys: _state.widget.brushKeys,
                             selectedPresetId: toolState.presetId,
                             viewOptions: _state._brushPresetView.value,
                             onViewOptionsChanged: (options) {

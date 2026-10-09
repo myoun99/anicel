@@ -35,16 +35,10 @@ enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
   // ── OWED ────────────────────────────────────────────────────────────
-  // The tool library's.
-  'brush/guide_panels.dart | addKey': Why.owed,
-  "brush/text_tool_settings.dart | 'text-tool-delete-text'": Why.owed,
   // The panels' own pills.
   'brush/sheet_canvas_panel.dart | '
           "'\${brush.keyPrefix}-brush-toggle-button'":
       Why.owed,
-  "media/media_pool_panel.dart | 'media-import-button'": Why.owed,
-  "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'": Why.owed,
-  "timesheet_tab_host.dart | 'timesheet-format-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
       Why.owed,
