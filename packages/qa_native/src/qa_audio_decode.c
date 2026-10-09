@@ -1033,6 +1033,11 @@ typedef struct {
 } qa_box;
 
 /// The box at [at], when a whole one fits before [end].
+///
+/// ⛔A size of 0 — 「to the end of the file」, which the format allows the
+/// last box — is no box here: Media Foundation refuses a movie whose movie
+/// box says it (measured 2026-10-09), so a reading of it would be a branch
+/// nothing here can ask, and such a movie keeps what the decoder gave.
 static int qa_box_at(qa_media_span* span, int64_t at, int64_t end,
                      qa_box* box) {
   uint8_t head[16];
@@ -1048,9 +1053,6 @@ static int qa_box_at(qa_media_span* span, int64_t at, int64_t end,
     }
     size = qa_big_endian(head + 8, 8);
     header = 16;
-  } else if (size == 0) {
-    // To the end of what holds it.
-    size = (uint64_t)(end - at);
   }
   if (size < (uint64_t)header || size > (uint64_t)(end - at)) {
     return 0;

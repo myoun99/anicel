@@ -218,25 +218,44 @@ void main() {
   // pins the MP3 half (a LAME tag, and the standard 1,105 without one).
 
   test('a movie\'s edit list says where its sound starts — taken to the '
-      'frame, uncompressed so nothing smears', () {
+      'frame, uncompressed so nothing smears, however the movie is laid '
+      'out', () {
     final samples = _roomToneThenTone();
-    final decoded = decodeAudioBytes(
-      pcmMovie(samples, edit: (from: 480, keep: 24000)),
-    );
-    if (Platform.isLinux) {
-      expect(decoded, isNull, reason: 'no OS stack to read it here');
-      return;
-    }
-    if (decoded == null && !Platform.isWindows) {
-      markTestSkipped('this OS stack does not read a movie\'s PCM');
-      return;
-    }
-    expect(decoded, isNotNull, reason: 'Media Foundation reads it');
-    expect(decoded!.length, 24000, reason: 'the edit plays 24,000 frames');
-    for (var index = 0; index < 24000 * 2; index += 1) {
-      final got = (decoded.samples[index] * 32768).round();
-      if (got != samples[480 * 2 + index]) {
-        fail('sample $index is $got, written ${samples[480 * 2 + index]}');
+    const plays = (from: 480, keep: 24000);
+    for (final (shape, movie) in [
+      ('the edit alone', pcmMovie(samples, edits: [plays])),
+      (
+        // ⚠️Holding the track back places the sound later on the movie's
+        // timeline; where the sound STARTS is still the edit that plays.
+        'behind an empty edit',
+        pcmMovie(samples, edits: [(from: -1, keep: 4800), plays]),
+      ),
+      (
+        'in a long movie\'s shape',
+        pcmMovie(samples, edits: [plays], long: true),
+      ),
+      (
+        'after a timecode track with an edit list of its own',
+        pcmMovie(samples, edits: [plays], timecodeFirst: true),
+      ),
+    ]) {
+      final decoded = decodeAudioBytes(movie);
+      if (Platform.isLinux) {
+        expect(decoded, isNull, reason: '$shape: no OS stack to read it here');
+        continue;
+      }
+      if (decoded == null && !Platform.isWindows) {
+        markTestSkipped('this OS stack does not read a movie\'s PCM');
+        return;
+      }
+      expect(decoded, isNotNull, reason: '$shape: Media Foundation reads it');
+      expect(decoded!.length, 24000, reason: '$shape: it plays 24,000 frames');
+      for (var index = 0; index < 24000 * 2; index += 1) {
+        final got = (decoded.samples[index] * 32768).round();
+        if (got != samples[480 * 2 + index]) {
+          fail('$shape: sample $index is $got, '
+              'written ${samples[480 * 2 + index]}');
+        }
       }
     }
   }, skip: skip);
