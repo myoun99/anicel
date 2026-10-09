@@ -276,6 +276,7 @@ enum AppStrings {
   /// 선택 반전 (I-23) — the selection tool's settings button that selects
   /// what is not selected, out to the pasteboard wall.
   String get selectionInvert => _s('selectionInvert');
+  String get toolSelectionMode => _s('toolSelectionMode');
 
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
@@ -1536,6 +1537,13 @@ enum AppStrings {
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
   String get brStabilizer => _s('brStabilizer');
+  String get brGroupInk => _s('brGroupInk');
+  String get brGroupTip => _s('brGroupTip');
+  String get brGroupRandomness => _s('brGroupRandomness');
+  String get brGroupMixing => _s('brGroupMixing');
+  String get brGroupScattering => _s('brGroupScattering');
+  String get brGroupTexture => _s('brGroupTexture');
+  String get brGroupCorrection => _s('brGroupCorrection');
 
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
@@ -1600,13 +1608,15 @@ enum AppStrings {
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
-  String get trScaleX => _s('trScaleX');
-  String get trScaleY => _s('trScaleY');
+  String get trPosition => _s('trPosition');
+  String get trScale => _s('trScale');
   String get trScaleLink => _s('trScaleLink');
-  String get trAnchorPointX => _s('trAnchorPointX');
-  String get trAnchorPointY => _s('trAnchorPointY');
+  String get trRotation => _s('trRotation');
+  String get trAnchorPoint => _s('trAnchorPoint');
   String get trMeshColumns => _s('trMeshColumns');
   String get trMeshRows => _s('trMeshRows');
+  String get trMesh => _s('trMesh');
+  String get trFinish => _s('trFinish');
   String get commonReset => _s('commonReset');
 
   // --- Canvas view controls ---
@@ -1619,7 +1629,7 @@ enum AppStrings {
   String get viewStraighten => _s('viewStraighten');
   String get viewZoomDrag => _s('viewZoomDrag');
   String get viewAngleDrag => _s('viewAngleDrag');
-  String get viewDragDoubleTap => _s('viewDragDoubleTap');
+  String get viewDragTap => _s('viewDragTap');
   String get viewCanvasColor => _s('viewCanvasColor');
   String get viewPasteboardColor => _s('viewPasteboardColor');
   String get viewBackdropColor => _s('viewBackdropColor');
@@ -1806,6 +1816,7 @@ enum AppStrings {
     'fpsAudioPull': 'Pull audio 0.1%',
     'selectionClosePolygon': 'Close shape',
     'selectionInvert': 'Invert Selection',
+    'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
     'commonRename': 'Rename',
@@ -2612,6 +2623,13 @@ enum AppStrings {
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
+    'brGroupInk': 'Ink',
+    'brGroupTip': 'Brush tip',
+    'brGroupRandomness': 'Randomness',
+    'brGroupMixing': 'Mixing',
+    'brGroupScattering': 'Scattering',
+    'brGroupTexture': 'Texture',
+    'brGroupCorrection': 'Correction',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brDualBlend': 'Dual blend',
@@ -2661,13 +2679,15 @@ enum AppStrings {
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
-    'trScaleX': 'Scale X',
-    'trScaleY': 'Scale Y',
+    'trPosition': 'Position',
+    'trScale': 'Scale',
     'trScaleLink': 'Link scale',
-    'trAnchorPointX': 'Anchor X',
-    'trAnchorPointY': 'Anchor Y',
+    'trRotation': 'Rotation',
+    'trAnchorPoint': 'Anchor',
     'trMeshColumns': 'Columns',
     'trMeshRows': 'Rows',
+    'trMesh': 'Mesh',
+    'trFinish': 'Finish',
     'commonReset': 'Reset',
     'viewFitToView': 'Fit to View',
     'viewResetView': 'Reset View (100%)',
@@ -2679,7 +2699,7 @@ enum AppStrings {
     'viewStraighten': 'Straighten View (0°)',
     'viewZoomDrag': 'Zoom (drag / double-tap)',
     'viewAngleDrag': 'View angle (drag / double-tap)',
-    'viewDragDoubleTap': 'Drag / double-tap',
+    'viewDragTap': 'Drag / tap',
     'viewCanvasColor': 'Canvas color',
     'viewPasteboardColor': 'Pasteboard color',
     'viewBackdropColor': 'Backdrop color',
@@ -2928,6 +2948,7 @@ enum AppStrings {
     'fpsAudioPull': '音を0.1%プル',
     'selectionClosePolygon': '形を閉じる',
     'selectionInvert': '選択範囲を反転',
+    'toolSelectionMode': 'モード',
     'commonSave': '保存',
     'commonDelete': '削除',
     'commonRename': '名前を変更',
@@ -3951,6 +3972,13 @@ enum AppStrings {
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
+    'brGroupInk': 'インク',
+    'brGroupTip': 'ブラシ先端',
+    'brGroupRandomness': 'ランダム',
+    'brGroupMixing': '混色',
+    'brGroupScattering': '散布',
+    'brGroupTexture': '質感',
+    'brGroupCorrection': '補正',
     'shortcutAction.frame-auto-create': '空のセルに描いたらフレームを作る',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -4073,13 +4101,15 @@ enum AppStrings {
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
-    'trScaleX': '拡大率 X',
-    'trScaleY': '拡大率 Y',
+    'trPosition': '位置',
+    'trScale': '拡大率',
     'trScaleLink': '拡大率を連動',
-    'trAnchorPointX': '基準点 X',
-    'trAnchorPointY': '基準点 Y',
+    'trRotation': '回転',
+    'trAnchorPoint': '基準点',
     'trMeshColumns': '横のマス',
     'trMeshRows': '縦のマス',
+    'trMesh': 'メッシュ',
+    'trFinish': '仕上げ',
     'commonReset': 'リセット',
     'viewFitToView': '画面に合わせる',
     'viewResetView': '表示をリセット（100%）',
@@ -4091,7 +4121,7 @@ enum AppStrings {
     'viewStraighten': '傾きをリセット（0°）',
     'viewZoomDrag': 'ズーム（ドラッグ / ダブルタップ）',
     'viewAngleDrag': '表示角度（ドラッグ / ダブルタップ）',
-    'viewDragDoubleTap': 'ドラッグ / ダブルタップ',
+    'viewDragTap': 'ドラッグ / タップ',
     'viewCanvasColor': 'カンバスの色',
     'viewPasteboardColor': 'ペーストボードの色',
     'viewBackdropColor': '背景の色',
@@ -4380,6 +4410,7 @@ enum AppStrings {
     'fpsAudioPull': '오디오 0.1% 당김',
     'selectionClosePolygon': '도형 닫기',
     'selectionInvert': '선택 반전',
+    'toolSelectionMode': '모드',
     'commonSave': '저장',
     'commonDelete': '삭제',
     'commonRename': '이름 변경',
@@ -5394,6 +5425,13 @@ enum AppStrings {
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
+    'brGroupInk': '잉크',
+    'brGroupTip': '브러시 끝',
+    'brGroupRandomness': '랜덤',
+    'brGroupMixing': '혼색',
+    'brGroupScattering': '살포',
+    'brGroupTexture': '질감',
+    'brGroupCorrection': '보정',
     'shortcutAction.frame-auto-create': '빈 칸에 그리면 프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -5516,13 +5554,15 @@ enum AppStrings {
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
-    'trScaleX': '배율 X',
-    'trScaleY': '배율 Y',
+    'trPosition': '위치',
+    'trScale': '배율',
     'trScaleLink': '배율 연동',
-    'trAnchorPointX': '기준점 X',
-    'trAnchorPointY': '기준점 Y',
+    'trRotation': '회전',
+    'trAnchorPoint': '기준점',
     'trMeshColumns': '가로 칸',
     'trMeshRows': '세로 칸',
+    'trMesh': '메시',
+    'trFinish': '마무리',
     'commonReset': '초기화',
     'viewFitToView': '화면에 맞추기',
     'viewResetView': '보기 초기화 (100%)',
@@ -5534,7 +5574,7 @@ enum AppStrings {
     'viewStraighten': '기울기 초기화 (0°)',
     'viewZoomDrag': '줌 (드래그 / 더블탭)',
     'viewAngleDrag': '보기 각도 (드래그 / 더블탭)',
-    'viewDragDoubleTap': '드래그 / 더블탭',
+    'viewDragTap': '드래그 / 탭',
     'viewCanvasColor': '캔버스 색',
     'viewPasteboardColor': '페이스트보드 색',
     'viewBackdropColor': '배경 색',
@@ -5829,6 +5869,7 @@ enum AppStrings {
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
     'selectionClosePolygon': 'Fermer la forme',
     'selectionInvert': 'Inverser la sélection',
+    'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
     'commonRename': 'Renommer',
@@ -6962,6 +7003,13 @@ enum AppStrings {
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
+    'brGroupInk': 'Encre',
+    'brGroupTip': 'Pointe',
+    'brGroupRandomness': 'Variation',
+    'brGroupMixing': 'Mélange',
+    'brGroupScattering': 'Dispersion',
+    'brGroupTexture': 'Texture',
+    'brGroupCorrection': 'Correction',
     'shortcutAction.frame-auto-create': "Créer une image là où il n'y en a pas",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -6976,13 +7024,15 @@ enum AppStrings {
     'brAntiAliasEdge': 'Anticrénelage du bord',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
-    'trScaleX': 'Échelle X',
-    'trScaleY': 'Échelle Y',
+    'trPosition': 'Position',
+    'trScale': 'Échelle',
     'trScaleLink': 'Échelles liées',
-    'trAnchorPointX': 'Ancre X',
-    'trAnchorPointY': 'Ancre Y',
+    'trRotation': 'Rotation',
+    'trAnchorPoint': 'Ancre',
     'trMeshColumns': 'Colonnes',
     'trMeshRows': 'Lignes',
+    'trMesh': 'Grille',
+    'trFinish': 'Finition',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
@@ -7106,7 +7156,7 @@ enum AppStrings {
     'viewStraighten': 'Redresser la vue (0°)',
     'viewZoomDrag': 'Zoom (glisser / double-tap)',
     'viewAngleDrag': 'Angle de vue (glisser / double-tap)',
-    'viewDragDoubleTap': 'Glisser / double-tap',
+    'viewDragTap': 'Glisser / toucher',
     'viewCanvasColor': 'Couleur du canevas',
     'viewPasteboardColor': 'Couleur du fond',
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
@@ -7383,6 +7433,7 @@ enum AppStrings {
     'fpsAudioPull': '拉伸音频 0.1%',
     'selectionClosePolygon': '闭合形状',
     'selectionInvert': '反选',
+    'toolSelectionMode': '模式',
     'commonSave': '保存',
     'commonDelete': '删除',
     'commonRename': '重命名',
@@ -8347,6 +8398,13 @@ enum AppStrings {
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
+    'brGroupInk': '墨水',
+    'brGroupTip': '笔尖',
+    'brGroupRandomness': '随机',
+    'brGroupMixing': '混色',
+    'brGroupScattering': '散布',
+    'brGroupTexture': '纹理',
+    'brGroupCorrection': '修正',
     'shortcutAction.frame-auto-create': '在空单元格上绘制时自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
@@ -8468,13 +8526,15 @@ enum AppStrings {
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
-    'trScaleX': '缩放 X',
-    'trScaleY': '缩放 Y',
+    'trPosition': '位置',
+    'trScale': '缩放',
     'trScaleLink': '缩放联动',
-    'trAnchorPointX': '基准点 X',
-    'trAnchorPointY': '基准点 Y',
+    'trRotation': '旋转',
+    'trAnchorPoint': '基准点',
     'trMeshColumns': '列数',
     'trMeshRows': '行数',
+    'trMesh': '网格',
+    'trFinish': '收尾',
     'commonReset': '重置',
     'viewFitToView': '适应窗口',
     'viewResetView': '重置视图（100%）',
@@ -8486,7 +8546,7 @@ enum AppStrings {
     'viewStraighten': '摆正视图（0°）',
     'viewZoomDrag': '缩放（拖动 / 双击）',
     'viewAngleDrag': '视图角度（拖动 / 双击）',
-    'viewDragDoubleTap': '拖动 / 双击',
+    'viewDragTap': '拖动 / 点击',
     'viewCanvasColor': '画布颜色',
     'viewPasteboardColor': '底板颜色',
     'viewBackdropColor': '背景颜色',

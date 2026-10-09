@@ -6,7 +6,6 @@ import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
-import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../text/app_strings.dart';
@@ -80,7 +79,6 @@ class TextToolSettings extends StatelessWidget {
         tool: 'text',
         title: strings.toolText,
         children: [
-          const SizedBox(height: 8),
           _TextInHandRow(commands: commands),
           ToolSettingsGroupHeader(strings.textToolLetters),
           _LetterRows(
@@ -99,9 +97,6 @@ class TextToolSettings extends StatelessWidget {
 
 /// What a value several letters do not agree on reads as (유저 2026-10-06).
 const String _mixed = '—';
-
-/// The gap between two bars, as every section of the panel keeps it.
-const SizedBox _gap = SizedBox(height: 8);
 
 /// The text in hand, by its own letters — and the list of the cel's texts
 /// it is picked from. 유저 2026-10-06: 「도구설정에 선택된 텍스트라는 항목이
@@ -187,9 +182,10 @@ class _TextInHandRow extends StatelessWidget {
 /// lit only while a text is in hand. The filled button the transform tool's
 /// 적용 is, grey the same way when it has nothing to do.
 ///
-/// The press is the button's own (`control_press_claim`): it stands in a
-/// list that scrolls, and a press that wobbles on it turns the text all the
-/// same — it never scrolls the settings.
+/// The tool's one ACTION ([ToolSettingActions] — the line every tool ends
+/// with, tool-settings-panel-tidy 유저 2026-10-10 「다 추천대로」), whose
+/// press is the button's own: a press that wobbles on it turns the text all
+/// the same, and never scrolls the settings.
 class _IntoDrawingButton extends StatelessWidget {
   const _IntoDrawingButton({required this.commands});
 
@@ -198,19 +194,19 @@ class _IntoDrawingButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final commands = this.commands;
-    final turn = commands != null && commands.holdsText
-        ? commands.turnIntoDrawing
-        : null;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: ControlPressClaim(
-        onPressed: turn,
-        child: FilledButton(
-          key: const ValueKey<String>('text-tool-into-drawing'),
-          onPressed: silentPress(turn),
-          child: Text(AppText.strings.textToolIntoDrawing),
-        ),
-      ),
+    return ToolSettingActions(
+      lines: [
+        [
+          ToolSettingAction(
+            keyValue: 'text-tool-into-drawing',
+            label: AppText.strings.textToolIntoDrawing,
+            decides: true,
+            onPressed: commands != null && commands.holdsText
+                ? commands.turnIntoDrawing
+                : null,
+          ),
+        ],
+      ],
     );
   }
 }
@@ -263,10 +259,8 @@ class _LetterRows extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _FaceRow(values: values, fonts: fonts),
-        _gap,
+        ToolSettingBar(_FaceRow(values: values, fonts: fonts)),
         _bar(_LetterNumber.size),
-        _gap,
         _bar(_LetterNumber.tracking),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('text-tool-bold'),
@@ -279,7 +273,6 @@ class _LetterRows extends StatelessWidget {
         ),
         _colour(),
         _outline(),
-        _gap,
         // A width with no colour is no outline: until the letters have one
         // there is nothing for it to be the width of.
         _bar(
@@ -319,20 +312,22 @@ class _LetterRows extends StatelessWidget {
       (style) => bar.write(style, value),
       settled: settled,
     );
-    return FieldSlider(
-      key: ValueKey<String>('text-tool-${bar.name}'),
-      label: bar.label,
-      min: bar.min,
-      max: bar.max,
-      scale: bar.scale,
-      divisions: bar.divisions,
-      unit: bar.unit,
-      value: shown.value.clamp(bar.min, bar.max),
-      valueTextBuilder: shown.mixed ? (_, _) => _mixed : null,
-      onChanged: values.writable && live
-          ? (value) => set(value, settled: false)
-          : null,
-      onChangeEnd: (value) => set(value, settled: true),
+    return ToolSettingBar(
+      FieldSlider(
+        key: ValueKey<String>('text-tool-${bar.name}'),
+        label: bar.label,
+        min: bar.min,
+        max: bar.max,
+        scale: bar.scale,
+        divisions: bar.divisions,
+        unit: bar.unit,
+        value: shown.value.clamp(bar.min, bar.max),
+        valueTextBuilder: shown.mixed ? (_, _) => _mixed : null,
+        onChanged: values.writable && live
+            ? (value) => set(value, settled: false)
+            : null,
+        onChangeEnd: (value) => set(value, settled: true),
+      ),
     );
   }
 
@@ -626,7 +621,6 @@ class _BoxRows extends StatelessWidget {
       _writing(),
       _alignment(),
       _boxWidth(),
-      _gap,
       _linePitch(),
       _background(),
     ],
@@ -705,19 +699,21 @@ class _BoxRows extends StatelessWidget {
   }
 
   /// A line's pitch, read as a share of its letters' size.
-  Widget _linePitch() => FieldSlider(
-    key: const ValueKey<String>('text-tool-line-height'),
-    label: AppText.strings.textToolLineHeight,
-    min: _tightest,
-    max: _loosest,
-    divisions: ((_loosest - _tightest) / _pitchStep).round(),
-    displayScale: 100,
-    unit: '%',
-    value: values.lineHeight.clamp(_tightest, _loosest),
-    onChanged: values.writable
-        ? (pitch) => values.setLineHeight(pitch, settled: false)
-        : null,
-    onChangeEnd: values.setLineHeight,
+  Widget _linePitch() => ToolSettingBar(
+    FieldSlider(
+      key: const ValueKey<String>('text-tool-line-height'),
+      label: AppText.strings.textToolLineHeight,
+      min: _tightest,
+      max: _loosest,
+      divisions: ((_loosest - _tightest) / _pitchStep).round(),
+      displayScale: 100,
+      unit: '%',
+      value: values.lineHeight.clamp(_tightest, _loosest),
+      onChanged: values.writable
+          ? (pitch) => values.setLineHeight(pitch, settled: false)
+          : null,
+      onChangeEnd: values.setLineHeight,
+    ),
   );
 
   Widget _background() => ToolSettingRow(

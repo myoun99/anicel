@@ -71,6 +71,11 @@ void main() {
   /// is arithmetic wearing quotes, not a sentence anyone translates.
   final onScreen = <RegExp>[
     RegExp(r"""Text\(\s*(?:const\s+)?'([^'$]*)'"""),
+    // ⚠️AND IT GREW AGAIN (tool-settings-panel-tidy, 2026-10-10): a tool
+    // settings group is HANDED its words, unnamed, and the brush panel's
+    // seven — 「Ink」, 「Brush tip」, … — read English in every language
+    // under a scan that never matched them.
+    RegExp(r"""ToolSettingsGroupHeader\(\s*'([^'$]*)'"""),
     RegExp(
       '''(?:label|help|title|tooltip|hintText|message|labelText'''
       '''|semanticLabel|fieldLabel|confirmLabel|actionLabel'''

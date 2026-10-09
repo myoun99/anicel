@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -9,6 +10,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/scale_chain_button.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
@@ -496,8 +499,8 @@ void main() {
     );
   });
 
-  testWidgets('the link switch reaches the tool\'s options, and reads back '
-      'from them', (tester) async {
+  testWidgets('the chain beside 배율 reaches the tool\'s options, and reads '
+      'back from them', (tester) async {
     final chosen = <TransformToolOptions>[];
     await pumpMoveSettings(
       tester,
@@ -506,9 +509,14 @@ void main() {
     );
     final link = find.byKey(const ValueKey<String>('move-scale-link-switch'));
     expect(
-      tester.booleanDotIn(link).value,
+      tester.appIconButton(link).isSelected,
       isTrue,
       reason: 'the chain is on as the tool begins — AE\'s',
+    );
+    expect(
+      find.ancestor(of: link, matching: find.byType(ScaleChainButton)),
+      findsOneWidget,
+      reason: 'the timeline Scale row\'s own chain — one switch, one face',
     );
 
     await tester.tap(link);
@@ -530,7 +538,7 @@ void main() {
       scaleLinked: false,
       onOptionsChanged: chosen.add,
     );
-    expect(tester.booleanDotIn(link).value, isFalse);
+    expect(tester.appIconButton(link).isSelected, isFalse);
     await tester.tap(link);
     await tester.pump();
     expect(chosen.last.scaleLinked, isTrue);
@@ -598,29 +606,35 @@ void main() {
       onResampleModeChanged: (_) {},
       canEdit: false,
     );
+    expect(
+      tester
+          .booleanDotIn(
+            find.byKey(const ValueKey<String>('move-antialias-switch')),
+          )
+          .enabled,
+      isFalse,
+      reason: 'the AA switch must be flat with nothing to transform',
+    );
     for (final key in const [
-      'move-antialias-switch',
       'move-scale-link-switch',
-    ]) {
-      expect(
-        tester.booleanDotIn(find.byKey(ValueKey<String>(key))).enabled,
-        isFalse,
-        reason: '$key must be flat with nothing to transform',
-      );
-    }
-    for (final key in const [
       'move-flip-horizontal-button',
       'move-flip-vertical-button',
-      'move-reset-button',
     ]) {
       expect(
-        tester
-            .widget<OutlinedButton>(find.byKey(ValueKey<String>(key)))
-            .onPressed,
+        tester.appIconButton(find.byKey(ValueKey<String>(key))).onPressed,
         isNull,
         reason: '$key must not be pressable with nothing to transform',
       );
     }
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey<String>('move-reset-button')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'reset must not be pressable with nothing to transform',
+    );
     expect(
       tester
           .widget<FilledButton>(
@@ -646,54 +660,88 @@ void main() {
     expect(apply().onPressed, isNotNull);
   });
 
-  testWidgets('the four buttons come in the order the user asked for, and '
-      'the mesh grid shows only in 메쉬', (tester) async {
-    final applied = <AppliedTransform>[];
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 「다 추천대로」): the
+  /// values in rows and columns, the flips at the end of the rotation row,
+  /// 초기화 · 적용 as the last line. ↩️유저 08-13's order 좌우반전 · 상하반전 ·
+  /// 리셋 · 적용 was one row of its own under the numbers.
+  testWidgets('a pair is one row, X over X and Y over Y; the flips end the '
+      'rotation row; 초기화 · 적용 end the settings', (tester) async {
     await pumpMoveSettings(
       tester,
-      applied: applied,
+      applied: [],
       onResampleModeChanged: (_) {},
     );
-    // 좌우반전 · 상하반전 · 리셋 · 적용.
-    final buttons = <Offset>[
-      for (final key in const [
-        'move-flip-horizontal-button',
-        'move-flip-vertical-button',
-        'move-reset-button',
-        'move-apply-button',
-      ])
-        tester.getTopLeft(find.byKey(ValueKey<String>(key))),
-    ];
-    for (var i = 1; i < buttons.length; i += 1) {
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey<String>(key)));
+
+    for (final (x, y) in const [
+      ('move-x-field', 'move-y-field'),
+      ('move-scale-x-field', 'move-scale-y-field'),
+      ('move-anchor-x-field', 'move-anchor-y-field'),
+      ('move-mesh-columns-field', 'move-mesh-rows-field'),
+    ]) {
+      expect(at(x).center.dy, at(y).center.dy, reason: '$x and $y: one row');
+      expect(at(x).right, lessThan(at(y).left), reason: '$x before $y');
+      expect(at(x).left, at('move-x-field').left, reason: '$x: the X column');
+      expect(at(y).left, at('move-y-field').left, reason: '$y: the Y column');
+    }
+    final angle = at('move-angle-field');
+    final flipAcross = at('move-flip-horizontal-button');
+    final flipDown = at('move-flip-vertical-button');
+    expect(angle.left, at('move-x-field').left, reason: 'the X column');
+    for (final flip in [flipAcross, flipDown]) {
+      expect(flip.center.dy, closeTo(angle.center.dy, 1), reason: 'its row');
+      expect(flip.left, greaterThan(angle.right));
+    }
+    expect(flipAcross.right, lessThanOrEqualTo(flipDown.left));
+
+    final reset = at('move-reset-button');
+    final apply = at('move-apply-button');
+    expect(reset.center.dy, apply.center.dy, reason: 'one line');
+    expect(reset.right, lessThan(apply.left));
+    expect(reset.width, apply.width, reason: 'one width each');
+    expect(reset.height, apply.height, reason: 'one height');
+    expect(
+      reset.top,
+      greaterThan(at('move-antialias-switch').bottom),
+      reason: 'the last line of the settings',
+    );
+  });
+
+  testWidgets('the mesh row keeps its place, and takes a hand in 메쉬 alone', (
+    tester,
+  ) async {
+    DragValueLabel box(String key) => tester.widget<DragValueLabel>(
+      find.ancestor(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(DragValueLabel),
+      ),
+    );
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      onResampleModeChanged: (_) {},
+    );
+    for (final key in const [
+      'move-mesh-columns-field',
+      'move-mesh-rows-field',
+    ]) {
+      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
       expect(
-        buttons[i].dy > buttons[i - 1].dy ||
-            (buttons[i].dy == buttons[i - 1].dy &&
-                buttons[i].dx > buttons[i - 1].dx),
-        isTrue,
-        reason: 'button $i sits after button ${i - 1}',
+        box(key).enabled,
+        isFalse,
+        reason: '$key: a grid size means nothing outside 메쉬',
       );
     }
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-columns-field')),
-      findsNothing,
-      reason: 'a grid size means nothing outside 메쉬',
-    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await pumpMoveSettings(
       tester,
-      applied: applied,
+      applied: [],
       onResampleModeChanged: (_) {},
       mode: TransformMode.mesh,
     );
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-columns-field')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-rows-field')),
-      findsOneWidget,
-    );
+    expect(box('move-mesh-columns-field').enabled, isTrue);
+    expect(box('move-mesh-rows-field').enabled, isTrue);
   });
 
   /// 🚨★★★**F-164 ③④ — 유저 2026-09-18**: 「변형중에 툴도구의 X,Y값같은거

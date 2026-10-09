@@ -14,6 +14,8 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
+import 'tool_setting_rows.dart'
+    show ToolSettingBar, ToolSettingChoiceRow, ToolSettingRow;
 import 'tool_settings_section.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
@@ -207,7 +209,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // mark on the canvas, and this panel scrolls; the strip is always
           // where it was. Keeping a second copy here would be two places
           // showing one number.
-          const ToolSettingsGroupHeader('Ink', first: true),
+          ToolSettingsGroupHeader(AppText.strings.brGroupInk, first: true),
           _PanelSlider(
             label: AppText.strings.brFlow,
             unit: '%',
@@ -222,7 +224,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               AppText.strings.brFlow,
             ),
           ),
-          const ToolSettingsGroupHeader('Brush tip'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupTip),
           BrushTipPickerRow(
             label: AppText.strings.brBrushTip,
             role: BrushTipRole.tip,
@@ -293,7 +295,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // P20 shipped placement dynamics into the engine and left them
           // unreachable: only a preset or an import could set them. These
           // are those knobs.
-          const ToolSettingsGroupHeader('Randomness'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupRandomness),
           _PanelSlider(
             label: AppText.strings.brSizeJitter,
             unit: '%',
@@ -347,7 +349,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             onChanged: (value) =>
                 onChanged(state.copyWith(spacingJitter: value)),
           ),
-          const ToolSettingsGroupHeader('Mixing'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupMixing),
           SettingsSwitchRow(
             tileKey: const ValueKey<String>('brush-tool-mixing-toggle'),
             label: AppText.strings.brMixing,
@@ -396,7 +398,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                 ? (value) => onChanged(state.copyWith(colorStretch: value))
                 : null,
           ),
-          const ToolSettingsGroupHeader('Scattering'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupScattering),
           _PanelSlider(
             // A ratio of the brush size, so scatter keeps its character as
             // the brush grows.
@@ -436,7 +438,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterBothAxes: value)),
           ),
-          const ToolSettingsGroupHeader('Texture'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupTexture),
           BrushTipPickerRow(
             label: AppText.strings.brDualTip,
             role: BrushTipRole.dual,
@@ -554,7 +556,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                 ? null
                 : (value) => onChanged(state.copyWith(textureContrast: value)),
           ),
-          const ToolSettingsGroupHeader('Correction'),
+          ToolSettingsGroupHeader(AppText.strings.brGroupCorrection),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
           _PanelSlider(
@@ -603,34 +605,20 @@ class _RotationModeRow extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              AppText.strings.brTipRotation,
-              style: theme.textTheme.labelSmall,
-            ),
-          ),
-          PanelFlyoutButton(
-            key: const ValueKey<String>('brush-tool-rotation-menu-button'),
-            label: _labelFor(state.rotationMode),
-            tooltip: AppText.strings.brTipRotation,
-            entriesBuilder: () => BrushTipRotationMode.values.asFlyoutChoices(
-              current: state.rotationMode,
-              keyPrefix: 'brush-tool-rotation-',
-              labelOf: _labelFor,
-              onPicked: (mode) =>
-                  onChanged(state.copyWith(rotationMode: mode)),
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => ToolSettingRow(
+    label: AppText.strings.brTipRotation,
+    child: PanelFlyoutButton(
+      key: const ValueKey<String>('brush-tool-rotation-menu-button'),
+      label: _labelFor(state.rotationMode),
+      tooltip: AppText.strings.brTipRotation,
+      entriesBuilder: () => BrushTipRotationMode.values.asFlyoutChoices(
+        current: state.rotationMode,
+        keyPrefix: 'brush-tool-rotation-',
+        labelOf: _labelFor,
+        onPicked: (mode) => onChanged(state.copyWith(rotationMode: mode)),
       ),
-    );
-  }
+    ),
+  );
 }
 
 // The BRUSH BLEND row moved to the TOP STRIP with size and opacity (유저
@@ -658,48 +646,33 @@ class _AntiAliasRow extends StatelessWidget {
     BrushAntiAlias.high => '3',
   };
 
+  /// Every tool's choice row ([ToolSettingChoiceRow] — its name at the
+  /// left, the answers at the right; tool-settings-panel-tidy, 유저
+  /// 2026-10-10 「고르기는 한 모양」). ↩️It wrote its own: a dimmer name with
+  /// the strip right after it.
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     // Same trailing reservation as [_PanelSlider]: this row lines up with
     // the sliders above and below it, and the slot stays empty rather than
     // letting the segments grow into it (⛔자리는 항상 예약하고 내용만 바꾼다).
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  AppText.strings.brEdge,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // The app's one grouped choice (board pill-group-everywhere).
-                Flexible(
-                  child: PillStrip(
-                    key: const ValueKey<String>('brush-tool-edge-segments'),
-                    items: [
-                      for (final step in BrushAntiAlias.values)
-                        PillItem(
-                          keyValue: 'brush-tool-edge-${step.name}',
-                          label: _labelFor(step),
-                          selected: step == value,
-                          onTap: () => onChanged(step),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: ToolSettingChoiceRow<BrushAntiAlias>(
+            tool: 'brush-tool',
+            name: 'edge',
+            label: AppText.strings.brEdge,
+            current: value,
+            answers: [
+              for (final step in BrushAntiAlias.values)
+                (value: step, key: step.name, label: _labelFor(step)),
+            ],
+            onPick: (step) => () => onChanged(step),
           ),
-          const SizedBox(width: _PanelSlider._trailingGap),
-          const SizedBox(width: PressureCurveButton.slotWidth),
-        ],
-      ),
+        ),
+        const SizedBox(width: _PanelSlider._trailingGap),
+        const SizedBox(width: PressureCurveButton.slotWidth),
+      ],
     );
   }
 }
@@ -768,9 +741,8 @@ class _PanelSlider extends StatelessWidget {
     // WITHOUT a curve button the button's width as well, so one panel drew
     // its slider at two different lengths — 「자리는 항상 예약하고 내용만
     // 바꾼다」 with the reservation missing.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
+    return ToolSettingBar(
+      Row(
         children: [
           Expanded(child: slider),
           const SizedBox(width: _trailingGap),

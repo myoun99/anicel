@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/content_scrollbar.dart';
+import '../widgets/field_slider.dart' show FieldSlider;
 
 /// THE shell a tool's settings section wears inside the tool settings panel.
 ///
@@ -18,11 +19,13 @@ import '../widgets/content_scrollbar.dart';
 /// user would be left guessing which one the wheel drives.
 /// `EditorPanelBody.scrollable` says the same sentence one level up.
 ///
-/// ⚠️THE HEADING IS A STYLE, NOT A LAYOUT. It renders the line and stops
-/// there: the gap under it belongs to [children], because the sections do not
-/// agree on what comes next (the shape fill puts its polygon confirm between
-/// the two). A shell that also owned the gap would have moved every one of
-/// those by eight pixels to look tidier in this file.
+/// The heading's line and the gap under it ([_underTitle]) are the shell's:
+/// every section's rows start the same distance below its name.
+/// ↩️The gap belonged to [children] while the sections disagreed on what
+/// came first (the shape fill put its polygon confirm between the two); the
+/// confirm is an action at the end now (tool-settings-panel-tidy, 유저
+/// 2026-10-10 「다 추천대로」), and the sections wrote 8 by hand where they
+/// agreed.
 class ToolSettingsSection extends StatelessWidget {
   const ToolSettingsSection({
     super.key,
@@ -50,6 +53,19 @@ class ToolSettingsSection extends StatelessWidget {
   /// The inset every tool's settings are read at.
   static const EdgeInsets inset = EdgeInsets.all(12);
 
+  /// The space under a row — and between a grid's two columns
+  /// ([ToolSettingGrid]). The brush's settings set the rhythm first, and
+  /// every tool reads at it (tool-settings-panel-tidy, 유저 2026-10-10:
+  /// 「줄 높이 하나」).
+  static const double rowGap = 6;
+
+  /// How tall a one-line row stands: a bar and the gap under it — a switch
+  /// row's tile too.
+  static const double rowHeight = FieldSlider.defaultHeight + rowGap;
+
+  /// Between the tool's name and its first row.
+  static const double _underTitle = 8;
+
   /// The key a section wears — the handle its tests find it by, and the one
   /// a section too empty to use the shell still has to wear.
   static Key keyFor(String tool) => ValueKey<String>('tool-settings-$tool');
@@ -58,8 +74,10 @@ class ToolSettingsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = this.title;
     final rows = <Widget>[
-      if (title != null)
+      if (title != null) ...[
         Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: _underTitle),
+      ],
       ...children,
     ];
     if (scrolls) {
