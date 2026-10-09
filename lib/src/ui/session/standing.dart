@@ -188,6 +188,25 @@ class Standing {
     return projection == null ? null : LayerRowAddress(projection);
   }
 
+  /// The rows a move re-addressed ([rowAddressAfterMove]): the selection
+  /// and the storyboard's stand that were on them follow them — a conte
+  /// row's address is its seat, and a re-order changes seats (F-322).
+  void followMovedRows(Map<LayerId, LayerId> moved) {
+    if (moved.isEmpty) {
+      return;
+    }
+    _rowSelectionVerbs.followMovedRows(moved);
+    final stood = _storyboardRow;
+    if (stood == null) {
+      return;
+    }
+    final now = rowAddressAfterMove(stood, moved);
+    if (now != stood) {
+      _storyboardRow = now;
+      publishCurrentRow();
+    }
+  }
+
   /// The active layer the session last saw in [followActiveLayer].
   LayerId? _activeSeen;
 

@@ -246,8 +246,17 @@ import '../../tool/refactor/clone_scan.dart';
 /// two calls of it, the walk's arguments and nothing else.
 /// 🔬Measured on the lane against its base (`2e56d2a0c`, at 90): those two
 /// gone, that one added.
+///
+/// 89 → 88 (2026-10-10, F-322 — the conte panel's rail selects): the pair
+/// `_StoryboardRailRows._railRowAtCrossOffset` · `resolveTrackSeDrop` (44
+/// tokens) left. The rail's select drag reads the row under the pointer by
+/// the walk the strips' sweep made, so the walk is ONE `_addressedRowAt`
+/// both ask now, and the sweep's body no longer holds the index arithmetic
+/// the pair had in common.
+/// 🔬Measured on the lane against its base (`71ec1f1f0`, at 89): that one
+/// gone, none added.
 void main() {
-  const ceiling = 89;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

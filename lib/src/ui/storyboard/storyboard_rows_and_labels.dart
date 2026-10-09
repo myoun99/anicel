@@ -32,53 +32,70 @@ class _StoryboardRowsAndLabels {
         headers.add((rowIndex: index, effectId: parsed.effectId));
       }
     }
-    final displayEffects = [for (final header in headers) header.effectId];
     return [
       for (var index = 0; index < rows.length; index += 1)
-        () {
-          final parsed = parseEffectLaneId(lanes[index].laneId);
-          final slot = parsed == null || parsed.parameterId != null
-              ? -1
-              : displayEffects.indexOf(parsed.effectId);
-          if (slot < 0) {
-            // A parameter lane moves nothing, and selects like every row.
-            return selectOnly(
-              LaneRowSubject(carrierId, lanes[index].laneId),
-              _state._rowHeights.lane,
-              rows[index],
-            );
-          }
-          final subject = EffectRowSubject(carrierId, parsed!.effectId);
-          return LayerRowDragTarget(
-            subject: subject,
-            slotBefore: slot,
-            rowExtent: _state._rowHeights.lane,
-            axis: Axis.horizontal,
-            hooks: hooks,
-            grip: () => [effectRowDragChip(lanes[index])],
-            isLastRow: slot == displayEffects.length - 1,
-            onCrossed: (steps, _, _) => hooks.onEffectUpdate(
-              carrierId,
-              displayEffects,
-              slotForSteps(
-                slot,
-                rowStepsBetween(
-                  [for (final header in headers) header.rowIndex],
-                  index,
-                  steps,
-                ),
-                displayEffects.length,
-              ),
-            ),
-            // B4-3's select half, as the timeline's chain header has it.
-            onSelectCrossed: _spanOnSelect(),
-            selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
-              timelineRowAddressOfDragSubject(subject),
-            ),
-            child: rows[index],
-          );
-        }(),
+        _trackEffectRow(
+          hooks,
+          (carrierId: carrierId, headers: headers),
+          (lane: lanes[index], index: index),
+          rows[index],
+        ),
     ];
+  }
+
+  /// One label of the V row's fx chain at [at]: a group header re-orders
+  /// the chain, and selects; a parameter lane moves nothing, and selects
+  /// like every row.
+  Widget _trackEffectRow(
+    TimelineRowDragHooks hooks,
+    ({LayerId carrierId, List<({int rowIndex, EffectId effectId})> headers})
+    chain,
+    ({PropertyLaneRow lane, int index}) at,
+    Widget row,
+  ) {
+    final displayEffects = [
+      for (final header in chain.headers) header.effectId,
+    ];
+    final parsed = parseEffectLaneId(at.lane.laneId);
+    final slot = parsed == null || parsed.parameterId != null
+        ? -1
+        : displayEffects.indexOf(parsed.effectId);
+    if (slot < 0) {
+      return selectOnly(
+        LaneRowSubject(chain.carrierId, at.lane.laneId),
+        _state._rowHeights.lane,
+        row,
+      );
+    }
+    final subject = EffectRowSubject(chain.carrierId, parsed!.effectId);
+    return LayerRowDragTarget(
+      subject: subject,
+      slotBefore: slot,
+      rowExtent: _state._rowHeights.lane,
+      axis: Axis.horizontal,
+      hooks: hooks,
+      grip: () => [effectRowDragChip(at.lane)],
+      isLastRow: slot == displayEffects.length - 1,
+      onCrossed: (steps, _, _) => hooks.onEffectUpdate(
+        chain.carrierId,
+        displayEffects,
+        slotForSteps(
+          slot,
+          rowStepsBetween(
+            [for (final header in chain.headers) header.rowIndex],
+            at.index,
+            steps,
+          ),
+          displayEffects.length,
+        ),
+      ),
+      // B4-3's select half, as the timeline's chain header has it.
+      onSelectCrossed: _spanOnSelect(),
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+        timelineRowAddressOfDragSubject(subject),
+      ),
+      child: row,
+    );
   }
 
   /// THE RAIL'S SELECT HALF (🗣️F-322, 유저 2026-10-09: 「콘티패널 지금
@@ -302,17 +319,67 @@ class _StoryboardRowsAndLabels {
   /// while the host has not wired the head's verbs there is nothing for its
   /// controls to do: the row then keeps its slots reserved and empty
   /// ([_StoryboardLayerRowLabel]).
-  Widget conteLabelRow(Track track, int seat) => selectOnly(
-    LayerRowSubject(trackConteRowId(track.id, seat: seat)),
-    _state._rowHeights.conte,
-    _conteLabel(track, seat),
-    grip: () => [
+  ///
+  /// It takes this rail's row grammar as the timeline's row does: a drag on
+  /// it selects, and a drag inside the selection re-orders the conte group
+  /// — the seat's rows in every cut — as the timeline's drag of that row
+  /// does (🗣️F-322, 유저 2026-10-09: 「선택범위 드래그로 어태치 조정」 ·
+  /// 「드래그로 어태치 순서이동이라던가 … 다 되도록하는거 잊지말고」). A seat
+  /// no cut holds a row at has nothing to move, and selects all the same.
+  Widget conteLabelRow(Track track, int seat) {
+    final rowId = trackConteRowId(track.id, seat: seat);
+    final subject = ConteSeatRowSubject(rowId);
+    final label = _conteLabel(track, seat);
+    List<DragChipItem> grip() => [
       (
         icon: layerKindIcon(LayerKind.storyboard),
         label: trackConteRowName(track.cuts, seat: seat),
       ),
-    ],
-  );
+    ];
+    final hooks = _state.widget.rowDragHooks;
+    final seats = _state._railRows._shownConteSeats(track);
+    final index = seats.indexOf(seat);
+    if (hooks == null || index < 0 || conteHeadAt(track.cuts, seat) == null) {
+      return selectOnly(subject, _state._rowHeights.conte, label, grip: grip);
+    }
+    // The rail's conte rows, by their own addresses: the session reads them
+    // as the rows of the cut the move is made in.
+    List<Layer> shown() => [
+      for (final shownSeat in _state._railRows._shownConteSeats(track))
+        Layer(
+          id: trackConteRowId(track.id, seat: shownSeat),
+          name: '',
+          frames: const [],
+        ),
+    ];
+    return LayerRowDragTarget(
+      subject: subject,
+      slotBefore: index,
+      rowExtent: _state._railRows._conteRowGroupExtent(track, seat),
+      axis: Axis.horizontal,
+      hooks: hooks,
+      grip: grip,
+      isLastRow: index == seats.length - 1,
+      // A conte group's rows hold nothing to drop into, so the caret is the
+      // only answer (the S rows' reasoning).
+      onCrossed: (steps, _, inRow) {
+        final rows = shown();
+        final under = index + inRow;
+        hooks.onUpdate(
+          rows,
+          slotForSteps(index, steps, rows.length),
+          pointerInRow: under >= 0 && under < rows.length
+              ? rows[under].id
+              : null,
+        );
+      },
+      onSelectCrossed: _spanOnSelect(),
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+        LayerRowAddress(rowId),
+      ),
+      child: label,
+    );
+  }
 
   Widget _conteLabel(Track track, int seat) {
     final rowId = trackConteRowId(track.id, seat: seat);

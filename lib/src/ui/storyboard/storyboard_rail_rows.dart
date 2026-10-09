@@ -514,11 +514,26 @@ class _StoryboardRailRows {
   /// How tall ONE S ROW stands on the rail: the row, plus its lanes when
   /// twirled open — its run in the table the rail is drawn from
   /// ([_trackGroupRowGeometry]), read back as a number.
-  double _seRowGroupExtent(Track track, int slot) {
+  double _seRowGroupExtent(Track track, int slot) =>
+      _rowRunExtent(track, (row) => row.railRow?.seSlot == slot);
+
+  /// How tall the conte row at [seat] stands on the rail: the row, plus its
+  /// lanes when twirled open — [_seRowGroupExtent]'s run, on that row.
+  double _conteRowGroupExtent(Track track, int seat) {
+    final row = LayerRowAddress(trackConteRowId(track.id, seat: seat));
+    return _rowRunExtent(track, (slot) => slot.standRow == row);
+  }
+
+  /// The run of [track]'s table from the row [isRow] names through the
+  /// lanes under it, read back as a number.
+  double _rowRunExtent(
+    Track track,
+    bool Function(_StoryboardRailSlot slot) isRow,
+  ) {
     var extent = 0.0;
     var inRun = false;
     for (final row in _trackGroupRowGeometry(track)) {
-      if (row.railRow?.seSlot == slot) {
+      if (isRow(row)) {
         inRun = true;
       } else if (inRun && !row.lane) {
         break;
@@ -1666,30 +1681,18 @@ class _StoryboardRailRows {
     required double crossOffset,
   }) {
     final geometry = _trackGroupRowGeometry(track);
-    final anchorIndex = geometry.indexWhere((slot) => slot.row == anchorRow);
+    final rows = [for (final slot in geometry) slot.row];
+    final anchorIndex = rows.indexOf(anchorRow);
     if (anchorIndex < 0) {
       return null;
     }
-    final index = rowIndexForCrossOffset(
-      crossOffset: crossOffset,
+    // Audio and lane strips take up space but cannot BE a selection head.
+    return rows[_addressedRowAt(
+      rows,
+      [for (final slot in geometry) slot.height],
       anchorIndex: anchorIndex,
-      heights: [for (final slot in geometry) slot.height],
-    );
-    // Audio and lane strips take up space but cannot BE a selection head:
-    // walk back toward the anchor until a real row turns up, so a drag
-    // that lands on one reaches as far as it legibly can instead of
-    // collapsing to nothing.
-    final step = index >= anchorIndex ? -1 : 1;
-    for (var i = index; i >= 0 && i < geometry.length; i += step) {
-      final address = geometry[i].row;
-      if (address != null) {
-        return address;
-      }
-      if (i == anchorIndex) {
-        break;
-      }
-    }
-    return anchorRow;
+      crossOffset: crossOffset,
+    )];
   }
 
   /// The ROW SELECTION over this rail, as the timeline's rail draws it —
@@ -1736,17 +1739,14 @@ class _StoryboardRailRows {
         if (anchorAt < 0) {
           return 0;
         }
-        var head = rowIndexForCrossOffset(
-          crossOffset: offset,
+        final head = addresses[_addressedRowAt(
+          addresses,
+          [for (final slot in slots) slot.height],
           anchorIndex: anchorAt,
-          heights: [for (final slot in slots) slot.height],
-        );
-        final towardAnchor = head >= anchorAt ? -1 : 1;
-        while (addresses[head] == null) {
-          head += towardAnchor;
-        }
+          crossOffset: offset,
+        )];
         final rows = addresses.nonNulls.toList();
-        return rows.indexOf(addresses[head]!) - rows.indexOf(anchor);
+        return rows.indexOf(head!) - rows.indexOf(anchor);
       };
 
   /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
@@ -2544,4 +2544,28 @@ final class _TrackStrip {
   @override
   int get hashCode =>
       Object.hashAll([for (final entry in entries) identityHashCode(entry.cut)]);
+}
+
+/// The row a pointer [crossOffset] from the top of [anchorIndex]'s row
+/// stands over, in a table of rows [heights] tall — walked back toward the
+/// anchor past rows [addresses] names none for (an Audio lane, a strip that
+/// cannot be a span's head), so a drag that ends on one reaches as far as it
+/// legibly can rather than collapsing to nothing. The anchor's own row is
+/// always named.
+int _addressedRowAt(
+  List<TimelineRowAddress?> addresses,
+  List<double> heights, {
+  required int anchorIndex,
+  required double crossOffset,
+}) {
+  var head = rowIndexForCrossOffset(
+    crossOffset: crossOffset,
+    anchorIndex: anchorIndex,
+    heights: heights,
+  );
+  final towardAnchor = head >= anchorIndex ? -1 : 1;
+  while (head != anchorIndex && addresses[head] == null) {
+    head += towardAnchor;
+  }
+  return head;
 }

@@ -100,6 +100,18 @@ class RowSelection {
     _rowSelectionAnchor = null;
   }
 
+  /// The selected rows a move re-addressed ([rowAddressAfterMove]) stay
+  /// selected on their new addresses.
+  void followMovedRows(Map<LayerId, LayerId> moved) {
+    final selection = rowSelection.value;
+    final next = [
+      for (final row in selection) rowAddressAfterMove(row, moved),
+    ];
+    if (!listEquals(next, selection)) {
+      rowSelection.value = next;
+    }
+  }
+
   void clearRowSelection() {
     _rowSelectionAnchor = null;
     if (rowSelection.value.isNotEmpty) {

@@ -20,6 +20,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart' show trackIdOfConteRow;
 import '../../models/track_id.dart';
 import '../input/finger_mode_devices.dart';
 import '../input/eager_pan_gesture_recognizer.dart';
@@ -110,6 +111,37 @@ final class TrackRowSubject extends LayerRowDragSubject {
   int get hashCode => Object.hash(TrackRowSubject, trackId);
 }
 
+/// A storyboard CONTE row (I-73): one seat of its track's conte group, on
+/// the track's axis.
+///
+/// 🗣️F-322 (유저 2026-10-09): 「선택범위 드래그로 어태치 조정」 · 「드래그로
+/// 어태치 순서이동이라던가 … 다 되도록」. Its drag re-orders the group as the
+/// timeline's drag of that seat's row does — in one cut, and the structure
+/// law carries it to every cut of the track (`LayerRowDrag`).
+///
+/// Its own kind, as the V row's is: a caret raised for a seat belongs on its
+/// own track's conte rows, and a [LayerRowSubject] — the S rows' — would
+/// raise it among those too.
+final class ConteSeatRowSubject extends LayerRowDragSubject {
+  const ConteSeatRowSubject(this.rowId);
+
+  /// The row's address ([trackConteRowId]).
+  final LayerId rowId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) =>
+      other is ConteSeatRowSubject &&
+      trackIdOfConteRow(other.rowId) == trackIdOfConteRow(rowId);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ConteSeatRowSubject && other.rowId == rowId;
+
+  @override
+  int get hashCode => Object.hash(ConteSeatRowSubject, rowId);
+}
+
 /// An fx GROUP HEADER: one layer's effect chain. The Transform group is
 /// never a subject — it is not a chain member, it is where the chain ends.
 final class EffectRowSubject extends LayerRowDragSubject {
@@ -189,6 +221,7 @@ TimelineRowAddress timelineRowAddressOfDragSubject(
     effectGroupLaneId(effectId),
   ),
   TrackRowSubject(:final trackId) => TrackRowAddress(trackId),
+  ConteSeatRowSubject(:final rowId) => LayerRowAddress(rowId),
   // B4-3: a lane anchors a selection at its OWN address. The fx header case
   // above lands on the same kind of address — it is reached through the
   // subject that can also re-order a chain.
@@ -354,6 +387,21 @@ class TimelineRowDragHooks {
   /// travels. Null: the pressed row carries itself alone.
   final Set<LayerId> Function(LayerId pressed)? rowsActedOnBy;
 }
+
+/// [subject] as the keys of the caret and the swallow a row draws for it
+/// spell it.
+String _keyOf(LayerRowDragSubject subject) => switch (subject) {
+  LayerRowSubject(:final layerId) => layerId.value,
+  EffectRowSubject(:final effectId) => effectId.value,
+  TrackRowSubject(:final trackId) => trackId.value,
+  ConteSeatRowSubject(:final rowId) => rowId.value,
+  // B4-3: a select-only lane never raises either of these — the key exists
+  // so the switch stays exhaustive, not because a caret or a swallow can be
+  // drawn for one.
+  LaneRowSubject(:final layerId, :final laneId) => '${layerId.value}:$laneId',
+  // A file is never a row's subject — here for the same reason.
+  MediaPlacementSubject() => 'placement',
+};
 
 /// The caret's thickness and colour, shared by every rail that draws one.
 const double layerRowCaretThickness = 2;
@@ -962,19 +1010,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   Widget _swallowHighlight(ColorScheme colorScheme, String? label) {
     return Positioned.fill(
       key: ValueKey<String>(
-        'timeline-row-swallow-'
-        '${switch (widget.subject) {
-          LayerRowSubject(:final layerId) => layerId.value,
-          EffectRowSubject(:final effectId) => effectId.value,
-          TrackRowSubject(:final trackId) => trackId.value,
-          // B4-3: a select-only lane never raises either of these — the
-          // key exists so the switch stays exhaustive, not because a
-          // caret or a swallow can be drawn for one.
-          LaneRowSubject(:final layerId, :final laneId) =>
-            '${layerId.value}:$laneId',
-          // A file is never a row's subject — here for the same reason.
-          MediaPlacementSubject() => 'placement',
-        }}',
+        'timeline-row-swallow-${_keyOf(widget.subject)}',
       ),
       child: IgnorePointer(
         child: DecoratedBox(
@@ -1088,18 +1124,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     return Positioned(
       key: ValueKey<String>(
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
-        '${switch (widget.subject) {
-          LayerRowSubject(:final layerId) => layerId.value,
-          EffectRowSubject(:final effectId) => effectId.value,
-          TrackRowSubject(:final trackId) => trackId.value,
-          // B4-3: a select-only lane never raises either of these — the
-          // key exists so the switch stays exhaustive, not because a
-          // caret or a swallow can be drawn for one.
-          LaneRowSubject(:final layerId, :final laneId) =>
-            '${layerId.value}:$laneId',
-          // A file is never a row's subject — here for the same reason.
-          MediaPlacementSubject() => 'placement',
-        }}',
+        '${_keyOf(widget.subject)}',
       ),
       left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),
       right: horizontal ? 0 : (atStart ? null : -layerRowCaretThickness / 2),

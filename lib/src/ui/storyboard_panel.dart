@@ -96,6 +96,7 @@ import 'timeline/effect_lane_policy.dart'
 import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
+        ConteSeatRowSubject,
         EffectRowSubject,
         LaneRowSubject,
         LayerRowDragSubject,

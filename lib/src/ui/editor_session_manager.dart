@@ -2088,7 +2088,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm, standing: standing);
 
   // ── a file held over the timeline: its own object, in its own file ──
   //
