@@ -18,9 +18,14 @@ typedef ClipPicture = ({
   bool moveOnly,
 });
 
-/// [layer]'s stored picture — its render where the layer stands, or a
-/// dropped picture's original where its transform takes the original's
-/// top-left. Null for a layer that stores none.
+/// [layer]'s stored picture — a dropped picture's ORIGINAL where its
+/// transform takes the original's top-left, and any other layer's render
+/// where the layer stands. Null for a layer that stores none.
+///
+/// A dropped picture declares a render too, and the file never stores it
+/// (all 22 of the samples' — read first, it came in as 「A / 1: 그림을 읽지
+/// 못했습니다」 on a sample the user opened, 10-09); one with no original
+/// falls to its render, which says so when it is not there either.
 ///
 /// The transform (`ResizableImageInfo`, big-endian — memory
 /// `csp-clip-format-notes` §4): scale x · y at @40 · @48, the turn in
@@ -32,12 +37,17 @@ typedef ClipPicture = ({
 /// carry no scale or turn, so only the move is drawn (MoArt reads the
 /// rest).
 ClipPicture? clipPictureOf(ClipLayer layer) {
-  if (layer.render case final render?) {
-    return (source: render, left: layer.left, top: layer.top, moveOnly: true);
-  }
-  final original = layer.original;
+  final original = layer.kind == ClipLayerKind.picture ? layer.original : null;
   if (original == null) {
-    return null;
+    return switch (layer.render) {
+      final render? => (
+        source: render,
+        left: layer.left,
+        top: layer.top,
+        moveOnly: true,
+      ),
+      null => null,
+    };
   }
   final transform = layer.originalTransform;
   if (transform == null || transform.length < 96) {
