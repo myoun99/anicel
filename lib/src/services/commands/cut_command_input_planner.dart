@@ -708,31 +708,29 @@ Iterable<_PlantedRow> _conteFamilyRowsOf(
   );
   return seat == null
       ? const []
-      : _conteSeatRowsOf(
-          step,
-          cutId,
-          head: added,
-          seat: seat,
-          seats: [for (final entry in conteGroupOf(cut)) entry.seat],
-        );
+      : _conteSeatRowsOf(step, cutId, head: added, seat: seat);
 }
 
 /// A row born at [seat] of [cutId]'s conte group as the track's other cuts
 /// take it: an empty row wearing [head]'s head at the same seat of each
-/// one whose group held the same seats on that side ([seats], the born
-/// cut's before it — [conteSeatInsertIndex]). Lazy, as its callers'
-/// planting is.
+/// one whose group held the same seats on that side as the born cut's did
+/// before it ([conteSeatInsertIndex]). Lazy, as its callers' planting is.
 Iterable<_PlantedRow> _conteSeatRowsOf(
   _Planting step,
   CutId cutId, {
   required Layer head,
   required int seat,
-  required List<int> seats,
 }) sync* {
   final track = _trackHolding(step.project, cutId);
   if (track == null) {
     return;
   }
+  // The step's project is the one before the row: the born cut's group as
+  // it stood.
+  final seats = [
+    for (final entry in conteGroupOf(requireCut(step.project, cutId)))
+      entry.seat,
+  ];
   for (final cut in track.cuts) {
     final base = step.planted.contains(cut.id)
         ? null
@@ -813,13 +811,7 @@ List<Command> conteMountBirthCommands({
     ..add(cutId)
     ..addAll(linkedCutSiblings(step.project, cutId: cutId));
   return [
-    for (final row in _conteSeatRowsOf(
-      step,
-      cutId,
-      head: landed,
-      seat: seat,
-      seats: [for (final entry in conteGroupOf(cut)) entry.seat],
-    ))
+    for (final row in _conteSeatRowsOf(step, cutId, head: landed, seat: seat))
       _planted(step, repository, row),
   ];
 }
