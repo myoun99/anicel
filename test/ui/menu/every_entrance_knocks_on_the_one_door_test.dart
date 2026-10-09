@@ -104,6 +104,11 @@ void main() {
 
     expect(handed(tester), [png]);
     expect(window(tester).poolOnly, isFalse);
+    expect(
+      find.byKey(const ValueKey<String>('import-row-A1.png')),
+      findsOneWidget,
+      reason: 'the window lists what it was handed, from its first frame',
+    );
   });
 
   testWidgets('「폴더 열기…」 hands the folder over — a cut folder, into the '
