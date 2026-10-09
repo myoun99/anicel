@@ -254,11 +254,14 @@ Layer? conteHeadRowAt(Iterable<Cut> cuts, int seat) =>
 /// The rows of [cuts] that wear ONE head, family by family: the rows that
 /// sit at one seat of their cuts' conte groups — top seat first.
 List<List<LayerId>> conteHeadFamiliesOf(Iterable<Cut> cuts) => [
-  for (final seat in conteSeatsOf(cuts))
-    [
-      for (final cut in cuts)
-        if (conteRowAtSeat(cut, seat) case final row?) row.id,
-    ],
+  for (final seat in conteSeatsOf(cuts)) conteHeadFamilyAt(cuts, seat),
+];
+
+/// The family of [conteHeadFamiliesOf] at [seat]: the rows of [cuts] that
+/// sit there, in the cuts' order.
+List<LayerId> conteHeadFamilyAt(Iterable<Cut> cuts, int seat) => [
+  for (final cut in cuts)
+    if (conteRowAtSeat(cut, seat) case final row?) row.id,
 ];
 
 /// [row] wearing [head]'s HEAD — everything a track's conte rows have as

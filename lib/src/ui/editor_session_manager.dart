@@ -54,6 +54,7 @@ import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import '../models/track.dart';
+import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../services/cut_frame_composite_plan.dart';
@@ -767,15 +768,18 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Every use of [row] — the rows that twirl and fold as one with it: the
   /// rows that wear its head, in whichever cuts they stand
-  /// ([headMirrorRows] — its link group's, and a track's conte rows at its
-  /// seat), and itself alone for a row that is neither or that no cut holds
-  /// (a track's).
+  /// ([headMirrorRows] — its link group's, a track's conte rows at its seat
+  /// and a track's cameras), and itself alone for a row that is none of
+  /// these or that no cut holds (a track's).
   ///
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
   /// 상태 접힌 상태 공유하라는것. 법통일」 — and the conte rows since I-73
   /// (10-08), whose head is one: 「콘티행도 동일하게 하고싶으니까 어태치
-  /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」.
+  /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 — and a
+  /// track's cameras since I-73 ④, whose head is one as well: 「그럼
+  /// 카메라행도 글로벌? 콘티행처럼 머리 같도록 할까하는데」. The storyboard
+  /// draws them as one row, whose twirl opens every cut's camera lanes.
   ///
   /// The row is found in its OWN cut, the active one or not: the
   /// storyboard's rail presses the rows of every cut, a gap's included
@@ -787,7 +791,12 @@ class EditorSessionManager extends ChangeNotifier
     final cutId = cutIdOfLayer(project, row) ?? activeCutId;
     return cutId == null
         ? [row]
-        : headMirrorRows(project, cutId: cutId, layerId: row);
+        : headMirrorRows(
+            project,
+            cutId: cutId,
+            layerId: row,
+            cameraHead: true,
+          );
   }
 
   /// The timeline zoom each of this project's cuts was left at (F-253) —
@@ -1307,9 +1316,10 @@ class EditorSessionManager extends ChangeNotifier
   // three one answer.
   late final FolderBands folderBands = FolderBands(project: this);
 
-  /// A row a command made in a track's conte family wears the family's
-  /// folds and twirls ([RailView.followHeads]) — asked after EVERY history
-  /// change: a command, an undo, a redo.
+  /// A row a command made in a track's conte family — or a camera its cut
+  /// brought onto a track — wears the family's folds and twirls
+  /// ([RailView.followHeads]) — asked after EVERY history change: a
+  /// command, an undo, a redo.
   ///
   /// ↩️Asked in [refreshAfterCutCommand], beside the links, until a pin
   /// found the doors that make such a row never come through it
@@ -1324,7 +1334,12 @@ class EditorSessionManager extends ChangeNotifier
     final project = repository.currentProject;
     if (project != null) {
       railView.followHeads(
-        project.tracks.expand((track) => conteHeadFamiliesOf(track.cuts)),
+        project.tracks.expand(
+          (track) => [
+            ...conteHeadFamiliesOf(track.cuts),
+            cameraHeadFamilyOf(track.cuts),
+          ],
+        ),
       );
     }
   }

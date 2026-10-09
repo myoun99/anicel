@@ -289,6 +289,47 @@ void main() {
       expect(laneLabel('position'), findsOneWidget);
     });
 
+    testWidgets('🚨its twirl is ONE for the track\'s cameras — every cut\'s '
+        'camera twirls with it, and a cut born on the track wears it', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester, open: false);
+      final twirls = session.railView.expandedLaneLayerIds;
+      List<LayerId> cameras() => [
+        for (final cut in session.repository.requireProject().tracks.single
+            .cuts)
+          cut.layers.cameraLayer!.id,
+      ];
+
+      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.pumpAndSettle();
+      expect(
+        twirls.value,
+        containsAll(const [
+          LayerId('a-cam'),
+          LayerId('b-cam'),
+          LayerId('c-cam'),
+        ]),
+        reason: 'one head',
+      );
+
+      session.selectCut(b);
+      session.cutVerbs.createCut();
+      await tester.pumpAndSettle();
+      expect(cameras(), hasLength(4), reason: 'a cut with a camera, born');
+      expect(twirls.value, containsAll(cameras()), reason: 'born wearing it');
+
+      // The head is the camera of the cut stood in — the one just born.
+      final head = session.requireActiveCut.layers.cameraLayer!.id;
+      await tester.tap(key('storyboard-lane-toggle-${head.value}'));
+      await tester.pumpAndSettle();
+      expect(
+        twirls.value.intersection(cameras().toSet()),
+        isEmpty,
+        reason: 'shut as one',
+      );
+    });
+
     testWidgets('the legend\'s twirl-all shuts and opens them too', (
       tester,
     ) async {

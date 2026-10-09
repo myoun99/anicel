@@ -279,8 +279,8 @@ ConteGroupReorder? _reorderedLike(
 /// keys' space or the cel bank — those are the link group's alone.
 ///
 /// [cameraHead]: whether the field is one a track's cameras wear as one as
-/// well ([cameraHeadTargets]) — the name and the transform switch, and not
-/// the label.
+/// well ([cameraHeadTargets]) — the name, the transform switch and the
+/// twirl, and not the label.
 List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   Project project, {
   required CutId cutId,

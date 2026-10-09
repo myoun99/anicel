@@ -33,6 +33,7 @@ import '../models/timeline_coverage.dart'
         drawingBlocks;
 import '../models/camera_row_reach.dart';
 import '../models/track.dart';
+import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';

@@ -284,18 +284,14 @@ class _StoryboardRailRows {
   bool _cameraLanesOpen(Track track) {
     final open = _state.widget.expandedLaneLayerIds;
     return open.isNotEmpty &&
-        track.cuts.any(
-          (cut) => open.contains(cut.layers.cameraLayer?.id),
-        );
+        cameraHeadFamilyOf(track.cuts).any(open.contains);
   }
 
   /// The camera [track]'s camera row's twirl turns — its cameras turn as
   /// one ([_cameraLanesOpen]): an open one while the row is open, so the
   /// turn shuts them all, else the head's, else the track's first.
   LayerId? _cameraTwirlOf(Track track) {
-    final cameras = [
-      for (final cut in track.cuts) ?cut.layers.cameraLayer?.id,
-    ];
+    final cameras = cameraHeadFamilyOf(track.cuts);
     final open = _state.widget.expandedLaneLayerIds;
     return cameras.where(open.contains).firstOrNull ??
         _cameraHeadOf(track)?.id ??
@@ -329,14 +325,14 @@ class _StoryboardRailRows {
   bool _conteLanesOpen(Track track, int seat) {
     final open = _state.widget.expandedLaneLayerIds;
     return open.isNotEmpty &&
-        track.cuts.any((cut) => open.contains(conteRowAtSeat(cut, seat)?.id));
+        conteHeadFamilyAt(track.cuts, seat).any(open.contains);
   }
 
   /// The row the conte row at [seat]'s twirl turns — the rows at its seat
   /// turn as one ([_conteLanesOpen]): an open one while the row is open, so
   /// the turn shuts them all, else the head's.
   LayerId? _conteTwirlOf(Track track, int seat) {
-    final rows = [for (final cut in track.cuts) ?conteRowAtSeat(cut, seat)?.id];
+    final rows = conteHeadFamilyAt(track.cuts, seat);
     final open = _state.widget.expandedLaneLayerIds;
     return rows.where(open.contains).firstOrNull ?? rows.firstOrNull;
   }

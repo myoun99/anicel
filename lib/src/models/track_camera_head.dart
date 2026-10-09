@@ -1,5 +1,6 @@
 import 'cut.dart';
 import 'layer.dart';
+import 'layer_id.dart';
 
 /// THE HEAD A TRACK'S CAMERAS WEAR (I-73 ④). 🗣️유저 2026-10-09: 「그럼
 /// 카메라행도 글로벌? 콘티행처럼 머리 같도록 할까하는데」 →
@@ -28,6 +29,13 @@ Layer? cameraHeadOf(Iterable<Cut> cuts) {
   }
   return null;
 }
+
+/// The cameras of [cuts] — the rows that wear a track's one camera head,
+/// and so twirl as one (`RailView.followHeads`).
+List<LayerId> cameraHeadFamilyOf(Iterable<Cut> cuts) => [
+  for (final cut in cuts)
+    if (cut.layers.cameraLayer case final camera?) camera.id,
+];
 
 /// [cut] as it joins [cuts]' track: its camera wearing their head
 /// ([cameraWearingHeadOf]). [cut] itself when either has no camera.
