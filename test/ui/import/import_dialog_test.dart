@@ -1342,9 +1342,10 @@ void main() {
 
     expect(find.text('Place — bg.png'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('import-browse-files-button')),
+      find.byKey(const ValueKey<String>('import-source-line')),
       findsNothing,
-      reason: 'the source is what the row already decided',
+      reason: 'the source is what the row already decided — the title says '
+          'it',
     );
     expect(
       find.byKey(const ValueKey<String>('import-file-table')),

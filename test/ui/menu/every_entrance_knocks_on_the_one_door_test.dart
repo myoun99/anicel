@@ -109,6 +109,15 @@ void main() {
       findsOneWidget,
       reason: 'the window lists what it was handed, from its first frame',
     );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('import-source-line')),
+        matching: find.text(png),
+      ),
+      findsOneWidget,
+      reason: 'its top line names what was opened — and offers no pick of '
+          'its own',
+    );
   });
 
   testWidgets('「폴더 열기…」 hands the folder over — a cut folder, into the '

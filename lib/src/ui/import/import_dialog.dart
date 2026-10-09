@@ -11,13 +11,11 @@ import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
-import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
-import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
 import 'import_file_settings.dart';
@@ -30,13 +28,20 @@ import '../widgets/settings_rows.dart';
 import '../text/model_vocabulary.dart';
 import '../widgets/pill_strip.dart';
 
-/// The 가져오기/배치 window (§6-z21): ONE window for every import — file
-/// picks, folder drops, OS drag-and-drop all land here, defaults filled
-/// so the simple case is a single Enter. The interpretation table shows
-/// what each source becomes (folders list every file, dropped ones
-/// included — nothing exits silently).
+/// The import window (§6-z21): ONE window for every import, defaults
+/// filled so the simple case is a single Enter. It picks nothing itself:
+/// what the one door hands it comes in ([picked] — the menu's 「파일
+/// 열기…」 and 「폴더 열기…」, a drop on the window, the media panel's ＋,
+/// the viewer's 「미디어에 등록」), and so do files the app already holds
+/// ([initialPaths]). The interpretation table shows what each source
+/// becomes (folders list every file, dropped ones included — nothing exits
+/// silently).
 ///
-/// v1 zones: source bar → interpretation table (preview) | settings
+/// ↩️It had a 「파일…」 and a 「컷 폴더…」 of its own, and the menu's
+/// 「가져오기/배치…」 opened it on nothing to press them (F-282, 유저
+/// 2026-10-09: 「열기랑 임포트랑 되도록 하나로」).
+///
+/// v1 zones: source line → interpretation table (preview) | settings
 /// modules → action bar. The preset rail and queue drawers of the export
 /// skeleton join when parser presets get their store.
 class ImportDialog extends StatefulWidget {
@@ -48,8 +53,6 @@ class ImportDialog extends StatefulWidget {
     this.poolOnly = false,
     this.placeOnly = false,
     this.spot,
-    this.filePicker,
-    this.directoryPicker,
   });
 
   final EditorSessionManager session;
@@ -64,10 +67,11 @@ class ImportDialog extends StatefulWidget {
   /// as [initialPaths] are, the documents through copies of this window's.
   final List<FolderGrant> picked;
 
-  /// Opened from the media pool, whose job is to REGISTER a file for
-  /// later rather than place it now — so the destination starts on the
-  /// pool. Only the starting point differs: the other destinations are
-  /// still there, which is what makes this one window instead of two.
+  /// Opened through a pool's door — the media panel's ＋, the viewer's
+  /// 「미디어에 등록」 — whose job is to REGISTER a file for later rather
+  /// than place it now: the window stands on the pool, and the timeline is
+  /// shown but shut (08-14, 유저가 시안을 보고 확정: 「＋도 같은 창을 열고
+  /// Place=Pool 고정, Timeline 비활성」).
   final bool poolOnly;
 
   /// Opened from a pool ROW: the source is decided, so the source bar is
@@ -82,10 +86,6 @@ class ImportDialog extends StatefulWidget {
   /// 고정해두고 비활성화된상태로」). Null for every entrance that is not a
   /// drop.
   final ImportLayerSpot? spot;
-
-  /// Injectable pickers (tests).
-  final Future<List<String>> Function()? filePicker;
-  final Future<String?> Function()? directoryPicker;
 
   @override
   State<ImportDialog> createState() => _ImportDialogState();
@@ -396,65 +396,14 @@ class _ImportDialogState extends State<ImportDialog> {
     super.dispose();
   }
 
-  /// What the picker granted for the files in [_files], kept until Import
-  /// runs so the session can record it.
+  /// What the door handed in with the files in [_files] — a pick's grants
+  /// — kept until Import runs so the session can record them.
   ///
   /// 🚨 The whole point of PICK-5 arrives here. On Apple a referenced path
   /// is refused after a relaunch unless the app kept the security-scoped
   /// token, and the token exists only for as long as this window holds it
   /// — nothing else in the app ever sees the picker's answer.
   final List<FolderGrant> _pickedGrants = [];
-
-  Future<void> _pickFiles() async {
-    // The injected picker (tests, and the drop path) answers in paths; the
-    // real one answers in grants. Both end up in `_files`, and only the
-    // real one has tokens to record.
-    // 🚨 Nothing is replaced until the pick is known to have produced
-    // something. A second pick that the user CANCELS returns empty and
-    // leaves `_files` alone — so clearing the tokens first would strand
-    // the first batch's files with no grants, and the reference they were
-    // imported as would be refused at the next launch.
-    final List<String> paths;
-    final List<FolderGrant> grants;
-    final injected = widget.filePicker;
-    if (injected != null) {
-      paths = await injected();
-      grants = const [];
-    } else {
-      final picked = await pickFileGrantsForUser(
-        context,
-        // The POOL group, not the placeable one: this window is the
-        // media pool's entrance now, and the browser registers
-        // movies it cannot yet place. A movie picked while a placing
-        // destination is selected is refused BY NAME in the table
-        // below — which is the honest version of a picker that simply
-        // did not list it.
-        supportedExtensions: FileTypeGroups.poolMedia.extensions ?? const [],
-        allowMultiple: true,
-        acceptsDocuments: true,
-      );
-      // A document's copy is carried, and carrying records no token.
-      grants = [for (final grant in picked) if (grant.path != null) grant];
-      paths = await _readablePathsOf(picked);
-    }
-    if (paths.isEmpty || !mounted) {
-      return;
-    }
-    setState(() {
-      _folder = null;
-      _parsed = null;
-      _files
-        ..clear()
-        ..addAll(paths);
-      _pickedGrants
-        ..clear()
-        ..addAll(grants);
-    });
-    _letGoOfUnlistedCopies();
-    // A picked movie is asked about its sound as a dropped one is — the
-    // 「소리」 column used to open only for movies handed in at the start.
-    paths.forEach(_probeMovieSound);
-  }
 
   /// The documents the door handed in, listed once their copies have come
   /// ([_readablePathsOf]) — beside a folder they are left out, as a file
@@ -508,39 +457,6 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     }
     return paths;
-  }
-
-  /// Lets go of every copy [_files] no longer lists — a pick replaced it.
-  /// What is still listed goes when the window does ([dispose]): imported
-  /// by then (its bytes are staged) or never imported at all.
-  void _letGoOfUnlistedCopies() {
-    final unlisted = [
-      for (final copy in _intakeCopies)
-        if (!_files.contains(copy)) copy,
-    ];
-    for (final copy in unlisted) {
-      _intakeCopies.remove(copy);
-      ProviderDocuments.letGo(copy);
-    }
-  }
-
-  Future<void> _pickFolder() async {
-    // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
-    // returns a SAF tree URI on Android — and the very next thing this does
-    // is `Directory(folder).listSync(recursive: true)`, which answers "that
-    // folder is gone" for a URI. A wrong answer that looks like a right one.
-    final path = widget.directoryPicker != null
-        ? await widget.directoryPicker!()
-        : await pickFolderForUser(context);
-    if (path == null || !mounted) {
-      return;
-    }
-    setState(() {
-      _files.clear();
-      _folder = path;
-      _reparseFolder();
-    });
-    _letGoOfUnlistedCopies();
   }
 
   /// The folder's entries, scanned ONCE per folder pick — re-parsing on
@@ -1710,28 +1626,11 @@ class _ImportDialogState extends State<ImportDialog> {
         : AppText.strings.imFileCount(_files.length);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            key: const ValueKey<String>('import-browse-files-button'),
-            onPressed: _busy ? null : _pickFiles,
-            child: Text(AppText.strings.imFilesButton),
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton(
-            key: const ValueKey<String>('import-browse-folder-button'),
-            onPressed: _busy ? null : _pickFolder,
-            child: Text(AppText.strings.imCutFolderButton),
-          ),
-        ],
+      child: Text(
+        label,
+        key: const ValueKey<String>('import-source-line'),
+        style: theme.textTheme.bodySmall,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

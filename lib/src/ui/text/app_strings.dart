@@ -1245,8 +1245,6 @@ enum AppStrings {
   String get imInto => _s('imInto');
   String get imFit => _s('imFit');
   String get imRevisions => _s('imRevisions');
-  String get imFilesButton => _s('imFilesButton');
-  String get imCutFolderButton => _s('imCutFolderButton');
 
   /// The file table's columns — 「size」 here is a file's BYTES, which is a
   /// different question from the export's pixel [exSize].
@@ -2409,8 +2407,6 @@ enum AppStrings {
     'imInto': 'Into',
     'imFit': 'Fit',
     'imRevisions': 'Revisions',
-    'imFilesButton': 'Files…',
-    'imCutFolderButton': 'Cut folder…',
     'imModified': 'Modified',
     'imSize': 'Size',
     'imArchivedProcesses': 'Archived processes (LO/, GEN/…)',
@@ -3714,8 +3710,6 @@ enum AppStrings {
     'imInto': '配置先',
     'imFit': 'フィット',
     'imRevisions': 'リビジョン',
-    'imFilesButton': 'ファイル…',
-    'imCutFolderButton': 'カットフォルダ…',
     'imModified': '更新日時',
     'imSize': 'サイズ',
     'imArchivedProcesses': '格納済み工程（LO/・GEN/…）',
@@ -5128,8 +5122,6 @@ enum AppStrings {
     'imInto': '넣을 곳',
     'imFit': '맞춤',
     'imRevisions': '리비전',
-    'imFilesButton': '파일…',
-    'imCutFolderButton': '컷 폴더…',
     'imModified': '수정일',
     'imSize': '크기',
     'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
@@ -6644,8 +6636,6 @@ enum AppStrings {
     'imInto': 'Vers',
     'imFit': 'Ajuster',
     'imRevisions': 'Révisions',
-    'imFilesButton': 'Fichiers…',
-    'imCutFolderButton': 'Dossier de plan…',
     'imModified': 'Modifié',
     'imSize': 'Taille',
     'imArchivedProcesses': 'Étapes archivées (LO/, GEN/…)',
@@ -8013,8 +8003,6 @@ enum AppStrings {
     'imInto': '放入',
     'imFit': '适配',
     'imRevisions': '修订',
-    'imFilesButton': '文件…',
-    'imCutFolderButton': '镜头文件夹…',
     'imModified': '修改时间',
     'imSize': '大小',
     'imArchivedProcesses': '已归档工序（LO/、GEN/…）',

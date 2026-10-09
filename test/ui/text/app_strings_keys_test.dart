@@ -574,8 +574,6 @@ void main() {
     'imInto': (s) => s.imInto,
     'imFit': (s) => s.imFit,
     'imRevisions': (s) => s.imRevisions,
-    'imFilesButton': (s) => s.imFilesButton,
-    'imCutFolderButton': (s) => s.imCutFolderButton,
     'imModified': (s) => s.imModified,
     'imSize': (s) => s.imSize,
     'imArchivedProcesses': (s) => s.imArchivedProcesses,

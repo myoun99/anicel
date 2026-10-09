@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
@@ -302,8 +303,8 @@ void main() {
     expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
   });
 
-  testWidgets('「소리」 stands for a PICKED movie too — not only one handed in '
-      'at the start', (tester) async {
+  testWidgets('「소리」 stands for a PICKED movie too — one the door hands over '
+      'with its grant, not only a path', (tester) async {
     final movie = await writeMovie(tester, 'picked.mp4');
     debugVideoDecodeBackend = FakeVideoBackend();
     tester.view.physicalSize = const Size(1400, 1600);
@@ -317,15 +318,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(session: s, filePicker: () async => [movie]),
+          body: ImportDialog(
+            session: s,
+            picked: [FolderGrant.granted(path: movie, kind: GrantKind.file)],
+          ),
         ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-browse-files-button')),
-    );
     await settle(
       tester,
       () => tester.any(

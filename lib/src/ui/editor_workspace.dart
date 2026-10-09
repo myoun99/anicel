@@ -2092,6 +2092,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The top strip's 「폴더 열기…」: a cut folder, into the import window.
   Future<void> _pickFolderAndOpen() async {
+    // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
+    // returns a SAF tree URI on Android — and the window the folder goes to
+    // lists it with `Directory(folder).listSync(recursive: true)`, which
+    // answers "that folder is gone" for a URI. A wrong answer that looks
+    // like a right one. (The import window's own 「컷 폴더…」 picked it so
+    // until F-282.)
     final grant = await pickFolderGrantForUser(context);
     if (grant == null || !mounted) {
       return;
