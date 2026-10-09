@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/app_shortcuts.dart';
+
 /// 🗣️F-189 (유저 2026-09-26): 「가끔 터치로 팬하거나 줌하거나 터치조작할때
 /// 아직 손 대고있는데 동작 풀리거든? 터치중 펜 호버하면 자주 풀리는거같은데.
 /// 아이패드였어. 윈도우도 그냥 스페이스바로 팬하다가 그냥 풀리고」.
@@ -271,6 +273,42 @@ void main() {
 
       await hand.up();
       await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+      expect(
+        session.historyManager.undoCount,
+        steps,
+        reason: 'and it drew nothing',
+      );
+    });
+
+    // 🗣️I-88: the 「회전」 key stands the tools down through the same gate,
+    // so the same race is its own.
+    testWidgets('🚨the 「회전」 key and a ${kind.name} press in the SAME frame '
+        'turn the view over a cel — nothing is drawn', (tester) async {
+      final area = await pumpHome(tester);
+      // Ctrl+Space is the registry's key for it.
+      await useAnicelKeys(tester);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      final centre = onTheCanvas(tester, area);
+      final before = live()?.rotationDegrees ?? 0;
+      final steps = session.historyManager.undoCount;
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+      // ⛔No pump here: that is the race.
+      final hand = await tester.startGesture(
+        centre + const Offset(60, 0),
+        kind: kind,
+        buttons: kPrimaryButton,
+      );
+      await hand.moveBy(const Offset(-40, 60));
+      await tester.pump();
+      expect(live()!.rotationDegrees, isNot(before), reason: 'the press turns');
+
+      await hand.up();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pumpAndSettle();
       expect(
         session.historyManager.undoCount,

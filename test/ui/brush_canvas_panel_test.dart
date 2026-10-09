@@ -2479,42 +2479,46 @@ void main() {
       );
     });
 
-    testWidgets('🗣️I-15: the pan hold takes the aim — the outline goes the '
-        'moment it is held, a move under it does not bring it back, and '
-        'letting go gives it to the next move', (tester) async {
-      addTearDown(() => CanvasViewHold.held.value = null);
-      await pumpWithTool(tester, CanvasTool.brush);
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: Offset.zero);
-      addTearDown(mouse.removePointer);
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
-      await tester.pump();
-      final outline = find.byKey(
-        const ValueKey<String>('brush-cursor-overlay'),
-      );
-      expect(toolCursorShownAt(tester, outline), isNotNull);
+    for (final hold in ViewHold.values) {
+      testWidgets('🗣️I-15 · I-88: the ${hold.name} hold takes the aim — the '
+          'outline goes the moment it is held, a move under it does not '
+          'bring it back, and letting go gives it to the next move', (
+        tester,
+      ) async {
+        addTearDown(() => CanvasViewHold.held.value = null);
+        await pumpWithTool(tester, CanvasTool.brush);
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+        await tester.pump();
+        final outline = find.byKey(
+          const ValueKey<String>('brush-cursor-overlay'),
+        );
+        expect(toolCursorShownAt(tester, outline), isNotNull);
 
-      CanvasViewHold.held.value = ViewHold.pan;
-      await tester.pump();
-      expect(
-        toolCursorShownAt(tester, outline),
-        isNull,
-        reason: 'held, a press paints nothing',
-      );
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(12, 8)));
-      await tester.pump();
-      expect(
-        toolCursorShownAt(tester, outline),
-        isNull,
-        reason: 'a move under the hold aims none',
-      );
+        CanvasViewHold.held.value = hold;
+        await tester.pump();
+        expect(
+          toolCursorShownAt(tester, outline),
+          isNull,
+          reason: 'held, a press paints nothing',
+        );
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(12, 8)));
+        await tester.pump();
+        expect(
+          toolCursorShownAt(tester, outline),
+          isNull,
+          reason: 'a move under the hold aims none',
+        );
 
-      CanvasViewHold.held.value = null;
-      await tester.pump();
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
-      await tester.pump();
-      expect(toolCursorShownAt(tester, outline), isNotNull);
-    });
+        CanvasViewHold.held.value = null;
+        await tester.pump();
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
+        await tester.pump();
+        expect(toolCursorShownAt(tester, outline), isNotNull);
+      });
+    }
 
     testWidgets('a tiny brush falls back to the crosshair', (tester) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
