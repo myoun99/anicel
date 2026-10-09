@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../brush/transform_tool_options.dart';
 import '../editor_session_manager.dart';
-import '../text/app_strings.dart' show AppText;
 import 'property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 
@@ -32,7 +31,6 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
             isOn: scaleLinked,
             toggle: () => transformOptions.value = transformOptions.value
                 .copyWith(scaleLinked: !scaleLinked()),
-            tooltip: AppText.strings.trScaleLink,
           ),
     // The navigator toggles at the playhead, freezing the property's
     // CURRENT resolved value there (AE behavior).

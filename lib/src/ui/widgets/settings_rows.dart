@@ -96,7 +96,12 @@ class SettingsSwitchRow extends StatelessWidget {
         child: ListTile(
           key: tileKey,
           contentPadding: EdgeInsets.zero,
-          dense: true,
+          // Dense — unless the surface it stands on says otherwise. A dense
+          // tile sets its name at 13 whatever its theme says, so a surface
+          // whose rows are named in a style of its own (the tool settings
+          // panel, tool-settings-panel-tidy 2026-10-10: 「이름 글자 하나」)
+          // takes the density off with that style.
+          dense: ListTileTheme.of(context).dense ?? true,
           enabled: enabled,
           leading: leading,
           minLeadingWidth: leading == null ? null : 0,

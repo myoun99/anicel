@@ -3,7 +3,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
-import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/text/readout_text.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
@@ -19,21 +19,21 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 void main() {
   group('what is edited and what is chrome', () {
     test('a unit is chrome', () {
-      expect(propertyLaneValueParts('85%'), [(number: '85', unit: '%')]);
-      expect(propertyLaneValueParts('30°'), [(number: '30', unit: '°')]);
-      expect(propertyLaneValueParts('12 px'), [(number: '12', unit: ' px')]);
+      expect(readoutParts('85%'), [(number: '85', unit: '%')]);
+      expect(readoutParts('30°'), [(number: '30', unit: '°')]);
+      expect(readoutParts('12 px'), [(number: '12', unit: ' px')]);
     });
 
     test('a pair is two values, and the separator is chrome', () {
-      expect(propertyLaneValueParts('120, 45'), [
+      expect(readoutParts('120, 45'), [
         (number: '120', unit: ''),
         (number: '45', unit: ''),
       ]);
     });
 
     test('negatives and decimals are numbers, not units', () {
-      expect(propertyLaneValueParts('-3.5%'), [(number: '-3.5', unit: '%')]);
-      expect(propertyLaneValueParts('-12, -0.5'), [
+      expect(readoutParts('-3.5%'), [(number: '-3.5', unit: '%')]);
+      expect(readoutParts('-12, -0.5'), [
         (number: '-12', unit: ''),
         (number: '-0.5', unit: ''),
       ]);
@@ -42,18 +42,18 @@ void main() {
     test('⛔a value that is not a number stays ONE field', () {
       // A colour, a font name, a flag: nothing to split and no unit to
       // strip, so the editor is the single free-text box it always was.
-      expect(propertyLaneValueParts('#FFAA00'), [
+      expect(readoutParts('#FFAA00'), [
         (number: '#FFAA00', unit: ''),
       ]);
-      expect(propertyLaneValueParts('on'), [(number: 'on', unit: '')]);
-      expect(propertyLaneValueParts('none'), [(number: 'none', unit: '')]);
+      expect(readoutParts('on'), [(number: 'on', unit: '')]);
+      expect(readoutParts('none'), [(number: 'none', unit: '')]);
     });
 
     test('⛔and a TEXT value that happens to hold a comma is still one', () {
-      expect(propertyLaneValueParts('Hello, world'), [
+      expect(readoutParts('Hello, world'), [
         (number: 'Hello, world', unit: ''),
       ]);
-      expect(propertyLaneValueParts('120, world'), [
+      expect(readoutParts('120, world'), [
         (number: '120, world', unit: ''),
       ]);
     });
@@ -66,7 +66,7 @@ void main() {
     /// "what does this value look like".
     void roundTrips(String label) {
       expect(
-        joinPropertyLaneValueParts(propertyLaneValueParts(label)),
+        joinReadoutParts(readoutParts(label)),
         label,
         reason: 'split then joined must be the label it started as',
       );
@@ -89,7 +89,7 @@ void main() {
 
     test("a layer's Scale is edited as TWO numbers, the percent worn once", () {
       expect(
-        propertyLaneValueParts(
+        readoutParts(
           const TwoScales().label(CanvasPoint(x: 0.85, y: -1.2)),
         ),
         [(number: '85.00', unit: ''), (number: '-120.00', unit: '%')],
@@ -126,7 +126,7 @@ void main() {
     /// to be something the lane can actually read. These are the very
     /// functions the commit calls.
     test('a scale typed WITHOUT its percent sign still parses', () {
-      final rejoined = joinPropertyLaneValueParts([
+      final rejoined = joinReadoutParts([
         (number: '200', unit: '%'),
       ]);
       expect(rejoined, '200%');
@@ -143,7 +143,7 @@ void main() {
 
     test("a layer's two scales typed as two bare numbers parse as the "
         'pair', () {
-      final rejoined = joinPropertyLaneValueParts([
+      final rejoined = joinReadoutParts([
         (number: '200', unit: ''),
         (number: '-50', unit: '%'),
       ]);
@@ -159,7 +159,7 @@ void main() {
     });
 
     test('a position typed as two bare numbers parses as a pair', () {
-      final rejoined = joinPropertyLaneValueParts([
+      final rejoined = joinReadoutParts([
         (number: '10', unit: ''),
         (number: '-4', unit: ''),
       ]);

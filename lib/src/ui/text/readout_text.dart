@@ -53,3 +53,73 @@ String readoutText(num value, {required int decimals, String unit = ''}) {
 /// 동작은 기본적으로 최대치를 소수점 두자리로」).
 String columnValueText(num value) =>
     readoutText(value, decimals: CanvasViewport.readoutDecimals);
+
+/// ONE editable piece of a readout: the number a person types, and the
+/// FIXED text that trails it.
+typedef ReadoutPart = ({String number, String unit});
+
+/// A readout split into what is TYPED and what is chrome — the way every
+/// number this app lets you type over opens its field.
+///
+/// 🗣️유저 2026-10-10: 「%나 각도같은 단위값은 텍스트 편집시 안보이도록. 즉
+/// 100.00%를 눌러서 편집하려할때 %도 같이 편집되버리는 텍스트면 너무
+/// 불편하니까. 편집시 100.00 만 뜨는느낌. 다른 모든 텍스트 직접편집의 기준」.
+/// It was the timeline's law first — F-22 ②③ (유저 2026-08-24): 「**단위 같은
+/// 고정요소를 편집창에서 제거**」, 「**포지션 등 2요소는 각각 편집**(온점
+/// 없이)」 — and the drag readout kept a second one of its own, a regex that
+/// dropped every character that was not a digit: `3 / 7` opened as `37`.
+///
+/// ⚠️Derived from the readout rather than declared per value. The readout
+/// already says what shape it is (`85%`, `30°`, `12 px`, `120, 45`), and a
+/// second declaration would be a second answer to drift from.
+/// [joinReadoutParts] puts it back in the form the readout's own parser
+/// already accepts.
+///
+/// ⛔A readout only SPLITS when every comma-separated piece reads as a
+/// number: a text value that happens to contain a comma is one value, not
+/// two.
+List<ReadoutPart> readoutParts(String readout) {
+  final pieces = readout.split(',');
+  final parts = <ReadoutPart>[];
+  for (final piece in pieces) {
+    final part = _numberAndUnit(piece.trim());
+    if (part == null) {
+      return [(number: readout, unit: '')];
+    }
+    parts.add(part);
+  }
+  return parts.isEmpty ? [(number: readout, unit: '')] : parts;
+}
+
+/// [readoutParts] put back together — byte for byte what the readout was.
+String joinReadoutParts(List<ReadoutPart> parts) =>
+    parts.map((part) => '${part.number}${part.unit}').join(', ');
+
+/// `85%` → (85, '%'), `12 px` → (12, ' px'), `-3.5` → (-3.5, ''). Null when
+/// the text does not lead with a number at all, which is every value that is
+/// not one — a colour, a font name, a flag.
+ReadoutPart? _numberAndUnit(String text) {
+  var end = 0;
+  if (end < text.length && (text[end] == '-' || text[end] == '+')) {
+    end += 1;
+  }
+  final digitsStart = end;
+  while (end < text.length && _isDigit(text[end])) {
+    end += 1;
+  }
+  if (end < text.length && text[end] == '.') {
+    end += 1;
+    while (end < text.length && _isDigit(text[end])) {
+      end += 1;
+    }
+  }
+  if (end == digitsStart) {
+    return null;
+  }
+  return (number: text.substring(0, end), unit: text.substring(end));
+}
+
+bool _isDigit(String character) {
+  final code = character.codeUnitAt(0);
+  return code >= 0x30 && code <= 0x39;
+}

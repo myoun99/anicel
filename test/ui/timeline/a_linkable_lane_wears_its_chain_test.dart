@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
@@ -46,7 +47,6 @@ void main() {
           on.value = !on.value;
           presses.add(on.value);
         },
-        tooltip: 'Link scale',
       ),
       presses: presses,
     );
@@ -98,7 +98,11 @@ void main() {
 
       expect(keyed('value-link'), findsOneWidget);
       expect(tester.appIconButton(keyed('value-link')).isSelected, isTrue);
-      expect(tester.appIconButton(keyed('value-link')).tooltip, 'Link scale');
+      expect(
+        tester.appIconButton(keyed('value-link')).tooltip,
+        AppText.strings.trScaleLink,
+        reason: "the transform tool's 「배율 연동」 — one switch, one name",
+      );
 
       await tester.tap(keyed('value-link'));
       await tester.pump();

@@ -80,7 +80,7 @@ class FieldSlider extends StatefulWidget {
     this.scale = FieldSliderScale.linear,
     this.divisions,
     this.fillOrigin,
-    this.height = 24,
+    this.height = defaultHeight,
     this.axis = Axis.horizontal,
   }) : assert(max > min, 'max must exceed min'),
        assert(
@@ -120,7 +120,7 @@ class FieldSlider extends StatefulWidget {
     this.restingText,
     this.restingAccent,
     this.label,
-    this.height = 24,
+    this.height = defaultHeight,
     this.axis = Axis.horizontal,
   }) : min = 0,
        fillOrigin = null,
@@ -206,6 +206,28 @@ class FieldSlider extends StatefulWidget {
   /// always comes from the host.
   final double height;
 
+  /// A settings row's bar — and the number box beside it, which wears this
+  /// bar's face without the fill ([DragValueLabel.box]).
+  static const double defaultHeight = 24;
+
+  /// How round a bar [height] thick is cornered.
+  static double radiusFor(double height) => height < 20 ? 3 : 4;
+
+  /// The bar's FRAME — its ground and its hairline, each dimmed as a
+  /// disabled bar draws it. One face for the bar and the number box
+  /// (tool-settings-panel-tidy, 유저 2026-10-10: the box is 「다른 도구의
+  /// 숫자 상자와 같은 모양」).
+  static ShapeDecoration frameOf(double height, {required bool enabled}) =>
+      ShapeDecoration(
+        color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
+        shape: AppShapes.container(
+          radiusFor(height),
+          side: BorderSide(
+            color: dimmedIfDisabled(AppColors.hairline, enabled: enabled),
+          ),
+        ),
+      );
+
   /// What a bar drawn [height] at 1× adds where it is shown: its one line
   /// of words (the value, set in the theme's `labelSmall`) grown under the
   /// OS text size — 0 at 1×, so nothing drawn at 1× moves.
@@ -221,7 +243,7 @@ class FieldSlider extends StatefulWidget {
   ).lineGrowthOf(TextMeasure.everyScript);
 
   /// What the writing stands in from each end of the track.
-  static const double _inset = 8;
+  static const double inset = 8;
 
   /// The least a name and its number stand apart and still read as two —
   /// about a word space at the size the bar writes in.
@@ -255,7 +277,7 @@ class FieldSlider extends StatefulWidget {
                 Theme.of(context).textTheme.labelSmall,
               ).size(name).width +
               _breath;
-    return _inset * 2 +
+    return inset * 2 +
         nameRun +
         TextMeasure(
           context,
@@ -639,7 +661,7 @@ class _FieldSliderState extends State<FieldSlider> {
     widget.onChangeEnd?.call(value);
   }
 
-  double get _radius => widget.height < 20 ? 3 : 4;
+  double get _radius => FieldSlider.radiusFor(widget.height);
 
   /// Where the fill starts, in track space — 0 for a quantity, the neutral
   /// value for a balance ([FieldSlider.fillOrigin]).
@@ -712,7 +734,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final Widget inner = GroundInkWriting(
       runs: _inkRuns(t, accent),
       builder: (context, ink) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: FieldSlider._inset),
+        padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
         child: writingIn(ink),
       ),
     );
@@ -721,13 +743,7 @@ class _FieldSliderState extends State<FieldSlider> {
       vertical: _vertical,
       onExtent: _takeTrackExtent,
       child: DecoratedBox(
-        decoration: ShapeDecoration(
-          color: _asDrawn(AppColors.surface),
-          shape: AppShapes.container(
-            _radius,
-            side: BorderSide(color: _asDrawn(AppColors.hairline)),
-          ),
-        ),
+        decoration: FieldSlider.frameOf(widget.height, enabled: _enabled),
         child: SuperellipseClip(
           shape: AppShapes.container(_radius),
           child: CustomPaint(

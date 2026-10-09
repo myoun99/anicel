@@ -9,7 +9,6 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
-import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/session_lane_callbacks.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -271,7 +270,6 @@ void main() {
       link.changes.addListener(() => changes += 1);
 
       expect(link.isOn(), isTrue);
-      expect(link.tooltip, AppText.strings.trScaleLink);
 
       link.toggle();
       expect(link.isOn(), isFalse);

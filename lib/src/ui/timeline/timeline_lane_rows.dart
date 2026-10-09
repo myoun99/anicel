@@ -1,6 +1,7 @@
 import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/rail_glyph_button.dart';
+import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
@@ -27,6 +28,7 @@ import 'timeline_current_row.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
+import '../text/readout_text.dart' show joinReadoutParts, readoutParts;
 import 'layer_rail_columns.dart'
     show LayerFoldTwirl, layerRailTrailingCells;
 import 'property_lane_model.dart';
@@ -256,7 +258,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   void _startValueEdit(String currentValue) {
-    final parts = propertyLaneValueParts(currentValue);
+    final parts = readoutParts(currentValue);
     _disposeValueControllers();
     for (final part in parts) {
       _valueControllers.add(TextEditingController(text: part.number));
@@ -326,7 +328,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   void _commitValueEdit() {
     // The units go back on: what leaves here is the text form the lane's
     // parser has always read, so nothing downstream learns about fields.
-    final input = joinPropertyLaneValueParts([
+    final input = joinReadoutParts([
       for (var index = 0; index < _valueControllers.length; index += 1)
         (
           number: _valueControllers[index].text.trim(),
@@ -1064,14 +1066,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale,
-  /// After Effects' own mark beside the two numbers. One press flips the
-  /// switch the rail handed over, and on and off are told by colour alone
-  /// ([AppIconButton.isSelected]).
-  ///
-  /// 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
-  /// 변형 도구의 「배율 연동」과 한 스위치」. Always on the row that has one:
-  /// what a press changes is its colour, never whether it is there.
+  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale
+  /// ([ScaleChainButton], the one the transform tool wears). One press flips
+  /// the switch the rail handed over. Always on the row that has one: what a
+  /// press changes is its colour, never whether it is there.
   ///
   /// Null on every lane that is not [PropertyLaneRow.linkable], and on a
   /// rail that was handed no chain.
@@ -1082,13 +1080,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     }
     return ListenableBuilder(
       listenable: link.changes,
-      builder: (context, _) => AppIconButton(
+      builder: (context, _) => ScaleChainButton(
         keyValue: '$_keyPrefix-lane-value-link-${layer.id}-${lane.laneId}',
-        tooltip: link.tooltip,
-        size: AppIconButtonSize.micro,
-        isSelected: link.isOn(),
+        isOn: link.isOn(),
         onPressed: link.toggle,
-        icon: const Icon(Icons.link),
       ),
     );
   }

@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../text/full_width_numerals.dart' show halfWidthDigitsOnly;
+import '../text/readout_text.dart' show ReadoutPart, readoutParts;
+import '../theme/app_theme.dart' show AppColors;
+import '../theme/disabled_ink.dart';
+import '../theme/text_on_ground.dart';
 import 'axis_bar_gesture.dart';
+import 'field_slider.dart';
 import 'inline_numeric_field.dart';
 
 /// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
@@ -49,7 +54,43 @@ class DragValueLabel extends StatefulWidget {
     this.enabled = true,
     this.onOperationStart,
     this.digitsOnly = false,
-  });
+  }) : name = null,
+       _boxed = false;
+
+  /// THE NUMBER BOX: this readout wearing a settings bar's face — its frame,
+  /// its name at the left, its number at the right ([FieldSlider.frameOf])
+  /// — without the fill, for a value with no range to fill. It fills the
+  /// width it is given.
+  ///
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「다 추천대로」 — 숫자는
+  /// 「다른 도구의 숫자 상자와 같은 모양」 — and 「해당 상자, x상자같은거
+  /// 드래그하면 바뀌는거는 살아있는거지? 그건 좋아서」: the gestures are this
+  /// widget's, unchanged. While it is typed in, its unit stands outside the
+  /// field ([readoutParts]).
+  const DragValueLabel.box({
+    super.key,
+    required this.keyValue,
+    required this.text,
+    required this.onDragDelta,
+    required this.onEditSubmit,
+    this.name,
+    this.unitsPerPixel = 1.0,
+    this.tooltip,
+    this.inputKeyValue,
+    this.enabled = true,
+    this.onOperationStart,
+    this.digitsOnly = false,
+  }) : width = double.infinity,
+       textStyle = null,
+       textAlign = TextAlign.right,
+       _boxed = true;
+
+  /// What a box says it holds, inside at the left — `X`, a mesh's columns.
+  /// Null on the bare readout, and on a box whose row already names it.
+  final String? name;
+
+  /// Which face: the bare readout, or the box ([DragValueLabel.box]).
+  final bool _boxed;
 
   /// Whether the typed value is a whole number with no sign: the field
   /// takes digits alone (full-width ones converted) on the number pad —
@@ -121,9 +162,18 @@ class _DragValueLabelState extends State<DragValueLabel> {
   double _slop = 0;
   bool _pastTheSlop = false;
 
-  /// The readout with its units stripped — '−15°' seeds the field as
-  /// '-15', because what you are replacing is the NUMBER.
-  String get _seed => widget.text.replaceAll(RegExp(r'[^0-9.\-]'), '');
+  /// The readout as ONE number and its unit — null when it is not one.
+  ReadoutPart? get _part => switch (readoutParts(widget.text)) {
+    [final part] => part,
+    _ => null,
+  };
+
+  /// The readout's number alone — `-15°` opens as `-15`, because what you
+  /// are replacing is the NUMBER ([readoutParts], the law every typed number
+  /// opens by). ↩️A regex of its own stood here that dropped every
+  /// character that was not a digit, so the page readout `3 / 7` opened as
+  /// `37`.
+  String get _seed => _part?.number ?? widget.text;
 
   void _beginEdit() => setState(() => _editing = true);
 
@@ -187,24 +237,100 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final style = widget.textStyle ?? const TextStyle(fontSize: 12);
+  static const TextStyle _bareStyle = TextStyle(fontSize: 12);
+
+  /// The field the readout turns into, holding [_seed].
+  Widget _field(TextStyle style, TextAlign align) => InlineNumericField(
+    fieldKey: ValueKey<String>(
+      widget.inputKeyValue ?? '${widget.keyValue}-input',
+    ),
+    initialText: _seed,
+    textStyle: style,
+    textAlign: align,
+    keyboardType: widget.digitsOnly ? TextInputType.number : null,
+    inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
+    onSubmit: _commitEdit,
+    onCancel: () => setState(() => _editing = false),
+  );
+
+  /// The bare readout: the number, in its own width.
+  Widget _bare(BuildContext context) {
+    final style = widget.textStyle ?? _bareStyle;
     if (_editing) {
       return SizedBox(
         width: widget.width,
-        child: InlineNumericField(
-          fieldKey: ValueKey<String>(
-            widget.inputKeyValue ?? '${widget.keyValue}-input',
-          ),
-          initialText: _seed,
-          textStyle: style,
-          keyboardType: widget.digitsOnly ? TextInputType.number : null,
-          inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
-          onSubmit: _commitEdit,
-          onCancel: () => setState(() => _editing = false),
-        ),
+        child: _field(style, TextAlign.center),
       );
+    }
+    return SizedBox(
+      width: widget.width,
+      child: Text(
+        widget.text,
+        textAlign: widget.textAlign,
+        style: widget.enabled
+            ? style
+            : style.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.38),
+              ),
+      ),
+    );
+  }
+
+  /// The box: a settings bar's frame around the name and the number. Typed
+  /// in, the number becomes the field and its unit stands after it.
+  Widget _box(BuildContext context) {
+    final ink = TextStyle(
+      color: dimmedIfDisabled(
+        textOnColor(AppColors.surface),
+        enabled: widget.enabled,
+      ),
+    );
+    final numberStyle = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
+    final name = widget.name;
+    final unit = _part?.unit ?? '';
+    return DecoratedBox(
+      decoration: FieldSlider.frameOf(
+        FieldSlider.defaultHeight,
+        enabled: widget.enabled,
+      ),
+      child: SizedBox(
+        height: FieldSlider.defaultHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+          child: Row(
+            children: [
+              if (name != null)
+                Text(
+                  name,
+                  maxLines: 1,
+                  style:
+                      Theme.of(context).textTheme.labelSmall?.merge(ink) ?? ink,
+                ),
+              Expanded(
+                child: _editing
+                    ? _field(numberStyle, TextAlign.right)
+                    : Text(
+                        widget.text,
+                        maxLines: 1,
+                        textAlign: TextAlign.right,
+                        style: numberStyle,
+                      ),
+              ),
+              if (_editing && unit.isNotEmpty) Text(unit, style: numberStyle),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final face = widget._boxed ? _box(context) : _bare(context);
+    if (_editing) {
+      return face;
     }
     final label = MouseRegion(
       cursor: widget.enabled
@@ -240,20 +366,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
                           ),
                     }
                   : const <Type, GestureRecognizerFactory>{},
-              child: SizedBox(
-                width: widget.width,
-                child: Text(
-                  widget.text,
-                  textAlign: widget.textAlign,
-                  style: widget.enabled
-                      ? style
-                      : style.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.38),
-                        ),
-                ),
-              ),
+              child: face,
             ),
           ),
         ),
