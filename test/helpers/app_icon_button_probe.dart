@@ -14,6 +14,7 @@ final class IconButtonReading {
     required this.danger,
     required this.icon,
     required this.iconColor,
+    required this.shortcuts,
   });
 
   final String tooltip;
@@ -27,6 +28,10 @@ final class IconButtonReading {
   /// The colour the glyph asks for itself — null where it wears the
   /// button's ink, as an [Icon] with no colour does.
   final Color? iconColor;
+
+  /// The actions the button names (`shortcuts:` — I-40); none on a rail
+  /// button, which names no action.
+  final List<String> shortcuts;
 }
 
 /// Reads an icon button through the finder a test already holds for its
@@ -57,6 +62,7 @@ extension AppIconButtonProbe on WidgetTester {
         danger: button.danger,
         icon: icon is Icon ? icon.icon : null,
         iconColor: icon is Icon ? icon.color : null,
+        shortcuts: button.shortcuts,
       );
     }
     final button = widget<RailGlyphButton>(
@@ -70,6 +76,7 @@ extension AppIconButtonProbe on WidgetTester {
       danger: button.danger,
       icon: glyph is RailIconGlyph ? glyph.icon : null,
       iconColor: glyph is RailIconGlyph ? glyph.color : null,
+      shortcuts: const [],
     );
   }
 
