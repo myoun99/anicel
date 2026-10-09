@@ -88,13 +88,17 @@ void main() {
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
+    // Down: the region opens at the half of the window the hand may not
+    // pass, so a pull up has nowhere to go. ↩️It pulled up while the edge
+    // fell back on a fixed 350 — the first move dropped the region to it,
+    // and the rest grew it back from there (I-60 found and fixed that).
     for (var step = 0; step < 3; step += 1) {
-      await hand.moveBy(const Offset(0, -12));
+      await hand.moveBy(const Offset(0, 12));
       await tester.pump();
     }
     final laidOut = await laidOutBy(
       tester,
-      () => hand.moveBy(const Offset(0, -12)),
+      () => hand.moveBy(const Offset(0, 12)),
     );
     await hand.up();
     await tester.pumpAndSettle();
