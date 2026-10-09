@@ -10,6 +10,7 @@ import 'package:anicel/src/services/media/movie_span.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -37,12 +38,19 @@ void main() {
     debugQaEngineLibraryPathOverride = null;
   });
 
-  test('a click inside the span comes back where it sat in it', () {
+  test('a click inside the span comes back where it sat in it', () async {
     final encoder = QaVideoEncoder.instance;
     if (encoder == null || !encoder.isSupported) {
       expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
       return;
     }
+    // A movie read and written through the engine can stop inside a native
+    // call under load (board the-trimmed-movie-test-can-hang-on-windows-ci —
+    // this test, unwatched, held a whole run once): the watch names the
+    // step and ends the file instead.
+    final watch = await NativeCallWatch.start('a movie piece keeps its sound');
+    addTearDown(watch.stop);
+    watch.step('writing the take');
     final directory = Directory.systemTemp.createTempSync('qa_movie_piece');
     deleteAfterSessionEnds(directory);
     String at(String name) =>
@@ -80,6 +88,7 @@ void main() {
     }
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
+    watch.step('cutting the piece');
     final cut = writeMovieSpan(
       at('source.mp4'),
       at('piece.mp4'),
@@ -92,6 +101,7 @@ void main() {
     expect(cut.failure, isNull);
     expect(cut.kept!.first, 3);
 
+    watch.step('reading the sound of the piece');
     final sound = decodeAudioFile(at('piece.mp4'));
     expect(sound, isNotNull, reason: 'the piece carries a sound');
     var peakAt = -1;

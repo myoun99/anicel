@@ -171,13 +171,7 @@ void _applyLibraryOverride(String? override) {
     // reading it would have, so the pipeline counts it as unreadable.
     throw FileSystemException('the sound is not there to decode', '$source');
   }
-  final decoded = QaAudioDecoder.instance?.decodeSpan(
-    span.path,
-    offset: span.offset,
-    length: span.length,
-    framed: span.framed,
-    window: window,
-  );
+  final decoded = QaAudioDecoder.instance?.decodeSpan(span, window: window);
   if (decoded == null) {
     return null;
   }

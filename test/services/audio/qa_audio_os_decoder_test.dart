@@ -387,9 +387,7 @@ void main() {
       File(path).writeAsBytesSync(bytes);
       QaDecodedAudio? decode([({int start, int count})? window]) =>
           decoder!.decodeSpan(
-            path,
-            length: bytes.length,
-            framed: false,
+            (path: path, offset: 0, length: bytes.length, framed: false),
             window: window,
           );
       final whole = decode();
@@ -457,12 +455,12 @@ void main() {
     final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
     final at = buried(bytes, 'carried.ogg');
 
-    final ranged = decoder!.decodeSpan(
-      at.path,
+    final ranged = decoder!.decodeSpan((
+      path: at.path,
       offset: at.offset,
       length: at.length,
       framed: false,
-    );
+    ));
     expect(
       ranged,
       isNotNull,
@@ -485,12 +483,12 @@ void main() {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
     final at = buried(fixtureBytes(), 'carried.m4a');
-    final ranged = decoder!.decodeSpan(
-      at.path,
+    final ranged = decoder!.decodeSpan((
+      path: at.path,
       offset: at.offset,
       length: at.length,
       framed: false,
-    );
+    ));
 
     if (Platform.isLinux) {
       // No OS codec to lean on — undecodable, the same honest answer the
@@ -582,12 +580,12 @@ void main() {
     final at = buried(bytes, 'carried.mp4');
 
     final whole = decodeAudioFile('test/fixtures/tone_with_video.mp4');
-    final ranged = decoder!.decodeSpan(
-      at.path,
+    final ranged = decoder!.decodeSpan((
+      path: at.path,
       offset: at.offset,
       length: at.length,
       framed: false,
-    );
+    ));
 
     if (Platform.isLinux) {
       // No OS codec stack — the same honest answer as every other AAC here.
@@ -666,12 +664,12 @@ void main() {
     final at = buried(bytes, 'carried.ogg');
 
     expect(
-      decoder!.decodeSpan(
-        at.path,
+      decoder!.decodeSpan((
+        path: at.path,
         offset: at.offset,
         length: at.length + 4096,
         framed: false,
-      ),
+      )),
       isNull,
       reason: 'a container cut short decodes as corrupt — refusing says what '
           'actually went wrong',
@@ -679,7 +677,9 @@ void main() {
     // ⛔The assertion the offset dies on: reading from the start of the file
     // finds the junk, not the ogg.
     expect(
-      decoder.decodeSpan(at.path, offset: 0, length: at.length, framed: false),
+      decoder.decodeSpan(
+        (path: at.path, offset: 0, length: at.length, framed: false),
+      ),
       isNull,
     );
   }, skip: skip);
@@ -727,11 +727,12 @@ void main() {
     expect(decoder, isNotNull);
     final path = framedMovie('test/fixtures/tone_with_video.mp4');
 
-    final decoded = decoder!.decodeSpan(
-      path,
+    final decoded = decoder!.decodeSpan((
+      path: path,
+      offset: 0,
       length: File(path).lengthSync(),
       framed: true,
-    );
+    ));
 
     if (Platform.isLinux) {
       expect(decoded, isNull);

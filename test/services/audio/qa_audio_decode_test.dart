@@ -113,11 +113,12 @@ void main() {
       );
       expect(written.framed, isTrue, reason: 'fixture: PCM compresses');
 
-      final framed = decoder.decodeSpan(
-        written.path,
+      final framed = decoder.decodeSpan((
+        path: written.path,
+        offset: 0,
         length: File(written.path).lengthSync(),
         framed: true,
-      );
+      ));
       final plain = decodeAudioBytes(wav)!;
 
       expect(framed, isNotNull);

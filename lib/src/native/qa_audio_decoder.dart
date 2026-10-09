@@ -139,9 +139,9 @@ final class QaAudioDecoder {
     }
   }
 
-  /// Decodes the container stored in [length] bytes of [path] from
-  /// [offset] — FRAMED when [framed]; null when no decoder recognized it, the
-  /// span is not inside the file, or the file will not open.
+  /// Decodes the container stored in [span]'s length bytes of its path from
+  /// its offset — FRAMED when it says so; null when no decoder recognized
+  /// it, the span is not inside the file, or the file will not open.
   ///
   /// A whole file is `offset: 0` with its own length — the ordinary case
   /// goes through the same door as a carried one, so no caller has to know
@@ -154,13 +154,15 @@ final class QaAudioDecoder {
   /// whole decode has there. A count of 0 decodes nothing and answers the
   /// rate and the channels: ask for that first when the frames to name
   /// depend on the rate. A window past the end is no frames, not null.
+  ///
+  /// [span] is a `MediaSpan` (`media_byte_source.dart`) by shape: a record
+  /// type is its fields, so a source's span is handed over as it is, and this
+  /// layer imports nothing to say so.
   QaDecodedAudio? decodeSpan(
-    String path, {
-    int offset = 0,
-    required int length,
-    required bool framed,
+    ({String path, int offset, int length, bool framed}) span, {
     ({int start, int count})? window,
   }) {
+    final (:path, :offset, :length, :framed) = span;
     if (path.isEmpty ||
         offset < 0 ||
         length <= 0 ||

@@ -9,7 +9,9 @@ import 'temp_dir.dart';
 /// decoder's one door ([QaAudioDecoder.decodeSpan]). Null when there is no
 /// engine, or nothing recognized it.
 QaDecodedAudio? decodeAudioFile(String path) => QaAudioDecoder.instance
-    ?.decodeSpan(path, length: File(path).lengthSync(), framed: false);
+    ?.decodeSpan(
+      (path: path, offset: 0, length: File(path).lengthSync(), framed: false),
+    );
 
 /// [bytes] decoded through a scratch file: the decoder has no door that takes
 /// bytes in memory, because nothing in the app has any to hand it.
