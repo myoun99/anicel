@@ -12,17 +12,20 @@ import '../../models/cut_id.dart';
 import '../../models/layer_effect.dart' show LayerEffect;
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter;
+    show AlphaCheckerboardPainter, paintAlphaCheckerboard;
 import '../track_effect_paint_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../listenable_rebind.dart';
+import '../canvas/viewport_canvas_transform.dart';
+import '../repaint_props.dart';
 
 /// The parked-state canvas content — the multitrack display path.
 ///
@@ -339,9 +342,22 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     // The BACKDROP floor (R3b): the void is retired — an uncovered frame
     // shows the stage's floor, exactly what an opaque export bakes there.
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
-    // canvas.
+    // canvas. Seen through the camera, the floor past its frame is the
+    // letterbox ([_CameraFloor]).
     final Widget? floor = !widget.paintsFloor
         ? null
+        : widget.cameraViewEnabled
+        ? CustomPaint(
+            key: const ValueKey<String>('canvas-track-stack-floor'),
+            painter: _CameraFloor(
+              viewport: widget.viewport,
+              frameSize: widget.cameraFrameSize,
+              backdrop: Color(widget.backdropArgb),
+              backdropNone: widget.backdropNone,
+              devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+            ),
+            child: const SizedBox.expand(),
+          )
         : widget.backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
@@ -443,11 +459,13 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             ),
             paperBackground: widget.background,
             paintPaper: isStage,
-            // Nothing to letterbox against without a camera frame — and a
-            // stack laid over another picture (the canvas's O.L partner)
-            // leaves that picture's letterbox to it: an opaque one of its
-            // own would cover the live cut it is laid over.
-            paintLetterbox: isStage && cameraView && widget.paintsFloor,
+            // The letterbox is the FLOOR's, laid once under every track
+            // ([_CameraFloor]). ↩️Each stage contribution laid its own over
+            // the whole screen, opaque, under its fade — so in an O.L the
+            // arriving cut covered the leaving one and the dissolve went
+            // through the letterbox (measured 10-10: two white papers met at
+            // (99,102,104)), and a fade showed it where the backdrop is.
+            paintLetterbox: false,
             // The apron rides the camera view, as the playback view's does:
             // it is what the camera sees past the paper.
             pasteboardColor: isStage && cameraView
@@ -471,4 +489,58 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       children: layers,
     );
   }
+}
+
+/// The stage's floor seen through the camera (R3b): the letterbox past the
+/// camera's frame, and in the frame the backdrop every track's unit lies
+/// on — what a fade or a dissolve reveals. An ABSENT backdrop (F-114) is
+/// the checkerboard there, as the apron's is.
+///
+/// ONE floor under every track: the letterbox is laid once, so no unit can
+/// cover the one under it with it (see the frames' `paintLetterbox`).
+class _CameraFloor extends CustomPainter with RepaintOnProps {
+  const _CameraFloor({
+    required this.viewport,
+    required this.frameSize,
+    required this.backdrop,
+    required this.backdropNone,
+    required this.devicePixelRatio,
+  });
+
+  /// The panel's pan/zoom; identity when null.
+  final CanvasViewport? viewport;
+  final CanvasSize frameSize;
+  final Color backdrop;
+  final bool backdropNone;
+
+  /// The pan-phase snap's device grid — the frame lands where the frames
+  /// over it clip to.
+  final double devicePixelRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = PlaybackFramePainter.letterboxColor,
+    );
+    if (viewport case final viewport?) {
+      applyViewportTransform(
+        canvas,
+        viewport,
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (backdropNone) {
+      paintAlphaCheckerboard(canvas, frameSize.canvasRect);
+    } else {
+      canvas.drawRect(frameSize.canvasRect, Paint()..color = backdrop);
+    }
+    canvas.restore();
+  }
+
+  @override
+  Object get props =>
+      (viewport, frameSize, backdrop, backdropNone, devicePixelRatio);
 }

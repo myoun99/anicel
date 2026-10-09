@@ -1,10 +1,15 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -163,6 +168,76 @@ void main() {
     });
   }
 
+  const backdrop = 0xFF2040C0;
+  final screen = GlobalKey();
+
+  /// The stack at [frame] seen through the camera, twenty screen pixels a
+  /// canvas pixel — the camera's frame is the screen's top left 80×40 — and
+  /// what it put on screen, as the colour at a pixel.
+  Future<int Function(int x, int y)> seenAt(
+    WidgetTester tester,
+    int frame, {
+    required List<StoryboardTimelineLayoutEntry> layout,
+    List<TransitionSpan> Function(TrackId trackId)? spansOf,
+    bool backdropNone = false,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = BrushFrameStore();
+    final composites = CutFrameCompositeCache(
+      layerImages: LayerFrameImageCache(frameStore: store),
+      frameStore: store,
+      frameKeyOf: frameKey,
+    );
+    addTearDown(composites.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: SizedBox(
+              width: 100,
+              height: 60,
+              child: CanvasTrackStackView(
+                globalFrame: ValueNotifier<int?>(frame),
+                positionsOf: (globalFrame) => resolveTrackStackContributions(
+                  layout: layout,
+                  spansOf: spansOf ?? (_) => const [],
+                  globalFrameIndex: globalFrame,
+                ),
+                compositeCache: composites,
+                cameraFrameSize: cameraFrameSize,
+                cameraViewEnabled: true,
+                cameraPoseOf: (cut, frameIndex) =>
+                    CameraPose(center: CanvasPoint(x: 4, y: 4)),
+                viewport: CanvasViewport(zoom: 20),
+                backdropArgb: backdrop,
+                backdropNone: backdropNone,
+                pasteboardArgb: 0xff123456,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final render =
+        screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final rgba = (await tester.runAsync<Uint8List>(() async {
+      final image = await render.toImage();
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    }))!;
+    return (int x, int y) {
+      final o = (y * 100 + x) * 4;
+      return (rgba[o + 3] << 24) |
+          (rgba[o] << 16) |
+          (rgba[o + 1] << 8) |
+          rgba[o + 2];
+    };
+  }
+
   testWidgets('a frame covered by both tracks stacks one camera projection '
       'per track — the bottom letterboxes and papers, the one above '
       'composites transparently', (tester) async {
@@ -183,11 +258,14 @@ void main() {
     expect(painters[0].cameraPose, isNotNull, reason: 'camera framing');
     expect(painters[0].cameraFrameSize, cameraFrameSize);
     expect(painters[0].paintPaper, isTrue);
-    expect(painters[0].paintLetterbox, isTrue);
     expect(painters[1].image, isNotNull);
     expect(painters[1].cameraPose, isNotNull);
     expect(painters[1].paintPaper, isFalse, reason: 'stacks over the bottom');
-    expect(painters[1].paintLetterbox, isFalse);
+    expect(
+      [for (final painter in painters) painter.paintLetterbox],
+      [false, false],
+      reason: 'the letterbox is the floor\'s, under every track',
+    );
 
     f.composites.dispose();
   });
@@ -246,9 +324,25 @@ void main() {
     final painters = paintersOf(tester);
     expect(painters, hasLength(1));
     expect(painters.single.paintPaper, isTrue);
-    expect(painters.single.paintLetterbox, isTrue);
+    expect(painters.single.paintLetterbox, isFalse, reason: 'the floor\'s');
 
     f.composites.dispose();
+  });
+
+  testWidgets('seen through the camera, the floor is the letterbox past its '
+      'frame and the backdrop in it — or the checkerboard, where there is '
+      'none (F-114)', (tester) async {
+    final layout = buildStoryboardTimelineLayout(project());
+    var at = await seenAt(tester, 20, layout: layout);
+    expect(at(40, 20), backdrop, reason: 'in the frame, no track covers it');
+    expect(at(90, 50), PlaybackFramePainter.letterboxColor.toARGB32());
+
+    at = await seenAt(tester, 20, layout: layout, backdropNone: true);
+    expect(
+      at(40, 20),
+      isNot(anyOf(backdrop, PlaybackFramePainter.letterboxColor.toARGB32())),
+      reason: 'the checkerboard',
+    );
   });
 
   testWidgets('a frame no track covers (and the null no-parking state) '
@@ -451,8 +545,12 @@ void main() {
       expect(painters, hasLength(2));
       expect(painters[0].paintPaper, isTrue);
       expect(painters[1].paintPaper, isTrue, reason: 'the arriving cut too');
-      expect(painters[0].paintLetterbox, isTrue);
-      expect(painters[1].paintLetterbox, isTrue);
+      expect(
+        [painters[0].paintLetterbox, painters[1].paintLetterbox],
+        [false, false],
+        reason: 'neither lays a letterbox over the other — the floor holds '
+            'it, under both',
+      );
 
       composites.dispose();
     });
@@ -486,6 +584,21 @@ void main() {
       expect((1 - 1 / 3) * 1, closeTo(2 / 3, 1e-9));
 
       composites.dispose();
+    });
+
+    /// 10-10: each stage contribution laid its own letterbox over the whole
+    /// screen, under its fade, so the arriving cut covered the leaving one
+    /// with it — two white papers met at (99,102,104).
+    testWidgets('🚨seen through the camera, it dissolves one paper into the '
+        'other — no letterbox shows through', (tester) async {
+      final at = await seenAt(
+        tester,
+        3,
+        layout: buildStoryboardTimelineLayout(olProject()),
+        spansOf: spans,
+      );
+      expect(at(40, 20), 0xFFFFFFFF, reason: 'paper into paper is paper');
+      expect(at(90, 50), PlaybackFramePainter.letterboxColor.toARGB32());
     });
 
     testWidgets('outside the span nothing changes — one contribution, its own '
@@ -549,7 +662,6 @@ void main() {
     painters = paintersOf(tester);
     expect(painters[0].cameraFrameSize, cameraFrameSize);
     expect(painters[0].cameraPose, isNotNull);
-    expect(painters[0].paintLetterbox, isTrue);
     expect(painters[0].pasteboardColor, isNotNull);
 
     f.composites.dispose();
@@ -575,6 +687,7 @@ void main() {
       composites: f.composites,
       frame: f.frame,
       layout: f.layout,
+      cameraViewEnabled: false,
     );
     expect(floor(), isA<ColoredBox>(), reason: 'control: a backdrop that is there');
 
@@ -583,10 +696,21 @@ void main() {
       composites: f.composites,
       frame: f.frame,
       layout: f.layout,
+      cameraViewEnabled: false,
+      backdropNone: true,
+    );
+    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
+
+    // Seen through the camera, the floor is its own painter, in the frame
+    // (pinned by pixels in the camera floor group).
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
       backdropNone: true,
       pasteboardNone: true,
     );
-    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
     final bottom = paintersOf(tester).first;
     expect(bottom.pasteboardNone, isTrue);
     expect(

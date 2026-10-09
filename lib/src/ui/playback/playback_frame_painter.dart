@@ -128,7 +128,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// fading away should reveal it. 1 costs nothing.
   final double imageOpacity;
 
-  static const Color _letterboxColor = Color(0xFF15191C);
+  /// What a camera view shows past its frame — the stage's floor there.
+  static const Color letterboxColor = Color(0xFF15191C);
   final Color paperColor;
 
   /// The project PAPER (R10-⑥); when set it wins over [paperColor] —
@@ -213,7 +214,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     canvas.clipRect(Offset.zero & size);
 
     if (pose != null && paintLetterbox) {
-      canvas.drawRect(Offset.zero & size, Paint()..color = _letterboxColor);
+      canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
     }
     final resolvedViewport = viewport;
     if (resolvedViewport != null) {
