@@ -21,6 +21,12 @@ import 'shortcut_activator_codec.dart';
 /// registry moves in every preset that did not name it — and the rule for a
 /// key two actions would share is said once ([presetActivators]), not listed
 /// per loser.
+///
+/// 🗣️I-88 (유저 2026-10-09): 「이런 키는 물론 클튜나 tvp 알아서 그거에맞춰서
+/// 기록. 앞으로 단축키 관련은 그게 기본임. 내가 제안하는건 다 anicel용」 — a
+/// key the user proposes is the registry's, anicel's; each program's table
+/// takes that program's own key for the same command, from the program's
+/// own references, or names none for it.
 enum ShortcutPreset {
   /// The registry's own keys.
   anicel('Anicel'),
