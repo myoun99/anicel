@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerKindDisplayName;
@@ -128,12 +129,18 @@ int layersOf(WidgetTester tester) =>
 
 void main() {
   group('the registry', () {
-    test('holds the bar\'s menu rows under Timeline, in the bar\'s order, '
+    test('holds the bar\'s menu rows on its pills, in the bar\'s order, '
         'with the frame pill\'s switch between its row and the fx pill\'s '
         'rows', () {
+      const pills = {
+        ShortcutShelf.cutPill,
+        ShortcutShelf.layerPill,
+        ShortcutShelf.framePill,
+        ShortcutShelf.fxPill,
+      };
       final timeline = [
         for (final definition in editorActionDefinitions)
-          if (definition.category == 'Timeline') definition,
+          if (pills.contains(definition.shelf)) definition,
       ];
       expect(
         [

@@ -1,5 +1,6 @@
 import '../panels/workspace_panels_menu.dart';
 import 'editor_action_registry.dart';
+import 'shortcut_shelf.dart';
 
 /// The action that shows or hides the panel of [tabId] — its row in the
 /// settings menu's 패널 list.
@@ -23,7 +24,7 @@ List<EditorActionDefinition> panelActionsOf(
     EditorActionDefinition(
       id: panelActionId(entry.tabId),
       label: entry.label,
-      category: panelActionCategory,
+      shelf: ShortcutShelf.panels,
       defaultActivators: const [],
       menuRow: true,
     ),

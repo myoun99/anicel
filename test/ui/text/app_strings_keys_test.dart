@@ -977,7 +977,7 @@ void main() {
   // against the registry itself rather than a hand-listed table — a new
   // action cannot be added without this noticing.
   for (final language in AppLanguage.values) {
-    test('every shortcut action and category resolves in ${language.name}', () {
+    test('every shortcut action and shelf resolves in ${language.name}', () {
       final strings = AppStrings.of(language);
       for (final definition in editorActionDefinitions) {
         expect(
@@ -986,9 +986,12 @@ void main() {
           reason: '${definition.id} in ${language.name}',
         );
         expect(
-          strings.shortcutCategory(definition.category, definition.category),
+          strings.shortcutShelfName(
+            definition.shelf.name,
+            definition.shelf.label,
+          ),
           isNotEmpty,
-          reason: '${definition.category} in ${language.name}',
+          reason: '${definition.shelf.name} in ${language.name}',
         );
       }
     });

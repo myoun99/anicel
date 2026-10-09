@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -123,7 +124,7 @@ void main() {
       expect(
         {
           for (final definition in editorActionDefinitions)
-            if (definition.category == 'Layer Header') definition.id,
+            if (definition.shelf == ShortcutShelf.layerHeader) definition.id,
         },
         {
           for (final row in rows)
@@ -133,11 +134,11 @@ void main() {
       );
     });
 
-    test('they stand under the layer header\'s own category, as menu rows, '
+    test('they stand on the layer header\'s own shelf, as menu rows, '
         'and none ships with a key — nobody named one', () {
       final header = [
         for (final definition in editorActionDefinitions)
-          if (definition.category == 'Layer Header') definition,
+          if (definition.shelf == ShortcutShelf.layerHeader) definition,
       ];
       expect(header, isNotEmpty);
       for (final definition in header) {
@@ -145,7 +146,7 @@ void main() {
         expect(definition.defaultActivators, isEmpty, reason: definition.id);
       }
       expect(
-        AppStrings.of(AppLanguage.ko).shortcutCategory('Layer Header', ''),
+        AppStrings.of(AppLanguage.ko).shortcutShelfName('layerHeader', ''),
         '레이어 머리',
       );
     });

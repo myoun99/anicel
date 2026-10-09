@@ -17,13 +17,15 @@ import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_presets.dart';
+import 'shortcut_shelf.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
-/// grouped by category, click-to-record capture, conflict highlighting
-/// and per-action / global resets — the PS/CSP settings-page convention.
+/// shelved by where each key's button stands ([ShortcutShelf]),
+/// click-to-record capture, conflict highlighting and per-action / global
+/// resets — the PS/CSP settings-page convention.
 class ShortcutSettingsDialog extends StatefulWidget {
   const ShortcutSettingsDialog({super.key, required this.bindings});
 
@@ -120,23 +122,24 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   String _labelOf(EditorActionDefinition definition) =>
       actionLabelOf(definition);
 
-  String _categoryOf(EditorActionDefinition definition) =>
-      AppText.strings.shortcutCategory(
-        definition.category,
-        definition.category,
-      );
+  String _shelfName(ShortcutShelf shelf) =>
+      AppText.strings.shortcutShelfName(shelf.name, shelf.label);
 
   String get _query => _search.text.trim().toLowerCase();
 
+  /// Whether [definition] answers [query] — by its own name, or by the name
+  /// of any shelf it stands on: a search for 「알약」 finds every pill's rows.
   bool _matches(EditorActionDefinition definition, String query) =>
       query.isEmpty ||
       _labelOf(definition).toLowerCase().contains(query) ||
-      _categoryOf(definition).toLowerCase().contains(query);
+      definition.shelf.path.any(
+        (shelf) => _shelfName(shelf).toLowerCase().contains(query),
+      );
 
-  /// The BUNDLES standing open — a category's, named by
-  /// [_categoryBundleOf]; a brush group's, by its title row's action; a
-  /// root section's, by [_rootBundleOf]. A paint tool has its own brush
-  /// bundles (F-319): the brush tool's Inks and the eraser's Inks are two.
+  /// The BUNDLES standing open — a shelf's, named by [_shelfBundleOf]; a
+  /// brush group's, by its title row's action; a root section's, by
+  /// [_rootBundleOf]. A paint tool has its own brush bundles (F-319): the
+  /// brush tool's Inks and the eraser's Inks are two.
   ///
   /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
   /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
@@ -147,11 +150,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// ↩️「다른 카테고리는 지금 그대로」 until 유저 2026-10-08
   /// (menu-rows-and-panels-are-shortcut-rows): 「단축키 많으니까 항목은
   /// 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법 통일하면서」 — every
-  /// category is a bundle now, under the same law.
+  /// category is a bundle now, under the same law. ↩️The categories became
+  /// shelves (shortcut-presets-anicel-and-clip-studio-Q1, 유저 2026-10-09:
+  /// 「버튼이 있는 자리로」) — every shelf, a place's too, folds the same way.
   final Set<String> _openBundles = {};
 
-  /// The bundle of [category]'s rows — the fold its heading carries.
-  static String _categoryBundleOf(String category) => 'category-$category';
+  /// The bundle of [shelf]'s rows and shelves — the fold its heading
+  /// carries.
+  static String _shelfBundleOf(ShortcutShelf shelf) => 'shelf-${shelf.name}';
 
   /// The root section's bundle in [tool]'s library: the brushes of no
   /// group. ⚠️Its title is a word and not a row — the root is not a group
@@ -179,12 +185,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         _ => false,
       };
 
-  /// The bundles [query] finds something in — a category, a brush title or
-  /// a brush.
+  /// The bundles [query] finds something in — every shelf above a row it
+  /// finds, a brush title or a brush.
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
       if (_matches(definition, query)) ...{
-        _categoryBundleOf(definition.category),
+        for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
         ?_bundleOf(definition),
       },
   };
@@ -202,10 +208,11 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
   });
 
-  /// The list's rows: a heading per category the search finds something in
-  /// with — while it stands open — every action the search matches, and of
-  /// the brush library a title per bundle with — while that stands open —
-  /// its brushes.
+  /// The list's rows: a heading per shelf the search finds something in —
+  /// a place's, and under it, while it stands open, its shelves' — with,
+  /// while a shelf stands open, every action of it the search matches, and
+  /// of the brush library a title per bundle with — while that stands open
+  /// — its brushes.
   List<Widget> _rows(ThemeData theme) {
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
@@ -231,28 +238,33 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               (_matches(definition, query) || titlesFound.contains(bundle)));
     }
 
-    // ONE heading a category, its rows together under it, the categories in
-    // the order they first come. ↩️A heading was written each time the
-    // category changed down the list, and the registry holds six of them in
-    // two places — File, Tools, Edit, Selection, View and Timeline each
-    // stood twice. A fold is a category's, so its rows stand under one.
-    final byCategory = <String, List<EditorActionDefinition>>{};
+    // ONE heading a shelf, its rows together under it, the shelves in the
+    // order [ShortcutShelf] lists them and each under the one it stands on.
+    // ↩️A heading was written each time the category changed down the
+    // list, and the registry held six of them in two places — File, Tools,
+    // Edit, Selection, View and Timeline each stood twice.
+    final byShelf = <ShortcutShelf, List<EditorActionDefinition>>{};
     for (final definition in bindings.definitions) {
-      (byCategory[definition.category] ??= []).add(definition);
+      (byShelf[definition.shelf] ??= []).add(definition);
     }
     final rows = <Widget>[];
     // The root sections whose word already stands — one a paint tool.
     final rootsTitled = <String>{};
-    for (final members in byCategory.values) {
-      final fold = _categoryBundleOf(members.first.category);
+    void shelve(ShortcutShelf shelf) {
+      final fold = _shelfBundleOf(shelf);
       if (!found.contains(fold)) {
-        continue;
+        return;
       }
-      rows.add(_categoryHeading(theme, members.first));
+      rows.add(_shelfHeading(theme, shelf));
       if (!_openBundles.contains(fold)) {
-        continue;
+        return;
       }
-      for (final definition in members) {
+      for (final each in shelf.shelves) {
+        shelve(each);
+      }
+      final depth = shelf.path.length;
+      for (final definition
+          in byShelf[shelf] ?? const <EditorActionDefinition>[]) {
         final bundle = _bundleOf(definition);
         final shown = shows(definition, bundle);
         final rootTitleDue =
@@ -262,7 +274,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             found.contains(bundle);
         if (rootTitleDue) {
           rootsTitled.add(bundle);
-          rows.add(_rootTitleRow(theme, bundle));
+          rows.add(_rootTitleRow(theme, bundle, depth));
         }
         if (shown) {
           rows.add(
@@ -270,21 +282,32 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               definition,
               conflicted.contains(definition.id),
               touchConflicted.contains(definition.id),
+              depth: depth,
               bundle: bundle,
             ),
           );
         }
       }
     }
+
+    for (final place in ShortcutShelf.places) {
+      shelve(place);
+    }
     return rows;
   }
 
-  /// A category's heading, carrying its fold as a brush bundle's title does.
-  Widget _categoryHeading(ThemeData theme, EditorActionDefinition definition) {
-    final bundle = _categoryBundleOf(definition.category);
+  /// A shelf's heading, a step in from the shelf it stands on and carrying
+  /// its fold as a brush bundle's title does — a place's in the accent.
+  Widget _shelfHeading(ThemeData theme, ShortcutShelf shelf) {
+    final bundle = _shelfBundleOf(shelf);
+    final place = shelf.parent == null;
     return Padding(
-      key: ValueKey<String>('shortcut-category-${definition.category}'),
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      key: ValueKey<String>('shortcut-shelf-${shelf.name}'),
+      padding: EdgeInsets.only(
+        left: (shelf.path.length - 1) * _step,
+        top: place ? 12 : 2,
+        bottom: place ? 4 : 2,
+      ),
       child: _foldRow(
         bundle,
         Row(
@@ -292,9 +315,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             _twirl(bundle),
             Expanded(
               child: Text(
-                _categoryOf(definition),
+                _shelfName(shelf),
                 style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
+                  color: place ? theme.colorScheme.primary : null,
                 ),
               ),
             ),
@@ -335,9 +358,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     onToggle: null,
   );
 
-  Widget _rootTitleRow(ThemeData theme, String bundle) => Padding(
+  Widget _rootTitleRow(ThemeData theme, String bundle, int depth) => Padding(
     key: ValueKey<String>('shortcut-row-$bundle'),
-    padding: const EdgeInsets.only(left: _step, top: 2, bottom: 2),
+    padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
     child: _foldRow(
       bundle,
       Row(
@@ -467,6 +490,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     EditorActionDefinition definition,
     bool conflicted,
     bool touchConflicted, {
+    required int depth,
     String? bundle,
   }) {
     final theme = Theme.of(context);
@@ -559,14 +583,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
     ];
 
-    // A row stands a step in from its category's heading, and a brush a
-    // step in from its bundle's title — each row's words where the words
-    // of the row it folds under start.
-    final depth = bundle != null && !titlesBundle ? 2 : 1;
+    // A row stands a step in from its shelf's heading ([depth] steps), and
+    // a brush a step in from its bundle's title — each row's words where
+    // the words of the row it folds under start.
+    final steps = bundle != null && !titlesBundle ? depth + 1 : depth;
     final folds = bundle != null && titlesBundle ? bundle : null;
     return Padding(
       key: ValueKey<String>('shortcut-row-${definition.id}'),
-      padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
+      padding: EdgeInsets.only(left: steps * _step, top: 2, bottom: 2),
       // 🗣️F-318: the row gained a button, and a row with several keys
       // and a touch gesture was already within a few pixels of its
       // width. The keys and the gesture take what they need up to

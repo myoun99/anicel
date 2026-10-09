@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -38,7 +39,7 @@ void main() {
           (definition) => definition.id == id,
         );
         expect(definition.menuRow, isTrue, reason: id);
-        expect(definition.category, 'Conte Sheet', reason: id);
+        expect(definition.shelf, ShortcutShelf.conteSheet, reason: id);
         expect(definition.defaultActivators, isEmpty, reason: id);
       }
     });
@@ -51,7 +52,7 @@ void main() {
       expect(editorActionLabel(EditorActionIds.conteCover), '표지');
       expect(editorActionLabel(EditorActionIds.conteBlankPage), '빈 용지');
       expect(
-        AppStrings.of(AppLanguage.ko).shortcutCategory('Conte Sheet', ''),
+        AppStrings.of(AppLanguage.ko).shortcutShelfName('conteSheet', ''),
         '콘티 용지',
       );
     });

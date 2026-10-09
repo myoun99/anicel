@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
@@ -184,7 +185,7 @@ void main() {
       const twoKeys = EditorActionDefinition(
         id: 'a-row-no-preset-names',
         label: '',
-        category: '',
+        shelf: ShortcutShelf.tools,
         defaultActivators: [
           SingleActivator(LogicalKeyboardKey.keyG),
           SingleActivator(LogicalKeyboardKey.keyK),
@@ -835,7 +836,7 @@ void main() {
         'Clip Studio based',
         'TVPaint based',
       ]);
-      expect('\n### Tools\n'.allMatches(page), hasLength(3));
+      expect('\n### Canvas › Tools\n'.allMatches(page), hasLength(3));
     });
   });
 }

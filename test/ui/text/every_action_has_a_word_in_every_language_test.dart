@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 
 /// 🚨F-37 — EVERY SHORTCUT ACTION HAS A ROW IN EVERY LANGUAGE.
 ///
@@ -50,9 +51,7 @@ void main() {
   test('⛔fixture premise: some names ARE composed', () {
     expect(composedIds, isNotEmpty);
   });
-  final registryCategories = editorActionDefinitions
-      .map((definition) => definition.category)
-      .toSet();
+  final registryShelves = {for (final shelf in ShortcutShelf.values) shelf.name};
 
   final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
 
@@ -74,9 +73,7 @@ void main() {
         if (depth == 0) break;
       }
     }
-    // A category may be two words (`Layer Header`, I-40) — a key the old
-    // `[A-Za-z0-9-]` never saw, so a tabled heading read as missing.
-    return RegExp("'$prefix\\.([A-Za-z0-9 -]+)'")
+    return RegExp("'$prefix\\.([A-Za-z0-9-]+)'")
         .allMatches(source.substring(open, i))
         .map((match) => match.group(1)!)
         .toSet();
@@ -89,7 +86,7 @@ void main() {
 
   test('⛔fixture premise: there are actions and tables to check', () {
     expect(registryIds, hasLength(greaterThan(20)));
-    expect(registryCategories, hasLength(greaterThan(3)));
+    expect(registryShelves, hasLength(greaterThan(3)));
     for (final table in tables) {
       expect(
         keysOf(table, 'shortcutAction'),
@@ -112,12 +109,14 @@ void main() {
       );
     });
 
-    test('every action CATEGORY is named in $table', () {
+    test('every SHELF is named in $table, and no shelf that is gone', () {
+      final named = keysOf(table, 'shortcutShelf');
       expect(
-        registryCategories.difference(keysOf(table, 'shortcutCategory')),
+        registryShelves.difference(named),
         isEmpty,
         reason: 'the headings above the actions',
       );
+      expect(named.difference(registryShelves), isEmpty);
     });
 
     test('⛔and $table names no action the registry has dropped', () {

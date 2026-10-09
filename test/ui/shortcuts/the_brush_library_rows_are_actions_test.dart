@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
@@ -167,7 +168,8 @@ void main() {
       expect(
         {
           for (final definition in editorActionDefinitions)
-            if (definition.category == 'Brush Library' && definition.menuRow)
+            if (definition.shelf == ShortcutShelf.brushLibrary &&
+                definition.menuRow)
               definition.id,
         },
         {for (final row in rows) row.shortcuts.single},
@@ -191,25 +193,26 @@ void main() {
       expect(
         {
           for (final definition in editorActionDefinitions)
-            if (definition.category == 'Brush Library' && !definition.menuRow)
+            if (definition.shelf == ShortcutShelf.brushLibrary &&
+                !definition.menuRow)
               definition.id,
         },
         {BrushLibraryActionIds.importBrushes, BrushLibraryActionIds.saveHeldBrush},
       );
     });
 
-    test('they stand under the library\'s own category, and none ships '
+    test('they stand on the library\'s own shelf, and none ships '
         'with a key — nobody named one', () {
       final library = [
         for (final definition in editorActionDefinitions)
-          if (definition.category == 'Brush Library') definition,
+          if (definition.shelf == ShortcutShelf.brushLibrary) definition,
       ];
       expect(library, hasLength(15));
       for (final definition in library) {
         expect(definition.defaultActivators, isEmpty, reason: definition.id);
       }
       expect(
-        AppStrings.of(AppLanguage.ko).shortcutCategory('Brush Library', ''),
+        AppStrings.of(AppLanguage.ko).shortcutShelfName('brushLibrary', ''),
         '브러시 라이브러리',
       );
     });

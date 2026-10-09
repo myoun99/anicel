@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 const _begin = '<!-- shortcuts:begin -->';
@@ -54,7 +55,7 @@ void writeShortcutTable(String guideRoot, AppLanguage language) {
   );
 }
 
-/// Every action that ships with a key, one table per group, under each
+/// Every action that ships with a key, one table per shelf, under each
 /// shortcut preset's name (I-63, 유저 2026-10-03: 「이를 가이드페이지에도 두
 /// 프리셋별로 낡지않게 단축키 보여주도록」), in [language]. The keys are the
 /// ones the shortcut window shows for that preset ([presetActivators]).
@@ -82,26 +83,35 @@ String shortcutTableMarkdown(AppLanguage language) {
   }
 }
 
-/// [preset]'s tables, one per group that has a key in it.
+/// [preset]'s tables, one per shelf that has a key in it, headed by the
+/// shelves from its place down — 「캔버스 › 도구」, as the window nests them.
 void _writeGroups(
   StringBuffer out,
   ShortcutPreset preset,
   ({String action, String key, String or}) words,
 ) {
-  final groups = <String, List<String>>{};
+  final groups = <ShortcutShelf, List<String>>{};
   for (final definition in editorActionDefinitions) {
     final keys = presetActivators(preset, definition).map(_key);
     if (keys.isNotEmpty) {
-      (groups[definition.category] ??= []).add(
+      (groups[definition.shelf] ??= []).add(
         '| ${_cell(editorActionLabel(definition.id))} '
         '| ${keys.join(' ${words.or} ')} |',
       );
     }
   }
-  for (final MapEntry(key: category, value: rows) in groups.entries) {
+  for (final shelf in ShortcutShelf.values) {
+    final rows = groups[shelf];
+    if (rows == null) {
+      continue;
+    }
+    final heading = [
+      for (final each in shelf.path)
+        AppText.strings.shortcutShelfName(each.name, each.label),
+    ].join(' › ');
     out
       ..writeln()
-      ..writeln('### ${AppText.strings.shortcutCategory(category, category)}')
+      ..writeln('### ${_html(heading)}')
       ..writeln()
       ..writeln('| ${words.action} | ${words.key} |')
       ..writeln('|---|---|');

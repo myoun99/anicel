@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
@@ -140,8 +141,8 @@ void main() {
       for (final row in rows) {
         expect(row.defaultActivators, isEmpty, reason: row.id);
         expect(
-          row.category,
-          brushActionCategories[row.brushPress!.tool],
+          row.shelf,
+          brushActionShelves[row.brushPress!.tool],
           reason: row.id,
         );
         expect(isBrushActionId(row.id), isTrue, reason: row.id);
@@ -151,8 +152,8 @@ void main() {
     test('every tool that holds a brush of its own has rows, under a '
         'heading of its own', () {
       final holders = CanvasTool.values.where(canvasToolPaints).toList();
-      expect(brushActionCategories.keys, holders);
-      expect(brushActionCategories.values.toSet(), hasLength(holders.length));
+      expect(brushActionShelves.keys, holders);
+      expect(brushActionShelves.values.toSet(), hasLength(holders.length));
       expect(
         {for (final row in rows) row.brushPress!.tool},
         holders.toSet(),
@@ -355,15 +356,15 @@ void main() {
     });
   });
 
-  test('each tool\'s brush category has a word in every language — and a '
+  test('each tool\'s brush shelf has a word in every language — and a '
       'word of its own', () {
     for (final language in AppLanguage.values) {
       if (language == AppLanguage.en) {
         continue;
       }
       final words = [
-        for (final category in brushActionCategories.values)
-          AppStrings.of(language).shortcutCategory(category, ''),
+        for (final shelf in brushActionShelves.values)
+          AppStrings.of(language).shortcutShelfName(shelf.name, ''),
       ];
       expect(words, everyElement(isNotEmpty), reason: language.name);
       expect(words.toSet(), hasLength(words.length), reason: language.name);
@@ -452,13 +453,16 @@ void main() {
         ),
       );
       await tester.pump();
-      // Every category stands shut (menu-rows-and-panels-are-shortcut-rows,
+      // Every shelf stands shut (menu-rows-and-panels-are-shortcut-rows,
       // the brush bundles' own law): these cases are about what stands
-      // INSIDE the two brush categories, so they open them first, as a
-      // person would.
-      for (final category in brushActionCategories.values) {
+      // INSIDE the two brush shelves, so they open them first — their
+      // place, then each — as a person would.
+      for (final shelf in [
+        ShortcutShelf.toolLibrary,
+        ...brushActionShelves.values,
+      ]) {
         final twirl = find.byKey(
-          ValueKey<String>('shortcut-bundle-category-$category'),
+          ValueKey<String>('shortcut-bundle-shelf-${shelf.name}'),
         );
         await wheelUntilVisible(tester, twirl);
         await tester.tap(twirl);
@@ -501,9 +505,9 @@ void main() {
       ];
     }
 
-    /// The brush category headings the list holds, in order — read the same
-    /// way.
-    List<String> headings(WidgetTester tester) {
+    /// The brush shelves whose headings the list holds, in order — read the
+    /// same way.
+    List<ShortcutShelf> headings(WidgetTester tester) {
       final children =
           (tester.widget<ListView>(list).childrenDelegate
                   as SliverChildListDelegate)
@@ -511,11 +515,13 @@ void main() {
       return [
         for (final child in children)
           if (child.key case ValueKey<String>(:final value)
-              when value.startsWith('shortcut-category-'))
-            if (value.substring('shortcut-category-'.length)
-                case final category
-                when brushActionCategories.values.contains(category))
-              category,
+              when value.startsWith('shortcut-shelf-'))
+            if (ShortcutShelf.values.byName(
+                  value.substring('shortcut-shelf-'.length),
+                )
+                case final shelf
+                when brushActionShelves.values.contains(shelf))
+              shelf,
       ];
     }
 
@@ -533,7 +539,7 @@ void main() {
     testWidgets('holds a bundle per group, shut — once under each tool\'s '
         'heading: the titles, and no brush', (tester) async {
       await pump(tester);
-      expect(headings(tester), brushActionCategories.values);
+      expect(headings(tester), brushActionShelves.values);
       for (final tool in [brushTool, eraser]) {
         expect(brushRows(tester, tool), [
           groupId(inks, tool),
@@ -543,7 +549,6 @@ void main() {
         ], reason: tool.name);
       }
       await bringIn(tester, twirlOf(groupId(inks)));
-      expect(find.text(brushActionCategories[brushTool]!), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('shortcut-row-brush-root')),
@@ -558,6 +563,15 @@ void main() {
           reason: bundle,
         );
       }
+      final shelf = brushActionShelves[brushTool]!;
+      final heading = find.byKey(
+        ValueKey<String>('shortcut-shelf-${shelf.name}'),
+      );
+      await bringIn(tester, heading);
+      expect(
+        find.descendant(of: heading, matching: find.text(shelf.label)),
+        findsOneWidget,
+      );
     });
 
     // 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「그냥 그
@@ -728,7 +742,7 @@ void main() {
         findsNWidgets(2),
         reason: 'one under each tool\'s heading',
       );
-      expect(headings(tester), brushActionCategories.values);
+      expect(headings(tester), brushActionShelves.values);
     });
 
     testWidgets('a tool\'s heading found shows that tool\'s rows alone', (
@@ -739,7 +753,7 @@ void main() {
       await tester.pump();
       expect(brushRows(tester), isEmpty);
       expect(brushRows(tester, eraser), isNotEmpty);
-      expect(headings(tester), [brushActionCategories[eraser]]);
+      expect(headings(tester), [brushActionShelves[eraser]]);
     });
 
     testWidgets('a group\'s key is recorded on its title row — the row of '

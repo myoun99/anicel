@@ -5,18 +5,18 @@ import '../../models/brush_preset_id.dart';
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
 import 'editor_action_registry.dart';
+import 'shortcut_shelf.dart';
 
-/// The heading each paint tool's brush rows stand under in the shortcut
-/// window — a heading a tool, since each has its own rows (F-319).
+/// The shelf each paint tool's brush rows stand on in the shortcut window
+/// — a shelf a tool, since each has its own rows (F-319).
 ///
-/// ⚠️Table keys: every language has a word for each (`shortcutCategory`).
 /// ⚠️A tool that comes to hold a brush of its own ([canvasToolPaints]) gets
-/// its line here: with none it has no heading to stand under, and
+/// its line here: with none it has no shelf to stand on, and
 /// [brushActionsOf] fails on it out loud rather than filing its rows under
 /// another tool's.
-const Map<CanvasTool, String> brushActionCategories = {
-  CanvasTool.brush: 'Brush Tool Brushes',
-  CanvasTool.eraser: 'Eraser Tool Brushes',
+const Map<CanvasTool, ShortcutShelf> brushActionShelves = {
+  CanvasTool.brush: ShortcutShelf.brushToolBrushes,
+  CanvasTool.eraser: ShortcutShelf.eraserToolBrushes,
 };
 
 /// The action that opens [group]'s tab in [tool]'s library.
@@ -70,12 +70,12 @@ List<EditorActionDefinition> _rowsOf(
   List<BrushGroup> groups,
   List<BrushPreset> presets,
 ) {
-  final category = brushActionCategories[tool]!;
+  final shelf = brushActionShelves[tool]!;
   EditorActionDefinition brush(BrushPreset preset, BrushGroupId? group) =>
       EditorActionDefinition(
         id: brushPresetActionId(tool, preset.id),
         label: preset.name,
-        category: category,
+        shelf: shelf,
         defaultActivators: const [],
         brushPress: BrushPresetPress(tool, preset.id, group: group),
       );
@@ -84,7 +84,7 @@ List<EditorActionDefinition> _rowsOf(
       EditorActionDefinition(
         id: brushGroupActionId(tool, group.id),
         label: group.name,
-        category: category,
+        shelf: shelf,
         defaultActivators: const [],
         brushPress: BrushGroupPress(tool, group.id),
       ),

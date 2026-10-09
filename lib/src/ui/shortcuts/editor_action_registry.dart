@@ -25,6 +25,7 @@ import '../text/model_vocabulary.dart'
         LayerKindWords,
         LayerMarkWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
+import 'shortcut_shelf.dart';
 
 /// The single shortcut intent: every editor action dispatches through ONE
 /// intent type carrying its [actionId], so the app mounts exactly one
@@ -37,7 +38,7 @@ class EditorActionIntent extends Intent {
 }
 
 /// One registered editor action: the id keys the override store, the
-/// label/category feed the Keyboard Shortcuts dialog, the default
+/// label/shelf feed the Keyboard Shortcuts dialog, the default
 /// activators seed the Shortcuts map, and menu items borrow the primary
 /// activator as their shortcut label. THIS list is the single authority
 /// all three consumers read.
@@ -45,7 +46,7 @@ class EditorActionDefinition {
   const EditorActionDefinition({
     required this.id,
     required this.label,
-    required this.category,
+    required this.shelf,
     required this.defaultActivators,
     this.defaultTouchGesture,
     this.hold = false,
@@ -66,7 +67,7 @@ class EditorActionDefinition {
   EditorActionDefinition.composed({
     required this.id,
     required String Function(AppLanguage language) name,
-    required this.category,
+    required this.shelf,
     required this.defaultActivators,
     this.toolPress,
     this.blendMode,
@@ -84,7 +85,10 @@ class EditorActionDefinition {
 
   final String id;
   final String label;
-  final String category;
+
+  /// Where its button stands — the shortcut window's heading for it, and
+  /// every heading above that one ([ShortcutShelf.path]).
+  final ShortcutShelf shelf;
   final List<SingleActivator> defaultActivators;
 
   /// The action's name in a language, when that name is composed of other
@@ -240,7 +244,7 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
     EditorActionDefinition.composed(
       id: shapeTileActionId(verb, shape),
       name: (language) => shapeTileLabel(verb, shape, AppStrings.of(language)),
-      category: 'Tools',
+      shelf: ShortcutShelf.toolTiles,
       defaultActivators: [
         // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
         // 2026-10-02): W walks up now, and 「올가미를 z」. ↩️I-63 (유저
@@ -282,7 +286,7 @@ List<EditorActionDefinition> _blendModeActions() => [
     EditorActionDefinition.composed(
       id: blendModeActionId(mode),
       name: (language) => blendModeActionLabel(mode, language),
-      category: 'Tools',
+      shelf: ShortcutShelf.blendModes,
       defaultActivators: [
         if (index < _functionKeys.length) SingleActivator(_functionKeys[index]),
       ],
@@ -354,7 +358,7 @@ List<EditorActionDefinition> _addLayerKindActions() => [
     EditorActionDefinition.composed(
       id: addLayerKindActionId(kind),
       name: (language) => addLayerKindActionLabel(kind, language),
-      category: 'Timeline',
+      shelf: ShortcutShelf.layerPill,
       defaultActivators: const [],
       menuRow: true,
     ),
@@ -377,7 +381,7 @@ List<EditorActionDefinition> _addEffectActions() => [
     EditorActionDefinition.composed(
       id: addEffectActionId(kind),
       name: (language) => addEffectActionLabel(kind, language),
-      category: 'Timeline',
+      shelf: ShortcutShelf.fxPill,
       defaultActivators: const [],
       menuRow: true,
     ),
@@ -436,7 +440,7 @@ EditorActionDefinition _railLegendAction(
 ) => EditorActionDefinition.composed(
   id: id,
   name: name,
-  category: 'Layer Header',
+  shelf: ShortcutShelf.layerHeader,
   defaultActivators: const [],
   menuRow: true,
 );
@@ -555,7 +559,7 @@ EditorActionDefinition _brushLibraryAction(
 }) => EditorActionDefinition.composed(
   id: id,
   name: name,
-  category: 'Brush Library',
+  shelf: ShortcutShelf.brushLibrary,
   defaultActivators: const [],
   menuRow: menuRow,
   panelButton: panelButton,
@@ -642,7 +646,7 @@ List<EditorActionDefinition> _projectSettingsActions() {
   ) => EditorActionDefinition.composed(
     id: id,
     name: (language) => '${title(AppStrings.of(language))}…',
-    category: 'Settings',
+    shelf: ShortcutShelf.settings,
     defaultActivators: const [],
     menuRow: true,
   );
@@ -678,7 +682,7 @@ List<EditorActionDefinition> _saveAsImageActions() => [
     EditorActionDefinition.composed(
       id: saveAsImageActionId(format),
       name: (language) => saveAsImageActionLabel(format, language),
-      category: 'File',
+      shelf: ShortcutShelf.file,
       defaultActivators: const [],
       menuRow: true,
     ),
@@ -920,7 +924,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true),
       SingleActivator(LogicalKeyboardKey.keyA, shift: true),
@@ -930,7 +934,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.frameNext,
     label: 'Next Frame',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowRight, shift: true),
       SingleActivator(LogicalKeyboardKey.keyD, shift: true),
@@ -940,7 +944,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.drawingPrevious,
     label: 'Previous Block',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowLeft),
       SingleActivator(LogicalKeyboardKey.keyA),
@@ -950,7 +954,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.drawingNext,
     label: 'Next Block',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowRight),
       SingleActivator(LogicalKeyboardKey.keyD),
@@ -964,7 +968,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerUp,
     label: 'Layer Up',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowUp),
       SingleActivator(LogicalKeyboardKey.keyW),
@@ -974,7 +978,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerDown,
     label: 'Layer Down',
-    category: 'Navigation',
+    shelf: ShortcutShelf.moves,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowDown),
       SingleActivator(LogicalKeyboardKey.keyS),
@@ -989,14 +993,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.canvasPanHold,
     label: 'Pan (hold)',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
     hold: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.playbackToggle,
     label: 'Play / Pause',
-    category: 'Playback',
+    shelf: ShortcutShelf.playback,
     // PEN-7b: four-finger tap = play/pause (the Callipeg convention the
     // user picked), beside the 2-tap undo / 3-tap redo family.
     defaultTouchGesture: 'fourFingerTap',
@@ -1014,7 +1018,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.playbackToStart,
     label: 'To Start',
-    category: 'Playback',
+    shelf: ShortcutShelf.playback,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, shift: true),
     ],
@@ -1022,13 +1026,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.playbackLoopToggle,
     label: 'Loop / Play Once',
-    category: 'Playback',
+    shelf: ShortcutShelf.playback,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.voiceRecordToggle,
     label: 'Record Voice (start/stop)',
-    category: 'Playback',
+    shelf: ShortcutShelf.playback,
     // REC1-B: Ctrl+R, REAPER's record key — plain R stays the drawing-app
     // canvas-rotate convention this app already follows.
     defaultActivators: [
@@ -1038,7 +1042,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.undo,
     label: 'Undo',
-    category: 'Edit',
+    shelf: ShortcutShelf.edit,
     // Procreate's muscle memory: two-finger tap = undo.
     defaultTouchGesture: 'twoFingerTap',
     defaultActivators: [
@@ -1048,7 +1052,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.redo,
     label: 'Redo',
-    category: 'Edit',
+    shelf: ShortcutShelf.edit,
     // Procreate's muscle memory: three-finger tap = redo.
     defaultTouchGesture: 'threeFingerTap',
     // 🪦Ctrl+Y redid as well — a second key on one action, retired
@@ -1066,7 +1070,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editCut,
     label: 'Cut',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyX, control: true),
     ],
@@ -1074,7 +1078,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editCopy,
     label: 'Copy',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyC, control: true),
     ],
@@ -1089,7 +1093,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editPasteLinked,
     label: 'Paste linked',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyB, control: true),
     ],
@@ -1097,7 +1101,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editPasteIndependent,
     label: 'Paste independent',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyV, control: true),
     ],
@@ -1110,7 +1114,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editUnlink,
     label: 'Make independent',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [],
   ),
   // Bare Delete and Backspace: a focused text field keeps both (bare keys
@@ -1118,7 +1122,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editDelete,
     label: 'Delete',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
   ),
   // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
@@ -1133,7 +1137,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editInstance,
     label: 'Edit',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyF, shift: true),
     ],
@@ -1141,7 +1145,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editAutoName,
     label: 'Auto Name',
-    category: 'Edit',
+    shelf: ShortcutShelf.sharedPill,
     defaultActivators: [],
   ),
   // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
@@ -1152,7 +1156,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editReplaceColour,
     label: 'Replace Color',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelVerb: CelPixelVerb.replaceColour,
     menuRow: true,
@@ -1160,7 +1164,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editClearPixels,
     label: 'Clear Pixels',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
     pixelVerb: CelPixelVerb.clearPixels,
     menuRow: true,
@@ -1168,7 +1172,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editDeleteColour,
     label: 'Delete Color',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelVerb: CelPixelVerb.deleteColour,
     menuRow: true,
@@ -1176,7 +1180,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editKeepColour,
     label: 'Keep Color',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelVerb: CelPixelVerb.keepColour,
     menuRow: true,
@@ -1186,7 +1190,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editCopyPixels,
     label: 'Copy Pixels',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.copy,
     menuRow: true,
@@ -1194,7 +1198,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsAbove,
     label: 'Paste Pixels Above',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteAbove,
     menuRow: true,
@@ -1202,7 +1206,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsBelow,
     label: 'Paste Pixels Below',
-    category: 'Edit',
+    shelf: ShortcutShelf.colourEdit,
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
     menuRow: true,
@@ -1214,28 +1218,28 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.fileNew,
     label: 'New project',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpen,
     label: 'Open File…',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpenFolder,
     label: 'Open Folder…',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
     label: 'Save',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true),
     ],
@@ -1244,7 +1248,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.fileSaveAs,
     label: 'Save as…',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
     ],
@@ -1254,14 +1258,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.fileBackUpFailedCopy,
     label: 'Back up failed copy…',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileExport,
     label: 'Export…',
-    category: 'File',
+    shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -1279,21 +1283,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolBrush,
     label: 'Brush Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyB)],
     toolPress: RailToolPress(CanvasTool.brush),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolEraser,
     label: 'Eraser Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyE)],
     toolPress: RailToolPress(CanvasTool.eraser),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolEyedropper,
     label: 'Eyedropper Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI)],
     toolPress: RailToolPress(CanvasTool.eyedropper),
   ),
@@ -1301,14 +1305,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolFill,
     label: 'Fill Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyF)],
     toolPress: RailToolPress(CanvasTool.fill),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolFillBucket,
     label: 'Bucket',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [],
     toolPress: ToolTilePress(CanvasTool.fill),
   ),
@@ -1318,7 +1322,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolText,
     label: 'Text Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.text),
   ),
@@ -1326,7 +1330,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.textDeleteText,
     name: (language) => AppStrings.of(language).textToolDeleteText,
-    category: 'Tools',
+    shelf: ShortcutShelf.texts,
     defaultActivators: const [],
     panelButton: true,
   ),
@@ -1335,7 +1339,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolShape,
     label: 'Shape Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.shape),
   ),
@@ -1344,7 +1348,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolGuide,
     label: 'Guide Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
     toolPress: RailToolPress(CanvasTool.guide),
   ),
@@ -1352,21 +1356,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.guideAddSymmetry,
     label: 'Add symmetry guide',
-    category: 'Tools',
+    shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.guideAddPerspective,
     label: 'Add perspective guide',
-    category: 'Tools',
+    shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolSelect,
     label: 'Select Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.select),
   ),
@@ -1374,7 +1378,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransform,
     label: 'Transform Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.move),
   ),
@@ -1385,7 +1389,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformNormal,
     label: 'Normal Transform',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyT, control: true),
     ],
@@ -1394,7 +1398,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformFree,
     label: 'Free Transform',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyY, control: true),
     ],
@@ -1403,7 +1407,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolTransformMesh,
     label: 'Mesh Warp',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [],
     toolPress: TransformModePress(TransformMode.mesh),
   ),
@@ -1413,7 +1417,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolCut,
     label: 'Cut Tool',
-    category: 'Tools',
+    shelf: ShortcutShelf.tools,
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.cut),
   ),
@@ -1423,7 +1427,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolCutWhole,
     label: 'Whole Picture Cut',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [],
     toolPress: CutWholePress(),
   ),
@@ -1433,7 +1437,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.toolCutStamp,
     label: 'Stamp',
-    category: 'Tools',
+    shelf: ShortcutShelf.toolTiles,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
     toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
@@ -1441,7 +1445,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.selectionDeselect,
     label: 'Deselect',
-    category: 'Selection',
+    shelf: ShortcutShelf.selection,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyD, control: true),
     ],
@@ -1452,7 +1456,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.confirm,
     label: 'Confirm',
-    category: 'Edit',
+    shelf: ShortcutShelf.selection,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.enter),
       SingleActivator(LogicalKeyboardKey.numpadEnter),
@@ -1461,13 +1465,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.selectionTransformCancel,
     label: 'Cancel Transform',
-    category: 'Selection',
+    shelf: ShortcutShelf.selection,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.escape)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.onionSkinToggle,
     label: 'Toggle Onion Skin',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     // 🗣️F-261 (유저 2026-10-02): 「우선 어니언스킨을 Q로」 — the left hand's.
     // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동,
     // 어니언스킨을 t로이동」 — the two trade places.
@@ -1476,37 +1480,37 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.cameraViewToggle,
     label: 'Toggle Camera View',
-    category: 'View',
+    shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCcw,
     label: 'Rotate Canvas View Left',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyR)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCw,
     label: 'Rotate Canvas View Right',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyR, shift: true)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasFlipHorizontal,
     label: 'Flip Canvas View Horizontal',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasFlipVertical,
     label: 'Flip Canvas View Vertical',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasStraighten,
     label: 'Straighten Canvas View',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [],
   ),
   // Fit and 1:1 land a zoom, as the ± steps do — so they pass playback where
@@ -1515,14 +1519,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.canvasFit,
     label: 'Fit Canvas View',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [],
     zoomsView: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasResetView,
     label: 'Reset Canvas View (100%)',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [],
     zoomsView: true,
   ),
@@ -1535,7 +1539,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomIn,
     label: 'Zoom In',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyE, shift: true),
     ],
@@ -1544,7 +1548,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomOut,
     label: 'Zoom Out',
-    category: 'View',
+    shelf: ShortcutShelf.view,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyQ, shift: true),
     ],
@@ -1556,31 +1560,31 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.timelineComma1,
     label: 'Set 1 Comma',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit1)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineComma2,
     label: 'Set 2 Commas',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit2)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineComma3,
     label: 'Set 3 Commas',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit3)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineComma4,
     label: 'Set 4 Commas',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit4)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineCommaN,
     label: 'Set N Commas…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit5)],
   ),
   // The film verbs ship UNBOUND. Every one of them is a key an animator
@@ -1599,7 +1603,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
     label: 'Add Frame',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI, shift: true)],
   ),
   // 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
@@ -1609,7 +1613,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerAdd,
     label: _addLayerLabel,
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyN, control: true),
     ],
@@ -1617,25 +1621,25 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.frameBlankExposure,
     label: 'Blank Exposure',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameToggleMark,
     label: 'Toggle Mark',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelinePushBlocks,
     label: 'Push Blocks',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelinePullBlocks,
     label: 'Pull Blocks',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   // 「타임라인 줌」 — the user's own name for this cluster on both panels
@@ -1643,19 +1647,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomIn,
     label: 'Timeline Zoom In',
-    category: 'Timeline',
+    shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomOut,
     label: 'Timeline Zoom Out',
-    category: 'Timeline',
+    shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineOrientationToggle,
     label: 'Timeline / X-sheet',
-    category: 'Timeline',
+    shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),
   // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」.
@@ -1666,7 +1670,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerVisibilitySolo,
     label: 'Solo active layer',
-    category: 'Timeline',
+    shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
   ),
   // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
@@ -1677,56 +1681,56 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
     label: 'New cut',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutDuplicate,
     label: 'Duplicate cut',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutCreateLinked,
     label: 'Create linked cut',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutRename,
     label: 'Rename cut…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutEditNote,
     label: 'Edit cut note…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutSettings,
     label: 'Cut settings…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutCanvasSize,
     label: 'Canvas size…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
     label: 'Convert to linked cut…',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -1736,56 +1740,56 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.cutPinThumbnail,
     label: 'Pin thumbnail frame',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutMoveLeft,
     label: 'Move cut left',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutMoveRight,
     label: 'Move cut right',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutCopyAeCamera,
     label: 'Copy camera AE keyframes',
-    category: 'Timeline',
+    shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerDuplicate,
     label: 'Duplicate layer',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerDetach,
     label: 'Detach from base',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerRasterize,
     label: 'Rasterize layer',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerStoryboard,
     label: 'Storyboard layer',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -1793,35 +1797,35 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachFreeAbove,
     label: 'Attach free layer above',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachFreeBelow,
     label: 'Attach free layer below',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachSyncedAbove,
     label: 'Attach synced layer above',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachSyncedBelow,
     label: 'Attach synced layer below',
-    category: 'Timeline',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameSelectRowSpan,
     label: 'Select whole row',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -1830,7 +1834,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.frameAutoCreate,
     label: 'Make a frame where there is none',
-    category: 'Timeline',
+    shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   // The fx pill's rows, after the frame pill's — the bar's order.
@@ -1846,21 +1850,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.mediaPoolImport,
     name: (language) => '${AppStrings.of(language).imImport}…',
-    category: 'Media',
+    shelf: ShortcutShelf.media,
     defaultActivators: const [],
     panelButton: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.timesheetFormat,
     name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
-    category: 'Timesheet',
+    shelf: ShortcutShelf.timesheet,
     defaultActivators: const [],
     panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timesheetDataMode,
     label: 'Notation / data sheet',
-    category: 'Timesheet',
+    shelf: ShortcutShelf.timesheet,
     defaultActivators: [],
     panelButton: true,
   ),
@@ -1869,14 +1873,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.conteCover,
     name: (language) => AppStrings.of(language).conteCoverPage,
-    category: 'Conte Sheet',
+    shelf: ShortcutShelf.conteSheet,
     defaultActivators: const [],
     menuRow: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.conteBlankPage,
     name: (language) => AppStrings.of(language).conteBlankPage,
-    category: 'Conte Sheet',
+    shelf: ShortcutShelf.conteSheet,
     defaultActivators: const [],
     menuRow: true,
   ),
@@ -1886,7 +1890,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.workSettings,
     label: 'Work settings…',
-    category: 'Settings',
+    shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -1894,90 +1898,86 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.keyboardShortcuts,
     label: 'Keyboard shortcuts…',
-    category: 'Settings',
+    shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.preferences,
     label: 'Preferences…',
-    category: 'Settings',
+    shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.about,
     label: 'About Anicel',
-    category: 'Settings',
+    shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.inputInspector,
     label: 'Input Inspector',
-    category: 'Debug',
+    shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameTimingOverlay,
     label: 'Frame Timing Overlay',
-    category: 'Debug',
+    shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameStats,
     label: 'Frame Stats',
-    category: 'Debug',
+    shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.showRepaints,
     label: 'Show Repaints',
-    category: 'Debug',
+    shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.bakePanels,
     label: 'Bake Static Panels',
-    category: 'Debug',
+    shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,
   ),
   // ⚠️LAST, and that is the point: the workspace's own panels follow these
-  // as rows of the same category (`panelActionsOf`).
+  // as rows of the same shelf (`panelActionsOf`).
   const EditorActionDefinition(
     id: EditorActionIds.toolRailOnRight,
     label: 'Tool strip on the right',
-    category: panelActionCategory,
+    shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.regionOnTop,
     label: 'Timeline region on top',
-    category: panelActionCategory,
+    shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.regionFold,
     label: 'Fold / unfold the timeline region',
-    category: panelActionCategory,
+    shelf: ShortcutShelf.panels,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.resetLayout,
     label: 'Reset workspace layout',
-    category: panelActionCategory,
+    shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,
   ),
 ];
-
-/// The category the panels' rows stand under — these three, and one row per
-/// panel of the workspace.
-const String panelActionCategory = 'Panels';

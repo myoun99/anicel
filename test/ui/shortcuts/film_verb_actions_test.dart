@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The film verbs joined the registry so they can be bound to a key, and
@@ -19,10 +20,10 @@ void main() {
   EditorActionDefinition definitionFor(String id) =>
       editorActionDefinitions.firstWhere((definition) => definition.id == id);
 
-  test('every film verb is registered under Timeline', () {
+  test('every film verb is registered on the frame pill', () {
     for (final id in filmVerbs) {
       final definition = definitionFor(id);
-      expect(definition.category, 'Timeline', reason: id);
+      expect(definition.shelf, ShortcutShelf.framePill, reason: id);
       expect(definition.label, isNotEmpty, reason: id);
     }
   });

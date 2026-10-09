@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/shortcuts/panel_actions.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -54,15 +55,15 @@ Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
   await tester.pumpAndSettle();
 }
 
-/// The headings the STRIP's two menus fill. The rest of the registry's menu
-/// rows are the timeline bar's, which
+/// Whether [definition] is one of the STRIP's — the shelves its two menus
+/// fill. The rest of the registry's menu rows are the timeline bar's, which
 /// `timeline_bar_rows_are_actions_test.dart` speaks for.
-const stripCategories = {'File', 'Settings', 'Debug', 'Panels'};
+bool onTheStrip(EditorActionDefinition definition) =>
+    definition.shelf.parent == ShortcutShelf.topStrip;
 
 List<EditorActionDefinition> get menuActions => [
   for (final definition in editorActionDefinitions)
-    if (definition.menuRow && stripCategories.contains(definition.category))
-      definition,
+    if (definition.menuRow && onTheStrip(definition)) definition,
 ];
 
 void main() {
@@ -72,7 +73,7 @@ void main() {
       expect(
         [
           for (final definition in editorActionDefinitions)
-            if (definition.category == 'File') definition.id,
+            if (definition.shelf == ShortcutShelf.file) definition.id,
         ],
         [
           EditorActionIds.fileNew,
@@ -90,25 +91,10 @@ void main() {
       );
       expect(menuActions, hasLength(25));
       expect(
-        editorActionDefinitions.last.category,
-        panelActionCategory,
+        editorActionDefinitions.last.shelf,
+        ShortcutShelf.panels,
         reason: 'the workspace\'s panels follow, under the same heading',
       );
-      // Each of these categories is ONE run of the list — the window prints
-      // a heading wherever the category changes.
-      final runs = <String>[];
-      for (final definition in editorActionDefinitions) {
-        if (runs.isEmpty || runs.last != definition.category) {
-          runs.add(definition.category);
-        }
-      }
-      for (final category in const ['File', 'Settings', 'Debug', 'Panels']) {
-        expect(
-          runs.where((run) => run == category),
-          hasLength(1),
-          reason: '$category in $runs',
-        );
-      }
     });
 
     test('only the two saves ship with a key — nobody named another', () {
@@ -130,16 +116,19 @@ void main() {
       expect(isBrushActionId(panelActionId('timesheet')), isFalse);
     });
 
-    test('the three new categories have a word in every language', () {
+    test('the strip and its shelves have a word in every language', () {
       for (final language in AppLanguage.values) {
         if (language == AppLanguage.en) {
           continue;
         }
-        for (final category in const ['Settings', 'Debug', 'Panels']) {
+        for (final shelf in [
+          ShortcutShelf.topStrip,
+          ...ShortcutShelf.topStrip.shelves,
+        ]) {
           expect(
-            AppStrings.of(language).shortcutCategory(category, ''),
+            AppStrings.of(language).shortcutShelfName(shelf.name, ''),
             isNotEmpty,
-            reason: '${language.name} · $category',
+            reason: '${language.name} · ${shelf.name}',
           );
         }
       }
@@ -158,7 +147,7 @@ void main() {
       expect(rows.map((row) => row.label), ['Timesheet', 'Media']);
       for (final row in rows) {
         expect(row.menuRow, isTrue);
-        expect(row.category, panelActionCategory);
+        expect(row.shelf, ShortcutShelf.panels);
         expect(row.defaultActivators, isEmpty);
       }
     });
@@ -343,9 +332,7 @@ void main() {
       // Each action of the registry, and each panel the workspace told of.
       final live = [
         for (final definition in appShortcuts(tester).definitions)
-          if (definition.menuRow &&
-              stripCategories.contains(definition.category))
-            definition.id,
+          if (definition.menuRow && onTheStrip(definition)) definition.id,
       ];
       expect(live.where(isPanelActionId), isNotEmpty, reason: '⛔premise');
       expect(live.toSet().difference(named), isEmpty);
