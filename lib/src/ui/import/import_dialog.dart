@@ -141,6 +141,17 @@ final class _SoundOnSeRows {
   String toString() => 'se-rows';
 }
 
+/// The 「옵션」 answer of a picture in a numbered run: the span IN/OUT keep
+/// of it, picked on the preview and only shown here — one answer, so the
+/// cell stands locked and says the span ([_runSpanWord]).
+final class _RunSpan {
+  const _RunSpan();
+
+  /// What its popup row would be keyed by.
+  @override
+  String toString() => 'run';
+}
+
 /// The Into answer of a file that only registers: the media pool, placed
 /// nowhere ([ImportFileSettings.intoPool]).
 final class _IntoThePool {
@@ -219,7 +230,7 @@ class _ImportDialogState extends State<ImportDialog> {
       hasActiveCut: widget.session.activeCutOrNull != null,
       lasting: _lasting(path),
       spot: widget.spot,
-      inRun: _runOf(path) != null,
+      runLength: _runOf(path)?.cells.length,
     ).copyWith(intoPool: _registersOnly(path));
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -294,13 +305,31 @@ class _ImportDialogState extends State<ImportDialog> {
     return parsed == null ? null : celRunOf(mediaFileName(path), parsed);
   }
 
-  /// [path]'s run when its row brings the run in — the 「연번」 column's
-  /// 「함께」.
-  ParsedCelLayer? _togetherRunOf(String path) {
+  /// The pictures of [path]'s run its span keeps — the run's IN/OUT,
+  /// picked on the preview ([ImportFileSettings.runIn]) — or null for a
+  /// file in none.
+  List<ParsedCel>? _runKeptOf(String path) {
     final run = _runOf(path);
-    return run != null && _settingsFor(path).run == NumberedRun.together
-        ? run
-        : null;
+    if (run == null) {
+      return null;
+    }
+    final span = importRunSpan(_settingsFor(path), run.cells.length);
+    return run.cells.sublist(span.first, span.last + 1);
+  }
+
+  /// [path]'s run when its span keeps two pictures or more: they come in as
+  /// one layer's frames. One comes in alone ([_placeRun]).
+  ParsedCelLayer? _togetherRunOf(String path) =>
+      (_runKeptOf(path)?.length ?? 0) > 1 ? _runOf(path) : null;
+
+  /// Every picture of [path]'s run, in order — what the preview pages
+  /// through — or null for a file in none.
+  List<String>? _runFilesOf(String path) {
+    final run = _runOf(path);
+    final folder = File(path).parent.path;
+    return run == null
+        ? null
+        : [for (final cel in run.cells) '$folder/${cel.file}'];
   }
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
@@ -932,8 +961,8 @@ class _ImportDialogState extends State<ImportDialog> {
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
-    if (_togetherRunOf(path) case final run?) {
-      return _placeRun(path, run, tally, fileReport);
+    if (_runKeptOf(path) case final kept?) {
+      return _placeRun(path, kept, tally, fileReport);
     }
     if (kind == MediaAssetKind.pdf) {
       return widget.session.importDoors.importPdfFile(
@@ -952,40 +981,43 @@ class _ImportDialogState extends State<ImportDialog> {
         sourcePath: sourcePath,
       );
     }
-    return widget.session.importDoors.importImageFile(
-      path: path,
-      destination: settings.into,
-      rasterize: bake,
-      fit: settings.fit,
-      copyIntoProject: carry,
-      inFrame: settings.inFrame,
-      outFrame: settings.outFrame,
-      spot: widget.spot,
-      sourcePath: sourcePath,
-    );
+    return _placePicture(path, settings, sourcePath: sourcePath);
   }
 
-  /// A MOVIE's door (미디어 배치 라운드 6). What lands is the 「소리」
-  /// answer — the picture, the picture with its sound on the SE rows, or
-  /// the sound alone, which is also what an SE row's empty cell takes
-  /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
-  /// [importMovieParts] — the cell used to be answered HERE, straight to a
-  /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
-  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
-  /// counts for it — under the run's one wait window ([_runImport]).
-  /// ↩️It stood behind a wait window of its own, one for every movie.
-  /// [path]'s numbered [run] through the run's door
-  /// (`ProjectImportDoors.importPictureRun`), every picture of it waited for
-  /// as the picked one is — one that never arrives is named and left out.
+  /// A picture through a picture's door, as its row answers — the ordinary
+  /// image path, and a run's span that keeps one picture ([_placeRun]).
+  Future<bool> _placePicture(
+    String picture,
+    ImportFileSettings settings, {
+    String? sourcePath,
+  }) => widget.session.importDoors.importImageFile(
+    path: picture,
+    destination: settings.into,
+    rasterize: settings.bake,
+    fit: settings.fit,
+    copyIntoProject: settings.mode == ImportFileMode.keepInside,
+    inFrame: settings.inFrame,
+    outFrame: settings.outFrame,
+    spot: widget.spot,
+    sourcePath: sourcePath,
+  );
+
+  /// [path]'s numbered run as its span keeps it ([_runKeptOf]): two
+  /// pictures or more through the run's door
+  /// (`ProjectImportDoors.importPictureRun`) as one layer's frames, one
+  /// through a picture's ([_placePicture]) — alone, as a picture always
+  /// came in, whichever picture IN and OUT stood on. Every picture is
+  /// waited for as the picked one is: one that never arrives is named and
+  /// left out.
   Future<bool> _placeRun(
     String path,
-    ParsedCelLayer run,
+    List<ParsedCel> kept,
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
     final folder = File(path).parent.path;
     final files = <({String path, String label})>[];
-    for (final cel in run.cells) {
+    for (final cel in kept) {
       final file = '$folder/${cel.file}';
       // Every picture of the run reads before it is placed, the law the
       // picked one already went through ([_placeFiles]).
@@ -1000,16 +1032,29 @@ class _ImportDialogState extends State<ImportDialog> {
       }
       files.add((path: file, label: cel.label));
     }
+    final settings = _settingsFor(path);
+    if (files.length == 1) {
+      return _placePicture(files.single.path, settings);
+    }
     return widget.session.importDoors.importPictureRun(
       files: files,
-      name: run.symbol,
-      settings: _settingsFor(path),
+      name: _runOf(path)!.symbol,
+      settings: settings,
       spot: widget.spot,
       onRenderProgress: fileReport.rendered,
       onCelFailed: fileReport.failed.add,
     );
   }
 
+  /// A MOVIE's door (미디어 배치 라운드 6). What lands is the 「소리」
+  /// answer — the picture, the picture with its sound on the SE rows, or
+  /// the sound alone, which is also what an SE row's empty cell takes
+  /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
+  /// [importMovieParts] — the cell used to be answered HERE, straight to a
+  /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
+  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
+  /// counts for it — under the run's one wait window ([_runImport]).
+  /// ↩️It stood behind a wait window of its own, one for every movie.
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
@@ -1233,6 +1278,9 @@ class _ImportDialogState extends State<ImportDialog> {
     final settings = previewPath == null
         ? const ImportFileSettings()
         : _settingsFor(previewPath);
+    // A picture in a numbered run is previewed as its run, and the
+    // transport's IN/OUT are the run's (F-282, 시안 ④).
+    final previewRun = previewPath == null ? null : _runFilesOf(previewPath);
     final rows = [for (final path in _files) _tableRow(path)];
     final columns = _tableColumns();
     return LayoutBuilder(
@@ -1282,10 +1330,13 @@ class _ImportDialogState extends State<ImportDialog> {
                 key: const ValueKey<String>('import-preview'),
                 session: widget.session,
                 path: previewPath,
+                run: previewRun,
                 opensAsSound:
                     previewPath != null && _landsAsSound(previewPath),
-                inFrame: settings.inFrame,
-                outFrame: settings.outFrame,
+                inFrame: previewRun != null ? settings.runIn : settings.inFrame,
+                outFrame: previewRun != null
+                    ? settings.runOut
+                    : settings.outFrame,
                 // The ends appear wherever they act: on what gets placed,
                 // and on what gets registered, which comes in as its piece
                 // ([_registerFiles]). 🪦Registrations went without them
@@ -1306,11 +1357,17 @@ class _ImportDialogState extends State<ImportDialog> {
                   }
                   _setSettings(
                     [previewPath],
-                    (current) => current.copyWith(
-                      inFrame: start,
-                      outFrame: end,
-                      clearOut: end == null,
-                    ),
+                    (current) => previewRun != null
+                        ? current.copyWith(
+                            runIn: start,
+                            runOut: end,
+                            clearRunOut: end == null,
+                          )
+                        : current.copyWith(
+                            inFrame: start,
+                            outFrame: end,
+                            clearOut: end == null,
+                          ),
                   );
                 },
               ),
@@ -1468,10 +1525,10 @@ class _ImportDialogState extends State<ImportDialog> {
   );
 
   /// THE 「옵션」 COLUMN — what only some kinds of file are asked, each on
-  /// its own row: a numbered run's (the run as one layer's frames, or the
-  /// file alone), a Photoshop document's (its layers kept, or merged), a
-  /// movie's with a sound (its picture and sound, the picture alone, the
-  /// sound alone).
+  /// its own row: a numbered run's (the span the preview's IN/OUT keep of
+  /// it, said and not asked), a Photoshop document's (its layers kept, or
+  /// merged), a movie's with a sound (its picture and sound, the picture
+  /// alone, the sound alone).
   ///
   /// 🗣️유저 2026-10-09 (F-282): 「psd같은 다 해당안되는것같은건 그냥 psd라는
   /// 항목이 없어지게 하고싶은데 … BG의 해당위치에 레이어 보존 레이어
@@ -1485,7 +1542,6 @@ class _ImportDialogState extends State<ImportDialog> {
     id: 'option',
     label: AppText.strings.imOptions,
     values: [
-      ...NumberedRun.values,
       PsdPlaceMode.expand,
       PsdPlaceMode.merge,
       MovieParts.pictureAndSound,
@@ -1494,19 +1550,12 @@ class _ImportDialogState extends State<ImportDialog> {
     ],
     valuesFor: _optionAnswers,
     labelOf: (value) => switch (value) {
-      final NumberedRun run => importRunLabel(run),
       final PsdPlaceMode psd => importPsdLabel(psd),
       final MovieParts parts => importMoviePartsLabel(parts),
       _ => '',
     },
-    // The cell names the run it would bring (🗣️I-76-Q1: 「「A1–A3 (3장)」
-    // 처럼 이어지는 그림의 수가 보이고」).
-    wordOf: (path, value) => switch ((_runOf(path), value)) {
-      (final run?, NumberedRun.together) => AppText.strings.imRunSpan(
-        '${run.symbol}${run.cells.first.label}',
-        '${run.symbol}${run.cells.last.label}',
-        run.cells.length,
-      ),
+    wordOf: (path, value) => switch (value) {
+      _RunSpan() => _runSpanWord(path),
       _ => null,
     },
     valueOf: _optionAnswerOf,
@@ -1526,7 +1575,6 @@ class _ImportDialogState extends State<ImportDialog> {
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => switch (value) {
-        final NumberedRun run => settings.copyWith(run: run),
         final PsdPlaceMode psd => settings.copyWith(psd: psd),
         final MovieParts parts => settings.copyWith(movieParts: parts),
         _ => settings,
@@ -1536,7 +1584,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// What [path]'s row may answer in the 「옵션」 column: its own kind's.
   List<Object?> _optionAnswers(String path) => switch (_optionAsked(path)) {
-    _OptionAsked.run => NumberedRun.values,
+    _OptionAsked.run => const [_RunSpan()],
     _OptionAsked.psd => const [PsdPlaceMode.expand, PsdPlaceMode.merge],
     _OptionAsked.sound => const [
       MovieParts.pictureAndSound,
@@ -1550,11 +1598,32 @@ class _ImportDialogState extends State<ImportDialog> {
   Object? _optionAnswerOf(String path) {
     final settings = _settingsFor(path);
     return switch (_optionAsked(path)) {
-      _OptionAsked.run => settings.run,
+      _OptionAsked.run => const _RunSpan(),
       _OptionAsked.psd => settings.psd,
       _OptionAsked.sound => settings.movieParts,
       null => null,
     };
+  }
+
+  /// The span a run's row keeps, as its 「옵션」 cell says it: 「A2–A3 (2장)」
+  /// for two pictures or more, the picture's own name for one.
+  ///
+  /// 🗣️I-76-Q1: 「「A1–A3 (3장)」 처럼 이어지는 그림의 수가 보이고」 · F-282
+  /// 시안 ④: 「연번은 들어갈 범위만(A2–A3)」.
+  String? _runSpanWord(String path) {
+    final run = _runOf(path);
+    final kept = _runKeptOf(path);
+    if (run == null || kept == null) {
+      return null;
+    }
+    String name(ParsedCel cel) => '${run.symbol}${cel.label}';
+    return kept.length == 1
+        ? name(kept.single)
+        : AppText.strings.imRunSpan(
+            name(kept.first),
+            name(kept.last),
+            kept.length,
+          );
   }
 
   /// Which question the 「옵션」 column asks [path]'s row, if any — only of

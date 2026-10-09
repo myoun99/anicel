@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
@@ -20,6 +21,7 @@ import '../media/document_preview_panel.dart';
 import '../media/media_run.dart';
 import '../media/open_viewer_document.dart';
 import '../media/page_rasters.dart';
+import '../media/picture_run_document.dart';
 import '../media/viewer_page_loading.dart';
 import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
@@ -73,6 +75,7 @@ class ImportPreview extends StatefulWidget {
     this.audioSpeed = (numerator: 1, denominator: 1),
     this.sound,
     this.opensAsSound = false,
+    this.run,
   });
 
   /// The session the window imports into: the census its pages are counted
@@ -121,6 +124,13 @@ class ImportPreview extends StatefulWidget {
   /// the frames its trim is counted in, not the picture that does not.
   final bool opensAsSound;
 
+  /// The pictures of the numbered run [path] is part of, in order — null
+  /// for a file in none. A run is paged through as one document
+  /// ([PictureRunDocument]), and its IN/OUT pick the pictures that come in
+  /// (F-282, 유저 2026-10-09: 「연번은 들어갈 범위만(A2–A3) — 미리보기의
+  /// IN/OUT, 동영상과 같은 법」).
+  final List<String>? run;
+
   /// The narrowest this zone lays out: the transport's own minimum. The
   /// window gives the file table the rest.
   static const double minimumWidth = TransportBar.minimumWidth;
@@ -136,6 +146,7 @@ class _ImportPreviewState extends State<ImportPreview>
   ViewerDocument? _document;
   String? _loadedPath;
   bool _loadedAsSound = false;
+  List<String>? _loadedRun;
 
   /// Whether the file is still being opened: the zone says it is loading
   /// until it lands, or turns out to be nothing this window reads.
@@ -170,7 +181,9 @@ class _ImportPreviewState extends State<ImportPreview>
   @override
   void didUpdateWidget(ImportPreview old) {
     super.didUpdateWidget(old);
-    if (old.path != widget.path || old.opensAsSound != widget.opensAsSound) {
+    if (old.path != widget.path ||
+        old.opensAsSound != widget.opensAsSound ||
+        !listEquals(old.run, widget.run)) {
       unawaited(_load());
     }
   }
@@ -201,11 +214,17 @@ class _ImportPreviewState extends State<ImportPreview>
   Future<void> _load() async {
     final path = widget.path;
     final asSound = widget.opensAsSound;
-    if (path == _loadedPath && asSound == _loadedAsSound) {
+    final run = widget.run;
+    bool stillAsked() =>
+        _loadedPath == path &&
+        _loadedAsSound == asSound &&
+        listEquals(_loadedRun, run);
+    if (stillAsked()) {
       return;
     }
     _loadedPath = path;
     _loadedAsSound = asSound;
+    _loadedRun = run;
     _close();
     _opening = path != null;
     if (path == null) {
@@ -219,7 +238,9 @@ class _ImportPreviewState extends State<ImportPreview>
     final kind = asSound ? MediaAssetKind.audio : mediaAssetKindForPath(key);
     ViewerDocument? document;
     try {
-      document = kind == null
+      document = run != null
+          ? await PictureRunDocument.open(run, hold: widget.holdBytes)
+          : kind == null
           ? null
           : await openViewerDocument(
               kind,
@@ -234,7 +255,7 @@ class _ImportPreviewState extends State<ImportPreview>
       // for. What cannot be imported is already named in the footer.
       document = null;
     }
-    if (!mounted || _loadedPath != path || _loadedAsSound != asSound) {
+    if (!mounted || !stillAsked()) {
       unawaited(document?.dispose());
       return;
     }
@@ -293,7 +314,12 @@ class _ImportPreviewState extends State<ImportPreview>
     final shown = document == null || document.pageCount == 0
         ? null
         : document;
-    final path = _loadedPath;
+    final run = _loadedRun;
+    // A run's plate names the picture stood on (the mockup: 「A2.png ·
+    // 2 / 3」); anything else's, its file.
+    final path = run != null && shown != null
+        ? run[_page.clamp(0, run.length - 1)]
+        : _loadedPath;
     final sound = _sound != null;
     return DocumentPreviewPanel(
       keyPrefix: 'import-preview',

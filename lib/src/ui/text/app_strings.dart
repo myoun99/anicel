@@ -1279,8 +1279,6 @@ enum AppStrings {
   String get imPictureAndSound => _s('imPictureAndSound');
   String get imPictureOnly => _s('imPictureOnly');
   String get imSoundOnly => _s('imSoundOnly');
-  String get imRunTogether => _s('imRunTogether');
-  String get imRunAlone => _s('imRunAlone');
   String imRunSpan(String first, String last, int count) => _s(
     'imRunSpanTemplate',
   )
@@ -2424,8 +2422,6 @@ enum AppStrings {
     'imPictureAndSound': 'Picture + sound',
     'imPictureOnly': 'Picture only',
     'imSoundOnly': 'Sound only',
-    'imRunTogether': 'Together',
-    'imRunAlone': 'This file only',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'On',
     'commonOff': 'Off',
@@ -3762,8 +3758,6 @@ enum AppStrings {
     'imPictureAndSound': '絵 + 音',
     'imPictureOnly': '絵のみ',
     'imSoundOnly': '音のみ',
-    'imRunTogether': 'まとめて',
-    'imRunAlone': 'このファイルのみ',
     'imRunSpanTemplate': '{first}–{last}（{n}枚）',
     'commonOn': 'オン',
     'commonOff': 'オフ',
@@ -5209,8 +5203,6 @@ enum AppStrings {
     'imPictureAndSound': '그림 + 소리',
     'imPictureOnly': '그림만',
     'imSoundOnly': '소리만',
-    'imRunTogether': '함께',
-    'imRunAlone': '이 파일만',
     'imRunSpanTemplate': '{first}–{last} ({n}장)',
     'commonOn': '켬',
     'commonOff': '끔',
@@ -6766,8 +6758,6 @@ enum AppStrings {
     'imPictureAndSound': 'Image + son',
     'imPictureOnly': 'Image seule',
     'imSoundOnly': 'Son seul',
-    'imRunTogether': 'Ensemble',
-    'imRunAlone': 'Ce fichier seul',
     'imRunSpanTemplate': '{first}–{last} ({n})',
     'commonOn': 'Oui',
     'commonOff': 'Non',
@@ -8160,8 +8150,6 @@ enum AppStrings {
     'imPictureAndSound': '画面 + 声音',
     'imPictureOnly': '仅画面',
     'imSoundOnly': '仅声音',
-    'imRunTogether': '一起',
-    'imRunAlone': '仅此文件',
     'imRunSpanTemplate': '{first}–{last}（{n}张）',
     'commonOn': '开',
     'commonOff': '关',

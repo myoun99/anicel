@@ -20,6 +20,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -164,35 +165,82 @@ void main() {
     }
   });
 
-  testWidgets('this file only: the picture comes in alone, as it always '
-      'did', (tester) async {
+  /// Stands the preview's IN on picture [from] and its OUT on [to] — one-
+  /// based, as the transport shows them — for the row it previews.
+  Future<void> span(WidgetTester tester, int from, int to) async {
+    await settleLoadedPages(tester);
+    for (final (end, at) in [('in', from), ('out', to)]) {
+      await tester.tap(find.byKey(ValueKey<String>('transport-$end')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(ValueKey<String>('transport-$end-input')),
+        '$at',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settleLoadedPages(tester);
+    }
+  }
+
+  // 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
+  // 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
+  // ↩️「함께 / 이 파일만」 in the cell.
+  testWidgets('the preview pages through the run — its transport counts the '
+      'run\'s pictures', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!]);
+    await settleLoadedPages(tester);
+
+    expect(
+      tester.widget<TransportBar>(find.byType(TransportBar)).frameCount,
+      3,
+      reason: 'A1 · A2 · A3, a page each',
+    );
+  });
+
+  testWidgets('IN and OUT keep a span of the run: A2–A3 come in as one '
+      'layer of those two', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    final cell = find.byKey(ValueKey<String>('import-cell-option-${files['A1']}'));
-    await tester.ensureVisible(cell);
-    await settleLoadedPages(tester);
-    await tester.tap(cell);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-option-alone')),
-    );
-    await tester.pumpAndSettle();
+    await span(tester, 2, 3);
+
     expect(
       cellText(tester, 'option', files['A1']!),
-      AppText.strings.imRunAlone,
+      AppText.strings.imRunSpan('A2', 'A3', 2),
     );
-
     final added = await place(tester, s);
 
     expect(added, hasLength(1));
-    expect(added.single.name, isNot('A'), reason: 'the file\'s own layer');
-    expect(added.single.frames, hasLength(1));
+    expect(added.single.name, 'A');
+    expect([for (final frame in added.single.frames) frame.name], ['2', '3']);
+  });
+
+  testWidgets('IN and OUT on ONE picture: that picture comes in alone, as a '
+      'picture always did — whichever one they stood on', (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!]);
+    await span(tester, 2, 2);
+
+    expect(cellText(tester, 'option', files['A1']!), 'A2');
     expect(
-      s.repository.requireProject().mediaAssetByPath(
-        normalizedMediaPath(files['A2']!),
-      ),
+      cellText(tester, 'bake', files['A1']!),
+      AppText.strings.commonOff,
+      reason: 'one picture answers its own bake',
+    );
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1));
+    expect(added.single.name, 'A2', reason: 'the picture\'s own layer');
+    expect(added.single.frames, hasLength(1));
+    final project = s.repository.requireProject();
+    expect(
+      project.mediaAssetByPath(normalizedMediaPath(files['A2']!)),
+      isNotNull,
+      reason: 'drawn from its file, it is kept — as any picture placed',
+    );
+    expect(
+      project.mediaAssetByPath(normalizedMediaPath(files['A1']!)),
       isNull,
-      reason: 'nothing of the run but this file came in',
+      reason: 'nothing of the run but that picture came in',
     );
   });
 

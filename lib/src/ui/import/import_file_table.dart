@@ -86,9 +86,9 @@ class ImportColumn<T> {
   final void Function(Iterable<String> paths, T value) onPick;
 
   /// What a row's cell says for its answer when the row has more to say
-  /// than the answer's [labelOf] — null where it has not. 🗣️I-76-Q1: the
-  /// 「연번」 cell names the run it brings, 「A1–A3 (3장)」, and its popup
-  /// still answers 「함께 · 이 파일만」.
+  /// than the answer's [labelOf] — null where it has not. 🗣️I-76-Q1 ·
+  /// F-282 시안 ④: a numbered run's cell names the span it brings,
+  /// 「A2–A3 (2장)」 — picked on the preview, so its one answer is that word.
   final String? Function(String path, T value)? wordOf;
 
   /// The word [path]'s cell shows.

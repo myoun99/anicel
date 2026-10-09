@@ -613,8 +613,6 @@ void main() {
     'imPictureAndSound': (s) => s.imPictureAndSound,
     'imPictureOnly': (s) => s.imPictureOnly,
     'imSoundOnly': (s) => s.imSoundOnly,
-    'imRunTogether': (s) => s.imRunTogether,
-    'imRunAlone': (s) => s.imRunAlone,
     'bakeProgressRunning': (s) => s.bakeProgressRunning,
     'bakeProgressDone': (s) => s.bakeProgressDone,
     'pasteProgressRunning': (s) => s.pasteProgressRunning,

@@ -1,3 +1,4 @@
+import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart' show ImportDestination;
@@ -69,15 +70,6 @@ enum MovieParts {
   sound,
 }
 
-/// What of a picture's NUMBERED RUN comes in — the 「연번」 column: `A1`
-/// with its `A2` · `A3` … as one layer's frames, or this file alone.
-///
-/// 🗣️I-76-Q1 (유저 2026-10-08): 「창의 그 파일 줄에서 고른다(기본: 함께)」.
-enum NumberedRun {
-  together,
-  alone,
-}
-
 /// One row's answers.
 class ImportFileSettings {
   const ImportFileSettings({
@@ -92,7 +84,8 @@ class ImportFileSettings {
     this.inFrame = 0,
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
-    this.run = NumberedRun.together,
+    this.runIn = 0,
+    this.runOut,
     this.intoPool = false,
   });
 
@@ -134,9 +127,21 @@ class ImportFileSettings {
   /// that has a sound ([importSoundAllowed]).
   final MovieParts movieParts;
 
-  /// What of a picture's numbered run comes in (the 「연번」 column) — asked
-  /// only of a picture that is part of one.
-  final NumberedRun run;
+  /// Which pictures of a NUMBERED RUN come in — the run's IN/OUT, picked on
+  /// the preview's transport as a movie's span is, the run's pictures its
+  /// pages; [runOut] null means to the run's last picture. Read only of a
+  /// picture that is part of a run (`celRunOf`). Two or more come in as one
+  /// layer's frames; one comes in alone.
+  ///
+  /// 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
+  /// 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
+  /// ↩️「함께 / 이 파일만」 (I-76-Q1, 10-08).
+  ///
+  /// ⛔Not [inFrame]/[outFrame]: those trim the FILE — a trimmed file is
+  /// kept inside and comes in as its piece — and a run's span trims no
+  /// file. One pair answering both would be two questions in one field.
+  final int runIn;
+  final int? runOut;
 
   bool get isTrimmed => inFrame > 0 || outFrame != null;
 
@@ -150,7 +155,9 @@ class ImportFileSettings {
     int? outFrame,
     bool clearOut = false,
     MovieParts? movieParts,
-    NumberedRun? run,
+    int? runIn,
+    int? runOut,
+    bool clearRunOut = false,
     bool? intoPool,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
@@ -161,7 +168,8 @@ class ImportFileSettings {
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
-    run: run ?? this.run,
+    runIn: runIn ?? this.runIn,
+    runOut: clearRunOut ? null : (runOut ?? this.runOut),
     intoPool: intoPool ?? this.intoPool,
   );
 
@@ -176,7 +184,8 @@ class ImportFileSettings {
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.movieParts == movieParts &&
-      other.run == run &&
+      other.runIn == runIn &&
+      other.runOut == runOut &&
       other.intoPool == intoPool;
 
   @override
@@ -189,7 +198,8 @@ class ImportFileSettings {
     inFrame,
     outFrame,
     movieParts,
-    run,
+    runIn,
+    runOut,
     intoPool,
   );
 }
@@ -312,9 +322,9 @@ ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
 /// expanded PSD IS its pixels — 「one of them baked means all of them are」
-/// (the user's rule). So is a numbered run that comes in [together]: a
-/// layer's reference names one file, and a run is many — the cut folder
-/// those files come from always bakes.
+/// (the user's rule). So is a numbered run whose span keeps two pictures
+/// or more ([together]): a layer's reference names one file, and a run is
+/// many — the cut folder those files come from always bakes.
 bool importBakeLocked({
   required bool isPsd,
   required bool placing,
@@ -354,8 +364,9 @@ ImportFileSettings resolvedImportSettings(
   required bool lasting,
   ImportLayerSpot? spot,
 
-  /// Whether [settings]' file is part of a numbered run (`celRunOf`).
-  bool inRun = false,
+  /// How many pictures the numbered run [settings]' file is part of holds
+  /// (`celRunOf`) — null for a file in none.
+  int? runLength,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
   final movieParts = importMovieParts(settings.movieParts, spot);
@@ -373,7 +384,9 @@ ImportFileSettings resolvedImportSettings(
             placing: placing,
             psd: psd,
             spot: spot,
-            together: inRun && settings.run == NumberedRun.together,
+            together:
+                runLength != null &&
+                importRunSpan(settings, runLength).count > 1,
           ));
   final mode = importModeAllowed(
     mode: settings.mode,
@@ -439,11 +452,14 @@ String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
 String importOnOffLabel(bool on) =>
     on ? AppText.strings.commonOn : AppText.strings.commonOff;
 
-/// The 「연번」 column's two answers.
-String importRunLabel(NumberedRun run) => switch (run) {
-  NumberedRun.together => AppText.strings.imRunTogether,
-  NumberedRun.alone => AppText.strings.imRunAlone,
-};
+/// The pictures of a run [runLength] long that [settings]' span keeps
+/// ([ImportFileSettings.runIn] · [ImportFileSettings.runOut]) — the one
+/// clamp every IN/OUT reads ([KeptSpan]).
+KeptSpan importRunSpan(ImportFileSettings settings, int runLength) => KeptSpan(
+  length: runLength,
+  inFrame: settings.runIn,
+  outFrame: settings.runOut,
+);
 
 /// The 「소리」 column's three answers: its 끔 and 켬 as they always read,
 /// and the sound alone.
