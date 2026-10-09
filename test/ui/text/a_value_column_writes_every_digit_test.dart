@@ -45,6 +45,15 @@ void main() {
       unit: EffectParameterUnit.pixels,
     );
     expect(formatEffectLaneValue(spec, 12), '12.00 px');
+    const number = EffectParameterSpec(
+      id: 'n',
+      label: 'N',
+      minimum: -10000,
+      maximum: 10000,
+      defaultValue: 0,
+      unit: EffectParameterUnit.number,
+    );
+    expect(formatEffectLaneValue(number, 3), '3.00');
     expect(
       formatTransformLaneValue(
         'position',
@@ -60,10 +69,10 @@ void main() {
       '-3.50°',
     );
     const tag = SeNameTag(
-      style: TextCelStyle(fontSize: 12, letterSpacing: 0.04),
+      style: TextCelStyle(fontSize: 12, letterSpacing: 0.1),
     );
     expect(formatSeNameTagLaneValue(seNameTagSizeLaneId, tag), '12.00');
-    expect(formatSeNameTagLaneValue(seNameTagTrackingLaneId, tag), '0.04');
+    expect(formatSeNameTagLaneValue(seNameTagTrackingLaneId, tag), '0.10');
   });
 
   test('a scrubbed lane writes them too — what it commits is what it '
