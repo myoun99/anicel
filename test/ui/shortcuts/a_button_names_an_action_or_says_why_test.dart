@@ -36,8 +36,6 @@ enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
 const ledger = <String, Why>{
   // ── OWED ────────────────────────────────────────────────────────────
   // The tool library's.
-  "brush/brush_preset_panel.dart | 'brush-preset-import-button'": Why.owed,
-  "brush/brush_preset_panel.dart | 'brush-preset-save-button'": Why.owed,
   'brush/guide_panels.dart | addKey': Why.owed,
   "brush/text_tool_settings.dart | 'text-tool-delete-text'": Why.owed,
   // The panels' own pills.

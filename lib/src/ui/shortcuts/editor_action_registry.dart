@@ -507,6 +507,114 @@ List<EditorActionDefinition> _railLegendActions() {
   ];
 }
 
+/// The brush library's options menu (⋯) and the two buttons beside it as
+/// actions — pressed in the library of the tool in hand, as its own row or
+/// button would be (`BrushLibraryKeys`).
+///
+/// 🗣️I-40 (유저 2026-09-18 · I-40-Q1 10-08): the editing screen's command
+/// buttons and menu rows. Named as the rail legend's rows are: by their own
+/// words where they say what they do (「새 그룹」 · 「선택한 브러시 삭제」),
+/// and with the menu's name first where they need it — a view switch's
+/// word alone says nothing of what it switches (「브러시 옵션: 이름」).
+abstract final class BrushLibraryActionIds {
+  static const tipIcon = 'brush-library-tip-icon';
+  static const strokePreview = 'brush-library-stroke-preview';
+  static const name = 'brush-library-name';
+  static const folderIcon = 'brush-library-folder-icon';
+  static const folderName = 'brush-library-folder-name';
+  static const newGroup = 'brush-library-new-group';
+  static const renameGroup = 'brush-library-rename-group';
+  static const deleteGroup = 'brush-library-delete-group';
+  static const renameBrush = 'brush-library-rename-brush';
+  static const deleteBrush = 'brush-library-delete-brush';
+  static const exportBrush = 'brush-library-export-brush';
+  static const exportGroup = 'brush-library-export-group';
+  static const reset = 'brush-library-reset';
+  static const importBrushes = 'brush-library-import';
+  static const saveHeldBrush = 'brush-library-save-held-brush';
+}
+
+EditorActionDefinition _brushLibraryAction(
+  String id,
+  String Function(AppLanguage language) name, {
+  bool menuRow = true,
+}) => EditorActionDefinition.composed(
+  id: id,
+  name: name,
+  category: 'Brush Library',
+  defaultActivators: const [],
+  menuRow: menuRow,
+);
+
+List<EditorActionDefinition> _brushLibraryActions() {
+  AppStrings s(AppLanguage language) => AppStrings.of(language);
+  String inMenu(AppLanguage language, String word) =>
+      '${s(language).brBrushOptions}: $word';
+  return [
+    // The two buttons left of the ⋯, in their order.
+    _brushLibraryAction(
+      BrushLibraryActionIds.importBrushes,
+      (l) => s(l).brImportBrushes,
+      menuRow: false,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.saveHeldBrush,
+      (l) => s(l).brSaveAsPreset,
+      menuRow: false,
+    ),
+    // The menu's rows, in its order.
+    _brushLibraryAction(
+      BrushLibraryActionIds.tipIcon,
+      (l) => inMenu(l, s(l).brTipIcon),
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.strokePreview,
+      (l) => inMenu(l, s(l).brStrokePreview),
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.name,
+      (l) => inMenu(l, s(l).brName),
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.folderIcon,
+      (l) => inMenu(l, s(l).brFolderIcon),
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.folderName,
+      (l) => inMenu(l, s(l).brFolderName),
+    ),
+    _brushLibraryAction(BrushLibraryActionIds.newGroup, (l) => s(l).brNewGroup),
+    _brushLibraryAction(
+      BrushLibraryActionIds.renameGroup,
+      (l) => s(l).brRenameGroup,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.deleteGroup,
+      (l) => s(l).brDeleteGroup,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.renameBrush,
+      (l) => s(l).brRenameSelected,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.deleteBrush,
+      (l) => s(l).brDeleteSelected,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.exportBrush,
+      (l) => s(l).brExportSelected,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.exportGroup,
+      (l) => s(l).brExportGroup,
+    ),
+    _brushLibraryAction(
+      BrushLibraryActionIds.reset,
+      (l) => s(l).brResetLibrary,
+    ),
+  ];
+}
+
 String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
     AppStrings.of(
       language,
@@ -1641,6 +1749,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._addEffectActions(),
   // The rail legend's rows, under the bar: its columns from left to right.
   ..._railLegendActions(),
+  // The brush library's ⋯ and the two buttons beside it — before the
+  // settings menu's rows, which close the registry.
+  ..._brushLibraryActions(),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
   // nothing and is no action; the rows under it are.

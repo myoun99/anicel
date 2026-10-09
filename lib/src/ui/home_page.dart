@@ -930,9 +930,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
     // a row of a menu is pressed AS the row: built the way its menu builds
     // it, and pressed only where the menu would let it be. The rows are the
-    // top strip's, the timeline bar's and the rail legend's — the bar's and
-    // the legend's those of the panel being worked in, as every key on them
-    // speaks to it.
+    // top strip's, the timeline bar's, the rail legend's and the brush
+    // library's — the bar's and the legend's those of the panel being
+    // worked in, as every key on them speaks to it, and the library's that
+    // of the tool in hand.
     if (definition?.menuRow ?? false) {
       pressFlyoutRow([
         ..._topStrip().menuRows(context),
@@ -943,6 +944,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         // The rail legend's, as that panel's header opens them — counted
         // on the rows it shows (RailLegends).
         ..._session.railLegends.rowsOf(_session.workingPanel),
+        // The brush library's ⋯, as that tool's panel opens it.
+        ..._brushKeys.menuRowsOf(_brushTool.value.tool),
       ], actionId);
       return;
     }
@@ -1025,6 +1028,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workspaceBar.toggleCameraView();
       case EditorActionIds.regionFold:
         _panelsMenu.toggleRegionFolded();
+      // The two buttons beside the brush library's ⋯ — those of the tool
+      // in hand's library, as its rows are.
+      case BrushLibraryActionIds.importBrushes:
+        _brushKeys.importBrushes(_brushTool.value.tool);
+      case BrushLibraryActionIds.saveHeldBrush:
+        _brushKeys.saveHeldBrush(_brushTool.value.tool);
       // The film verbs, pressed by key — each through the button it names on
       // the panel being worked in (I-19), behind the very gate that button
       // reads: a key that fires on a row with nothing to do is a no-op, not
