@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/fill_reference_button.dart';
@@ -435,16 +436,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// The strip itself — its plate and its twelve slots.
   ///
-  /// ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
-  /// a tap recognizer in the arena so scroll slop over a row behaves the
-  /// way it always has. The painted cells do the identical thing for the
-  /// identical reason.
-  Widget _surface(BuildContext context, ColorScheme colorScheme) => InkWell(
+  /// ⛔Its tap is held in the arena and answers nothing, which is not
+  /// decoration: scroll slop over a row behaves the way it always has
+  /// ([ArenaTapHold]). The painted cells do the identical thing for the
+  /// identical reason. No hover glow on the ROW surface (UI-R24 #6):
+  /// selection speaks through the background alone; only the buttons may
+  /// brighten.
+  Widget _surface(BuildContext context, ColorScheme colorScheme) => ArenaTapHold(
     key: ValueKey<String>(_rowKey),
-    onTap: () {},
-    // No hover glow on the ROW surface (UI-R24 #6): selection speaks
-    // through the background alone; only the buttons may brighten.
-    hoverColor: Colors.transparent,
     child: Container(
       width: _width,
       height: _height,

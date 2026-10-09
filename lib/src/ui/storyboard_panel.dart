@@ -103,6 +103,7 @@ import 'timeline/layer_row_drag.dart'
         layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
+import 'input/arena_tap_hold.dart';
 import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -2930,17 +2931,16 @@ class _StoryboardLabelShell extends StatelessWidget {
 
   Widget _surface(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return InkWell(
+    return ArenaTapHold(
       // The row BODY, not a control: 'storyboard-se-label-',
       // 'storyboard-transition-label-' and 'storyboard-track-select-' are
       // decided in every_button_claims_its_press_test (a drag from here is
       // the row's reorder, not a scroll).
       key: selectKey,
-      // ⛔A NO-OP, the timeline row's own: the pick is the region's above,
-      // and this holds a tap recognizer in the arena so scroll slop over a
-      // row behaves the way it always has. Null keeps a display-only row
-      // inert, as it was.
-      onTap: onTap == null ? null : () {},
+      // ⛔The timeline row's own: the pick is the region's above, and this
+      // holds a tap in the arena so scroll slop over a row behaves the way
+      // it always has. A display-only row holds none, inert as it was.
+      holds: onTap != null,
       child: Container(
         key: rowKey,
         width: StoryboardPanel.railWidthIn(context),
