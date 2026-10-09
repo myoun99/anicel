@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
@@ -126,9 +128,15 @@ class TimelineViewCluster extends StatelessWidget {
         ? pixelsPerFrame >= TimelineZoomLimits.maxPixelsPerFrame
         : pixelsPerFrame <= _minPixelsPerFrame;
     final enabled = onPixelsPerFrameChanged != null && !atBound;
+    final action = zoomIn
+        ? EditorActionIds.timelineZoomIn
+        : EditorActionIds.timelineZoomOut;
     return AppIconButton(
       keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-      tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
+      // The registry's name, in the program's language. ↩️「Zoom In」 and
+      // 「Zoom Out」 stood here in English everywhere until I-40 (10-09).
+      tooltip: editorActionLabel(action),
+      shortcuts: [action],
       icon: Icon(zoomIn ? Icons.zoom_in : Icons.zoom_out),
       onPressed: enabled
           ? () => onPixelsPerFrameChanged!(

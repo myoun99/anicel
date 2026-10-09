@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
+
+/// The camera view switch's press — and its key's (I-40).
+void toggleCameraView(ValueNotifier<bool> enabled) {
+  enabled.value = !enabled.value;
+}
 
 /// The CAMERA VIEW toggle that sits beside a command bar's transport
 /// (R27 #1, unified across panels by R28 #1).
@@ -36,9 +43,14 @@ class CameraViewToggleButton extends StatelessWidget {
       // on-state, so no hand-mixed color lives here.
       builder: (context, isOn, _) => AppIconButton(
         keyValue: keyValue,
-        tooltip: isOn ? 'Camera view (on)' : 'Camera view',
+        // ↩️「Camera view (on)」 and its twin stood here in English in
+        // every language until I-40's round on the bar found them (10-09).
+        tooltip: isOn
+            ? AppText.strings.cameraViewOn
+            : AppText.strings.cameraViewOff,
+        shortcuts: const [EditorActionIds.cameraViewToggle],
         isSelected: isOn,
-        onPressed: () => notifier.value = !isOn,
+        onPressed: () => toggleCameraView(notifier),
         icon: const Icon(Icons.videocam_outlined),
       ),
     );

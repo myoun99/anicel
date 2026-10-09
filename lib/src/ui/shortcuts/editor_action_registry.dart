@@ -595,6 +595,9 @@ abstract final class EditorActionIds {
   static const layerDown = 'layer-down';
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
+
+  /// The sill's camera view switch (I-40).
+  static const cameraViewToggle = 'camera-view-toggle';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
@@ -620,6 +623,12 @@ abstract final class EditorActionIds {
   static const frameToggleMark = 'frame-toggle-mark';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
+
+  /// The timeline bar's view buttons (I-40): the zoom − and + of the panel
+  /// being worked in, and the timeline's ⇄ X-sheet.
+  static const timelineZoomIn = 'timeline-zoom-in';
+  static const timelineZoomOut = 'timeline-zoom-out';
+  static const timelineOrientationToggle = 'timeline-orientation-toggle';
 
   /// 🗣️I-19 (유저 2026-09-12): 「여러 단축키 기존 버튼에 연결. 우선
   /// 컨트롤c,v는 각각 타임라인 공용알약의 복사/링크붙여넣기로 연결 …
@@ -1272,6 +1281,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
   ),
   const EditorActionDefinition(
+    id: EditorActionIds.cameraViewToggle,
+    label: 'Toggle Camera View',
+    category: 'View',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCcw,
     label: 'Rotate Canvas View Left',
     category: 'View',
@@ -1421,6 +1436,26 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.timelinePullBlocks,
     label: 'Pull Blocks',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  // 「타임라인 줌」 — the user's own name for this cluster on both panels
+  // (I-57).
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineZoomIn,
+    label: 'Timeline Zoom In',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineZoomOut,
+    label: 'Timeline Zoom Out',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineOrientationToggle,
+    label: 'Timeline / X-sheet',
     category: 'Timeline',
     defaultActivators: [],
   ),

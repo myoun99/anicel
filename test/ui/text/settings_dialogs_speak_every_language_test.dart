@@ -267,7 +267,14 @@ void main() {
   /// flip, straighten, fit and 1:1, and the bar's loop. Their buttons keep
   /// the words they wore; each action is answered in the other four
   /// languages by id. The ceiling had one line of slack (117) when it came.
-  const untranslatedElsewhere = 122;
+  ///
+  /// 126 (I-40, the timeline bar, 2026-10-09): the English rows of four new
+  /// registry actions — the timeline zoom's − and +, the ⇄ X-sheet and the
+  /// camera view — each answered in the other four languages by id. ★The
+  /// bar's six English tooltips the round translated (「Zoom In」, 「Show
+  /// X-sheet」, 「Camera view (on)」 and their twins) were never in this
+  /// count: each was one arm of a ternary, which the scan does not read.
+  const untranslatedElsewhere = 126;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

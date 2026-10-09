@@ -42,15 +42,9 @@ const ledger = <String, Why>{
   'brush/sheet_canvas_panel.dart | '
           "'\${brush.keyPrefix}-brush-toggle-button'":
       Why.owed,
-  'camera/camera_view_toggle_button.dart | keyValue': Why.owed,
   "media/media_pool_panel.dart | 'media-import-button'": Why.owed,
   "media/media_viewer_tab_host.dart | _key('open-file-button')": Why.owed,
   "media/media_viewer_tab_host.dart | _key('close-file-button')": Why.owed,
-  "timeline/timeline_panel.dart | 'timeline-orientation-toggle-button'":
-      Why.owed,
-  'timeline/timeline_view_cluster.dart | zoomIn ? '
-          "'timeline-zoom-in-button' : 'timeline-zoom-out-button'":
-      Why.owed,
   "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'": Why.owed,
   "timesheet_tab_host.dart | 'timesheet-format-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'": Why.owed,

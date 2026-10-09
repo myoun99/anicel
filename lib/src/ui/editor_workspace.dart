@@ -156,6 +156,9 @@ import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
+import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
+import 'workspace/workspace_bar_commands.dart';
+import 'camera/camera_view_toggle_button.dart' show toggleCameraView;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -216,6 +219,7 @@ class EditorWorkspace extends StatefulWidget {
     this.confirm,
     this.history,
     this.layerNav,
+    this.barCommands,
     this.onInvokeAction,
     this.flipHud,
     this.brushKeys,
@@ -285,6 +289,10 @@ class EditorWorkspace extends StatefulWidget {
   /// the handler because it owns the timeline view state (row filter,
   /// hidden sections) the displayed-row walk must respect.
   final TimelineLayerNavCommands? layerNav;
+
+  /// The shell-owned channel to the bar buttons whose state this holds —
+  /// the zooms, the ⇄ and the camera view (I-40).
+  final WorkspaceBarCommands? barCommands;
 
   /// PEN-7b: the shell's action funnel for the canvas flip touch slot.
   final void Function(String actionId)? onInvokeAction;
@@ -871,6 +879,39 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.value = value;
   }
 
+  /// One press of [panel]'s zoom − or + — the step its view cluster's
+  /// button takes, through the same writer (I-40's key).
+  void _stepZoom(WorkingPanel panel, {required bool zoomIn}) {
+    final framesPerSecond =
+        widget.session.projectSettings.projectFrameRate.countingBase;
+    double stepped(double from) => TimelineZoomLimits.stepped(
+      from,
+      zoomIn: zoomIn,
+      framesPerSecond: framesPerSecond,
+    );
+    switch (panel) {
+      case WorkingPanel.timeline:
+        _setTimelineZoom(stepped(_timelinePixelsPerFrame.value));
+      case WorkingPanel.storyboard:
+        _setStoryboardZoom(stepped(_storyboardPixelsPerFrame.value));
+    }
+  }
+
+  /// The timeline's ⇄ — its button's one writer.
+  void _setTimelineOrientation(TimelineOrientation orientation) {
+    _timelineOrientation.value = orientation;
+    _flipHud.syncFlipAxis();
+  }
+
+  /// One press of [panel]'s ⇄ (I-40's key). Only the timeline's bar has
+  /// one: the conte's answers nothing, as its missing button would.
+  void _toggleOrientation(WorkingPanel panel) {
+    if (panel != WorkingPanel.timeline) {
+      return;
+    }
+    _setTimelineOrientation(_timelineOrientation.value.toggled);
+  }
+
   /// The storyboard's V rows share ONE height (user's rule), kept here so
   /// it survives a tab switch the way the zoom does — as the splitter or a
   /// saved layout SET it. What the rows are drawn at is
@@ -1158,6 +1199,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       },
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
+    widget.barCommands?.bind(
+      this,
+      zoomStep: _stepZoom,
+      toggleOrientation: _toggleOrientation,
+      toggleCameraView: () => toggleCameraView(_views._cameraViewEnabled),
+    );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
@@ -1660,6 +1707,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _subViewer.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind(this);
+    widget.barCommands?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
     _layoutPersistence._layoutSaveTimer?.cancel();

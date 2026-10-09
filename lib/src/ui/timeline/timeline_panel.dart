@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
@@ -574,9 +576,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
         attachArrows[layer.id] = placement;
       }
     }
-    final nextOrientation = widget.orientation == TimelineOrientation.horizontal
-        ? TimelineOrientation.vertical
-        : TimelineOrientation.horizontal;
+    final nextOrientation = widget.orientation.toggled;
     final showToolbar = widget.timelineActionToolbar != null;
 
     // text-scale-rail-rows: the row is as tall as its words need where it
@@ -735,10 +735,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
                   // then got written down as the bar's measured height.
                   AppIconButton(
                     keyValue: 'timeline-orientation-toggle-button',
+                    // ↩️「Show X-sheet」 and 「Show timeline」 stood here in
+                    // English in every language until I-40 (10-09).
                     tooltip:
                         widget.orientation == TimelineOrientation.horizontal
-                        ? 'Show X-sheet'
-                        : 'Show timeline',
+                        ? AppText.strings.tlShowXSheet
+                        : AppText.strings.tlShowTimeline,
+                    shortcuts: const [
+                      EditorActionIds.timelineOrientationToggle,
+                    ],
                     onPressed: () =>
                         widget.onOrientationChanged(nextOrientation),
                     icon: const Icon(Icons.swap_horiz),

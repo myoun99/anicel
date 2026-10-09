@@ -86,6 +86,7 @@ import 'session/editor_app_settings.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
+import 'workspace/workspace_bar_commands.dart';
 import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
@@ -317,6 +318,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// selection (F-86); the workspace binds the handler (it owns the row
   /// filter view state).
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
+  final WorkspaceBarCommands _workspaceBar = WorkspaceBarCommands();
 
   /// The flip HUD's state (R10 hand-feel): shown while a one-finger flip
   /// is live. Shell-owned like the nav channel above — a live-drag verb
@@ -1013,6 +1015,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _history.redo();
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
+      case EditorActionIds.cameraViewToggle:
+        _workspaceBar.toggleCameraView();
       // The film verbs, pressed by key — each through the button it names on
       // the panel being worked in (I-19), behind the very gate that button
       // reads: a key that fires on a row with nothing to do is a no-op, not
@@ -1050,6 +1054,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (_session.blockShift.canPullBlocks(currentRow: row)) {
           _session.blockShift.pullBlocks(1, currentRow: row);
         }
+      case EditorActionIds.timelineZoomIn:
+        _workspaceBar.zoomStep(_session.workingPanel, zoomIn: true);
+      case EditorActionIds.timelineZoomOut:
+        _workspaceBar.zoomStep(_session.workingPanel, zoomIn: false);
+      case EditorActionIds.timelineOrientationToggle:
+        _workspaceBar.toggleOrientation(_session.workingPanel);
       case EditorActionIds.canvasRotateCcw:
         _canvasViewCommands.rotateBy(-15);
       case EditorActionIds.canvasRotateCw:
@@ -1395,6 +1405,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     confirm: _confirm,
                                     history: _history,
                                     layerNav: _timelineLayerNav,
+                                    barCommands: _workspaceBar,
                                     flipHud: _flipHud,
                                     brushKeys: _brushKeys,
                                     onInvokeAction: _invokeAction,
