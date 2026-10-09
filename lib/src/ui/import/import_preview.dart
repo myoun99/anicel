@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../models/project_frame_rate.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -20,7 +19,7 @@ import '../media/media_run.dart';
 import '../media/open_viewer_document.dart';
 import '../media/page_rasters.dart';
 import '../media/viewer_page_loading.dart';
-import '../media/viewer_raster_budget.dart';
+import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_render_tier.dart';
 import '../media/viewer_sound.dart';
 import '../theme/app_theme.dart';
@@ -146,24 +145,15 @@ class _ImportPreviewState extends State<ImportPreview>
   /// ([RenderCaches.viewerRasterBytesByViewer]).
   static const String _censusKey = 'import-preview';
 
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => _document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: widget.sound ?? ViewerSound.ofSession(widget.session),
     report: (bytes) =>
         widget.session.renderCaches.viewerRasterBytesByViewer[_censusKey] =
             bytes,
   );
-
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: widget.sound ?? ViewerSound.ofSession(widget.session),
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   @override
   void initState() {

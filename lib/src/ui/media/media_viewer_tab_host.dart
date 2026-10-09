@@ -14,7 +14,6 @@ import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -45,7 +44,7 @@ import 'media_run.dart';
 import 'open_viewer_document.dart';
 import 'page_rasters.dart';
 import 'viewer_page_loading.dart';
-import 'viewer_raster_budget.dart';
+import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
 import '../widgets/app_icon_button.dart';
@@ -365,20 +364,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// had to ask which was live. See [ViewerDocument].
   ViewerDocument? _document;
 
-  /// The document's pages as rasters, under this device's budget — see
-  /// [PageRasters].
-  ///
-  /// ⚠️Built with the State, so a test that wants a tight budget sets
-  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
-  /// pumping the same widget again reuses this State and this budget.
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => _document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  /// The document's pages and the run that turns them — see
+  /// [ViewerPagesAndRun].
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: _sound,
     // The census cannot reach into this State, so the total goes to it —
     // see [RenderCaches.viewerRasterBytesByViewer].
     report: (bytes) =>
@@ -386,14 +376,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 .viewerId] =
             bytes,
   );
-
-  /// The run: the timer turning pages, the sound beside them, and the law
-  /// that the whole transport waits — see [MediaRun].
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: _sound,
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   // A book's pages one under another, memoized with the document.
   final _stack = IdentityMemo<PageStack>();

@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/media/viewer_document.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
@@ -19,7 +18,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../media/media_run.dart';
 import '../media/page_rasters.dart';
 import '../media/viewer_page_loading.dart';
-import '../media/viewer_raster_budget.dart';
+import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_render_tier.dart';
 import '../media/viewer_sound.dart';
 import '../widgets/empty_state_text.dart';
@@ -110,24 +109,15 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
   /// The renders out with the document, for [debugSettle].
   final List<Future<void>> _asks = [];
 
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: ViewerSound.ofSession(widget.session),
     report: (bytes) =>
         widget.session.renderCaches.viewerRasterBytesByViewer[_censusKey] =
             bytes,
   );
-
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: ViewerSound.ofSession(widget.session),
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   late int _page = widget.page;
 
