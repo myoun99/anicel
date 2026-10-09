@@ -179,7 +179,13 @@ void main() {
     expect(tester.exportPreviewPageSize, const Size(32, 18));
 
     await openTab(tester, 'image');
-    await press(tester, 'export-size-canvas');
+    // The size is picked from the list its button opens — pumped through
+    // the list's own motion, not settled: the panel may be saying it is
+    // loading, and that never settles.
+    await press(tester, 'export-size');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(keyed('export-size-canvas'));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(tester.exportPreviewPageSize, const Size(8, 8));
 
     await openTab(tester, 'cels');

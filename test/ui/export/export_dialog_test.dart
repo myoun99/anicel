@@ -421,10 +421,21 @@ void main() {
       );
       await pickStillPng(tester);
       await tester.pickExportProjectScope();
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      await tester.tap(size);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('export-size-camera')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey<String>('export-size-canvas')),
         findsNothing,
+        reason: 'a project scope forces the camera frame',
       );
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -516,17 +527,26 @@ void main() {
         'project scope) and the pick writes the spec', (tester) async {
       final state = await pumpDialog(tester, exportSession());
       await switchTab(tester, 'image');
-      final canvasChip = find.byKey(
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      expect(tester.widget<PanelFlyoutButton>(size).label, 'Camera 32×18');
+      await tester.tap(size);
+      await tester.pumpAndSettle();
+      final canvasRow = find.byKey(
         const ValueKey<String>('export-size-canvas'),
       );
-      await tester.ensureVisible(canvasChip);
-      expect(canvasChip, findsOneWidget);
+      expect(canvasRow, findsOneWidget);
       // The one canvas size on the table is the active cut's own.
       expect(find.textContaining('Canvas 8×8'), findsOneWidget);
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.camera);
-      await tester.tap(canvasChip);
-      await tester.pump();
+      await tester.tap(canvasRow);
+      await tester.pumpAndSettle();
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.canvas);
+      expect(
+        tester.widget<PanelFlyoutButton>(size).label,
+        'Canvas 8×8',
+        reason: 'the button says the answer in force, whole',
+      );
     });
   });
 
@@ -565,7 +585,7 @@ void main() {
       expect(statusText(tester), '2프레임 내보냈습니다.');
     });
 
-    testWidgets('image tab: the file label, the size pills and the file '
+    testWidgets('image tab: the file label, the size list and the file '
         'sentence', (tester) async {
       final state = await pumpDialog(
         tester,
@@ -574,11 +594,14 @@ void main() {
       );
       await switchTab(tester, 'image');
       expect(find.text('파일'), findsOneWidget);
-      await tester.ensureVisible(
-        find.byKey(const ValueKey<String>('export-size-canvas')),
-      );
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      expect(tester.widget<PanelFlyoutButton>(size).label, '카메라 32×18');
+      await tester.tap(size);
+      await tester.pumpAndSettle();
       expect(find.textContaining('캔버스 8×8'), findsOneWidget);
-      expect(find.textContaining('카메라 32×18'), findsOneWidget);
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
 
       await tester.runAsync(state.export);
       await tester.pump();
