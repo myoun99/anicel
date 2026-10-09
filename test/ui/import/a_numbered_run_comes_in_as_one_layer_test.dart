@@ -105,10 +105,10 @@ void main() {
     await open(tester, [files['A1']!, files['B1']!]);
 
     expect(
-      cellText(tester, 'run', files['A1']!),
+      cellText(tester, 'option', files['A1']!),
       AppText.strings.imRunSpan('A1', 'A3', 3),
     );
-    expect(cellText(tester, 'run', files['B1']!), '—');
+    expect(cellText(tester, 'option', files['B1']!), '—');
   });
 
   testWidgets('a run\'s word is never cut — its column is as wide as the '
@@ -120,9 +120,9 @@ void main() {
       ],
     ))!;
     await open(tester, [paths.first]);
-    final cell = find.byKey(ValueKey<String>('import-cell-run-${paths.first}'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-${paths.first}'));
     expect(
-      cellText(tester, 'run', paths.first),
+      cellText(tester, 'option', paths.first),
       AppText.strings.imRunSpan('ABCD1', 'ABCD123', 2),
       reason: '⛔전제: a word longer than either answer\'s',
     );
@@ -140,7 +140,7 @@ void main() {
     await open(tester, [path]);
 
     expect(
-      find.byKey(const ValueKey<String>('import-column-run')),
+      find.byKey(const ValueKey<String>('import-column-option')),
       findsNothing,
       reason: 'a column stands only when some row has to answer it',
     );
@@ -180,17 +180,17 @@ void main() {
       'did', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    final cell = find.byKey(ValueKey<String>('import-cell-run-${files['A1']}'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-${files['A1']}'));
     await tester.ensureVisible(cell);
     await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-run-alone')),
+      find.byKey(const ValueKey<String>('import-option-option-alone')),
     );
     await tester.pumpAndSettle();
     expect(
-      cellText(tester, 'run', files['A1']!),
+      cellText(tester, 'option', files['A1']!),
       AppText.strings.imRunAlone,
     );
 

@@ -93,9 +93,21 @@ class ImportFileSettings {
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
     this.run = NumberedRun.together,
+    this.intoPool = false,
   });
 
   final ImportFileMode mode;
+
+  /// Whether the file only REGISTERS — the 넣을 곳 column's 「미디어」: it
+  /// goes into the media pool and is placed nowhere. [into] answers where
+  /// a placed file goes, a separate question.
+  ///
+  /// 🗣️F-282 (유저 2026-10-09): 「그냥 풀/타임라인 이걸 하나로 합치는게
+  /// 통일일거같아서. 넣을곳을 그래서 새 레이어/컷/미디어 이런식?」 — ↩️it was
+  /// the window's ONE batch-wide answer, a 「배치 — 풀 / 타임라인」 strip
+  /// above the table, so one window could not place one file and register
+  /// another.
+  final bool intoPool;
 
   /// Whether the placed layer is BAKED into cels instead of drawing from the
   /// file — the layer's question, asked only where something is placed.
@@ -138,6 +150,7 @@ class ImportFileSettings {
     bool clearOut = false,
     MovieParts? movieParts,
     NumberedRun? run,
+    bool? intoPool,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -148,6 +161,7 @@ class ImportFileSettings {
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
     run: run ?? this.run,
+    intoPool: intoPool ?? this.intoPool,
   );
 
   @override
@@ -161,7 +175,8 @@ class ImportFileSettings {
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.movieParts == movieParts &&
-      other.run == run;
+      other.run == run &&
+      other.intoPool == intoPool;
 
   @override
   int get hashCode => Object.hash(
@@ -174,6 +189,7 @@ class ImportFileSettings {
     outFrame,
     movieParts,
     run,
+    intoPool,
   );
 }
 
@@ -397,10 +413,14 @@ String importModeLabel(ImportFileMode mode) => switch (mode) {
 /// ⛔ONE spelling of the fit, for the file table and the cut-folder column
 /// alike. The column used to write its own ('Keep aspect') while the table
 /// wrote 'Keep' — the very word the file column used for carrying.
+///
+/// 🗣️유저 2026-10-09 (F-282): 「맞춤은 1:1을 원본크기로 이름 바꾼다던가
+/// 비율유지를 비율유지 늘림 이라던가 이름 정확하게 알기쉽게」 — 원본 크기 ·
+/// 비율 유지 늘림 · 비율 무시 늘림. ↩️1:1 · 비율 유지 · 늘이기.
 String importFitLabel(MediaFitMode fit) => switch (fit) {
   MediaFitMode.stretch => AppText.strings.imFitStretch,
   MediaFitMode.contain => AppText.strings.imFitContain,
-  MediaFitMode.none => '1:1',
+  MediaFitMode.none => AppText.strings.imFitOriginal,
 };
 
 /// 「새 레이어」 · 「새 컷」 — the pair the user named (2026-09-11: 「넣을곳 뉴
@@ -426,8 +446,11 @@ String importRunLabel(NumberedRun run) => switch (run) {
 
 /// The 「소리」 column's three answers: its 끔 and 켬 as they always read,
 /// and the sound alone.
+/// 🗣️유저 2026-10-09 (F-282, 시안 ③): 그림 + 소리 / 그림만 / 소리만 — the
+/// answers said as what comes in. ↩️켬 / 끔 / 소리만, under a 「소리」 column
+/// of its own.
 String importMoviePartsLabel(MovieParts parts) => switch (parts) {
-  MovieParts.picture => importOnOffLabel(false),
-  MovieParts.pictureAndSound => importOnOffLabel(true),
+  MovieParts.picture => AppText.strings.imPictureOnly,
+  MovieParts.pictureAndSound => AppText.strings.imPictureAndSound,
   MovieParts.sound => AppText.strings.imSoundOnly,
 };

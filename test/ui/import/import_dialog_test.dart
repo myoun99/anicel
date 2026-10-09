@@ -240,7 +240,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('import-place-timeline')),
+      find.byKey(const ValueKey<String>('import-column-into')),
       findsOneWidget,
     );
     expect(
@@ -326,39 +326,52 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('the browser pins the pool — the other door is shown, not '
-        'offered', (tester) async {
+    testWidgets('the browser pins the pool — every row\'s 넣을 곳 says it, and '
+        'opens nothing', (tester) async {
       final path = await tester.runAsync(writeMovie);
       await pumpWindow(tester, path!, poolOnly: true);
+      final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-place-timeline')),
+      expect(
+        find.descendant(of: into, matching: find.text(AppText.strings.panelMedia)),
+        findsOneWidget,
       );
+      await tester.tap(into, warnIfMissed: false);
       await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('import-option-into-newLayer')),
+        findsNothing,
+        reason: 'the door answered: no placement is offered',
+      );
       expect(
         find.byKey(const ValueKey<String>('import-column-bake')),
         findsNothing,
-        reason:
-            'the chip is disabled: pressing it changes nothing — a placement '
-            'would have asked the movie whether it bakes',
+        reason: 'and a placement would have asked the movie whether it bakes',
       );
     });
 
-    testWidgets('every other entrance still starts on a placement', (
-      tester,
-    ) async {
+    testWidgets('every other entrance still starts on a placement — and '
+        'offers the pool on the row', (tester) async {
       final path = await tester.runAsync(() => writePng('drop.png'));
       await pumpWindow(tester, path!, poolOnly: false);
+      final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
 
       expect(
-        find.byKey(const ValueKey<String>('import-place-timeline')),
+        find.descendant(
+          of: into,
+          matching: find.text(AppText.strings.imIntoNewLayer),
+        ),
         findsOneWidget,
       );
+      await tester.tap(into);
+      await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey<String>('import-place-pool')),
+        find.byKey(const ValueKey<String>('import-option-into-pool')),
         findsOneWidget,
         reason: 'the pool is on offer from here too — one window',
       );
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('import-column-file')),
         findsOneWidget,
@@ -952,14 +965,14 @@ void main() {
       );
 
       expect(
-        cellText(tester, 'psd', psd),
-        'Expand',
+        cellText(tester, 'option', psd),
+        'Keep layers',
         reason: 'a PSD comes in as its layers (F-306-Q1)',
       );
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
       expect(cellText(tester, 'file', psd), 'Keep');
 
-      await pickCell(tester, column: 'psd', path: psd, option: 'merge');
+      await pickCell(tester, column: 'option', path: psd, option: 'merge');
 
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
       expect(cellText(tester, 'file', psd), 'Keep');
@@ -1353,7 +1366,7 @@ void main() {
       reason: 'and every other answer is still the row\'s to give',
     );
     expect(
-      find.byKey(const ValueKey<String>('import-place-timeline')),
+      find.byKey(const ValueKey<String>('import-column-into')),
       findsOneWidget,
     );
   });

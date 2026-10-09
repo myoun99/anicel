@@ -296,11 +296,11 @@ void main() {
     await settle(
       tester,
       () => tester.any(
-        find.byKey(ValueKey<String>('import-cell-sound-$movie')),
+        find.byKey(ValueKey<String>('import-cell-option-$movie')),
       ),
     );
 
-    expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
+    expect(cellText(tester, 'option', movie), AppText.strings.imPictureAndSound);
   });
 
   testWidgets('「소리」 stands for a PICKED movie too — one the door hands over '
@@ -330,11 +330,11 @@ void main() {
     await settle(
       tester,
       () => tester.any(
-        find.byKey(ValueKey<String>('import-cell-sound-$movie')),
+        find.byKey(ValueKey<String>('import-cell-option-$movie')),
       ),
     );
 
-    expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
+    expect(cellText(tester, 'option', movie), AppText.strings.imPictureAndSound);
   });
 
   testWidgets('🎯a movie that BAKES counts its frames into the run\'s % — under '
@@ -451,18 +451,18 @@ void main() {
     );
     await settle(
       tester,
-      () => tester.any(find.byKey(ValueKey<String>('import-cell-sound-$movie'))),
+      () => tester.any(find.byKey(ValueKey<String>('import-cell-option-$movie'))),
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await tester.ensureVisible(cell);
     await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-sound-sound')),
+      find.byKey(const ValueKey<String>('import-option-option-sound')),
     );
     await tester.pumpAndSettle();
-    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
       cellText(tester, 'fit', movie),
       '—',
@@ -526,10 +526,10 @@ void main() {
         return SeCellSpot(layerId: seRow, trackFrame: start, shownCell: 0);
       },
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await settle(tester, () => tester.any(cell));
 
-    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
       tester.widget<InkWell>(cell).onTap,
       isNull,
@@ -571,9 +571,9 @@ void main() {
         frameIndex: 0,
       ),
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await settle(tester, () => tester.any(cell));
-    expect(cellText(tester, 'sound', movie), 'Off', reason: 'its seed');
+    expect(cellText(tester, 'option', movie), 'Picture only', reason: 'its seed');
 
     await tester.ensureVisible(cell);
     await settleLoadedPages(tester);
@@ -581,7 +581,7 @@ void main() {
     await tester.pumpAndSettle();
 
     InkWell option(String value) => tester.widget<InkWell>(
-      find.byKey(ValueKey<String>('import-option-sound-$value')),
+      find.byKey(ValueKey<String>('import-option-option-$value')),
     );
     expect(option('sound').onTap, isNull);
     expect(option('picture').onTap, isNotNull);

@@ -45,6 +45,7 @@ class ImportColumn<T> {
     required this.onPick,
     this.style = ImportColumnStyle.choice,
     this.wordOf,
+    this.valuesFor,
   });
 
   /// What the keys are built from — the same in every language, which the
@@ -53,8 +54,18 @@ class ImportColumn<T> {
   final String label;
   final ImportColumnStyle style;
 
-  /// Every answer, in the order the popup lists them.
+  /// Every answer, in the order the popup lists them — and the header's
+  /// popup, which speaks for every row, lists all of them.
   final List<T> values;
+
+  /// The answers THIS row is asked, when a column asks different rows
+  /// different things — the 넣을 곳 of a picture and of a sound (F-282).
+  /// Null where every row is asked [values].
+  final List<T> Function(String path)? valuesFor;
+
+  /// The answers [path]'s cell offers.
+  List<T> answersFor(String path) => valuesFor?.call(path) ?? values;
+
   final String Function(T value) labelOf;
 
   /// This row's current answer.
@@ -506,6 +517,7 @@ class _HeaderButton extends StatelessWidget {
         ? () => _openColumnPopup(
             context,
             column: column,
+            answers: column.values,
             targets: paths,
             enabledFor: (value) => true,
             current: null,
@@ -567,10 +579,9 @@ class _OptionCell extends StatelessWidget {
     // 🪦The example used to be「a movie is never carried」. That ceiling
     // died 2026-08-14 — a movie's carry chip is a CHOICE now, starting on
     // Reference, so it is not one of the locked ones.
+    final answers = column.answersFor(path);
     final locked =
-        column.values
-            .where((option) => column.enabledFor(path, option))
-            .length <=
+        answers.where((option) => column.enabledFor(path, option)).length <=
         1;
     final press = !enabled || locked
         ? null
@@ -579,6 +590,7 @@ class _OptionCell extends StatelessWidget {
         : () => _openColumnPopup(
             context,
             column: column,
+            answers: answers,
             targets: targets,
             enabledFor: (option) => column.enabledFor(path, option),
             current: value,
@@ -638,15 +650,16 @@ class _OptionCell extends StatelessWidget {
   }
 }
 
-/// One column's answers, anchored under whatever was pressed.
+/// One column's [answers], anchored under whatever was pressed.
 void _openColumnPopup(
   BuildContext context, {
   required ImportColumn<Object?> column,
+  required List<Object?> answers,
   required Iterable<String> targets,
   required bool Function(Object? value) enabledFor,
   required Object? current,
 }) {
-  final rows = column.values;
+  final rows = answers;
   final text = TextMeasure(context, Theme.of(context).textTheme.labelSmall);
   // A popup row is its word plus its own padding, as a table row is: at a
   // fixed 24px a larger text scale cut every answer in half.
