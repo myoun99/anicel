@@ -130,6 +130,31 @@ Future<void> _dragNames(WidgetTester tester, String from, String to) async {
   await tester.pumpAndSettle();
 }
 
+/// A mouse drag from [from]'s name to [to] in four steps, [held] asked
+/// before the release.
+Future<void> _carry(
+  WidgetTester tester,
+  String from,
+  Offset to, {
+  required void Function() held,
+}) async {
+  final start = tester.getCenter(_name(from));
+  final gesture = await tester.startGesture(
+    start,
+    kind: PointerDeviceKind.mouse,
+  );
+  await tester.pump(const Duration(milliseconds: 16));
+  for (var step = 1; step <= 4; step += 1) {
+    await gesture.moveTo(
+      Offset.lerp(start, Offset(start.dx, to.dy), step / 4)!,
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  held();
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('⛔전제 — the rail shows the rows this file drags between', (
     tester,
@@ -226,5 +251,33 @@ void main() {
     );
     expect(drawn.top, closeTo(over.top, 1));
     expect(drawn.bottom, closeTo(conte.bottom, 1));
+  });
+  testWidgets('🚨an S row carried raises its caret among the S rows alone — '
+      'a conte row\'s drag is another list, its own', (tester) async {
+    await _pump(tester);
+    // The first drag selects S2; the next one, inside it, moves it.
+    final s2 = tester.getCenter(_name('S2'));
+    await _carry(tester, 'S2', s2 + const Offset(0, 3), held: () {});
+
+    await _carry(
+      tester,
+      'S2',
+      tester.getRect(_name('S1')).bottomCenter + const Offset(0, 4),
+      held: () {
+        final carets = find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'timeline-row-caret-',
+              ),
+        );
+        expect(carets, findsOneWidget);
+        expect(
+          (tester.widget(carets).key! as ValueKey<String>).value,
+          endsWith('s1'),
+          reason: 'under S1, the last S row',
+        );
+      },
+    );
   });
 }
