@@ -147,7 +147,9 @@ void main() {
     final playback = s.playbackRig.playback;
     playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    final host = tester.widget(find.byType(MainCanvasBrushHost));
+    final host = tester.widget<MainCanvasBrushHost>(
+      find.byType(MainCanvasBrushHost),
+    );
     final atTheStart = celsOf(stackOf(tester).nodes);
 
     playback.seekToGlobalFrame(5);
@@ -164,7 +166,39 @@ void main() {
       celsOf(s.editingCanvas.playingStack.nodes),
       reason: 'the picture is',
     );
+
     playback.stop();
+    await tester.pump();
+    expect(
+      tester
+          .widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost))
+          .selection
+          ?.toBrushFrameKey(),
+      allOf(
+        isNotNull,
+        s.editingCanvas.activeBrushEditorSelection?.toBrushFrameKey(),
+        isNot(host.selection?.toBrushFrameKey()),
+      ),
+      reason: 'the run\'s end builds the canvas again, on the frame it '
+          'stopped on',
+    );
+    await drain(tester);
+  });
+
+  testWidgets('the picture standing still is the picture the run plays: its '
+      'view is not made again at the run\'s start, nor at its end', (
+    tester,
+  ) async {
+    final (s, _) = await pumpArea(tester);
+    final view = tester.state(find.byType(CanvasLayerStackView));
+
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
+
+    s.playbackRig.playback.stop();
+    await tester.pump();
+    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
     await drain(tester);
   });
 
