@@ -18,7 +18,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
-    show projectWithTimelineDragPreview;
+    show projectWithTimelineDragPreview, timelineDragPreviewCameraTrackFor;
 
 /// 🗣️I-73-camera-row-Q7 (유저 2026-10-09): 「컷 길이 줄이기와 똑같이 — 안쪽
 /// 키 앞에서 멈춤」 · 「OL삭제한다거나 하면 키를 컷 길이 줄이는거랑 동일하게 그
@@ -246,6 +246,14 @@ void main() {
         shown.tracks.single.cuts.first.camera.keyframes.keys,
         [0, 20, 27, 31],
         reason: 'the storyboard draws the project under the preview',
+      );
+      expect(
+        timelineDragPreviewCameraTrackFor(session.dragPreview.value, a)!
+            .position
+            .keys
+            .keys,
+        [0, 20, 27, 31],
+        reason: 'and its camera lanes\' labels read it',
       );
       expect(keysOf(session, a).keys, [0, 20, 27, 29], reason: 'not yet');
 

@@ -559,9 +559,10 @@ List<LayerEffect>? timelineDragPreviewTrackEffectsFor(
 };
 
 /// The CAMERA track [preview] shows for [cutId], or null when it does not
-/// touch that cut's camera — a block move carrying its keys, or a lane edit
-/// of one of its values: what the storyboard's camera lane labels read
-/// while either is in flight (I-73 ④ⓔ, F-195).
+/// touch that cut's camera — a block move carrying its keys, a lane edit
+/// of one of its values, or a length change carrying its end key
+/// ([timelineDragPreviewCarriedCamera]): what the storyboard's camera lane
+/// labels read while one is in flight (I-73 ④ⓔ, F-195).
 TransformTrack? timelineDragPreviewCameraTrackFor(
   TimelineDragPreview? preview,
   CutId cutId,
@@ -572,7 +573,7 @@ TransformTrack? timelineDragPreviewCameraTrackFor(
   LaneEditPreview(:final cameraCutId, :final cameraTrack)
       when cameraCutId == cutId =>
     cameraTrack,
-  _ => null,
+  _ => timelineDragPreviewCarriedCamera(preview, cutId)?.track,
 };
 
 /// The cells [preview] would AUTHOR on [layerId] — not there yet, and
