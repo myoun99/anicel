@@ -348,13 +348,13 @@ void main() {
     final base = row(one, 'A', kind: LayerKind.animation);
     final cel1 = base.frames.firstWhere((cel) => cel.name == '1').id;
     final cel2 = base.frames.firstWhere((cel) => cel.name == '2').id;
-    final a2 = row(one, 'A-2');
+    final a1 = row(one, 'A-1');
     final bg = row(one, 'BG');
 
     expect(inked(session, one, base.id, cel1), 6 * 6, reason: 'top');
     expect(inked(session, one, base.id, cel2), 8 * 8, reason: 'cel 2');
     expect(
-      inked(session, one, a2.id, attachedMirrorCelId(a2.id, cel1)),
+      inked(session, one, a1.id, attachedMirrorCelId(a1.id, cel1)),
       4 * 4,
       reason: 'the layer under the top one, on the attach row',
     );

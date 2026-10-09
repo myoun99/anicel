@@ -643,7 +643,7 @@ final class _Planner {
   final bakes = <_Bake>[];
 
   /// The attach rows as they were made: each animation folder's from the
-  /// top, its shown lines before its hidden ones.
+  /// top.
   final _attaches = <_AttachRow>[];
 
   /// Layers whose blend was already said to have no equivalent.
