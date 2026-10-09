@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -19,7 +19,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// canvas.
 void main() {
   tearDown(() {
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
@@ -100,7 +100,7 @@ void main() {
     final frameBefore = s.currentFrameIndex;
     expect(rows(tester).pixels, 0, reason: 'the premise: at the top');
 
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     await tester.pump();
     await drag(
       tester,
@@ -174,7 +174,7 @@ void main() {
     expect(along().maxScrollExtent, greaterThan(0), reason: 'the premise');
     final before = along().pixels;
 
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     await tester.pump();
     await drag(
       tester,

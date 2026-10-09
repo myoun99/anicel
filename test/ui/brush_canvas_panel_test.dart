@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
@@ -1984,7 +1984,7 @@ void main() {
         'frame — and the wheel click, unmapped by default, drags nothing', (
       tester,
     ) async {
-      addTearDown(() => CanvasPanHold.held.value = false);
+      addTearDown(() => CanvasViewHold.held.value = null);
       final viewports = <CanvasViewport>[];
       await tester.pumpWidget(
         blankPanel(
@@ -2007,7 +2007,7 @@ void main() {
       await dragWith(kMiddleMouseButton);
       expect(viewports, isEmpty, reason: '「잔재 삭제」: the wheel pans nothing');
 
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await dragWith(kPrimaryButton);
       expect(viewports, isNotEmpty);
       expect(viewports.last.panX, 12);
@@ -2482,7 +2482,7 @@ void main() {
     testWidgets('🗣️I-15: the pan hold takes the aim — the outline goes the '
         'moment it is held, a move under it does not bring it back, and '
         'letting go gives it to the next move', (tester) async {
-      addTearDown(() => CanvasPanHold.held.value = false);
+      addTearDown(() => CanvasViewHold.held.value = null);
       await pumpWithTool(tester, CanvasTool.brush);
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
@@ -2494,7 +2494,7 @@ void main() {
       );
       expect(toolCursorShownAt(tester, outline), isNotNull);
 
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await tester.pump();
       expect(
         toolCursorShownAt(tester, outline),
@@ -2509,7 +2509,7 @@ void main() {
         reason: 'a move under the hold aims none',
       );
 
-      CanvasPanHold.held.value = false;
+      CanvasViewHold.held.value = null;
       await tester.pump();
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
       await tester.pump();

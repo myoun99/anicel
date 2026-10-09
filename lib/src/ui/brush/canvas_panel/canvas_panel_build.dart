@@ -138,16 +138,17 @@ class _PanelBuild {
   }
 
   /// What sits on the artwork inside the pointer census — [_toolDeck],
-  /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
-  /// deck takes no pointer at all, so every tool stands down for the pan at
-  /// once, and the hand says what a press will do.
+  /// behind the view hold's gate (I-15 · I-88): while the 「이동」 or the
+  /// 「회전」 key is held the deck takes no pointer at all, so every tool
+  /// stands down for the view at once, and the hand says what a press will
+  /// do.
   ///
   /// The mapped buttons are read INSIDE the gate, with the tools: what one
-  /// holds is a tool, and it stands down for the pan with the rest.
+  /// holds is a tool, and it stands down for the view with the rest.
   /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
   /// layer took it — and after every control floating on the canvas has
   /// claimed its own (pointer-down is dispatched deepest-first).
-  Widget _cursorDeck(BuildContext context) => PanHoldGate(
+  Widget _cursorDeck(BuildContext context) => ViewHoldGate(
     child: Listener(
       behavior: HitTestBehavior.translucent,
       onPointerHover: _state._mappedButtons.hover,
@@ -267,6 +268,8 @@ class _PanelBuild {
       viewport: _state._viewportState._viewport,
       onViewportChanged: _state._viewportState.setViewport,
       rotationEnabled: _state.widget.allowViewRotation,
+      // I-88: the 「회전」 key turns about the middle the turn buttons use.
+      turnAnchor: () => _state._viewportState._viewportCenterAnchor,
       oneFingerAction: _state.widget.oneFingerAction,
       primaryPressPans: !_state.widget.runsTheSelectedTool,
       flipHud: hud,

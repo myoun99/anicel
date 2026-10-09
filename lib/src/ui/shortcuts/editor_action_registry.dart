@@ -708,6 +708,7 @@ abstract final class EditorActionIds {
   /// 🗣️I-15: 「단축키에 이동 추가 … 기본값을 … 스페이스바로」 — a HELD
   /// shortcut ([EditorActionDefinition.hold]).
   static const canvasPanHold = 'canvas-pan-hold';
+  static const canvasRotateHold = 'canvas-rotate-hold';
   static const playbackToggle = 'playback-toggle';
 
   /// The sill transport's 「처음으로」 (F-261).
@@ -995,6 +996,18 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Pan (hold)',
     shelf: ShortcutShelf.view,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
+    hold: true,
+  ),
+  // 🗣️I-88 (유저 2026-10-09): 「키보드유저용 캔버스 쉽게 회전하려고 지금
+  // 스페이스바는 이동이니까 스페이스바+컨트롤상태에선 회전으로 작동하도록」 —
+  // held as the pan is, and a primary drag turns the view about its middle.
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasRotateHold,
+    label: 'Rotate (hold)',
+    shelf: ShortcutShelf.view,
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.space, control: true),
+    ],
     hold: true,
   ),
   const EditorActionDefinition(

@@ -6,7 +6,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -20,7 +20,7 @@ import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   });
 
   void map({CanvasPointerAction? right, CanvasPointerAction? wheel}) {
@@ -153,7 +153,7 @@ void main() {
 
   test('the primary button pans only while the 「이동」 key is held', () {
     expect(canvasPressPans(kPrimaryButton), isFalse);
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     expect(canvasPressPans(kPrimaryButton), isTrue);
     expect(
       canvasPressPans(tipAndBarrel),
@@ -177,7 +177,7 @@ void main() {
   test('a primary press draws — and not while the held pan takes it', () {
     expect(draws(kPrimaryButton), isTrue);
     expect(draws(kPrimaryButton, kind: PointerDeviceKind.stylus), isTrue);
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     expect(
       draws(kPrimaryButton),
       isFalse,

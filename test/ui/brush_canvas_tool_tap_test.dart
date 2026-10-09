@@ -22,7 +22,7 @@ import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
@@ -671,7 +671,7 @@ void main() {
       'and every tool stands down; let go and the same drag draws', (
     tester,
   ) async {
-    addTearDown(() => CanvasPanHold.held.value = false);
+    addTearDown(() => CanvasViewHold.held.value = null);
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -706,14 +706,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     await tester.pump();
     expect(hand, findsOneWidget, reason: 'the hand says what a press does');
     await mouseDrag();
     expect(viewports, isNotEmpty, reason: 'the drag moved the view');
     expect(drawn(), isFalse, reason: 'the brush stood down for the pan');
 
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
     await tester.pump();
     expect(hand, findsNothing);
     viewports.clear();

@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
@@ -53,7 +53,7 @@ import '../helpers/placement_reading.dart';
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   });
 
   for (final ground in _Ground.values) {
@@ -930,7 +930,7 @@ void main() {
     testWidgets('🚨while the 「이동」 key is held every tool stands down for '
         'the pan — a mapped button with them (I-15)', (tester) async {
       final shell = await _Shell.pump(tester, tool: CanvasTool.select);
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await tester.pump();
 
       final right = await tester.startGesture(

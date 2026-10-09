@@ -14,7 +14,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -42,7 +42,7 @@ import '../../helpers/blank_cel.dart';
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   });
 
   final mainPanel = find.byKey(

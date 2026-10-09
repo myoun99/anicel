@@ -10,7 +10,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -334,14 +334,14 @@ void main() {
       reason: 'the pan took the key — it does nothing else',
     );
     await tester.pump();
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     expect(
       find.byKey(const ValueKey<String>('canvas-playback-view')),
       findsNothing,
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.pump();
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
 
     // Playback starts from its button (the playback view mounts). Plain
     // pumps: the playback ticker never lets pumpAndSettle settle.
@@ -373,7 +373,7 @@ void main() {
           'canvas is back to its drawing surface — and no ticker is left '
           'running for the teardown to trip over',
     );
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.pumpAndSettle();
   });

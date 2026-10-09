@@ -150,14 +150,15 @@ class _BrushEditPress {
     // [canvasPressDraws], which the empty cel's press already made
     // ([_BrushEditCelPress.pressAsksForACel]) and this one did not: one
     // algorithm written twice, and the copies had parted.
-    // The 「이동」 key (I-15) stands this view down through `PanHoldGate`,
+    // The 「이동」 key (I-15) stands this view down through `ViewHoldGate`,
     // and a gate takes effect a REBUILD after the key. A press in the same
     // frame as the key still arrives here; it asked about mapped buttons
     // and the primary contact and nothing about the key, so over a cel a
     // stroke began — and the gesture layer above, seeing a stroke, did not
     // pan (the-pan-key-then-an-instant-press-draws, 2026-10-08: found by
     // the 타임라인/콘티 session when the app came to open ON a cel).
-    if (canvasPressPans(canvasPressButtons(event))) {
+    // ↩️I-88: and the 「회전」 key's press, for the same reason.
+    if (canvasPressMovesTheView(canvasPressButtons(event))) {
       return;
     }
     final mapping = canvasMappingFor(

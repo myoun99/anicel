@@ -11,7 +11,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/app_input_settings.dart'
     show AppInput, CanvasTouchDragAction;
-import '../canvas/canvas_pan_hold.dart';
+import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'value_control_pointers.dart';
 
@@ -25,7 +25,7 @@ import 'value_control_pointers.dart';
 /// answered R26-rest-Q2 (2026-09-30): 「캔버스 설정을 그대로 따른다 —
 /// 「없음」이면 거기서도 안 움직인다」. ONE predicate per device, the
 /// canvas's own — [canvasPressPans] for a button, [AppInput.touchDragActionFor]
-/// for a finger, never a copy — and ONE stand-down, [PanHoldGate].
+/// for a finger, never a copy — and ONE stand-down, [ViewHoldGate].
 ///
 /// It hears the press ABOVE the panel (translucent), so it still hears it
 /// while the gate below has every tool standing down, and it claims the
@@ -194,7 +194,7 @@ class _PanelPanDriverState extends State<PanelPanDriver>
       onPointerCancel: _end,
       child: ScrollConfiguration(
         behavior: behavior.copyWith(dragDevices: _devices),
-        child: PanHoldGate(child: widget.child),
+        child: ViewHoldGate(child: widget.child),
       ),
     );
   }

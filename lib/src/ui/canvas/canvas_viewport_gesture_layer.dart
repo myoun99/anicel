@@ -54,6 +54,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.strokeActive = _never,
     this.touchLocked = _never,
     this.rotationEnabled = true,
+    this.turnAnchor,
     this.oneFingerAction,
     this.primaryPressPans = false,
     this.onInvokeAction,
@@ -116,6 +117,11 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// timesheet).
   final bool rotationEnabled;
 
+  /// Where the view turns about under the 「회전」 key (I-88) — the panel's
+  /// middle, the anchor its own turn buttons use — asked as a turn begins.
+  /// Null turns about this layer's middle: a layer pumped on its own.
+  final ViewportPoint Function()? turnAnchor;
+
   /// What ONE finger does here when this host answers the slot itself —
   /// null follows the user's slot ([AppInput.touchDragActionFor]). Two and
   /// three fingers keep the user's slots.
@@ -155,6 +161,14 @@ class _CanvasViewportGestureLayerState
   int? _panPointer;
   Offset? _panStartLocalPosition;
   CanvasViewport? _panStartViewport;
+
+  /// The press turning the view under the 「회전」 key (I-88): its pointer,
+  /// the anchor it turns about, its angle about that anchor when it went
+  /// down, and the view it turns from.
+  int? _turnPointer;
+  ViewportPoint? _turnAnchor;
+  double? _turnStartAngle;
+  CanvasViewport? _turnStartViewport;
   CanvasViewport? _panZoomStartViewport;
 
   /// Non-null once the trackpad rotation crossed the deadzone: the fixed
@@ -259,10 +273,16 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (_panPointer != null || widget.strokeActive()) {
+    if (_panPointer != null || _turnPointer != null || widget.strokeActive()) {
       return;
     }
-    if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
+    if (canvasPressTurns(event.buttons)) {
+      // The 「회전」 key's press is the view's from its down — and on a host
+      // whose content does not turn, nobody's: the tools stood down for it.
+      if (widget.rotationEnabled) {
+        _beginTurn(event.pointer, event.localPosition);
+      }
+    } else if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
       // A pan press is this canvas's gesture from its down: the held key or
       // the mapped button said so before anything moved.
       _beginPan(event.pointer, event.localPosition);
@@ -283,6 +303,41 @@ class _CanvasViewportGestureLayerState
     _holdForTheGesture(pointer);
   }
 
+  void _beginTurn(int pointer, Offset at) {
+    final anchor = widget.turnAnchor?.call() ?? _middle;
+    _turnPointer = pointer;
+    _turnAnchor = anchor;
+    _turnStartAngle = _angleAbout(anchor, at);
+    _turnStartViewport = _liveViewport;
+    _holdForTheGesture(pointer);
+  }
+
+  ViewportPoint get _middle {
+    final size = (context.findRenderObject()! as RenderBox).size;
+    return ViewportPoint(x: size.width / 2, y: size.height / 2);
+  }
+
+  static double _angleAbout(ViewportPoint anchor, Offset at) =>
+      math.atan2(at.dy - anchor.y, at.dx - anchor.x) * 180 / math.pi;
+
+  /// The view turned by the angle the press has swept about the anchor
+  /// since it went down, landing as the twist's does ([_snappedRotation]).
+  void _turnTo(Offset at) {
+    final anchor = _turnAnchor;
+    final startAngle = _turnStartAngle;
+    final start = _turnStartViewport;
+    if (anchor == null || startAngle == null || start == null) {
+      return;
+    }
+    final swept = wrapDegrees(_angleAbout(anchor, at) - startAngle);
+    _emit(
+      start.rotatedAround(
+        nextRotationDegrees: _snappedRotation(start.rotationDegrees + swept),
+        anchor: anchor,
+      ),
+    );
+  }
+
   void _handlePointerMove(PointerMoveEvent event) {
     if (_touchPositions.containsKey(event.pointer)) {
       _touchPositions[event.pointer] = event.localPosition;
@@ -301,6 +356,10 @@ class _CanvasViewportGestureLayerState
       if (_panPointer == null && !widget.strokeActive()) {
         _beginPan(event.pointer, event.localPosition);
       }
+    }
+    if (event.pointer == _turnPointer) {
+      _turnTo(event.localPosition);
+      return;
     }
     if (event.pointer != _panPointer) {
       return;
@@ -330,6 +389,9 @@ class _CanvasViewportGestureLayerState
     }
     if (event.pointer == _panPointer) {
       _clearPan();
+    }
+    if (event.pointer == _turnPointer) {
+      _clearTurn();
     }
   }
 
@@ -981,6 +1043,13 @@ class _CanvasViewportGestureLayerState
     _panPointer = null;
     _panStartLocalPosition = null;
     _panStartViewport = null;
+  }
+
+  void _clearTurn() {
+    _turnPointer = null;
+    _turnAnchor = null;
+    _turnStartAngle = null;
+    _turnStartViewport = null;
   }
 
   void _emit(CanvasViewport viewport) {

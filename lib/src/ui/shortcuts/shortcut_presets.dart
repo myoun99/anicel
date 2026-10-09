@@ -134,9 +134,13 @@ final Map<String, List<SingleActivator>> _clipStudioKeys = {
   EditorActionIds.layerDown: const [
     SingleActivator(LogicalKeyboardKey.bracketLeft, alt: true),
   ],
-  // The hand, held on Space.
+  // The hand, held on Space — and the view's turn on Shift+Space (I-88:
+  // 「Shortcuts usable during operation」, Rotate = Shift + Space + drag).
   EditorActionIds.canvasPanHold: const [
     SingleActivator(LogicalKeyboardKey.space),
+  ],
+  EditorActionIds.canvasRotateHold: const [
+    SingleActivator(LogicalKeyboardKey.space, shift: true),
   ],
   // Rotate/Invert > Rotate Left / Rotate right.
   EditorActionIds.canvasRotateCcw: const [
@@ -272,7 +276,10 @@ final Map<String, List<SingleActivator>> _clipStudioKeys = {
 /// here keeps it: only a key the program gives to one of OUR actions leaves
 /// another ([presetActivators]).
 /// ⚠️`Space` plays (「再生 / 一時停止」), so the pan held on it has no key
-/// under this preset.
+/// under this preset. The program pans on Alt and turns the view on
+/// Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」 page) — a
+/// modifier alone, which no key binding can hold — so the turn keeps
+/// anicel's key here (I-88).
 /// ⚠️MY READINGS, each the nearest command, not one the user named: `Del`
 /// is the program's second Cut (「選択範囲をカット (設定で定義した)」, the
 /// timeline's, as Ctrl+X is), so it cuts here rather than clearing pixels;

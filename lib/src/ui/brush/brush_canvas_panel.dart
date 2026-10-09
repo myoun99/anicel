@@ -54,7 +54,7 @@ import 'promoted_touch_aim_policy.dart' show aimIsPromotedTouch;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
-import '../canvas/canvas_pan_hold.dart';
+import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
@@ -1262,7 +1262,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
-    CanvasPanHold.held.addListener(_onPanHoldChanged);
+    CanvasViewHold.held.addListener(_onViewHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
     _bookState.bind();
@@ -1429,7 +1429,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
     }
-    CanvasPanHold.held.removeListener(_onPanHoldChanged);
+    CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     // What the text tool held lands on the way out, and its channel goes
     // quiet.
@@ -1458,10 +1458,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.dispose();
   }
 
-  /// I-15: the pan hold took the pointer — the tool's aim is nobody's until
+  /// I-15 · I-88: a view hold took the pointer — the tool's aim is nobody's until
   /// it lets go (a pointer that may not drive a tool may not aim it).
-  void _onPanHoldChanged() {
-    if (CanvasPanHold.held.value) {
+  void _onViewHoldChanged() {
+    if (CanvasViewHold.held.value != null) {
       _forgetCanvasPointer();
     }
   }
@@ -1583,8 +1583,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     Offset localPosition, {
     required PointerDeviceKind kind,
   }) {
-    // I-15: nor while the pan hold has the pointer — it drives no tool.
-    if (!AppInput.toolAcceptsPointer(kind) || CanvasPanHold.held.value) {
+    // I-15 · I-88: nor while a view hold has the pointer — it drives no tool.
+    if (!AppInput.toolAcceptsPointer(kind) ||
+        CanvasViewHold.held.value != null) {
       return;
     }
     // 🚨D34: and a MOUSE that a finger produced does not aim either.

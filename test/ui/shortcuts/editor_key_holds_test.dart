@@ -3,10 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 
 /// 🗣️I-15 (유저 2026-09-11): 「단축키에 이동? 추가 … 기본값을 … 스페이스바로
 /// 이동 … 스포이드는 그대로 해서 누르는동안 툴 바뀌도록. 툴 바껴서 해당툴을
@@ -41,7 +42,8 @@ void main() {
     addTearDown(tool.dispose);
     strokeLive = ValueNotifier(false);
     addTearDown(strokeLive.dispose);
-    bindings = EditorShortcutBindings();
+    // The registry's own keys — an install opens on Clip Studio's (I-63-Q5).
+    bindings = EditorShortcutBindings()..setPreset(ShortcutPreset.anicel);
     holds = EditorKeyHolds(
       bindings: bindings,
       tool: tool,
@@ -65,15 +67,56 @@ void main() {
   testWidgets('Space held is the pan: taken whole, repeats and all — and '
       'letting go lets go', (tester) async {
     await pumpRoad(tester);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
 
     expect(await tester.sendKeyDownEvent(LogicalKeyboardKey.space), isTrue);
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     expect(await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space), isTrue);
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
 
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
+  });
+
+  // 🗣️I-88 (유저 2026-10-09): 「지금 스페이스바는 이동이니까
+  // 스페이스바+컨트롤상태에선 회전으로 작동하도록」.
+  testWidgets('Ctrl+Space held turns the view — taken whole, and letting go '
+      'lets go', (tester) async {
+    await pumpRoad(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    expect(await tester.sendKeyDownEvent(LogicalKeyboardKey.space), isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.turn);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(CanvasViewHold.held.value, isNull);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+  });
+
+  testWidgets('the pan and the turn are a STATE of the keys: Ctrl pressed '
+      'under a held Space turns, and let go pans again', (tester) async {
+    await pumpRoad(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    expect(CanvasViewHold.held.value, ViewHold.turn);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
+
+    // A modifier that makes the press neither keeps the hold as it is.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(CanvasViewHold.held.value, isNull);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    expect(
+      CanvasViewHold.held.value,
+      isNull,
+      reason: 'Ctrl with no view key held holds nothing',
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
   });
 
   testWidgets('a focused text field keeps its space bar — no pan', (
@@ -82,7 +125,7 @@ void main() {
     await pumpRoad(tester, focused: () => const TextField(autofocus: true));
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
   });
 
@@ -96,24 +139,24 @@ void main() {
     ]);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     // The character a real keyboard types here — a typed form for letters
     // would take exactly this for Z.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ, character: 'Z');
-    expect(CanvasPanHold.held.value, isFalse, reason: 'Shift+Z is not Z');
+    expect(CanvasViewHold.held.value, isNull, reason: 'Shift+Z is not Z');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyX);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
-    expect(CanvasPanHold.held.value, isTrue, reason: 'X still holds it');
+    expect(CanvasViewHold.held.value, ViewHold.pan, reason: 'X still holds it');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyX);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
   });
 
   // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types): a
@@ -129,9 +172,9 @@ void main() {
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.digit7, character: "'");
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.digit7);
-    expect(CanvasPanHold.held.value, isFalse, reason: 'letting go lets go');
+    expect(CanvasViewHold.held.value, isNull, reason: 'letting go lets go');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
@@ -144,8 +187,8 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space, character: ' ');
     expect(
-      CanvasPanHold.held.value,
-      isFalse,
+      CanvasViewHold.held.value,
+      isNull,
       reason: 'Shift+Space is not Space',
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
@@ -297,12 +340,12 @@ void main() {
     tool.value = tool.value.copyWith(tool: CanvasTool.brush);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     expect(tool.value.tool, CanvasTool.eyedropper, reason: 'fixture');
 
     holds.letGoOfEverything();
 
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     expect(tool.value.tool, CanvasTool.brush, reason: 'the tool it replaced');
     // The releases the other app got are never heard; one that does come
     // back later finds nothing to end.
@@ -334,12 +377,12 @@ void main() {
   testWidgets('a shell that goes away lets go of the pan', (tester) async {
     await pumpRoad(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
 
     holds.dispose();
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
   });
 
   testWidgets('🚨I-7: pointed at another project\'s stroke, the holds wait on '

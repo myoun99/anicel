@@ -22,7 +22,7 @@ import 'package:flutter/gestures.dart';
 
 import '../../models/app_input_settings.dart';
 import '../../services/input/pen_sidecars.dart';
-import 'canvas_pan_hold.dart';
+import 'canvas_view_hold.dart';
 
 /// The buttons to BELIEVE for [event].
 ///
@@ -159,7 +159,8 @@ bool canvasMappedActionDraws(CanvasPointerAction action) =>
 /// held (I-15). The pen tip's contact bit rides along on stylus presses,
 /// so the check is per bit, not equality.
 bool canvasPressPans(int buttons) {
-  if (CanvasPanHold.held.value && canvasPrimaryDown(buttons)) {
+  if (CanvasViewHold.held.value == ViewHold.pan &&
+      canvasPrimaryDown(buttons)) {
     return true;
   }
   final settings = AppInput.settings.value;
@@ -174,13 +175,23 @@ bool canvasPressPans(int buttons) {
   return false;
 }
 
+/// Whether a press with [buttons] TURNS the view: the primary bit while the
+/// 「회전」 key is held (I-88).
+bool canvasPressTurns(int buttons) =>
+    CanvasViewHold.held.value == ViewHold.turn && canvasPrimaryDown(buttons);
+
+/// Whether a press with [buttons] is the VIEW's — it pans or turns it — and
+/// so no tool's.
+bool canvasPressMovesTheView(int buttons) =>
+    canvasPressPans(buttons) || canvasPressTurns(buttons);
+
 /// Whether [event] DRAWS with the armed tool — asked by an empty cel
 /// before it asks the shell for a block, and answered with the readings
 /// the press path makes, in its order, before anything acts.
 ///
 /// A finger draws when its one-finger slot says draw (R27 #15: one that
 /// flips, navigates or does nothing is not drawing — telling it 「no frame
-/// here」 was noise on every page flip). Past that: a press the pan takes
+/// here」 was noise on every page flip). Past that: a press the view takes
 /// draws nothing, a press a mapped button claims draws only when that
 /// mapping does, and anything else draws with the primary contact down.
 ///
@@ -194,7 +205,7 @@ bool canvasPressDraws(
     return AppInput.touchDraws;
   }
   final buttons = canvasPressButtons(event);
-  if (canvasPressPans(buttons)) {
+  if (canvasPressMovesTheView(buttons)) {
     return false;
   }
   final mapping = canvasMappingFor(event, penTailActive: penTailActive);
