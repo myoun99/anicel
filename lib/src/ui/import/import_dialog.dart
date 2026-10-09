@@ -1135,8 +1135,17 @@ class _ImportDialogState extends State<ImportDialog> {
     return true;
   }
 
+  /// Sized as the export window is: the room the screen leaves
+  /// ([AppWindow.fullRoom] — F-282-Q7, 유저 2026-10-09: 「출력창과 같은 법 —
+  /// 화면이 남긴 자리 전체」). ↩️760 × 520, whatever the screen. The
+  /// LayoutBuilder stands OUTSIDE the window: the window owns its dialog, so
+  /// the room is the screen's, not the dialog's.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, screen) => _window(context, AppWindow.fullRoom(screen)),
+  );
+
+  Widget _window(BuildContext context, Size room) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
       // The file's name goes in the TITLE in place mode: the window is
@@ -1146,8 +1155,8 @@ class _ImportDialogState extends State<ImportDialog> {
           ? AppText.strings.imPlaceTitle(mediaFileName(_files.first))
           : AppText.strings.imImport,
       titleIcon: Icons.download_outlined,
-      width: 760,
-      height: 520,
+      width: room.width,
+      height: room.height,
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),

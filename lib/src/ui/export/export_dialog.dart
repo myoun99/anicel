@@ -2795,13 +2795,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// drawer comes back the moment the room does.
   ({double width, double height, bool presetsOpen, bool queueOpen})
   _windowMetrics(BoxConstraints constraints) {
-    // ⚠️The window sits in a Material `Dialog`, whose own insetPadding is
-    // 40 a side horizontally and 24 vertically. Taking the full room means
-    // taking THAT room: ask for more and the window overflows its dialog.
-    const sideInset = 80.0;
-    const verticalInset = 64.0;
-    final availableWidth = constraints.maxWidth - sideInset;
-    final availableHeight = constraints.maxHeight - verticalInset;
+    final room = AppWindow.fullRoom(constraints);
+    final availableWidth = room.width;
+    final availableHeight = room.height;
     var presetsOpen = _presetsOpen;
     var queueOpen = _queueOpen;
     double widthFor() =>

@@ -149,6 +149,24 @@ class AppWindow extends StatelessWidget {
   static const double titleBarHeight = 32;
   static const double tabBarHeight = 30;
 
+  /// The room the screen leaves a window that takes all of it — [screen]
+  /// less the dialog's own inset — as the [width] and [height] to hand it.
+  ///
+  /// ⚠️The window sits in a Material `Dialog`, whose own insetPadding is 40
+  /// a side horizontally and 24 vertically. Taking the full room means
+  /// taking THAT room: ask for more and the window overflows its dialog.
+  ///
+  /// 🗣️The export window takes it (유저 2026-09-16: 「그냥 출력 공용창 크기
+  /// 자체를 더 크게 키우는게 날거같기도? … 어차피 창은 이제 비율기준이니까
+  /// 앱 전체 채워도 문제는없잖아」), and the import window as it does
+  /// (F-282-Q7, 유저 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리 전체」).
+  static Size fullRoom(BoxConstraints screen) => Size(
+    screen.maxWidth - _fullRoomSideInset,
+    screen.maxHeight - _fullRoomVerticalInset,
+  );
+  static const double _fullRoomSideInset = 80;
+  static const double _fullRoomVerticalInset = 64;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
