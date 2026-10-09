@@ -5,12 +5,14 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
+import '../../helpers/adts_from_m4a.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/pcm_movie.dart';
@@ -30,11 +32,13 @@ void main() {
 
   setUp(() {
     QaAudioDecoder.debugResetForTests();
+    QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
   });
 
   tearDown(() {
     QaAudioDecoder.debugResetForTests();
+    QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
   });
 
@@ -204,6 +208,134 @@ void main() {
         fail('sample $index is $got, written ${samples[index]}');
       }
     }
+  }, skip: skip);
+
+  // -------------------------------------------------------------------------
+  // 🚨★★★WHERE A SOUND STARTS (user 10-09, board
+  // sound-lands-on-its-exact-sample-Q3 · Q4). An encoder puts frames of its
+  // own before the sound; the file says how many, and the engine takes
+  // exactly those off — whichever OS stack decoded it. The C range test
+  // pins the MP3 half (a LAME tag, and the standard 1,105 without one).
+
+  test('a movie\'s edit list says where its sound starts — taken to the '
+      'frame, uncompressed so nothing smears', () {
+    final samples = _roomToneThenTone();
+    final decoded = decodeAudioBytes(
+      pcmMovie(samples, edit: (from: 480, keep: 24000)),
+    );
+    if (Platform.isLinux) {
+      expect(decoded, isNull, reason: 'no OS stack to read it here');
+      return;
+    }
+    if (decoded == null && !Platform.isWindows) {
+      markTestSkipped('this OS stack does not read a movie\'s PCM');
+      return;
+    }
+    expect(decoded, isNotNull, reason: 'Media Foundation reads it');
+    expect(decoded!.length, 24000, reason: 'the edit plays 24,000 frames');
+    for (var index = 0; index < 24000 * 2; index += 1) {
+      final got = (decoded.samples[index] * 32768).round();
+      if (got != samples[480 * 2 + index]) {
+        fail('sample $index is $got, written ${samples[480 * 2 + index]}');
+      }
+    }
+  }, skip: skip);
+
+  test('an m4a starts on its sound — the sine on frame 0, not 1,024 frames '
+      'of its encoder\'s later — and runs as long as its edit list says', () {
+    final decoded = decodeAudioFile(fixturePath);
+    if (Platform.isLinux) {
+      expect(decoded, isNull);
+      return;
+    }
+    expect(decoded, isNotNull);
+    expect(
+      _sineLag(decoded!),
+      0,
+      reason: 'the edit list says the sound starts 1,024 frames in',
+    );
+    expect(decoded.length, 22050, reason: 'and plays half a second');
+  }, skip: skip);
+
+  test('a bare .aac has no box to say it in — the standard 1,024 comes off',
+      () {
+    // The m4a's own frames behind ADTS headers: the same 1,024 frames of
+    // its encoder before the sound, and no edit list to say so.
+    final decoded = decodeAudioBytes(adtsFromM4a(fixtureBytes()));
+    if (Platform.isLinux) {
+      expect(decoded, isNull);
+      return;
+    }
+    expect(decoded, isNotNull, reason: 'the OS stack reads ADTS');
+    expect(decoded!.format, QaAudioFormat.os);
+    expect(_sineLag(decoded), 0);
+  }, skip: skip);
+
+  test('a movie this app exported comes back with its sound where it was '
+      'written — it carries no edit list, and none is needed', () {
+    // Media Foundation's encoder writes no edit list, and its sound is
+    // already in place (measured 10-09): the open question Q6 is whether a
+    // file that says nothing gets the standard delay anyway.
+    final encoder = QaVideoEncoder.instance;
+    if (encoder == null || !encoder.isSupported) {
+      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
+      return;
+    }
+    final directory = Directory.systemTemp.createTempSync('qa_export_click');
+    deleteAfterSessionEnds(directory);
+    final path = '${directory.path}${Platform.pathSeparator}click.mp4';
+    const rate = 48000;
+    const clickAt = rate ~/ 4;
+    expect(
+      encoder.open(
+        path: path,
+        width: 64,
+        height: 48,
+        fpsNumerator: 24,
+        fpsDenominator: 1,
+        sampleRate: rate,
+        channels: 2,
+      ),
+      isTrue,
+      reason: encoder.lastError,
+    );
+    final pcm = Int16List(rate * 2);
+    for (var index = 0; index < 48; index += 1) {
+      // A decaying click, so the codec keeps it.
+      final value = ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48))
+          .round();
+      pcm[(clickAt + index) * 2] = value;
+      pcm[(clickAt + index) * 2 + 1] = value;
+    }
+    final gray = Uint8List(64 * 48 * 4)..fillRange(0, 64 * 48 * 4, 128);
+    var written = 0;
+    for (var frame = 0; frame < 24; frame += 1) {
+      encoder.writeFrame(gray);
+      final upTo = ((frame + 1) * rate) ~/ 24;
+      encoder.writeAudio(
+        Int16List.fromList(pcm.sublist(written * 2, upTo * 2)),
+        upTo - written,
+      );
+      written = upTo;
+    }
+    expect(encoder.finish(), isTrue, reason: encoder.lastError);
+
+    final decoded = decodeAudioFile(path);
+    expect(decoded, isNotNull);
+    var peakAt = -1;
+    var peak = 0.0;
+    for (var index = 0; index < decoded!.length; index += 1) {
+      final value = decoded.samples[index * decoded.channels].abs();
+      if (value > peak) {
+        peak = value;
+        peakAt = index;
+      }
+    }
+    expect(
+      peakAt,
+      inInclusiveRange(clickAt - 2, clickAt + 2),
+      reason: 'the click came back at $peakAt, written at $clickAt',
+    );
   }, skip: skip);
 
   // -------------------------------------------------------------------------
@@ -616,4 +748,29 @@ Int16List _roomToneThenTone() {
     }
   }
   return samples;
+}
+
+/// The lag, within [range] frames either way, at which [decoded]'s first
+/// channel best matches the fixtures' 440 Hz sine at -6 dB from frame 0 —
+/// measured on its middle half. ⚠️Kept inside half a period (100 frames at
+/// 44.1 kHz): a whole period further looks the same.
+int _sineLag(QaDecodedAudio decoded, {int range = 48}) {
+  var best = 0;
+  var bestError = double.infinity;
+  for (var lag = -range; lag <= range; lag += 1) {
+    var error = 0.0;
+    for (var frame = decoded.length ~/ 4;
+        frame < decoded.length * 3 ~/ 4;
+        frame += 3) {
+      final want =
+          0.5 * math.sin(2 * math.pi * 440 * frame / decoded.sampleRate);
+      final got = decoded.samples[(frame + lag) * decoded.channels];
+      error += (got - want) * (got - want);
+    }
+    if (error < bestError) {
+      bestError = error;
+      best = lag;
+    }
+  }
+  return best;
 }

@@ -199,6 +199,27 @@ static size_t build_mp3_frames(uint8_t* out) {
   return (size_t)MP3_FRAMES * MP3_FRAME_BYTES;
 }
 
+/// The same frames with the first turned into the tag LAME writes: `Info`
+/// after the side information, then the LAME extension, whose bytes 21-23
+/// carry the encoder delay (576, LAME's own) and the padding (0) — each
+/// 12 bits, the padding stored with the decoder's 529 added.
+static size_t build_tagged_mp3_frames(uint8_t* out) {
+  const size_t bytes = build_mp3_frames(out);
+  uint8_t* tag = out + 4 + 32;  // past the header and the side information
+  memcpy(tag, "Info", 4);       // no fields after the flags
+  memcpy(tag + 8, "LAME3.100", 9);
+  tag[8 + 21] = 576 >> 4;
+  tag[8 + 22] = (uint8_t)(((576 & 0x0F) << 4) | (529 >> 8));
+  tag[8 + 23] = 529 & 0xFF;
+  return bytes;
+}
+
+/// How many frames a decode of the MP3 frames should hand back: every
+/// granule but [tag_frames] tag frames, less the 1,105 LAME's encoder and
+/// the decoder put before the sound — taken off once, whoever says it.
+#define MP3_SOUND_FRAMES(tag_frames) \
+  ((int64_t)(MP3_FRAMES - (tag_frames)) * 1152 - 1105)
+
 // ---------------------------------------------------------------------------
 // The fixture again as a FLAC, VERBATIM subframes: nothing predicted, so what
 // dr_flac hands back is the fixture itself. Both CRCs are real — dr_flac
@@ -278,11 +299,13 @@ static size_t build_flac(uint8_t* out) {
 }
 
 /// [head] and then [body], written as a whole file and decoded: which decoder
-/// read it — and, unless [fixture] is UNKNOWN, whether that decoder was
-/// [fixture] and what it read was the fixture, the check [what] names.
+/// read it, and how many frames into [out_frames] when it is given — and,
+/// unless [fixture] is UNKNOWN, whether that decoder was [fixture] and what
+/// it read was the fixture, the check [what] names.
 static int32_t decode_behind(const char* what, const uint8_t* head,
                              size_t head_bytes, const uint8_t* body,
-                             size_t body_bytes, int32_t fixture) {
+                             size_t body_bytes, int32_t fixture,
+                             int64_t* out_frames) {
   const char* path = "qa_audio_head_fixture.bin";
   FILE* file = fopen(path, "wb");
   if (file == NULL) {
@@ -304,6 +327,9 @@ static int32_t decode_behind(const char* what, const uint8_t* head,
                            &samples, &frames, &channels, &rate);
   if (fixture != QA_AUDIO_FORMAT_UNKNOWN) {
     expect_fixture(what, fixture, format, samples, frames, channels, rate);
+  }
+  if (out_frames != NULL) {
+    *out_frames = frames;
   }
   qa_audio_decode_free(samples);
   remove(path);
@@ -395,20 +421,33 @@ int main(void) {
     // The controls: these ARE an MP3 — bare, behind an ID3 tag, and behind a
     // head nobody knows, which still runs the whole chain. Without them, a
     // sniff that turned dr_mp3 away from everything would pass the rest.
-    expect_int("bare frames are an MP3",
-               decode_behind(NULL, NULL, 0, frames, frame_bytes,
-                             QA_AUDIO_FORMAT_UNKNOWN),
-               QA_AUDIO_FORMAT_MP3);
+    // ...and with no tag to say where its sound starts, each takes the
+    // standard 1,105 off (section 9 has the tag that says it).
     static const uint8_t id3[10] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0};
-    expect_int("frames behind an ID3 tag are an MP3",
-               decode_behind(NULL, id3, sizeof(id3), frames, frame_bytes,
-                             QA_AUDIO_FORMAT_UNKNOWN),
-               QA_AUDIO_FORMAT_MP3);
     static const uint8_t nobody[16] = {0};
-    expect_int("frames behind a head nobody knows are still an MP3",
-               decode_behind(NULL, nobody, sizeof(nobody), frames, frame_bytes,
-                             QA_AUDIO_FORMAT_UNKNOWN),
-               QA_AUDIO_FORMAT_MP3);
+    static const struct {
+      const char* name;
+      const uint8_t* head;
+      size_t bytes;
+    } mp3s[] = {
+        {"bare frames", NULL, 0},
+        {"frames behind an ID3 tag", id3, sizeof(id3)},
+        {"frames behind a head nobody knows", nobody, sizeof(nobody)},
+    };
+    for (size_t index = 0; index < sizeof(mp3s) / sizeof(mp3s[0]);
+         index += 1) {
+      char label[96];
+      int64_t decoded = 0;
+      snprintf(label, sizeof(label), "%s are an MP3", mp3s[index].name);
+      expect_int(label,
+                 decode_behind(NULL, mp3s[index].head, mp3s[index].bytes,
+                               frames, frame_bytes, QA_AUDIO_FORMAT_UNKNOWN,
+                               &decoded),
+                 QA_AUDIO_FORMAT_MP3);
+      snprintf(label, sizeof(label), "%s start 1,105 frames in",
+               mp3s[index].name);
+      expect_int(label, decoded, MP3_SOUND_FRAMES(0));
+    }
 
     // The law: a head that names another container keeps dr_mp3 away from
     // it, whatever is inside.
@@ -424,7 +463,7 @@ int main(void) {
                movie_boxes[index]);
       expect_int(label,
                  decode_behind(NULL, box, sizeof(box), frames, frame_bytes,
-                               QA_AUDIO_FORMAT_UNKNOWN) ==
+                               QA_AUDIO_FORMAT_UNKNOWN, NULL) ==
                      QA_AUDIO_FORMAT_MP3,
                  0);
     }
@@ -450,7 +489,7 @@ int main(void) {
       expect_int(label,
                  decode_behind(NULL, (const uint8_t*)others[index].head,
                                others[index].bytes, frames, frame_bytes,
-                               QA_AUDIO_FORMAT_UNKNOWN) ==
+                               QA_AUDIO_FORMAT_UNKNOWN, NULL) ==
                      QA_AUDIO_FORMAT_MP3,
                  0);
     }
@@ -462,10 +501,26 @@ int main(void) {
   {
     static uint8_t flac[FLAC_BYTES];
     const size_t flac_bytes = build_flac(flac);
-    decode_behind("a FLAC", NULL, 0, flac, flac_bytes, QA_AUDIO_FORMAT_FLAC);
+    decode_behind("a FLAC", NULL, 0, flac, flac_bytes, QA_AUDIO_FORMAT_FLAC,
+                  NULL);
     static const uint8_t id3[10] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 0};
     decode_behind("a FLAC behind an ID3 tag", id3, sizeof(id3), flac,
-                  flac_bytes, QA_AUDIO_FORMAT_FLAC);
+                  flac_bytes, QA_AUDIO_FORMAT_FLAC, NULL);
+  }
+
+  // 9. WHERE THE SOUND STARTS, WHEN THE FILE SAYS SO. A LAME tag says the
+  // 1,105 itself, and dr_mp3 takes it off as it reads — the engine must not
+  // take the standard 1,105 off again. The tag's own frame is no sound.
+  {
+    static uint8_t tagged[MP3_FRAMES * MP3_FRAME_BYTES];
+    const size_t tagged_bytes = build_tagged_mp3_frames(tagged);
+    int64_t decoded = 0;
+    expect_int("an MP3 with a LAME tag is an MP3",
+               decode_behind(NULL, NULL, 0, tagged, tagged_bytes,
+                             QA_AUDIO_FORMAT_UNKNOWN, &decoded),
+               QA_AUDIO_FORMAT_MP3);
+    expect_int("an MP3 with a LAME tag starts where the tag says, once",
+               decoded, MP3_SOUND_FRAMES(1));
   }
 
   if (g_failures == 0) {

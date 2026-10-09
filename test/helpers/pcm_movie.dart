@@ -7,11 +7,16 @@ import 'dart:typed_data';
 /// [samples] are interleaved 16-bit frames of [channels], stored the way
 /// ffmpeg's `.mov` writer stores them: little-endian (`sowt`), or big-endian
 /// (`twos`) when [bigEndian]; one chunk, the movie's boxes after the sound.
+///
+/// [edit] writes the sound track an edit list: play [edit.keep] frames from
+/// frame [edit.from] — what an encoder writes when it put frames of its own
+/// before the sound.
 Uint8List pcmMovie(
   Int16List samples, {
   int channels = 2,
   int rate = 48000,
   bool bigEndian = false,
+  ({int from, int keep})? edit,
 }) {
   final frames = samples.length ~/ channels;
   final pcm = ByteData(samples.length * 2);
@@ -56,6 +61,16 @@ Uint8List pcmMovie(
         for (final value in matrix) ..._u32(value),
         ..._u32(0), ..._u32(0), // width, height
       ]),
+      if (edit != null)
+        ..._box('edts', [
+          ..._box('elst', [
+            ..._u32(0),
+            ..._u32(1),
+            ..._u32(edit.keep), // in the movie's time scale, which is [rate]
+            ..._u32(edit.from), // in the media's, which is [rate] too
+            ..._u32(0x10000), // played at 1.0
+          ]),
+        ]),
       ..._box('mdia', [
         ..._box('mdhd', [
           ..._u32(0),
