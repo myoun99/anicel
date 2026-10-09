@@ -1272,17 +1272,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// readable name need; where the window cannot give it that, the list
   /// scrolls sideways at that width instead of squeezing the name.
   Widget _twoZones(BuildContext context) {
-    final previewPath = _selected.isNotEmpty
-        ? _selected.last
-        : (_files.isEmpty ? null : _files.first);
-    final settings = previewPath == null
-        ? const ImportFileSettings()
-        : _settingsFor(previewPath);
-    // A picture in a numbered run is previewed as its run, and the
-    // transport's IN/OUT are the run's (F-282, 시안 ④).
-    final previewRun = previewPath == null ? null : _runFilesOf(previewPath);
     final rows = [for (final path in _files) _tableRow(path)];
     final columns = _tableColumns();
+    final preview = _preview();
     return LayoutBuilder(
       builder: (context, constraints) {
         final minTable = ImportFileTable.minimumWidth(
@@ -1325,58 +1317,70 @@ class _ImportDialogState extends State<ImportDialog> {
                 return delta;
               },
             ),
-            Expanded(
-              child: ImportPreview(
-                key: const ValueKey<String>('import-preview'),
-                session: widget.session,
-                path: previewPath,
-                run: previewRun,
-                opensAsSound:
-                    previewPath != null && _landsAsSound(previewPath),
-                inFrame: previewRun != null ? settings.runIn : settings.inFrame,
-                outFrame: previewRun != null
-                    ? settings.runOut
-                    : settings.outFrame,
-                // The ends appear wherever they act: on what gets placed,
-                // and on what gets registered, which comes in as its piece
-                // ([_registerFiles]). 🪦Registrations went without them
-                // until a trimmer existed (2026-09-24). ⛔Not on a file the
-                // pool already holds when only registering: that adds
-                // nothing, so a span there would act on nothing.
-                rangeEditable:
-                    previewPath != null &&
-                    (_placing(previewPath) ||
-                        _poolEntryFor(previewPath) == null),
-                soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
-                holdBytes: widget.session.projectFile.holdMediaBytes,
-                frameRate: widget.session.projectSettings.projectFrameRate,
-                audioSpeed: _projectAudioSpeed,
-                onRangeChanged: (start, end) {
-                  if (previewPath == null) {
-                    return;
-                  }
-                  _setSettings(
-                    [previewPath],
-                    (current) => previewRun != null
-                        ? current.copyWith(
-                            runIn: start,
-                            runOut: end,
-                            clearRunOut: end == null,
-                          )
-                        : current.copyWith(
-                            inFrame: start,
-                            outFrame: end,
-                            clearOut: end == null,
-                          ),
-                  );
-                },
-              ),
-            ),
+            Expanded(child: preview),
           ],
         );
       },
     );
   }
+
+  /// The picture zone: the file picked last — the first, before any is —
+  /// with the ends of its span wherever they act. A picture in a numbered
+  /// run is previewed as its run, and the transport's IN/OUT are the run's
+  /// (F-282, 시안 ④).
+  Widget _preview() {
+    final path = _selected.isNotEmpty
+        ? _selected.last
+        : (_files.isEmpty ? null : _files.first);
+    final settings = path == null
+        ? const ImportFileSettings()
+        : _settingsFor(path);
+    final run = path == null ? null : _runFilesOf(path);
+    return ImportPreview(
+      key: const ValueKey<String>('import-preview'),
+      session: widget.session,
+      path: path,
+      run: run,
+      opensAsSound: path != null && _landsAsSound(path),
+      inFrame: run != null ? settings.runIn : settings.inFrame,
+      outFrame: run != null ? settings.runOut : settings.outFrame,
+      // The ends appear wherever they act: on what gets placed, and on what
+      // gets registered, which comes in as its piece ([_registerFiles]).
+      // 🪦Registrations went without them until a trimmer existed
+      // (2026-09-24). ⛔Not on a file the pool already holds when only
+      // registering: that adds nothing, so a span there would act on
+      // nothing.
+      rangeEditable:
+          path != null && (_placing(path) || _poolEntryFor(path) == null),
+      soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+      holdBytes: widget.session.projectFile.holdMediaBytes,
+      frameRate: widget.session.projectSettings.projectFrameRate,
+      audioSpeed: _projectAudioSpeed,
+      onRangeChanged: (start, end) {
+        if (path != null) {
+          _keepSpan(path, start, end);
+        }
+      },
+    );
+  }
+
+  /// [path]'s span as the preview's IN/OUT leave it: the pictures of its
+  /// numbered run that come in ([ImportFileSettings.runIn]), or the trim
+  /// of the file itself.
+  void _keepSpan(String path, int start, int? end) => _setSettings(
+    [path],
+    (current) => _runOf(path) != null
+        ? current.copyWith(
+            runIn: start,
+            runOut: end,
+            clearRunOut: end == null,
+          )
+        : current.copyWith(
+            inFrame: start,
+            outFrame: end,
+            clearOut: end == null,
+          ),
+  );
 
   /// A row names its file WITHOUT the extension, which it shows on its own:
   /// the name is what gets cut short when room runs out, the extension never

@@ -445,7 +445,13 @@ void main() {
   /// of the settings column and the place is asked when Export is pressed.
   /// 🔬The lane's scan against its own preview commit (`8743ae700`, at 413)
   /// named that one gone and nothing added.
-  const longBodies = 410;
+  ///
+  /// ⚠️410 → 409 on 2026-10-09, lowered as the rule asks (F-282, a numbered
+  /// run's span picked on the preview's IN/OUT): the import window's
+  /// `_twoZones` gave its preview to `_preview` — the run made the picture
+  /// zone a question of its own. 🔬The lane's scan against master
+  /// (`34f161c64`, at 410) named that one gone and nothing added.
+  const longBodies = 409;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
