@@ -117,8 +117,8 @@ void main() {
       () => session.frameScrub.active.addListener(() {}),
     );
     expectReleased(
-      'frameScrub.outOfTerritory',
-      () => session.frameScrub.outOfTerritory.addListener(() {}),
+      'frameScrub.inGap',
+      () => session.frameScrub.inGap.addListener(() {}),
     );
     expectReleased(
       'cutVerbs.guidesDragPreview',

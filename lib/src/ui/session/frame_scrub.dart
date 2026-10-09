@@ -6,15 +6,15 @@ import 'playback_rig.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
-/// The FRAME SCRUB — dragging the playhead: the preview it shows while the
-/// finger is down, the territory it touched, and the commit or abandon when
-/// it lifts — as its own object, and the two flags that say so.
+/// The FRAME SCRUB — dragging the playhead: the cuts it crosses into while
+/// the finger is down, the gap it may stand in, and the commit or abandon
+/// when it lifts — as its own object, and the two flags that say so.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and thirteen
 /// session members touched. It names the roles it needs in its constructor.
 ///
-/// ↩️The scrub flags ([active], [outOfTerritory]) used to stay on the
+/// ↩️The scrub flags ([active], [inGap]) used to stay on the
 /// session, on the reading that "the UI reads them" (that cut). Reading
 /// them does not need the session to own them: this object is the one that
 /// raises and drops them, so it holds them, and the UI reads
@@ -65,41 +65,48 @@ class FrameScrub {
   /// leave.
   final ValueNotifier<bool> active = ValueNotifier<bool>(false);
 
-  /// D6: whether the LIVE global scrub currently stands OUT of the active
-  /// cut's territory — the EDGE the canvas content mount listens to.
+  /// D6: whether the LIVE global scrub currently stands in a GAP — the EDGE
+  /// the canvas content mount listens to.
   ///
-  /// A drag that STARTED inside the cut used to cross the boundary
-  /// invisibly: the out-of-territory branch parks quietly per move,
-  /// [active] was already true (its flip is the only rebuild trigger the
-  /// content mount had), and the cursor never fires out of territory — so
-  /// `inGap` was never recomputed and the canvas kept the previous cut's
-  /// picture until release. This is the retired `playheadHasCel` mechanism
-  /// applied to that missing edge: one comparison per move, fires only when
-  /// the ANSWER flips (out↔in), so the per-move parking stays as quiet as
-  /// UI-R7 #9 demands. Set only while the gesture is live — a plain tap over
-  /// another cut parks on pointer-down but never scrubs, so this stays false
-  /// and nothing flashes (the no-flash rule).
-  final ValueNotifier<bool> outOfTerritory = ValueNotifier<bool>(false);
+  /// A drag that STARTED inside the cut used to cross into the gap
+  /// invisibly: the gap branch parks quietly per move, [active] was already
+  /// true (its flip is the only rebuild trigger the content mount had), and
+  /// the cursor never fires in a gap — so `inGap` was never recomputed and
+  /// the canvas kept the cut's picture until release. One comparison per
+  /// move, firing only when the ANSWER flips (gap↔cut), so the per-move
+  /// parking stays as quiet as UI-R7 #9 demands. Set only while the gesture
+  /// is live — a plain tap in a gap parks on pointer-down but never scrubs,
+  /// so this stays false and nothing flashes (the no-flash rule).
+  ///
+  /// ↩️It was `outOfTerritory` until I-57 ②: another cut's frames parked
+  /// the scrub too, and the canvas showed the track stack's preview of
+  /// them. A scrub crosses into another cut now ([scrubGlobalFrame]), so a
+  /// gap is the only place it parks — and the name says that.
+  final ValueNotifier<bool> inGap = ValueNotifier<bool>(false);
 
   /// Releases the two flags; the session's teardown calls it.
   void dispose() {
     active.dispose();
-    outOfTerritory.dispose();
+    inGap.dispose();
   }
 
-  /// Global scrub: rides the cursor path inside the active cut's
-  /// territory; EVERY out-of-territory move — a gap OR another cut's
-  /// frames — parks the exact global PER MOVE (UI-R7 #9) and commits
-  /// NOTHING. The parking notifier drives the storyboard playhead and the
-  /// track-stack preview live, while the active cut and its controllers
-  /// stay untouched for the whole drag: the old per-move escalation to
-  /// [_selection.selectGlobalFrame] on a boundary cross ran selectCut + a committed
-  /// seek per move, rebuilding every visible panel — the cut-boundary
-  /// crossing lag — and the gap branch's immediate deselect was the same
-  /// hitch on gap entry. The session's `followPlaybackCut` keeps playback's
-  /// crossings quiet for exactly this reason; the release ([commitFrameScrub])
-  /// lands the ONE full seek, where cut activation and gap deselection
-  /// now both live (UI-R10 #13's live empty-out moved there on purpose).
+  /// Global scrub: rides the cursor path inside the active cut; a move onto
+  /// ANOTHER cut's frames CROSSES into it, with the landing every cut switch
+  /// makes ([SelectionAccess.selectGlobalFrame] — the cut, its row, its
+  /// frame, the timeline's rows turning over in place); only a GAP parks
+  /// the exact global PER MOVE (UI-R7 #9), committing nothing until the
+  /// release ([commitFrameScrub]) lands it.
+  ///
+  /// 🗣️I-57 (유저 10-08, Q1: 「넘어간다 — 스크럽도 재생처럼, 경계에서 활성
+  /// 컷이 바뀐다」 · 10-09, Q2: 「타임라인 행도 그 자리에서 — 행을 먼저
+  /// 가볍게 만든 뒤 켠다」): a scrub crosses a boundary as playback does,
+  /// through the same landing. ↩️It parked over another cut's frames too and
+  /// showed the track stack's preview of them, switching the cut only on
+  /// release — so every surface that shows 「the cut being looked at」 had
+  /// to be wired to the parking one at a time (the sheet, the envelope, the
+  /// cut name), and each one forgotten was the same bug again. What the
+  /// crossing costs is a cut switch's; the rail's rows were made light for
+  /// it first (I-57 ①).
   void scrubGlobalFrame(int globalFrame) {
     if (_brushInputActive.value) {
       return;
@@ -109,62 +116,69 @@ class FrameScrub {
       return;
     }
     final owner = axis.ownerOf(globalFrame);
-    if (axis.isGap(globalFrame) ||
-        owner == null ||
-        owner.cutId != _project.activeCutId) {
-      // The preview engages on the SECOND out-of-territory event — an
-      // actual drag move — never on the pointer-down alone: a plain TAP
-      // over another cut's frames must not flash the track-stack
-      // presentation for its press-release interval (the same no-flash
-      // rule scrubFrameIndex keeps for in-cut taps; the playhead itself
-      // follows immediately through the parking either way). No warm:
-      // the track stack self-fills, there is no active-cut cache to fill.
-      final parked = _timeline.editingSession.gapGlobalFrame;
-      // Engage on the SECOND out-of-territory event — OR on the FIRST
-      // when this gesture already touched the cut's territory (D6: a
-      // press ON the cursor's own frame never set the flag via
-      // scrubFrameIndex, so the old two-event rule read the grab-the-
-      // playhead drag's genuine crossing as tap-shaped and the canvas
-      // froze on the previous cut). A pointer-down alone still engages
-      // nothing: the no-flash rule is about the DOWN, not about moves.
-      if ((parked != null && parked != globalFrame || _scrubTouchedTerritory) &&
-          !active.value) {
-        active.value = true;
-      }
-      _timeline.editingSession.gapGlobalFrame = globalFrame;
-      // D6: the territory-exit EDGE — only while the gesture is live
-      // (a tap's pointer-down park keeps this false, the no-flash rule),
-      // and only on the flip, so per-move parking stays notify-quiet.
-      if (active.value && !outOfTerritory.value) {
-        outOfTerritory.value = true;
-      }
+    if (axis.isGap(globalFrame) || owner == null) {
+      _parkInTheGap(globalFrame);
       return;
     }
-    // The gesture stands IN territory — the fact the out-branch's engage
-    // reads to tell a real drag's crossing from a bare pointer-down.
-    _scrubTouchedTerritory = true;
+    // The gesture stands on a cut — the fact the gap's engage reads to
+    // tell a real drag's crossing from a bare pointer-down.
+    _stoodOnACut = true;
+    if (inGap.value) {
+      inGap.value = false;
+    }
+    if (owner.cutId != _project.activeCutId) {
+      // A live parking is cleared BEFORE the landing: the cut switch must
+      // not read a drag through a gap as a committed gap departure — its
+      // from-the-gap branch would land frame 0 first and double the
+      // committed-seek signal.
+      _timeline.editingSession.gapGlobalFrame = null;
+      _selection.selectGlobalFrame(globalFrame);
+      // The crossed frame plays its slice of the mix, as every frame a
+      // scrub crosses does.
+      _playbackRig.audioScrubber.onScrubFrame(
+        _controllers.timelineController.currentFrameIndex,
+      );
+      return;
+    }
     if (_timeline.editingSession.gapGlobalFrame != null) {
-      // Scrubbing back onto the cut un-parks — and kicks the warm the
-      // out-of-territory engage skipped (one warm per territory entry,
-      // not per move: the preview reads the composite cache, so a cold
-      // stretch would otherwise show stale paper for the whole re-entry).
+      // Scrubbing back onto the cut un-parks — and kicks the warm the gap
+      // skipped (one warm per return, not per move).
       _timeline.editingSession.gapGlobalFrame = null;
       _changes.warmActiveCut();
-      // D6: the re-entry edge — the content mount swaps back to the
-      // interactive canvas even when the cursor lands on its own frame
-      // (the retarget scope swallows an unchanged index, so without
-      // this the mounted track stack kept showing the backdrop floor).
-      if (outOfTerritory.value) {
-        outOfTerritory.value = false;
-      }
     }
     scrubFrameIndex(math.max(0, axis.localIn(owner, globalFrame)));
   }
 
-  /// Whether the LIVE scrub gesture has stood inside the active cut's
-  /// territory — plain field (no rebuilds ride on it): it only sharpens
-  /// the out-branch's engage above. Cleared with the gesture.
-  bool _scrubTouchedTerritory = false;
+  /// A scrub move into a gap: the exact global is parked, and the active
+  /// cut stays where the drag left it until the release lands the gap.
+  void _parkInTheGap(int globalFrame) {
+    // The gap's display engages on the SECOND gap event — an actual drag
+    // move — never on the pointer-down alone: a plain TAP in a gap must not
+    // flash the gap's presentation for its press-release interval (the
+    // same no-flash rule scrubFrameIndex keeps for in-cut taps; the
+    // playhead itself follows immediately through the parking either way).
+    // OR on the FIRST when this gesture already stood on a cut (D6: a press
+    // ON the cursor's own frame never set the flag via scrubFrameIndex, so
+    // a two-event rule read the grab-the-playhead drag's genuine crossing
+    // as tap-shaped and the canvas froze on the cut).
+    final parked = _timeline.editingSession.gapGlobalFrame;
+    if ((parked != null && parked != globalFrame || _stoodOnACut) &&
+        !active.value) {
+      active.value = true;
+    }
+    _timeline.editingSession.gapGlobalFrame = globalFrame;
+    // D6: the gap EDGE — only while the gesture is live (a tap's
+    // pointer-down park keeps this false, the no-flash rule), and only on
+    // the flip, so per-move parking stays notify-quiet.
+    if (active.value && !inGap.value) {
+      inGap.value = true;
+    }
+  }
+
+  /// Whether the LIVE scrub gesture has stood on a cut — plain field (no
+  /// rebuilds ride on it): it only sharpens the gap's engage above. Cleared
+  /// with the gesture.
+  bool _stoodOnACut = false;
 
   /// A scrub move: repositions the playhead WITHOUT notifying — only the
   /// cursor listenables fire; the full session notify is deferred to
@@ -218,40 +232,38 @@ class FrameScrub {
     _editingFrameCursor.value = frameIndex;
   }
 
-  /// The scrub gesture's release: ends the preview and commits the
-  /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).
-  /// A drag that ended OUT of the active cut's territory carries its exact
-  /// global in the parking — the deferred full seek lands here: over a cut
-  /// it activates it (selectCut + local frame), in a gap it deselects and
-  /// keeps the parking (UI-R9 #3). This is the ONLY place a global drag
-  /// commits — the moves themselves never do.
-  /// Ends a live scrub PREVIEW without the landing seek — the storyboard
-  /// release path when playback took the transport mid-drag (there is no
-  /// editing seek to commit, but the preview flags must not leak past
-  /// the gesture: a stuck territory flag would swallow the next drag's
-  /// exit edge and resurrect the D6 stale picture, one drag per leak —
-  /// adversarial review).
+  /// Ends a live scrub without the landing seek — the storyboard release
+  /// path when playback took the transport mid-drag (there is no editing
+  /// seek to commit, but the flags must not leak past the gesture: a stuck
+  /// gap flag would swallow the next drag's gap edge and resurrect the D6
+  /// stale picture, one drag per leak — adversarial review).
   void abandonFrameScrubPreview() {
     if (active.value) {
       active.value = false;
     }
-    if (outOfTerritory.value) {
-      outOfTerritory.value = false;
+    if (inGap.value) {
+      inGap.value = false;
     }
-    _scrubTouchedTerritory = false;
+    _stoodOnACut = false;
   }
 
+  /// The scrub gesture's release: ends the scrub and commits the playhead
+  /// as ONE ordinary seek (warm + committed-seek signal). A drag that ended
+  /// in a GAP carries its exact global in the parking, and the landing is
+  /// here: it deselects the cut and keeps the parking (UI-R9 #3). A drag
+  /// that crossed into another cut stands in it already
+  /// ([scrubGlobalFrame]); its release commits the frame it stands on.
   void commitFrameScrub() {
     _playbackRig.audioScrubber.onScrubEnd();
     if (active.value) {
       active.value = false;
     }
-    // D6: the gesture is over — the out-of-territory display state ends
-    // with it (the landing seek below re-derives the real gap answer).
-    if (outOfTerritory.value) {
-      outOfTerritory.value = false;
+    // D6: the gesture is over — the gap's display state ends with it (the
+    // landing seek below re-derives the real gap answer).
+    if (inGap.value) {
+      inGap.value = false;
     }
-    _scrubTouchedTerritory = false;
+    _stoodOnACut = false;
     final parked = _timeline.editingSession.gapGlobalFrame;
     if (parked != null) {
       // R15-⑤: a live stroke refuses the landing seek — the
@@ -260,11 +272,6 @@ class FrameScrub {
       if (_brushInputActive.value) {
         return;
       }
-      // The parking is cleared BEFORE the landing seek: selectCut must
-      // not read a live drag's parking as a committed gap departure —
-      // its fromGap branch would land frame 0 first and double the
-      // committed-seek signal. A gap landing re-parks by itself.
-      _timeline.editingSession.gapGlobalFrame = null;
       _selection.selectGlobalFrame(parked);
       return;
     }

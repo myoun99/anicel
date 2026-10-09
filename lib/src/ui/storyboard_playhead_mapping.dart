@@ -234,11 +234,10 @@ void commitStoryboardScrub(EditorSessionManager session) {
     return;
   }
   // Playback took the transport mid-drag: there is no editing seek to
-  // commit, but the preview FLAGS must not leak past the gesture — a
-  // stuck scrub flag would freeze the canvas in scrub-preview mode, and
-  // a stuck territory flag would swallow the NEXT drag's exit edge
-  // (the D6 stale picture, resurrected one drag per leak). One session
-  // verb clears the whole preview state.
+  // commit, but the scrub's FLAGS must not leak past the gesture — a
+  // stuck scrub flag would freeze the canvas in scrub mode, and a stuck
+  // gap flag would swallow the NEXT drag's gap edge (the D6 stale
+  // picture, resurrected one drag per leak). One verb clears them all.
   session.frameScrub.abandonFrameScrubPreview();
 }
 

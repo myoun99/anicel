@@ -7,20 +7,21 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/camera.dart';
 
-/// ㊲ — the camera frame follows the SCRUB, not the active cut.
+/// ㊲ — the camera frame follows the SCRUB.
 ///
-/// A global scrub crosses cut boundaries QUIETLY on purpose: switching the
-/// active cut per move rebuilt every panel, so the crossing parks instead
-/// (`scrubGlobalFrame`). The camera overlay read `cameraPoseAtCurrentFrame`
-/// through that — the cut being LEFT — so a T.U that ended zoomed kept
-/// framing the next cut's pictures at the size the last cut finished on,
-/// and dragging the other way showed no camera work at all.
+/// ↩️A global scrub crossed cut boundaries QUIETLY: switching the active cut
+/// per move rebuilt every panel, so the crossing parked instead, and the
+/// camera overlay read `cameraPoseAtCurrentFrame` through that — the cut
+/// being LEFT — so a T.U that ended zoomed kept framing the next cut's
+/// pictures at the size the last cut finished on. Since I-57 ② the scrub
+/// crosses INTO the cut under it (`scrubGlobalFrame`), so the cut it frames
+/// is the active cut; a gap is the one place it still parks, and there is
+/// nothing to frame there.
 ///
 /// Two kinds of test, because this is a law AND a wiring: the session tests
-/// pin which cut answers, and the widget test pins that the overlay watches
-/// the ONE listenable that moves during a crossing. Delete the parking
-/// subscription and only the widget test dies — which is exactly why it is
-/// here.
+/// pin which cut answers, and the widget tests pin that the overlay turns
+/// over at a crossing that leaves the cursor's number where it was, and
+/// leaves with the picture in a gap.
 void main() {
   /// cut ONE zoomed 2× by a T.U · a 4-frame gap · cut TWO animating 1× → 3×,
   /// so "which cut" and "where inside it" both read off a single number.
@@ -55,8 +56,8 @@ void main() {
     return (s, secondStart, gapFrame);
   }
 
-  /// A drag takes TWO out-of-territory moves to engage the preview (the
-  /// no-flash rule: a plain tap over another cut must not flash it).
+  /// A drag is a press and a move: the press alone engages nothing (the
+  /// no-flash rule: a plain tap must not flash the scrub's display).
   void dragTo(EditorSessionManager s, int from, int to) {
     s.frameScrub.scrubGlobalFrame(from);
     s.frameScrub.scrubGlobalFrame(to);
@@ -89,21 +90,20 @@ void main() {
   }
 
   test(
-    'scrubbing over the NEXT cut frames THAT cut, not the one being left',
+    'scrubbing over the NEXT cut frames THAT cut, not the one being left — '
+    'the crossing made it the active cut',
     () {
       final (s, secondStart, _) = scrubSession();
       addTearDown(s.dispose);
+      final second = s.repository.requireProject().tracks.first.cuts[1].id;
 
       expect(cameraOf(s).cameraPoseAtCurrentFrame.zoom, 2, reason: 'cut one is the T.U');
 
       dragTo(s, secondStart, secondStart + 5);
 
       expect(s.frameScrub.active.value, isTrue);
-      expect(
-        cameraOf(s).cameraPoseAtCurrentFrame.zoom,
-        2,
-        reason: 'the ACTIVE cut is left untouched by the crossing, by design',
-      );
+      expect(s.activeCutId, second, reason: 'the scrub crossed into it');
+      expect(cameraOf(s).cameraPoseAtCurrentFrame.zoom, closeTo(3, 1e-6));
       expect(
         cameraOf(s).displayedCameraPose!.zoom,
         closeTo(3, 1e-6),
@@ -150,8 +150,9 @@ void main() {
     expect(cameraOf(s).displayedCameraPose, isNull);
   });
 
-  testWidgets('the overlay FOLLOWS the crossing per move: the parking is the '
-      'only listenable that fires, so it is the one to watch', (tester) async {
+  testWidgets('the overlay turns over at a crossing that leaves the cursor\'s '
+      'number where it was, and rides the new cut\'s curve as the drag '
+      'moves', (tester) async {
     final (s, secondStart, _) = scrubSession();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
@@ -162,12 +163,14 @@ void main() {
         .zoom;
 
     expect(overlayZoom(), 2, reason: 'standing in cut one, on its T.U');
+    expect(s.currentFrameIndex, 0);
 
-    // Engage the drag over cut two, then keep moving INSIDE it — from here
-    // the cursor never fires again, only the parking does.
-    dragTo(s, secondStart, secondStart + 1);
+    // Onto cut two's FIRST frame: the cursor reads 0 before and after, so
+    // only the crossing itself can turn the overlay over.
+    s.frameScrub.scrubGlobalFrame(secondStart);
     await tester.pump();
-    expect(overlayZoom(), lessThan(2), reason: 'cut two starts at 1×');
+    expect(s.currentFrameIndex, 0);
+    expect(overlayZoom(), closeTo(1, 1e-6), reason: 'cut two starts at 1×');
 
     s.frameScrub.scrubGlobalFrame(secondStart + 5);
     await tester.pump();

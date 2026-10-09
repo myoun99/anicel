@@ -681,12 +681,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _dragPreview,
-                    // While playing, the highlight follows the PLAYING cut
-                    // (onStopped syncs the real active cut).
-                    activeCutId: _session.playbackRig.playback.isActive
-                        ? _session.playbackRig.playback.position?.cutId ??
-                              _session.activeCutId
-                        : _session.activeCutId,
+                    // ↩️While playing, this named the PLAYING cut and the
+                    // stop caught the active cut up; a run's crossing lands
+                    // the cut it reaches since I-57 ②, so they are one.
+                    activeCutId: _session.activeCutId,
                     // A pool row let go on a row's frames (the row has already
                     // stood there through its press below): the place window
                     // opens on what the session names there — a NEW cut on a

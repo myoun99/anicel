@@ -400,8 +400,9 @@ layers: layers,
       );
     });
 
-    testWidgets('storyboard: a ruler drag across the cut boundary stays '
-        'quiet per move and activates the crossed cut on release', (
+    testWidgets('🗣️I-57 ② storyboard: a ruler drag across the cut boundary '
+        'CROSSES into the next cut while the finger is down — one cut '
+        'switch at the boundary, quiet per move in the gap and in the cut', (
       tester,
     ) async {
       final manager = EditorSessionManager(
@@ -478,18 +479,12 @@ layers: layers,
       final gesture = await tester.startGesture(start);
       await gesture.moveBy(const Offset(8 * 24, 0)); // into the gap [24,30)
       await tester.pump();
-      await gesture.moveBy(const Offset(8 * 9, 0)); // over cut-b [30,54)
-      await tester.pump();
 
-      expect(
-        notifies,
-        0,
-        reason: 'crossing moves must not rebuild the panels',
-      );
+      expect(notifies, 0, reason: 'moves in the gap rebuild no panel');
       expect(
         manager.activeCutId,
         const CutId('cut-a'),
-        reason: 'the active cut stays pinned for the whole drag',
+        reason: 'a gap is no cut to cross into — the drag left A behind',
       );
       expect(
         manager.editingSession.gapGlobalFrame,
@@ -497,14 +492,24 @@ layers: layers,
         reason: 'the playhead follows through the parking notifier',
       );
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-
+      await gesture.moveBy(const Offset(8 * 9, 0)); // over cut-b [30,54)
+      await tester.pump();
       expect(
         manager.activeCutId,
         const CutId('cut-b'),
-        reason: 'the release lands the one full seek on the crossed cut',
+        reason: 'the boundary crossed IS the cut switch — before the release',
       );
+      expect(manager.editingSession.gapGlobalFrame, isNull);
+      expect(notifies, 1, reason: 'ONE switch at the boundary');
+
+      await gesture.moveBy(const Offset(8 * 3, 0)); // further into cut-b
+      await tester.pump();
+      expect(notifies, 1, reason: 'moves inside the cut stay quiet');
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(manager.activeCutId, const CutId('cut-b'));
       expect(manager.editingSession.gapGlobalFrame, isNull);
     });
 
@@ -611,9 +616,9 @@ layers: layers,
       );
     }
 
-    test('moves crossing into another cut NEVER commit — no notify, no '
-        'committed seek, the active cut pinned; the release lands the one '
-        'full seek on the crossed cut', () {
+    test('🗣️I-57 ②: the move that reaches another cut IS the cut switch — '
+        'one notify and one landing at the boundary, the gap before it and '
+        'the cut after it quiet, and the release lands where it stands', () {
       final manager = twoCutSession();
       addTearDown(manager.dispose);
       var notifies = 0;
@@ -621,45 +626,51 @@ layers: layers,
       final commitsBefore = manager.frameSeekCommitted.value;
 
       manager.frameScrub.scrubGlobalFrame(5); // in-cut: the cursor path
-      manager.frameScrub.scrubGlobalFrame(26); // the gap
-      manager.frameScrub.scrubGlobalFrame(35); // cut-b's territory
-      expect(notifies, 0, reason: 'boundary crossings ride the parking');
+      manager.frameScrub.scrubGlobalFrame(26); // the gap: parked, quiet
+      expect(notifies, 0);
       expect(manager.frameSeekCommitted.value, commitsBefore);
       expect(manager.activeCutId, const CutId('cut-a'));
-      expect(manager.editingSession.gapGlobalFrame, 35);
-      expect(manager.frameScrub.active.value, isTrue);
+      expect(manager.editingSession.gapGlobalFrame, 26);
 
-      manager.frameScrub.commitFrameScrub();
+      manager.frameScrub.scrubGlobalFrame(35); // cut-b: the crossing
       expect(manager.activeCutId, const CutId('cut-b'));
       expect(manager.currentFrameIndex, 5, reason: '35 - cut-b start 30');
       expect(manager.editingSession.gapGlobalFrame, isNull);
-      expect(notifies, 1, reason: 'ONE full seek on release');
+      expect(notifies, 1, reason: 'ONE cut switch at the boundary');
       expect(
         manager.frameSeekCommitted.value,
         commitsBefore + 1,
-        reason: 'exactly one committed seek — no fromGap frame-0 detour',
+        reason: 'one landing — no from-the-gap frame-0 detour',
       );
+
+      manager.frameScrub.scrubGlobalFrame(36); // inside cut-b
+      expect(notifies, 1, reason: 'moves inside the cut stay quiet');
+      expect(manager.frameSeekCommitted.value, commitsBefore + 1);
+      expect(manager.frameScrub.active.value, isTrue);
+
+      manager.frameScrub.commitFrameScrub();
+      expect(manager.activeCutId, const CutId('cut-b'));
+      expect(manager.currentFrameIndex, 6);
+      expect(notifies, 1, reason: 'the release lands where it stands');
       expect(manager.frameScrub.active.value, isFalse);
     });
 
-    test('a drag that STARTS by crossing engages the scrub on its first '
-        'MOVE — the pointer-down alone never does (a tap over another cut '
-        'must not become a live scrub)', () {
+    test('a press on another cut\'s frames crosses into it on the DOWN — and '
+        'only a MOVE engages the live scrub (a tap is a cut switch, never a '
+        'live scrub)', () {
       final manager = twoCutSession();
       addTearDown(manager.dispose);
 
-      manager.frameScrub.scrubGlobalFrame(40); // pointer-down over cut-b: quiet
-      expect(manager.frameScrub.active.value, isFalse);
-      expect(
-        manager.editingSession.gapGlobalFrame,
-        40,
-        reason: 'playhead follows',
-      );
+      manager.frameScrub.scrubGlobalFrame(40); // pointer-down over cut-b
+      expect(manager.activeCutId, const CutId('cut-b'));
+      expect(manager.currentFrameIndex, 10, reason: '40 - cut-b start 30');
+      expect(manager.frameScrub.active.value, isFalse, reason: 'a down alone');
+      expect(manager.editingSession.gapGlobalFrame, isNull);
       manager.frameScrub.scrubGlobalFrame(41); // an actual drag move engages
       expect(manager.frameScrub.active.value, isTrue);
-      expect(manager.activeCutId, const CutId('cut-a'));
       manager.frameScrub.commitFrameScrub();
       expect(manager.activeCutId, const CutId('cut-b'));
+      expect(manager.currentFrameIndex, 11);
     });
 
     test('a same-frame tap on an already-parked position never engages '

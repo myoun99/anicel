@@ -521,21 +521,11 @@ class EditorSessionManager extends ChangeNotifier
     if (voiceRecording.isVoiceRecording.value) {
       await voiceRecording.finishTakeThroughTheNotice();
     }
-    if (lastPosition.cutId != editingSession.activeCutId) {
-      selectCut(lastPosition.cutId);
-    }
-    selectFrameIndex(
-      activeCutControllers.clampedFrameIndex(
-        playheadCursors.ownFrameOf(lastPosition),
-      ),
-    );
-    // F-169: the follow seats a cut's row without the standing law — it has
-    // to stay quiet mid-playback (R12-B) — so the stop is where it answers.
-    standing.keepStandingShown();
-    // The mid-playback cut follow is QUIET (R12-B) — this is the one
-    // session notify that catches every activeCut consumer up with where
-    // playback landed.
-    notifyListeners();
+    // ↩️F-169 asked the standing law here too, and the session notified
+    // once more: the quiet follow (R12-B) had seated each cut's row outside
+    // the law and told nobody. A crossing is a cut switch now (I-57 ②), and
+    // a cut switch asks the law and notifies for itself.
+    _landOn(lastPosition);
   }
 
   /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
@@ -553,11 +543,17 @@ class EditorSessionManager extends ChangeNotifier
   /// Premiere-style follow: while playback crosses cut boundaries the
   /// ACTIVE cut tracks the playing cut and stays there when playback
   /// stops. Playback-only selection state — no command runs, the undo
-  /// stack never sees it. QUIET by design (R12-B): no session notify and
-  /// no warming — a boundary tick must not rebuild the visible panels
-  /// mid-playback (that stutter was audible as the cut-transition lag).
-  /// Live position display rides the playback listenables; activeCut
-  /// consumers catch up on the stop notify.
+  /// stack never sees it.
+  ///
+  /// 🗣️I-57 (유저 10-09, Q2: 「타임라인 행도 그 자리에서 — 행을 먼저 가볍게
+  /// 만든 뒤 켠다」): the crossing is the landing every cut switch makes
+  /// ([_landOn]), so the timeline's rows and everything else that reads the
+  /// active cut turn over at the boundary — the crossing a scrub makes too
+  /// ([FrameScrub.scrubGlobalFrame]). ↩️R12-B (07-13) kept it QUIET, with
+  /// no notify and no warm, because rebuilding the visible panels at a
+  /// boundary stuttered; whatever had to follow anyway was wired to the
+  /// playhead one surface at a time. The rail's rows were made light for
+  /// the crossing first (I-57 ①).
   void followPlaybackCut() {
     if (playbackRig.playback.globalFrameIndexListenable.value == null) {
       return;
@@ -566,19 +562,20 @@ class EditorSessionManager extends ChangeNotifier
     if (position == null || position.cutId == editingSession.activeCutId) {
       return;
     }
-    // The same landing as every other cut switch (storyboard-flip-crosses-
-    // cut, 유저 09-27 「따라간다」): the row left behind is remembered, and
-    // the row landed on is the one [Standing.layerACutSwitchSeats] names.
-    // ↩️It took the new cut's first row, whatever you were working in.
-    final before = activeLayerId;
-    standing.rememberActiveLayerForCut();
-    editingSession.setActiveCutId(position.cutId);
-    activeCutControllers.rebuild(
-      preferredActiveLayerId: standing.layerACutSwitchSeats(
-        position.cutId,
-        before: before,
+    _landOn(position);
+  }
+
+  /// Where a run stands — at a crossing while it plays, and where it stops:
+  /// its cut, with the row [Standing.layerACutSwitchSeats] names, then the
+  /// frame of that cut's own the run is on.
+  void _landOn(PlaybackPosition position) {
+    if (position.cutId != editingSession.activeCutId) {
+      selectCut(position.cutId);
+    }
+    selectFrameIndex(
+      activeCutControllers.clampedFrameIndex(
+        playheadCursors.ownFrameOf(position),
       ),
-      preferredFrameIndex: playheadCursors.ownFrameOf(position),
     );
   }
 
@@ -3270,11 +3267,6 @@ class EditorSessionManager extends ChangeNotifier
     parkGlobalFrame(globalFrame);
   }
 
-  /// THE canonical seek: a global frame in. Inside a cut it selects
-  /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
-  /// and PARKS there — the stored global addresses the gap exactly,
-  /// including the leading gap before the first cut, and the canvas shows
-  /// the no-cut void.
   /// Moves the playhead to [globalFrame] and takes NO cut active — the
   /// parked state, whatever sits at that frame.
   ///
@@ -3284,9 +3276,10 @@ class EditorSessionManager extends ChangeNotifier
   /// editing), on the reading that the active cut answers only to picking a
   /// cut on the row that HAS cuts. ⑭ retired that: one track means the
   /// index names one cut, so a row press seeks like any other and only a
-  /// GAP still parks. Callers that park a frame a cut covers are declaring
-  /// a preview, not a landing — the live scrub — or a cut whose picture is
-  /// hidden, so nothing shows there (the V-row eye, UI-R13 #2).
+  /// GAP still parks. A caller that parks a frame a cut covers declares
+  /// that cut's picture hidden, so nothing shows there (the V-row eye,
+  /// UI-R13 #2). ↩️The live scrub parked over other cuts' frames too, as a
+  /// preview, until it crossed into them (I-57 ②).
   ///
   /// ⛔THE park. A stop in a gap and the V-row eye wrote these steps out
   /// for themselves and missed the settle and the live-stroke hold this
@@ -3305,6 +3298,12 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
+  /// THE canonical seek: a global frame in. Inside a cut it selects
+  /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
+  /// and PARKS there — the stored global addresses the gap exactly,
+  /// including the leading gap before the first cut, and the canvas shows
+  /// the no-cut void.
+  ///
   /// [onAxis] lands the frame on a SPECIFIC track's axis instead of the
   /// selected track's. A caller that computed its move on one axis must
   /// land it on the same one — resolving on a different track would put
@@ -3491,7 +3490,7 @@ class EditorSessionManager extends ChangeNotifier
   ///  * the ruler DRAG moves [editingFrameCursor] and commits nothing until
   ///    the release, so a bar listening only to [frameSeekCommitted] was
   ///    stale for the whole gesture (measured: 9 of 25 buttons);
-  ///  * a scrub that leaves the cut's territory parks instead, moving
+  ///  * a scrub that walks into a gap parks instead, moving
   ///    [EditingSessionState.gapParkingListenable] and NOT the cursor —
   ///    which is why the
   ///    storyboard's shift pair stayed lit past the film's end while the

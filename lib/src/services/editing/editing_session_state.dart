@@ -68,11 +68,10 @@ class EditingSessionState {
   final ValueNotifier<int?> _gapParking = ValueNotifier<int?>(null);
 
   /// Whether the editing playhead sits in a gap (no cut there). During a
-  /// LIVE global scrub the parking transiently addresses ANY
-  /// out-of-active-cut position — another cut's frames included (the
-  /// quiet-crossing drag) — so consumers outside the scrub-gated display
-  /// path must not read a true here as "certainly between cuts" until the
-  /// release resolves it into a selection or a real gap parking.
+  /// LIVE global scrub the parking stands in a gap while the active cut is
+  /// still the one the drag left — the release deselects it. ↩️It could
+  /// address another cut's frames too until I-57 ②, when a scrub parked
+  /// over them instead of crossing in.
   /// 🚨★★★ T12 — A GAP PARKING IS THE ONLY WAY TO BE IN A GAP.
   ///
   /// This used to also ask `trackFrameAxis().isGap(editingGlobalFrame)`, and

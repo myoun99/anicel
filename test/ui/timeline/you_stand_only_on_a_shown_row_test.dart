@@ -531,8 +531,11 @@ void main() {
     // file opens as a session of its own now (I-7), born with nothing
     // folded; `a_project_opens_where_it_was_saved_test` pins where it stands.
 
-    test('① a playback that follows into another cut stops on a row the '
-        'rail shows', () async {
+    // ↩️The follow seated the cut's bottom row QUIETLY, outside the law, and
+    // the stop asked the law for it (F-169). A crossing is a cut switch like
+    // any other since I-57 ②, so the law answers at the crossing itself.
+    test('① a playback that follows into another cut stands on a row the '
+        'rail shows — at the crossing, and where it stops', () async {
       const base = LayerId('c');
       final s = EditorSessionManager(
         initialProject: _project(
@@ -551,8 +554,8 @@ void main() {
       );
       expect(
         s.activeLayerId,
-        const LayerId('c-1'),
-        reason: 'fixture: the quiet follow seats the bottom row, folded away',
+        base,
+        reason: 'the bottom row is folded away under its base',
       );
 
       s.playbackRig.playback.stop();

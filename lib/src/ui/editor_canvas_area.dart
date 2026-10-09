@@ -343,12 +343,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       ActiveStrokeOverlayModel();
 
   /// D12: the cut playback currently stands IN — the fit token's
-  /// identity half. 🚨This notifier is the boundary's ONLY crossing
-  /// signal: the session's own playback follow (`_followPlaybackCut`) is
-  /// QUIET by design (R12-B — no session notify), and the cursor/row
-  /// channels suppress the equal values a crossing publishes (local 0 on
-  /// entry, the unchanged verb row), so without this the token would go
-  /// stale and the next unrelated notify would land a fit mid-cut
+  /// identity half, kept on the RUN's own clock. 🚨It was the boundary's
+  /// ONLY crossing signal while the session's follow was quiet (R12-B); the
+  /// follow lands the cut through the session's notify since I-57 ②, but
+  /// the fit still turns on the run's crossing itself, tick-exact: the
+  /// cursor/row channels suppress the equal values a crossing publishes
+  /// (local 0 on entry, the unchanged verb row), so a token read off them
+  /// would go stale and the next unrelated notify would land a fit mid-cut
   /// (adversarial review). Kept by [_syncPlaybackFitCut]'s per-tick int
   /// comparison against the cached entry interval: the position resolve
   /// (which allocates) runs once per cut CROSSING, never per frame
@@ -621,20 +622,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         return ValueListenableBuilder<bool>(
           valueListenable: session.playbackRig.playback.isActiveListenable,
           builder: (context, _, _) {
-            // #26: a scrub no longer swaps the content — but the flag still
-            // decides WHAT THE GAP ANSWER IS: a parked global only reads as
-            // a gap while the gesture is live (`_gapGlobalFrame` is gated on
-            // this), so `inGap` below flips at enter and leave. D6 adds the
-            // TERRITORY edge: a drag that started inside the cut crosses
-            // the boundary mid-gesture, and the parking alone is per-move
-            // quiet — the out↔in flips arrive through
-            // `session.frameScrub.outOfTerritory`. Two rebuilds per
-            // gesture, at most two more per territory transition; the
-            // crossed frames come through the retarget scope, not here.
+            // #26: a scrub no longer swaps the content. The gap answer is
+            // read off the parking when the canvas builds; what builds it
+            // mid-gesture is these two flags — the gesture starting and
+            // ending, and D6's GAP edge: a drag that started on a cut walks
+            // into a gap, and the parking alone is per-move quiet, so the
+            // gap↔cut flips arrive through `session.frameScrub.inGap`. A
+            // tap's pointer-down park flips neither (the no-flash rule).
+            // Two rebuilds per gesture, at most two more per gap; the
+            // crossed frames come through the retarget scope, and a
+            // crossing into another cut through the session (I-57 ②).
             return ListenableBuilder(
               listenable: Listenable.merge([
                 session.frameScrub.active,
-                session.frameScrub.outOfTerritory,
+                session.frameScrub.inGap,
               ]),
               builder: (context, _) {
                 return _FrameRetargetScope(
@@ -667,16 +668,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// The track stack (multitrack display path): one camera-frame
   /// projection per covered track, following [globalFrame] per move — the
-  /// parked contentOverride, the scrub preview's gap branch (both on the gap
+  /// parked contentOverride, the scrub's gap branch (both on the gap
   /// parking) and ALL-CUTS playback (on the clock's global frame, R3a).
   ///
   /// 🚨The camera view is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
-  /// camera frame drawn OVER it, and a storyboard ruler drag parks per move
-  /// (`scrubGlobalFrame` parks the moment the frame belongs to another cut) —
-  /// so cropping here made the drag look nothing like the state it started
-  /// from. The parked mounts never crop, and the answer is the same one the
-  /// eye already had: preview = canvas + overlay, playback = crop.
+  /// camera frame drawn OVER it, and a ruler drag parks per move in a gap
+  /// (`scrubGlobalFrame`) — so cropping here made the drag look nothing like
+  /// the state it started from. The parked mounts never crop, and the answer
+  /// is the same one the eye already had: preview = canvas + overlay,
+  /// playback = crop.
   ///
   /// [ofTheRun] is the mount ALL-CUTS playback shows: it follows the run's
   /// clock, answers the camera toggle, and leaves its pictures to the
@@ -723,7 +724,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   ) {
     final project = session.repository.requireProject();
     // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
-    // view rebuilds itself as a scrub crosses into another cut, and bare under
+    // view rebuilds itself as the frame it follows crosses into another cut
+    // (a run's clock; a scrub's parking did too until I-57 ②), and bare under
     // the panel content's LayoutBuilder every such rebuild relaid out and
     // repainted the whole panel content. Its own TickLayer takes that scope —
     // every mount hands it the panel's size (a Positioned.fill, a
@@ -1287,23 +1289,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   ///
   /// The cursor subscription keeps the frame gliding along its animated
   /// pose during scrubs (and after committed seeks) without any wider
-  /// rebuild.
+  /// rebuild. A crossing into another cut and a scrub's step into a gap
+  /// rebuild the area around it — the session's notify, the scrub's gap
+  /// edge.
   ///
-  /// ㊲: the PARKING is the other half of "where am I". A scrub that crosses
-  /// a cut boundary moves only that — the cursor stays put, by design — so a
-  /// pose read on the cursor alone stayed frozen on the cut being left.
+  /// ↩️㊲ watched the gap's PARKING too: a scrub that crossed a cut boundary
+  /// moved only that, the cursor staying put, so a pose read on the cursor
+  /// alone stayed frozen on the cut being left. The scrub crosses into the
+  /// cut now (I-57 ②), and the parking moves per step only inside a gap,
+  /// where there is no pose to move.
   Widget _atTheCameraPose(
     EditorSessionManager session,
     Widget Function(CameraPose pose) build,
   ) => ListenableBuilder(
     listenable: session.editingFrameCursor,
-    builder: (context, _) => ValueListenableBuilder<int?>(
-      valueListenable: session.editingSession.gapParkingListenable,
-      builder: (context, _, _) {
-        final pose = session.camera.displayedCameraPose;
-        return pose == null ? const SizedBox.shrink() : build(pose);
-      },
-    ),
+    builder: (context, _) {
+      final pose = session.camera.displayedCameraPose;
+      return pose == null ? const SizedBox.shrink() : build(pose);
+    },
   );
 
   Positioned _cutFadeWash(

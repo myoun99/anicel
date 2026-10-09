@@ -125,37 +125,23 @@ class Camera {
     );
   }
 
-  /// The camera pose the canvas should FRAME right now — not always the
-  /// ACTIVE cut's (㊲).
+  /// The camera pose the canvas should FRAME right now — the active cut's,
+  /// and none where the playhead is parked: a parking is a gap (or the
+  /// V-row eye's hidden picture), and there is nothing to frame there.
   ///
-  /// "Which cut am I editing" and "which cut is under the playhead" are two
-  /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
-  /// boundary parks per move and leaves the active cut alone, because
-  /// switching it per move rebuilt every panel ([FrameScrub.scrubGlobalFrame]). The
-  /// camera frame read the active cut through that, so a T.U that ended
-  /// zoomed kept framing the NEXT cut's pictures at the size the cut being
-  /// left had finished on — and dragging the other way showed no camera
-  /// work at all.
-  ///
-  /// Only a LIVE scrub asks the parked question: a committed parking means
-  /// there is no cut here (a gap, or the V-row eye's hidden picture), and
-  /// then there is nothing to frame. Null says exactly that.
+  /// ↩️㊲: a live scrub used to park over ANOTHER cut's frames too and leave
+  /// the active cut alone, so this asked the parked frame's cut for its pose
+  /// (a T.U that ended zoomed had kept framing the next cut's pictures at
+  /// the size the cut being left finished on). A scrub crosses into the cut
+  /// under it now (I-57 ②, [FrameScrub.scrubGlobalFrame]), so the cut under
+  /// the playhead is the active cut, and the parked question is only ever
+  /// asked of a gap.
   CameraPose? get displayedCameraPose {
-    final parked = _cutUnderPlayhead.liveParkedFrame;
-    if (parked == null) {
-      return _project.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
-    }
-    // ↩️F-90: the gap-versus-owner rule for a parked frame lives in
-    // [CutUnderPlayhead.atTrackFrame] now, its warning with it — the sheet
-    // asks the same question and must get the same answer.
-    final at = _cutUnderPlayhead.atTrackFrame(parked);
-    if (at == null) {
+    if (_cutUnderPlayhead.liveParkedFrame != null ||
+        _project.activeCutOrNull == null) {
       return null;
     }
-    // The RENDER route's resolver (fx bypass honoured), because the picture
-    // under this rectangle came through it too: preview and camera frame
-    // must not disagree about the same cut.
-    return cameraPoseForCut(at.cut, at.localFrame);
+    return cameraPoseAtCurrentFrame;
   }
 
   bool get hasCameraKeyframeAtCurrentFrame =>

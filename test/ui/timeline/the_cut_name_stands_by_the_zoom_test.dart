@@ -87,9 +87,9 @@ void main() {
 
     // 🗣️I-57, after seeing it (유저 2026-10-01): 「스크럽중에도 통일해서
     // 컷이름 갱신되게. 컷 실제로 바뀔때 한번」. ↩️The name was the ACTIVE
-    // cut's, and a scrub leaves the active cut alone on purpose (UI-R7 #9) —
-    // so it named the cut being left until the release. It names the cut
-    // UNDER THE PLAYHEAD now, the answer the sheet turns over by (F-90).
+    // cut's, and a scrub left the active cut alone (UI-R7 #9) — so it named
+    // the cut being left until the release. Since I-57 ② the scrub crosses
+    // into the cut under it, and the name turns over with that crossing.
     testWidgets('a scrub over another cut names it — once, at the crossing '
         '— on the ${storyboard ? 'storyboard' : 'timeline'}', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -129,8 +129,8 @@ void main() {
       expect(session.frameScrub.active.value, isTrue, reason: '⛔전제: live');
       expect(
         session.activeCutId,
-        const CutId('cut-a'),
-        reason: '⛔전제: the scrub left the active cut alone',
+        const CutId('cut-b'),
+        reason: 'the scrub crossed into it',
       );
       expect(shown(), 'Chase');
       expect(told, 1, reason: '「컷 실제로 바뀔때 한번」 — not once per frame');

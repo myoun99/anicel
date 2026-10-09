@@ -83,12 +83,13 @@ class CanvasTrackStackView extends StatefulWidget {
   /// Whether the CAMERA VIEW is on — the same view-mode flag the playback
   /// view takes, and the reason this stack no longer crops unconditionally.
   ///
-  /// ★A ruler scrub across cut boundaries parks per move (UI-R7 #9), so the
-  /// parked stack is what the storyboard shows while you drag. It used to
-  /// be the one display path that ignored the toggle, which meant dragging
-  /// the ruler reframed the canvas into the camera crop even with camera
-  /// view off. The law is one line now: camera view decides the framing,
-  /// wherever the picture comes from.
+  /// ★A ruler scrub parks per move in a gap (UI-R7 #9), so the parked stack
+  /// is what the canvas shows while you drag through one (until I-57 ② it
+  /// showed another cut's frames this way too). It used to be the one
+  /// display path that ignored the toggle, which meant dragging the ruler
+  /// reframed the canvas into the camera crop even with camera view off.
+  /// The law is one line now: camera view decides the framing, wherever the
+  /// picture comes from.
   final bool cameraViewEnabled;
 
   final CutFrameCompositeCache compositeCache;
