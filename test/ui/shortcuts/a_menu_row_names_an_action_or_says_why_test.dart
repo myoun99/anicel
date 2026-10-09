@@ -23,12 +23,14 @@ import '../../helpers/project_scratch_folder.dart';
 ///     mode). The answer leaves these out: 「도구 설정의 선택지 · 스위치 …
 ///     에는 키를 줄 수 없다」 was the cost 유저 took with it.
 ///   · THE DOOR TO A SECOND LEVEL — it opens a submenu and runs nothing.
+///   · DECLINED — asked, and 유저 answered that it takes no key; the line
+///     names the question.
 ///
 /// ⚠️This reads the SOURCE: what a row does when pressed is the widget
 /// tests' (`timeline_bar_rows_are_actions_test`, `menu_rows_are_actions_
 /// test`). What it holds is the one thing those cannot — that no row was
 /// left out because nobody listed it.
-enum Why { owed, aChoice, aSecondLevel }
+enum Why { owed, aChoice, aSecondLevel, declined }
 
 const ledger = <String, Why>{
   // The brush library's options menu: its rows are made by one helper, so
@@ -46,17 +48,21 @@ const ledger = <String, Why>{
   "conte/conte_tab_host.dart | 'conte-blank-page-toggle'": Why.owed,
   "conte/conte_tab_host.dart | 'conte-cover-toggle'": Why.owed,
   "cut_command_group.dart | 'cut-mark-button'": Why.aSecondLevel,
-  "media/media_pool_panel.dart | 'media-asset-menu-export-wav'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-open'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-open-sub'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-place'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-promote'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-relink'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-remove'": Why.owed,
-  "media/media_pool_panel.dart | 'media-asset-menu-rename'": Why.owed,
+  // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
+  // take?): 「그런건 단축키 안만들어도됨」.
+  "media/media_pool_panel.dart | 'media-asset-menu-export-wav'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-open'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-open-sub'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-place'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-promote'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-relink'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-remove'": Why.declined,
+  "media/media_pool_panel.dart | 'media-asset-menu-rename'": Why.declined,
+  // 🗣️I-40-Q3 (유저 2026-10-09, two viewers — which one would a key take?):
+  // 「안만들기로했음」.
   "media/media_viewer_tab_host.dart | _key('register-asset-button')":
-      Why.owed,
-  "media/media_viewer_tab_host.dart | _key('swap-button')": Why.owed,
+      Why.declined,
+  "media/media_viewer_tab_host.dart | _key('swap-button')": Why.declined,
   // One row per recent project — a list that is the user's own, as the
   // brush library's rows are (I-56 made those actions out of the library as
   // it stands). What shape an action takes here is asked when its round

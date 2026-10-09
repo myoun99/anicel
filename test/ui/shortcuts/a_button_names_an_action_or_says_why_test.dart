@@ -21,6 +21,8 @@ import '../../helpers/menu_rows_without_an_action.dart';
 ///   · THE DOOR TO A SECOND LEVEL — it opens a menu or a popover and runs
 ///     nothing.
 ///   · IN A WINDOW — 「창 안의 버튼」, the answer's third exclusion.
+///   · DECLINED — asked, and 유저 answered that it takes no key; the line
+///     names the question.
 ///
 /// ⚠️What is scanned: the app's ONE button (`AppIconButton`), the view
 /// pill's spelling of it (`_barIconButton`), and the buttons that wrap it
@@ -29,7 +31,7 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
 /// would stand here with the same reason.
-enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow }
+enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
   // ── OWED ────────────────────────────────────────────────────────────
@@ -43,21 +45,11 @@ const ledger = <String, Why>{
           "'\${brush.keyPrefix}-brush-toggle-button'":
       Why.owed,
   "media/media_pool_panel.dart | 'media-import-button'": Why.owed,
-  "media/media_viewer_tab_host.dart | _key('open-file-button')": Why.owed,
-  "media/media_viewer_tab_host.dart | _key('close-file-button')": Why.owed,
   "timesheet_tab_host.dart | 'timesheet-data-mode-toggle-button'": Why.owed,
   "timesheet_tab_host.dart | 'timesheet-format-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
       Why.owed,
-  // The media viewer's transport — one widget, which the import and export
-  // windows mount too.
-  "widgets/transport_bar.dart | _key('first')": Why.owed,
-  "widgets/transport_bar.dart | _key('last')": Why.owed,
-  "widgets/transport_bar.dart | _key('mute')": Why.owed,
-  "widgets/transport_bar.dart | _key('play')": Why.owed,
-  "widgets/transport_bar.dart | _key('step-back')": Why.owed,
-  "widgets/transport_bar.dart | _key('step-forward')": Why.owed,
   // Opening and closing panels (「패널 열기 닫기같은거든」).
   "editor_workspace.dart | 'rail-group-\$railId'": Why.owed,
   "menu/editor_top_strip.dart | 'top-strip-floor-\${tab.tabId}'": Why.owed,
@@ -143,6 +135,21 @@ const ledger = <String, Why>{
           "'shortcut-unassign-\${definition.id}'":
       Why.inAWindow,
   "widgets/app_window.dart | 'app-window-close'": Why.inAWindow,
+
+  // ── DECLINED ────────────────────────────────────────────────────────
+  // 🗣️I-40-Q3 (유저 2026-10-09, two media viewers — which one would a key
+  // take?): 「안만들기로했음」. The transport is one widget, which the import
+  // and export windows mount too.
+  "media/media_viewer_tab_host.dart | _key('open-file-button')":
+      Why.declined,
+  "media/media_viewer_tab_host.dart | _key('close-file-button')":
+      Why.declined,
+  "widgets/transport_bar.dart | _key('first')": Why.declined,
+  "widgets/transport_bar.dart | _key('last')": Why.declined,
+  "widgets/transport_bar.dart | _key('mute')": Why.declined,
+  "widgets/transport_bar.dart | _key('play')": Why.declined,
+  "widgets/transport_bar.dart | _key('step-back')": Why.declined,
+  "widgets/transport_bar.dart | _key('step-forward')": Why.declined,
 };
 
 void main() {
