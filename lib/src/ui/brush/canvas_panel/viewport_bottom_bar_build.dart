@@ -211,6 +211,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-reset',
           label: AppText.strings.viewResetView,
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasResetView]),
           icon: Icons.crop_free,
           onSelected: _bar.onReset,
           enabled: _bar.viewEnabled,
@@ -223,7 +224,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-out',
           label: editorActionLabel(EditorActionIds.canvasZoomOut),
-          shortcuts: const [EditorActionIds.canvasZoomOut],
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasZoomOut]),
           icon: Icons.zoom_out,
           onSelected: _bar.onZoomOut,
           enabled: _bar.viewEnabled,
@@ -231,7 +232,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-in',
           label: editorActionLabel(EditorActionIds.canvasZoomIn),
-          shortcuts: const [EditorActionIds.canvasZoomIn],
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasZoomIn]),
           icon: Icons.zoom_in,
           onSelected: _bar.onZoomIn,
           enabled: _bar.viewEnabled,
@@ -434,6 +435,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
           tooltip: AppText.strings.viewStraighten,
+          shortcuts: const [EditorActionIds.canvasStraighten],
           icon: const Icon(Icons.refresh),
           onPressed: _bar.onRotateReset,
         ),
@@ -442,6 +444,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-flip-vertical',
           tooltip: AppText.strings.viewFlipVertical,
+          shortcuts: const [EditorActionIds.canvasFlipVertical],
           icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
           onPressed: _bar.onFlipVertical,
           isSelected: viewport.flipVertical,
@@ -481,6 +484,7 @@ class _BottomBarBuild {
   Widget _fitButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-fit',
     tooltip: AppText.strings.viewFitToView,
+    shortcuts: const [EditorActionIds.canvasFit],
     icon: const Icon(Icons.fit_screen),
     onPressed: _bar.viewEnabled ? _bar.onFit : null,
   );
@@ -488,6 +492,7 @@ class _BottomBarBuild {
   Widget _resetButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-reset',
     tooltip: AppText.strings.viewResetView,
+    shortcuts: const [EditorActionIds.canvasResetView],
     // A GLYPH in the icon slot, beside Fit and the zoom icons — and icons do
     // not follow the OS text size. Scaled as text it outgrew the button it
     // names (at 2× `1:1` wrapped in its 18px slot); the readouts beside it
@@ -556,6 +561,9 @@ class _BottomBarBuild {
       AppIconButton(
         keyValue: verb.keyValue,
         tooltip: verb.label,
+        // The row's own actions, so the button and the row it unfolds from
+        // say the same key.
+        shortcuts: verb.shortcuts,
         icon: Icon(verb.icon),
         size: AppIconButtonSize.strip,
         onPressed: verb.enabled ? verb.onSelected : null,

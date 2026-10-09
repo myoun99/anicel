@@ -3514,6 +3514,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   const _CanvasViewportBottomBar({
     this.onFloor = false,
     this.oneToOneOnPill = false,
+    this.drivenByViewKeys = false,
     this.leading = const <Widget>[],
     this.hostSettings = const <PanelFlyoutEntry>[],
     required this.viewport,
@@ -3555,6 +3556,12 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// [BrushCanvasPanel.oneToOneOnPill]: the 1:1 starts on the pill, as the
   /// floor's does, wherever the panel stands.
   final bool oneToOneOnPill;
+
+  /// Whether the view KEYS drive this canvas — its panel holds the
+  /// [BrushCanvasPanel.viewCommands] the key funnel calls (I-40). Only then
+  /// do its view buttons name their keys: on any other canvas the same key
+  /// moves the editor's canvas, not this one ([_viewKeys]).
+  final bool drivenByViewKeys;
 
   /// R26 #41: host controls at the head of the pill.
   final List<Widget> leading;
@@ -3648,9 +3655,14 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
-      shortcuts: shortcuts,
+      shortcuts: _viewKeys(shortcuts),
     );
   }
+
+  /// [actions], where this canvas is the one their keys drive
+  /// ([drivenByViewKeys]) — nothing anywhere else.
+  List<String> _viewKeys(List<String> actions) =>
+      drivenByViewKeys ? actions : const [];
 }
 
 class CanvasEditorSelectionLabels {

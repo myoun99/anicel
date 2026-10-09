@@ -107,7 +107,8 @@ class EditorActionDefinition {
   /// the Shortcuts map; `EditorKeyHolds` takes it on the same road instead.
   final bool hold;
 
-  /// A viewport ZOOM — I-19's two keys.
+  /// A viewport ZOOM — I-19's two steps, and fit and 1:1 (I-40), which land
+  /// a zoom too.
   ///
   /// 🚨R6q3 (유저 2026-08-25, 답 2번): 「키보드 줌도 통과시킨다. 재생 중 줌은
   /// 입력 수단과 무관하게 한 법으로」. The playback gate lets these through
@@ -560,6 +561,9 @@ abstract final class EditorActionIds {
 
   /// The sill transport's 「처음으로」 (F-261).
   static const playbackToStart = 'playback-to-start';
+
+  /// The playback bar's loop / play-once switch (I-40).
+  static const playbackLoopToggle = 'playback-loop-toggle';
   static const voiceRecordToggle = 'voice-record-toggle';
   static const undo = 'edit-undo';
   static const redo = 'edit-redo';
@@ -594,6 +598,13 @@ abstract final class EditorActionIds {
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
+
+  /// The view pill's other view buttons (I-40): ↕, the straighten, fit and
+  /// 1:1.
+  static const canvasFlipVertical = 'canvas-flip-vertical';
+  static const canvasStraighten = 'canvas-straighten';
+  static const canvasFit = 'canvas-fit';
+  static const canvasResetView = 'canvas-reset-view';
   static const timelineComma1 = 'timeline-comma-1';
   static const timelineComma2 = 'timeline-comma-2';
   static const timelineComma3 = 'timeline-comma-3';
@@ -828,6 +839,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, shift: true),
     ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.playbackLoopToggle,
+    label: 'Loop / Play Once',
+    category: 'Playback',
+    defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.voiceRecordToggle,
@@ -1271,6 +1288,35 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Flip Canvas View Horizontal',
     category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasFlipVertical,
+    label: 'Flip Canvas View Vertical',
+    category: 'View',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasStraighten,
+    label: 'Straighten Canvas View',
+    category: 'View',
+    defaultActivators: [],
+  ),
+  // Fit and 1:1 land a zoom, as the ± steps do — so they pass playback where
+  // the steps pass (R6q3: 「재생 중 줌은 입력 수단과 무관하게 한 법으로」;
+  // the pill's own buttons sit in the canvas chrome the hole lets through).
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasFit,
+    label: 'Fit Canvas View',
+    category: 'View',
+    defaultActivators: [],
+    zoomsView: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasResetView,
+    label: 'Reset Canvas View (100%)',
+    category: 'View',
+    defaultActivators: [],
+    zoomsView: true,
   ),
   // 🗣️I-19: 「shift+>(확대) shift+<(축소)」.
   // ↩️F-261 (유저 2026-10-02): 「확대축소도 그래서 z랑 x로 … 둘째키로

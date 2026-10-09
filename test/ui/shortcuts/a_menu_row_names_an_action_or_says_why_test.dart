@@ -34,8 +34,6 @@ const ledger = <String, Why>{
   // The brush library's options menu: its rows are made by one helper, so
   // the thirteen stand as one line here.
   'brush/brush_preset_panel.dart | keyValue': Why.owed,
-  "brush/canvas_panel/viewport_bottom_bar_build.dart | 'canvas-viewport-reset'":
-      Why.owed,
   "brush/text_tool_settings.dart | 'text-tool-font-\${_nameOf(family)}'":
       Why.aChoice,
   "brush/text_tool_settings.dart | 'text-tool-font-\${family.name}'":

@@ -61,7 +61,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
-    show playOrStop, skipToStart, toggleVoiceRecordingWithFeedback;
+    show playOrStop, skipToStart, toggleLoop, toggleVoiceRecordingWithFeedback;
 import 'shortcuts/brush_actions.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/panel_actions.dart';
@@ -1003,6 +1003,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           scope: transport.scope,
           onSkipToStart: transport.skipToStart,
         );
+      case EditorActionIds.playbackLoopToggle:
+        toggleLoop(_session.playbackRig.playback);
       case EditorActionIds.voiceRecordToggle:
         unawaited(toggleVoiceRecordingWithFeedback(context, _session));
       case EditorActionIds.undo:
@@ -1054,6 +1056,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _canvasViewCommands.rotateBy(15);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
+      case EditorActionIds.canvasFlipVertical:
+        _canvasViewCommands.toggleFlipVertical();
+      case EditorActionIds.canvasStraighten:
+        _canvasViewCommands.resetRotation();
+      case EditorActionIds.canvasFit:
+        _canvasViewCommands.fit();
+      case EditorActionIds.canvasResetView:
+        _canvasViewCommands.resetView();
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       case EditorActionIds.layerUp:

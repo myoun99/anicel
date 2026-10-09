@@ -12,7 +12,18 @@ import 'dart_sources.dart';
 /// ⚠️The caller names the folder, `'lib/src/ui'` spelled out in the test:
 /// the affected-tests selector finds a source scan by the path the TEST
 /// names. The walk is the one every source scan takes ([dartFilesUnder]).
-({Set<String> named, Set<String> silent}) menuRowsUnder(String dir) {
+({Set<String> named, Set<String> silent}) menuRowsUnder(String dir) =>
+    callsNamingAnActionUnder(dir, const {'PanelFlyoutItem'}, what: 'row');
+
+/// [menuRowsUnder]'s scan, for every call of any of [callees] — a widget's
+/// constructor, or a private method that builds one on its owner's behalf
+/// (`_bar._barIconButton(…)`). A call with no key of its own is 「keyless
+/// [what] N」 among the keyless calls of its file.
+({Set<String> named, Set<String> silent}) callsNamingAnActionUnder(
+  String dir,
+  Set<String> callees, {
+  required String what,
+}) {
   final named = <String>{};
   final silent = <String>{};
   final root = '${dir.replaceAll(r'\', '/')}/';
@@ -20,33 +31,37 @@ import 'dart_sources.dart';
     final text = file.readAsStringSync().replaceAll('\r\n', '\n');
     final path = file.path.replaceAll(r'\', '/').split(root).last;
     var keyless = 0;
-    for (final call in _callsOf('PanelFlyoutItem', text)) {
-      final key = _argument('keyValue', call);
-      final id = '$path | ${key ?? 'keyless row ${++keyless}'}';
-      (call.contains('shortcuts:') ? named : silent).add(id);
+    for (final callee in callees) {
+      for (final call in _callsOf(callee, text)) {
+        final key = _argument('keyValue', call);
+        final id = '$path | ${key ?? 'keyless $what ${++keyless}'}';
+        (call.contains('shortcuts:') ? named : silent).add(id);
+      }
     }
   }
   return (named: named, silent: silent);
 }
 
-/// The text of every call of [constructor] in [text], parentheses and all —
-/// not the class's own constructor, and not a mention in a comment.
-Iterable<String> _callsOf(String constructor, String text) sync* {
+/// The text of every call of [callee] in [text], parentheses and all — not
+/// its own declaration, and not a mention in a comment.
+Iterable<String> _callsOf(String callee, String text) sync* {
+  // A longer name that ends in this one is another widget. A private method
+  // is called on its owner (`_bar._barIconButton(`), so a dot may lead it.
+  final joined = RegExp(callee.startsWith('_') ? '[A-Za-z0-9_]' : r'[\w.]');
   var from = 0;
   while (true) {
-    final at = text.indexOf('$constructor(', from);
+    final at = text.indexOf('$callee(', from);
     if (at < 0) return;
-    from = at + constructor.length + 1;
-    // A longer name that ends in this one is another widget.
-    if (at > 0 && RegExp('[A-Za-z0-9_.]').hasMatch(text[at - 1])) continue;
+    from = at + callee.length + 1;
+    if (at > 0 && joined.hasMatch(text[at - 1])) continue;
     final lead = text.substring(text.lastIndexOf('\n', at) + 1, at);
     if (lead.trimLeft().startsWith('//')) continue;
-    final end = _closing(text, at + constructor.length);
+    final end = _closing(text, at + callee.length);
     if (end < 0) return;
     final call = text.substring(at, end + 1);
     // `const PanelFlyoutItem({…})` is the class saying what a row takes,
     // and `PanelFlyoutItem(:final action) =>` a switch asking what it has.
-    if (call.startsWith('$constructor({')) continue;
+    if (call.startsWith('$callee({')) continue;
     if (text.substring(end + 1).trimLeft().startsWith('=>')) continue;
     yield call;
   }

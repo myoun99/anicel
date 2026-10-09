@@ -78,6 +78,13 @@ void skipToStart(
   onSkipToStart?.call();
 }
 
+/// The loop button's press — and its key's (I-40): loop ⇄ play once.
+void toggleLoop(CanvasPlaybackController controller) {
+  controller.loopMode = controller.loopMode == PlaybackLoopMode.loop
+      ? PlaybackLoopMode.once
+      : PlaybackLoopMode.loop;
+}
+
 /// 🚨T29 — the drop readout's fixed slot. Wide enough for a four-digit
 /// count at `labelSmall`; the text right-aligns inside it, so the digits
 /// grow leftward into space that was already reserved and the transport
@@ -305,14 +312,10 @@ class PlaybackTransportControls extends StatelessWidget {
       tooltip: controller.loopMode == PlaybackLoopMode.loop
           ? AppText.strings.transportLoop
           : AppText.strings.transportOnce,
+      shortcuts: const [EditorActionIds.playbackLoopToggle],
       isSelected: controller.loopMode == PlaybackLoopMode.loop,
       icon: const Icon(Icons.repeat),
-      onPressed: () {
-        controller.loopMode =
-            controller.loopMode == PlaybackLoopMode.loop
-            ? PlaybackLoopMode.once
-            : PlaybackLoopMode.loop;
-      },
+      onPressed: () => toggleLoop(controller),
     );
   }
 

@@ -216,6 +216,8 @@ class _CanvasPanelViewport {
       toggleFlipVertical: _toggleFlipVertical,
       resetRotation: _resetRotation,
       zoomStep: _zoomStep,
+      fit: _fitToView,
+      resetView: _resetView,
     );
   }
 

@@ -108,6 +108,38 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // I-40: fit and 1:1 land a zoom (`zoomsView`), so their keys pass where
+  // the steps' do. A straighten is not a zoom, and stops the canvas as R
+  // does.
+  testWidgets('a FIT key passes while the canvas plays, and fits — a '
+      'straighten key stops it', (tester) async {
+    final session = await playingCanvas(tester);
+    EditorShortcutScope.peek(tester.element(find.byType(EditorCanvasArea)))!
+      ..setActivators(EditorActionIds.canvasFit, const [
+        SingleActivator(LogicalKeyboardKey.keyK),
+      ])
+      ..setActivators(EditorActionIds.canvasStraighten, const [
+        SingleActivator(LogicalKeyboardKey.keyJ),
+      ]);
+    await tester.pump();
+    await shifted(tester, LogicalKeyboardKey.keyE);
+    final zoomed = textOf(tester, 'canvas-viewport-zoom-label');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isTrue);
+    expect(
+      textOf(tester, 'canvas-viewport-zoom-label'),
+      isNot(zoomed),
+      reason: 'and the view fitted',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isFalse);
+    await tester.pumpAndSettle();
+  });
+
   // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types): the
   // gate's question and the funnel's map read ONE set of forms. On a JIS
   // keyboard `'` is Shift+7, arriving as `7` with Shift held, typing `'`.
