@@ -66,6 +66,17 @@ void main() {
     for (final extension in openableExtensions) {
       expect(openedAs('x.$extension'), isNotNull, reason: extension);
     }
+    for (final extension in [
+      ...projectOpenExtensions,
+      ...imageFileExtensions,
+      ...videoFileExtensions,
+      ...audioFileExtensions,
+      ...pdfFileExtensions,
+      ...brushFileExtensions,
+      ...fontFileExtensions,
+    ]) {
+      expect(openableExtensions, contains(extension), reason: extension);
+    }
     expect(openableExtensions.toSet().length, openableExtensions.length);
   });
 }
