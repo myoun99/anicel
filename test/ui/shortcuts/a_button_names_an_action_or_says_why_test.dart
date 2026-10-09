@@ -48,9 +48,6 @@ const ledger = <String, Why>{
   "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'": Why.owed,
   "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
       Why.owed,
-  // Opening and closing panels (「패널 열기 닫기같은거든」).
-  "editor_workspace.dart | 'rail-group-\$railId'": Why.owed,
-  "menu/editor_top_strip.dart | 'top-strip-floor-\${tab.tabId}'": Why.owed,
 
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
@@ -148,6 +145,12 @@ const ledger = <String, Why>{
   "widgets/transport_bar.dart | _key('play')": Why.declined,
   "widgets/transport_bar.dart | _key('step-back')": Why.declined,
   "widgets/transport_bar.dart | _key('step-forward')": Why.declined,
+  // 🗣️I-40-Q4 (유저 2026-10-09, the strip's floor buttons and the rails'
+  // group buttons — each panel already has its own open/close key):
+  // 「둘 다 주지 않는다」.
+  "editor_workspace.dart | 'rail-group-\$railId'": Why.declined,
+  "menu/editor_top_strip.dart | 'top-strip-floor-\${tab.tabId}'":
+      Why.declined,
 };
 
 void main() {
