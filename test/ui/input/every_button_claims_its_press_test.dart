@@ -158,7 +158,9 @@ void main() {
     // flyout too — canvas size 1 → gone. I-80: the camera size's after
     // them — camera size 1 → gone.
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
-    'lib/src/ui/import/import_dialog.dart': 2,
+    // ↓2026-10-09, F-282: the import window's own two pickers went to the
+    // one door (the open button picks; the window takes what it is handed)
+    // — import window 2 → gone.
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,
     'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
