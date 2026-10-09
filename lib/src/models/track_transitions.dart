@@ -75,8 +75,9 @@ int drawnFramesOfCutAt({
 );
 
 /// Whether [row], as [track]'s transition row, draws no cut for fewer
-/// frames than its camera keeps ([cameraDrawnFrameFloor]) where it draws
-/// one for fewer frames than the track's own row does.
+/// frames than its camera keeps ([cameraDrawnFrameFloor], read off the
+/// frames the track's own row draws it for). A cut drawn for as many frames
+/// or more passes by construction: the floor never stands past them.
 ///
 /// 🗣️I-73-camera-row-Q7 (유저 2026-10-09 → `floor`): 「컷 길이 줄이기와
 /// 똑같이 — 안쪽 키 앞에서 멈춤」. A drag that makes a のりしろ shorter
@@ -96,10 +97,11 @@ bool transitionRowKeepsCameraKeys(
       cutStart: placed.startFrame,
       spans: spans,
     );
-    final was = drawnAmong(before);
-    final now = drawnAmong(after);
-    if (now < was &&
-        now < cameraDrawnFrameFloor(placed.cut.camera, drawnFrameCount: was)) {
+    final floor = cameraDrawnFrameFloor(
+      placed.cut.camera,
+      drawnFrameCount: drawnAmong(before),
+    );
+    if (drawnAmong(after) < floor) {
       return false;
     }
   }
