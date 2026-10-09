@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../core/draw_space.dart';
 import '../../services/composite_effect_paint.dart';
@@ -537,50 +538,37 @@ class CutFrameCompositeCache {
     required int maxBytes,
     int? Function(CutId cutId, int frameIndex)? stepOf,
     int? laterThan,
-  }) {
-    if (_estimatedBytes <= maxBytes) {
-      return true;
-    }
-    final candidates = <(_CompositeEntry, int)>[
+  }) => letGoWantedLatest(
+    entries: [
       for (final entry in _images.values)
-        if (!_isPinned(entry)) (entry, _wantedAt(entry, stepOf)),
-    ]..sort((a, b) {
-      final latestFirst = b.$2.compareTo(a.$2);
-      return latestFirst != 0
-          ? latestFirst
-          : a.$1.lastUsed.compareTo(b.$1.lastUsed);
-    });
-    for (final (candidate, wantedAt) in candidates) {
-      if (_estimatedBytes <= maxBytes) {
-        break;
-      }
-      if (laterThan != null && wantedAt <= laterThan) {
-        // Latest first: everything from here on is wanted sooner still.
-        break;
-      }
-      for (final key in candidate.indexKeys.toList()) {
+        if (!_isPinned(entry)) entry,
+    ],
+    heldBytes: _estimatedBytes,
+    maxBytes: maxBytes,
+    wantedAt: (entry) => _wantedAt(entry, stepOf),
+    lastUsed: (entry) => entry.lastUsed,
+    bytesOf: (entry) => estimatedImageBytes(entry.image.width, entry.image.height),
+    letGo: (entry) {
+      for (final key in entry.indexKeys.toList()) {
         _releaseIndexEntry(key);
       }
-    }
-    return _estimatedBytes <= maxBytes;
-  }
-
-  /// Wanted by no frame at all — later than any step.
-  static const int _neverWanted = 1 << 62;
+    },
+    laterThan: laterThan,
+  );
 
   /// How many frames on [entry]'s picture is wanted: the soonest of the
-  /// slots it is filed under.
-  int _wantedAt(
+  /// slots it is filed under — null where none of them is.
+  int? _wantedAt(
     _CompositeEntry entry,
     int? Function(CutId cutId, int frameIndex)? stepOf,
   ) {
-    var soonest = _neverWanted;
     if (stepOf == null) {
-      return soonest;
+      return null;
     }
+    int? soonest;
     for (final key in entry.indexKeys) {
       final step = stepOf(key.$1, key.$2);
-      if (step != null && step < soonest) {
+      if (step != null && (soonest == null || step < soonest)) {
         soonest = step;
       }
     }

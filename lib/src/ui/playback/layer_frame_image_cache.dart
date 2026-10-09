@@ -12,6 +12,7 @@ import '../../models/layer_effect.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -661,53 +662,31 @@ class LayerFrameImageCache {
   /// letting go of pictures wanted after it.
   ///
   /// Without [wantedAt] every image is wanted equally, and recency alone
-  /// orders them. The composites' twin is
-  /// [CutFrameCompositeCache.enforceBudget].
+  /// orders them. The order is the budget's one ([letGoWantedLatest]), the
+  /// composites' too ([CutFrameCompositeCache.enforceBudget]).
   bool enforceBudget({
     required int maxBytes,
     LayerImageWantedAt? wantedAt,
     int? laterThan,
-  }) {
-    var bytes = estimatedBytes;
-    if (bytes <= maxBytes) {
-      return true;
-    }
-    final ordered =
-        <(MapEntry<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry>, int)>[
-          for (final entry in _entries.entries)
-            // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
-            // anyway (the holder's clone shares the pixels) and puts the
-            // very image the canvas is drawing back on the cold path — the
-            // "worked harder, got emptier" loop PR #1065 documented.
-            // Recency cannot express "someone is holding this"; only the
-            // pin can.
-            if (!_pins.isPinned(entry.key))
-              (entry, wantedAt?.call(entry.key) ?? _neverWanted),
-        ]..sort((a, b) {
-          final latestFirst = b.$2.compareTo(a.$2);
-          return latestFirst != 0
-              ? latestFirst
-              : a.$1.value.lastUsed.compareTo(b.$1.value.lastUsed);
-        });
-    for (final (entry, wanted) in ordered) {
-      if (bytes <= maxBytes) {
-        break;
-      }
-      if (laterThan != null && wanted <= laterThan) {
-        // Latest first: everything from here on is wanted sooner still.
-        break;
-      }
-      bytes -= estimatedImageBytes(
-        entry.value.image.width,
-        entry.value.image.height,
-      );
-      _dropEntry(entry.key);
-    }
-    return bytes <= maxBytes;
-  }
-
-  /// Wanted by no frame at all — later than any step.
-  static const int _neverWanted = 1 << 62;
+  }) => letGoWantedLatest(
+    entries: [
+      for (final entry in _entries.entries)
+        // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
+        // anyway (the holder's clone shares the pixels) and puts the very
+        // image the canvas is drawing back on the cold path — the "worked
+        // harder, got emptier" loop PR #1065 documented. Recency cannot
+        // express "someone is holding this"; only the pin can.
+        if (!_pins.isPinned(entry.key)) entry,
+    ],
+    heldBytes: estimatedBytes,
+    maxBytes: maxBytes,
+    wantedAt: (entry) => wantedAt?.call(entry.key),
+    lastUsed: (entry) => entry.value.lastUsed,
+    bytesOf: (entry) =>
+        estimatedImageBytes(entry.value.image.width, entry.value.image.height),
+    letGo: (entry) => _dropEntry(entry.key),
+    laterThan: laterThan,
+  );
 
   // --- Display pins (A6) ----------------------------------------------
   //
