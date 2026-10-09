@@ -332,24 +332,39 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
   /// The dashes of a cut's start: two on, three off.
   static const DashPattern cutStartDashes = DashPattern(on: 2, off: 3);
 
-  ({int startIndex, int endIndexExclusive}) _window(double cell) =>
-      viewportMainExtent <= 0
-      ? (startIndex: 0, endIndexExclusive: 1 << 30)
-      : timelineFrameWindowFor(
-          bucket: windowBucket.value,
-          cellExtent: cell,
-          viewportExtent: viewportMainExtent,
-        );
+  /// The frames as laid out now and the panel's window over them — where
+  /// every probe below starts — or null while a cell has no extent to lay
+  /// anything on.
+  ({
+    TimelineFrameGeometry frames,
+    ({int startIndex, int endIndexExclusive}) window,
+  })?
+  _laidOut() {
+    final frames = geometry.value;
+    final cell = frames.frameCellExtent;
+    if (cell <= 0) {
+      return null;
+    }
+    return (
+      frames: frames,
+      window: viewportMainExtent <= 0
+          ? (startIndex: 0, endIndexExclusive: 1 << 30)
+          : timelineFrameWindowFor(
+              bucket: windowBucket.value,
+              cellExtent: cell,
+              viewportExtent: viewportMainExtent,
+            ),
+    );
+  }
 
   /// Every のりしろ wash inside the window, row-local — THE probe surface,
   /// and what [paint] lays down.
   List<Rect> noriShiroWashes() {
-    final frames = geometry.value;
-    final cell = frames.frameCellExtent;
-    if (cell <= 0) {
+    final laid = _laidOut();
+    if (laid == null) {
       return const [];
     }
-    final window = _window(cell);
+    final (:frames, :window) = laid;
     final half = crossAxisExtent / 2;
     final rects = <Rect>[];
     void wash(int from, int to, CameraRowReach reach) {
@@ -382,12 +397,11 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
   /// The stretches two cuts share inside the window, as the line across
   /// their middle — row-local.
   List<(Offset, Offset)> sharedMiddles() {
-    final frames = geometry.value;
-    final cell = frames.frameCellExtent;
-    if (cell <= 0) {
+    final laid = _laidOut();
+    if (laid == null) {
       return const [];
     }
-    final window = _window(cell);
+    final (:frames, :window) = laid;
     final middle = crossAxisExtent / 2;
     return [
       for (final reach in reaches)
@@ -409,12 +423,11 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
 
   /// Where each cut begins inside the window, row-local x.
   List<double> cutStarts() {
-    final frames = geometry.value;
-    final cell = frames.frameCellExtent;
-    if (cell <= 0) {
+    final laid = _laidOut();
+    if (laid == null) {
       return const [];
     }
-    final window = _window(cell);
+    final (:frames, :window) = laid;
     return [
       for (final reach in reaches)
         if (reach.entry.startFrame >= window.startIndex &&

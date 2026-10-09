@@ -245,9 +245,9 @@ void main() {
   /// 🔬The lane's scan against master (`1018781b8`, at 384) named those
   /// two added and nothing gone.
   ///
-  /// ⚠️386 stays on 2026-10-09 with one more under it, named as the rule
-  /// above asks (I-73 ④, the storyboard's camera row): master (`fc275859c`)
-  /// scanned at 385 under this ceiling, and `timelineUnionKeySpan` (eight)
+  /// ⚠️386 → 387 on 2026-10-09, one named as the rule above asks (I-73 ④,
+  /// the storyboard's camera row): master (`6e7d619a7`) scanned at 386 —
+  /// at this ceiling — and `timelineUnionKeySpan` (eight)
   /// is the ONE key mark the timeline's union row and the storyboard's
   /// camera row lay out — `timelineUnionKeyMarkerSpans` drew it inline. Its
   /// eight are whose key it is (the layer, the lane, the frame, the prefix
@@ -259,7 +259,7 @@ void main() {
   /// stayed under: `timelineKeysLineCourse` takes the line it draws.
   /// 🔬The lane's scan against master named that one added and nothing
   /// gone.
-  const wideSignatures = 386;
+  const wideSignatures = 387;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

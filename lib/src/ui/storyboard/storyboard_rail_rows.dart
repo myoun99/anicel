@@ -240,20 +240,29 @@ class _StoryboardRailRows {
     return null;
   }
 
-  /// Whether the legend's filter lets the camera row show. Its head IS a
-  /// layer, so it answers every chip, as an S row does
-  /// ([TimelineRowFilter.allowsLayerRow]); with no head — a gap — the row is
-  /// judged on the one facet it has, its kind (the conte row's rule,
-  /// [_filterAllowsConteSeat]).
-  bool _filterAllowsCameraRow(Track track) {
-    final standing =
-        _state.widget.selectedRow ==
-        LayerRowAddress(trackCameraRowId(track.id));
-    final head = _cameraHeadOf(track);
+  /// Whether the legend's filter lets the camera row show
+  /// ([_filterAllowsProjectionRow]) — with no head in a gap.
+  bool _filterAllowsCameraRow(Track track) => _filterAllowsProjectionRow(
+    LayerRowAddress(trackCameraRowId(track.id)),
+    head: _cameraHeadOf(track),
+    kind: LayerKind.camera,
+  );
+
+  /// Whether the legend's filter lets a PROJECTION row show — a row of the
+  /// track drawn from each cut's own layer, stood on by [address]. Its
+  /// [head] IS a layer, so it answers every chip, as an S row does
+  /// ([TimelineRowFilter.allowsLayerRow]); with no head the row is judged on
+  /// the one facet it has, its [kind]. The row stood on is spared.
+  bool _filterAllowsProjectionRow(
+    LayerRowAddress address, {
+    required Layer? head,
+    required LayerKind kind,
+  }) {
+    final standing = _state.widget.selectedRow == address;
     return head == null
         ? _state.widget.rowFilter.allowsRow(
             standing: standing,
-            kind: LayerKind.camera,
+            kind: kind,
             fxEnabled: true,
           )
         : _state.widget.rowFilter.allowsLayerRow(
@@ -290,29 +299,15 @@ class _StoryboardRailRows {
     ];
   }
 
-  /// Whether the legend's filter lets the conte row at [seat] show. Its
-  /// head IS a layer, so it answers every chip, as an S row does
-  /// ([TimelineRowFilter.allowsLayerRow]); while no cut holds a layer there
-  /// the row is judged on the one facet it has, its kind.
-  bool _filterAllowsConteSeat(Track track, int seat) {
-    final standing =
-        _state.widget.selectedRow ==
-        LayerRowAddress(trackConteRowId(track.id, seat: seat));
-    final head = conteHeadRowAt(track.cuts, seat);
-    return head == null
-        ? _state.widget.rowFilter.allowsRow(
-            standing: standing,
-            kind: LayerKind.storyboard,
-            fxEnabled: true,
-          )
-        : _state.widget.rowFilter.allowsLayerRow(
-            head,
-            standing: standing,
-            fxEnabled: fxEnabledFromState(
-              _state.widget.layerFxStateOf?.call(head.id),
-            ),
-          );
-  }
+  /// Whether the legend's filter lets the conte row at [seat] show
+  /// ([_filterAllowsProjectionRow]) — with no head while no cut holds a
+  /// layer there.
+  bool _filterAllowsConteSeat(Track track, int seat) =>
+      _filterAllowsProjectionRow(
+        LayerRowAddress(trackConteRowId(track.id, seat: seat)),
+        head: conteHeadRowAt(track.cuts, seat),
+        kind: LayerKind.storyboard,
+      );
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)

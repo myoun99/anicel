@@ -217,17 +217,13 @@ class _StoryboardRowsAndLabels {
     final head = conteHeadAt(track.cuts, seat);
     final verbs = _timelineHeadVerbs();
     if (head == null || verbs == null) {
-      return _StoryboardLayerRowLabel(
-        track: track,
-        rowId: rowId,
+      return _headlessLabel(track, (
+        id: rowId,
         kind: LayerKind.storyboard,
         keyName: conteLabelKeyName(seat),
         name: trackConteRowName(track.cuts, seat: seat),
-        layer: null,
-        active: _state.widget.selectedRow == LayerRowAddress(rowId),
         height: _state._rowHeights.conte,
-        onSelectLayer: _state.widget.onSelectLayer,
-      );
+      ));
     }
     return KeyedSubtree(
       key: ValueKey<String>(
@@ -265,20 +261,16 @@ class _StoryboardRowsAndLabels {
     final head = _state._railRows._cameraHeadOf(track);
     final verbs = _timelineHeadVerbs();
     if (head == null || verbs == null) {
-      return _StoryboardLayerRowLabel(
-        track: track,
-        rowId: rowId,
+      return _headlessLabel(track, (
+        id: rowId,
         kind: LayerKind.camera,
         keyName: 'camera',
         name: trackCameraRowName(
           track.cuts,
           standingIn: _state.widget.activeCutId,
         ),
-        layer: null,
-        active: active,
         height: _state._rowHeights.camera,
-        onSelectLayer: _state.widget.onSelectLayer,
-      );
+      ));
     }
     final select = _state.widget.onSelectLayer;
     final view = _state.widget.cameraViewEnabled;
@@ -309,6 +301,31 @@ class _StoryboardRowsAndLabels {
       ),
     );
   }
+
+  /// A PROJECTION row's label while it has no head to wear, or the host has
+  /// not wired the head's verbs: its slots reserved and empty
+  /// ([_StoryboardLayerRowLabel]), stood on by [row]'s own address.
+  Widget _headlessLabel(
+    Track track,
+    ({
+      LayerId id,
+      LayerKind kind,
+      String keyName,
+      String name,
+      double height,
+    })
+    row,
+  ) => _StoryboardLayerRowLabel(
+    track: track,
+    rowId: row.id,
+    kind: row.kind,
+    keyName: row.keyName,
+    name: row.name,
+    layer: null,
+    active: _state.widget.selectedRow == LayerRowAddress(row.id),
+    height: row.height,
+    onSelectLayer: _state.widget.onSelectLayer,
+  );
 
   /// The verbs a head that is the timeline's own row cannot stand without —
   /// its eye, its opacity, its label and its blend, which that row takes as
