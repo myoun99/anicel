@@ -285,7 +285,11 @@ void main() {
   /// languages by id. The round's other three (Delete text, Import…, Sheet
   /// format…) are composed from the table and add none. The ceiling stood
   /// one above the count (126) when it came.
-  const untranslatedElsewhere = 129;
+  ///
+  /// 130 (I-88, the turn key, 2026-10-10): the English row of one new
+  /// registry action, 「Rotate (hold)」 — answered in the other four
+  /// languages by id. The ceiling stood at the count (129) when it came.
+  const untranslatedElsewhere = 130;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
