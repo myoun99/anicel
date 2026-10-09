@@ -215,7 +215,9 @@ void main() {
       'own file', (tester) async {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
-    final into = find.byKey(ValueKey<String>('import-cell-into-${files['A1']}'));
+    final into = find.byKey(
+      ValueKey<String>('import-cell-into-${files['A1']}'),
+    );
     await tester.ensureVisible(into);
     await settleLoadedPages(tester);
     expect(previewPages(tester), 3, reason: '⛔전제: placed, it is its run');
@@ -298,7 +300,9 @@ void main() {
       'more always bake', (tester) async {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
-    final bake = find.byKey(ValueKey<String>('import-cell-bake-${files['A1']}'));
+    final bake = find.byKey(
+      ValueKey<String>('import-cell-bake-${files['A1']}'),
+    );
     bool answerable() => tester
         .widget<BooleanDot>(
           find.descendant(of: bake, matching: find.byType(BooleanDot)),
@@ -333,4 +337,65 @@ void main() {
     expect(added, hasLength(1));
     expect(added.single.frames, hasLength(2));
   });
+
+  /// Answers [option] in [column] for [path]'s row alone.
+  Future<void> answer(
+    WidgetTester tester,
+    String column,
+    String path,
+    String option,
+  ) async {
+    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+    await tester.ensureVisible(cell);
+    await settleLoadedPages(tester);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('import-option-$column-$option')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  // A row brings what its cells say: two rows of one run bring one layer
+  // only when they would hand the run's door the same — the span, where it
+  // goes, how it fits (`importPictureRun` reads those two answers).
+  for (final (differs, answerOtherwise) in <(
+    String,
+    Future<void> Function(WidgetTester, String path),
+  )>[
+    ('span', (tester, _) => span(tester, 1, 2)),
+    ('place', (tester, path) => answer(tester, 'into', path, 'newCut')),
+    ('fit', (tester, path) => answer(tester, 'fit', path, 'none')),
+  ]) {
+    testWidgets('two pictures of one run whose rows answer otherwise — '
+        'another $differs — bring a layer each', (tester) async {
+      final files = await writeFolder(tester);
+      final s = await open(tester, [files['A1']!, files['A3']!]);
+      List<Object> runLayers() => [
+        for (final track in s.repository.requireProject().tracks)
+          for (final cut in track.cuts)
+            for (final layer in cut.layers)
+              if (layer.name == 'A') layer.id,
+      ];
+      final before = runLayers().toSet();
+      // The preview shows the first row while none is picked: A1's.
+      await answerOtherwise(tester, files['A1']!);
+
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
+      List<Object> brought() => [
+        for (final id in runLayers())
+          if (!before.contains(id)) id,
+      ];
+      for (var tries = 0; tries < 100 && brought().length < 2; tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(brought(), hasLength(2), reason: 'each row brings its own');
+    });
+  }
 }

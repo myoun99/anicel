@@ -152,6 +152,18 @@ final class _RunSpan {
   String toString() => 'run';
 }
 
+/// The layer a row brings of its numbered run, as the run's door is handed
+/// it (`ProjectImportDoors.importPictureRun`): the run, the span of it the
+/// row's IN/OUT keep, and the two answers the door reads — where the layer
+/// goes and how it fits. Rows that hand it the same bring one layer.
+typedef _RunLayer = ({
+  ParsedCelLayer run,
+  int first,
+  int last,
+  ImportDestination into,
+  MediaFitMode fit,
+});
+
 /// The Into answer of a file that only registers: the media pool, placed
 /// nowhere ([ImportFileSettings.intoPool]).
 final class _IntoThePool {
@@ -321,6 +333,24 @@ class _ImportDialogState extends State<ImportDialog> {
   /// one layer's frames. One comes in alone ([_placeRun]).
   ParsedCelLayer? _togetherRunOf(String path) =>
       (_runKeptOf(path)?.length ?? 0) > 1 ? _runOf(path) : null;
+
+  /// The layer [path]'s row brings of its run ([_RunLayer]) — null for a
+  /// row that brings no run of two pictures or more ([_togetherRunOf]).
+  _RunLayer? _runLayerOf(String path) {
+    final run = _togetherRunOf(path);
+    if (run == null) {
+      return null;
+    }
+    final settings = _settingsFor(path);
+    final span = importRunSpan(settings, run.cells.length);
+    return (
+      run: run,
+      first: span.first,
+      last: span.last,
+      into: settings.into,
+      fit: settings.fit,
+    );
+  }
 
   /// Every picture of [path]'s run, in order — what the preview pages
   /// through — or null for a file in none.
@@ -768,14 +798,16 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) report,
   ) async {
     final count = paths.length;
-    // A run two of its own pictures were picked from comes in once — the
-    // second row is already in it.
-    final runsPlaced = <ParsedCelLayer>{};
+    // A run two of its own pictures were picked from comes in once when
+    // their rows would bring the same layer of it ([_RunLayer]) — the
+    // second row is already in. A row that keeps another span, or puts it
+    // elsewhere, brings what its own cells say.
+    final runsPlaced = <_RunLayer>{};
     for (final (index, path) in paths.indexed) {
       void within(double fraction) =>
           report((index + fraction.clamp(0, 1)) / count);
       within(0);
-      final run = _togetherRunOf(path);
+      final run = _runLayerOf(path);
       if (run != null && runsPlaced.contains(run)) {
         tally
           ..imported += 1
