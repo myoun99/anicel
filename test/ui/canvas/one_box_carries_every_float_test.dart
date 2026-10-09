@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -9,8 +10,10 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 
@@ -63,7 +66,10 @@ void main() {
       List<int> reverted,
     })
   >
-  pumpLayer(WidgetTester tester) async {
+  pumpLayer(
+    WidgetTester tester, {
+    TransformMode mode = TransformMode.normal,
+  }) async {
     final commands = CanvasSelectionCommands();
     // ⚠️Disposed only after the layer is gone: an unmount lands what floats
     // and takes back what it showed, into these.
@@ -91,6 +97,7 @@ void main() {
                 frameToken: 'frame',
                 selectionCommands: commands,
                 alwaysShowTransformBox: true,
+                transformOptions: TransformToolOptions(mode: mode),
                 contentBoundsProvider: () => (
                   left: 40,
                   top: 40,
@@ -203,6 +210,48 @@ void main() {
       (null, null),
       reason: 'a landed session\'s floats leave their slots',
     );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a corner pulled in 퍼스 bends every float through the ONE quad '
+      '— the corner of all of them, and each lands as that quad carries it', (
+    tester,
+  ) async {
+    final env = await pumpLayer(tester, mode: TransformMode.perspective);
+    env.commands.beginTransform();
+    await tester.pump();
+    // The bottom-right corner of what A and B hold together — B's own
+    // corner too, and nowhere near A's.
+    final gesture = await tester.startGesture(
+      const Offset(240, 140),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await gesture.moveTo(const Offset(255, 160));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+
+    final carry = env.carries.single;
+    expect(carry, isA<QuadCarry>(), reason: '⛔premise: the corner made a quad');
+    expect(
+      (carry! as QuadCarry).base,
+      cornersOfStampRect((left: 40, top: 40, width: 200, height: 100)),
+      reason: 'the quad stands on what the floats hold together',
+    );
+    final [landedA, landedB] = env.confirmed.single;
+    for (final (landed, lifted) in [(landedA, a), (landedB, b)]) {
+      final carried = carry.through(lifted);
+      expect(
+        (landed.center.x, landed.center.y),
+        (carried.center.x, carried.center.y),
+        reason: '${lifted.stamp!.id} lands where the one quad carries it',
+      );
+      expect(landed.stamp!.rgba, carried.stamp!.rgba);
+    }
     await tester.pumpWidget(const SizedBox());
   });
 
