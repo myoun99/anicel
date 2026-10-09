@@ -300,13 +300,19 @@ void main() {
   });
 
   group('the window closing while a Drive file is still coming', () {
-    Future<void> closeMidCopy(WidgetTester tester) async {
+    /// Closes the window while the copy is held mid-way — [asItCloses]
+    /// runs in the same breath as the close, before anything settles.
+    Future<void> closeMidCopy(
+      WidgetTester tester, {
+      void Function()? asItCloses,
+    }) async {
       holdCopy = Completer<bool>();
       pickerAnswers(const [FolderGrant.providerDocument(drive)]);
       await openPicked(tester);
       expect(copiedTo, hasLength(1), reason: 'the copy is under way');
 
       await tester.tap(find.byKey(const ValueKey<String>('app-window-close')));
+      asItCloses?.call();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey<String>('import-dialog')), findsNothing);
     }
@@ -331,9 +337,11 @@ void main() {
       documents[uri] = (await tester.runAsync(
         () => writeSolidPng(temp, 'doc.png'),
       ))!;
-      await closeMidCopy(tester);
+      // The copy lands as the window closes — not after a settle that may
+      // already have carried the stop down (the window's dispose asks for
+      // one, and a settle that runs long enough delivers it).
+      await closeMidCopy(tester, asItCloses: () => holdCopy!.complete(true));
 
-      holdCopy!.complete(true);
       for (var tries = 0; tries < 10; tries += 1) {
         await tester.pump();
       }
