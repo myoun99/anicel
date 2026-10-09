@@ -69,6 +69,8 @@ final class QaAudioDecoder {
     int,
     int,
     int,
+    int,
+    int,
     Pointer<Pointer<Float>>,
     Pointer<Int64>,
     Pointer<Int32>,
@@ -107,6 +109,8 @@ final class QaAudioDecoder {
             Int64,
             Int64,
             Int32,
+            Int64,
+            Int64,
             Pointer<Pointer<Float>>,
             Pointer<Int64>,
             Pointer<Int32>,
@@ -117,12 +121,14 @@ final class QaAudioDecoder {
             int,
             int,
             int,
+            int,
+            int,
             Pointer<Pointer<Float>>,
             Pointer<Int64>,
             Pointer<Int32>,
             Pointer<Int32>,
           )
-        >('qa_audio_decode_span'),
+        >('qa_audio_decode_span_window'),
         library.lookupFunction<
           Void Function(Pointer<Float>),
           void Function(Pointer<Float>)
@@ -140,13 +146,25 @@ final class QaAudioDecoder {
   /// A whole file is `offset: 0` with its own length — the ordinary case
   /// goes through the same door as a carried one, so no caller has to know
   /// which it has.
+  ///
+  /// [window]: only [window.count] frames of the sound from frame
+  /// [window.start] — the sound's own frames at its own rate, frame 0 its
+  /// first — and only those are held (user 2026-10-09,
+  /// sound-lands-on-its-exact-sample-Q5). They are exactly the frames the
+  /// whole decode has there. A count of 0 decodes nothing and answers the
+  /// rate and the channels: ask for that first when the frames to name
+  /// depend on the rate. A window past the end is no frames, not null.
   QaDecodedAudio? decodeSpan(
     String path, {
     int offset = 0,
     required int length,
     required bool framed,
+    ({int start, int count})? window,
   }) {
-    if (path.isEmpty || offset < 0 || length <= 0) {
+    if (path.isEmpty ||
+        offset < 0 ||
+        length <= 0 ||
+        (window != null && (window.start < 0 || window.count < 0))) {
       return null;
     }
     final native = path.toNativeUtf8();
@@ -157,6 +175,8 @@ final class QaAudioDecoder {
           offset,
           length,
           framed ? 1 : 0,
+          window?.start ?? 0,
+          window?.count ?? -1,
           samplesOut,
           frameCountOut,
           channelsOut,
@@ -190,7 +210,8 @@ final class QaAudioDecoder {
         sampleRateOut,
       );
       final samples = samplesOut.value;
-      if (format == 0 || samples == nullptr) {
+      // A window can answer with no frames, and then no block to free.
+      if (format == 0 || (samples == nullptr && frameCountOut.value > 0)) {
         return null;
       }
       try {
@@ -212,7 +233,9 @@ final class QaAudioDecoder {
               : QaAudioFormat.unknown,
         );
       } finally {
-        _free(samples);
+        if (samples != nullptr) {
+          _free(samples);
+        }
       }
     } finally {
       calloc.free(sampleRateOut);

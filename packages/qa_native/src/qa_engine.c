@@ -5846,4 +5846,4 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v41: qa_dab_spec gains evening - the table a dab lays its share of one
 // stamp per tenth of its size through (qa_dab_even) - and the laid alpha
 // reads it in qa_dab_source_alpha and the pair path. Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 41; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 42; }

@@ -45,6 +45,17 @@ extern int32_t qa_audio_decode_span(const char* path,
 
 extern void qa_audio_decode_free(float* samples);
 
+extern int32_t qa_audio_decode_span_window(const char* path,
+                                           int64_t offset,
+                                           int64_t length,
+                                           int32_t framed,
+                                           int64_t window_start,
+                                           int64_t window_count,
+                                           float** out_samples,
+                                           int64_t* out_frame_count,
+                                           int32_t* out_channels,
+                                           int32_t* out_sample_rate);
+
 static int g_failures;
 
 static void expect_int(const char* what, long long got, long long want) {
@@ -521,6 +532,97 @@ int main(void) {
                QA_AUDIO_FORMAT_MP3);
     expect_int("an MP3 with a LAME tag starts where the tag says, once",
                decoded, MP3_SOUND_FRAMES(1));
+  }
+
+  // 10. A WINDOW IS THE WHOLE DECODE'S OWN FRAMES — only those held. Every
+  // decoder decodes from the start and keeps the window, so the frames must
+  // be the whole decode's, not merely like them; past the end is silence
+  // (no frames, still the format); nothing at all is the probe that says the
+  // rate.
+  {
+    static uint8_t mp3[MP3_FRAMES * MP3_FRAME_BYTES];
+    static uint8_t flac[FLAC_BYTES];
+    const struct {
+      const char* name;
+      const uint8_t* body;
+      size_t bytes;
+      int32_t format;
+    } sounds[] = {
+        {"a WAV", wav, wav_bytes, QA_AUDIO_FORMAT_WAV},
+        {"a FLAC", flac, build_flac(flac), QA_AUDIO_FORMAT_FLAC},
+        {"an MP3", mp3, build_mp3_frames(mp3), QA_AUDIO_FORMAT_MP3},
+    };
+    const char* path = "qa_audio_window_fixture.bin";
+    for (size_t index = 0; index < sizeof(sounds) / sizeof(sounds[0]);
+         index += 1) {
+      FILE* file = fopen(path, "wb");
+      if (file == NULL) {
+        printf("FAIL fixture: could not write %s\n", path);
+        g_failures += 1;
+        break;
+      }
+      fwrite(sounds[index].body, 1, sounds[index].bytes, file);
+      fclose(file);
+      const int64_t length = (int64_t)sounds[index].bytes;
+      float* whole = NULL;
+      int64_t whole_frames = 0;
+      int32_t channels = 0;
+      int32_t rate = 0;
+      qa_audio_decode_span(path, 0, length, 0, &whole, &whole_frames,
+                           &channels, &rate);
+
+      char label[128];
+      const struct {
+        const char* name;
+        int64_t start;
+        int64_t count;
+        int64_t frames;
+      } windows[] = {
+          {"inside", 100, 50, 50},
+          {"running past the end", whole_frames - 10, 50, 10},
+          {"past the end", whole_frames + 5, 50, 0},
+          {"the probe", 0, 0, 0},
+      };
+      for (size_t at = 0; at < sizeof(windows) / sizeof(windows[0]);
+           at += 1) {
+        float* samples = NULL;
+        int64_t frames = -1;
+        int32_t window_channels = 0;
+        int32_t window_rate = 0;
+        const int32_t format = qa_audio_decode_span_window(
+            path, 0, length, 0, windows[at].start, windows[at].count,
+            &samples, &frames, &window_channels, &window_rate);
+        snprintf(label, sizeof(label), "%s, a window %s: which decoder",
+                 sounds[index].name, windows[at].name);
+        expect_int(label, format, sounds[index].format);
+        snprintf(label, sizeof(label), "%s, a window %s: frames",
+                 sounds[index].name, windows[at].name);
+        expect_int(label, frames, windows[at].frames);
+        snprintf(label, sizeof(label), "%s, a window %s: rate",
+                 sounds[index].name, windows[at].name);
+        expect_int(label, window_rate, rate);
+        snprintf(label, sizeof(label), "%s, a window %s: channels",
+                 sounds[index].name, windows[at].name);
+        expect_int(label, window_channels, channels);
+        if (samples != NULL && whole != NULL && frames == windows[at].frames) {
+          int same = 1;
+          for (int64_t sample = 0; sample < frames * channels; sample += 1) {
+            if (samples[sample] !=
+                whole[windows[at].start * channels + sample]) {
+              same = 0;
+              break;
+            }
+          }
+          snprintf(label, sizeof(label),
+                   "%s, a window %s: the whole decode's own frames",
+                   sounds[index].name, windows[at].name);
+          expect_int(label, same, 1);
+        }
+        qa_audio_decode_free(samples);
+      }
+      qa_audio_decode_free(whole);
+    }
+    remove(path);
   }
 
   if (g_failures == 0) {

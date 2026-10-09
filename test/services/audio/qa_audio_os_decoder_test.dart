@@ -365,6 +365,61 @@ void main() {
     );
   }, skip: skip);
 
+  test('a window of a sound is the whole decode\'s own frames, and only '
+      'those are held — a movie\'s PCM, an m4a, an ogg', () {
+    // 🚨Q5 (user 10-09): a piece cut from a long reel holds the piece. Every
+    // decoder decodes from the start and keeps the window, so a window must
+    // be the whole decode's frames exactly — through the edit list's lead,
+    // the m4a's 1,024, whichever stack decoded it.
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final directory = Directory.systemTemp.createTempSync('qa_window');
+    deleteAfterSessionEnds(directory);
+    for (final (what, bytes) in [
+      (
+        'a movie\'s PCM',
+        pcmMovie(_roomToneThenTone(), edits: [(from: 480, keep: 24000)]),
+      ),
+      ('an m4a', fixtureBytes()),
+      ('an ogg', File('test/fixtures/tone.ogg').readAsBytesSync()),
+    ]) {
+      final path = '${directory.path}${Platform.pathSeparator}sound';
+      File(path).writeAsBytesSync(bytes);
+      QaDecodedAudio? decode([({int start, int count})? window]) =>
+          decoder!.decodeSpan(
+            path,
+            length: bytes.length,
+            framed: false,
+            window: window,
+          );
+      final whole = decode();
+      if (whole == null) {
+        expect(Platform.isLinux, isTrue, reason: '$what: nothing decoded it');
+        continue;
+      }
+      final channels = whole.channels;
+
+      final probe = decode((start: 0, count: 0));
+      expect(probe, isNotNull, reason: '$what: the probe answers');
+      expect(probe!.length, 0, reason: '$what: and holds nothing');
+      expect(probe.sampleRate, whole.sampleRate, reason: what);
+      expect(probe.channels, channels, reason: what);
+      expect(probe.format, whole.format, reason: what);
+
+      final inside = decode((start: 1000, count: 5000))!;
+      expect(inside.length, 5000, reason: '$what: the window, no more');
+      expect(
+        inside.samples,
+        orderedEquals(whole.samples.sublist(1000 * channels, 6000 * channels)),
+        reason: '$what: the whole decode\'s own frames',
+      );
+
+      final past = decode((start: whole.length + 10, count: 100));
+      expect(past, isNotNull, reason: '$what: past the end is silence');
+      expect(past!.length, 0, reason: what);
+    }
+  }, skip: skip);
+
   // -------------------------------------------------------------------------
   // A container that is a RANGE of a file.
   //

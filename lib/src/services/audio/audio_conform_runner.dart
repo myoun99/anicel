@@ -158,9 +158,13 @@ void _applyLibraryOverride(String? override) {
 /// was false — compression is decided per file and an MP4 shrinks 6.7% —
 /// so a carried movie's soundtrack arrived whole in memory before a decoder
 /// saw it (2026-09-24).
+///
+/// [window]: only those of the sound's own frames, and only those held — see
+/// [QaAudioDecoder.decodeSpan].
 ({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
-  MediaByteSource source,
-) {
+  MediaByteSource source, {
+  ({int start, int count})? window,
+}) {
   final span = source.span;
   if (span == null) {
     // Only a file that is no longer there has no span; say so the way
@@ -172,6 +176,7 @@ void _applyLibraryOverride(String? override) {
     offset: span.offset,
     length: span.length,
     framed: span.framed,
+    window: window,
   );
   if (decoded == null) {
     return null;

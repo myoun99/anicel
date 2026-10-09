@@ -5,8 +5,7 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../native/qa_video_encoder.dart';
-import '../audio/audio_conform_runner.dart' show decodeAudioSource;
-import '../audio/sound_span.dart' show int16PcmOfFrames;
+import '../audio/sound_span.dart' show decodeAudioOfFrames, int16PcmOfFrames;
 import 'media_byte_source.dart';
 
 /// Writes the movie at [sourcePath] over the project frames [trim] keeps of
@@ -62,8 +61,13 @@ import 'media_byte_source.dart';
       outFrame: trim.outFrame,
     );
     final pace = clock.rate.inSourceTime(clock.speed);
-    final decoded = decodeAudioSource(MediaFileBytes(sourcePath));
-    final sound = decoded != null && decoded.channels > 0 ? decoded : null;
+    // Only the span's own samples: a minute cut from a two-hour reel holds
+    // a minute (Q5).
+    final sound = decodeAudioOfFrames(
+      MediaFileBytes(sourcePath),
+      (first: kept.first, count: kept.count),
+      pace,
+    );
     if (!encoder.open(
       path: piecePath,
       width: info.width,
@@ -88,7 +92,8 @@ import 'media_byte_source.dart';
           return (kept: null, failure: decoder.lastError);
         }
         if (!encoder.writeFrame(rgba) ||
-            (sound != null && !_writeSoundOf(encoder, sound, at, pace))) {
+            (sound != null &&
+                !_writeSoundOf(encoder, sound, at, pace, from: kept.first))) {
           return (kept: null, failure: encoder.lastError);
         }
       }
@@ -106,13 +111,20 @@ import 'media_byte_source.dart';
   }
 }
 
-/// The source samples project frame [frame] plays, handed to [encoder].
+/// The source samples project frame [frame] plays, handed to [encoder] —
+/// [sound] decoded from project frame [from] on.
 bool _writeSoundOf(
   QaVideoEncoder encoder,
   ({Float32List samples, int channels, int sampleRate}) sound,
   int frame,
-  ProjectFrameRate pace,
-) {
-  final pcm = int16PcmOfFrames(sound, (first: frame, count: 1), pace);
+  ProjectFrameRate pace, {
+  required int from,
+}) {
+  final pcm = int16PcmOfFrames(
+    sound,
+    (first: frame, count: 1),
+    pace,
+    from: from,
+  );
   return encoder.writeAudio(pcm, pcm.length ~/ sound.channels);
 }

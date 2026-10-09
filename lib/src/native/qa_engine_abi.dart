@@ -221,7 +221,11 @@ import 'dart:io';
 ///   per share in Dart and copied into the batch arena once per batch, so no
 ///   pixel pays a power and both kernels read the same numbers.
 ///   `qa_dab_spec_sizeof` moves.
-const int kQaEngineAbiVersion = 41;
+/// - v42: `qa_audio_decode_span_window` — a window of a sound's frames, and
+///   only those held: a piece cut from a long reel decodes from the start
+///   but keeps the piece (board sound-lands-on-its-exact-sample-Q5, 유저
+///   2026-10-09). `qa_audio_decode_span` is its whole window.
+const int kQaEngineAbiVersion = 42;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
