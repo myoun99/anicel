@@ -140,10 +140,11 @@ void main() {
       button(tester, 'timeline-orientation-toggle-button').tooltip,
       ko.tlShowXSheet,
     );
-    expect(
-      button(tester, 'timeline-camera-view-button').tooltip,
-      anyOf(ko.cameraViewOn, ko.cameraViewOff),
-    );
+    String camera() => button(tester, 'timeline-camera-view-button').tooltip;
+    expect(camera(), ko.cameraViewOff);
+    await pressKeyOf(tester, EditorActionIds.cameraViewToggle);
+    expect(camera(), ko.cameraViewOn);
     expect(ko.tlShowXSheet, isNot('Show X-sheet'), reason: 'premise');
+    expect(ko.cameraViewOn, isNot('Camera view (on)'), reason: 'premise');
   });
 }
