@@ -12,6 +12,7 @@ import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_pictures.dart';
@@ -213,6 +214,50 @@ void main() {
 
       expect(pictures.gaveUpOn(row('a')), isFalse, reason: 'a was there');
       expect(pictures.gaveUpOn(row('b')), isTrue);
+    });
+  });
+
+  testWidgets('🚨an image of the ink alone is there only for a row its ink '
+      'suffices — a posed row of the same cel wants the whole, and makes it',
+      (tester) async {
+    await tester.runAsync(() async {
+      // Inked in one corner only: its ink is less than the canvas.
+      final store = BrushFrameStore();
+      inkCelIn(
+        store,
+        keyOf('a'),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 1, y: 1),
+        size: 2,
+        tipShape: BrushTipShape.square,
+        tileSize: tileSize,
+      );
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      // Frame 0 shows the cel as it lies; frame 1 shows it moved.
+      final pictures = CanvasPictures(
+        layerImages: images,
+        rowsOf: (cut, frame) => [
+          if (frame == 0) row('a'),
+          if (frame == 1)
+            CanvasLayerImageRequest(
+              frameKey: keyOf('a'),
+              opacity: 1,
+              placement: const LayerPlacement(1, 0, 0, 1, 1, 0),
+            ),
+        ],
+        quality: () => PlaybackQuality.full,
+      );
+      await pictures.make(at(0), shouldAbort: () => false);
+      expect(pictures.has(at(0)), isTrue, reason: '⛔premise: the ink is held');
+
+      expect(
+        pictures.has(at(1)),
+        isFalse,
+        reason: 'the ink alone is not what a posed row draws',
+      );
+      await pictures.make(at(1), shouldAbort: () => false);
+      expect(pictures.has(at(1)), isTrue);
     });
   });
 
