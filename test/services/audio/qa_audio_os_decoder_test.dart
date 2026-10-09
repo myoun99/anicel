@@ -279,15 +279,23 @@ void main() {
   test('a bare .aac has no box to say it in — the standard 1,024 comes off',
       () {
     // The m4a's own frames behind ADTS headers: the same 1,024 frames of
-    // its encoder before the sound, and no edit list to say so.
-    final decoded = decodeAudioBytes(adtsFromM4a(fixtureBytes()));
-    if (Platform.isLinux) {
-      expect(decoded, isNull);
-      return;
+    // its encoder before the sound, and no edit list to say so — bare, and
+    // behind the ID3 tag a ripped stream often carries.
+    final adts = adtsFromM4a(fixtureBytes());
+    final id3 = [0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 20, ...List.filled(20, 0)];
+    for (final (shape, bytes) in [
+      ('bare', adts),
+      ('behind an ID3 tag', Uint8List.fromList([...id3, ...adts])),
+    ]) {
+      final decoded = decodeAudioBytes(bytes);
+      if (Platform.isLinux) {
+        expect(decoded, isNull, reason: shape);
+        continue;
+      }
+      expect(decoded, isNotNull, reason: '$shape: the OS stack reads ADTS');
+      expect(decoded!.format, QaAudioFormat.os, reason: shape);
+      expect(_sineLag(decoded), 0, reason: shape);
     }
-    expect(decoded, isNotNull, reason: 'the OS stack reads ADTS');
-    expect(decoded!.format, QaAudioFormat.os);
-    expect(_sineLag(decoded), 0);
   }, skip: skip);
 
   test('a movie this app exported comes back with its sound where it was '
