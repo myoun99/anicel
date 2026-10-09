@@ -379,6 +379,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.hooks,
     required this.onCrossed,
     this.onSelectCrossed,
+    this.selectRowDeltaAt,
     required this.child,
     this.isLastRow = false,
     this.grabOffsetWithinRun = 0,
@@ -409,6 +410,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.axis,
     required this.hooks,
     required this.onSelectCrossed,
+    this.selectRowDeltaAt,
     required this.child,
     this.grip,
   }) : canReorder = false,
@@ -478,6 +480,18 @@ class LayerRowDragTarget extends StatelessWidget {
   /// never has to know which way its rail runs.
   final void Function(int rowDelta)? onSelectCrossed;
 
+  /// Where a SELECT drag has reached, in rows from this one, asked with the
+  /// pointer's distance from this widget's top — for a rail whose rows are
+  /// not all one height. Null counts it in [rowExtent], which every row of
+  /// a timeline rail is.
+  ///
+  /// 🗣️F-322 (유저 2026-10-09): 「콘티패널 … 레이어의 선택범위 작동안하고
+  /// … 타임라인이랑 완벽통일」. The storyboard's rail stacks a camera row,
+  /// S rows, a V row as tall as its splitter left it, conte rows and lanes,
+  /// and a span counted in the pressed row's own height ran past or fell
+  /// short of the row under the pointer.
+  final int Function(double offset)? selectRowDeltaAt;
+
   /// Whether this is the last row of the rail — only it can show the
   /// trailing caret, or two adjacent rows would both draw the same gap.
   final bool isLastRow;
@@ -519,6 +533,7 @@ class LayerRowDragTarget extends StatelessWidget {
       hooks: hooks,
       onCrossed: onCrossed,
       onSelectCrossed: onSelectCrossed,
+      selectRowDeltaAt: selectRowDeltaAt,
       isLastRow: isLastRow,
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
@@ -541,6 +556,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.canReorder,
     required this.isLastRow,
     this.onSelectCrossed,
+    this.selectRowDeltaAt,
     this.onGripTaken,
     this.onGripReleased,
     this.grip,
@@ -558,6 +574,9 @@ class _LayerRowDragBody extends StatefulWidget {
   /// See [LayerRowDragTarget.canReorder] — false rows always select.
   final bool canReorder;
   final void Function(int rowDelta)? onSelectCrossed;
+
+  /// See [LayerRowDragTarget.selectRowDeltaAt].
+  final int Function(double offset)? selectRowDeltaAt;
   final VoidCallback? onGripTaken;
   final VoidCallback? onGripReleased;
 
@@ -605,6 +624,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// True while this press landed on a CONTROL and so starts nothing.
   bool _onControl = false;
 
+  /// Where the press landed along the rail, from this widget's top — what a
+  /// select drag's travel is added to when the rail resolves its rows
+  /// itself ([LayerRowDragTarget.selectRowDeltaAt]).
+  double _pressOffset = 0;
+
   void _begin(Offset localPosition, {required Offset globalPosition}) {
     // 🚨H1 (유저 2026-08-21): 「버튼쪽 탭다운해서 움직이면 선택범위
     // 작동해버리는데 … 버튼쪽 클릭하면 선택범위 작동 안 하도록. 그 외 부분.
@@ -630,6 +654,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dy
         : localPosition.dx;
+    _pressOffset = main;
     // Measured in the RUN, not in the grabbed widget — see
     // [LayerRowDragTarget.grabOffsetWithinRun]. The two are the same box
     // everywhere except the storyboard's V row.
@@ -827,7 +852,12 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // ON a row, where a move's caret ends BETWEEN two. Same travel, two
     // readings, which is why this is not the caret's `steps`.
     if (_selecting) {
-      widget.onSelectCrossed?.call((_grabFraction + travelled).floor());
+      final rowAt = widget.selectRowDeltaAt;
+      widget.onSelectCrossed?.call(
+        rowAt == null
+            ? (_grabFraction + travelled).floor()
+            : rowAt(_pressOffset + _travelled),
+      );
       return;
     }
     final nearestGap = (_grabFraction + travelled).round();

@@ -88,18 +88,31 @@ List<TimelineRowAddress> resolveSelectionSpanRows({
   required List<TimelineDisplayRow> rows,
   required TimelineRowAddress anchor,
   required int rowDelta,
+}) => resolveSelectionSpanOverAddresses(
+  rows: [for (final row in rows) row.address],
+  anchor: anchor,
+  rowDelta: rowDelta,
+);
+
+/// [resolveSelectionSpanRows] over the rows a rail draws, named by their
+/// addresses — the storyboard's, whose rows (a camera row, S rows, a V row,
+/// conte rows, their lanes) are no one stack's display rows (F-322).
+List<TimelineRowAddress> resolveSelectionSpanOverAddresses({
+  required List<TimelineRowAddress> rows,
+  required TimelineRowAddress anchor,
+  required int rowDelta,
 }) {
   if (rows.isEmpty) {
     return const [];
   }
-  final anchorIndex = rows.indexWhere((row) => row.address == anchor);
+  final anchorIndex = rows.indexOf(anchor);
   if (anchorIndex < 0) {
     return const [];
   }
   final headIndex = (anchorIndex + rowDelta).clamp(0, rows.length - 1);
   final low = anchorIndex < headIndex ? anchorIndex : headIndex;
   final high = anchorIndex < headIndex ? headIndex : anchorIndex;
-  return [for (var i = low; i <= high; i += 1) rows[i].address];
+  return rows.sublist(low, high + 1);
 }
 
 /// 🚨B4-④ (2026-08-17) — where a LANE-anchored select drag has reached,

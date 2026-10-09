@@ -41,10 +41,16 @@ class _StoryboardRowsAndLabels {
               ? -1
               : displayEffects.indexOf(parsed.effectId);
           if (slot < 0) {
-            return rows[index]; // A parameter lane is not a handle.
+            // A parameter lane moves nothing, and selects like every row.
+            return selectOnly(
+              LaneRowSubject(carrierId, lanes[index].laneId),
+              _state._rowHeights.lane,
+              rows[index],
+            );
           }
+          final subject = EffectRowSubject(carrierId, parsed!.effectId);
           return LayerRowDragTarget(
-            subject: EffectRowSubject(carrierId, parsed!.effectId),
+            subject: subject,
             slotBefore: slot,
             rowExtent: _state._rowHeights.lane,
             axis: Axis.horizontal,
@@ -64,11 +70,83 @@ class _StoryboardRowsAndLabels {
                 displayEffects.length,
               ),
             ),
+            // B4-3's select half, as the timeline's chain header has it.
+            onSelectCrossed: _spanOnSelect(),
+            selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+              timelineRowAddressOfDragSubject(subject),
+            ),
             child: rows[index],
           );
         }(),
     ];
   }
+
+  /// THE RAIL'S SELECT HALF (🗣️F-322, 유저 2026-10-09: 「콘티패널 지금
+  /// 옛날부터 몇번말해도 계속 레이어의 선택범위 작동안하고 바로
+  /// 드래그방식인데 작동하도록. 타임라인이랑 완벽통일」): a span over every row
+  /// this rail draws ([_StoryboardSheet.rows]), every track's and of every
+  /// kind — the timeline rail's own law, 「선택범위는 레이어 불문 자유롭게」.
+  /// Null while the host wired no span.
+  ///
+  /// ↩️The S rows took a span over the S rows alone, and no other row of
+  /// this rail took one at all: a span from an S row stopped short of the V
+  /// row, and the conte rows, the camera row and the transition row could
+  /// not start one.
+  void Function(int rowDelta)? _spanOnSelect() {
+    final span = _state.widget.onRowSelectionSpan;
+    return span == null
+        ? null
+        : (rowDelta) => span(_state._sheet.rows(), rowDelta);
+  }
+
+  /// [child], a row that moves nothing on this rail, made to SELECT: a drag
+  /// on it starts a span, and pressed inside one it lifts with it and
+  /// settles where it was (F-16-Q1) — the shape the timeline's unmovable
+  /// rows take ([LayerRowDragTarget.selectOnly]). [child] alone while the
+  /// host wired no selection.
+  Widget selectOnly(
+    LayerRowDragSubject subject,
+    double rowExtent,
+    Widget child, {
+    List<DragChipItem> Function()? grip,
+  }) {
+    final hooks = _state.widget.rowDragHooks;
+    final span = _spanOnSelect();
+    if (hooks == null || hooks.onSelectBegin == null || span == null) {
+      return child;
+    }
+    return LayerRowDragTarget.selectOnly(
+      subject: subject,
+      rowExtent: rowExtent,
+      axis: Axis.horizontal,
+      hooks: hooks,
+      onSelectCrossed: span,
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+        timelineRowAddressOfDragSubject(subject),
+      ),
+      grip: grip,
+      child: child,
+    );
+  }
+
+  /// A lane list's labels, each made to select ([selectOnly]) by the address
+  /// it is stood on — [carrierId]'s lane. The Audio lane keeps no address
+  /// (no key range lands on it), so it stays as it is.
+  List<Widget> selectableLanes(
+    LayerId carrierId,
+    List<PropertyLaneRow> lanes,
+    List<Widget> rows,
+  ) => [
+    for (var index = 0; index < rows.length; index += 1)
+      if (index >= lanes.length || laneIsSeAudio(lanes[index]))
+        rows[index]
+      else
+        selectOnly(
+          LaneRowSubject(carrierId, lanes[index].laneId),
+          _state._rowHeights.lane,
+          rows[index],
+        ),
+  ];
 
   /// Lane rail label rows on the shared substrate — an S row's lanes
   /// ([_StoryboardRailRows._seLanes]) or a V row's fx chain
@@ -172,7 +250,7 @@ class _StoryboardRowsAndLabels {
   /// creates on an empty frame.
   Widget transitionLabelRow(Track track) {
     final layer = track.transitionLayer;
-    return _StoryboardLayerRowLabel(
+    final label = _StoryboardLayerRowLabel(
       track: track,
       rowId: layer.id,
       kind: LayerKind.transition,
@@ -186,6 +264,12 @@ class _StoryboardRowsAndLabels {
       onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
       onLayerMarkSelected: _state.widget.onLayerMarkSelected,
       onToggleLayerTimesheet: _state.widget.onToggleLayerTimesheet,
+    );
+    return selectOnly(
+      LayerRowSubject(layer.id),
+      _state._rowHeights.transition,
+      label,
+      grip: () => [(icon: layerKindIcon(layer.kind), label: layer.name)],
     );
   }
 
@@ -218,7 +302,19 @@ class _StoryboardRowsAndLabels {
   /// while the host has not wired the head's verbs there is nothing for its
   /// controls to do: the row then keeps its slots reserved and empty
   /// ([_StoryboardLayerRowLabel]).
-  Widget conteLabelRow(Track track, int seat) {
+  Widget conteLabelRow(Track track, int seat) => selectOnly(
+    LayerRowSubject(trackConteRowId(track.id, seat: seat)),
+    _state._rowHeights.conte,
+    _conteLabel(track, seat),
+    grip: () => [
+      (
+        icon: layerKindIcon(LayerKind.storyboard),
+        label: trackConteRowName(track.cuts, seat: seat),
+      ),
+    ],
+  );
+
+  Widget _conteLabel(Track track, int seat) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final head = conteHeadAt(track.cuts, seat);
     final verbs = _timelineHeadVerbs();
@@ -261,7 +357,22 @@ class _StoryboardRowsAndLabels {
   /// and the session lands it on the camera layer of the cut it stands in.
   /// In a gap there is no head to wear: the row keeps its slots reserved and
   /// empty ([_StoryboardLayerRowLabel]).
-  Widget cameraLabelRow(Track track) {
+  Widget cameraLabelRow(Track track) => selectOnly(
+    LayerRowSubject(trackCameraRowId(track.id)),
+    _state._rowHeights.camera,
+    _cameraLabel(track),
+    grip: () => [
+      (
+        icon: layerKindIcon(LayerKind.camera),
+        label: trackCameraRowName(
+          track.cuts,
+          standingIn: _state.widget.activeCutId,
+        ),
+      ),
+    ],
+  );
+
+  Widget _cameraLabel(Track track) {
     final rowId = trackCameraRowId(track.id);
     final active = _state.widget.selectedRow == LayerRowAddress(rowId);
     final head = _state._railRows._cameraHeadOf(track);
@@ -523,12 +634,10 @@ class _StoryboardRowsAndLabels {
       // starting INSIDE the selection moves; without these the press went
       // straight to the move here while the timeline made you select first,
       // and 「통일이 안 돼 있다」 was exactly that.
-      onSelectCrossed: _state.widget.onSeRowSelectionSpan == null
-          ? null
-          : (rowDelta) => _state.widget.onSeRowSelectionSpan!(
-              _state._railRows._seRowsInDisplayOrder(track),
-              rowDelta,
-            ),
+      onSelectCrossed: _spanOnSelect(),
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+        LayerRowAddress(trackLayer.id),
+      ),
       child: row,
     );
   }
@@ -577,13 +686,23 @@ class _StoryboardRowsAndLabels {
   Widget trackDraggable(Track track, int index, Widget child) {
     final hooks = _state.widget.rowDragHooks;
     final trackCount = _state.widget.project.tracks.length;
+    final subject = TrackRowSubject(track.id);
+    List<DragChipItem> grip() => [
+      (icon: _vRowGlyph, label: storyboardVideoRowName(index)),
+    ];
     if (hooks == null || hooks.onTrackUpdate == null || trackCount < 2) {
       // One track cannot be re-ordered, and a rail with no hooks is
-      // display-only — either way the row stays a plain label.
-      return child;
+      // display-only — and the row SELECTS all the same (F-322; 08-29:
+      // 「v행트랙이든 뭐든 선택범위는 작동하게」). ↩️It stayed a plain label.
+      return selectOnly(
+        subject,
+        _state._railRows._trackGroupExtent(track),
+        child,
+        grip: grip,
+      );
     }
     return LayerRowDragTarget(
-      subject: TrackRowSubject(track.id),
+      subject: subject,
       slotBefore: index,
       rowExtent: _state._railRows._trackGroupExtent(track),
       // ④: the handle is the V row, the pitch is the whole group — so the
@@ -591,13 +710,17 @@ class _StoryboardRowsAndLabels {
       grabOffsetWithinRun: _state._railRows._trackGroupExtentAboveVRow(track),
       axis: Axis.horizontal,
       hooks: hooks,
-      grip: () => [(icon: _vRowGlyph, label: storyboardVideoRowName(index))],
+      grip: grip,
       isLastRow: index == trackCount - 1,
       // A track holds nothing, so its middle means nothing: the caret is
       // the only answer and the on-row arm stays unused (the S rows'
       // reasoning, one list up).
       onCrossed: (steps, _, _) =>
           hooks.onTrackUpdate!(slotForSteps(index, steps, trackCount)),
+      onSelectCrossed: _spanOnSelect(),
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
+        TrackRowAddress(track.id),
+      ),
       child: child,
     );
   }

@@ -119,7 +119,7 @@ void main() {
     expect(hooks.onSelectBegin, isNotNull);
     expect(hooks.onSelectEnd, isNotNull);
     expect(
-      panel.onSeRowSelectionSpan,
+      panel.onRowSelectionSpan,
       isNotNull,
       reason:
           'arming without the span would select one row and then refuse '

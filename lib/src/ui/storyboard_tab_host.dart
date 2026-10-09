@@ -1061,7 +1061,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // The span half — the three hooks above only ARM the
                     // selection; without this the press would select one row
                     // and then refuse to grow.
-                    onSeRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
+                    onRowSelectionSpan:
+                        _session.rowSelectionVerbs.updateRowSelectionOver,
+                    rowSelection: _session.rowSelection,
                     layerLaneEdit: _layerLaneEdit,
                     cutLaneEdit: _cutLaneEdit,
                     // An S row's group headers: the timeline's own switch and

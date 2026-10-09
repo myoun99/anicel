@@ -6,7 +6,7 @@ import '../../models/timeline_row_address.dart';
 import '../../services/history_manager.dart';
 import '../timeline/property_lane_model.dart' show TimelineDisplayRow;
 import '../timeline/timeline_row_span_resolver.dart'
-    show resolveSelectionSpanRows;
+    show resolveSelectionSpanOverAddresses;
 import 'session_roles.dart';
 import 'range_selections.dart';
 
@@ -76,12 +76,17 @@ class RowSelection {
   /// Grows the live selection to [rowDelta] rows from its anchor, through
   /// the SAME law the cell span uses — the rail's own drawn row list, so a
   /// row that is visible is selectable and a new row kind needs no wiring.
-  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) {
+  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) =>
+      updateRowSelectionOver([for (final row in rows) row.address], rowDelta);
+
+  /// [updateRowSelection] over a rail's rows by their addresses — the
+  /// storyboard's, which are no one stack's display rows (F-322).
+  void updateRowSelectionOver(List<TimelineRowAddress> rows, int rowDelta) {
     final anchor = _rowSelectionAnchor;
     if (anchor == null) {
       return;
     }
-    final span = resolveSelectionSpanRows(
+    final span = resolveSelectionSpanOverAddresses(
       rows: rows,
       anchor: anchor,
       rowDelta: rowDelta,

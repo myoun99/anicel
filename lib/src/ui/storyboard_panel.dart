@@ -63,6 +63,7 @@ import 'timeline/layer_rail_columns.dart';
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/dock_edge_splitter.dart';
+import 'widgets/drag_chip.dart' show DragChipItem;
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
@@ -73,6 +74,7 @@ import 'timeline/property_lane_model.dart'
         laneAsPreviewed,
         laneGroupKey;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
+import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
         laneSpanOverDrawnRows,
@@ -95,12 +97,15 @@ import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
         EffectRowSubject,
+        LaneRowSubject,
+        LayerRowDragSubject,
         LayerRowDragTarget,
         LayerRowSubject,
         TimelineRowDragHooks,
         TrackRowSubject,
         effectRowDragChip,
-        layerRowDragChips;
+        layerRowDragChips,
+        timelineRowAddressOfDragSubject;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'input/arena_tap_hold.dart';
@@ -601,7 +606,8 @@ class StoryboardPanel extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
-    this.onSeRowSelectionSpan,
+    this.onRowSelectionSpan,
+    this.rowSelection,
     this.layerLaneEdit,
     this.cutLaneEdit,
     this.poseDisplaySize,
@@ -1099,15 +1105,28 @@ class StoryboardPanel extends StatefulWidget {
   /// this round's (user, 2026-08-07).
   final TimelineRowDragHooks? rowDragHooks;
 
-  /// A5-3② — the SPAN half of ⑨'s select-then-move, for the S rows.
+  /// A5-3② — the SPAN half of ⑨'s select-then-move.
   ///
   /// [rowDragHooks]'s three selection hooks only ARM a selection (they say
   /// whether this press starts one and where it anchors); growing it as the
   /// pointer crosses rows is this. Null leaves a press selecting the single
   /// row it landed on, which is still the right FIRST phase — but the rail
   /// then cannot select a range, so it is wired wherever the hooks are.
-  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
-  onSeRowSelectionSpan;
+  ///
+  /// [rows] are the rows this rail DRAWS, every track's, by the address each
+  /// is stood on ([_StoryboardSheet.rows]) — 🗣️F-322 (유저 2026-10-09):
+  /// 「레이어의 선택범위 작동안하고 … 타임라인이랑 완벽통일」. ↩️It was the S
+  /// rows' alone, so a span from an S row stopped at the V row and no other
+  /// row of this rail started one.
+  final void Function(List<TimelineRowAddress> rows, int rowDelta)?
+  onRowSelectionSpan;
+
+  /// The rows the row selection holds — drawn over the rail as the
+  /// timeline's rail draws them, one band over each run
+  /// ([TimelineRowSelectionBands]). A listenable rather than a value: the
+  /// selection grows per pointer move inside a gesture, and only the band
+  /// has to hear it.
+  final ValueListenable<List<TimelineRowAddress>>? rowSelection;
 
   /// Lane edit hooks for the S rows' Transform lanes — the lane verbs on
   /// the TRACK's S rows, handed [playheadFrame]'s global frames. Null =
@@ -2133,6 +2152,27 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     ],
                                   ),
                                 ),
+                                // The row selection, over the LAYER area
+                                // as the timeline's rail lays it (A2) —
+                                // its own listener, since a span grows
+                                // per pointer move inside a gesture.
+                                if (widget.rowSelection case final selection?)
+                                  Positioned(
+                                    left: layerSectionLabelSlotWidth,
+                                    top: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child:
+                                        ValueListenableBuilder<
+                                          List<TimelineRowAddress>
+                                        >(
+                                          valueListenable: selection,
+                                          builder: (context, selected, _) =>
+                                              _railRows.rowSelectionBands(
+                                                selected,
+                                              ),
+                                        ),
+                                  ),
                                 // A pool file let go on the rail: the layer
                                 // area's law — a sound by the SE rows' rule, a
                                 // picture nowhere (no row of the cut's stack is

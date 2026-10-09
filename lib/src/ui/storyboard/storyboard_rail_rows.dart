@@ -864,10 +864,11 @@ class _StoryboardRailRows {
     }
     final onToggleEnabled = _state.widget.onToggleLaneGroupEnabled;
     final onReset = _state.widget.onResetLaneGroup;
-    return _state._rows.laneLabels(
+    final lanes = _seLanes(track, slot);
+    final labels = _state._rows.laneLabels(
       carrier: layer,
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
-      lanes: _seLanes(track, slot),
+      lanes: lanes,
       // F-195: a value scrubbed here, or on the timeline's copy of this row,
       // is shown in its GLOBAL form — the axis this rail draws.
       follow: (_, lane, row) => TimelineDragPreviewRowGate(
@@ -898,6 +899,7 @@ class _StoryboardRailRows {
       frameCursor: _state.widget.playheadFrame,
       onSelectFrame: _state.widget.onSeekGlobalFrame,
     );
+    return _state._rows.selectableLanes(layer.id, lanes, labels);
   }
 
   /// The camera row's lane labels, row for row with its lane strips
@@ -997,7 +999,7 @@ class _StoryboardRailRows {
     final seek = _state.widget.onSeekCutFrame;
     final toggleEnabled = _state.widget.onToggleLaneGroupEnabled;
     final reset = _state.widget.onResetLaneGroup;
-    return _state._rows.laneLabels(
+    final rows = _state._rows.laneLabels(
       carrier: labels.shown.copyWith(id: projection.rowId),
       lanes: labels.lanes,
       groupKeyOf: (lane) => laneGroupKey(labels.shown.id, lane.laneId),
@@ -1018,6 +1020,7 @@ class _StoryboardRailRows {
           ? null
           : (frame) => seek(stood.cut.id, frame),
     );
+    return _state._rows.selectableLanes(projection.rowId, labels.lanes, rows);
   }
 
   /// [build] with [cut]'s camera track as the drag channel shows it — a key
@@ -1688,6 +1691,63 @@ class _StoryboardRailRows {
     }
     return anchorRow;
   }
+
+  /// The ROW SELECTION over this rail, as the timeline's rail draws it —
+  /// one band over each run of [selected] rows, laid on the table the rail
+  /// is drawn from (F-322: 「타임라인이랑 완벽통일」). ↩️This rail drew none,
+  /// so a span it selected could not be seen.
+  Widget rowSelectionBands(List<TimelineRowAddress> selected) {
+    final slots = [
+      for (final track in _state.widget.project.tracks)
+        ..._trackGroupRowGeometry(track),
+    ];
+    return TimelineRowSelectionBands(
+      selectedFlags: [
+        for (final slot in slots)
+          switch (_standingAddressOf(slot)) {
+            final address? => selected.contains(address),
+            null => false,
+          },
+      ],
+      rowExtent: 0,
+      rowExtents: [for (final slot in slots) slot.height],
+      leadingSpacer: 0,
+      crossExtent: _state._naturalRailWidth - layerSectionLabelSlotWidth,
+    );
+  }
+
+  /// Where a SELECT drag pressed on [anchor]'s label has reached, in rows
+  /// of [_StoryboardSheet.rows] from it, asked with the pointer's distance
+  /// from that label's top ([LayerRowDragTarget.selectRowDeltaAt]).
+  ///
+  /// Read off the table every track's rail is drawn from
+  /// ([_trackGroupRowGeometry]): a row here is as tall as its kind, so the
+  /// pressed row's own height cannot count the rest (F-322). A slot nobody
+  /// stands on — the Audio lane, an S slot with no layer — hands the span on
+  /// to the nearest row toward the anchor, as [_railRowAtCrossOffset] does.
+  int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
+      (offset) {
+        final slots = [
+          for (final track in _state.widget.project.tracks)
+            ..._trackGroupRowGeometry(track),
+        ];
+        final addresses = [for (final slot in slots) _standingAddressOf(slot)];
+        final anchorAt = addresses.indexOf(anchor);
+        if (anchorAt < 0) {
+          return 0;
+        }
+        var head = rowIndexForCrossOffset(
+          crossOffset: offset,
+          anchorIndex: anchorAt,
+          heights: [for (final slot in slots) slot.height],
+        );
+        final towardAnchor = head >= anchorAt ? -1 : 1;
+        while (addresses[head] == null) {
+          head += towardAnchor;
+        }
+        final rows = addresses.nonNulls.toList();
+        return rows.indexOf(addresses[head]!) - rows.indexOf(anchor);
+      };
 
   /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
   /// resolved against THIS rail's mixed-height row table (R9 #25), the

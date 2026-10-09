@@ -47,6 +47,7 @@ class TimelineRowSelectionBands extends StatelessWidget {
     required this.leadingSpacer,
     required this.crossExtent,
     this.axis = Axis.horizontal,
+    this.rowExtents,
   });
 
   /// One flag per DRAWN row, in draw order — the rail already knows which of
@@ -58,6 +59,10 @@ class TimelineRowSelectionBands extends StatelessWidget {
   /// X-sheet).
   final double rowExtent;
 
+  /// Each drawn row's own extent, for a rail whose rows are not all one
+  /// height — the storyboard's (F-322). Null: every row is [rowExtent].
+  final List<double>? rowExtents;
+
   /// What sits before the first drawn row — the virtualization spacer.
   final double leadingSpacer;
 
@@ -68,6 +73,19 @@ class TimelineRowSelectionBands extends StatelessWidget {
 
   /// Which way the rail runs.
   final Axis axis;
+
+  /// Where row [index] begins along the rail, past [leadingSpacer].
+  double _startOf(int index) {
+    final extents = rowExtents;
+    if (extents == null) {
+      return index * rowExtent;
+    }
+    var start = 0.0;
+    for (var row = 0; row < index && row < extents.length; row += 1) {
+      start += extents[row];
+    }
+    return start;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,8 +102,8 @@ class TimelineRowSelectionBands extends StatelessWidget {
       if (runStart < 0) {
         continue;
       }
-      final offset = leadingSpacer + runStart * rowExtent;
-      final extent = (index - runStart) * rowExtent;
+      final offset = leadingSpacer + _startOf(runStart);
+      final extent = _startOf(index) - _startOf(runStart);
       bands.add(
         placedAlong(
           axis,
