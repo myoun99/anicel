@@ -240,4 +240,24 @@ void main() {
       );
     });
   });
+
+  test('each list of extensions names its own kind, in any case — and '
+      'nothing else names one', () {
+    for (final (kind, extensions) in [
+      (MediaAssetKind.audio, audioFileExtensions),
+      (MediaAssetKind.image, imageFileExtensions),
+      (MediaAssetKind.video, videoFileExtensions),
+      (MediaAssetKind.pdf, pdfFileExtensions),
+    ]) {
+      for (final extension in extensions) {
+        expect(mediaAssetKindForPath('C:/m/a.$extension'), kind);
+        expect(
+          mediaAssetKindForPath('C:/m/a.${extension.toUpperCase()}'),
+          kind,
+        );
+      }
+    }
+    expect(mediaAssetKindForPath('C:/m/notes.txt'), isNull);
+    expect(mediaAssetKindForPath('C:/m/no-extension'), isNull);
+  });
 }
