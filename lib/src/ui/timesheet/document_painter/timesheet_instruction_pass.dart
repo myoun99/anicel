@@ -158,7 +158,7 @@ class _TimesheetInstructionPass {
       );
     }
     if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
-      _paintInstructionLabel(
+      paintSpanName(
         canvas,
         cell.label!,
         columnLeft: columnLeft,
@@ -170,8 +170,9 @@ class _TimesheetInstructionPass {
     }
   }
 
-  /// The instruction's NAME, written DOWN the column beside its mark — the
-  /// x-sheet's treatment, in print (user, 2026-08-08).
+  /// A span's NAME, written DOWN the column beside its mark — the x-sheet's
+  /// treatment, in print (user, 2026-08-08): an instruction's, and the
+  /// camera's move in the camera column (I-73 ⑤).
   ///
   /// Two things were wrong with the horizontal line it replaces. It was
   /// centred on `centerX`, which is where the duration bar is drawn, so
@@ -195,7 +196,7 @@ class _TimesheetInstructionPass {
   /// grow. So the name is pushed back inside the grid — as near the span's
   /// middle as the grid lets it stand. Only a name longer than the whole
   /// grid packs, to the grid's length.
-  void _paintInstructionLabel(
+  void paintSpanName(
     Canvas canvas,
     String label, {
     required double columnLeft,

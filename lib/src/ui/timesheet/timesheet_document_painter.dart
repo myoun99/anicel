@@ -31,8 +31,7 @@ import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart' show paintScaledText;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
-import '../timeline/timeline_instruction_row_visual.dart'
-    show instructionLabelInset;
+import '../timeline/timeline_span_name.dart' show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';

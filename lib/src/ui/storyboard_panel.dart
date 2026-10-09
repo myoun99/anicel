@@ -63,6 +63,7 @@ import 'widgets/dock_edge_splitter.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
+        LaneStretchWord,
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
         TimelineDisplayRow,
@@ -83,6 +84,7 @@ import 'timeline/timeline_lane_rows.dart'
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,
         timelineKeysLineSpan,
+        timelineStretchWordSpan,
         timelineUnionKeySpan;
 import 'timeline/effect_lane_policy.dart'
     show effectPropertyLanes, parseEffectLaneId;
@@ -102,9 +104,9 @@ import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show
+        cameraUnionHeader,
         laneSelectionCoversBandRow,
-        transformGroupHeader,
-        transformUnionHeader;
+        transformGroupHeader;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'

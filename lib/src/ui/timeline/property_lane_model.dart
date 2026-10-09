@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset, VoidCallback;
+import 'dart:ui' show Color, Offset, VoidCallback;
 
 import 'package:flutter/foundation.dart' show Listenable;
 
@@ -159,7 +159,14 @@ class PropertyLaneRow {
     this.groupExpanded = false,
     this.groupEnabled,
     this.previewText,
+    this.stretchWords = const [],
   });
+
+  /// The words written over the line between this lane's keys — each over
+  /// the stretch from a key to the next, as an instruction span's name is
+  /// written over its span ([LaneStretchWord]). The camera row's moves
+  /// (I-73 ⑤); empty on every other lane.
+  final List<LaneStretchWord> stretchWords;
 
   /// See [PropertyLaneValueKind].
   final PropertyLaneValueKind valueKind;
@@ -267,6 +274,10 @@ class PropertyLaneRow {
   /// switch (the Transform group; the row's one fx switch covers it).
   final bool? groupEnabled;
 }
+
+/// A word over the stretch of a lane from its key on [from] to the next, on
+/// [to] — written in [ink].
+typedef LaneStretchWord = ({int from, int to, String word, Color ink});
 
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can
 /// hold several group headers now (Transform, plus one per effect), so the

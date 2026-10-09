@@ -47,6 +47,7 @@ import 'timeline_frame_range_gesture.dart'
 import 'timeline_frame_span_layout.dart'
     show TimelineFrameSpan, TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
+import 'timeline_span_name.dart' show TimelineSpanName;
 import 'axis_turn.dart';
 import 'memo_token.dart' show ByList;
 
@@ -1653,6 +1654,13 @@ List<Widget> timelineUnionKeyMarkerSpans({
       lane: lane,
       axis: axis,
     ),
+    for (final stretch in lane.stretchWords)
+      timelineStretchWordSpan(
+        keyPrefix: keyPrefix,
+        layer: layer,
+        stretch: stretch,
+        axis: axis,
+      ),
     for (final frame in lane.keyedFrames.toList()..sort())
       timelineUnionKeySpan(
         keyPrefix: keyPrefix,
@@ -1733,6 +1741,30 @@ TimelineFrameSpan timelineUnionKeySpan({
     ),
   );
 }
+
+/// One word over the line between two of a row's keys ([LaneStretchWord])
+/// as the span it is laid out over — from the first key's cell through the
+/// next key's, the box an instruction span's name stands in
+/// ([TimelineSpanName]), so the word sits over the line's middle. A row
+/// that draws its keys somewhere other than their own frames hands the
+/// stretch over where it draws it (the storyboard's camera row, I-73 ④).
+TimelineFrameSpan timelineStretchWordSpan({
+  required String keyPrefix,
+  required Layer layer,
+  required LaneStretchWord stretch,
+  required Axis axis,
+}) => TimelineFrameSpan(
+  key: ValueKey<String>(
+    '$keyPrefix-lane-stretch-word-${layer.id}-${stretch.from}',
+  ),
+  placement: TimelineFrameSpanPlacement(
+    startIndex: stretch.from,
+    endIndexExclusive: stretch.to + 1,
+  ),
+  child: IgnorePointer(
+    child: TimelineSpanName(axis: axis, text: stretch.word, ink: stretch.ink),
+  ),
+);
 
 /// The line between a union row's keys, as the span it is laid out over —
 /// the band's own drawing ([TimelineLaneKeysLine]), from the first key's

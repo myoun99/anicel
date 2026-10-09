@@ -19,11 +19,12 @@ part of '../storyboard_panel.dart';
 /// one line in the middle. A key the cut keeps outside its own frames is not
 /// drawn: the row is clamped to the cut.
 ///
-/// The keys are the TIMELINE's camera row's — the camera track's union
-/// ([transformUnionHeader]) drawn by the shared key marks
-/// ([timelineUnionKeySpan]) and joined by the shared line
+/// The keys are the TIMELINE's camera row's — the camera's lane
+/// ([cameraUnionHeader]) drawn by the shared key marks
+/// ([timelineUnionKeySpan]), joined by the shared line
 /// ([TimelineLaneKeysLine]), which steps between the lines where the cut
-/// does. A row has nothing of its own to draw them with.
+/// does, and named over it by the shared word ([timelineStretchWordSpan]).
+/// A row has nothing of its own to draw them with.
 class _StoryboardCameraRow extends StatelessWidget {
   const _StoryboardCameraRow({
     required this.track,
@@ -34,6 +35,7 @@ class _StoryboardCameraRow extends StatelessWidget {
     required this.frameGeometry,
     required this.windowBucket,
     required this.viewportWidth,
+    required this.instructionDefById,
     this.onRowFramePress,
     this.onCameraCutPress,
     this.onEditCameraCell,
@@ -55,6 +57,9 @@ class _StoryboardCameraRow extends StatelessWidget {
   final TimelineFrameGeometryHandle frameGeometry;
   final ValueListenable<int> windowBucket;
   final double viewportWidth;
+
+  /// The vocabulary the camera's moves are written in ([cameraUnionHeader]).
+  final CameraInstructionDef? Function(String id) instructionDefById;
 
   /// A press where no cut's own frames are — a gap: the row and the frame
   /// under the pointer, the storyboard's one cell press.
@@ -353,7 +358,8 @@ class _StoryboardCameraRow extends StatelessWidget {
   );
 
   /// [reach]'s cut's camera keys inside its own frames and [window]: the
-  /// line between its first and its last, then the marks over it.
+  /// line between its first and its last, the moves over it, then the marks
+  /// over them.
   List<Widget> _cutKeys(
     CameraRowReach reach,
     ({int startIndex, int endIndexExclusive}) window,
@@ -363,16 +369,50 @@ class _StoryboardCameraRow extends StatelessWidget {
     if (camera == null) {
       return const [];
     }
-    final lane = transformUnionHeader(track: cut.camera.track, expanded: false);
+    final lane = cameraUnionHeader(
+      cut.camera.track,
+      defById: instructionDefById,
+    );
     final line = _line(reach, camera, lane, window);
     return [
       ?line,
+      for (final stretch in lane.stretchWords)
+        if (_stretchOnTheLine(reach, stretch, window) case final placed?)
+          timelineStretchWordSpan(
+            keyPrefix: 'storyboard-camera',
+            layer: camera,
+            stretch: placed,
+            axis: Axis.horizontal,
+          ),
       for (final key in lane.keyedFrames.toList()..sort())
         if (reach.reaches(reach.trackFrameOf(key)) &&
             reach.trackFrameOf(key) >= window.startIndex &&
             reach.trackFrameOf(key) < window.endIndexExclusive)
           _key(reach, camera, lane, key),
     ];
+  }
+
+  /// [stretch] where this row writes it, on the track: over the part of it
+  /// its cut draws on the one line in the middle — 「키 이름은 한 줄일
+  /// 때만」, the drawn proposal's, holds for the move's name as for a key's:
+  /// two lines leave no room for a word — or null where none of it is
+  /// there, or the window holds none of it.
+  LaneStretchWord? _stretchOnTheLine(
+    CameraRowReach reach,
+    LaneStretchWord stretch,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
+    final from = math.max(
+      reach.trackFrameOf(stretch.from),
+      reach.arrivingUntil,
+    );
+    final to = math.min(reach.trackFrameOf(stretch.to), reach.leavingFrom - 1);
+    if (to < from ||
+        to < window.startIndex ||
+        from >= window.endIndexExclusive) {
+      return null;
+    }
+    return (from: from, to: to, word: stretch.word, ink: stretch.ink);
   }
 
   /// One key's mark, on the line its cut is drawn on there.

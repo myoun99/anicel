@@ -8,7 +8,7 @@ import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
 import 'scale_lane_form.dart';
 import 'transform_lane_policy.dart'
-    show transformPropertyLanes, transformUnionHeader;
+    show cameraUnionHeader, transformPropertyLanes;
 
 /// THE property lanes a layer contributes, in display order.
 ///
@@ -119,5 +119,8 @@ PropertyLaneRow? timelineCameraUnionLane({
   if (track == null) {
     return null;
   }
-  return transformUnionHeader(track: track, expanded: false);
+  return cameraUnionHeader(
+    track,
+    defById: session.camera.cameraInstructionSet.defById,
+  );
 }

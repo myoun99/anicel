@@ -2,7 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
-    show InstructionEvent;
+    show CameraInstructionDef, CameraInstructionSet, InstructionEvent;
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -34,6 +34,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeysLine;
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show TimelineSection;
+import 'package:anicel/src/ui/timeline/timeline_span_name.dart'
+    show TimelineSpanName;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
     show transformTrackWithLaneRangeNamed;
 
@@ -531,6 +533,88 @@ void main() {
       session.edgeDrag.cancelCutEdgeDrag();
       await tester.pumpAndSettle();
       expect(sharedFrames(tester), [(18.0, 30.0)]);
+    });
+  });
+
+  group('the camera\'s moves — I-73 ⑤', () {
+    /// The moves the row writes, by [camera] — the frames each word stands
+    /// over on the track, and the word.
+    List<(int, int, String)> wordsOf(WidgetTester tester, String camera) {
+      final row = tester.getRect(cameraStrip);
+      final prefix = 'storyboard-camera-lane-stretch-word-$camera-';
+      return [
+        for (final element in find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget.key is ValueKey<String> &&
+                  (widget.key! as ValueKey<String>).value.startsWith(prefix),
+            )
+            .evaluate())
+          () {
+            final rect = tester.getRect(find.byWidget(element.widget));
+            final name = tester.widget<TimelineSpanName>(
+              find.descendant(
+                of: find.byWidget(element.widget),
+                matching: find.byType(TimelineSpanName),
+              ),
+            );
+            return (
+              ((rect.left - row.left) / ppf(tester)).round(),
+              ((rect.right - row.left) / ppf(tester)).round(),
+              name.text,
+            );
+          }(),
+      ]..sort((x, y) => x.$1.compareTo(y.$1));
+    }
+
+    testWidgets('🎯each stretch a cut\'s camera moves along is named over its '
+        'line, at the cut\'s own place — the last held to the cut', (
+      tester,
+    ) async {
+      await pumpPanel(tester);
+
+      expect(wordsOf(tester, 'a-cam'), [
+        (0, 13, 'PAN'),
+        (12, 21, 'PAN'),
+        (20, 24, 'PAN'),
+      ], reason: 'a\'s keys 0 · 12 · 20 · 30, the last past its end');
+      expect(wordsOf(tester, 'b-cam'), [(26, 31, 'PAN'), (30, 37, 'PAN')]);
+    });
+
+    testWidgets('🚨over an O.L a move is named only where its cut runs on the '
+        'one line — two lines leave no room for a word', (tester) async {
+      await pumpPanel(tester, transitions: ol);
+
+      expect(wordsOf(tester, 'a-cam'), [
+        (0, 13, 'PAN'),
+        (12, 18, 'PAN'),
+      ], reason: 'a leaves on the upper line from 18');
+      expect(wordsOf(tester, 'b-cam'), [
+        (30, 31, 'PAN'),
+      ], reason: 'b arrives on the lower line until 30');
+    });
+
+    testWidgets('the name is the vocabulary\'s', (tester) async {
+      final session = await pumpPanel(tester);
+      final vocabulary = session.repository.requireProject().cameraInstructions;
+      session.camera.updateCameraInstructionSet(
+        CameraInstructionSet(
+          defs: [
+            for (final def in vocabulary.defs)
+              if (def.id == 'pan')
+                const CameraInstructionDef(
+                  id: 'pan',
+                  name: 'パン',
+                  iconKey: 'pan',
+                )
+              else
+                def,
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(wordsOf(tester, 'b-cam'), [(26, 31, 'パン'), (30, 37, 'パン')]);
     });
   });
 

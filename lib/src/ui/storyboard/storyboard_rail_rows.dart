@@ -1570,6 +1570,7 @@ class _StoryboardRailRows {
         frameGeometry: _state._frameGeometry,
         windowBucket: _state._horizontalWindowBucket,
         viewportWidth: _state._stripViewportWidth,
+        instructionDefById: _state.widget.project.cameraInstructions.defById,
         onRowFramePress: _state.widget.onRowFramePress,
         onCameraCutPress: _state.widget.onCameraCutPress,
         onEditCameraCell: _state.widget.onEditCameraCell,

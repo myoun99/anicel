@@ -1,6 +1,9 @@
 import 'lane_span_in_order.dart';
 import 'dart:ui' show Offset;
 
+import '../../models/camera_instruction.dart'
+    show CameraInstructionDef, instructionTermName;
+import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
 import '../../models/key_range_move.dart'
     show
@@ -17,6 +20,7 @@ import '../text/app_strings.dart';
 import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
+import 'timeline_span_name.dart' show timelineInstructionInk;
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
 /// the twirl-down's structural spine: Transform first, Effects stack below
@@ -51,6 +55,7 @@ PropertyLaneRow transformGroupHeader({
   Set<int> mixedFrames = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
+  List<LaneStretchWord> stretchWords = const [],
 }) {
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
@@ -73,6 +78,7 @@ PropertyLaneRow transformGroupHeader({
     // transform of their own to bypass (the camera moves through the cut's
     // camera track; its row-level switch covers that).
     groupEnabled: enabled,
+    stretchWords: stretchWords,
   );
 }
 
@@ -91,6 +97,7 @@ PropertyLaneRow transformUnionHeader({
   required TransformTrack track,
   required bool expanded,
   bool? enabled,
+  List<LaneStretchWord> stretchWords = const [],
 }) {
   return transformGroupHeader(
     expanded: expanded,
@@ -100,8 +107,31 @@ PropertyLaneRow transformUnionHeader({
     mixedFrames: transformKeyMixedUnion(track),
     keyNames: transformKeyNameUnion(track),
     enabled: enabled,
+    stretchWords: stretchWords,
   );
 }
+
+/// THE CAMERA ROW'S LANE — its keys' union ([transformUnionHeader]) with,
+/// over the line between them, the move each stretch makes
+/// ([cameraMoves], I-73 ⑤) by its name in the vocabulary [defById] reads
+/// and in its ink ([timelineInstructionInk]): the timeline's camera row
+/// and the storyboard's draw this one lane.
+PropertyLaneRow cameraUnionHeader(
+  TransformTrack track, {
+  required CameraInstructionDef? Function(String id) defById,
+}) => transformUnionHeader(
+  track: track,
+  expanded: false,
+  stretchWords: [
+    for (final move in cameraMoves(track))
+      (
+        from: move.from,
+        to: move.to,
+        word: instructionTermName(move.term, defById(move.term)),
+        ink: timelineInstructionInk(defById(move.term)),
+      ),
+  ],
+);
 
 /// The AE Transform-group lanes of a [TransformTrack], in AE order under
 /// the 'Transform' group header — Anchor Point / Position / Scale /
