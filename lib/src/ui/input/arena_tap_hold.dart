@@ -10,6 +10,14 @@ import 'package:flutter/widgets.dart';
 /// mouse region and ink that drew nothing (F-138: the app's press shows no
 /// ink), mounted anew for every row on every cut switch (I-57 ①). This is
 /// the recognizer and nothing else.
+///
+/// ⚠️Nothing in the app tells it apart today (measured 2026-10-10, a
+/// mutant that drops it passes every row test): a timeline row's arena also
+/// holds the label's double click and the row drag, and a storyboard track
+/// label's only other member is the column swipe, whose band check makes a
+/// win outside its columns nothing. It keeps the arena the `InkWell` left
+/// when the pick moved off it (T10, 2026-08-14) — a tap the row answers with
+/// nothing, which a tap of an ancestor's would lose to.
 class ArenaTapHold extends StatelessWidget {
   const ArenaTapHold({super.key, this.holds = true, required this.child});
 
