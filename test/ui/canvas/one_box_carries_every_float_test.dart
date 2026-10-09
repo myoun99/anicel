@@ -171,6 +171,11 @@ void main() {
       shown(env.slotB),
       (left: 210, top: 105, right: 250, bottom: 145),
     );
+    expect(
+      find.byKey(const ValueKey<String>('transform-resample-preview')),
+      findsNothing,
+      reason: 'a float with a slot is drawn there, not over every row here',
+    );
     await tester.pumpWidget(const SizedBox());
   });
 
