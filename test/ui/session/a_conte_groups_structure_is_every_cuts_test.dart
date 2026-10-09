@@ -188,8 +188,8 @@ void main() {
     );
 
     test('🚨a group holding only the first of the seats is left as it is', () {
-      // e's seats are a's, the top one missing: the row that crosses in a
-      // would cross in e too, were the rest not asked.
+      // e's seats are a's from the top, the bottom one missing: the row
+      // that crosses in a would cross in e too, were the rest not asked.
       final session = open(
         extra: [
           Cut(
@@ -199,13 +199,9 @@ void main() {
             canvasSize: const CanvasSize(width: 640, height: 360),
             layers: [
               row('e-cel', kind: LayerKind.animation),
-              row(
-                'e-under',
-                ridesOn: 'e-conte',
-                placement: AttachedPlacement.below,
-              ),
               row('e-conte'),
               row('e-over1', ridesOn: 'e-conte'),
+              row('e-over2', ridesOn: 'e-conte'),
             ],
           ),
         ],
@@ -214,9 +210,9 @@ void main() {
       crossOver1(session);
 
       expect(groupOf(session, const CutId('e')), [
+        '2:over2',
         '1:over1',
         '0:conte',
-        '-1:under',
       ]);
     });
 
