@@ -16,12 +16,13 @@ import '../models/storyboard_timeline_layout.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_row_address.dart';
 import '../models/timeline_splice.dart' show captureTimelineRun;
+import '../models/track_camera_head.dart' show cameraHeadOf;
 import '../models/track_camera_row.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
 import '../models/track_projection_row.dart';
-import 'text/app_strings.dart';
-import 'text/model_vocabulary.dart';
+import '../services/editing/default_cut_helpers.dart' show cameraRowBornName;
+import '../services/editing/default_layer_helpers.dart' show conteRowBornName;
 
 /// ⚠️Which row is a cut's conte — [storyboardLayerForCut] and its two
 /// neighbours — moved inward (`models/conte_group.dart`) so that the
@@ -197,9 +198,13 @@ Layer trackCameraRowShown(
 
 /// The name a track's camera row goes by wherever it is written — its rail
 /// label, the flip window: its head's, the camera layer of the cut
-/// [standingIn] when that cut is one of [cuts], and the kind's own word
-/// otherwise (a gap, another track's cut) — ONE answer, the lesson
-/// [trackConteRowName] learned.
+/// [standingIn] when that cut is one of [cuts], and otherwise (a gap,
+/// another track's cut) the name the track's cameras wear as one
+/// ([cameraHeadOf], I-73-camera-row-Q1) — or, with no camera at all, the
+/// name one is born with ([cameraRowBornName]). ONE answer, the lesson
+/// [trackConteRowName] learned. ↩️The gap read the program language's word
+/// for the kind, so the row's name changed language as the playhead left a
+/// cut (F-322: 「멋대로 한글로 콘티라고 하지말것」, of the conte row's).
 String trackCameraRowName(Iterable<Cut> cuts, {required CutId? standingIn}) {
   for (final cut in cuts) {
     if (cut.id == standingIn) {
@@ -209,20 +214,22 @@ String trackCameraRowName(Iterable<Cut> cuts, {required CutId? standingIn}) {
       }
     }
   }
-  return LayerKind.camera.labelFor(AppText.language);
+  return cameraHeadOf(cuts)?.name ?? cameraRowBornName;
 }
 
 /// The name a track's conte row goes by wherever it is written — its rail
 /// label, the flip window: its head's ([conteHeadRowAt], the first of the
-/// cuts that holds a row at [seat]), and the kind's own word while no cut
-/// has one.
+/// cuts that holds a row at [seat]), and the name a conte row is born with
+/// while no cut has one ([conteRowBornName]). ↩️That was the program
+/// language's word for the kind — 「콘티」 in Korean, until the first panel
+/// made a row named Conte: 🗣️F-322 (유저 2026-10-09) 「그냥 통일. 멋대로
+/// 한글로 콘티라고 하지말것」.
 ///
 /// ⚠️ONE answer. The rail read the kind's word and the row as drawn an
 /// empty name, so a film with no conte layer yet named the row on its rail
 /// and left it nameless in the flip window (🧪2026-10-08, before it landed).
 String trackConteRowName(Iterable<Cut> cuts, {int seat = 0}) =>
-    conteHeadRowAt(cuts, seat)?.name ??
-    LayerKind.storyboard.labelFor(AppText.language);
+    conteHeadRowAt(cuts, seat)?.name ?? conteRowBornName;
 
 /// The frame of [entry]'s cut — in the CUT's own frames, its rows' keys —
 /// that the track's frame [globalFrame] shows on a conte row, held inside

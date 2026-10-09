@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -20,6 +21,10 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show cameraRowBornName;
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show conteRowBornName, createCoveringLayer;
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardConteCreatePainter;
@@ -262,11 +267,57 @@ void main() {
       expect(trackConteRowShown(trackId, bare).mark, LayerMark.none);
       expect(conteHeadRowAt(bareCuts, 0), isNull);
       // One name wherever the row is written: the rail's label reads
-      // [trackConteRowName], the flip window the row as drawn.
-      final kindsWord = LayerKind.storyboard.labelFor(AppText.language);
-      expect(kindsWord, isNotEmpty, reason: '⛔전제');
-      expect(trackConteRowName(bareCuts), kindsWord);
-      expect(trackConteRowShown(trackId, bare).name, kindsWord);
+      // [trackConteRowName], the flip window the row as drawn — the name a
+      // conte row is born with, in every program language. 🗣️F-322 (유저
+      // 2026-10-09): 「처음 이름이 한글로 콘티이고 칸 생성 하고나면 Conte로
+      // 바뀌는데 그냥 통일. 멋대로 한글로 콘티라고 하지말것」.
+      final before = AppText.settings.value;
+      addTearDown(() => AppText.settings.value = before);
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      expect(
+        LayerKind.storyboard.labelFor(AppText.language),
+        isNot(conteRowBornName),
+        reason: '⛔전제: the kind\'s Korean word is not the row\'s name',
+      );
+      expect(trackConteRowName(bareCuts), conteRowBornName);
+      expect(trackConteRowShown(trackId, bare).name, conteRowBornName);
+      expect(
+        createCoveringLayer(
+          layerId: const LayerId('born'),
+          frameId: const FrameId('born-1'),
+          cut: bareCuts.single,
+        ).name,
+        conteRowBornName,
+        reason: 'the row the first panel makes is called the same',
+      );
+    });
+
+    test('a camera row in a gap is called what the track\'s cameras are, '
+        'not the kind\'s word — and what one is born as with none', () {
+      final before = AppText.settings.value;
+      addTearDown(() => AppText.settings.value = before);
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      Cut withCamera(String id, String name) => cut(id, 4).copyWith(
+        layers: [
+          Layer(
+            id: LayerId('$id-cam'),
+            name: name,
+            kind: LayerKind.camera,
+            frames: const [],
+          ),
+        ],
+      );
+
+      final cuts = [withCamera('a', 'CAM'), withCamera('b', 'CAM')];
+      expect(trackCameraRowName(cuts, standingIn: null), 'CAM');
+      expect(
+        trackCameraRowName([cut('a', 4)], standingIn: null),
+        cameraRowBornName,
+      );
     });
   });
 

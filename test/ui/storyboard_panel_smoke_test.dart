@@ -14,8 +14,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerKindDisplayName;
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show conteRowBornName;
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -62,7 +62,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('V1'), findsOneWidget);
+      expect(find.text('Video'), findsOneWidget);
     });
 
     testWidgets('renders the current cut as a painted block', (tester) async {
@@ -134,13 +134,13 @@ void main() {
 
       // The row is there with no block on it, and the cut's stretch wears
       // the button that makes one. D27: no explanatory copy — the row's
-      // name is its kind's own word.
+      // name is the one a conte row is born with. ↩️It was the kind's own
+      // word, which read 「콘티」 in Korean until the first panel made a row
+      // called Conte: 🗣️F-322 (유저 2026-10-09) 「그냥 통일. 멋대로 한글로
+      // 콘티라고 하지말것」.
       expect(conteRowBlocks(tester, 'track-a'), isEmpty);
       expect(conteCreatePlates(tester, 'track-a'), hasLength(1));
-      expect(
-        conteRowName(tester, 'track-a'),
-        layerKindDisplayName(LayerKind.storyboard),
-      );
+      expect(conteRowName(tester, 'track-a'), conteRowBornName);
     });
 
     testWidgets(
@@ -186,8 +186,8 @@ void main() {
         find.byKey(const ValueKey<String>('storyboard-track-row-track-b')),
         findsOneWidget,
       );
-      expect(find.text('V1'), findsOneWidget);
-      expect(find.text('V2'), findsOneWidget);
+      expect(find.text('Video'), findsOneWidget);
+      expect(find.text('Video 2'), findsOneWidget);
       expect(
         find.byKey(
           const ValueKey<String>('storyboard-timeline-horizontal-viewport'),

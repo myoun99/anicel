@@ -207,9 +207,8 @@ void main() {
       expect(head(tester).layer.isVisible, isTrue);
     });
 
-    testWidgets('in a gap it keeps its slots and the kind\'s name', (
-      tester,
-    ) async {
+    testWidgets('in a gap it keeps its slots and the name the track\'s '
+        'cameras wear', (tester) async {
       await pumpPanel(tester, before: (session) => standIn(session, 50));
 
       expect(label, findsOneWidget);
@@ -220,8 +219,11 @@ void main() {
         ),
         findsNothing,
       );
+      // The track's first camera speaks for them all (I-73-camera-row-Q1:
+      // one name a track) — ↩️not the kind's word, which changed with the
+      // program language (F-322).
       expect(
-        find.descendant(of: label, matching: find.text('Camera')),
+        find.descendant(of: label, matching: find.text('Camera a')),
         findsOneWidget,
       );
     });
