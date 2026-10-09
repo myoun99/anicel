@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -460,10 +461,13 @@ void main() {
       await untilShown(tester, env.overlay);
       final shown = Map.of(env.overlay.tileImages);
       expect(shown, isNotEmpty, reason: '⛔premise');
+      final laid = debugStrokeDabsLaid = <BrushDab>[];
+      addTearDown(() => debugStrokeDabsLaid = null);
       await moveTo(tester, gesture, const Offset(330, 250));
       for (var frame = 0; frame < 10; frame += 1) {
         await tester.pump();
       }
+      expect(laid, isEmpty, reason: 'nothing laid again');
       expect(env.overlay.tileImages, shown, reason: 'the very same pictures');
       await gesture.up();
       await tester.pump();
