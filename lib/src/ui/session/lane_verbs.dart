@@ -1409,21 +1409,25 @@ class LaneVerbs {
     if (headerLaneId != transformGroupHeaderLane.laneId) {
       return false;
     }
-    // A gap has no canvas for the unkeyed pose to sit in the middle of, so
-    // there is nothing for a transform reset to reset TO. The storyboard's S
-    // rows reach this with no cut open since F-101; an effect's reset above
-    // needs no canvas and still runs there.
-    final canvasSize = _project.activeCutOrNull?.canvasSize;
-    if (canvasSize == null) {
+    // The reset goes to the middle of the space the row is posed in
+    // ([LayerKind.poseSpace]). A cut's row in a gap has no canvas, so there
+    // is nothing to reset TO; an S row is posed in the shot (I-67-Q1), which
+    // a gap has too — the storyboard's S rows reach this with no cut open
+    // since F-101. An effect's reset above needs no space and runs anywhere.
+    final space = layer.kind.poseSpace(
+      shot: _project.repository.requireProject().cameraSize,
+      canvas: _project.activeCutOrNull?.canvasSize,
+    );
+    if (space == null) {
       return false;
     }
     final next = transformTrackWithGroupReset(
       _laneTransformTrackOf(layer),
       frameIndexes: frames,
-      identity: layerIdentityPose(canvasSize),
+      identity: layerIdentityPose(space),
       defaultAnchorPoint: CanvasPoint(
-        x: canvasSize.width / 2,
-        y: canvasSize.height / 2,
+        x: space.width / 2,
+        y: space.height / 2,
       ),
       keyedFramesOnly: scoped,
     );

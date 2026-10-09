@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
@@ -18,6 +19,7 @@ void main() {
       ResolvedSeNameTag(
         layerId: 's1',
         widthBudget: 1920,
+        shot: const LayerPlacement.identity(),
         content: TextCelContent(
           text: name,
           style: SeNameTag.defaultStyle,

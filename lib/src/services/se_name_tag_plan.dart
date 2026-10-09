@@ -6,6 +6,7 @@ import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import 'cut_frame_composite_plan.dart' show layerIdentityPose;
+import 'layer_pose_matrix.dart' show LayerPlacement;
 
 /// PURE resolution of the on-canvas SE name tags for one (cut, frame) —
 /// what the editing canvas, playback and export each draw over the
@@ -19,12 +20,24 @@ class ResolvedSeNameTag {
     required this.layerId,
     required this.content,
     required this.widthBudget,
+    required this.shot,
     this.line,
     this.delivery,
   });
 
   /// The SE row the tag belongs to (its eye is the display switch).
   final String layerId;
+
+  /// Where the tag's own space — the SHOT, the frame the camera shows —
+  /// lies on the canvas at this frame (`shotPlacement`). The positions
+  /// below are the shot's.
+  ///
+  /// 🗣️I-67-Q1 (유저 2026-10-10: 「이름표를 카메라 화면 기준으로 읽는다」):
+  /// the SE row's transform places the tag in the shot, so the camera's
+  /// moves, zoom and turn leave it where it stands on screen. ↩️Canvas
+  /// coordinates — a camera that panned away left its tags behind (I-67:
+  /// 「카메라 움직이면 se블록의 이름표가 안보이게 된다」).
+  final LayerPlacement shot;
 
   /// The DIALOGUE run, or null when there is none to show.
   ///
@@ -73,6 +86,10 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required int globalFrame,
   required CanvasSize canvas,
   required CanvasSize cameraFrame,
+
+  /// Where the shot lies on the canvas at this frame
+  /// ([ResolvedSeNameTag.shot]).
+  required LayerPlacement shot,
 }) {
   if (globalFrame < 0) {
     return const [];
@@ -104,12 +121,14 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
       continue;
     }
     // R5 #7: the tag has NO position of its own — the SE row's TRANSFORM is
-    // where it sits (user, 2026-08-09). Identity is the canvas centre, so
+    // where it sits (user, 2026-08-09). Identity is the SHOT's centre, so
     // an untouched row's tag starts there and Position moves it, exactly
-    // like a layer's artwork.
+    // like a layer's artwork — in the shot (I-67-Q1). ↩️The canvas centre.
     final pose = layer.transformTrack.resolveAt(
       frameIndex: globalFrame,
-      orElse: () => layerIdentityPose(canvas),
+      orElse: () => layerIdentityPose(
+        layer.kind.poseSpace(shot: cameraFrame, canvas: canvas)!,
+      ),
     );
     final anchor = Offset(pose.center.x, pose.center.y);
     final nameStyle = tag?.style ?? SeNameTag.defaultStyle;
@@ -117,6 +136,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
       ResolvedSeNameTag(
         layerId: layer.id.value,
         widthBudget: budget,
+        shot: shot,
         content: TextCelContent(
           text: name,
           style: nameStyle,
@@ -150,5 +170,6 @@ Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
       tag.line,
       tag.delivery,
       tag.widthBudget,
+      tag.shot,
     ),
 ]);

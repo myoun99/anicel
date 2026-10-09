@@ -1095,6 +1095,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// is placed by position alone (a tag has no scale or turn to drive).
   /// With no tag under the playhead the box is the canvas, the law for a
   /// box with nothing in it.
+  ///
+  /// The row's position is the SHOT's (I-67-Q1): the box stands where the
+  /// shot lies on the canvas and each drag comes back through it, as a
+  /// row's in a folder comes back through the folder ([_parentSpaceOf]).
   Widget _seBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1107,26 +1111,39 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
-    final parent = _parentSpaceOf(session, activeLayer);
-    var bounds = canvasSize.canvasRect;
+    final shot = session.seEntries.shotForCutFrame(
+      session.requireActiveCut,
+      session.currentFrameIndex,
+    );
+    final fromCanvas = canvasToArtwork(shot);
+    final bounds = canvasSize.canvasRect;
+    var corners = [
+      CanvasPoint(x: bounds.left, y: bounds.top),
+      CanvasPoint(x: bounds.right, y: bounds.top),
+      CanvasPoint(x: bounds.right, y: bounds.bottom),
+      CanvasPoint(x: bounds.left, y: bounds.bottom),
+    ];
     for (final tag in tags) {
       if (tag.layerId != activeLayer.id.value) {
         continue;
       }
       final tagBox = seNameTagBoxBounds(tag, canvasSize: canvasSize);
       if (!tagBox.isEmpty) {
-        bounds = tagBox;
+        corners = [
+          for (final corner in [
+            tagBox.topLeft,
+            tagBox.topRight,
+            tagBox.bottomRight,
+            tagBox.bottomLeft,
+          ])
+            shot.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
+        ];
       }
     }
     return RowTransformBox(
-      corners: [
-        CanvasPoint(x: bounds.left, y: bounds.top),
-        CanvasPoint(x: bounds.right, y: bounds.top),
-        CanvasPoint(x: bounds.right, y: bounds.bottom),
-        CanvasPoint(x: bounds.left, y: bounds.bottom),
-      ],
+      corners: corners,
       pose: TransformPose(
-        center: parent.toCanvas(
+        center: shot.apply(
           session.layerPoseAtFrame(at.layer, at.frame).center,
         ),
       ),
@@ -1142,7 +1159,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   (track, frameIndex) => transformTrackWithPositionDragged(
                     track,
                     frameIndex: frameIndex,
-                    position: parent.fromCanvas(dropped),
+                    position: fromCanvas?.apply(dropped) ?? dropped,
                   ),
               description: 'Move ${activeLayer.name}',
             )
@@ -1482,9 +1499,9 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   Object get props => (viewport, unit, ByList(veils), color, devicePixelRatio);
 }
 
-/// The editing canvas's SE name tags (R5b): the same canvas-space draw
-/// the frame painter makes during playback, so what you edit against is
-/// what plays and what exports.
+/// The editing canvas's SE name tags (R5b): the same draw the frame
+/// painter makes during playback — each tag in its shot, laid on the
+/// canvas — so what you edit against is what plays and what exports.
 class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
   const _SeNameTagOverlayPainter({
     required this.viewport,

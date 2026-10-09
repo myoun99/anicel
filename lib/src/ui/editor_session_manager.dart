@@ -26,6 +26,7 @@ import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/conte_group.dart' show conteHeadFamiliesOf;
 import '../models/cut.dart';
@@ -1838,20 +1839,26 @@ class EditorSessionManager extends ChangeNotifier
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex) {
     return layer.transformTrack.resolveAt(
       frameIndex: frameIndex,
-      orElse: () => layerIdentityPose(requireActiveCut.canvasSize),
+      orElse: () => layerIdentityPose(_poseSpaceOf(layer)),
     );
   }
 
-  /// The layer's resolved anchor point at [frameIndex] (canvas center while
-  /// unkeyed) — the lane key-freeze source and the canvas gizmo's anchor.
+  /// The layer's resolved anchor point at [frameIndex] (the middle of its
+  /// pose space while unkeyed) — the lane key-freeze source and the canvas
+  /// gizmo's anchor.
   @override
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
+    final space = _poseSpaceOf(layer);
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
-        CanvasPoint(
-          x: requireActiveCut.canvasSize.width / 2,
-          y: requireActiveCut.canvasSize.height / 2,
-        );
+        CanvasPoint(x: space.width / 2, y: space.height / 2);
   }
+
+  /// The space [layer] is posed in ([LayerKind.poseSpace]): the shot, or
+  /// the open cut's canvas.
+  CanvasSize _poseSpaceOf(Layer layer) => layer.kind.poseSpace(
+    shot: camera.cameraFrameSize,
+    canvas: requireActiveCut.canvasSize,
+  )!;
 
   // --- Visibility solo mode (session view state, not persisted) ------------
 

@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
@@ -277,6 +278,7 @@ void main() {
     ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
       layerId: '${cut.id.value}@$frame',
       widthBudget: 100,
+      shot: const LayerPlacement.identity(),
       content: TextCelContent(
         text: cut.id.value,
         style: SeNameTag.defaultStyle,

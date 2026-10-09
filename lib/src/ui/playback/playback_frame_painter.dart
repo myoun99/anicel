@@ -173,11 +173,12 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   final double devicePixelRatio;
 
   /// The SE rows' on-canvas NAME TAGS at this frame (R5b, §6-z15), drawn
-  /// in canvas space directly over the composite — never baked into it
-  /// (the camera's rule): the text comes from the SE frames themselves,
-  /// so a rename shows instantly without invalidating one cached
-  /// composite. They ride the camera projection and the cut pose exactly
-  /// like the artwork they annotate.
+  /// directly over the composite — never baked into it (the camera's
+  /// rule): the text comes from the SE frames themselves, so a rename shows
+  /// instantly without invalidating one cached composite. Each stands in
+  /// its shot ([ResolvedSeNameTag.shot]), so through the camera projection
+  /// it holds its place in the frame (I-67-Q1); the cut pose carries it
+  /// with the picture.
   final List<ResolvedSeNameTag> seNameTags;
 
   void _paintPaper(Canvas canvas, Rect rect, {required bool antiAlias}) {

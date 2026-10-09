@@ -2,16 +2,20 @@ import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart' show TextCelContent;
+import '../../services/layer_pose_matrix.dart' show placementMatrix;
 import '../../services/se_name_tag_plan.dart';
 import 'text_cel_render.dart';
 
-/// Draws the SE name tags in CANVAS coordinates (R5b, §6-z15) — the one
-/// implementation every surface calls, so the editing canvas, playback,
-/// the parked multitrack stack and the export can never disagree on where
-/// a tag sits or how it looks.
+/// Draws the SE name tags (R5b, §6-z15) — the one implementation every
+/// surface calls, so the editing canvas, playback, the parked multitrack
+/// stack and the export can never disagree on where a tag sits or how it
+/// looks.
 ///
-/// The caller has already set up whatever transform puts canvas space on
-/// screen (viewport, camera projection, cut pose); this only paints.
+/// The caller has already set up whatever transform puts CANVAS space on
+/// screen (viewport, camera projection, cut pose); each tag stands in its
+/// shot, and this lays the shot on the canvas through the tag's own
+/// [ResolvedSeNameTag.shot] before it paints (I-67-Q1). Positions and
+/// sizes below are the shot's.
 ///
 /// GEOMETRY (R5 #7, the user's rule, corrected twice on the mockup):
 /// the tag's stored position is the name BOX's exact geometric centre, and
@@ -29,6 +33,8 @@ void paintSeNameTags(
   for (final tag in tags) {
     final layouts = <TextCelLayout>[];
     final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
+    canvas.save();
+    canvas.transform(placementMatrix(tag.shot).storage);
     try {
       // The name is laid out once to measure, then MOVED so its ink (box
       // included) is centred on the anchor.
@@ -100,6 +106,7 @@ void paintSeNameTags(
         layout.paint(canvas);
       }
     } finally {
+      canvas.restore();
       for (final layout in layouts) {
         layout.dispose();
       }
@@ -170,7 +177,8 @@ ui.Offset seNameTagAnchorOf(
 
 /// Where the name BOX lands for [tag] — the rectangle the anchor centres,
 /// exposed so a test can state the rule the painter follows instead of
-/// re-deriving it, and so the canvas gizmo can frame the same box.
+/// re-deriving it, and so the canvas gizmo can frame the same box. It is
+/// the SHOT's rectangle: [ResolvedSeNameTag.shot] lays it on the canvas.
 ui.Rect seNameTagBoxBounds(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,

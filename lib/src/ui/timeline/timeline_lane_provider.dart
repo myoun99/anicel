@@ -43,7 +43,12 @@ List<PropertyLaneRow> timelineLanesForLayer({
     // is what this rail shows.
     valueSourceAt: (frameIndex) =>
         session.laneVerbs.laneValueSourceAt(layer, frameIndex),
-    poseCentre: session.activeCutOrNull?.canvasSize,
+    // An S row is posed in the shot (I-67-Q1), as the storyboard's rail
+    // already read it.
+    poseCentre: layer.kind.poseSpace(
+      shot: session.camera.cameraFrameSize,
+      canvas: session.activeCutOrNull?.canvasSize,
+    ),
   );
 }
 

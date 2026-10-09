@@ -5,6 +5,8 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_line_type.dart';
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
+import '../../services/camera_projection_matrix.dart' show shotPlacement;
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/se_name_tag_plan.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, globalLayersShowingDragPreview;
@@ -116,8 +118,20 @@ class SeEntries {
       globalFrame: shown,
       canvas: cut.canvasSize,
       cameraFrame: _camera.cameraFrameSize,
+      shot: shotForCutFrame(cut, localFrameIndex),
     );
   }
+
+  /// Where [cut]'s SHOT lies on its canvas at its frame [localFrameIndex] —
+  /// the space its SE rows' name tags stand in ([ResolvedSeNameTag.shot]),
+  /// through the camera that frame is shown through
+  /// ([Camera.cameraPoseShowingCut]). The canvas's handle on a tag stands
+  /// in it too.
+  LayerPlacement shotForCutFrame(Cut cut, int localFrameIndex) =>
+      shotPlacement(
+        _camera.cameraPoseShowingCut(cut, localFrameIndex),
+        _camera.cameraFrameSize,
+      );
 
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => _selection.selectedFrame?.seName;

@@ -233,6 +233,11 @@ class SeNameTag {
   // it — the same rule a layer follows, and the reason there is nothing to
   // store here: a position field would be a second place to keep one
   // position, and a per-row default would be a third.
+  //
+  // ↩️I-67-Q1 (user, 2026-10-10: 「이름표를 카메라 화면 기준으로 읽는다」):
+  // that transform is read in the SHOT — the frame the camera shows — so
+  // the centre is the shot's, and a camera move leaves the tag where it
+  // stands on screen (`ResolvedSeNameTag.shot`).
 
   /// The NAME run: the white-on-red box.
   final TextCelStyle style;
@@ -347,6 +352,7 @@ class SeNameTag {
 // identity — and moving one is moving that row's Position. Rows DO pile up
 // until you move them, and that is the point: one rule, no per-row
 // exception, and the pile is visible so nobody wonders where a tag went.
+// (I-67-Q1: the shot's centre — the transform is read in the shot.)
 
 /// The width a tag may occupy before it shrinks to fit: the shot's width
 /// minus the same 6% margin on both sides. Without a budget a long line

@@ -138,9 +138,10 @@ class CameraFrameRenderService {
   /// simply a tree of leaves.
   /// [overlayPass] draws in CANVAS space right after the picture, still
   /// inside the camera projection — the display-time annotations (the SE
-  /// name tags) that must scale with the artwork but never enter a
-  /// composite cache. Cel renders leave it null: a cel is the artwork
-  /// alone.
+  /// name tags) that never enter a composite cache. A tag lays its shot on
+  /// the canvas itself (`ResolvedSeNameTag.shot`), so through this
+  /// projection it stands still in the frame (I-67-Q1). Cel renders leave
+  /// it null: a cel is the artwork alone.
   ///
   /// [displayLevels] reduces the artwork as the canvas's display does
   /// ([displayLevelOf]): each layer's image halved, a 2×2 box mean a time,

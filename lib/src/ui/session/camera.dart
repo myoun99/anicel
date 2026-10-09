@@ -111,6 +111,22 @@ class Camera {
     );
   }
 
+  /// The camera pose [cut]'s frame [frameIndex] is SHOWN through — the
+  /// render route's ([cameraPoseForCut], the camera row's fx switch
+  /// included), the open cut's read from the track the display reads
+  /// ([activeCutCameraTrack]) so what rides the camera follows a camera
+  /// edit in flight. What stands in the shot is placed by it: an SE row's
+  /// name tag (I-67-Q1).
+  CameraPose cameraPoseShowingCut(Cut cut, int frameIndex) {
+    final shown = cut.id == _project.activeCutOrNull?.id
+        ? activeCutCameraTrack
+        : null;
+    return cameraPoseForCut(
+      shown == null ? cut : cut.copyWith(camera: CutCamera.fromTrack(shown)),
+      frameIndex,
+    );
+  }
+
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work) —
   /// of the track the display reads ([activeCutCameraTrack]), so the frame

@@ -11,6 +11,8 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/services/camera_projection_matrix.dart';
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -56,12 +58,21 @@ void main() {
     );
   }
 
+  /// The shot of a camera at rest over [canvas] — centred, zoom 1.
+  final atRest = shotPlacement(
+    CameraPose(
+      center: CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    ),
+    camera,
+  );
+
   List<ResolvedSeNameTag> resolve(List<Layer> rows, {int globalFrame = 0}) =>
       resolveSeNameTagsAt(
         trackSeLayers: rows,
         globalFrame: globalFrame,
         canvas: canvas,
         cameraFrame: camera,
+        shot: atRest,
       );
 
   test('a covered row shows the name and the dialogue as SEPARATE runs, and '
@@ -82,7 +93,13 @@ void main() {
     // The camera's rect on the canvas at the resting pose.
     final shot = shotRectIn(canvas: canvas, cameraFrame: camera);
     for (final tag in tags) {
-      final position = tag.content.position!;
+      final at = tag.shot.apply(
+        CanvasPoint(
+          x: tag.content.position!.dx,
+          y: tag.content.position!.dy,
+        ),
+      );
+      final position = Offset(at.x, at.y);
       expect(
         position.dx,
         inInclusiveRange(shot.left, shot.left + shot.width),
@@ -148,16 +165,29 @@ void main() {
   });
 
   // R5 #7 (user, 2026-08-09): the tag has no position of its own, and rows
-  // get no per-row default. Every tag starts at the canvas centre and the
-  // SE row's TRANSFORM moves it — one rule, no exception per row.
-  test('an untouched row puts its tag at the CANVAS CENTRE, and so does '
-      'every other row', () {
+  // get no per-row default. Every tag starts at the centre and the SE
+  // row's TRANSFORM moves it — one rule, no exception per row. I-67-Q1
+  // (user, 2026-10-10): the SHOT's centre — the transform is the shot's.
+  test('an untouched row puts its tag at the SHOT\'S CENTRE, and so does '
+      'every other row — a camera at rest lays it on the canvas centre', () {
     final tags = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ'),
       seRow(id: 's2', name: 'S2', seName: 'ユキ'),
     ]);
-    final centre = Offset(canvas.width / 2, canvas.height / 2);
+    final centre = Offset(camera.width / 2, camera.height / 2);
     expect(tags.map((tag) => tag.content.position), [centre, centre]);
+    expect(
+      atRest.apply(CanvasPoint(x: centre.dx, y: centre.dy)),
+      CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    );
+  });
+
+  test('every tag carries the shot it stands in', () {
+    final tags = resolve([
+      seRow(id: 's1', name: 'S1', seName: 'タモツ'),
+      seRow(id: 's2', name: 'S2', seName: 'ユキ'),
+    ]);
+    expect(tags.map((tag) => tag.shot), [atRest, atRest]);
   });
 
   test('the row\'s TRANSFORM is what moves it', () {
@@ -181,7 +211,7 @@ void main() {
     expect(SeNameTag.fromJson(styleOnly.toJson()), styleOnly);
     expect(
       styled.single.content.position,
-      Offset(canvas.width / 2, canvas.height / 2),
+      Offset(camera.width / 2, camera.height / 2),
     );
   });
 }
