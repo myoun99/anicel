@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/media_asset.dart'
+    show audioFileExtensions, imageFileExtensions, videoFileExtensions;
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';

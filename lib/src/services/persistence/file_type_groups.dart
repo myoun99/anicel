@@ -29,6 +29,12 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/media_asset.dart'
+    show
+        audioFileExtensions,
+        imageFileExtensions,
+        pdfFileExtensions,
+        videoFileExtensions;
 import '../brush_pack_file.dart';
 import 'anicel_project_archive.dart';
 
@@ -59,37 +65,6 @@ const String _utiPdf = 'com.adobe.pdf';
 /// Everything. Used where a filter would do more harm than good — see
 /// [FileTypeGroups.brushes].
 const String _utiData = 'public.data';
-
-/// Raster formats the tip/image decoders accept.
-///
-/// `psd`/`psb` are in here because the decoders read them THEMSELVES now
-/// (`services/photoshop`), not because a platform codec grew a new format.
-/// ⚠️`psd` reaches the Apple pickers through the `public.image` umbrella —
-/// Apple declares `com.adobe.photoshop-image` and it conforms — but `psb`
-/// has no system type, so it is imported in both Info.plists like `flac`.
-const List<String> imageFileExtensions = [
-  'png',
-  'jpg',
-  'jpeg',
-  'webp',
-  'bmp',
-  'gif',
-  'psd',
-  'psb',
-];
-
-/// Sound formats the audio conform can decode.
-const List<String> audioFileExtensions = [
-  'mp3',
-  'wav',
-  'm4a',
-  'aac',
-  'flac',
-  'ogg',
-];
-
-/// Movie containers the media pool will register.
-const List<String> videoFileExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
 
 /// Brush files Anicel can import — the two it borrows, and its own.
 ///
@@ -255,7 +230,11 @@ abstract final class FileTypeGroups {
   /// nothing in the viewer would have failed to say so.
   static const XTypeGroup viewableMedia = XTypeGroup(
     label: 'Viewable media',
-    extensions: [...imageFileExtensions, 'pdf', ...videoFileExtensions],
+    extensions: [
+      ...imageFileExtensions,
+      ...pdfFileExtensions,
+      ...videoFileExtensions,
+    ],
     uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiMovie],
   );
 
@@ -267,7 +246,7 @@ abstract final class FileTypeGroups {
       ...audioFileExtensions,
       ...imageFileExtensions,
       ...videoFileExtensions,
-      'pdf',
+      ...pdfFileExtensions,
     ],
     uniformTypeIdentifiers: [_utiAudio, _utiImage, _utiMovie, _utiPdf],
   );
