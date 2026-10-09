@@ -444,13 +444,16 @@ void main() {
   /// The screen changing what it shows a frame from — the camera view
   /// turned off, the canvas drawing at another level.
   group('when the screen changes', () {
-    testWidgets('🚨turning to the canvas, the composites made for the camera '
-        'view are the first the budget lets go of', (tester) async {
+    testWidgets('🚨turned to the canvas, the composites made for the camera '
+        'view are the first the budget lets go of when the line tightens', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
         final s = twoPictures(onTheCanvas: false);
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
-        rig.playbackCache.debugSetPlaybackCacheBudgetBytes(2 * picture);
+        // Room for both composites AND the layer images they were made of.
+        rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
         rig.playback.play(scope: PlaybackScope.activeCut);
         await rested(rig);
         expect([held(s, 0), held(s, 2)], [true, true], reason: '⛔premise');
@@ -458,13 +461,32 @@ void main() {
 
         rig.canvasShowsCuts = true;
         await rested(rig);
-
-        expect(s.renderCaches.cutFrameCompositeCache.estimatedBytes, 0);
         expect(
           [held(s, 0), held(s, 2)],
           [true, true],
-          reason: 'the line holds the canvas\'s pictures now',
+          reason: '⛔premise: the canvas\'s pictures are the images the '
+              'composites were made of',
         );
+        expect(
+          s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+          2 * picture,
+          reason: '⛔premise: nothing asked the line to shrink yet',
+        );
+
+        // An export run borrows half the line.
+        rig.playbackCache.lend(2 * picture);
+
+        expect(
+          s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+          0,
+          reason: 'no composite is a picture the screen shows',
+        );
+        expect(
+          [held(s, 0), held(s, 2)],
+          [true, true],
+          reason: 'what is left of the line holds the canvas\'s pictures',
+        );
+        rig.playbackCache.lend(0);
       });
     });
 
