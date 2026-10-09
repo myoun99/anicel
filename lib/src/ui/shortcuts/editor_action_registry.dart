@@ -684,6 +684,9 @@ abstract final class EditorActionIds {
   static const bakePanels = 'edit-bake-panels';
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
+
+  /// The floating region's fold chevron (I-40).
+  static const regionFold = 'window-region-fold';
   static const resetLayout = 'window-reset-layout';
 
   /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
@@ -1719,6 +1722,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: panelActionCategory,
     defaultActivators: [],
     menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.regionFold,
+    label: 'Fold / unfold the timeline region',
+    category: panelActionCategory,
+    defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.resetLayout,

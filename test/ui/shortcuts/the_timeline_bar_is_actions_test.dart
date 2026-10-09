@@ -147,4 +147,19 @@ void main() {
     expect(ko.tlShowXSheet, isNot('Show X-sheet'), reason: 'premise');
     expect(ko.cameraViewOn, isNot('Camera view (on)'), reason: 'premise');
   });
+
+  testWidgets('the region\'s fold key is its chevron — and the chevron says '
+      'the key', (tester) async {
+    await pumpApp(tester);
+    String tip() => button(tester, 'floating-bottom-collapse').tooltip;
+    expect(tip(), AppText.strings.panelCollapseRegion, reason: 'premise');
+
+    await pressKeyOf(tester, EditorActionIds.regionFold);
+    expect(tip(), AppText.strings.panelExpandRegion);
+    await pressKeyOf(tester, EditorActionIds.regionFold);
+    expect(tip(), AppText.strings.panelCollapseRegion);
+    expect(button(tester, 'floating-bottom-collapse').shortcuts, [
+      EditorActionIds.regionFold,
+    ]);
+  });
 }

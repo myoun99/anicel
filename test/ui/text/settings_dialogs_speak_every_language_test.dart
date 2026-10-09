@@ -274,7 +274,11 @@ void main() {
   /// bar's six English tooltips the round translated (「Zoom In」, 「Show
   /// X-sheet」, 「Camera view (on)」 and their twins) were never in this
   /// count: each was one arm of a ternary, which the scan does not read.
-  const untranslatedElsewhere = 126;
+  ///
+  /// 127 (I-40, the region's fold, 2026-10-09): the English row of one new
+  /// registry action, the floating region's fold chevron — answered in the
+  /// other four languages by id. The chevron keeps its own two words.
+  const untranslatedElsewhere = 127;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

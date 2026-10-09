@@ -1017,6 +1017,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _session.onionSkin.toggleOnionSkin();
       case EditorActionIds.cameraViewToggle:
         _workspaceBar.toggleCameraView();
+      case EditorActionIds.regionFold:
+        _panelsMenu.toggleRegionFolded();
       // The film verbs, pressed by key — each through the button it names on
       // the panel being worked in (I-19), behind the very gate that button
       // reads: a key that fires on a row with nothing to do is a no-op, not

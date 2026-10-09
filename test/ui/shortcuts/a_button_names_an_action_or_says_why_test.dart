@@ -61,7 +61,6 @@ const ledger = <String, Why>{
   // Opening and closing panels (「패널 열기 닫기같은거든」).
   "editor_workspace.dart | 'rail-group-\$railId'": Why.owed,
   "menu/editor_top_strip.dart | 'top-strip-floor-\${tab.tabId}'": Why.owed,
-  "workspace/workspace_docks.dart | 'floating-bottom-collapse'": Why.owed,
 
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,

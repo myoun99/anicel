@@ -1197,6 +1197,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         setState(() => _regionOnTop = onTop);
         _layoutPersistence.scheduleLayoutSave();
       },
+      regionFolder: _toggleRegionFolded,
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
     widget.barCommands?.bind(
@@ -1859,6 +1860,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   bool _bottomDockCollapsed = false;
+
+  /// The floating region's fold — its chevron's one writer, which the key
+  /// presses too (I-40).
+  void _toggleRegionFolded() {
+    _rebuild(() => _bottomDockCollapsed = !_bottomDockCollapsed);
+    _layoutPersistence.scheduleLayoutSave();
+  }
 
   /// How far the floating region is pulled in from BOTH side edges, once
   /// somebody has SAID how far. Null means nobody has, and the default
