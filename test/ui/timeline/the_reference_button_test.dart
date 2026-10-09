@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 void main() {
   Layer layerNamed(String id, {String? file}) {
     final layer = Layer(
@@ -66,7 +68,7 @@ void main() {
     );
     expect(button('ref'), findsOneWidget);
     expect(
-      find.byTooltip('Reference'),
+      find.railTooltip('Reference'),
       findsOneWidget,
       reason: 'icon only — its name is the tooltip, the LAYER\'s word',
     );
@@ -131,11 +133,7 @@ void main() {
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) => closed.future),
     );
-    Color glyph() => IconTheme.of(
-      tester.element(
-        find.descendant(of: button('ref'), matching: find.byType(Icon)),
-      ),
-    ).color!;
+    Color glyph() => tester.glyphInkOf(button('ref'))!;
 
     final rest = glyph();
     expect(rest, isNot(AppColors.accent), reason: 'the premise');
@@ -155,11 +153,7 @@ void main() {
     tester,
   ) async {
     final closed = Completer<void>();
-    Color glyph() => IconTheme.of(
-      tester.element(
-        find.descendant(of: button('ref'), matching: find.byType(Icon)),
-      ),
-    ).color!;
+    Color glyph() => tester.glyphInkOf(button('ref'))!;
 
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'take.mov'), onOpen: (_, _) => closed.future),

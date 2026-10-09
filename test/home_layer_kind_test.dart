@@ -43,7 +43,7 @@ void main() {
 
     expect(
       find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-1'),
+        const ValueKey<String>('timeline-layer-type-button-default-layer-1'),
       ),
       findsOneWidget,
     );
@@ -61,7 +61,7 @@ void main() {
 
     expect(
       find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-2'),
+        const ValueKey<String>('timeline-layer-type-button-default-layer-2'),
       ),
       findsOneWidget,
     );
@@ -220,7 +220,7 @@ void main() {
     expect(layerBTop, lessThan(layerATop));
     expect(
       find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-3'),
+        const ValueKey<String>('timeline-layer-type-button-default-layer-3'),
       ),
       findsOneWidget,
     );

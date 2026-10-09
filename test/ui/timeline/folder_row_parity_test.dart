@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// R27 #23~#29 asked for a folder row that reads exactly like a layer row.
 /// It IS one now — the same widget, so parity is by construction and these
 /// tests check the folder-shaped parts of it (the glyph, the fold twirl,
@@ -72,7 +74,7 @@ void main() {
     for (final key in [
       'timeline-folder-row-f',
       'timeline-folder-twirl-f',
-      'timeline-folder-icon-f',
+      'timeline-layer-type-button-f',
       'timeline-lane-toggle-f',
       'timeline-layer-fx-f',
       'timeline-layer-visibility-f',
@@ -85,7 +87,7 @@ void main() {
         reason: '$key must be present',
       );
     }
-    expect(find.text('fx'), findsOneWidget);
+    expect(find.railText('fx'), findsOneWidget);
     expect(
       find.text('Pass Through'),
       findsOneWidget,

@@ -27,3 +27,15 @@ final _faces = [
   (AppTypography.bundledFamily, AppTypography.bundledFiles),
   (AppTypography.bundledFallback.single, AppTypography.bundledFallbackFiles),
 ];
+
+/// The icon font from the Flutter SDK running this test: the tester sits
+/// in `artifacts/engine/<platform>/`, the font in `artifacts/material_fonts/`.
+Future<void> loadIcons() async {
+  final artifacts = File(Platform.resolvedExecutable).parent.parent.parent;
+  final bytes = File(
+    '${artifacts.path}/material_fonts/materialicons-regular.otf',
+  ).readAsBytesSync();
+  final loader = FontLoader('MaterialIcons')
+    ..addFont(Future.value(ByteData.view(bytes.buffer)));
+  await loader.load();
+}

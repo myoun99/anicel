@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// The rail row memo's gate (frame-axis round): the row is ~200 Material
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
 /// what the row SHOWS instead of which Layer instance it came from.
@@ -276,13 +278,8 @@ void main() {
           widget is TimelineLayerControlsRow && widget.layer.id == activeId,
     );
     IconData? eyeGlyph() => tester
-        .widget<Icon>(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>('timeline-layer-visibility-$activeId'),
-            ),
-            matching: find.byType(Icon),
-          ),
+        .appIconButton(
+          find.byKey(ValueKey<String>('timeline-layer-visibility-$activeId')),
         )
         .icon;
     bool plateLit() => tester

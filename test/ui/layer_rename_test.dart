@@ -18,6 +18,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import 'flyout_test_helpers.dart';
 
 /// 🚨T25 — renaming a layer goes through the SHARED pill's Edit Instance
@@ -153,7 +154,7 @@ void main() {
     await _pumpHome(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.byKey(const ValueKey<String>('timeline-layer-type-button-layer-a')),
       findsOneWidget,
     );
     expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
@@ -161,7 +162,7 @@ void main() {
     await _renameLayer(tester, 'BG');
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.byKey(const ValueKey<String>('timeline-layer-type-button-layer-a')),
       findsOneWidget,
     );
     expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
@@ -232,13 +233,11 @@ Text _layerNameText(WidgetTester tester, LayerId layerId) {
   return tester.widget<Text>(textFinder.first);
 }
 
-IconData _layerKindIcon(WidgetTester tester, LayerId layerId) {
-  return tester
-      .widget<Icon>(
-        find.byKey(ValueKey<String>('timeline-layer-kind-icon-$layerId')),
-      )
-      .icon!;
-}
+IconData _layerKindIcon(WidgetTester tester, LayerId layerId) => tester
+    .appIconButton(
+      find.byKey(ValueKey<String>('timeline-layer-type-button-$layerId')),
+    )
+    .icon!;
 
 Project _project({List<Layer>? layers}) {
   return Project(

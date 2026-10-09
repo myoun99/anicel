@@ -273,7 +273,7 @@ void main() {
 
     final layerId = session.activeLayerId!;
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-kind-icon-$layerId')),
+      find.byKey(ValueKey<String>('xsheet-layer-type-button-$layerId')),
       findsOneWidget,
       reason: 'the x-sheet had no kind icon anywhere before R9',
     );
@@ -292,7 +292,7 @@ void main() {
           'most',
     );
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-kind-icon-$attachId')),
+      find.byKey(ValueKey<String>('xsheet-layer-type-button-$attachId')),
       findsOneWidget,
       reason: 'R10 R3: the arrow rides the SHEET slot, so the type cell says '
           'the kind on every column',
@@ -336,13 +336,13 @@ void main() {
     expect(seLayerIdForTrack(trackId, 1), isNotNull);
     expect(
       find.byKey(
-        ValueKey<String>('storyboard-layer-kind-icon-${trackId.value}-s1'),
+        ValueKey<String>('storyboard-layer-type-button-${trackId.value}-s1'),
       ),
       findsOneWidget,
     );
     expect(
       find.byKey(
-        ValueKey<String>('storyboard-layer-kind-icon-v-${trackId.value}'),
+        ValueKey<String>('storyboard-layer-type-button-v-${trackId.value}'),
       ),
       findsOneWidget,
     );

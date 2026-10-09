@@ -24,10 +24,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/fill_reference_button.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/panel_finders.dart';
 
 /// 🚨I-36 (유저 2026-09-24): 「범위를 보여주고, 활성 레이어의 참조 버튼을
@@ -354,7 +354,7 @@ void main() {
     );
     await standOn(tester, photo.id);
     expect(
-      tester.widget<AppIconButtonFace>(bucket).onPressed,
+      tester.appIconButton(bucket).onPressed,
       isNull,
       reason: 'only a drawing row carries the flag — the bucket stays, dead',
     );

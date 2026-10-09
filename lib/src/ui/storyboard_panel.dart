@@ -3127,7 +3127,6 @@ class _StoryboardSeLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final layer = activeLayer;
     final trackLayer = _trackSeAt(track, slot);
     final onSelect = onSelectLayer;
@@ -3153,29 +3152,20 @@ class _StoryboardSeLabel extends StatelessWidget {
               // to hand-list its slots and put the kind icon INSIDE the
               // name area, so its name started 6px early.
               ...layerRailLeadingCells(
-                // The timeline rows' lane chevron, storyboard-prefixed.
+                // The timeline rows' lane twirl, storyboard-prefixed.
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
-                        onPressed: onToggleLane,
-                        child: InkWell(
-                          key: ValueKey<String>(
-                            'storyboard-se-lane-toggle-'
-                            '${track.id.value}-${slot + 1}',
+                        child: LayerFoldTwirl(
+                          keyValue:
+                              'storyboard-se-lane-toggle-'
+                              '${track.id.value}-${slot + 1}',
+                          expanded: laneExpanded,
+                          tooltip: layerLaneTwirlTooltip(
+                            expanded: laneExpanded,
                           ),
-                          // ⛔A NO-OP: the press already fired it (onPressDown
-                          // above). Both would fire twice.
-                          onTap: () {},
-                          child: SizedBox(
-                            height: height,
-                            child: Icon(
-                              laneExpanded
-                                  ? Icons.arrow_drop_down
-                                  : Icons.arrow_right,
-                              size: 16,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
+                          across: height,
+                          onToggle: onToggleLane,
                         ),
                       ),
                 // B5③ (2026-08-17, superseding UI-R9 #5's empty slot —
@@ -4636,7 +4626,6 @@ class StoryboardTrackLabelRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     // V-track selection (UI-R18 #6): the S-row tap/highlight language on
     // the V row — tap selects the TRACK, the active treatment speaks
     // through the background alone.
@@ -4665,24 +4654,14 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
-                        onPressed: onToggleLane,
-                        child: InkWell(
-                          key: ValueKey<String>(
-                            'storyboard-track-lane-toggle-${track.id.value}',
+                        child: LayerFoldTwirl(
+                          keyValue:
+                              'storyboard-track-lane-toggle-${track.id.value}',
+                          expanded: laneExpanded,
+                          tooltip: layerLaneTwirlTooltip(
+                            expanded: laneExpanded,
                           ),
-                          // ⛔A NO-OP: the press already fired it (onPressDown
-                          // above). Both would fire twice.
-                          onTap: () {},
-                          child: SizedBox(
-                            height: 24,
-                            child: Icon(
-                              laneExpanded
-                                  ? Icons.arrow_drop_down
-                                  : Icons.arrow_right,
-                              size: 16,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
+                          onToggle: onToggleLane,
                         ),
                       ),
                 // A track is not a layer, so the type slot takes the film

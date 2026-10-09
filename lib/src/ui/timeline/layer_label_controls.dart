@@ -27,6 +27,7 @@ import '../text/vertical_writing_text.dart';
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'axis_turn.dart';
+import '../widgets/rail_glyph_button.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -576,32 +577,43 @@ Widget fxGlyph({
   required bool active,
   double fontSize = 13,
   bool mixed = false,
-}) {
-  final onSurface = Theme.of(context).colorScheme.onSurface;
-  return Text(
-    'fx',
-    // The switch's ICON, drawn in type — and icons do not follow the OS
-    // text size (the viewport pill's `1:1` is the same case). Scaled as
-    // text it folded onto two lines in its slot at 1.5×
-    // (text-scale-rail-rows); the eye and the bucket beside it keep theirs.
-    textScaler: TextScaler.noScaling,
-    style: TextStyle(
-      fontSize: fontSize,
-      fontStyle: FontStyle.italic,
-      fontWeight: FontWeight.w700,
-      // MIXED (R8): the row's master says "some of my groups are off" — the
-      // accent held back to half, so it reads as neither fully on nor off.
-      color: mixed
-          ? AppColors.accent.withValues(alpha: 0.5)
-          : active
-          ? AppColors.accent
-          : onSurface.withValues(alpha: 0.35),
-      // …plus a mark the colour-blind eye can still read.
-      decoration: mixed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: AppColors.accent.withValues(alpha: 0.5),
-    ),
-  );
-}
+}) => Text(
+  'fx',
+  // The switch's ICON, drawn in type — and icons do not follow the OS
+  // text size (the viewport pill's `1:1` is the same case). Scaled as
+  // text it folded onto two lines in its slot at 1.5×
+  // (text-scale-rail-rows); the eye and the bucket beside it keep theirs.
+  textScaler: TextScaler.noScaling,
+  style: fxGlyphStyle(
+    context: context,
+    active: active,
+    fontSize: fontSize,
+    mixed: mixed,
+  ),
+);
+
+/// The `fx` glyph's type — what [fxGlyph] sets it in, and what the rail's
+/// fx switch draws it in ([RailTextGlyph]); one style for both.
+TextStyle fxGlyphStyle({
+  required BuildContext context,
+  required bool active,
+  double fontSize = 13,
+  bool mixed = false,
+}) => TextStyle(
+  fontSize: fontSize,
+  fontStyle: FontStyle.italic,
+  fontWeight: FontWeight.w700,
+  // MIXED (R8): the row's master says "some of my groups are off" — the
+  // accent held back to half, so it reads as neither fully on nor off.
+  color: mixed
+      ? AppColors.accent.withValues(alpha: 0.5)
+      : active
+      ? AppColors.accent
+      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+  // …plus a mark the colour-blind eye can still read.
+  decoration: mixed ? TextDecoration.underline : TextDecoration.none,
+  decorationColor: AppColors.accent.withValues(alpha: 0.5),
+);
 
 /// The ONE eye: whether this row shows.
 ///
@@ -649,13 +661,13 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: AppIconButton(
+      child: RailGlyphButton(
         keyValue: keyValue,
         tooltip: tooltip ?? _showHide(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
-        icon: Icon(
+        glyph: RailIconGlyph(
           isVisible ? Icons.visibility : Icons.visibility_off,
           // 🚨F-58 (유저): 「비지블off일경우 색라벨이 불투명도가 낮아지는데.
           // 이거 멋대로 추가한건데 맘에드니 채용. 근데 내가말한건 **비지블off시
@@ -721,7 +733,7 @@ class LayerMuteToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppIconButton(
+    return RailGlyphButton(
       keyValue: keyValue,
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
@@ -729,7 +741,7 @@ class LayerMuteToggleButton extends StatelessWidget {
       // toggle, and a door needs to say where it goes.
       tooltip: AppText.strings.layerAudioTitle,
       size: AppIconButtonBox(width: width, height: height, iconSize: 16),
-      icon: Icon(
+      glyph: RailIconGlyph(
         muted ? Icons.volume_off : Icons.volume_up,
         color: soloed ? Theme.of(context).colorScheme.primary : null,
       ),
@@ -791,17 +803,19 @@ class FxToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: AppIconButton(
+      child: RailGlyphButton(
         keyValue: keyValue,
         tooltip: _tooltipFor(AppText.strings),
-        // ⚠️`fxGlyph` sizes its own text, so the box's iconSize reaches
-        // nothing here — it is passed for the ONE reader that does use it,
-        // the button's own `IconTheme`, and left honest rather than zero.
+        // ⚠️The word sizes itself, so the box's iconSize reaches nothing
+        // here — it is passed honest rather than zero.
         size: AppIconButtonBox(width: size, height: 26, iconSize: 16),
-        icon: fxGlyph(
-          context: context,
-          active: state != LayerFxState.off,
-          mixed: mixed,
+        glyph: RailTextGlyph(
+          'fx',
+          style: fxGlyphStyle(
+            context: context,
+            active: state != LayerFxState.off,
+            mixed: mixed,
+          ),
         ),
         onPressed: onToggle,
       ),
@@ -918,7 +932,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
     return SizedBox(
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
-      child: AppIconButton(
+      child: RailGlyphButton(
         keyValue: '$keyPrefix-layer-timesheet-$layerId',
         tooltip: onTimesheet
             ? AppText.strings.railRemoveFromTimesheet
@@ -928,7 +942,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
           height: layerTimesheetSlotWidth,
           iconSize: 16,
         ),
-        icon: Icon(
+        glyph: RailIconGlyph(
           onTimesheet ? Icons.table_chart : Icons.table_chart_outlined,
           color: onTimesheet
               ? AppColors.accent
@@ -1599,28 +1613,19 @@ class _LabelPlate extends StatelessWidget {
 /// site, rather than inside the buttons: the x-sheet's column header uses
 /// the same timesheet widget and has no swipe to claim for.
 class RailSwipeColumnPointer extends StatelessWidget {
-  const RailSwipeColumnPointer({
-    super.key,
-    this.onPressed,
-    required this.child,
-  });
-
-  /// What this column's control does. It fires on the DOWN, because
-  /// [PressFireScope] below puts everything here on [PressFire.down].
-  ///
-  /// ⚠️A column whose control is a bare [InkWell] rather than an
-  /// [AppIconButton] has no press-fire of its own, and every one of those is
-  /// already wrapped in THIS — so the firing rides here too rather than ten
-  /// widgets being rewritten.
-  final VoidCallback? onPressed;
+  const RailSwipeColumnPointer({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
-    // the one widget every button in the app wears; what a swipe column
-    // adds is the STRONG claim, and that is all it should have to say.
+    // the one widget every button in the app wears — the control inside
+    // wears its own; what a swipe column adds is the STRONG claim, and that
+    // is all it should have to say. ↩️A claim of the column's own stood here
+    // for the bare `InkWell`s that had none and fired through it; the last
+    // two (the storyboard rows' lane twirls) are the rail's twirl since
+    // I-57 ①, and a claim with nothing under it to speak for is weight.
     //
     // 🚨★★★AND THIS IS WHERE 「타임라인같은 특정버튼」 IS DEFINED (유저
     // 확정 2026-08-30). Not a flag on each button — the predicate is 「a drag
@@ -1629,10 +1634,7 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // including an [AppIconButton] that carries a claim of its own.
     return PressFireScope(
       fireOn: PressFire.down,
-      child: ControlPressClaim(
-        onPressed: onPressed,
-        child: DragVerbClaim(child: child),
-      ),
+      child: DragVerbClaim(child: child),
     );
   }
 }
@@ -1767,7 +1769,7 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
 
   @override
   Widget build(BuildContext context) {
-    return AppIconButton(
+    return RailGlyphButton(
       keyValue: widget.keyValue,
       tooltip: AppText.strings.tlLayerReference,
       size: const AppIconButtonBox(
@@ -1775,7 +1777,7 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
         height: LayerReferenceButton.side,
         iconSize: 12,
       ),
-      icon: const Icon(Icons.insert_drive_file_outlined),
+      glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
       isSelected: _isOpen,
       danger: widget.isSourceShort,
       outlined: true,

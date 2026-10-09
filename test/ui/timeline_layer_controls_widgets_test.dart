@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 import '../helpers/app_icon_button_probe.dart';
 
 void main() {
@@ -75,7 +76,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-kind-icon-${layer.id}')),
+        find.byKey(ValueKey<String>('timeline-layer-type-button-${layer.id}')),
         findsOneWidget,
       );
       expect(
@@ -279,7 +280,7 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Remove from timesheet'), findsOneWidget);
+      expect(find.railTooltip('Remove from timesheet'), findsOneWidget);
 
       await tester.tap(
         find.byKey(ValueKey<String>('timeline-layer-timesheet-${layer.id}')),
@@ -295,8 +296,8 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
 
-      expect(find.byTooltip('Add to timesheet'), findsOneWidget);
-      expect(find.byTooltip('Remove from timesheet'), findsNothing);
+      expect(find.railTooltip('Add to timesheet'), findsOneWidget);
+      expect(find.railTooltip('Remove from timesheet'), findsNothing);
     });
 
     testWidgets('selecting a mark from the chip popup reports it', (
@@ -414,11 +415,11 @@ void main() {
     Finder fxButton(Layer layer) =>
         find.byKey(ValueKey<String>('timeline-layer-fx-${layer.id}'));
 
-    TextStyle glyphStyle(WidgetTester tester, Layer layer) => tester
-        .widget<Text>(
-          find.descendant(of: fxButton(layer), matching: find.text('fx')),
-        )
-        .style!;
+    TextStyle glyphStyle(WidgetTester tester, Layer layer) {
+      final glyph = tester.widget<RailGlyphFace>(fxButton(layer)).glyph;
+      expect(glyph, isA<RailTextGlyph>().having((g) => g.text, 'text', 'fx'));
+      return (glyph as RailTextGlyph).style;
+    }
 
     testWidgets('MIXED reads as neither on nor off — half accent plus an '
         'underline the colour-blind eye can see', (tester) async {

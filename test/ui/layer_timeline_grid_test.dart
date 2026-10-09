@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart'
     show TimelineRowsGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/exposure_of.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
@@ -1093,34 +1094,22 @@ void main() {
       ),
     );
 
-    final animationIcon = tester.widget<Icon>(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-1')),
-    );
-    final storyboardIcon = tester.widget<Icon>(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-2')),
-    );
-    expect(animationIcon.icon, Icons.filter_outlined);
-    expect(storyboardIcon.icon, Icons.auto_stories_outlined);
+    // The kind icon is its OWN type button now (UI-R24 #7) — a control
+    // separate from the name area.
+    IconData? kindIcon(String id) => tester
+        .appIconButton(
+          find.byKey(ValueKey<String>('timeline-layer-type-button-$id')),
+        )
+        .icon;
+    expect(kindIcon('layer-1'), Icons.filter_outlined);
+    expect(kindIcon('layer-2'), Icons.auto_stories_outlined);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
-    // The kind icon lives in its OWN type button now (UI-R24 #7) — a
-    // control separate from the name area.
-    expect(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('timeline-layer-type-button-layer-1'),
-        ),
-        matching: find.byKey(
-          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
-        ),
-      ),
-      findsOneWidget,
-    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('timeline-layer-name-layer-1')),
         matching: find.byKey(
-          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
+          const ValueKey<String>('timeline-layer-type-button-layer-1'),
         ),
       ),
       findsNothing,

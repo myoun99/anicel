@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerBlendSlotWidth;
 
+import '../helpers/app_icon_button_probe.dart';
+
 /// 🚨★★★THE STORYBOARD RAIL SWIPES A COLUMN, LIKE THE TIMELINE RAIL DOES.
 ///
 /// 유저 2026-08-29: 「스토리보드 행 순서 드래그가 일부러 가시성버튼 위에서
@@ -146,15 +148,11 @@ void main() {
   Set<String> openSeRows(WidgetTester tester) => {
     for (final id in const ['t1', 't2', 't3'])
       if (tester
-          .widgetList<Icon>(
-            find.descendant(
-              of: find.byKey(
-                ValueKey<String>('storyboard-se-lane-toggle-$id-1'),
-              ),
-              matching: find.byType(Icon),
-            ),
-          )
-          .any((icon) => icon.icon == Icons.arrow_drop_down))
+              .appIconButton(
+                find.byKey(ValueKey<String>('storyboard-se-lane-toggle-$id-1')),
+              )
+              .icon ==
+          Icons.arrow_drop_down)
         '$id-1',
   };
 

@@ -215,11 +215,11 @@ void main() {
     await _deleteActiveLayer(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.byKey(const ValueKey<String>('timeline-layer-type-button-layer-a')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-c')),
+      find.byKey(const ValueKey<String>('timeline-layer-type-button-layer-c')),
       findsOneWidget,
     );
 

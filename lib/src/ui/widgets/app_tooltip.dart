@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 /// THE APP'S TOOLTIP — Flutter's [Tooltip], with ONE change: the global
 /// pointer route is held only while the tooltip is showing or about to.
@@ -58,11 +59,13 @@ class AppTooltip extends Tooltip {
     super.child,
   });
 
-  /// Dismisses every tooltip on screen — these and any of Flutter's own.
+  /// Dismisses every tooltip on screen — these, the summoned window
+  /// ([SummonedTooltip]) and any of Flutter's own.
   static bool dismissAllToolTips() {
     final ours = _HoldingRawTooltip.dismissAll();
+    final summoned = SummonedTooltip.dismiss();
     final theirs = Tooltip.dismissAllToolTips();
-    return ours || theirs;
+    return ours || summoned || theirs;
   }
 
   /// How many of these tooltips hold a global pointer route right now.
@@ -73,9 +76,119 @@ class AppTooltip extends Tooltip {
   State<Tooltip> createState() => AppTooltipState();
 }
 
-/// The state of an [AppTooltip] — [TooltipState]'s look, built over the
-/// route-holding raw tooltip.
-class AppTooltipState extends State<AppTooltip> {
+/// HOW THE APP'S TOOLTIPS LOOK AND TIME — [TooltipState]'s resolution,
+/// lifted out of the widget: the tooltip's own field, then the theme's
+/// ([TooltipTheme]), then Material's default.
+///
+/// ONE resolution for every tooltip the app shows: [AppTooltip], which
+/// wraps its child, and the summoned window the rail's glyphs share
+/// ([SummonedTooltip]) — so the two cannot come to look or time apart.
+final class AppTooltipLook {
+  AppTooltipLook._({
+    required this.box,
+    required this.verticalOffset,
+    required this.preferBelow,
+    required this.hoverDelay,
+    required this.touchDelay,
+    required this.dismissDelay,
+    required this.triggerMode,
+    required this.enableFeedback,
+    required this.excludeFromSemantics,
+  });
+
+  /// The look in [context], with [tooltip]'s own fields first where it has
+  /// any — a summoned window has none and takes the theme's.
+  factory AppTooltipLook.of(BuildContext context, {Tooltip? tooltip}) {
+    final theme = Theme.of(context);
+    final tooltipTheme = TooltipTheme.of(context);
+    final platform = theme.platform;
+    final (
+      TextStyle defaultTextStyle,
+      BoxDecoration defaultDecoration,
+    ) = switch (theme) {
+      ThemeData(brightness: Brightness.dark, :final TextTheme textTheme) => (
+        textTheme.bodyMedium!.copyWith(
+          color: Colors.black,
+          fontSize: _defaultFontSize(platform),
+        ),
+        BoxDecoration(
+          // Flutter's withOpacity(0.9): alpha (255 × 0.9).round().
+          color: Colors.white.withAlpha(230),
+          borderRadius: const BorderRadius.all(Radius.circular(4)),
+        ),
+      ),
+      ThemeData(brightness: Brightness.light, :final TextTheme textTheme) => (
+        textTheme.bodyMedium!.copyWith(
+          color: Colors.white,
+          fontSize: _defaultFontSize(platform),
+        ),
+        BoxDecoration(
+          color: Colors.grey[700]!.withAlpha(230),
+          borderRadius: const BorderRadius.all(Radius.circular(4)),
+        ),
+      ),
+    };
+    final defaultConstraints = BoxConstraints(
+      // Flutter's TooltipState reads the deprecated height the same way.
+      // ignore: deprecated_member_use
+      minHeight: tooltipTheme.height ?? _defaultTooltipHeight(platform),
+    );
+    return AppTooltipLook._(
+      box: (message) => _TooltipBox(
+        constraints:
+            tooltip?.constraints ??
+            tooltipTheme.constraints ??
+            defaultConstraints,
+        textStyle:
+            tooltip?.textStyle ?? tooltipTheme.textStyle ?? defaultTextStyle,
+        textAlign:
+            tooltip?.textAlign ?? tooltipTheme.textAlign ?? _defaultTextAlign,
+        decoration:
+            tooltip?.decoration ??
+            tooltipTheme.decoration ??
+            defaultDecoration,
+        padding:
+            tooltip?.padding ??
+            tooltipTheme.padding ??
+            _defaultPadding(platform),
+        margin: tooltip?.margin ?? tooltipTheme.margin ?? _defaultMargin,
+        richMessage: message,
+      ),
+      verticalOffset:
+          tooltip?.verticalOffset ??
+          tooltipTheme.verticalOffset ??
+          _defaultVerticalOffset,
+      preferBelow:
+          tooltip?.preferBelow ??
+          tooltipTheme.preferBelow ??
+          _defaultPreferBelow,
+      hoverDelay:
+          tooltip?.waitDuration ??
+          tooltipTheme.waitDuration ??
+          _defaultWaitDuration,
+      touchDelay:
+          tooltip?.showDuration ??
+          tooltipTheme.showDuration ??
+          _defaultShowDuration,
+      dismissDelay:
+          tooltip?.exitDuration ??
+          tooltipTheme.exitDuration ??
+          _defaultExitDuration,
+      triggerMode:
+          tooltip?.triggerMode ??
+          tooltipTheme.triggerMode ??
+          _defaultTriggerMode,
+      enableFeedback:
+          tooltip?.enableFeedback ??
+          tooltipTheme.enableFeedback ??
+          _defaultEnableFeedback,
+      excludeFromSemantics:
+          tooltip?.excludeFromSemantics ??
+          tooltipTheme.excludeFromSemantics ??
+          _defaultExcludeFromSemantics,
+    );
+  }
+
   static const double _defaultVerticalOffset = 24.0;
   static const bool _defaultPreferBelow = true;
   static const EdgeInsetsGeometry _defaultMargin = EdgeInsets.zero;
@@ -88,11 +201,82 @@ class AppTooltipState extends State<AppTooltip> {
   static const bool _defaultEnableFeedback = true;
   static const TextAlign _defaultTextAlign = TextAlign.start;
 
+  static double _defaultTooltipHeight(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.macOS ||
+        TargetPlatform.linux ||
+        TargetPlatform.windows => 24.0,
+        TargetPlatform.android ||
+        TargetPlatform.fuchsia ||
+        TargetPlatform.iOS => 32.0,
+      };
+
+  static EdgeInsets _defaultPadding(TargetPlatform platform) =>
+      switch (platform) {
+        TargetPlatform.macOS ||
+        TargetPlatform.linux ||
+        TargetPlatform.windows => const EdgeInsets.symmetric(
+          horizontal: 8.0,
+          vertical: 4.0,
+        ),
+        TargetPlatform.android ||
+        TargetPlatform.fuchsia ||
+        TargetPlatform.iOS => const EdgeInsets.symmetric(
+          horizontal: 16.0,
+          vertical: 4.0,
+        ),
+      };
+
+  static double _defaultFontSize(TargetPlatform platform) => switch (platform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => 12.0,
+    TargetPlatform.android ||
+    TargetPlatform.fuchsia ||
+    TargetPlatform.iOS => 14.0,
+  };
+
+  /// The window [message] is shown in.
+  final Widget Function(InlineSpan message) box;
+
+  /// [box] fading in and out with [opacity] — Flutter's tooltip fade, the
+  /// one both windows wear.
+  Widget fadingBox(InlineSpan message, Animation<double> opacity) =>
+      FadeTransition(opacity: opacity, child: box(message));
+  final double verticalOffset;
+  final bool preferBelow;
+
+  /// A hovering mouse's wait before the window opens — zero in this app
+  /// (유저 F-53).
+  final Duration hoverDelay;
+
+  /// How long a long-pressed window stays after the lift.
+  final Duration touchDelay;
+
+  /// How long a hovered window stays after the mouse leaves.
+  final Duration dismissDelay;
+  final TooltipTriggerMode triggerMode;
+  final bool enableFeedback;
+  final bool excludeFromSemantics;
+
+  /// Where a window of [context]'s size stands for its target —
+  /// [positionDependentBox] at this look's offset and side.
+  Offset positionFor(TooltipPositionContext context) => positionDependentBox(
+    size: context.overlaySize,
+    childSize: context.tooltipSize,
+    target: context.target,
+    verticalOffset: verticalOffset,
+    preferBelow: preferBelow,
+  );
+}
+
+/// The state of an [AppTooltip] — [TooltipState]'s look ([AppTooltipLook]),
+/// built over the route-holding raw tooltip.
+class AppTooltipState extends State<AppTooltip> {
   final GlobalKey<_HoldingRawTooltipState> _tooltipKey =
       GlobalKey<_HoldingRawTooltipState>();
 
   late bool _visible;
-  late TooltipThemeData _tooltipTheme;
 
   String get _tooltipMessage =>
       widget.message ?? widget.richMessage!.toPlainText();
@@ -105,71 +289,6 @@ class AppTooltipState extends State<AppTooltip> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _visible = TooltipVisibility.of(context);
-    _tooltipTheme = TooltipTheme.of(context);
-  }
-
-  double _getDefaultTooltipHeight() {
-    return switch (Theme.of(context).platform) {
-      TargetPlatform.macOS ||
-      TargetPlatform.linux ||
-      TargetPlatform.windows => 24.0,
-      TargetPlatform.android ||
-      TargetPlatform.fuchsia ||
-      TargetPlatform.iOS => 32.0,
-    };
-  }
-
-  EdgeInsets _getDefaultPadding() {
-    return switch (Theme.of(context).platform) {
-      TargetPlatform.macOS ||
-      TargetPlatform.linux ||
-      TargetPlatform.windows => const EdgeInsets.symmetric(
-        horizontal: 8.0,
-        vertical: 4.0,
-      ),
-      TargetPlatform.android ||
-      TargetPlatform.fuchsia ||
-      TargetPlatform.iOS => const EdgeInsets.symmetric(
-        horizontal: 16.0,
-        vertical: 4.0,
-      ),
-    };
-  }
-
-  static double _getDefaultFontSize(TargetPlatform platform) {
-    return switch (platform) {
-      TargetPlatform.macOS ||
-      TargetPlatform.linux ||
-      TargetPlatform.windows => 12.0,
-      TargetPlatform.android ||
-      TargetPlatform.fuchsia ||
-      TargetPlatform.iOS => 14.0,
-    };
-  }
-
-  Offset _getDefaultPositionDelegate(TooltipPositionContext context) {
-    final effectiveVerticalOffset =
-        widget.verticalOffset ??
-        _tooltipTheme.verticalOffset ??
-        _defaultVerticalOffset;
-    final effectivePreferBelow =
-        widget.preferBelow ?? _tooltipTheme.preferBelow ?? _defaultPreferBelow;
-    final resolvedContext = TooltipPositionContext(
-      target: context.target,
-      targetSize: context.targetSize,
-      tooltipSize: context.tooltipSize,
-      overlaySize: context.overlaySize,
-      verticalOffset: effectiveVerticalOffset,
-      preferBelow: effectivePreferBelow,
-    );
-    return widget.positionDelegate?.call(resolvedContext) ??
-        positionDependentBox(
-          size: context.overlaySize,
-          childSize: context.tooltipSize,
-          target: context.target,
-          verticalOffset: effectiveVerticalOffset,
-          preferBelow: effectivePreferBelow,
-        );
   }
 
   @override
@@ -177,99 +296,39 @@ class AppTooltipState extends State<AppTooltip> {
     if (_tooltipMessage.isEmpty) {
       return widget.child ?? const SizedBox.shrink();
     }
-    final (
-      TextStyle defaultTextStyle,
-      BoxDecoration defaultDecoration,
-    ) = switch (Theme.of(context)) {
-      ThemeData(
-        brightness: Brightness.dark,
-        :final TextTheme textTheme,
-        :final TargetPlatform platform,
-      ) =>
-        (
-          textTheme.bodyMedium!.copyWith(
-            color: Colors.black,
-            fontSize: _getDefaultFontSize(platform),
-          ),
-          BoxDecoration(
-            // Flutter's withOpacity(0.9): alpha (255 × 0.9).round().
-            color: Colors.white.withAlpha(230),
-            borderRadius: const BorderRadius.all(Radius.circular(4)),
-          ),
-        ),
-      ThemeData(
-        brightness: Brightness.light,
-        :final TextTheme textTheme,
-        :final TargetPlatform platform,
-      ) =>
-        (
-          textTheme.bodyMedium!.copyWith(
-            color: Colors.white,
-            fontSize: _getDefaultFontSize(platform),
-          ),
-          BoxDecoration(
-            color: Colors.grey[700]!.withAlpha(230),
-            borderRadius: const BorderRadius.all(Radius.circular(4)),
-          ),
-        ),
-    };
-    final defaultConstraints = BoxConstraints(
-      // Flutter's TooltipState reads the deprecated height the same way.
-      // ignore: deprecated_member_use
-      minHeight: _tooltipTheme.height ?? _getDefaultTooltipHeight(),
-    );
-
-    final Widget tooltipBox = _TooltipBox(
-      constraints:
-          widget.constraints ?? _tooltipTheme.constraints ?? defaultConstraints,
-      textStyle: widget.textStyle ?? _tooltipTheme.textStyle ?? defaultTextStyle,
-      textAlign: widget.textAlign ?? _tooltipTheme.textAlign ?? _defaultTextAlign,
-      decoration:
-          widget.decoration ?? _tooltipTheme.decoration ?? defaultDecoration,
-      padding: widget.padding ?? _tooltipTheme.padding ?? _getDefaultPadding(),
-      margin: widget.margin ?? _tooltipTheme.margin ?? _defaultMargin,
-      richMessage: widget.richMessage ?? TextSpan(text: widget.message),
-    );
+    final look = AppTooltipLook.of(context, tooltip: widget);
+    final message = widget.richMessage ?? TextSpan(text: widget.message);
 
     Widget effectiveChild = MouseRegion(
       cursor: widget.mouseCursor ?? MouseCursor.defer,
       child: widget.child ?? const SizedBox.shrink(),
     );
 
-    final excludeFromSemantics =
-        widget.excludeFromSemantics ??
-        _tooltipTheme.excludeFromSemantics ??
-        _defaultExcludeFromSemantics;
-
     if (_visible) {
       effectiveChild = _HoldingRawTooltip(
         key: _tooltipKey,
-        semanticsTooltip: excludeFromSemantics ? null : _tooltipMessage,
+        semanticsTooltip: look.excludeFromSemantics ? null : _tooltipMessage,
         tooltipBuilder: (BuildContext context, Animation<double> animation) =>
-            FadeTransition(opacity: animation, child: tooltipBox),
-        touchDelay:
-            widget.showDuration ??
-            _tooltipTheme.showDuration ??
-            _defaultShowDuration,
-        triggerMode:
-            widget.triggerMode ??
-            _tooltipTheme.triggerMode ??
-            _defaultTriggerMode,
-        enableFeedback:
-            widget.enableFeedback ??
-            _tooltipTheme.enableFeedback ??
-            _defaultEnableFeedback,
-        hoverDelay:
-            widget.waitDuration ??
-            _tooltipTheme.waitDuration ??
-            _defaultWaitDuration,
+            look.fadingBox(message, animation),
+        touchDelay: look.touchDelay,
+        triggerMode: look.triggerMode,
+        enableFeedback: look.enableFeedback,
+        hoverDelay: look.hoverDelay,
         enableTapToDismiss: widget.enableTapToDismiss,
         onTriggered: widget.onTriggered,
-        dismissDelay:
-            widget.exitDuration ??
-            _tooltipTheme.exitDuration ??
-            _defaultExitDuration,
-        positionDelegate: _getDefaultPositionDelegate,
+        dismissDelay: look.dismissDelay,
+        positionDelegate: (context) {
+          final resolved = TooltipPositionContext(
+            target: context.target,
+            targetSize: context.targetSize,
+            tooltipSize: context.tooltipSize,
+            overlaySize: context.overlaySize,
+            verticalOffset: look.verticalOffset,
+            preferBelow: look.preferBelow,
+          );
+          return widget.positionDelegate?.call(resolved) ??
+              look.positionFor(resolved);
+        },
         ignorePointer: widget.ignorePointer ?? widget.message != null,
         child: effectiveChild,
       );
@@ -839,4 +898,347 @@ class _TooltipBox extends StatelessWidget {
       ),
     );
   }
+}
+
+/// What a summoned tooltip stands over ([SummonedTooltip]): its message,
+/// where it stands on screen, and the context its window is shown from.
+abstract interface class SummonedTooltipTarget {
+  String get tooltipMessage;
+
+  /// Where the target stands, in global coordinates — null while it is not
+  /// laid out on screen.
+  Rect? get tooltipGlobalRect;
+
+  /// The context the window is shown from — its overlay and its theme. Null
+  /// once the target is gone.
+  BuildContext? get tooltipContext;
+}
+
+/// ONE TOOLTIP WINDOW, summoned by whatever is under the pointer — for the
+/// controls that are too many to each hold a tooltip of their own.
+///
+/// 🚨WHY (I-57 ①, 10-09): a timeline rail row carried seven tooltips, each
+/// with its own state, its own overlay portal and its own pointer handlers —
+/// nine elements apiece, every one of them made again on a cut switch,
+/// which mounts every visible row anew. Only one tooltip is ever open at a
+/// time, so one window is all a crowd of them needs.
+///
+/// ⛔The rules are [AppTooltip]'s — Flutter's — and only the HOLDER is new:
+/// a hovering mouse opens the window after the hover wait (zero here, 유저
+/// F-53) and lets it go after the exit delay; a long press opens it and the
+/// lift lets it go after the show duration; a press anywhere else dismisses
+/// it. It looks and times as [AppTooltipLook] says, the same resolution an
+/// [AppTooltip] wears.
+abstract final class SummonedTooltip {
+  static _Window? _window;
+
+  /// The target the window is open over, or about to open over — for tests.
+  @visibleForTesting
+  static SummonedTooltipTarget? get debugTarget => _window?.target;
+
+  /// The message of the open window, or null — for tests.
+  @visibleForTesting
+  static String? get debugShownMessage =>
+      _window?.isShown ?? false ? _window!.target.tooltipMessage : null;
+
+  /// A mouse entered [target].
+  static void hover(SummonedTooltipTarget target) {
+    final window = _windowFor(target);
+    window?.showAfter(window.look.hoverDelay);
+  }
+
+  /// The mouse left [target].
+  static void unhover(SummonedTooltipTarget target) {
+    final window = _window;
+    if (window != null && identical(window.target, target)) {
+      window.hideAfter(window.look.dismissDelay);
+    }
+  }
+
+  /// [target] was pressed long enough: the window opens at once, with the
+  /// feedback a long-pressed tooltip gives.
+  static void longPressed(SummonedTooltipTarget target, int pointer) {
+    final window = _windowFor(target);
+    if (window == null) {
+      return;
+    }
+    final context = target.tooltipContext;
+    if (context != null && window.look.enableFeedback) {
+      unawaited(Feedback.forLongPress(context));
+    }
+    window
+      ..triggerPointer = pointer
+      ..showAfter(Duration.zero);
+  }
+
+  /// The press that opened [target]'s window came up: the window stays for
+  /// the show duration.
+  static void lifted(SummonedTooltipTarget target) {
+    final window = _window;
+    if (window != null && identical(window.target, target)) {
+      window.hideAfter(window.look.touchDelay);
+    }
+  }
+
+  /// [target] is gone: its window goes with it, at once.
+  static void forget(SummonedTooltipTarget target) {
+    final window = _window;
+    if (window != null && identical(window.target, target)) {
+      window.close();
+    }
+  }
+
+  /// Closes the window, if one is open. Answers whether one was.
+  static bool dismiss() {
+    final window = _window;
+    if (window == null) {
+      return false;
+    }
+    window.close();
+    return true;
+  }
+
+  /// The window for [target]: the open one when it is already over
+  /// [target], else a new one replacing whatever was open — or null when
+  /// [target] has nothing to say (an empty message shows nothing, as on an
+  /// [AppTooltip]) or nowhere to say it.
+  static _Window? _windowFor(SummonedTooltipTarget target) {
+    if (target.tooltipMessage.isEmpty) {
+      return null;
+    }
+    final current = _window;
+    if (current != null && identical(current.target, target)) {
+      return current;
+    }
+    final context = target.tooltipContext;
+    if (context == null || !TooltipVisibility.of(context)) {
+      return null;
+    }
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) {
+      return null;
+    }
+    current?.close();
+    return _window = _Window(
+      target: target,
+      overlay: overlay,
+      look: AppTooltipLook.of(context),
+    );
+  }
+}
+
+/// The one open window: its overlay entry, its fade and its timers.
+final class _Window implements TickerProvider {
+  _Window({required this.target, required this.overlay, required this.look});
+
+  final SummonedTooltipTarget target;
+  final OverlayState overlay;
+  final AppTooltipLook look;
+
+  /// The pointer whose long press opened the window — its own events do not
+  /// dismiss it.
+  int? triggerPointer;
+
+  Timer? _timer;
+  OverlayEntry? _entry;
+  bool _routeHeld = false;
+
+  late final AnimationController _fade = AnimationController(
+    duration: const Duration(milliseconds: 150),
+    reverseDuration: const Duration(milliseconds: 75),
+    vsync: this,
+  )..addStatusListener(_onFadeStatus);
+
+  late final CurvedAnimation _opacity = CurvedAnimation(
+    parent: _fade,
+    curve: Curves.fastOutSlowIn,
+  );
+
+  bool get isShown => _entry != null && !_fade.isDismissed;
+
+  @override
+  Ticker createTicker(TickerCallback onTick) =>
+      Ticker(onTick, debugLabel: 'SummonedTooltip');
+
+  void showAfter(Duration delay) {
+    if (_closed) {
+      return;
+    }
+    // Held BEFORE the step: a show that finds its target gone closes the
+    // window, and the close has to find the route to let it go.
+    _holdRoute(true);
+    _after(delay, _show);
+  }
+
+  void hideAfter(Duration delay) {
+    if (!_closed) {
+      _after(delay, _hide);
+    }
+  }
+
+  /// [step] after [delay] — at once where there is none — in place of any
+  /// step still waiting.
+  void _after(Duration delay, VoidCallback step) {
+    _timer?.cancel();
+    _timer = delay > Duration.zero ? Timer(delay, step) : null;
+    if (delay <= Duration.zero) {
+      step();
+    }
+  }
+
+  void _show() {
+    _timer = null;
+    if (_closed) {
+      return;
+    }
+    final rect = target.tooltipGlobalRect;
+    if (rect == null || !overlay.mounted) {
+      close();
+      return;
+    }
+    if (_entry == null) {
+      final entry = _entry = OverlayEntry(
+        builder: (context) => _SummonedWindow(
+          overlay: overlay,
+          targetGlobalRect: rect,
+          look: look,
+          message: target.tooltipMessage,
+          opacity: _opacity,
+        ),
+      );
+      overlay.insert(entry);
+      unawaited(SemanticsService.tooltip(target.tooltipMessage));
+    }
+    _fade.forward();
+  }
+
+  void _hide() {
+    _timer = null;
+    _fade.reverse();
+  }
+
+  void _onFadeStatus(AnimationStatus status) {
+    if (status.isDismissed) {
+      _removeEntry();
+      _holdRoute(_timer?.isActive ?? false);
+    }
+  }
+
+  void _removeEntry() {
+    _entry?.remove();
+    _entry?.dispose();
+    _entry = null;
+  }
+
+  bool _closed = false;
+
+  /// Gone for good — the timers, the entry, the route and the fade. Closing
+  /// twice is closing once.
+  void close() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    _timer?.cancel();
+    _timer = null;
+    _removeEntry();
+    _holdRoute(false);
+    _opacity.dispose();
+    _fade.dispose();
+    if (identical(SummonedTooltip._window, this)) {
+      SummonedTooltip._window = null;
+    }
+  }
+
+  /// The global route a press elsewhere dismisses the window by — held only
+  /// while a window is pending or open, as [AppTooltip] holds its own.
+  void _holdRoute(bool wants) {
+    if (wants == _routeHeld) {
+      return;
+    }
+    _routeHeld = wants;
+    final router = GestureBinding.instance.pointerRouter;
+    if (wants) {
+      router.addGlobalRoute(_onGlobalPointer);
+    } else {
+      router.removeGlobalRoute(_onGlobalPointer);
+    }
+  }
+
+  void _onGlobalPointer(PointerEvent event) {
+    if (event is! PointerDownEvent || event.pointer == triggerPointer) {
+      return;
+    }
+    // Any press elsewhere: the window goes — on a later turn, so the router
+    // is not handed a route list it is walking.
+    scheduleMicrotask(() {
+      if (identical(SummonedTooltip._window, this)) {
+        close();
+      }
+    });
+  }
+}
+
+/// The window itself: [look]'s box with [message], standing where
+/// [look] places a tooltip for the target's box, fading with [opacity].
+/// Pointers pass through it, as a message tooltip's do.
+class _SummonedWindow extends StatelessWidget {
+  const _SummonedWindow({
+    required this.overlay,
+    required this.targetGlobalRect,
+    required this.look,
+    required this.message,
+    required this.opacity,
+  });
+
+  final OverlayState overlay;
+  final Rect targetGlobalRect;
+  final AppTooltipLook look;
+  final String message;
+  final Animation<double> opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    final overlayBox = overlay.context.findRenderObject();
+    final origin = overlayBox is RenderBox && overlayBox.hasSize
+        ? overlayBox.globalToLocal(targetGlobalRect.topLeft)
+        : targetGlobalRect.topLeft;
+    final target = origin & targetGlobalRect.size;
+    return Positioned.fill(
+      bottom: MediaQuery.maybeViewInsetsOf(context)?.bottom ?? 0.0,
+      child: CustomSingleChildLayout(
+        delegate: _WindowPosition(target: target, look: look),
+        child: IgnorePointer(
+          child: look.fadingBox(TextSpan(text: message), opacity),
+        ),
+      ),
+    );
+  }
+}
+
+class _WindowPosition extends SingleChildLayoutDelegate {
+  _WindowPosition({required this.target, required this.look});
+
+  final Rect target;
+  final AppTooltipLook look;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints.loosen();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => look.positionFor(
+    TooltipPositionContext(
+      target: target.center,
+      targetSize: target.size,
+      tooltipSize: childSize,
+      overlaySize: size,
+      verticalOffset: look.verticalOffset,
+      preferBelow: look.preferBelow,
+    ),
+  );
+
+  @override
+  bool shouldRelayout(_WindowPosition oldDelegate) =>
+      target != oldDelegate.target || !identical(look, oldDelegate.look);
 }

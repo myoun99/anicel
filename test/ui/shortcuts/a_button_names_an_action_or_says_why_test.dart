@@ -25,9 +25,10 @@ import '../../helpers/menu_rows_without_an_action.dart';
 ///     names the question.
 ///
 /// ⚠️What is scanned: the app's ONE button (`AppIconButton`), the view
-/// pill's spelling of it (`_barIconButton`), and the buttons that wrap it
-/// and pass `shortcuts:` through (the strip's, the rail's, the command
-/// pill). ⛔Not the kinds that are one of the answer's exclusions by what
+/// pill's spelling of it (`_barIconButton`), the buttons that wrap it and
+/// pass `shortcuts:` through (the strip's, the rail's, the command pill),
+/// and the layer rails' own button (`RailGlyphButton`, I-57 ①), which
+/// names no action, so each of its uses stands here. ⛔Not the kinds that are one of the answer's exclusions by what
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
 /// would stand here with the same reason.
@@ -56,6 +57,10 @@ const ledger = <String, Why>{
       Why.aRow,
   'timeline/layer_label_controls.dart | keyValue': Why.aRow,
   'timeline/layer_label_controls.dart | widget.keyValue': Why.aRow,
+  // The one twirl (what a row holds under it) and the type cell (the row
+  // it stands on).
+  'timeline/layer_rail_columns.dart | keyValue': Why.aRow,
+  'timeline/layer_rail_columns.dart | key': Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
@@ -64,9 +69,6 @@ const ledger = <String, Why>{
       Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-value-link-\${layer.id}-\${lane.laneId}'":
-      Why.aRow,
-  'timeline/timeline_layer_controls_row.dart | '
-          "'\$keyPrefix-lane-toggle-\${layer.id}'":
       Why.aRow,
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-link-badge-\${layer.id}'":
@@ -153,6 +155,7 @@ void main() {
     '_barIconButton',
     'StrapIconButton',
     'RailButton',
+    'RailGlyphButton',
     'CommandPill',
   }, what: 'button');
 

@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
 /// offset value field.
 
@@ -224,16 +226,14 @@ void main() {
     final speaker = find.byKey(
       const ValueKey<String>('timeline-layer-mute-sea-voice'),
     );
-    Icon speakerIcon() => tester.widget<Icon>(
-      find.descendant(of: speaker, matching: find.byType(Icon)),
-    );
-    expect(speakerIcon().color, isNull, reason: 'not soloed yet');
+    IconButtonReading speakerIcon() => tester.appIconButton(speaker);
+    expect(speakerIcon().iconColor, isNull, reason: 'not soloed yet');
 
     await _ensureVisibleAndTap(tester, speaker);
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
     await tester.pumpAndSettle();
     expect(
-      speakerIcon().color,
+      speakerIcon().iconColor,
       isNotNull,
       reason: 'solo is SESSION state — the rail row memo must compare it or '
           'the tint never arrives',

@@ -1,5 +1,6 @@
 import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
+import '../widgets/rail_glyph_button.dart';
 import '../widgets/tick_layer.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
@@ -18,7 +19,7 @@ import 'layer_label_controls.dart'
     show
         LayerSectionBandCell,
         RailSwipeColumnPointer,
-        fxGlyph,
+        fxGlyphStyle,
         layerLaneValueSlotWidth,
         layerMarkColor,
         railSelectedRowColor;
@@ -27,7 +28,7 @@ import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
 import 'layer_rail_columns.dart'
-    show layerRailTrailingCells, layerRailTwirlIcon;
+    show LayerFoldTwirl, layerRailTrailingCells;
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
@@ -869,21 +870,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// reorder the chain; a label that toggles instead would have to be
   /// excluded from both, and that exclusion is exactly the kind of
   /// surface-local rule this rail keeps paying for.
+  ///
+  /// The app's one twirl, as small as the glyph it was.
   Widget _groupTwirl() {
     final onToggleGroup = widget.onToggleLaneGroup;
-    final toggle = onToggleGroup == null
-        ? null
-        : () => onToggleGroup(layer, lane);
-    return ControlPressClaim(
-      onPressed: toggle,
-      child: InkWell(
-        key: ValueKey<String>(
-          '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-        ),
-        onTap: silentPress(toggle),
-        customBorder: const CircleBorder(), // R26 #28
-        child: Icon(layerRailTwirlIcon(expanded: lane.groupExpanded), size: 16),
-      ),
+    return LayerFoldTwirl(
+      keyValue: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      expanded: lane.groupExpanded,
+      across: 16,
+      onToggle: onToggleGroup == null
+          ? null
+          : () => onToggleGroup(layer, lane),
     );
   }
 
@@ -920,14 +918,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget? _groupReset(ColorScheme colorScheme) {
     final onReset = widget.onResetLaneGroup;
     if (onReset == null) return null;
-    return AppIconButton(
+    return RailGlyphButton(
       keyValue: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
       onPressed: () => onReset(layer, lane),
-      icon: Icon(
+      glyph: RailIconGlyph(
         Icons.settings_backup_restore,
-        size: 14,
         color: colorScheme.onSurfaceVariant,
       ),
     );
@@ -938,7 +935,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (enabled == null) return null;
     final onToggle = widget.onToggleLaneGroupEnabled;
     return RailSwipeColumnPointer(
-      child: AppIconButton(
+      child: RailGlyphButton(
         keyValue: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
         tooltip:
             (enabled
@@ -946,7 +943,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                     : AppText.strings.tlApplyLaneTemplate)
                 .replaceAll('{name}', lane.label),
         onPressed: onToggle == null ? null : () => onToggle(layer, lane),
-        icon: fxGlyph(context: context, active: enabled, fontSize: 11),
+        size: AppIconButtonSize.bar,
+        glyph: RailTextGlyph(
+          'fx',
+          style: fxGlyphStyle(context: context, active: enabled, fontSize: 11),
+        ),
       ),
     );
   }

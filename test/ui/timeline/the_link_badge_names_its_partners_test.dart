@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/pill_row_clipboard.dart';
 
@@ -45,9 +46,9 @@ void main() {
   testWidgets('the badge\'s tooltip names every row it shares with, one a '
       'line', (tester) async {
     await tester.pumpWidget(row(const ['C2 · BG', 'C3 · BOOK']));
-    expect(find.byIcon(Icons.link), findsOneWidget);
+    expect(find.railIcon(Icons.link), findsOneWidget);
     expect(
-      find.byTooltip(
+      find.railTooltip(
         [AppText.strings.tlLinkedWith, 'C2 · BG', 'C3 · BOOK'].join('\n'),
       ),
       findsOneWidget,
@@ -56,7 +57,7 @@ void main() {
 
   testWidgets('no partners: not linked, no badge', (tester) async {
     await tester.pumpWidget(row(const []));
-    expect(find.byIcon(Icons.link), findsNothing);
+    expect(find.railIcon(Icons.link), findsNothing);
   });
 
   // THE WIRING, host by host: three surfaces stand the same row up, and
@@ -85,7 +86,7 @@ void main() {
   }
 
   Finder tipIn(Type host, String tip) =>
-      find.descendant(of: find.byType(host), matching: find.byTooltip(tip));
+      find.descendant(of: find.byType(host), matching: find.railTooltip(tip));
 
   testWidgets('the timeline\'s rail', (tester) async {
     final tip = await linkedApp(tester);

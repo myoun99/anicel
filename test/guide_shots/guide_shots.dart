@@ -78,18 +78,6 @@ late String outDir;
 /// from it — gone when the run ends.
 late Directory scratch;
 
-/// The icon font from the Flutter SDK running this test: the tester sits
-/// in `artifacts/engine/<platform>/`, the font in `artifacts/material_fonts/`.
-Future<void> loadIcons() async {
-  final artifacts = File(Platform.resolvedExecutable).parent.parent.parent;
-  final bytes = File(
-    '${artifacts.path}/material_fonts/materialicons-regular.otf',
-  ).readAsBytesSync();
-  final loader = FontLoader('MaterialIcons')
-    ..addFont(Future.value(ByteData.view(bytes.buffer)));
-  await loader.load();
-}
-
 /// 'monospace' (the frame counter, the export window's file lines) is left
 /// to the system on purpose ([AppTypography]). A test has no system faces
 /// and drew boxes, so the app's own first face stands in.

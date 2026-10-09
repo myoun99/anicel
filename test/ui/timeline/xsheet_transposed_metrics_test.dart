@@ -22,6 +22,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// R10 R6 — THE X-SHEET IS THE TIMELINE, TURNED ON ITS SIDE.
 ///
 /// Every number the sheet used to type for itself (36 / 164 / 72 / 92) is
@@ -814,13 +816,8 @@ layers: [folder, member],
           gridWithFolder(onToggleCollapsed: (_) {}, collapsed: collapsed),
         );
         return tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>('xsheet-folder-twirl-f'),
-                ),
-                matching: find.byType(Icon),
-              ),
+            .appIconButton(
+              find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
             )
             .icon!;
       }

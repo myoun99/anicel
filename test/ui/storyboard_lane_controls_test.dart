@@ -38,6 +38,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
         TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 
+import '../helpers/app_icon_button_probe.dart';
+
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
   bucketsPerSecond: 80,
@@ -182,14 +184,11 @@ void main() {
     // chain, and a track with no effects opens onto nothing to find.
     bool vRowOpen() =>
         tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>(
-                    'storyboard-track-lane-toggle-lane-track',
-                  ),
+            .appIconButton(
+              find.byKey(
+                const ValueKey<String>(
+                  'storyboard-track-lane-toggle-lane-track',
                 ),
-                matching: find.byType(Icon),
               ),
             )
             .icon ==
@@ -243,14 +242,9 @@ void main() {
     );
     expect(
       tester
-          .widget<Icon>(
-            find.descendant(
-              of: find.byKey(
-                const ValueKey<String>(
-                  'storyboard-track-lane-toggle-lane-track',
-                ),
-              ),
-              matching: find.byType(Icon),
+          .appIconButton(
+            find.byKey(
+              const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
             ),
           )
           .icon,

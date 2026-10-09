@@ -11,8 +11,9 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
-import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
 
 /// 🚨rail-subject-tooltips (found building F-124, 2026-09-17): the rail's
 /// shared controls carried their row as an English WORD and assembled their
@@ -90,7 +91,7 @@ void main() {
       ),
     );
     String face(String key) => tester
-        .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)))
+        .appIconButton(find.byKey(ValueKey<String>(key)))
         .tooltip;
     String chip(String key) => tester
         .widget<PanelFlyoutButton>(find.byKey(ValueKey<String>(key)))
@@ -221,7 +222,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       String face(String key) => tester
-          .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)))
+          .appIconButton(find.byKey(ValueKey<String>(key)))
           .tooltip;
       final id = layer.id;
       words[on ? 'lanes-open' : 'lanes-shut'] = face(
@@ -287,7 +288,7 @@ Future<Map<String, String>> _trackRow(
   );
   await tester.pumpAndSettle();
   String face(String key) => tester
-      .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)))
+      .appIconButton(find.byKey(ValueKey<String>(key)))
       .tooltip;
   return {'fx-track-on': face('storyboard-track-fx-${track.id.value}')};
 }

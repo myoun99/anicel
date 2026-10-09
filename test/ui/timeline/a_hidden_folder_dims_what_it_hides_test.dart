@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// 🚨F-185 (유저 2026-09-26): 「폴더에 대한 비지블버튼 조작시, 지금 로직은
 /// 맘에드는데, 비지블off일때 내부 레이어의 비지블이 on에다가 활성화색인데 그림
 /// 사라지는게 직관적이지 않으니, on인채로 두되, 색만 비활성화색으로. 반대도
@@ -100,15 +102,12 @@ void main() {
           ),
         ),
       );
-      final icon = tester.widget<Icon>(
-        find.descendant(
-          of: find.byType(LayerVisibilityToggleButton),
-          matching: find.byType(Icon),
-        ),
+      final icon = tester.iconButtonIn(
+        find.byType(LayerVisibilityToggleButton),
       );
       expect(icon.icon, Icons.visibility, reason: '「on인채로 두되」');
       expect(
-        icon.color?.a,
+        icon.iconColor?.a,
         closeTo(AppColors.offAlpha, 0.001),
         reason: '「색만 비활성화색으로」',
       );
@@ -162,17 +161,14 @@ void main() {
 
     final overlay = find.byType(CollapsedRowOverlay);
     expect(overlay, findsOneWidget, reason: 'CONTROL: the folded row is up');
-    final eye = tester.widget<Icon>(
+    final eye = tester.iconButtonIn(
       find.descendant(
-        of: find.descendant(
-          of: overlay,
-          matching: find.byType(LayerVisibilityToggleButton),
-        ),
-        matching: find.byType(Icon),
+        of: overlay,
+        matching: find.byType(LayerVisibilityToggleButton),
       ),
     );
     expect(eye.icon, Icons.visibility);
-    expect(eye.color?.a, closeTo(AppColors.offAlpha, 0.001));
+    expect(eye.iconColor?.a, closeTo(AppColors.offAlpha, 0.001));
   });
 
   for (final orientation in TimelineOrientation.values) {
@@ -229,11 +225,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      Icon eyeOf(String id) => tester.widget<Icon>(
-        find.descendant(
-          of: find.byKey(ValueKey<String>('$prefix-layer-visibility-$id')),
-          matching: find.byType(Icon),
-        ),
+      IconButtonReading eyeOf(String id) => tester.appIconButton(
+        find.byKey(ValueKey<String>('$prefix-layer-visibility-$id')),
       );
       bool labelLit(String id) => tester
           .widget<LayerMarkChip>(
@@ -263,7 +256,7 @@ void main() {
         outside: lit.outside?.withValues(alpha: AppColors.offAlpha),
       );
 
-      expect(eyeOf('member').color, isNull, reason: 'CONTROL: lit at rest');
+      expect(eyeOf('member').iconColor, isNull, reason: 'CONTROL: lit at rest');
       expect(labelLit('member'), isTrue);
       expect(lit.member, isNotNull, reason: 'CONTROL: there is an ink to dim');
       expect(lit.member, isNot(off.member), reason: 'CONTROL: lit at rest');
@@ -274,11 +267,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(eyeOf('member').icon, Icons.visibility, reason: 'still on');
-      expect(eyeOf('member').color?.a, closeTo(AppColors.offAlpha, 0.001));
+      expect(
+        eyeOf('member').iconColor?.a,
+        closeTo(AppColors.offAlpha, 0.001),
+      );
       expect(labelLit('member'), isFalse, reason: '「색라벨도 동일하게」');
       expect(nameInk('member'), off.member, reason: 'I-62: its name too');
       expect(
-        eyeOf('outside').color,
+        eyeOf('outside').iconColor,
         isNull,
         reason: 'a row the folder does not hold is left alone',
       );
@@ -289,7 +285,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(eyeOf('member').color, isNull, reason: '「반대도 마찬가지」');
+      expect(eyeOf('member').iconColor, isNull, reason: '「반대도 마찬가지」');
       expect(labelLit('member'), isTrue);
       expect(nameInk('member'), lit.member);
 

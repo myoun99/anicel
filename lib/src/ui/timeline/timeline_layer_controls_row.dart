@@ -17,6 +17,7 @@ import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
+import '../widgets/rail_glyph_button.dart';
 import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
@@ -553,23 +554,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  // ── boxes turned by the axis ──────────────────────────────────────────
-
-  /// A box tight to its slot: [slot] along the strip, [across] the other
-  /// way. The rail's law, read off the onion column rather than invented per
-  /// cell — `layerLaneToggleSlotWidth` is 16 and an IconButton left alone
-  /// asks for 48. The slot is the PARENT's number, so it travels as an
-  /// [AppIconButtonBox] rather than a token.
-  AppIconButtonBox _box({
-    required double slot,
-    required double across,
-    required double iconSize,
-  }) => AppIconButtonBox(
-    width: _horizontal ? slot : across,
-    height: _horizontal ? across : slot,
-    iconSize: iconSize,
-  );
-
   // ── the leading run ───────────────────────────────────────────────────
 
   /// The rail's shared column skeleton (R9 #22): slot order and widths come
@@ -595,21 +579,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// I-1: a leading toggle COLUMN owns drags that start on it, exactly as
   /// the trailing three do — the strong claim, kept in step with the grid's
   /// swipe column list (see [RailSwipeColumnPointer]).
-  ///
-  /// R26 #28 (icon buttons hover ROUND) survives the swap for free — an
-  /// IconButton's ink is already a circle, which is the whole reason the
-  /// hand-rolled `customBorder: CircleBorder()` could go with it.
   Widget? _laneToggle() {
     if (!hasLanes || onToggleLanes == null) return null;
     return RailSwipeColumnPointer(
-      child: AppIconButton(
+      child: LayerFoldTwirl(
         keyValue: '$keyPrefix-lane-toggle-${layer.id}',
-        tooltip: lanesExpanded
-            ? AppText.strings.railCollapseLanes
-            : AppText.strings.railExpandLanes,
-        size: _box(slot: layerLaneToggleSlotWidth, across: 24, iconSize: 16),
-        icon: Icon(layerRailTwirlIcon(expanded: lanesExpanded)),
-        onPressed: () => onToggleLanes!(layer.id),
+        axis: axis,
+        expanded: lanesExpanded,
+        tooltip: layerLaneTwirlTooltip(expanded: lanesExpanded),
+        onToggle: () => onToggleLanes!(layer.id),
       ),
     );
   }
@@ -737,13 +715,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Builder(
-        builder: (context) => AppIconButton(
+        builder: (context) => RailGlyphButton(
           keyValue: '$keyPrefix-layer-link-badge-${layer.id}',
           tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
           size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
           // The link reads in the accent whatever the button's own rest
           // colour: it says the row is linked before anything is pressed.
-          icon: Icon(Icons.link, color: colorScheme.primary),
+          glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
           onPressed: onOpen == null ? null : () => onOpen(context, layer.id),
         ),
       ),
@@ -811,7 +789,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: FillReferenceButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
         isOn: layer.isFillReference,
-        size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
+        size: railSlotBox(
+          axis,
+          slot: layerFillReferenceSlotWidth,
+          across: 26,
+          iconSize: 16,
+        ),
         onPressed: () => onToggle(layer.id),
       ),
     );
@@ -854,13 +837,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
       axis,
       26,
       child: RailSwipeColumnPointer(
-        child: AppIconButton(
+        child: RailGlyphButton(
           keyValue: '$keyPrefix-layer-onion-${layer.id}',
           tooltip: onionSkinEnabled
               ? AppText.strings.railOnionSkinOn
               : AppText.strings.railOnionSkin,
-          size: _box(slot: layerOnionSlotWidth, across: 26, iconSize: 15),
-          icon: Icon(
+          size: railSlotBox(
+            axis,
+            slot: layerOnionSlotWidth,
+            across: 26,
+            iconSize: 15,
+          ),
+          glyph: RailIconGlyph(
             Icons.filter_none,
             color: onionSkinEnabled
                 ? colorScheme.primary

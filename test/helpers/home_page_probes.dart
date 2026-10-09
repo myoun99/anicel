@@ -23,6 +23,7 @@ import '../ui/flyout_test_helpers.dart'
     show flyoutOwnerByItemKey, readCommandEnabled;
 import 'app_icon_button_probe.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -488,6 +489,7 @@ Future<bool> isActionButtonEnabled(
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
+    RailGlyphFace(:final enabled) => enabled,
     _ => isDescendantIconButtonEnabled(tester, button),
   };
 }
@@ -531,19 +533,14 @@ Future<void> dragBlockEndGrip(
   await tester.pumpAndSettle();
 }
 
-bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
-  final iconButton = tester.appIconButton(
-    find.descendant(of: button, matching: find.byType(AppIconButtonFace)),
-  );
-  return iconButton.onPressed != null;
-}
+bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) =>
+    tester.iconButtonIn(button).onPressed != null;
 
-IconData layerKindIcon(WidgetTester tester, String layerId) {
-  final finder = find.byKey(
-    ValueKey<String>('timeline-layer-kind-icon-$layerId'),
-  );
-  return tester.widget<Icon>(finder).icon!;
-}
+IconData layerKindIcon(WidgetTester tester, String layerId) => tester
+    .appIconButton(
+      find.byKey(ValueKey<String>('timeline-layer-type-button-$layerId')),
+    )
+    .icon!;
 
 Future<void> expectCutOrder(WidgetTester tester, List<String> cutIds) async {
   await _withStoryboardPanel(tester, (panel) async {
