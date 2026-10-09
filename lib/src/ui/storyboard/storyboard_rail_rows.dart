@@ -776,13 +776,8 @@ class _StoryboardRailRows {
   List<Widget> railRowsForTrack(Track track, int index) {
     final seRows = _seRowsFor(track);
     final vRows = _vRowsFor(track, index);
-    final camRows = [
-      if (_showsCameraRow(track)) ...[
-        _state._rows.cameraLabelRow(track),
-        if (_cameraLanesOpen(track)) ..._cameraLaneLabels(track),
-      ],
-      if (_showsTransitionRow(track)) _state._rows.transitionLabelRow(track),
-    ];
+    final camRows = _camRowsFor(track);
+    final conteRows = _conteRowsFor(track);
     return [
       // The CAM section heads the group: the camera row at its top, as the
       // timeline's camera row tops its own (I-73 ④, 유저 2026-10-08:
@@ -819,22 +814,36 @@ class _StoryboardRailRows {
       // 유저 2026-10-08: 「v행 아래에 콘티행 만들어서 거기서」). The band says
       // what the timeline's says over the same layers — the section their
       // kind sits in ([timelineSectionForLayerKind]).
-      if (_shownConteSeats(track) case final seats when seats.isNotEmpty)
+      if (conteRows.isNotEmpty)
         _sectionZoneGroup(
           keyValue: 'storyboard-section-zone-${track.id.value}-conte',
           label: timelineSectionLabel(
             timelineSectionForLayerKind(LayerKind.storyboard),
           ),
-          rows: [
-            for (final seat in seats) ...[
-              _state._rows.conteLabelRow(track, seat),
-              if (_conteLanesOpen(track, seat))
-                ..._conteLaneLabels(track, seat),
-            ],
-          ],
+          rows: conteRows,
         ),
     ];
   }
+
+  /// The CAM section's rail rows for [track]: the camera row with its lanes
+  /// while it is twirled open (I-73 ④ⓔ), then the transition row.
+  List<Widget> _camRowsFor(Track track) => [
+    if (_showsCameraRow(track)) ...[
+      _state._rows.cameraLabelRow(track),
+      if (_cameraLanesOpen(track)) ..._cameraLaneLabels(track),
+    ],
+    if (_showsTransitionRow(track)) _state._rows.transitionLabelRow(track),
+  ];
+
+  /// The conte section's rail rows for [track], top seat first
+  /// ([_shownConteSeats]): each row with its lanes while it is twirled open
+  /// (I-73 ④ⓔ).
+  List<Widget> _conteRowsFor(Track track) => [
+    for (final seat in _shownConteSeats(track)) ...[
+      _state._rows.conteLabelRow(track, seat),
+      if (_conteLanesOpen(track, seat)) ..._conteLaneLabels(track, seat),
+    ],
+  ];
 
   /// The SE section's rail rows for [track], top slot first: each slot
   /// the rail shows ([_shownSeSlots]), with its audio lane label and

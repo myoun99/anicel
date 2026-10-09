@@ -280,7 +280,6 @@ class _StoryboardRowsAndLabels {
     }
     final select = _state.widget.onSelectLayer;
     final view = _state.widget.cameraViewEnabled;
-    final toggleLanes = _state.widget.onToggleLayerLanes;
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-camera-label-${track.id.value}'),
       child: TimelineLayerControlsRow(
@@ -291,14 +290,9 @@ class _StoryboardRowsAndLabels {
         // under it (I-73 ④ⓔ): the camera's, which every camera has.
         hasLanes: true,
         lanesExpanded: _state._railRows._cameraLanesOpen(track),
-        onToggleLanes: toggleLanes == null
-            ? null
-            : (_) {
-                final camera = _state._railRows._cameraTwirlOf(track);
-                if (camera != null) {
-                  toggleLanes(camera);
-                }
-              },
+        onToggleLanes: _twirlTurning(
+          () => _state._railRows._cameraTwirlOf(track),
+        ),
         metrics: TimelineGridMetrics.defaults.copyWith(
           layerControlsWidth: _state._naturalRailWidth,
           layerRowHeight: _state._rowHeights.camera,
@@ -378,7 +372,6 @@ class _StoryboardRowsAndLabels {
   ) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final select = _state.widget.onSelectLayer;
-    final toggleLanes = _state.widget.onToggleLayerLanes;
     return TimelineLayerControlsRow(
       keyPrefix: 'storyboard',
       layer: head.row,
@@ -388,14 +381,9 @@ class _StoryboardRowsAndLabels {
       // the conte has none to open, as on the timeline.
       hasLanes: _state._railRows._conteLanes(track, seat).isNotEmpty,
       lanesExpanded: _state._railRows._conteLanesOpen(track, seat),
-      onToggleLanes: toggleLanes == null
-          ? null
-          : (_) {
-              final row = _state._railRows._conteTwirlOf(track, seat);
-              if (row != null) {
-                toggleLanes(row);
-              }
-            },
+      onToggleLanes: _twirlTurning(
+        () => _state._railRows._conteTwirlOf(track, seat),
+      ),
       metrics: TimelineGridMetrics.defaults.copyWith(
         layerControlsWidth: _state._naturalRailWidth,
         layerRowHeight: _state._rowHeights.conte,
@@ -427,6 +415,21 @@ class _StoryboardRowsAndLabels {
       ),
       onToggleGroupFold: _state.widget.onToggleAttachGroup,
     );
+  }
+
+  /// A projection row's lane twirl, as its head presses it (I-73 ④ⓔ): the
+  /// timeline's twirl, turned through the row [which] names — the one its
+  /// rows turn as one by — or null while the host takes no twirl.
+  ValueChanged<LayerId>? _twirlTurning(LayerId? Function() which) {
+    final toggle = _state.widget.onToggleLayerLanes;
+    return toggle == null
+        ? null
+        : (_) {
+            final row = which();
+            if (row != null) {
+              toggle(row);
+            }
+          };
   }
 
   /// The word a conte row's label is keyed by: `conte` for the conte
