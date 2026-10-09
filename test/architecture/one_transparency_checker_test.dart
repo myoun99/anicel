@@ -8,7 +8,9 @@ import '../helpers/dart_sources.dart';
 /// 2026-09-11 for the import preview: 「출력창의 미리보기에서 쓰는 … 격자무늬
 /// 그대로 공용화해서 재사용하도록」). It lives in
 /// `ui/canvas/paper_background.dart` (`paintAlphaCheckerboard`,
-/// `AlphaCheckerboardPainter`) and `ui/widgets/checkered_picture.dart`.
+/// `AlphaCheckerboardPainter`); the window previews draw it as their page's
+/// ground (`ViewportPageGround.checker`). ↩️`ui/widgets/checkered_picture.dart`
+/// went with the import preview's 16:9 well (F-282 ④, 2026-10-09).
 ///
 /// The cut-piece preview drew a second one — its own cell loop in the panel's
 /// colours — and nothing noticed, because a hand-written checker is the same
@@ -46,8 +48,8 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'draw open alpha with paintAlphaCheckerboard, AlphaCheckerboardPainter '
-          'or CheckeredPicture — the one checker the app has',
+          'draw open alpha with paintAlphaCheckerboard or '
+          'AlphaCheckerboardPainter — the one checker the app has',
     );
   });
 

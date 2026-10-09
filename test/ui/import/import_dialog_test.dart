@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/import_preview_probe.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
@@ -956,13 +957,7 @@ void main() {
       // middle of held it open for the rest of the run, so its folder could
       // not be removed (2026-10-08). Shown, it has been read and let go.
       expect(
-        await settleAsync(
-          tester,
-          () => find
-              .byKey(const ValueKey<String>('import-preview-checker'))
-              .evaluate()
-              .isNotEmpty,
-        ),
+        await settleAsync(tester, () => tester.importPreviewImage != null),
         isTrue,
         reason: 'the preview shows the file it read',
       );

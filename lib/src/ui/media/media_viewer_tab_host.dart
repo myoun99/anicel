@@ -47,6 +47,7 @@ import 'viewer_page_loading.dart';
 import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
+import 'waveform_marks_painter.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
@@ -55,7 +56,6 @@ import '../widgets/static_raster.dart';
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
 import '../sliced_value_listenable_builder.dart';
-import '../repaint_props.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -1449,7 +1449,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
               child: IgnorePointer(
                 child: CustomPaint(
                   key: ValueKey<String>(_key('playhead')),
-                  painter: _PlayheadPainter(
+                  painter: WaveformMarksPainter(
                     atSeconds: _run.soundSeconds,
                     ofSeconds: waveformSeconds,
                     docSize: docSize,
@@ -1504,53 +1504,4 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ],
     );
   }
-}
-
-/// The line that says where in the sound you are.
-///
-/// ⚠️Its own painter and its own layer above the page: the page is a
-/// [StaticRaster] that re-bakes only when you page or pan, and a playhead
-/// inside it would re-bake it on every tick of a run.
-class _PlayheadPainter extends CustomPainter with RepaintOnProps {
-  const _PlayheadPainter({
-    required this.atSeconds,
-    required this.ofSeconds,
-    required this.docSize,
-    required this.viewport,
-    required this.effectiveRatio,
-    required this.color,
-  });
-
-  final double atSeconds;
-  final double ofSeconds;
-  final ui.Size docSize;
-  final CanvasViewport viewport;
-  final double effectiveRatio;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (ofSeconds <= 0) {
-      return;
-    }
-    canvas.save();
-    // The SAME transform the page uses — the line has to land on the
-    // waveform under every zoom and pan, so it cannot compute its own.
-    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
-    final x = docSize.width * (atSeconds / ofSeconds).clamp(0.0, 1.0);
-    canvas.drawLine(
-      Offset(x, 0),
-      Offset(x, docSize.height),
-      Paint()
-        // In DOCUMENT units, so the line thins as you zoom in rather than
-        // growing into a bar over the sample it is pointing at.
-        ..strokeWidth = docSize.width / 600
-        ..color = color,
-    );
-    canvas.restore();
-  }
-
-  @override
-  Object get props =>
-      (atSeconds, ofSeconds, docSize, viewport, effectiveRatio, color);
 }

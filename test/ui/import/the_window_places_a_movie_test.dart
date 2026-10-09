@@ -503,11 +503,11 @@ void main() {
     await settle(
       tester,
       () => tester.any(
-        find.byKey(const ValueKey<String>('import-preview-waveform')),
+        find.byKey(const ValueKey<String>('import-preview-marks')),
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
+      find.byKey(const ValueKey<String>('import-preview-marks')),
       findsOneWidget,
       reason: 'the preview shows what lands — the sound',
     );
