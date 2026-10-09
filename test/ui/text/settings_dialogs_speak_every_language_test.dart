@@ -278,7 +278,14 @@ void main() {
   /// 127 (I-40, the region's fold, 2026-10-09): the English row of one new
   /// registry action, the floating region's fold chevron — answered in the
   /// other four languages by id. The chevron keeps its own two words.
-  const untranslatedElsewhere = 127;
+  ///
+  /// 129 (126 + 3 — I-40, the panels' buttons, 2026-10-09): the English
+  /// rows of three new registry actions — the guide list's two ＋ and the
+  /// timesheet's notation ⇄ data switch — each answered in the other four
+  /// languages by id. The round's other three (Delete text, Import…, Sheet
+  /// format…) are composed from the table and add none. The ceiling stood
+  /// one above the count (126) when it came.
+  const untranslatedElsewhere = 129;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
