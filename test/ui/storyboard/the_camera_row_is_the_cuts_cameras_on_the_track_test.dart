@@ -16,6 +16,8 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineFrameRangeSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart';
@@ -604,6 +606,122 @@ void main() {
 
       expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
       expect(keysOf(session, b), [2, 6, 12], reason: 'nothing made');
+    });
+  });
+
+  group('a sweep on the row — the timeline camera row\'s range, held to the '
+      'cut', () {
+    /// A mouse pressed at [from] and let go at [to] — two points on the row.
+    Future<void> sweep(WidgetTester tester, Offset from, Offset to) async {
+      final gesture = await tester.startGesture(
+        from,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(to);
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    TimelineFrameRangeSelection? selectionOf(EditorSessionManager session) =>
+        session.frameRangeSelection.value;
+
+    /// The selection's band, piece by piece, row-local — one piece a line.
+    List<Rect> bandOf(WidgetTester tester) {
+      final row = tester.getRect(cameraStrip);
+      return [
+        for (final element in find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget.key is ValueKey<String> &&
+                  (widget.key! as ValueKey<String>).value.startsWith(
+                    'storyboard-camera-range-selection-',
+                  ),
+            )
+            .evaluate())
+          tester
+              .getRect(find.byWidget(element.widget))
+              .shift(-row.topLeft),
+      ];
+    }
+
+    testWidgets('🚨selects the frames of the cut it began in, on that cut\'s '
+        'camera — and stops at the cut\'s last frame', (tester) async {
+      final session = await pumpPanel(tester);
+
+      await sweep(tester, at(tester, 26), at(tester, 58));
+
+      final selection = selectionOf(session)!;
+      expect(session.activeCutId, b);
+      expect(selection.layerId, const LayerId('b-cam'));
+      expect(
+        (selection.startIndex, selection.endIndexExclusive),
+        (2, 24),
+        reason: 'b\'s own 2 to its last, not on into c',
+      );
+      final band = bandOf(tester).single;
+      final row = tester.getRect(cameraStrip);
+      expect(band.left, closeTo(26 * ppf(tester), 0.01));
+      expect(band.right, closeTo(48 * ppf(tester), 0.01));
+      expect((band.top, band.height), (0, row.height));
+    });
+
+    testWidgets('🚨over an O.L the line it begins on names the cut, and the '
+        'band stands on that line', (tester) async {
+      final session = await pumpPanel(tester, transitions: ol);
+      final row = tester.getRect(cameraStrip);
+
+      await sweep(
+        tester,
+        at(tester, 20, across: 0.8),
+        at(tester, 22, across: 0.8),
+      );
+      var selection = selectionOf(session)!;
+      expect(selection.layerId, const LayerId('b-cam'));
+      expect((selection.startIndex, selection.endIndexExclusive), (2, 5));
+      var band = bandOf(tester).single;
+      expect(band.left, closeTo(20 * ppf(tester), 0.01));
+      expect((band.top, band.height), (row.height / 2, row.height / 2));
+
+      await sweep(
+        tester,
+        at(tester, 20, across: 0.2),
+        at(tester, 22, across: 0.2),
+      );
+      selection = selectionOf(session)!;
+      expect(selection.layerId, const LayerId('a-cam'));
+      expect((selection.startIndex, selection.endIndexExclusive), (20, 23));
+      band = bandOf(tester).single;
+      expect(band.left, closeTo(20 * ppf(tester), 0.01));
+      expect((band.top, band.height), (0, row.height / 2));
+    });
+
+    testWidgets('🚨a drag from inside the selection moves its keys along the '
+        'cut\'s own frames', (tester) async {
+      final session = await pumpPanel(tester);
+      await sweep(tester, at(tester, 26), at(tester, 30));
+      final held = selectionOf(session)!;
+      expect(
+        (held.startIndex, held.endIndexExclusive),
+        (2, 7),
+        reason: '⛔전제: b\'s keys 2 and 6 held',
+      );
+
+      await sweep(tester, at(tester, 27), at(tester, 30));
+
+      expect(keysOf(session, b), [5, 9, 12]);
+      expect(keysOf(session, a), [0, 12, 20, 30]);
+    });
+
+    testWidgets('a gap takes no sweep: nothing is selected there', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester);
+
+      await sweep(tester, at(tester, 49), at(tester, 51));
+
+      expect(selectionOf(session), isNull);
     });
   });
 }

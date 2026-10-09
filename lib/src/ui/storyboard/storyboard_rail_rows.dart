@@ -1573,6 +1573,7 @@ class _StoryboardRailRows {
         onRowFramePress: _state.widget.onRowFramePress,
         onCameraCutPress: _state.widget.onCameraCutPress,
         onEditCameraCell: _state.widget.onEditCameraCell,
+        stripSelect: _state.widget.stripSelect,
       ),
     );
   }

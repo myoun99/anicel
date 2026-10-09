@@ -37,6 +37,7 @@ class _StoryboardCameraRow extends StatelessWidget {
     this.onRowFramePress,
     this.onCameraCutPress,
     this.onEditCameraCell,
+    this.stripSelect,
   });
 
   final Track track;
@@ -68,7 +69,30 @@ class _StoryboardCameraRow extends StatelessWidget {
   /// first click stood in, at the frame it stood on.
   final VoidCallback? onEditCameraCell;
 
+  /// The cut-local range selection and its move — the conte row's
+  /// ([StoryboardStripSelectCallbacks]) — on the camera layer of the cut a
+  /// sweep starts in: 「카메라 행 범위는 키표시/이동/레인 등 모든거
+  /// 콘티패널에서 가능. 컷 클램핑만 되도록」 (유저 2026-10-08).
+  final StoryboardStripSelectCallbacks? stripSelect;
+
   LayerId get _rowId => trackCameraRowId(track.id);
+
+  int _frameAtX(double x) =>
+      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
+
+  /// [_reachAt]'s cut and its camera layer — what a sweep there selects
+  /// on. Null where no cut's own frames reach, or the cut has no camera
+  /// layer to hold a selection.
+  ({CameraRowReach reach, LayerId camera})? _cameraAt(
+    int frame, {
+    required bool upper,
+  }) {
+    final reach = _reachAt(frame, upper: upper);
+    final camera = reach?.entry.cut.layers.cameraLayer;
+    return reach == null || camera == null
+        ? null
+        : (reach: reach, camera: camera.id);
+  }
 
   /// THE cut a pointer at [frame] means — the one whose own frames hold it;
   /// over an O.L, the one on the line the pointer is on: the leaving cut on
@@ -147,7 +171,153 @@ class _StoryboardCameraRow extends StatelessWidget {
               onPressAt: _pressed,
               onEdit: onEdit == null ? null : (_) => onEdit(),
             ),
+          if (stripSelect case final select?) ...[
+            _gestureSlot(select, upper: true),
+            _gestureSlot(select, upper: false),
+            _selectionBand(select),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// THE range gesture — the timeline's, as the conte row lays it — over
+  /// [upper]'s half of the row: a pan selects a run of a cut's own frames,
+  /// a pan from inside the selection moves the keys on them. Each half
+  /// says which cut its press means where two cuts' own frames run at once
+  /// ([_reachAt]), so the row takes it in two; and it answers only where
+  /// a cut's own frames reach, as the conte row's answers only on panels.
+  Widget _gestureSlot(
+    StoryboardStripSelectCallbacks select, {
+    required bool upper,
+  }) => Positioned(
+    key: ValueKey<String>(
+      'storyboard-camera-gesture-${upper ? 'upper' : 'lower'}-'
+      '${track.id.value}',
+    ),
+    left: 0,
+    right: 0,
+    top: upper ? 0 : height / 2,
+    height: height / 2,
+    child: _FrameHitGate(
+      claimsDx: (dx) => _cameraAt(_frameAtX(dx), upper: upper) != null,
+      child: Stack(
+        children: [
+          TimelineFrameRangeGestureLayer(
+            row: LayerRowAddress(_rowId),
+            geometry: frameGeometry,
+            crossAxisExtent: height / 2,
+            callbacks: _rangeGesture(select, upper: upper),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// The camera's half of the shared range gesture: the conte row's
+  /// ([_StoryboardConteRow._stripGesture]) on the cut's camera layer and its
+  /// own frames — a sweep held to the cut it began in, because a cut's own
+  /// index names no frame of another ([CameraRowReach.ownFrameAt]).
+  TimelineRangeGestureCallbacks _rangeGesture(
+    StoryboardStripSelectCallbacks select, {
+    required bool upper,
+  }) => TimelineRangeGestureCallbacks(
+    isInSelection: (_, frame) {
+      final at = _cameraAt(frame, upper: upper);
+      final selection = select.selection.value;
+      return at != null &&
+          selection != null &&
+          selection.coversLayer(at.camera) &&
+          selection.contains(at.reach.ownFrameAt(frame));
+    },
+    onSelectUpdate: (_, anchorIndex, headIndex, _) {
+      final at = _cameraAt(anchorIndex, upper: upper);
+      if (at == null) {
+        return;
+      }
+      select.onDrag(
+        layerId: at.camera,
+        anchorIndex: at.reach.ownFrameAt(anchorIndex),
+        headIndex: at.reach.ownFrameAt(headIndex),
+      );
+    },
+    onTapClear: (_) => select.onClear(),
+    onMoveBegin: (_, frame) {
+      final at = _cameraAt(frame, upper: upper);
+      return at != null && (select.move?.onBegin(at.camera) ?? false);
+    },
+    // A cut has one camera layer: there is nowhere sideways to land.
+    onMoveUpdate: (frameDelta, _) => select.move?.onUpdate(frameDelta, null),
+    onMoveEnd: select.move?.onEnd ?? _noMove,
+    onMoveCancel: select.move?.onCancel ?? _noMove,
+  );
+
+  /// The selection's band — the timeline's ONE band decoration — over the
+  /// selected frames of the cut whose camera layer it names, on the line
+  /// that cut is drawn on there: the whole row where it runs alone, its
+  /// half where it shares its own frames with a neighbour. One listener
+  /// for the row, pointer-transparent like every band.
+  Widget _selectionBand(StoryboardStripSelectCallbacks select) =>
+      Positioned.fill(
+        child: IgnorePointer(
+          child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
+            valueListenable: select.selection,
+            builder: (context, selection, _) => _rangeBand(selection),
+          ),
+        ),
+      );
+
+  Widget _rangeBand(TimelineFrameRangeSelection? selection) {
+    if (selection == null || timelineScale.pixelsPerFrame <= 0) {
+      return const SizedBox.shrink();
+    }
+    for (final reach in reaches) {
+      if (reach.entry.cut.layers.cameraLayer?.id != selection.layerId) {
+        continue;
+      }
+      final start = math.max(
+        reach.mediaStart,
+        reach.trackFrameOf(selection.startIndex),
+      );
+      final end = math.min(
+        reach.mediaEnd,
+        reach.trackFrameOf(selection.endIndexExclusive),
+      );
+      final edges = {
+        start,
+        for (final edge in [reach.arrivingUntil, reach.leavingFrom])
+          if (edge > start && edge < end) edge,
+        end,
+      }.toList()..sort();
+      return Stack(
+        children: [
+          for (var index = 0; index + 1 < edges.length; index += 1)
+            _bandPiece(reach, edges[index], edges[index + 1]),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  /// The band over `[from, to)` — frames of [reach]'s cut on one line.
+  Widget _bandPiece(CameraRowReach reach, int from, int to) {
+    final line = reach.lineAt(from);
+    final across = line == CameraRowLine.middle ? height : height / 2;
+    return Positioned(
+      key: ValueKey<String>('storyboard-camera-range-selection-$from'),
+      left: timelineScale.leftForFrame(from),
+      top: line == CameraRowLine.lower ? height / 2 : 0,
+      width: timelineScale.spanWidth(from, to),
+      height: across,
+      child: Semantics(
+        label: AppText.strings.tlSelectedFrameRange,
+        container: true,
+        child: DecoratedBox(
+          decoration: timelineRangeSelectionBandDecorationAt(
+            cellExtent: timelineScale.pixelsPerFrame,
+            crossExtent: across,
+          ),
+        ),
       ),
     );
   }

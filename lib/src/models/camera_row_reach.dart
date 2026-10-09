@@ -62,8 +62,12 @@ class CameraRowReach {
   /// The track frame the cut's own [frame] is drawn at.
   int trackFrameOf(int frame) => mediaStart + frame;
 
-  /// [trackFrame] as a frame of the cut's own.
-  int ownFrameAt(int trackFrame) => trackFrame - mediaStart;
+  /// [trackFrame] as a frame of the cut's own — held to them: a frame past
+  /// either end names that end, so a sweep that runs on into the next cut
+  /// stops at this one's last frame (「컷 클램핑만 되도록」, 유저
+  /// 2026-10-08), as the conte's does at its last panel.
+  int ownFrameAt(int trackFrame) =>
+      math.max(mediaStart, math.min(trackFrame, mediaEnd - 1)) - mediaStart;
 }
 
 /// Every cut of [entries] — ONE track's, in its order — with its reach on
