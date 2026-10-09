@@ -377,5 +377,39 @@ void main() {
       );
       expect(result.cut.camera.track.keyframes, hasLength(1));
     });
+
+    test('a MOVING camera is the keys its move needs — a straight pan is '
+        'its two ends, its angle counted the other way round', () {
+      TvpCameraPose at(int frame) => TvpCameraPose(
+        frame: frame,
+        x: 100 + (frame - 1) * 10.0,
+        y: 80,
+        angleDegrees: -(frame - 1) * 2.0,
+        scale: 1,
+        sizeX: 1920,
+        sizeY: 1080,
+      );
+      final result = plan(
+        clip(
+          frameCount: 8,
+          camera: TvpCamera(
+            width: 1920,
+            height: 1080,
+            keyframes: [at(1), at(8)],
+            positions: [for (var f = 1; f <= 8; f++) at(f)],
+          ),
+        ),
+      );
+
+      final camera = result.cut.camera;
+      expect(camera.keyframes.keys, [0, 7]);
+      expect(
+        (
+          camera.keyframeAt(7)!.center.x,
+          camera.keyframeAt(7)!.rotationDegrees,
+        ),
+        (170, 14),
+      );
+    });
   });
 }

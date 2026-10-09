@@ -1572,7 +1572,8 @@ void main() {
 
     test('🎯between its clips a cut is shot through the shooting frame — '
         'CLIP STUDIO shows nothing of the folder there', () {
-      final camera = folder('camera', [layer('BG')], camera: placed());
+      // Resting off the frame, so the frame is not the rest by chance.
+      final camera = folder('camera', [layer('BG')], camera: placed(x: 500));
 
       final cut = plan(
         root([camera]),
