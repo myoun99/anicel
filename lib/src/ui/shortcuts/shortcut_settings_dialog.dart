@@ -278,12 +278,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         }
         if (shown) {
           rows.add(
-            _actionRow(
-              definition,
-              conflicted.contains(definition.id),
-              touchConflicted.contains(definition.id),
+            _ActionRow(
+              key: ValueKey<String>('shortcut-row-${definition.id}'),
+              bindings: bindings,
+              definition: definition,
+              conflicted: conflicted.contains(definition.id),
+              touchConflicted: touchConflicted.contains(definition.id),
+              recording: _recordingActionId == definition.id,
               depth: depth,
               bundle: bundle,
+              bundleOpen: bundle != null && _openBundles.contains(bundle),
+              onToggleBundle: bundle == null
+                  ? null
+                  : () => _toggleBundle(bundle),
+              onRecord: () => _startRecording(definition.id),
+              onUnassign: () => _unassign(definition.id),
             ),
           );
         }
@@ -309,10 +318,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         bottom: place ? 4 : 2,
       ),
       child: _foldRow(
-        bundle,
+        () => _toggleBundle(bundle),
         Row(
           children: [
-            _twirl(bundle),
+            _twirl(bundle, open: _openBundles.contains(bundle)),
             Expanded(
               child: Text(
                 _shelfName(shelf),
@@ -327,45 +336,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
-  /// One step of the list's depth: the twirl's own width, so a row's words
-  /// start where the words of the row it folds under do.
-  static const double _step = layerLaneToggleSlotWidth;
-
-  /// A row that folds [bundle], pressed anywhere on itself — its twirl
-  /// first, left of its words, and only showing.
-  ///
-  /// 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
-  /// 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
-  /// 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
-  /// 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
-  /// ↩️The twirl was the press, at the row's far edge where the layer rail
-  /// keeps its own (F-29) — and that edge is where the list's scrollbar
-  /// runs. A control ON the row (a brush group's record · unassign · reset
-  /// · touch) keeps its own press: the deepest claim wins.
-  Widget _foldRow(String bundle, Widget row) => ControlPressClaim(
-    onPressed: () => _toggleBundle(bundle),
-    child: InkWell(
-      onTap: silentPress(() => _toggleBundle(bundle)),
-      child: row,
-    ),
-  );
-
-  /// The fold of [bundle] — the app's one twirl, showing it ([_foldRow]
-  /// is the press).
-  Widget _twirl(String bundle) => LayerFoldTwirl(
-    keyValue: 'shortcut-bundle-$bundle',
-    expanded: _openBundles.contains(bundle),
-    onToggle: null,
-  );
-
   Widget _rootTitleRow(ThemeData theme, String bundle, int depth) => Padding(
     key: ValueKey<String>('shortcut-row-$bundle'),
     padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
     child: _foldRow(
-      bundle,
+      () => _toggleBundle(bundle),
       Row(
         children: [
-          _twirl(bundle),
+          _twirl(bundle, open: _openBundles.contains(bundle)),
           Expanded(
             child: Text(
               brushRootSectionLabel,
@@ -481,21 +459,82 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ],
     );
   }
+}
+
+/// One step of the list's depth: the twirl's own width, so a row's words
+/// start where the words of the row it folds under do.
+const double _step = layerLaneToggleSlotWidth;
+
+/// A row that folds, pressed anywhere on itself — [toggle] — its twirl
+/// first, left of its words, and only showing.
+///
+/// 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
+/// 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
+/// 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
+/// 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+/// ↩️The twirl was the press, at the row's far edge where the layer rail
+/// keeps its own (F-29) — and that edge is where the list's scrollbar
+/// runs. A control ON the row (a brush group's record · unassign · reset
+/// · touch) keeps its own press: the deepest claim wins.
+Widget _foldRow(VoidCallback toggle, Widget row) => ControlPressClaim(
+  onPressed: toggle,
+  child: InkWell(onTap: silentPress(toggle), child: row),
+);
+
+/// The fold of [bundle] — the app's one twirl, showing it ([_foldRow] is
+/// the press).
+Widget _twirl(String bundle, {required bool open}) => LayerFoldTwirl(
+  keyValue: 'shortcut-bundle-$bundle',
+  expanded: open,
+  onToggle: null,
+);
+
+/// One action's row: its name, its keys and touch gesture, and its record ·
+/// unassign · reset buttons — a brush group's title folding its bundle.
+///
+/// ↩️A method of the window's State until 2026-10-10, when the shelves
+/// (Q1) took the State past six hundred lines.
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    super.key,
+    required this.bindings,
+    required this.definition,
+    required this.conflicted,
+    required this.touchConflicted,
+    required this.recording,
+    required this.depth,
+    required this.onRecord,
+    required this.onUnassign,
+    this.bundle,
+    this.bundleOpen = false,
+    this.onToggleBundle,
+  });
+
+  final EditorShortcutBindings bindings;
+  final EditorActionDefinition definition;
+  final bool conflicted;
+  final bool touchConflicted;
+
+  /// Whether this row is recording its next key.
+  final bool recording;
+
+  /// How many steps its shelf stands in ([ShortcutShelf.path]).
+  final int depth;
+  final VoidCallback onRecord;
+  final VoidCallback onUnassign;
+
+  /// The brush bundle it stands in, or null; a group's title folds it.
+  final String? bundle;
+  final bool bundleOpen;
+  final VoidCallback? onToggleBundle;
 
   /// How much of a row its keys and its touch gesture may take before they
   /// wrap — the name and the row's buttons keep the rest.
   static const double _keysShare = 0.6;
 
-  Widget _actionRow(
-    EditorActionDefinition definition,
-    bool conflicted,
-    bool touchConflicted, {
-    required int depth,
-    String? bundle,
-  }) {
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bindings = widget.bindings;
-    final recording = _recordingActionId == definition.id;
     final activators = bindings.activatorsFor(definition.id);
     final touchGesture = bindings.touchGestureFor(definition.id);
     final titlesBundle = definition.brushPress is BrushGroupPress;
@@ -555,7 +594,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                         '${gesture?.name ?? 'none'}',
                     label: gesture?.label ?? AppText.strings.commonNone,
                   ),
-                  onPicked: (gesture) => widget.bindings.setTouchGesture(
+                  onPicked: (gesture) => bindings.setTouchGesture(
                     definition.id,
                     gesture,
                   ),
@@ -589,7 +628,6 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final steps = bundle != null && !titlesBundle ? depth + 1 : depth;
     final folds = bundle != null && titlesBundle ? bundle : null;
     return Padding(
-      key: ValueKey<String>('shortcut-row-${definition.id}'),
       padding: EdgeInsets.only(left: steps * _step, top: 2, bottom: 2),
       // 🗣️F-318: the row gained a button, and a row with several keys
       // and a touch gesture was already within a few pixels of its
@@ -600,10 +638,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         builder: (context, constraints) {
           final row = Row(
             children: [
-              if (folds != null) _twirl(folds),
+              if (folds != null) _twirl(folds, open: bundleOpen),
               Expanded(
                 child: Text(
-                  _labelOf(definition),
+                  actionLabelOf(definition),
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
@@ -622,7 +660,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 keyValue: 'shortcut-record-${definition.id}',
                 tooltip: AppText.strings.shortcutRecordNew,
                 icon: const Icon(Icons.keyboard),
-                onPressed: () => _startRecording(definition.id),
+                onPressed: onRecord,
               ),
               // Dead on a row with no key: there is nothing to take off.
               AppIconButton(
@@ -631,7 +669,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 icon: const Icon(Icons.backspace_outlined),
                 onPressed: activators.isEmpty
                     ? null
-                    : () => _unassign(definition.id),
+                    : onUnassign,
               ),
               AppIconButton(
                 keyValue: 'shortcut-reset-${definition.id}',
@@ -645,7 +683,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               ),
             ],
           );
-          return folds == null ? row : _foldRow(folds, row);
+          return folds == null ? row : _foldRow(onToggleBundle!, row);
         },
       ),
     );
