@@ -266,8 +266,8 @@ void main() {
     );
   });
 
-  group('the rail moves only for a row made in it', () {
-    test('a row made in the timeline leaves the rail where it stands', () {
+  group('🚨the rail is left where it stands', () {
+    test('by a row made in the timeline', () {
       final session = standingAt(const TrackRowAddress(trackId), 3);
       final timeline = TimelineToolbarPanelContext(
         session..standOnRow(const LayerRowAddress(LayerId('a-conte'))),
@@ -280,8 +280,8 @@ void main() {
       expect(session.storyboardStandingRow, const TrackRowAddress(trackId));
     });
 
-    test('🚨a flip onto a cut keeps the rail on the cut, whatever row of it '
-        'the timeline comes back on', () {
+    test('by a flip onto a cut, whatever row of it the timeline comes back '
+        'on', () {
       // 「컷에 설때는 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에
       // 서야 콘티행에 서도록」 (I-73, 유저 2026-10-08).
       final session = sessionOf()

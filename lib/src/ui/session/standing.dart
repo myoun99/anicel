@@ -151,50 +151,41 @@ class Standing {
   /// The row you just made is the subject OF THE PANEL YOU MADE IT IN: made
   /// while working in the storyboard (whose layer pill makes S rows), it is
   /// that rail's row as well — the rail shows it, so that is where you stand.
-  /// A row the rail shows on a projection row is stood on there by the doors
-  /// that make one ([standOnTheMadeRow]).
-  void _seatVerbRowOnActiveLayer() {
+  ///
+  /// ↩️「The rail shows it」 meant a track's own row while this rail showed
+  /// no row of a cut. A cut's conte group and its camera are shown on the
+  /// track's projection rows now (I-73), so a row of them made there is
+  /// stood on there (F-322, 유저 2026-10-09: 「콘티행 섰을때 레이어
+  /// 종류버튼으로 어태치레이어 추가안되니 가능하도록」).
+  void seatVerbRowOnActiveLayer() {
     final seated = _controllers.layerController.activeLayerId;
     if (seated == null) {
       return;
     }
     final row = LayerRowAddress(seated);
-    final railStands =
-        _working.value == WorkingPanel.storyboard &&
-        _trackSe.isTrackOwnedRailLayerId(seated);
-    if (_timelineRow == row && (!railStands || _storyboardRow == row)) {
+    final railRow = _working.value == WorkingPanel.storyboard
+        ? _railRowShowing(seated)
+        : null;
+    if (_timelineRow == row &&
+        (railRow == null || _storyboardRow == railRow)) {
       return;
     }
     _timelineRow = row;
-    if (railStands) {
-      _storyboardRow = row;
+    if (railRow != null) {
+      _storyboardRow = railRow;
     }
     publishCurrentRow();
   }
 
-  /// The doors that MAKE a row stand on it ([_seatVerbRowOnActiveLayer]) —
-  /// and, made while working in the storyboard, on the projection row that
-  /// shows it there: a row of the cut's conte group at its seat (I-73;
-  /// F-322, 유저 2026-10-09: 「콘티행 섰을때 레이어 종류버튼으로 어태치레이어
-  /// 추가안되니 가능하도록」).
-  ///
-  /// ⛔Not [followActiveLayer]'s to ask: a cut switch moves the active layer
-  /// too, and a cut stood on keeps the rail on the cut (「컷에 설때는
-  /// 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에 서야 콘티행에
-  /// 서도록」).
-  void standOnTheMadeRow() {
-    _seatVerbRowOnActiveLayer();
-    final seated = _controllers.layerController.activeLayerId;
-    final projection =
-        seated == null || _working.value != WorkingPanel.storyboard
-        ? null
-        : _projectionRowShowing(seated);
-    if (projection == null ||
-        _storyboardRow == LayerRowAddress(projection)) {
-      return;
+  /// The storyboard rail's row that shows [layerId]: its own for a track's
+  /// row, the projection row for a row of a cut's conte group or its camera
+  /// ([_projectionRowShowing]); null for a row the rail does not show.
+  LayerRowAddress? _railRowShowing(LayerId layerId) {
+    if (_trackSe.isTrackOwnedRailLayerId(layerId)) {
+      return LayerRowAddress(layerId);
     }
-    _storyboardRow = LayerRowAddress(projection);
-    publishCurrentRow();
+    final projection = _projectionRowShowing(layerId);
+    return projection == null ? null : LayerRowAddress(projection);
   }
 
   /// The active layer the session last saw in [followActiveLayer].
@@ -240,7 +231,7 @@ class Standing {
     if (active == null || row == null || row.owningLayerId == active) {
       return;
     }
-    _seatVerbRowOnActiveLayer();
+    seatVerbRowOnActiveLayer();
   }
 
   /// F-20, the DELETE half: a row whose layer no longer exists is not a

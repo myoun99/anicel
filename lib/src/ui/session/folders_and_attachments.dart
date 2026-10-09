@@ -37,7 +37,6 @@ class FoldersAndAttachments {
     required ActiveCutEdits activeCut,
     required FoldHandOff handOffOnFold,
     required StandingLaw keepStandingShown,
-    required void Function() standOnTheMadeRow,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -45,8 +44,7 @@ class FoldersAndAttachments {
        _layerIds = layerIds,
        _activeCut = activeCut,
        _handOffOnFold = handOffOnFold,
-       _keepStandingShown = keepStandingShown,
-       _standOnTheMadeRow = standOnTheMadeRow;
+       _keepStandingShown = keepStandingShown;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -59,10 +57,6 @@ class FoldersAndAttachments {
   /// The standing law with its reveal — a new attach row is where you went
   /// (`Standing.keepStandingShown`).
   final StandingLaw _keepStandingShown;
-
-  /// Where a door that made a row leaves you: on it, in the panel you made
-  /// it in (`Standing.standOnTheMadeRow`).
-  final void Function() _standOnTheMadeRow;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -153,7 +147,6 @@ class FoldersAndAttachments {
     // ↩️It used to show that one row inside the shut group (the active attach
     // row's exemption, UI-R20 #9) — the exemption that also put a handed-off
     // row on the screen.
-    _standOnTheMadeRow();
     _keepStandingShown(reveal: true);
     _changes.notifyChanged();
   }

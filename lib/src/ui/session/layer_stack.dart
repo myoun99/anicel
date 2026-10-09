@@ -228,7 +228,7 @@ class LayerStack {
     // F-20: the row you just made IS the subject now. Every arm of
     // [addLayerOfKind] seats the controller's active layer directly, so none
     // of them went through [selectLayer].
-    _standing.standOnTheMadeRow();
+    _standing.seatVerbRowOnActiveLayer();
     // F-169 ②: you went there, so what the rail's view hides it with opens
     // (a new SE row in a hidden SE section shows the section).
     _standing.keepStandingShown(reveal: true);
