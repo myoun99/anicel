@@ -3,25 +3,33 @@ part of '../timesheet_document_painter.dart';
 /// What the gutter prints beside the row of [frame] (from 0): the frame's
 /// number — on an even frame, and on the frame that closes a second — and,
 /// on that row, the second it closes. The cut's own count, sheet after
-/// sheet.
+/// sheet, its seconds included.
 ///
 /// 🗣️유저 2026-10-09 (F-252): 「페이지별로 프레임번호 초기화한거
 /// 되돌려줘」 — ↩️each sheet counted its frames from 1 (the paper-faithful
 /// form's choice, 07-07), and the continuous view deleted on 10-08 was the
-/// one place the cut's count showed. And 「24라는 숫자 제대로 오게하고 그
-/// 왼쪽에 초 텍스트 넣어줘. 그리고 위치는 24 바로 옆이아니라 1초마다 진한
-/// 가로선있잖아. 그 가로선 옆에 오도록」 — ↩️the second's index printed in
-/// place of its last frame's number; it stands left of the numbers now, on
-/// the second's bold rule.
-({int? number, int? second}) timesheetGutterMarks(
+/// one place the cut's count showed — and 「초수도 반영해서 7부터
+/// 시작한다던가」: a 24fps cut's second sheet opens its seconds at 7. And
+/// 「24라는 숫자 제대로 오게하고 그 왼쪽에 초 텍스트 넣어줘. 그리고 위치는
+/// 24 바로 옆이아니라 1초마다 진한 가로선있잖아. 그 가로선 옆에 오도록」 —
+/// ↩️the second's index printed in place of its last frame's number; it
+/// stands left of the numbers now, on the second's bold rule.
+///
+/// The index is the ruler's mark ([timelineRulerSecondsLabel]): the rule
+/// under a row is the next frame's head, where the seconds before it have
+/// gone by — the boundary the ruler and the x-sheet write on.
+({int? number, String? second}) timesheetGutterMarks(
   int frame, {
   required int fps,
 }) {
   final printed = frame + 1;
-  final closesASecond = fps > 0 && printed % fps == 0;
+  final second = timelineRulerSecondsLabel(
+    frameIndex: frame + 1,
+    framesPerSecond: fps,
+  );
   return (
-    number: printed.isEven || closesASecond ? printed : null,
-    second: closesASecond ? printed ~/ fps : null,
+    number: printed.isEven || second.isNotEmpty ? printed : null,
+    second: second.isEmpty ? null : second,
   );
 }
 
@@ -249,7 +257,7 @@ class _TimesheetCellsPass {
       if (marks.second case final second?) {
         _painter._text(
           canvas,
-          '$second',
+          second,
           Offset(
             sheet.secondsRight,
             rowTop + TimesheetDocumentLayout.rowHeight,

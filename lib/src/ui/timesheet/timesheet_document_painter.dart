@@ -36,6 +36,8 @@ import '../timeline/timeline_instruction_row_visual.dart'
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
+import '../timeline/timeline_frame_ruler_painter.dart'
+    show timelineRulerSecondsLabel;
 import '../repaint_props.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
