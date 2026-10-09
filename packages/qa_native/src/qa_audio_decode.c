@@ -407,13 +407,18 @@ static int qa_audio_mp3_may_try(qa_audio_cursor* cursor) {
 // late at 48 kHz, more for Apple's encoder. What is taken off is decided
 // here, from the file — a movie's edit list, an MP3's LAME tag — and where
 // the format has no place to say it, from the format's standard delay (an
-// MP3 without the tag: 1,105, LAME's own; a bare ADTS `.aac`: 1,024). A
+// MP3 without the tag: 1,105, LAME's own; AAC's: 1,024, one frame). A
 // decoder that already took some off says how much, and only the rest is
 // taken: dr_mp3 by the LAME tag, AudioToolbox by its packet table.
 //
-// ⛔A movie whose sound track has no edit list is left as it came — the
-// open question Q6: this app's own export (Media Foundation) writes none,
-// and its sound is already in place (measured 2026-10-09).
+// A MOVIE THAT SAYS NOTHING — its sound track has no edit list — takes the
+// standard of its sound's format off too (user 2026-10-09, Q6: 「Q3 그대로 —
+// 말하지 않는 MP4 · MOV 도 1,024 를 걷는다」), unless Media Foundation wrote
+// it (Q7: 「윈도 기록기의 표지가 있으면 걷지 않는다」): its sink writer puts
+// no edit list in and its sound is already in place — this app's own
+// exports, 48 kHz and 44.1 kHz, and the test movie, measured 2026-10-09 —
+// and it marks every movie it writes ([qa_media_foundation_mark]). The mark
+// is the writer's own name for itself, not a guess from the sound.
 
 /// Where a decoded sound starts and how long it runs, in frames of what the
 /// decoder handed back.
@@ -426,12 +431,12 @@ typedef struct {
   int64_t keep;
 } qa_audio_start;
 
-/// The standard delays, for a format whose file has nowhere to say its own.
-/// An MP3's is LAME's: 576 encoder frames and the decoder's 529 — the sum
-/// dr_mp3 reads out of a LAME tag (`+ 528 + 1`). An ADTS stream's is one
-/// AAC frame.
+/// The standard delays, for a file that does not say its own. An MP3's is
+/// LAME's: 576 encoder frames and the decoder's 529 — the sum dr_mp3 reads
+/// out of a LAME tag (`+ 528 + 1`). AAC's is one frame — a bare ADTS
+/// stream's, and a movie's that says nothing.
 #define QA_MP3_STANDARD_LEAD 1105
-#define QA_ADTS_STANDARD_LEAD 1024
+#define QA_AAC_STANDARD_LEAD 1024
 
 static uint64_t qa_big_endian(const uint8_t* bytes, int count) {
   uint64_t value = 0;
@@ -511,75 +516,134 @@ static int64_t qa_ticks_to_frames(int64_t value, uint32_t scale,
   return (int64_t)(((double)value * rate) / scale + 0.5);
 }
 
-/// What a movie's edit list says about its first sound track, at [rate] —
-/// [start]'s lead and keep — or 0 when there is no sound track with one.
-///
-/// The edit that says it is the first that plays media: a leading empty edit
-/// (media time -1) holds the track back on the movie's timeline, which is
-/// where the sound is PLACED, not where it starts — ⚠️not read here.
-static int qa_movie_sound_edit(qa_media_span* span, int64_t size,
-                               int32_t rate, qa_audio_start* start) {
+/// A movie's first sound track — the one that answers, whatever it says:
+/// its `trak` and `mdia` boxes, and the movie header's time scale.
+typedef struct {
+  qa_box trak;
+  qa_box mdia;
+  uint32_t movie_scale;
+} qa_movie_sound;
+
+/// [size] bytes of movie's first sound track, into [sound] — 0 when it has
+/// none.
+static int qa_movie_first_sound(qa_media_span* span, int64_t size,
+                                qa_movie_sound* sound) {
   qa_box moov;
   qa_box mvhd;
   if (!qa_box_find(span, 0, size, "moov", &moov) ||
       !qa_box_find(span, moov.body, moov.end, "mvhd", &mvhd)) {
     return 0;
   }
-  const uint32_t movie_scale = qa_box_time_scale(span, &mvhd);
   qa_box trak;
   for (int64_t at = moov.body; qa_box_at(span, at, moov.end, &trak);
        at = trak.end) {
     qa_box mdia;
     qa_box hdlr;
-    qa_box mdhd;
     uint8_t handler[12];
-    if (memcmp(trak.type, "trak", 4) != 0 ||
-        !qa_box_find(span, trak.body, trak.end, "mdia", &mdia) ||
-        !qa_box_find(span, mdia.body, mdia.end, "hdlr", &hdlr) ||
-        qa_media_span_read(span, hdlr.body, handler, 12) != 12 ||
-        memcmp(handler + 8, "soun", 4) != 0) {
-      continue;
-    }
-    // The first sound track answers, whatever it says.
-    qa_box edts;
-    qa_box elst;
-    if (!qa_box_find(span, mdia.body, mdia.end, "mdhd", &mdhd) ||
-        !qa_box_find(span, trak.body, trak.end, "edts", &edts) ||
-        !qa_box_find(span, edts.body, edts.end, "elst", &elst)) {
-      return 0;
-    }
-    const uint32_t media_scale = qa_box_time_scale(span, &mdhd);
-    uint8_t list[8];
-    if (movie_scale == 0 || media_scale == 0 ||
-        qa_media_span_read(span, elst.body, list, 8) != 8) {
-      return 0;
-    }
-    const int wide = list[0] == 1;
-    const int64_t entry_bytes = wide ? 20 : 12;
-    const uint32_t entries = (uint32_t)qa_big_endian(list + 4, 4);
-    for (uint32_t index = 0; index < entries; index += 1) {
-      const int64_t at_entry = elst.body + 8 + (int64_t)index * entry_bytes;
-      uint8_t entry[20];
-      if (at_entry + entry_bytes > elst.end ||
-          qa_media_span_read(span, at_entry, entry, entry_bytes) !=
-              entry_bytes) {
-        return 0;
-      }
-      const int64_t duration =
-          (int64_t)qa_big_endian(entry, wide ? 8 : 4);
-      const int64_t media_time =
-          wide ? (int64_t)qa_big_endian(entry + 8, 8)
-               : (int64_t)(int32_t)qa_big_endian(entry + 4, 4);
-      if (media_time < 0) {
-        continue;
-      }
-      start->lead = qa_ticks_to_frames(media_time, media_scale, rate);
-      start->keep = duration > 0
-                        ? qa_ticks_to_frames(duration, movie_scale, rate)
-                        : -1;
+    if (memcmp(trak.type, "trak", 4) == 0 &&
+        qa_box_find(span, trak.body, trak.end, "mdia", &mdia) &&
+        qa_box_find(span, mdia.body, mdia.end, "hdlr", &hdlr) &&
+        qa_media_span_read(span, hdlr.body, handler, 12) == 12 &&
+        memcmp(handler + 8, "soun", 4) == 0) {
+      sound->trak = trak;
+      sound->mdia = mdia;
+      sound->movie_scale = qa_box_time_scale(span, &mvhd);
       return 1;
     }
+  }
+  return 0;
+}
+
+/// What [sound]'s edit list says, at [rate] — [start]'s lead and keep — or
+/// 0 when it has none.
+///
+/// The edit that says it is the first that plays media: a leading empty edit
+/// (media time -1) holds the track back on the movie's timeline, which is
+/// where the sound is PLACED, not where it starts — ⚠️not read here.
+static int qa_movie_sound_edit(qa_media_span* span,
+                               const qa_movie_sound* sound, int32_t rate,
+                               qa_audio_start* start) {
+  qa_box mdhd;
+  qa_box edts;
+  qa_box elst;
+  if (!qa_box_find(span, sound->mdia.body, sound->mdia.end, "mdhd", &mdhd) ||
+      !qa_box_find(span, sound->trak.body, sound->trak.end, "edts", &edts) ||
+      !qa_box_find(span, edts.body, edts.end, "elst", &elst)) {
     return 0;
+  }
+  const uint32_t media_scale = qa_box_time_scale(span, &mdhd);
+  uint8_t list[8];
+  if (sound->movie_scale == 0 || media_scale == 0 ||
+      qa_media_span_read(span, elst.body, list, 8) != 8) {
+    return 0;
+  }
+  const int wide = list[0] == 1;
+  const int64_t entry_bytes = wide ? 20 : 12;
+  const uint32_t entries = (uint32_t)qa_big_endian(list + 4, 4);
+  for (uint32_t index = 0; index < entries; index += 1) {
+    const int64_t at_entry = elst.body + 8 + (int64_t)index * entry_bytes;
+    uint8_t entry[20];
+    if (at_entry + entry_bytes > elst.end ||
+        qa_media_span_read(span, at_entry, entry, entry_bytes) !=
+            entry_bytes) {
+      return 0;
+    }
+    const int64_t duration = (int64_t)qa_big_endian(entry, wide ? 8 : 4);
+    const int64_t media_time =
+        wide ? (int64_t)qa_big_endian(entry + 8, 8)
+             : (int64_t)(int32_t)qa_big_endian(entry + 4, 4);
+    if (media_time < 0) {
+      continue;
+    }
+    start->lead = qa_ticks_to_frames(media_time, media_scale, rate);
+    start->keep = duration > 0
+                      ? qa_ticks_to_frames(duration, sound->movie_scale, rate)
+                      : -1;
+    return 1;
+  }
+  return 0;
+}
+
+/// Whether [sound] is MPEG-4 audio — its first sample description `mp4a`:
+/// AAC, in every movie an animator hands this app (an MP3 carried that way
+/// says so only deeper, in its decoder config, and is not looked for).
+static int qa_movie_sound_is_aac(qa_media_span* span,
+                                 const qa_movie_sound* sound) {
+  qa_box minf;
+  qa_box stbl;
+  qa_box stsd;
+  uint8_t head[16];
+  // After the sample description box's version, flags and count: the first
+  // entry's size and its format.
+  return qa_box_find(span, sound->mdia.body, sound->mdia.end, "minf",
+                     &minf) &&
+         qa_box_find(span, minf.body, minf.end, "stbl", &stbl) &&
+         qa_box_find(span, stbl.body, stbl.end, "stsd", &stsd) &&
+         stsd.end - stsd.body >= 16 &&
+         qa_media_span_read(span, stsd.body, head, 16) == 16 &&
+         memcmp(head + 12, "mp4a", 4) == 0;
+}
+
+/// The mark Media Foundation's sink writer leaves on every movie it writes:
+/// a `uuid` box of the file's top level — straight after its `ftyp` on every
+/// one measured — always this user type, the Windows version after it
+/// (`10.0.26200.0` on the measured ones). Measured 2026-10-09 on this app's
+/// exports and on the test movie; ffmpeg's movies carry none.
+static const uint8_t qa_media_foundation_mark[16] = {
+    0x5C, 0xA7, 0x08, 0xFB, 0x32, 0x8E, 0x42, 0x05,
+    0xA8, 0x61, 0x65, 0x0E, 0xCA, 0x0A, 0x95, 0x96};
+
+/// Whether Media Foundation wrote the [size] bytes of movie — by its mark.
+static int qa_movie_written_by_media_foundation(qa_media_span* span,
+                                                int64_t size) {
+  qa_box box;
+  for (int64_t at = 0; qa_box_at(span, at, size, &box); at = box.end) {
+    uint8_t type[16];
+    if (memcmp(box.type, "uuid", 4) == 0 && box.end - box.body >= 16 &&
+        qa_media_span_read(span, box.body, type, 16) == 16 &&
+        memcmp(type, qa_media_foundation_mark, 16) == 0) {
+      return 1;
+    }
   }
   return 0;
 }
@@ -608,10 +672,18 @@ static void qa_audio_os_start(const qa_audio_cursor* cursor, int32_t rate,
                               qa_audio_start* start) {
   uint8_t head[8] = {0};
   qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  qa_movie_sound sound;
   if (qa_audio_head_is_a_movie_box(head)) {
-    qa_movie_sound_edit(cursor->span, cursor->size, rate, start);
+    // A movie that says nothing takes its format's standard, unless Media
+    // Foundation wrote it (the law at the head of this part).
+    if (qa_movie_first_sound(cursor->span, cursor->size, &sound) &&
+        !qa_movie_sound_edit(cursor->span, &sound, rate, start) &&
+        !qa_movie_written_by_media_foundation(cursor->span, cursor->size) &&
+        qa_movie_sound_is_aac(cursor->span, &sound)) {
+      start->lead = QA_AAC_STANDARD_LEAD;
+    }
   } else if (qa_audio_is_adts(cursor)) {
-    start->lead = QA_ADTS_STANDARD_LEAD;
+    start->lead = QA_AAC_STANDARD_LEAD;
   }
 }
 

@@ -298,11 +298,79 @@ void main() {
     }
   }, skip: skip);
 
+  test('🎯a movie that says nothing takes AAC\'s standard 1,024 off — the m4a '
+      'without its edit list starts on the same frame as with it (user '
+      '10-09, Q6: 「말하지 않는 MP4 · MOV 도 1,024 를 걷는다」)', () {
+    final said = decodeAudioFile(fixturePath);
+    final silent = decodeAudioBytes(
+      _renamed(fixtureBytes(), ['moov', 'trak', 'edts'], 'free'),
+    );
+    if (Platform.isLinux) {
+      expect((said, silent), (null, null));
+      return;
+    }
+    expect(said, isNotNull);
+    expect(silent, isNotNull, reason: 'a skipped box is no reason to refuse');
+    for (var index = 0; index < said!.length * said.channels; index += 1) {
+      if (silent!.samples[index] != said.samples[index]) {
+        fail('sample $index is ${silent.samples[index]} without the edit '
+            'list, ${said.samples[index]} with it');
+      }
+    }
+  }, skip: skip);
+
+  test('🎯unless Media Foundation wrote it: the mark its writer leaves keeps '
+      'the standard off — the same movie without the mark starts one AAC '
+      'frame later (user 10-09, Q7: 「윈도 기록기의 표지가 있으면 걷지 '
+      '않는다」)', () {
+    final bytes = File('test/fixtures/tone_with_video.mp4').readAsBytesSync();
+    final marked = decodeAudioBytes(bytes);
+    final unmarked = decodeAudioBytes(_renamed(bytes, ['uuid'], 'free'));
+    if (Platform.isLinux) {
+      expect((marked, unmarked), (null, null));
+      return;
+    }
+    expect(marked, isNotNull);
+    expect(unmarked, isNotNull);
+    expect(unmarked!.length, marked!.length - 1024);
+    final channels = marked.channels;
+    for (var index = 0; index < unmarked.length * channels; index += 1) {
+      if (unmarked.samples[index] != marked.samples[index + 1024 * channels]) {
+        fail('sample $index without the mark is not the marked one\'s '
+            '${index + 1024 * channels}');
+      }
+    }
+  }, skip: skip);
+
+  test('⛔CONTROL: a movie of uncompressed sound that says nothing loses '
+      'nothing — its format has no delay to take', () {
+    final samples = _roomToneThenTone();
+    final decoded = decodeAudioBytes(pcmMovie(samples));
+    if (Platform.isLinux) {
+      expect(decoded, isNull);
+      return;
+    }
+    if (decoded == null && !Platform.isWindows) {
+      markTestSkipped('this OS stack does not read a movie\'s PCM');
+      return;
+    }
+    expect(decoded!.length, samples.length ~/ 2);
+    for (var index = 0; index < samples.length; index += 1) {
+      final got = (decoded.samples[index] * 32768).round();
+      if (got != samples[index]) {
+        fail('sample $index is $got, written ${samples[index]}');
+      }
+    }
+  }, skip: skip);
+
   test('a movie this app exported comes back with its sound where it was '
-      'written — it carries no edit list, and none is needed', () {
+      'written — whichever OS wrote it', () {
     // Media Foundation's encoder writes no edit list, and its sound is
-    // already in place (measured 10-09): the open question Q6 is whether a
-    // file that says nothing gets the standard delay anyway.
+    // already in place (measured 10-09) — its mark keeps the standard delay
+    // off (Q7). Wherever else this runs (the Mac's AVAssetWriter in CI), the
+    // export must say where its sound starts some way the decode reads, or
+    // the standard comes off a sound that had none: this is the pin that
+    // asks.
     final encoder = QaVideoEncoder.instance;
     if (encoder == null || !encoder.isSupported) {
       expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
@@ -831,6 +899,35 @@ Int16List _roomToneThenTone() {
     }
   }
   return samples;
+}
+
+/// [bytes] with the box at [path] — each the first box of that type inside
+/// the one before it, from the file's top level — renamed [to], its size
+/// kept: a `free` box, which every reader skips, takes what it said away
+/// and moves no other byte.
+Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
+  final data = ByteData.sublistView(bytes);
+  var start = 0;
+  var end = bytes.length;
+  var at = -1;
+  for (final type in path) {
+    at = -1;
+    for (var box = start; box + 8 <= end;) {
+      if (String.fromCharCodes(bytes, box + 4, box + 8) == type) {
+        at = box;
+        break;
+      }
+      final size = data.getUint32(box);
+      if (size < 8) {
+        break;
+      }
+      box += size;
+    }
+    expect(at, isNot(-1), reason: 'no $type on the way to ${path.join('/')}');
+    start = at + 8;
+    end = at + data.getUint32(at);
+  }
+  return Uint8List.fromList(bytes)..setRange(at + 4, at + 8, to.codeUnits);
 }
 
 /// The lag, within [range] frames either way, at which [decoded]'s first
