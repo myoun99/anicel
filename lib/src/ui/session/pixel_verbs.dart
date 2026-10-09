@@ -109,6 +109,32 @@ class PixelVerbs {
       if (_holdsADrawing(key)) key,
   ];
 
+  /// The cels a TRANSFORM's confirm lands on: [pixelVerbCellKeys]'s, with a
+  /// FOLDER row standing for every drawing row inside it.
+  ///
+  /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 · I-37-Q1
+  /// (10-09): 「변형만」 — the transform reaches into a folder; every other
+  /// pixel verb still refuses one.
+  List<BrushFrameKey> transformCellKeys() => [
+    for (final key in _cellsTheLadderNames(intoFolders: true))
+      if (_holdsADrawing(key)) key,
+  ];
+
+  /// What a transform lifts where you stand on a FOLDER (I-37): the cel of
+  /// each drawing row inside it, at the playhead, in stack order — each with
+  /// a drawing in it. Null when the row you stand on is not a folder.
+  List<BrushFrameKey>? folderCelsUnderfoot() {
+    final cut = _project.activeCutOrNull;
+    final standing = cut == null ? null : _standingLayer();
+    if (cut == null || standing == null || !standing.kind.groupsLayers) {
+      return null;
+    }
+    return [
+      for (final key in _rowCels(cut, standing, null, intoFolders: true))
+        if (_holdsADrawing(key)) key,
+    ];
+  }
+
   /// 🚨A PIXEL VERB NEEDS A DRAWING TO ACT ON. 유저 2026-08-27: 「색변환은
   /// 레이어에 그림이 존재 해야 활성화시키는게 맞고. 픽셀삭제는 그림이
   /// 있어야 활성화시키는게 맞고」.
@@ -139,15 +165,20 @@ class PixelVerbs {
   /// resolves links, and mine could only compare (layer, frame) ids. Two
   /// mechanisms for one invariant is the shape the F-20 bug came in; the one
   /// that owns the surfaces owns this.
-  List<BrushFrameKey> _cellsTheLadderNames() {
+  ///
+  /// [intoFolders] lets a folder row name the cels of the drawing rows
+  /// inside it — the transform's ladder ([transformCellKeys]).
+  List<BrushFrameKey> _cellsTheLadderNames({bool intoFolders = false}) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
     final range = _selection.frameRangeSelection.value;
     if (range == null) {
-      final standing = _standingCel(cut);
-      return standing == null ? const [] : [standing];
+      final standing = _standingLayer();
+      return standing == null
+          ? const []
+          : _rowCels(cut, standing, null, intoFolders: intoFolders);
     }
     final byId = {for (final layer in _project.layers) layer.id: layer};
     final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
@@ -155,25 +186,48 @@ class PixelVerbs {
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
           for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ?_celOf(cut, layer, i),
+            ..._rowCels(cut, layer, i, intoFolders: intoFolders),
     ];
   }
 
-  /// The cel you are standing on: the ACTIVE layer's, at the playhead.
+  /// The row you are standing on: the ACTIVE layer.
   ///
   /// The playhead rung reads the ACTIVE layer, which F-20 (#1216) made the
   /// one answer — a stored verb row naming a different layer is stale.
-  BrushFrameKey? _standingCel(Cut cut) {
+  Layer? _standingLayer() {
     final activeId = _selection.activeLayerId;
     if (activeId == null) {
       return null;
     }
     for (final layer in _project.layers) {
       if (layer.id == activeId) {
-        return _celOf(cut, layer, null);
+        return layer;
       }
     }
     return null;
+  }
+
+  /// The cel you are standing on: the ACTIVE layer's, at the playhead.
+  BrushFrameKey? _standingCel(Cut cut) => switch (_standingLayer()) {
+    null => null,
+    final layer => _celOf(cut, layer, null),
+  };
+
+  /// [layer]'s cel at [frameIndex] (the playhead when null) — or, a FOLDER
+  /// reached [intoFolders], the cel of each row inside it there.
+  List<BrushFrameKey> _rowCels(
+    Cut cut,
+    Layer layer,
+    int? frameIndex, {
+    required bool intoFolders,
+  }) {
+    if (intoFolders && layer.kind.groupsLayers) {
+      return [
+        for (final member in cut.layers.subtreeMembersOf(layer.id))
+          ?_celOf(cut, member, frameIndex),
+      ];
+    }
+    return [?_celOf(cut, layer, frameIndex)];
   }
 
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb

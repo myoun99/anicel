@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -423,6 +424,109 @@ void main() {
   /// artwork, so the press carries it through the placement the stack PAINTS
   /// the row with (`layerPlacementAt`). It used to read the raw track value,
   /// which missed the fx switch and every folder above the row.
+  /// I-37 — 유저 2026-10-02: 「폴더 전체를 하나로 들도록」, and I-37-Q1
+  /// (10-09): 「변형만」. A transform stood on a folder takes up every
+  /// drawing row inside it; every other pixel verb still refuses a folder.
+  group('a TRANSFORM reaches into a folder, and only it', () {
+    const folder = LayerId('lifted-folder');
+
+    /// The drawing row and a twin of it, both moved into [folder], every
+    /// cel inked, standing on the folder at frame 0.
+    Future<({Layer a, Layer b})> rowsInAFolder(
+      WidgetTester tester,
+      EditorSessionManager session, {
+      bool bShows = true,
+    }) async {
+      final a = await drawableRow(tester, session);
+      final b = _twinOf(a, 'twin');
+      final cut = session.requireActiveCut;
+      final at = cut.layers.indexWhere((layer) => layer.id == a.id);
+      session.repository.replaceLayer(layer: a.copyWith(folderId: folder));
+      session.repository.insertLayer(
+        cutId: cut.id,
+        layer: b.copyWith(folderId: folder, isVisible: bShows),
+        index: at + 1,
+      );
+      session.repository.insertLayer(
+        cutId: cut.id,
+        layer: createFolderLayer(id: folder, name: 'F'),
+        index: at + 2,
+      );
+      session.refreshAfterCutCommand();
+      inkEveryCel(session);
+      session.selectLayer(folder);
+      session.selectFrameIndex(0);
+      await tester.pump();
+      return (a: a, b: b);
+    }
+
+    List<String> cels(List<BrushFrameKey>? keys) => [
+      for (final key in keys ?? const <BrushFrameKey>[]) key.frameId.value,
+    ];
+
+    testWidgets('standing on a folder, a transform takes up the cel of every '
+        'drawing row inside it — and no other pixel verb reaches in', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final (:a, :b) = await rowsInAFolder(tester, session);
+      final verbs = pixelVerbsOf(session);
+
+      expect(cels(verbs.folderCelsUnderfoot()), [
+        '${a.id.value}-cel-0',
+        'twin-cel-0',
+      ]);
+      expect(cels(verbs.transformCellKeys()), [
+        '${a.id.value}-cel-0',
+        'twin-cel-0',
+      ]);
+      expect(
+        verbs.pixelVerbCellKeys(),
+        isEmpty,
+        reason: 'I-37-Q1 「변형만」: 색 변환 · 픽셀 비우기 stay out of a folder',
+      );
+    });
+
+    testWidgets('a HIDDEN row inside the folder is not taken up', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowsInAFolder(tester, session, bShows: false);
+
+      expect(cels(pixelVerbsOf(session).folderCelsUnderfoot()), [
+        '${a.id.value}-cel-0',
+      ]);
+    });
+
+    testWidgets('a RANGE over the folder carries every row inside it across '
+        'the range', (tester) async {
+      final session = await pump(tester);
+      await rowsInAFolder(tester, session);
+      session.frameRangeSelection.value = const TimelineFrameRangeSelection(
+        layerId: folder,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pump();
+
+      expect(pixelVerbsOf(session).transformCellKeys(), hasLength(6));
+      expect(pixelVerbsOf(session).pixelVerbCellKeys(), isEmpty);
+    });
+
+    testWidgets('standing on a drawing row nothing is underfoot, and the '
+        'transform\'s ladder is the pixel verbs\'', (tester) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowsInAFolder(tester, session);
+      session.selectLayer(a.id);
+      await tester.pump();
+      final verbs = pixelVerbsOf(session);
+
+      expect(verbs.folderCelsUnderfoot(), isNull);
+      expect(cels(verbs.transformCellKeys()), cels(verbs.pixelVerbCellKeys()));
+      expect(verbs.transformCellKeys(), hasLength(1));
+    });
+  });
+
   group('the marquee reaches a row where the row shows', () {
     CanvasSelectionRegion box(double left, double right) =>
         CanvasSelectionRegion.shape(
@@ -510,6 +614,19 @@ void main() {
     });
   });
 }
+
+/// [row]'s twin — the same kind, its own id and its own three cels.
+Layer _twinOf(Layer row, String id) => row.copyWith(
+  id: LayerId(id),
+  frames: [
+    for (var i = 0; i < 3; i++)
+      Frame(id: FrameId('$id-cel-$i'), duration: 1, strokes: const []),
+  ],
+  timeline: {
+    for (var i = 0; i < 3; i++)
+      i: TimelineExposure.drawing(FrameId('$id-cel-$i'), length: 1),
+  },
+);
 
 /// The collaborator that owns the laws above, under its OWN name.
 ///
