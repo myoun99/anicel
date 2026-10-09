@@ -117,6 +117,11 @@ class _LayerFrameImageEntry {
   ui.Image get image => positioned.image;
 }
 
+/// How many steps on a cached slot's image is next shown — null where no
+/// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
+typedef LayerImageWantedAt =
+    int? Function((BrushFrameKey, PlaybackQuality) slot);
+
 /// Level-1 playback cache: one GPU [ui.Image] per (layer frame, quality),
 /// built from the brush store's display-cache surface (the first production
 /// consumer of [BrushFrameDisplayCacheService]).
@@ -126,11 +131,6 @@ class _LayerFrameImageEntry {
 /// drawing state, so brush edits and undo/redo invalidate without any event
 /// plumbing. [invalidateFrame] additionally drops entries eagerly on sink
 /// events to free memory sooner.
-/// How many steps on a cached slot's image is next shown — null where no
-/// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
-typedef LayerImageWantedAt =
-    int? Function((BrushFrameKey, PlaybackQuality) slot);
-
 class LayerFrameImageCache {
   LayerFrameImageCache({required this.frameStore});
 
@@ -529,78 +529,6 @@ class LayerFrameImageCache {
     return banked;
   }
 
-  /// [preview] composed inside the call at [quality] — the cel over its
-  /// content extent, halved [PlaybackQuality.level] times, and, when
-  /// [storesInk], its ink cut out of that, or at the full level composed
-  /// alone ([_inkAtFull]) — beside the plain snapshot of the picture that is
-  /// KEPT: the last of those steps. Null only on the free road
-  /// ([makePictures] false and a tile without its picture).
-  ({
-    ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
-    Future<ui.Image> kept,
-  })?
-  _composedNow(
-    BitmapSurface preview,
-    PlaybackQuality quality, {
-    required bool makePictures,
-    required bool storesInk,
-  }) {
-    final plan = _levelPlan(preview, quality, storesInk: storesInk);
-    final (:whole, :texels) = plan;
-    final inkAtFull = _inkAtFull(plan, quality.level);
-    final composed = composePositionedSurfaceImageSync(
-      preview,
-      reuse: BitmapTileImageCache.instance,
-      makePictures: makePictures,
-      // At the full level the compose is the last step.
-      snapshot: quality.level == 0,
-      over: inkAtFull,
-    );
-    if (composed == null) {
-      return null;
-    }
-    if (inkAtFull != null) {
-      return (
-        now: (
-          image: composed.deferred.image,
-          worldRect: inkAtFull,
-          extent: whole,
-        ),
-        kept: composed.real!,
-      );
-    }
-    var image = composed.deferred.image;
-    var kept = composed.real;
-    for (var i = 0; i < quality.level; i += 1) {
-      final halved = _halvedNow(
-        image,
-        snapshot: texels == null && i == quality.level - 1,
-      );
-      // The halving keeps what it drew; only the handle is ours to drop.
-      image.dispose();
-      image = halved.deferred;
-      kept = halved.real;
-    }
-    assert(_isLevelOf(image, whole, quality.level));
-    if (texels == null) {
-      return (
-        now: (image: image, worldRect: whole, extent: whole),
-        kept: kept!,
-      );
-    }
-    final ink = _cutOutNow(image, texels);
-    // The cut keeps what it drew; only the handle is ours to drop.
-    image.dispose();
-    return (
-      now: (
-        image: ink.deferred,
-        worldRect: _worldRectOfTexels(whole, texels, quality.level),
-        extent: whole,
-      ),
-      kept: ink.real!,
-    );
-  }
-
   /// The entry at [at] holds a deferred image; [real] is the plain snapshot
   /// of the same picture. When it lands it takes the entry's place — same
   /// pixels, same validity — and the deferred image is retired, letting go
@@ -748,8 +676,81 @@ class LayerFrameImageCache {
 
 // --- The steps a stored image is made of ------------------------------
 //
-// Plain functions of their inputs: halving a level, finding and cutting out
-// the ink. Each has a synchronous twin for the sync road.
+// Plain functions of their inputs: the sync road's whole chain, halving a
+// level, finding and cutting out the ink. Each step has a synchronous twin
+// for the sync road.
+
+/// [preview] composed inside the call at [quality] — the cel over its
+/// content extent, halved [PlaybackQuality.level] times, and, when
+/// [storesInk], its ink cut out of that, or at the full level composed
+/// alone ([_inkAtFull]) — beside the plain snapshot of the picture that is
+/// KEPT: the last of those steps. Null only on the free road
+/// ([makePictures] false and a tile without its picture).
+({
+  ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
+  Future<ui.Image> kept,
+})?
+_composedNow(
+  BitmapSurface preview,
+  PlaybackQuality quality, {
+  required bool makePictures,
+  required bool storesInk,
+}) {
+  final plan = _levelPlan(preview, quality, storesInk: storesInk);
+  final (:whole, :texels) = plan;
+  final inkAtFull = _inkAtFull(plan, quality.level);
+  final composed = composePositionedSurfaceImageSync(
+    preview,
+    reuse: BitmapTileImageCache.instance,
+    makePictures: makePictures,
+    // At the full level the compose is the last step.
+    snapshot: quality.level == 0,
+    over: inkAtFull,
+  );
+  if (composed == null) {
+    return null;
+  }
+  if (inkAtFull != null) {
+    return (
+      now: (
+        image: composed.deferred.image,
+        worldRect: inkAtFull,
+        extent: whole,
+      ),
+      kept: composed.real!,
+    );
+  }
+  var image = composed.deferred.image;
+  var kept = composed.real;
+  for (var i = 0; i < quality.level; i += 1) {
+    final halved = _halvedNow(
+      image,
+      snapshot: texels == null && i == quality.level - 1,
+    );
+    // The halving keeps what it drew; only the handle is ours to drop.
+    image.dispose();
+    image = halved.deferred;
+    kept = halved.real;
+  }
+  assert(_isLevelOf(image, whole, quality.level));
+  if (texels == null) {
+    return (
+      now: (image: image, worldRect: whole, extent: whole),
+      kept: kept!,
+    );
+  }
+  final ink = _cutOutNow(image, texels);
+  // The cut keeps what it drew; only the handle is ours to drop.
+  image.dispose();
+  return (
+    now: (
+      image: ink.deferred,
+      worldRect: _worldRectOfTexels(whole, texels, quality.level),
+      extent: whole,
+    ),
+    kept: ink.real!,
+  );
+}
 
 /// The tile object at every coordinate [surface] holds — what an image
 /// composed from it was made from ([LayerFrameImage.madeFrom]).
