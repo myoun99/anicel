@@ -194,12 +194,21 @@ class Standing {
   /// never reaches here. ↩️F-187: its doors do move it now, through
   /// [_seatLayer], which seats the timeline's row in the same step — so this
   /// finds the row already there.
+  ///
+  /// 🚨THE SOLO FOLLOWS IT HERE TOO (R4 #7: switching the active layer
+  /// re-solos), for the row's own reason. F-327 (유저 2026-10-09): 「솔로
+  /// 레이어 on인상태로 레이어만들면 새 레이어에 서는데, 이전 레이어의 그림이
+  /// on인채로 있음 … 거기서 레이어 다른곳에서면 정상적으로 돌아옴」 — it
+  /// followed from [_seatLayer] alone, and Add Layer seats its new row
+  /// straight on the controller. Only when the layer MOVED: re-applying it
+  /// on every announcement would fight an eye clicked by hand.
   void followActiveLayer() {
     final active = _selection.activeLayerId;
     if (active == _activeSeen) {
       return;
     }
     _activeSeen = active;
+    _solo.syncVisibilitySolo();
     final row = _timelineRow;
     if (active == null || row == null || row.owningLayerId == active) {
       return;
@@ -1084,10 +1093,9 @@ class Standing {
     // selection feel like it lagged behind the pointer.
     if (_selection.activeLayerId != layerId) {
       _controllers.layerController.selectLayer(layerId);
-      // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
-      // when the layer did not move, and re-applying it is what would have
-      // fought a manual visibility toggle on every click.
-      _solo.syncVisibilitySolo();
+      // ↩️The solo followed the active layer from here, and from no other
+      // door (F-327). It follows at the announcement below now, which every
+      // door passes ([followActiveLayer]).
       changed = true;
     }
     // R10 #13: the TIMELINE's row moves with the layer. It does NOT touch the
