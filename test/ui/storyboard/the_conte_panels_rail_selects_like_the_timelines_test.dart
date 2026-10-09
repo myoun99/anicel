@@ -50,7 +50,7 @@ Layer _drawn(
   frames: const [],
 );
 
-Cut _cut(String id) => Cut(
+Cut _cut(String id, {required bool conte}) => Cut(
   id: CutId(id),
   name: id,
   duration: 12,
@@ -58,13 +58,15 @@ Cut _cut(String id) => Cut(
   camera: CutCamera.empty(),
   layers: [
     _drawn('$id-cel', name: 'Cel', kind: LayerKind.animation),
-    _drawn('$id-conte', name: 'Conte'),
-    _drawn('$id-over', name: 'Over', ridesOn: '$id-conte'),
+    if (conte) ...[
+      _drawn('$id-conte', name: 'Conte'),
+      _drawn('$id-over', name: 'Over', ridesOn: '$id-conte'),
+    ],
     _drawn('$id-cam', name: 'Camera', kind: LayerKind.camera),
   ],
 );
 
-Project _project() => Project(
+Project _project({required bool conte}) => Project(
   id: const ProjectId('rail-select'),
   name: 'Rail select',
   createdAt: DateTime.utc(2026, 10, 10),
@@ -72,7 +74,7 @@ Project _project() => Project(
     Track(
       id: _trackId,
       name: 'V1',
-      cuts: [_cut('a'), _cut('b')],
+      cuts: [_cut('a', conte: conte), _cut('b', conte: conte)],
       seLayers: [
         _drawn('s1', name: 'S1', kind: LayerKind.se),
         _drawn('s2', name: 'S2', kind: LayerKind.se),
@@ -87,11 +89,11 @@ final _overRow = LayerRowAddress(trackConteRowId(_trackId, seat: 1));
 EditorSessionManager _sessionOf(WidgetTester tester) =>
     tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(WidgetTester tester, {bool conte = true}) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1300));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(home: HomePage(initialProject: _project(conte: conte))),
   );
   await tester.pumpAndSettle();
   await tester.tap(
@@ -164,6 +166,22 @@ void main() {
     await _dragNames(tester, 'Conte', 'Over');
 
     expect(_sessionOf(tester).rowSelection.value, [_overRow, _conteRow]);
+  });
+
+  testWidgets('…and on the conte row before any cut has a conte — it is a '
+      'row of the rail, and the selection starts there too', (tester) async {
+    await _pump(tester, conte: false);
+
+    // It wears the name a conte is born with (F-322).
+    await _dragNames(tester, 'Conte', 'Video');
+
+    expect(
+      _sessionOf(tester).rowSelection.value,
+      containsAll(<TimelineRowAddress>[
+        const TrackRowAddress(_trackId),
+        _conteRow,
+      ]),
+    );
   });
 
   testWidgets('…and so does one on the V row — with one track there is no '
