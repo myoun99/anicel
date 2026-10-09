@@ -152,11 +152,11 @@ List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
 );
 
 /// One cut's conte group as a re-ordering of it leaves it: the stack's new
-/// [order], and the one rider whose side of the conte flipped.
+/// [order], and the riders whose side of the conte flipped.
 typedef ConteGroupReorder = ({
   CutId cutId,
   List<LayerId> order,
-  ({LayerId layerId, AttachedPlacement placement})? sideChange,
+  List<({LayerId layerId, AttachedPlacement placement})> sideChanges,
 });
 
 /// A placement in [cutId] that RE-ORDERS its conte group's rows, as every
@@ -189,14 +189,16 @@ List<ConteGroupReorder> conteGroupReorders(
     return const [];
   }
   final byId = {for (final layer in cut.layers) layer.id: layer};
-  final side = attach.sideChange;
+  final turned = {
+    for (final change in attach.sideChanges) change.layerId: change.placement,
+  };
   final after = conteGroupOf(
     cut.copyWith(
       layers: [
         for (final id in order)
           if (byId[id] case final layer?)
-            if (side != null && side.layerId == id)
-              layer.copyWith(attachedPlacement: side.placement)
+            if (turned[id] case final placement?)
+              layer.copyWith(attachedPlacement: placement)
             else
               layer,
       ],
@@ -239,16 +241,12 @@ ConteGroupReorder? _reorderedLike(
     for (final entry in group)
       if (entry.seat.sign * moved[entry.seat]!.sign < 0) entry,
   ];
-  if (flipped.length > 1) {
-    return null;
-  }
   // The group's rows in their new stack order: lowest seat first.
   final regrouped = [...group]
     ..sort((a, b) => moved[a.seat]!.compareTo(moved[b.seat]!));
   final base = group.firstWhere((entry) => entry.seat == 0).row;
   final start = attachedGroupStartIndex(base.id, cut.layers);
   final end = attachedGroupEndIndex(base.id, cut.layers);
-  final turned = flipped.firstOrNull;
   return (
     cutId: cut.id,
     order: [
@@ -256,14 +254,15 @@ ConteGroupReorder? _reorderedLike(
       for (final entry in regrouped) entry.row.id,
       for (final layer in cut.layers.sublist(end)) layer.id,
     ],
-    sideChange: turned == null
-        ? null
-        : (
-            layerId: turned.row.id,
-            placement: moved[turned.seat]! > 0
-                ? AttachedPlacement.above
-                : AttachedPlacement.below,
-          ),
+    sideChanges: [
+      for (final entry in flipped)
+        (
+          layerId: entry.row.id,
+          placement: moved[entry.seat]! > 0
+              ? AttachedPlacement.above
+              : AttachedPlacement.below,
+        ),
+    ],
   );
 }
 

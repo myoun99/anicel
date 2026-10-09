@@ -264,7 +264,7 @@ LayerAttachment attachmentForMount({
 class LayerAttachDrop {
   const LayerAttachDrop({
     this.mounts = const [],
-    this.sideChange,
+    this.sideChanges = const [],
     this.detachIds = const {},
   });
 
@@ -280,16 +280,22 @@ class LayerAttachDrop {
   final List<({LayerId layerId, LayerId baseId, AttachedPlacement placement})>
   mounts;
 
-  /// A row that KEEPS its base but crossed its picture — above became below.
-  /// Only the side changes: the timing contract, the links and the cels are
-  /// untouched, which is what makes re-ordering inside a group an ordinary
-  /// move that happens to have a direction.
-  final ({LayerId layerId, AttachedPlacement placement})? sideChange;
+  /// The rows that KEEP their base but crossed its picture — above became
+  /// below. Only the side changes: the timing contract, the links and the
+  /// cels are untouched, which is what makes re-ordering inside a group an
+  /// ordinary move that happens to have a direction.
+  ///
+  /// A LIST since F-322 (유저 2026-10-09: 「선택범위 드래그로 어태치 조정」):
+  /// a selection carried across the base turns every rider in it. It named
+  /// the row the pointer held alone, and the others rode the side they had
+  /// left — measured 2026-10-10: two riders carried under the conte, the
+  /// second still `above`, in the timeline and the conte panel alike.
+  final List<({LayerId layerId, AttachedPlacement placement})> sideChanges;
 
   /// The attach rows this drop turns back into ordinary rows — the row the
   /// pointer held, and any attach row carried along inside a folder.
   final Set<LayerId> detachIds;
 
   bool get isEmpty =>
-      mounts.isEmpty && sideChange == null && detachIds.isEmpty;
+      mounts.isEmpty && sideChanges.isEmpty && detachIds.isEmpty;
 }

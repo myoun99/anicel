@@ -1067,10 +1067,10 @@ class CutCommandCoordinator {
           order: mirror.order,
           description: description,
         ),
-        if (mirror.sideChange case final side?)
+        if (mirror.sideChanges.isNotEmpty)
           ...layerAttachmentCommands(
             cutId: mirror.cutId,
-            attach: LayerAttachDrop(sideChange: side),
+            attach: LayerAttachDrop(sideChanges: mirror.sideChanges),
             description: description,
           ),
       ],

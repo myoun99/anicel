@@ -157,10 +157,9 @@ void main() {
         ['a-cel', 'a-under', 'a-over1', 'a-conte', 'a-over2'],
         moved: 'a-over1',
         attach: const LayerAttachDrop(
-          sideChange: (
-            layerId: LayerId('a-over1'),
-            placement: AttachedPlacement.below,
-          ),
+          sideChanges: [
+            (layerId: LayerId('a-over1'), placement: AttachedPlacement.below),
+          ],
         ),
       );
 
@@ -180,10 +179,9 @@ void main() {
       ['a-cel', 'a-under', 'a-over1', 'a-conte', 'a-over2'],
       moved: 'a-over1',
       attach: const LayerAttachDrop(
-        sideChange: (
-          layerId: LayerId('a-over1'),
-          placement: AttachedPlacement.below,
-        ),
+        sideChanges: [
+          (layerId: LayerId('a-over1'), placement: AttachedPlacement.below),
+        ],
       ),
     );
 
