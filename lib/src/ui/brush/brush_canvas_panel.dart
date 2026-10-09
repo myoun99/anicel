@@ -896,13 +896,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 프레임」, which only that canvas has.
   final LastStrokeSlot? lastStroke;
 
-  /// A finished cut outline, for a host whose content is not a cel
-  /// ([contentOverride]): the host lifts the piece from what it SHOWS. Null
-  /// = the cut reads the active cel into [cutPieceSlot].
+  /// A finished cut outline — with every copy a symmetry guide made of it,
+  /// as one region ([CanvasSelectionLayer.onCutOutline]) — for a host whose
+  /// content is not a cel ([contentOverride]): the host lifts the piece from
+  /// what it SHOWS. Null = the cut reads the active cel into [cutPieceSlot].
   ///
   /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
   /// the media viewer answers it, at the page's own size.
-  final ValueChanged<CanvasSelectionShape>? onCutContent;
+  final ValueChanged<CanvasSelectionRegion>? onCutContent;
 
   /// What one finger does in THIS panel when the host answers the slot
   /// itself ([CanvasViewportGestureLayer.oneFingerAction]) — and the
@@ -1863,13 +1864,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _selectionSeat.recordSelectionChange,
               // I-14: a host whose content is not a cel cuts from what it
               // shows.
-              onCutShape:
+              onCutOutline:
                   widget.onCutContent ??
-                  _cutPieceFromShape,
+                  _cutPieceFrom,
               oneFingerAction:
                   widget.oneFingerAction,
-              onFillShape:
-                  _fillDrawnShape,
+              onFillOutline:
+                  _fillDrawnOutline,
               onDrawShape:
                   _drawTracedShape,
               onDrawShapeDragged:
@@ -2377,7 +2378,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// A finished cut outline: lift the pixels under it into the slot.
+  /// A finished cut outline — with every copy a symmetry guide made of it,
+  /// as one region — lifted into the slot as ONE piece, every side in it
+  /// (유저 답 the-cut-preview-shows-copies-it-does-not-cut-Q1).
   ///
   /// Reads the ACTIVE LAYER's committed surface and nothing else — no
   /// composite, no layer transform, no effects (유저 확정: "트랜스폼이나 이런
@@ -2386,7 +2389,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// space, so a posed layer cannot make them disagree.
   ///
   /// The surface is never written here. Cutting copies.
-  void _cutPieceFromShape(CanvasSelectionShape shape) {
+  void _cutPieceFrom(CanvasSelectionRegion outline) {
     final slot = widget.cutPieceSlot;
     // ★THE CEL QUESTION, NOT THE ROW'S (H19): a cut COPIES — it reads the
     // cel and writes nothing — so a lane, which refuses the STROKE, does
@@ -2397,9 +2400,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The outline is drawn on the canvas; the pixels are the row's own
     // (a-marquee-on-a-posed-row) — and the PIECE stays those pure pixels in
     // the row's own coordinates, as confirmed above.
-    final onTheRow = _selectionSeat.regionOnTheRow(
-      CanvasSelectionRegion.shape(shape),
-    );
+    final onTheRow = _selectionSeat.regionOnTheRow(outline);
     if (slot == null) {
       return;
     }
@@ -2574,27 +2575,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ),
       };
 
-  /// Paint a finished shape-fill outline — [copies], the outline and every
-  /// copy the symmetry guide made of it, the original first, filled as ONE
-  /// area, as a selection takes them (유저 답 I-69-Q6).
+  /// Paint a finished shape-fill outline — with every copy the symmetry
+  /// guide made of it, as one region — filled as ONE area, as a selection
+  /// takes them (유저 답 I-69-Q6).
   ///
   /// Straight through the stroke funnel like the bucket's own pieces, so
   /// the live selection clips it, undo covers it and serialization is free
   /// — the fill has landed this way since P6 and the shape fill is the same
   /// stamp from a different source.
-  void _fillDrawnShape(List<CanvasSelectionShape> copies) {
+  void _fillDrawnOutline(CanvasSelectionRegion outline) {
     final build = widget.shapeFillDabsFor;
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
-    final onTheRow = <CanvasSelectionRegion>[];
-    for (final shape in copies) {
-      final there = _selectionSeat.shapeOnTheRow(shape);
-      if (there == null) {
-        return;
-      }
-      onTheRow.add(CanvasSelectionRegion.shape(there));
-    }
-    final area = CanvasSelectionRegion.unionOf(onTheRow);
+    final area = _selectionSeat.regionOnTheRow(outline);
     if (build == null || area == null) {
       return;
     }

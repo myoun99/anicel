@@ -88,8 +88,8 @@ class CanvasSelectionLayer extends StatefulWidget {
     required this.canvasSize,
     required this.frameToken,
     this.onShapeCommitted,
-    this.onCutShape,
-    this.onFillShape,
+    this.onCutOutline,
+    this.onFillOutline,
     this.onDrawShape,
     this.onDrawShapeDragged,
     this.shapeKeepsRatio = false,
@@ -162,28 +162,34 @@ class CanvasSelectionLayer extends StatefulWidget {
   )?
   onShapeCommitted;
 
-  /// A finished CUT outline. Raised instead of [onShapeCommitted] while a
-  /// cut variant is armed — the host lifts the pixels under it into the cut
-  /// slot, and the committed selection is not touched at all.
+  /// A finished CUT outline, with every copy the symmetry guide makes of
+  /// it, as ONE region ([_outlineWithCopies] — the copies the drag's
+  /// preview showed). Raised instead of [onShapeCommitted] while a cut
+  /// variant is armed — the host lifts the pixels under it into the cut
+  /// slot, ONE piece holding every side, and the committed selection is not
+  /// touched at all.
+  ///
+  /// 🗣️the-cut-preview-shows-copies-it-does-not-cut-Q1 (유저 10-09: 「잘라내기도
+  /// 대칭을 따른다」) — ↩️it lifted the original alone while the drag showed
+  /// the copies too.
   ///
   /// Deliberately not routed through [onShapeCommitted] with a flag: a cut
   /// is not a selection change, so it must not reach the selection history
   /// either. Ctrl+Z after a cut should undo whatever the user last DREW,
   /// not silently swallow one press.
-  final ValueChanged<CanvasSelectionShape>? onCutShape;
+  final ValueChanged<CanvasSelectionRegion>? onCutOutline;
 
   /// A finished SHAPE FILL outline, with every copy the symmetry guide makes
-  /// of it — the original first ([_symmetryCopies], the copies the drag's
-  /// preview showed). Same arrangement as [onCutShape] and for the same
+  /// of it, as one region — as [onCutOutline] hands it, and for the same
   /// reason: the host paints the outline, and the committed selection is
   /// not touched. The undo it leaves behind is the fill itself, arriving
   /// through the stroke funnel like any other mark.
-  final ValueChanged<List<CanvasSelectionShape>>? onFillShape;
+  final ValueChanged<CanvasSelectionRegion>? onFillOutline;
 
   /// A finished SHAPE-TOOL drag (I-69): the path the host draws as the
   /// tool is set to — a stroke of the brush in hand, the tool's own plain
   /// line, or the shape's inside — with every copy the symmetry guide makes
-  /// of it, the original first, as [onFillShape] hands its outline. The
+  /// of it, the original first ([_guideCopiesOf]). The
   /// selection is not touched, and the undo it leaves behind is that one
   /// mark's.
   ///
@@ -302,7 +308,7 @@ enum CanvasSelectionTool {
   /// outline, so it wears no shape.
   move,
 
-  /// Hands the finished outline to [CanvasSelectionLayer.onCutShape] and
+  /// Hands the finished outline to [CanvasSelectionLayer.onCutOutline] and
   /// leaves the committed region exactly as the drag found it.
   ///
   /// Riding this layer rather than a second one of its own is deliberate —
@@ -311,8 +317,8 @@ enum CanvasSelectionTool {
   /// parallel copy would be the kind that drifts.
   cut,
 
-  /// Hands the finished outline to [CanvasSelectionLayer.onFillShape] to be
-  /// painted, and — like [cut] — leaves the selection alone. Filling a
+  /// Hands the finished outline to [CanvasSelectionLayer.onFillOutline] to
+  /// be painted, and — like [cut] — leaves the selection alone. Filling a
   /// shape you drew is not selecting it.
   fillShape,
 
@@ -3129,14 +3135,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // So there is no combine mode to apply, no history entry to record for
     // the region, and no stashed shape to consume.
     if (widget.tool == CanvasSelectionTool.cut) {
-      if (drawn != null) {
-        widget.onCutShape?.call(drawn);
+      final outline = _outlineWithCopies(drawn);
+      if (outline != null) {
+        widget.onCutOutline?.call(outline);
       }
       return;
     }
     if (widget.tool == CanvasSelectionTool.fillShape) {
-      if (drawn != null) {
-        widget.onFillShape?.call(_symmetryCopies(drawn));
+      final outline = _outlineWithCopies(drawn);
+      if (outline != null) {
+        widget.onFillOutline?.call(outline);
       }
       return;
     }
@@ -3196,6 +3204,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           CanvasSelectionShape(points),
     ];
   }
+
+  /// [drawn] and every copy the symmetry guide makes of it as ONE region —
+  /// what the area verbs act on, the cut lifting it and the shape fill
+  /// painting it: where two copies overlap they are one place. Null for a
+  /// degenerate drag.
+  CanvasSelectionRegion? _outlineWithCopies(CanvasSelectionShape? drawn) =>
+      CanvasSelectionRegion.unionOf([
+        for (final copy in _symmetryCopies(drawn))
+          CanvasSelectionRegion.shape(copy),
+      ]);
 
   /// [points] and every copy the symmetry guide makes of them, the
   /// original first and itself — [_symmetryCopies] for a path, which is

@@ -18,7 +18,6 @@ import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/canvas_selection_region.dart';
-import '../../services/canvas_selection_shape.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/persistence/file_type_groups.dart';
@@ -1021,14 +1020,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// pages lie one under another — and the outline moves into that page's
   /// own space. An outline on the desk between pages cuts nothing, and says
   /// so as every cut that finds nothing does ([cutIntoTheHand]).
-  void _cutFromPage(CanvasSelectionShape shape) {
+  void _cutFromPage(CanvasSelectionRegion outline) {
     final book = _book;
     if (book == null) {
       final page = _page;
-      _cuts = _cuts.then((_) => _cut(shape, page));
+      _cuts = _cuts.then((_) => _cut(outline, page));
       return;
     }
-    final page = _pageUnder(book, shape);
+    final page = _pageUnder(book, outline);
     if (page == null) {
       final slot = widget.cutPieceSlot;
       if (slot != null) {
@@ -1037,14 +1036,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       return;
     }
     final at = book.pageRect(page).topLeft;
-    final onPage = shape.translated(dx: -at.dx, dy: -at.dy);
+    final onPage = outline.translated(dx: -at.dx, dy: -at.dy);
     _cuts = _cuts.then((_) => _cut(onPage, page));
   }
 
-  /// The page of [book] the outline [shape] covers most — null when it
-  /// covers none.
-  int? _pageUnder(PageStack book, CanvasSelectionShape shape) {
-    final b = CanvasSelectionRegion.shape(shape).selectedBounds;
+  /// The page of [book] the [outline] covers most — null when it covers
+  /// none.
+  int? _pageUnder(PageStack book, CanvasSelectionRegion outline) {
+    final b = outline.selectedBounds;
     final bounds = Rect.fromLTRB(b.left, b.top, b.right, b.bottom);
     int? most;
     var mostArea = 0.0;
@@ -1059,7 +1058,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     return most;
   }
 
-  Future<void> _cut(CanvasSelectionShape shape, int page) async {
+  Future<void> _cut(CanvasSelectionRegion outline, int page) async {
     final slot = widget.cutPieceSlot;
     final document = _document;
     final pageCount = _pageCount;
@@ -1096,7 +1095,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final CutPiece? piece;
     try {
       piece = await buildCutPieceFromPicture(
-        region: CanvasSelectionRegion.shape(shape),
+        region: outline,
         picture: pixels,
         readRgba: (box) => document.readRegionRgba(pageIndex, box),
       );
