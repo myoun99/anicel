@@ -68,7 +68,38 @@ class CameraRowReach {
   /// 2026-10-08), as the conte's does at its last panel.
   int ownFrameAt(int trackFrame) =>
       math.max(mediaStart, math.min(trackFrame, mediaEnd - 1)) - mediaStart;
+
+  /// The cut's own frames from [start] to [endExclusive] on the track, held
+  /// inside them, a stretch for each line they are drawn on — what a band
+  /// over them lays down, a piece a line. Empty where none of them are the
+  /// cut's: a selection the timeline made past the cut's end names frames
+  /// the row does not draw.
+  List<CameraRowStretch> stretchesOf(int start, int endExclusive) {
+    final from = trackFrameOf(math.max(0, start));
+    final to = math.min(mediaEnd, trackFrameOf(endExclusive));
+    if (to <= from) {
+      return const [];
+    }
+    final edges = {
+      from,
+      for (final edge in [arrivingUntil, leavingFrom])
+        if (edge > from && edge < to) edge,
+      to,
+    }.toList()..sort();
+    return [
+      for (var index = 0; index + 1 < edges.length; index += 1)
+        (
+          from: edges[index],
+          to: edges[index + 1],
+          line: lineAt(edges[index]),
+        ),
+    ];
+  }
 }
+
+/// A run of track frames `[from, to)` of one cut's own, drawn on one [line]
+/// ([CameraRowReach.stretchesOf]).
+typedef CameraRowStretch = ({int from, int to, CameraRowLine line});
 
 /// Every cut of [entries] — ONE track's, in its order — with its reach on
 /// the camera row: its own frames under the のりしろ [spans] (the track's

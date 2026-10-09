@@ -995,6 +995,8 @@ class _WorkspaceTabs {
               // Nor is a fold: the conte row's twirl folds its attach rows
               // here as it does on the timeline's rail (I-73).
               _state.widget.session.railView.collapsedAttachBaseIds,
+              // Nor a twirl: the camera row opens its lanes (I-73 ④ⓔ).
+              _state.widget.session.railView.expandedLaneLayerIds,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -1024,6 +1026,13 @@ class _WorkspaceTabs {
               onToggleAttachGroup: SessionRowButtonPresses(
                 _state.widget.session,
               ).toggleGroupFold,
+              // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
+              // timeline's camera row, and turns its lanes there too.
+              expandedLaneLayerIds:
+                  _state.widget.session.railView.expandedLaneLayerIds.value,
+              onToggleLayerLanes: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleLanes,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,

@@ -8,7 +8,6 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
-import '../models/track_camera_row.dart' show trackCameraRowId;
 import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
@@ -77,6 +76,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleSection,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
     this.rowsChannel,
     this.transformOptions,
     this.cameraViewEnabled,
@@ -98,6 +99,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// row's twirl folds the attach rows riding it (I-73).
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
+
+  /// The rows' twirled-down lanes, shared with the timeline — the same set
+  /// and the same verb ([TimelineTabHost.expandedLaneLayerIds]): the camera
+  /// row's twirl opens its lanes here as on the timeline's rail (I-73 ④ⓔ).
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -418,15 +425,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         frameIndex: _session.currentFrameIndex,
       );
 
-  /// THE CAMERA ROW's press that lands in a cut (I-73 ④): the row, then the
-  /// cut and the frame of its own the press named — over an O.L, the cut of
-  /// the line pressed — the cells' press ([_pressRowFrame]) with the seek
-  /// that names its cut ([seekStoryboardCutFrame]), standing in this panel.
-  void _pressCameraCut(TrackId trackId, CutId cutId, int ownFrame) =>
+  /// THE CAMERA ROW's press that lands in a cut (I-73 ④) — the row's, or
+  /// one of its lanes' (④ⓔ): the [row], then the cut and the frame of its
+  /// own the press named — over an O.L, the cut of the line pressed — the
+  /// cells' press ([_pressRowFrame]) with the seek that names its cut
+  /// ([seekStoryboardCutFrame]), standing in this panel.
+  void _pressCameraCut(TimelineRowAddress row, CutId cutId, int ownFrame) =>
       _session.standing.standInStoryboard(() {
-        _session.selectRow(LayerRowAddress(trackCameraRowId(trackId)));
+        _session.selectRow(row);
         seekStoryboardCutFrame(_session, cutId, ownFrame);
       });
+
+  /// The lane edits a projection row's lane labels hand over — the
+  /// timeline's, on the frames of the cut's own (I-73 ④ⓔ).
+  PropertyLaneEditCallbacks get _cutLaneEdit => sessionLaneEditCallbacks(
+    _session,
+    frameIsGlobal: false,
+    transformOptions: widget.transformOptions,
+  );
 
   /// …and its double click: the timeline camera row's own
   /// ([activateCellOnDoubleTap] — a key opens, an empty cell is keyed), on
@@ -651,6 +667,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleSection: widget.onToggleSection,
                     collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
                     onToggleAttachGroup: widget.onToggleAttachGroup,
+                    expandedLaneLayerIds: widget.expandedLaneLayerIds,
+                    onToggleLayerLanes: widget.onToggleLayerLanes,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _dragPreview,
                     // While playing, the highlight follows the PLAYING cut
@@ -1037,6 +1055,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // and then refuse to grow.
                     onSeRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
                     layerLaneEdit: _layerLaneEdit,
+                    cutLaneEdit: _cutLaneEdit,
                     // An S row's group headers: the timeline's own switch and
                     // reset (F-101).
                     onToggleLaneGroupEnabled: (layer, lane) =>
@@ -1208,6 +1227,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // its head is that row's — eye and slider on the view.
                     onCameraCutPress: _pressCameraCut,
                     onEditCameraCell: () => unawaited(_editCameraCell()),
+                    // A projection row's lane labels read the cut stood in
+                    // at its own frame and walk its keys there, as the
+                    // timeline's lane labels do (I-73 ④ⓔ).
+                    cutFrameCursor: _session.playheadCursors.cutFrame,
+                    onSeekCutFrame: (cutId, ownFrame) =>
+                        seekStoryboardCutFrame(_session, cutId, ownFrame),
                     cameraViewEnabled: widget.cameraViewEnabled,
                     cameraDimOpacity: widget.cameraDimOpacity,
                   ),

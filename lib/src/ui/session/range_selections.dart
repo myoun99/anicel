@@ -10,7 +10,8 @@ import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
-import '../../models/track_projection_row.dart' show isTrackProjectionRow;
+import '../../models/track_projection_row.dart'
+    show projectionRowIdOf, projectionRowUnder;
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -559,10 +560,11 @@ class RangeSelections {
           // layer's), then the fresh span lands for the new active layer.
           _selectLayer(layerId);
         case WorkingPanel.storyboard
-            when _selection.storyboardStandingRow.owningLayerId != layerId:
+            when _selection.storyboardStandingRow.owningLayerId !=
+                _storyboardRowIdOf(layerId):
           // The rail's row, the way the V track's lanes above take theirs.
           _standOnRow(
-            LayerRowAddress(layerId),
+            LayerRowAddress(_storyboardRowIdOf(layerId)),
             panel: WorkingPanel.storyboard,
           );
         case WorkingPanel.timeline || WorkingPanel.storyboard:
@@ -603,6 +605,18 @@ class RangeSelections {
       endIndexExclusive: endExclusive,
       laneIds: span.length <= 1 ? const [] : span,
     );
+  }
+
+  /// The row of the storyboard's rail [layerId] is drawn on: the projection
+  /// row that shows it, for a layer of the active cut one does (its camera,
+  /// a row of its conte group — I-73 ④ⓔ, whose lanes the rail twirls down
+  /// under that row), and its own row for every other layer.
+  LayerId _storyboardRowIdOf(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    return (cut == null
+            ? null
+            : projectionRowIdOf(_selection.selectedTrackId, cut, layerId)) ??
+        layerId;
   }
 
   void clearLaneRangeSelection() {
@@ -1071,9 +1085,10 @@ class RangeSelections {
     final rowLayerId = switch (_currentRow()) {
       // The storyboard's projection rows are no cut's layer: each stands on
       // the layer it has in hand — a conte seat's, the camera's — or on
-      // nothing (I-73).
-      final row when isTrackProjectionRow(row) => projectedLayerInHand(
-        row: row,
+      // nothing (I-73); and a lane of one falls back to it, as every lane
+      // falls back to its row.
+      final row when projectionRowUnder(row) != null => projectedLayerInHand(
+        row: projectionRowUnder(row),
         cut: _project.activeCutOrNull,
         activeLayerId: _selection.activeLayerId,
       )?.id,

@@ -5,16 +5,20 @@ import '../../models/camera_instruction.dart'
     show CameraInstructionDef, instructionTermName;
 import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/key_range_move.dart'
     show
         transformKeyFrameUnion,
         transformKeyHoldUnion,
         transformKeyMixedUnion,
         transformKeyNameUnion;
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
+import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
 import '../text/trimmed_decimal.dart';
@@ -132,6 +136,36 @@ PropertyLaneRow cameraUnionHeader(
       ),
   ],
 );
+
+/// THE CAMERA ROW'S LANES — the member lanes of the camera [track] its
+/// [row] rides, valued by the camera's pose over a [canvasSize] frame: the
+/// lanes the timeline's camera row twirls down, and the storyboard's camera
+/// row each cut's (I-73 ④ⓔ). No [canvasSize] leaves them unvalued — a
+/// rail with no cut to read them in.
+///
+/// ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
+/// 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
+/// 펼치면 포지션/스케일/로테이션만 남도록.」 — the row IS the transform
+/// group, so the header is not among them.
+List<PropertyLaneRow> cameraPropertyLanes(
+  Layer row,
+  TransformTrack track, {
+  required CanvasSize? canvasSize,
+}) => transformPropertyLanes(
+  track,
+  scaleForm: scaleLaneFormOf(row),
+  poseAt: canvasSize == null
+      ? null
+      : (frameIndex) => TransformPose.ofCamera(
+          resolveCameraPoseAt(
+            // The SAME track the lanes are built from, so the value column
+            // follows an in-flight key move like the diamonds do.
+            camera: CutCamera.fromTrack(track),
+            canvasSize: canvasSize,
+            frameIndex: frameIndex,
+          ),
+        ),
+).where((lane) => !lane.isGroupHeader).toList();
 
 /// The AE Transform-group lanes of a [TransformTrack], in AE order under
 /// the 'Transform' group header — Anchor Point / Position / Scale /

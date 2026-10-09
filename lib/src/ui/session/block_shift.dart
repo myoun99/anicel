@@ -5,7 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/row_block_shift.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_row_address.dart';
-import '../../models/track_projection_row.dart' show isTrackProjectionRow;
+import '../../models/track_projection_row.dart' show projectionRowUnder;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
@@ -133,10 +133,10 @@ class BlockShift {
     // panels, the camera row its keys: the layer it has in hand, which is
     // the active row below — or nothing: over a cut with no conte layer the
     // active row is some other row of the cut, and that one is not this
-    // rail's to shove (I-73).
-    if (isTrackProjectionRow(currentRow) &&
+    // rail's to shove (I-73). A lane of one asks its row (I-73 ④ⓔ).
+    if (projectionRowUnder(currentRow) != null &&
         projectedLayerInHand(
-              row: currentRow,
+              row: projectionRowUnder(currentRow),
               cut: _project.activeCutOrNull,
               activeLayerId: _selection.activeLayerId,
             ) ==

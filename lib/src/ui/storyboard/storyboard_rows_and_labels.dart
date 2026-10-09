@@ -274,12 +274,25 @@ class _StoryboardRowsAndLabels {
     }
     final select = _state.widget.onSelectLayer;
     final view = _state.widget.cameraViewEnabled;
+    final toggleLanes = _state.widget.onToggleLayerLanes;
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-camera-label-${track.id.value}'),
       child: TimelineLayerControlsRow(
         keyPrefix: 'storyboard',
         layer: view == null ? head : head.copyWith(isVisible: view.value),
         active: active,
+        // Its twirl — the timeline's camera row's — opens the row's lanes
+        // under it (I-73 ④ⓔ): the camera's, which every camera has.
+        hasLanes: true,
+        lanesExpanded: _state._railRows._cameraLanesOpen(track),
+        onToggleLanes: toggleLanes == null
+            ? null
+            : (_) {
+                final camera = _state._railRows._cameraTwirlOf(track);
+                if (camera != null) {
+                  toggleLanes(camera);
+                }
+              },
         metrics: TimelineGridMetrics.defaults.copyWith(
           layerControlsWidth: _state._naturalRailWidth,
           layerRowHeight: _state._rowHeights.camera,

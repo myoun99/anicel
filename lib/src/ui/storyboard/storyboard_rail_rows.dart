@@ -99,17 +99,20 @@ class _StoryboardRailRows {
   ///
   /// The rows have always twirled; what was absent was the bulk verb over
   /// them. So this is the timeline's [expandAllLanes] transposed onto the
-  /// rows THIS rail draws — an S row per SE slot and a V row per track —
-  /// rather than a new idea about expansion.
+  /// rows THIS rail draws — an S row per SE slot, a V row per track, and
+  /// the camera row a track (I-73 ④ⓔ) — rather than a new idea about
+  /// expansion.
   bool get _anyLanesExpanded =>
       _state.widget.expandedSeAudioRows.isNotEmpty ||
-      _state.widget.expandedTransformTracks.isNotEmpty;
+      _state.widget.expandedTransformTracks.isNotEmpty ||
+      _state.widget.project.tracks.any(_cameraLanesOpen);
 
   /// Whether the rail can twirl at all: a display-only mount (no hooks) has
   /// nothing for the legend button to act on, so it does not draw one.
   bool get hasLaneTwirls =>
       _state.widget.onToggleSeRowLane != null ||
-      _state.widget.onToggleTrackLane != null;
+      _state.widget.onToggleTrackLane != null ||
+      _state.widget.onToggleLayerLanes != null;
 
   void expandAllLanes() => _setAllLanes(expanded: true);
 
@@ -127,6 +130,7 @@ class _StoryboardRailRows {
   void _setAllLanes({required bool expanded}) {
     final toggleSe = _state.widget.onToggleSeRowLane;
     final toggleTrack = _state.widget.onToggleTrackLane;
+    final toggleLayer = _state.widget.onToggleLayerLanes;
     for (final track in _state.widget.project.tracks) {
       if (toggleSe != null) {
         for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
@@ -146,9 +150,14 @@ class _StoryboardRailRows {
           toggleTrack(track);
         }
       }
+      final camera = _cameraTwirlOf(track);
+      if (toggleLayer != null &&
+          camera != null &&
+          _cameraLanesOpen(track) != expanded) {
+        toggleLayer(camera);
+      }
     }
   }
-
   /// The S row, made draggable — the rail's row-order drag, on the third
   /// surface.
   ///
@@ -227,17 +236,68 @@ class _StoryboardRailRows {
   /// timeline shows at the top of its CAM section, so the two panels' camera
   /// rows are one row (「카메라는 로컬이랑 똑같이 최상단행」). Null in a gap,
   /// and on every other track.
-  Layer? _cameraHeadOf(Track track) {
+  Layer? _cameraHeadOf(Track track) => _cameraHeadAt(track)?.camera;
+
+  /// [_cameraHeadOf] with the cut it is the camera of.
+  ({Cut cut, Layer camera})? _cameraHeadAt(Track track) {
     final activeCutId = _state.widget.activeCutId;
     if (activeCutId == null) {
       return null;
     }
     for (final cut in track.cuts) {
       if (cut.id == activeCutId) {
-        return cut.layers.cameraLayer;
+        final camera = cut.layers.cameraLayer;
+        return camera == null ? null : (cut: cut, camera: camera);
       }
     }
     return null;
+  }
+
+  /// Whether [track]'s camera row has its lanes twirled down (I-73 ④ⓔ):
+  /// whether a camera of its cuts has — a track's cameras twirl as one,
+  /// their head being one (I-73-camera-row-Q1, and F-302's law for the rows
+  /// that wear one head), so the row stays open across a gap, where no
+  /// head is there to ask.
+  bool _cameraLanesOpen(Track track) {
+    final open = _state.widget.expandedLaneLayerIds;
+    return open.isNotEmpty &&
+        track.cuts.any(
+          (cut) => open.contains(cut.layers.cameraLayer?.id),
+        );
+  }
+
+  /// The camera [track]'s camera row's twirl turns — its cameras turn as
+  /// one ([_cameraLanesOpen]): an open one while the row is open, so the
+  /// turn shuts them all, else the head's, else the track's first.
+  LayerId? _cameraTwirlOf(Track track) {
+    final cameras = [
+      for (final cut in track.cuts) ?cut.layers.cameraLayer?.id,
+    ];
+    final open = _state.widget.expandedLaneLayerIds;
+    return cameras.where(open.contains).firstOrNull ??
+        _cameraHeadOf(track)?.id ??
+        cameras.firstOrNull;
+  }
+
+  /// The lanes [track]'s camera row twirls down: the timeline's camera
+  /// lanes ([cameraPropertyLanes]) of the camera of the cut the session
+  /// stands in, valued there — or, in a gap, the same lanes of the track's
+  /// first camera, with nothing to read their values in.
+  List<PropertyLaneRow> _cameraLanes(Track track) {
+    final head = _cameraHeadAt(track);
+    if (head != null) {
+      return cameraPropertyLanes(
+        head.camera,
+        head.cut.camera.track,
+        canvasSize: head.cut.canvasSize,
+      );
+    }
+    for (final cut in track.cuts) {
+      if (cut.layers.cameraLayer case final camera?) {
+        return cameraPropertyLanes(camera, cut.camera.track, canvasSize: null);
+      }
+    }
+    return const [];
   }
 
   /// Whether the legend's filter lets the camera row show
@@ -607,7 +667,10 @@ class _StoryboardRailRows {
     final seRows = _seRowsFor(track);
     final vRows = _vRowsFor(track, index);
     final camRows = [
-      if (_showsCameraRow(track)) _state._rows.cameraLabelRow(track),
+      if (_showsCameraRow(track)) ...[
+        _state._rows.cameraLabelRow(track),
+        if (_cameraLanesOpen(track)) ..._cameraLaneLabels(track),
+      ],
       if (_showsTransitionRow(track)) _state._rows.transitionLabelRow(track),
     ];
     return [
@@ -715,6 +778,73 @@ class _StoryboardRailRows {
       // keyed there (F-102).
       frameCursor: _state.widget.playheadFrame,
       onSelectFrame: _state.widget.onSeekGlobalFrame,
+    );
+  }
+
+  /// The camera row's lane labels, row for row with its lane strips
+  /// (I-73 ④ⓔ): the timeline's camera lanes ([_cameraLanes]) worn by the
+  /// ROW — stood on and lit by the row's own lane addresses
+  /// ([trackCameraRowId]) — valued at the frame of its own the cut the
+  /// session stands in is on, edited and walked there, as the timeline's
+  /// camera lanes are; in a gap, their names alone.
+  List<Widget> _cameraLaneLabels(Track track) {
+    final rowId = trackCameraRowId(track.id);
+    final head = _cameraHeadAt(track);
+    final shown =
+        head?.camera ??
+        track.cuts.map((cut) => cut.layers.cameraLayer).nonNulls.firstOrNull;
+    if (shown == null) {
+      return const [];
+    }
+    final laneEdit = _state.widget.cutLaneEdit;
+    final seek = _state.widget.onSeekCutFrame;
+    return _state._rows.laneLabels(
+      carrier: shown.copyWith(id: rowId),
+      // The camera's lanes hold no group to twirl ([cameraPropertyLanes]).
+      groupKeyOf: (lane) => laneGroupKey(rowId, lane.laneId),
+      lanes: _cameraLanes(track),
+      // F-195: a value scrubbed here, or a key range slid, shows as the
+      // camera holds it in flight.
+      follow: head == null
+          ? null
+          : (carrier, lane, row) => _followingCamera(
+              head.cut,
+              (cameraTrack) => row(
+                carrier,
+                laneAsPreviewed(
+                  lane,
+                  cameraPropertyLanes(
+                    head.camera,
+                    cameraTrack,
+                    canvasSize: head.cut.canvasSize,
+                  ),
+                ),
+              ),
+            ),
+      laneEdit: head == null ? null : laneEdit?.landingOn(head.camera),
+      active: head != null,
+      frameCursor: head == null ? null : _state.widget.cutFrameCursor,
+      onSelectFrame: head == null || seek == null
+          ? null
+          : (frame) => seek(head.cut.id, frame),
+    );
+  }
+
+  /// [build] with [cut]'s camera track as the drag channel shows it — a key
+  /// range slid along it, a value scrubbed in it — rebuilt whenever that
+  /// moves: the camera lanes' labels read the track through here, as the
+  /// strips read it off the cut the channel lays out.
+  Widget _followingCamera(
+    Cut cut,
+    Widget Function(TransformTrack cameraTrack) build,
+  ) {
+    final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
+    return SlicedListenableBuilder<TransformTrack>(
+      listenable: dragPreview,
+      slice: () =>
+          timelineDragPreviewCameraTrackFor(dragPreview.value, cut.id) ??
+          cut.camera.track,
+      builder: (context, cameraTrack) => build(cameraTrack),
     );
   }
 
@@ -957,6 +1087,11 @@ class _StoryboardRailRows {
         Positioned.fill(
           child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
         ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: _projectionLaneBand(track, scale, entries),
+          ),
+        ),
         // 🚨On its OWN layer (I-22 ③): the standing cell follows the
         // playhead, and the strips around it are one RepaintBoundary
         // precisely so a playhead move re-rasterizes none of them (R12-⑥).
@@ -1155,6 +1290,127 @@ class _StoryboardRailRows {
         },
       );
 
+  /// The LANE selection's band over the camera row's lanes (I-73 ④ⓔ): the
+  /// selection names one cut's camera in the cut's own frames, so the band
+  /// lies over that cut's own frames, on the line the cut is drawn on there
+  /// ([CameraRowReach.stretchesOf]) — across every lane it spans where the
+  /// cut runs alone, and over the cut's half of each where it shares its
+  /// frames with a neighbour. The one band decoration, as the track's lane
+  /// band ([_trackLaneRangeBand]) wears.
+  Widget _projectionLaneBand(
+    Track track,
+    TimelineScale scale,
+    List<StoryboardTimelineLayoutEntry> entries,
+  ) {
+    final selection = _state.widget.laneRange?.selection;
+    if (selection == null || !_cameraLanesOpen(track)) {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<TimelineLaneSelection?>(
+      valueListenable: selection,
+      builder: (context, current, _) =>
+          current == null || scale.pixelsPerFrame <= 0
+          ? const SizedBox.shrink()
+          : Stack(
+              children: _projectionLaneBandPieces(
+                track,
+                scale,
+                entries,
+                current,
+              ),
+            ),
+    );
+  }
+
+  List<Widget> _projectionLaneBandPieces(
+    Track track,
+    TimelineScale scale,
+    List<StoryboardTimelineLayoutEntry> entries,
+    TimelineLaneSelection selection,
+  ) {
+    // The cut whose layer the selection names, and the projection row that
+    // shows that layer ([projectionRowIdOf]).
+    final reaches = cameraRowReachesOf(
+      entries,
+      transitionRowSpans(
+        track.transitionLayer,
+        _state.widget.project.cameraInstructions,
+      ),
+    );
+    final named = [
+      for (final reach in reaches)
+        if (projectionRowIdOf(track.id, reach.entry.cut, selection.layerId)
+            case final rowId?)
+          (reach: reach, rowId: rowId),
+    ].firstOrNull;
+    if (named == null) {
+      return const [];
+    }
+    final (:reach, :rowId) = named;
+    final covered = <({double top, double bottom})>[];
+    var y = 0.0;
+    for (final slot in _trackGroupRowGeometry(track)) {
+      final lane = slot.laneRow;
+      if (lane != null &&
+          lane.layerId == rowId &&
+          laneSelectionCoversBandRow(selection, selection.layerId, lane.laneId)) {
+        covered.add((top: y, bottom: y + slot.height));
+      }
+      y += slot.height;
+    }
+    if (covered.isEmpty) {
+      return const [];
+    }
+    return [
+      for (final stretch in reach.stretchesOf(
+        selection.startIndex,
+        selection.endIndexExclusive,
+      ))
+        if (stretch.line == CameraRowLine.middle)
+          _laneBandPiece(
+            scale,
+            stretch,
+            (top: covered.first.top, bottom: covered.last.bottom),
+          )
+        else
+          for (final row in covered)
+            _laneBandPiece(scale, stretch, switch (stretch.line) {
+              CameraRowLine.upper => (
+                top: row.top,
+                bottom: (row.top + row.bottom) / 2,
+              ),
+              _ => (top: (row.top + row.bottom) / 2, bottom: row.bottom),
+            }),
+    ];
+  }
+
+  /// One piece of [_projectionLaneBand]: [stretch]'s frames, [across] the
+  /// rows.
+  Widget _laneBandPiece(
+    TimelineScale scale,
+    CameraRowStretch stretch,
+    ({double top, double bottom}) across,
+  ) => Positioned(
+    key: ValueKey<String>(
+      'storyboard-projection-lane-range-selection-${stretch.from}-'
+      '${across.top}',
+    ),
+    left: scale.leftForFrame(stretch.from),
+    top: across.top,
+    width: scale.spanWidth(stretch.from, stretch.to),
+    height: across.bottom - across.top,
+    child: Semantics(
+      label: AppText.strings.tlSelectedLaneRange,
+      container: true,
+      child: DecoratedBox(
+        decoration: timelineRangeSelectionBandDecorationAt(
+          cellExtent: scale.pixelsPerFrame,
+          crossExtent: across.bottom - across.top,
+        ),
+      ),
+    ),
+  );
+
   /// The band itself: [selection.spanRows] top to bottom — intervening
   /// twirled-open lanes ride under it, exactly as the timeline's band
   /// covers lanes between two covered layer rows.
@@ -1243,7 +1499,16 @@ class _StoryboardRailRows {
   /// in-group head lane read off the same table, and the drag JOINING the
   /// track-axis cells law the moment it leaves its lane group — the same
   /// wrap the timeline grids apply, over this panel's own rows.
-  TimelineLaneRangeCallbacks? _laneGestureCallbacksFor(Track track) {
+  ///
+  /// The lanes of the PROJECTION row [projection] (I-73 ④ⓔ — the camera
+  /// row's) take it too: their rows read as the lanes of the layer a sweep
+  /// on them began on ([_laneSweepOver]), and the sweep stays in their
+  /// group — it names one cut's layer in the cut's own frames, which no
+  /// row of the track's axis shares.
+  TimelineLaneRangeCallbacks? _laneGestureCallbacksFor(
+    Track track, {
+    LayerId? projection,
+  }) {
     final host = _state.widget.laneRange;
     if (host == null) {
       return null;
@@ -1252,28 +1517,21 @@ class _StoryboardRailRows {
       selection: host.selection,
       onSelectUpdate:
           (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
-            // Call-time reads (the stale-closure rule): the LIVE geometry.
-            final geometry = _trackGroupRowGeometry(track);
-            final addresses = [
-              for (final slot in geometry) slot.row ?? slot.laneRow,
-            ];
-            final anchorAt = addresses.indexOf(LaneRowAddress(layerId, laneId));
-            var rowDelta = 0;
-            if (anchorAt >= 0) {
-              rowDelta =
-                  rowIndexForCrossOffset(
-                    crossOffset: headCrossOffset,
-                    anchorIndex: anchorAt,
-                    heights: [for (final slot in geometry) slot.height],
-                  ) -
-                  anchorAt;
-            }
-            final escalation = resolveLaneSpanEscalationOverAddresses(
-              rows: addresses,
-              layerId: layerId,
-              laneId: laneId,
-              rowDelta: rowDelta,
+            final anchor = LaneRowAddress(layerId, laneId);
+            final sweep = _laneSweepOver(
+              track,
+              anchor: anchor,
+              headCrossOffset: headCrossOffset,
+              projection: projection,
             );
+            final escalation = projection != null
+                ? null
+                : resolveLaneSpanEscalationOverAddresses(
+                    rows: sweep.rows,
+                    layerId: layerId,
+                    laneId: laneId,
+                    rowDelta: sweep.rowDelta,
+                  );
             if (escalation == null) {
               host.onSelectUpdate(
                 layerId,
@@ -1282,15 +1540,15 @@ class _StoryboardRailRows {
                 headIndex,
                 // The span off the SAME drawn rows — 절대명령 2.
                 laneSpanOverDrawnRows(
-                  rows: addresses,
+                  rows: sweep.rows,
                   layerId: layerId,
                   laneId: laneId,
                   headLaneId:
                       resolveInGroupHeadLane(
-                        rows: addresses,
+                        rows: sweep.rows,
                         layerId: layerId,
                         laneId: laneId,
-                        rowDelta: rowDelta,
+                        rowDelta: sweep.rowDelta,
                       ) ??
                       laneId,
                 ),
@@ -1304,7 +1562,7 @@ class _StoryboardRailRows {
               anchorGlobalFrame: anchorIndex,
               headGlobalFrame: headIndex,
               headRow: escalation.head,
-              anchorRow: LaneRowAddress(layerId, laneId),
+              anchorRow: anchor,
               spanRows: escalation.spanRows,
             );
           },
@@ -1315,6 +1573,43 @@ class _StoryboardRailRows {
       onMoveUpdate: host.onMoveUpdate,
       onMoveEnd: host.onMoveEnd,
       onMoveCancel: host.onMoveCancel,
+    );
+  }
+
+  /// The rows [track]'s table draws, by the address a lane selection names
+  /// each by — the lanes of the projection row [projection] as the lanes of
+  /// [anchor]'s layer, the layer of the cut a sweep on them began on — and
+  /// how many rows from [anchor]'s the pointer stands at [headCrossOffset].
+  ///
+  /// Call-time reads (the stale-closure rule): the LIVE geometry.
+  ({List<TimelineRowAddress?> rows, int rowDelta}) _laneSweepOver(
+    Track track, {
+    required LaneRowAddress anchor,
+    required double headCrossOffset,
+    required LayerId? projection,
+  }) {
+    final geometry = _trackGroupRowGeometry(track);
+    final rows = [
+      for (final slot in geometry)
+        switch (slot.laneRow) {
+          final lane? when lane.layerId == projection => LaneRowAddress(
+            anchor.layerId,
+            lane.laneId,
+          ),
+          _ => slot.row ?? slot.laneRow,
+        },
+    ];
+    final anchorAt = rows.indexOf(anchor);
+    return (
+      rows: rows,
+      rowDelta: anchorAt < 0
+          ? 0
+          : rowIndexForCrossOffset(
+                  crossOffset: headCrossOffset,
+                  anchorIndex: anchorAt,
+                  heights: [for (final slot in geometry) slot.height],
+                ) -
+                anchorAt,
     );
   }
 
@@ -1354,15 +1649,34 @@ class _StoryboardRailRows {
     // eye is the camera VIEW, not a flag of the layer — a sweep would spread
     // the opposite of what its first press set.
     if (_showsCameraRow(track)) {
+      final rowId = trackCameraRowId(track.id);
       slots.add((
         row: null,
         laneRow: null,
-        standRow: LayerRowAddress(trackCameraRowId(track.id)),
+        standRow: LayerRowAddress(rowId),
         bandRow: false,
         lane: false,
         railRow: null,
         height: heights.camera,
       ));
+      // Its lanes, twirled down under it (I-73 ④ⓔ), each stood on by its
+      // address on this rail. A lane selection there names a cut's camera
+      // in the cut's own frames, so the band over it is the cut's own
+      // ([_projectionLaneBand]) — not the track's, which this table lays
+      // across the rows it covers.
+      if (_cameraLanesOpen(track)) {
+        for (final lane in _cameraLanes(track)) {
+          slots.add((
+            row: null,
+            laneRow: LaneRowAddress(rowId, lane.laneId),
+            standRow: null,
+            bandRow: false,
+            lane: true,
+            railRow: null,
+            height: heights.lane,
+          ));
+        }
+      }
     }
     if (_showsTransitionRow(track)) {
       slots.add((
@@ -1555,28 +1869,92 @@ class _StoryboardRailRows {
             track.transitionLayer.id,
           ) ??
           strip.transitionRow,
-      builder: (context, transitionRow) => _StoryboardCameraRow(
-        track: track,
-        reaches: cameraRowReachesOf(
+      builder: (context, transitionRow) {
+        final reaches = cameraRowReachesOf(
           strip.entries,
           transitionRowSpans(
             transitionRow,
             _state.widget.project.cameraInstructions,
           ),
-        ),
-        width: width,
-        height: _state._rowHeights.camera,
-        timelineScale: scale,
-        frameGeometry: _state._frameGeometry,
-        windowBucket: _state._horizontalWindowBucket,
-        viewportWidth: _state._stripViewportWidth,
-        instructionDefById: _state.widget.project.cameraInstructions.defById,
-        onRowFramePress: _state.widget.onRowFramePress,
-        onCameraCutPress: _state.widget.onCameraCutPress,
-        onEditCameraCell: _state.widget.onEditCameraCell,
-        stripSelect: _state.widget.stripSelect,
-      ),
+        );
+        final row = _StoryboardCameraRow(
+          track: track,
+          reaches: reaches,
+          width: width,
+          height: _state._rowHeights.camera,
+          timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
+          windowBucket: _state._horizontalWindowBucket,
+          viewportWidth: _state._stripViewportWidth,
+          instructionDefById: _state.widget.project.cameraInstructions.defById,
+          onRowFramePress: _state.widget.onRowFramePress,
+          onCameraCutPress: _state.widget.onCameraCutPress,
+          onEditCameraCell: _state.widget.onEditCameraCell,
+          stripSelect: _state.widget.stripSelect,
+        );
+        if (!_cameraLanesOpen(track)) {
+          return row;
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            row,
+            ..._projectionLaneStrips(
+              track,
+              _cameraProjection(track),
+              _cameraLanes(track),
+              (reaches: reaches, width: width, scale: scale),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  /// [track]'s camera row as its lanes are drawn from (I-73 ④ⓔ): each cut's
+  /// camera, and the camera's lanes ([cameraPropertyLanes]).
+  _ProjectionLanes _cameraProjection(Track track) => (
+    rowId: trackCameraRowId(track.id),
+    keyName: 'camera',
+    markPrefix: 'storyboard-camera',
+    layerOf: (cut) => cut.layers.cameraLayer,
+    lanesOf: (cut, camera) =>
+        cameraPropertyLanes(camera, cut.camera.track, canvasSize: null),
+  );
+
+  /// A projection row's lane strips (I-73 ④ⓔ), row for row with their
+  /// labels — one a lane of [lanes] — over the cuts' own frames as [strip]
+  /// lays them: a lane is held to each cut as its row is, and swept through
+  /// the timeline's lane selection ([_laneGestureCallbacksFor]).
+  List<Widget> _projectionLaneStrips(
+    Track track,
+    _ProjectionLanes projection,
+    List<PropertyLaneRow> lanes,
+    ({List<CameraRowReach> reaches, double width, TimelineScale scale}) strip,
+  ) {
+    final laneRange = _laneGestureCallbacksFor(
+      track,
+      projection: projection.rowId,
+    );
+    return [
+      for (final lane in lanes)
+        _StoryboardProjectionLaneRow(
+          track: track,
+          projection: projection,
+          laneId: lane.laneId,
+          reaches: strip.reaches,
+          width: strip.width,
+          height: _state._rowHeights.lane,
+          timelineScale: strip.scale,
+          frameGeometry: _state._frameGeometry,
+          windowBucket: _state._horizontalWindowBucket,
+          viewportWidth: _state._stripViewportWidth,
+          onRowFramePress: _state.widget.onRowFramePress,
+          onCameraCutPress: _state.widget.onCameraCutPress,
+          laneRange: laneRange,
+        ),
+    ];
   }
 
   /// The CONTE rows' strips — the conte's, and an attach row's at each seat

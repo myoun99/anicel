@@ -13,6 +13,7 @@ import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
+import '../../models/track_projection_row.dart' show projectionRowUnder;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
@@ -255,6 +256,8 @@ class LaneVerbs {
       );
     }
     return switch (_currentRow()) {
+      final LaneRowAddress lane when projectionRowUnder(lane) != null =>
+        _projectedLaneSpan(lane),
       LaneRowAddress(:final layerId, :final laneId) => _standingSpan(
         layerId,
         laneId,
@@ -323,6 +326,18 @@ class LaneVerbs {
           drawnFrameCount: _project.activeCutDrawnFrameCount,
         );
   }
+
+  /// A LANE of a storyboard projection row (I-73 ④ⓔ) stood on: that lane of
+  /// the layer the row has in hand ([projectedLayerInHand]) — or of nothing.
+  TimelineLaneSelection? _projectedLaneSpan(LaneRowAddress lane) =>
+      switch (projectedLayerInHand(
+        row: projectionRowUnder(lane),
+        cut: _project.activeCutOrNull,
+        activeLayerId: _selection.activeLayerId,
+      )) {
+        final layer? => _standingSpan(layer.id, lane.laneId),
+        null => null,
+      };
 
   /// The row you are STANDING on, as a one-frame span at the playhead.
   TimelineLaneSelection _standingSpan(LayerId layerId, String laneId) {

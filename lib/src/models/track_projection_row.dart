@@ -38,3 +38,29 @@ Layer? projectedRowOf(Cut cut, TimelineRowAddress? row) {
   }
   return isTrackCameraRow(row) ? cut.layers.cameraLayer : null;
 }
+
+/// The projection row [row] stands on: [row] itself, or the row one of
+/// whose LANES it is (I-73 ④ⓔ — a projection row twirls its lanes down as
+/// the timeline's row does) — the lane address's own law, 「standing on a
+/// property never costs you the layer」. Null for every other address.
+///
+/// ⛔Not [isTrackProjectionRow] widened: a lane holds keys, not blocks, and
+/// the doors that ask THAT question (the cursor's block, a row's ＋) must
+/// go on telling a lane from its row.
+LayerRowAddress? projectionRowUnder(TimelineRowAddress? row) => switch (row) {
+  LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
+      when trackIdOfProjectionRow(layerId) != null =>
+    LayerRowAddress(layerId),
+  _ => null,
+};
+
+/// [projectedRowOf] read backwards: the projection row of [trackId] that
+/// shows [cut]'s row [layerId] — the camera row for its camera, the conte
+/// row at its seat for a row of its conte group — or null for any other row.
+LayerId? projectionRowIdOf(TrackId trackId, Cut cut, LayerId layerId) {
+  if (cut.layers.cameraLayer?.id == layerId) {
+    return trackCameraRowId(trackId);
+  }
+  final seat = conteSeatOf(cut, layerId);
+  return seat == null ? null : trackConteRowId(trackId, seat: seat);
+}

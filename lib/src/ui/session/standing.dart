@@ -628,6 +628,20 @@ class Standing {
             address is LaneRowAddress && address.layerId == layerId,
         panel: panel,
       );
+      // The storyboard row that shows this layer twirls with it (I-73 ④ⓔ —
+      // the camera row's head is the timeline's camera row): its lanes go
+      // too, and the row swallows them.
+      final projection = panel == WorkingPanel.timeline
+          ? _projectionRowShowing(layerId)
+          : null;
+      if (projection != null) {
+        handOffOnFold(
+          swallower: LayerRowAddress(projection),
+          vanished: (address) =>
+              address is LaneRowAddress && address.layerId == projection,
+          panel: WorkingPanel.storyboard,
+        );
+      }
       return;
     }
     handOffOnFold(
@@ -635,6 +649,20 @@ class Standing {
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
       panel: panel,
     );
+  }
+
+  /// The storyboard's projection row that shows [layerId] — the camera row
+  /// of its cut's track for its camera, a conte row for a row of its conte
+  /// group ([projectionRowIdOf]) — or null for every other layer.
+  LayerId? _projectionRowShowing(LayerId layerId) {
+    for (final track in _project.repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.layers.byId(layerId) != null) {
+          return projectionRowIdOf(track.id, cut, layerId);
+        }
+      }
+    }
+    return null;
   }
 
   /// An ATTACH GROUP folding shut: every row the group holds — the rows
@@ -770,8 +798,13 @@ class Standing {
 
   LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
       switch (storyboardStandingRow) {
-        final row when isTrackProjectionRow(row) =>
-          layerAProjectionStandSeats(before: before, row: row),
+        // A projection row's lane seats the row's layer, as an S row's lane
+        // seats the S row's (I-73 ④ⓔ).
+        final row when projectionRowUnder(row) != null =>
+          layerAProjectionStandSeats(
+            before: before,
+            row: projectionRowUnder(row)!,
+          ),
         LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
             when _activeCutHasLayer(layerId) =>
           layerId,

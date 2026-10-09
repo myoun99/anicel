@@ -36,7 +36,9 @@ import '../models/track.dart';
 import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';
+import '../models/track_projection_row.dart' show projectionRowIdOf;
 import '../models/track_transform_lane_carrier.dart';
+import '../models/transform_track.dart' show TransformTrack;
 import '../models/track_transitions.dart' show transitionRowSpans;
 import 'dashed_path.dart' show DashPattern, dashesAlong;
 import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
@@ -84,8 +86,8 @@ import 'timeline/timeline_lane_rows.dart'
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,
         timelineKeysLineSpan,
-        timelineStretchWordSpan,
-        timelineUnionKeySpan;
+        timelineLaneKeySpan,
+        timelineStretchWordSpan;
 import 'timeline/effect_lane_policy.dart'
     show effectPropertyLanes, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
@@ -104,6 +106,7 @@ import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show
+        cameraPropertyLanes,
         cameraUnionHeader,
         laneSelectionCoversBandRow,
         transformGroupHeader;
@@ -207,6 +210,7 @@ import 'listenable_rebind.dart';
 import 'session/row_spans.dart' show trackRowMaterialBlocks;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
+part 'storyboard/storyboard_projection_keys.dart';
 part 'storyboard/storyboard_camera_row.dart';
 part 'storyboard/storyboard_conte_row.dart';
 part 'storyboard/storyboard_cut_starts.dart';
@@ -596,6 +600,7 @@ class StoryboardPanel extends StatefulWidget {
     this.rowDragHooks,
     this.onSeRowSelectionSpan,
     this.layerLaneEdit,
+    this.cutLaneEdit,
     this.poseDisplaySize,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
@@ -614,6 +619,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
+    this.expandedLaneLayerIds = const {},
+    this.onToggleLayerLanes,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -634,6 +641,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditConteBlock,
     this.onCameraCutPress,
     this.onEditCameraCell,
+    this.cutFrameCursor,
+    this.onSeekCutFrame,
     this.cameraViewEnabled,
     this.cameraDimOpacity,
     this.dragPreview,
@@ -1100,6 +1109,12 @@ class StoryboardPanel extends StatefulWidget {
   /// display-only.
   final PropertyLaneEditCallbacks? layerLaneEdit;
 
+  /// …and for a projection row's lanes (I-73 ④ⓔ): the lane verbs on the
+  /// layer of the cut the session stands in, handed [cutFrameCursor]'s
+  /// frames of its own — the timeline's lane edits, on the timeline's axis.
+  /// Null = display-only.
+  final PropertyLaneEditCallbacks? cutLaneEdit;
+
   // ⛔`activeCutFrameCursor` and `onSelectFrameIndex` are GONE (F-102,
   // 2026-09-15): the S rows' lane labels were their one reader, and they
   // read and seek [playheadFrame] now — an S row's keys are the track's.
@@ -1177,6 +1192,14 @@ class StoryboardPanel extends StatefulWidget {
   /// riding it, in every cut at once: the head is one.
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
+
+  /// The rows whose property lanes are twirled down, and the twirl's verb —
+  /// the timeline rail's own pair (I-73 ④ⓔ). A projection row's head is
+  /// the timeline's row, and its twirl is that row's: the camera row's,
+  /// twirled on its head, is every camera of the track's, as the head is
+  /// one.
+  final Set<LayerId> expandedLaneLayerIds;
+  final ValueChanged<LayerId>? onToggleLayerLanes;
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
@@ -1325,6 +1348,16 @@ class StoryboardPanel extends StatefulWidget {
   /// key there opens, an empty cell is keyed — on the cell the first click
   /// stood the session on.
   final VoidCallback? onEditCameraCell;
+
+  /// The frame of its own the cut the session stands in is on — what a
+  /// projection row's lane labels read their values at, as the timeline's
+  /// lane labels do (I-73 ④ⓔ). Null reads frame 0.
+  final ValueListenable<int>? cutFrameCursor;
+
+  /// A seek to a frame of [CutId]'s own — the key navigator (◆) of a
+  /// projection row's lane label, which walks the keys of the cut the
+  /// session stands in.
+  final void Function(CutId cutId, int ownFrame)? onSeekCutFrame;
 
   /// The camera row's head is the timeline's camera row: its eye is the
   /// camera VIEW and its slider the view's DIM — the canvas's and the
@@ -3435,7 +3468,7 @@ bool _storyboardRangeCovers(
 /// line the pointer is on.
 Positioned _storyboardRowPressLayer({
   required Key key,
-  required LayerRowAddress row,
+  required TimelineRowAddress row,
   required double cellExtent,
   required int? Function(Offset local) frameAt,
   required StoryboardRowFramePress? onRowFramePress,

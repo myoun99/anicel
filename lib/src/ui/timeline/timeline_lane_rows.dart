@@ -1298,12 +1298,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
   /// Build-time is correct HERE: the band rebuilds on zoom.
-  double get _markerSize => lane.isGroupHeader
-      ? timelineLaneUnionKeyMarkerSize(
-          _crossExtent,
-          frameCellExtent: _cellExtent,
-        )
-      : timelineLaneKeyMarkerSize(_crossExtent, frameCellExtent: _cellExtent);
+  double get _markerSize => timelineLaneKeyMarkerSizeOf(
+    lane,
+    _crossExtent,
+    frameCellExtent: _cellExtent,
+  );
   double get _hitSize => (_markerSize + 8).clamp(14.0, _crossExtent).toDouble();
 
   bool _inWindow(int frame) =>
@@ -1582,6 +1581,21 @@ double timelineLaneUnionKeyMarkerSize(
   frameCellExtent: frameCellExtent,
 );
 
+/// The size of [lane]'s key marks: a group header's union ([timelineLaneUnionKeyMarkerSize]),
+/// a member's key ([timelineLaneKeyMarkerSize]) — the band's one answer,
+/// wherever a lane's keys are drawn ([TimelineLaneFrameRow], and the
+/// storyboard's camera rows through [timelineLaneKeySpan]).
+double timelineLaneKeyMarkerSizeOf(
+  PropertyLaneRow lane,
+  double crossExtent, {
+  required double frameCellExtent,
+}) => lane.isGroupHeader
+    ? timelineLaneUnionKeyMarkerSize(
+        crossExtent,
+        frameCellExtent: frameCellExtent,
+      )
+    : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent);
+
 /// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — **A KEY MARK IS A SQUARE, SO
 /// IT IS CAPPED BY THE TIGHTER AXIS OF ITS CELL.**
 ///
@@ -1616,12 +1630,12 @@ double _squareInCell(
 /// floor [timelineFittedGlyphFontSize] holds every other mark to.
 const double _keyMarkerFloor = 4.0;
 
-/// The union key's WORD for one frame — null when the row names no key
+/// A lane key's WORD for one frame — null when the lane names no key
 /// there.
 ///
 /// The band's print ([_LaneKeyName]), so the camera row says what every
 /// other row says about a named key.
-Widget? _unionKeyName(PropertyLaneRow lane, {required int frame}) {
+Widget? _laneKeyWord(PropertyLaneRow lane, {required int frame}) {
   final name = lane.keyNames[frame];
   if (name == null) {
     return null;
@@ -1662,7 +1676,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
         axis: axis,
       ),
     for (final frame in lane.keyedFrames.toList()..sort())
-      timelineUnionKeySpan(
+      timelineLaneKeySpan(
         keyPrefix: keyPrefix,
         layer: layer,
         lane: lane,
@@ -1672,19 +1686,26 @@ List<Widget> timelineUnionKeyMarkerSpans({
   ];
 }
 
-/// ONE union key — its mark and its name — as the span it stands on: the
-/// cell of [lane]'s key at [frame], or the cell [at] where a row draws the
-/// key somewhere other than its own frame (the storyboard's camera row
-/// draws each cut's keys at the cut's place on the track, I-73 ④).
+/// ONE key of [lane] — its mark and its name — as the span it stands on:
+/// the cell of the key at [frame], or the cell [at] where a row draws the
+/// key somewhere other than its own frame (the storyboard's camera rows
+/// draw each cut's keys at the cut's place on the track, I-73 ④).
 ///
 /// [crossExtent] is the band the mark stands in, across — the row's whole
 /// extent, or with [crossInset] the part of it from there (the camera row's
 /// upper and lower lines over an O.L). The mark's size reads it, as it
-/// reads the row's: one metric law ([timelineLaneUnionKeyMarkerSize]).
+/// reads the row's: one metric law ([timelineLaneKeyMarkerSizeOf] — a
+/// header's union, or a member's key, as the band draws them).
 ///
 /// [named] false leaves the key's name off — the camera row's two lines
 /// have no room for it (the drawn proposal's 「키 이름은 한 줄일 때만」).
-TimelineFrameSpan timelineUnionKeySpan({
+/// [selected] rings the mark, as the band rings a key its lane selection
+/// holds.
+///
+/// ↩️`timelineUnionKeySpan` while the camera row's union was the one lane
+/// drawn this way; the storyboard's camera LANES are drawn so too (I-73
+/// ④ⓔ).
+TimelineFrameSpan timelineLaneKeySpan({
   required String keyPrefix,
   required Layer layer,
   required PropertyLaneRow lane,
@@ -1693,6 +1714,7 @@ TimelineFrameSpan timelineUnionKeySpan({
   int? at,
   double? crossInset,
   bool named = true,
+  bool selected = false,
 }) {
   final cell = at ?? frame;
   return TimelineFrameSpan(
@@ -1718,7 +1740,8 @@ TimelineFrameSpan timelineUnionKeySpan({
           constraints.maxWidth,
           constraints.maxHeight,
         );
-        final markerSize = timelineLaneUnionKeyMarkerSize(
+        final markerSize = timelineLaneKeyMarkerSizeOf(
+          lane,
           crossExtent,
           frameCellExtent: cellExtent,
         );
@@ -1729,11 +1752,12 @@ TimelineFrameSpan timelineUnionKeySpan({
           shape: lane.keyShapeAt(frame),
           markerSize: markerSize,
           color: layerMarkColor(layer.mark),
+          selected: selected,
         );
         // The NAME rides the same span — 🗣️유저 2026-09-12:
         // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row drew
         // the mark and left the word to a band it does not have.
-        final word = named ? _unionKeyName(lane, frame: frame) : null;
+        final word = named ? _laneKeyWord(lane, frame: frame) : null;
         return word == null
             ? marker
             : Stack(fit: StackFit.expand, children: [marker, word]);

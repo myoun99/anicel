@@ -459,6 +459,29 @@ class PropertyLaneEditCallbacks {
   /// The chain of the lanes whose value is a linked pair — null leaves it
   /// off their rows.
   final PropertyLaneValueLink? valueLink;
+
+  /// These edits, landing on [layer] whichever row hands them over — a row
+  /// that wears a layer under an address of its own (the storyboard's
+  /// camera row, whose lanes are those of the camera of the cut it stands
+  /// in, I-73 ④ⓔ) edits that layer.
+  PropertyLaneEditCallbacks landingOn(Layer layer) {
+    final setValue = onSetValue;
+    final previewValue = onPreviewValue;
+    return PropertyLaneEditCallbacks(
+      onToggleKeyAt: (_, lane, frameIndex) =>
+          onToggleKeyAt(layer, lane, frameIndex),
+      onSetValue: setValue == null
+          ? null
+          : (_, lane, frameIndex, input) =>
+                setValue(layer, lane, frameIndex, input),
+      onPreviewValue: previewValue == null
+          ? null
+          : (_, lane, frameIndex, input) =>
+                previewValue(layer, lane, frameIndex, input),
+      onEndPreview: onEndPreview,
+      valueLink: valueLink,
+    );
+  }
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of

@@ -258,7 +258,10 @@ void main() {
   /// (`named`: two lines leave no room for a word). The line beside it
   /// stayed under: `timelineKeysLineCourse` takes the line it draws.
   /// 🔬The lane's scan against master named that one added and nothing
-  /// gone.
+  /// gone. ↩️It is `timelineLaneKeySpan` since 2026-10-09 (I-73 ④ⓔ), and
+  /// nine: the storyboard's camera LANES lay their keys out with it too, and
+  /// a member's mark rings while its lane selection holds it (`selected`)
+  /// — still the one name under this ceiling.
   ///
   /// ⚠️387 → 388 on 2026-10-09, one named as the rule above asks (F-282,
   /// the one door): `pickFileGrantsForUser` (five) took `initialDirectory`.

@@ -1,14 +1,10 @@
-import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
-import '../../models/transform_pose.dart';
-import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
-import 'scale_lane_form.dart';
 import 'transform_lane_policy.dart'
-    show cameraUnionHeader, transformPropertyLanes;
+    show cameraPropertyLanes, cameraUnionHeader;
 
 /// THE property lanes a layer contributes, in display order.
 ///
@@ -75,19 +71,7 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   // Layer — reading the cut here is exactly why camera member lanes sat
   // still while every other transform lane followed its drag live.
   final cameraTrack = session.camera.activeCutCameraTrack ?? cut.camera.track;
-  return transformPropertyLanes(
-    cameraTrack,
-    scaleForm: scaleLaneFormOf(row),
-    poseAt: (frameIndex) => TransformPose.ofCamera(
-      resolveCameraPoseAt(
-        // The SAME track the lanes are built from, so the value column
-        // follows an in-flight key move like the diamonds do.
-        camera: CutCamera.fromTrack(cameraTrack),
-        canvasSize: cut.canvasSize,
-        frameIndex: frameIndex,
-      ),
-    ),
-  ).where((lane) => !lane.isGroupHeader).toList();
+  return cameraPropertyLanes(row, cameraTrack, canvasSize: cut.canvasSize);
 }
 
 /// The CAMERA row's union summary lane — the row band's key markers.
