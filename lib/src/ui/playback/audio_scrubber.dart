@@ -8,14 +8,15 @@
 /// the same transport playback uses — one arm per crossed frame, samples
 /// exact, no media pipeline opened per tick.
 ///
-/// The schedule uploads ONCE per gesture (the first frame the scrub
-/// actually crosses), from the same scheduler playback uses, over the
-/// active-cut playlist — so scrubbed sound and played sound can never
-/// disagree. Standing down is silent and per-gesture: no device, no
-/// resident PCM, or a cut with no sound leaves the scrub visual-only,
-/// exactly as it was before this class existed.
+/// The schedule uploads ONCE per cut a gesture stands in (the first frame
+/// the scrub crosses there), from the same scheduler playback uses, over
+/// the active-cut playlist — so scrubbed sound and played sound can never
+/// disagree. Standing down is silent and per cut: no device, no resident
+/// PCM, or a cut with no sound leaves the scrub visual-only there, exactly
+/// as it was before this class existed.
 library;
 
+import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
@@ -58,6 +59,13 @@ class AudioScrubber {
 
   bool _armed = false;
   bool _stoodDown = false;
+
+  /// The cut the decision was made for: the mix is that cut's playlist, so
+  /// a scrub that crosses into another cut (I-57 ②) decides again for the
+  /// cut it reached. ↩️One decision a gesture was enough while a scrub left
+  /// the active cut alone, and after a crossing it played the cut it left
+  /// at the frame numbers of the cut it reached.
+  CutId? _decidedFor;
   QaAudioDevice? _device;
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
@@ -79,6 +87,11 @@ class AudioScrubber {
     if (controller.isActive) {
       // Playback (even paused) owns the device and its schedule.
       return;
+    }
+    final cutId = controller.resolveActiveCutId();
+    if (cutId != _decidedFor) {
+      _letGo();
+      _decidedFor = cutId;
     }
     if (!_armed && !_stoodDown) {
       _prepare(localFrame);
@@ -102,6 +115,12 @@ class AudioScrubber {
 
   /// The gesture's release: silence, and a fresh decision next gesture.
   void onScrubEnd() {
+    _letGo();
+    _decidedFor = null;
+  }
+
+  /// Silence, and the decision undone.
+  void _letGo() {
     if (_armed) {
       _device?.stop();
     }
@@ -109,7 +128,7 @@ class AudioScrubber {
     _stoodDown = false;
   }
 
-  /// One decision per gesture, mirroring the transport's activation: the
+  /// One decision per cut, mirroring the transport's activation: the
   /// schedule from the shared scheduler, PCM from the conform store, all
   /// resident — or streamable from its conform — or nothing. A stand-down
   /// kicks the missing pieces so the NEXT gesture (or the next play) has
@@ -162,10 +181,5 @@ class AudioScrubber {
     centerSample: centerSample,
   );
 
-  void dispose() {
-    if (_armed) {
-      _device?.stop();
-      _armed = false;
-    }
-  }
+  void dispose() => _letGo();
 }

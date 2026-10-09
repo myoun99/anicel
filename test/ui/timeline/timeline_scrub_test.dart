@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -671,6 +672,36 @@ layers: layers,
       manager.frameScrub.commitFrameScrub();
       expect(manager.activeCutId, const CutId('cut-b'));
       expect(manager.currentFrameIndex, 11);
+    });
+
+    // 🗣️I-57-Q1 memo (유저 10-08): 「컷 안 선택 풀려도 됨 … 콘티패널 ·
+    // 글로벌 선택만 남으면 됨」.
+    test('a crossing keeps the TRACK\'s selection — the rows the conte '
+        'panel selects — whether a scrub or a run makes it', () {
+      final manager = twoCutSession();
+      addTearDown(manager.dispose);
+      manager.updateTrackRowRangeSelectionByFrame(
+        layerId: manager.activeTrack.transitionLayer.id,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 40,
+      );
+      final held = manager.trackFrameRangeSelection.value;
+      expect(held, isNotNull, reason: 'fixture');
+
+      manager.frameScrub.scrubGlobalFrame(5);
+      manager.frameScrub.scrubGlobalFrame(35); // cut-b: the crossing
+      expect(manager.activeCutId, const CutId('cut-b'), reason: 'fixture');
+      expect(manager.trackFrameRangeSelection.value, same(held));
+      manager.frameScrub.commitFrameScrub();
+      expect(manager.trackFrameRangeSelection.value, same(held));
+
+      final playback = manager.playbackRig.playback;
+      playback.play(scope: PlaybackScope.allCuts);
+      playback.seekToGlobalFrame(5); // back into cut-a
+      expect(manager.activeCutId, const CutId('cut-a'), reason: 'fixture');
+      expect(manager.trackFrameRangeSelection.value, same(held));
+      playback.stop();
+      expect(manager.trackFrameRangeSelection.value, same(held));
     });
 
     test('a same-frame tap on an already-parked position never engages '

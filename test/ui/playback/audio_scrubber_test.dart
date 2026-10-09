@@ -27,7 +27,8 @@ import '../../helpers/native_engine_path.dart';
 
 /// The audio scrub, driven for real on the null backend: each crossed
 /// frame plays exactly its slice of the mix; release silences; playback
-/// owning the device refuses the gesture; a silent cut never arms.
+/// owning the device refuses the gesture; a silent cut never arms; a scrub
+/// that crosses into another cut hears that cut.
 Project _project({bool withSound = true}) => Project(
   id: const ProjectId('scrub-project'),
   name: 'Scrub',
@@ -71,6 +72,49 @@ Project _project({bool withSound = true}) => Project(
               ),
             ],
           ),
+      ],
+    ),
+  ],
+);
+
+/// Two cuts on the track, A on its frames 0–9 and B on 10–19, with the
+/// track's sound under [soundUnder] alone.
+Project _twoCuts({required String soundUnder}) => Project(
+  id: const ProjectId('scrub-project'),
+  name: 'Scrub',
+  createdAt: DateTime.utc(2026, 10, 10),
+  tracks: [
+    Track(
+      id: const TrackId('track'),
+      name: 'Video',
+      cuts: [
+        for (final id in ['cut-a', 'cut-b'])
+          Cut(
+            id: CutId(id),
+            name: id,
+            duration: 10,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: const [],
+          ),
+      ],
+      seLayers: [
+        Layer(
+          id: const LayerId('se'),
+          name: 'S1',
+          kind: LayerKind.se,
+          frames: [
+            Frame(id: const FrameId('se-frame'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            (soundUnder == 'cut-a' ? 0 : 10): const TimelineExposure.drawing(
+              FrameId('se-frame'),
+              length: 10,
+            ),
+          },
+          audioClips: [
+            AudioClip(filePath: 'tone.wav', frameId: const FrameId('se-frame')),
+          ],
+        ),
       ],
     ),
   ],
@@ -221,6 +265,79 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
+  });
+
+  group('🗣️I-57 ②: a scrub that crosses into another cut hears THAT cut — '
+      'the mix is decided again for the cut it reached', () {
+    Future<
+      ({
+        AudioScrubber scrubber,
+        QaAudioDevice device,
+        void Function(CutId) standIn,
+      })
+    >
+    scrubOver(Project project) async {
+      final device = openNullDevice();
+      var active = const CutId('cut-a');
+      final controller = CanvasPlaybackController(
+        resolveProject: () => project,
+        resolveActiveCutId: () => active,
+        resolveActiveTrackId: () => const TrackId('track'),
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      );
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final scrubber = AudioScrubber(
+        controller: controller,
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+        resolveProject: () => project,
+        conformStore: store,
+        resolveDevice: () => QaAudioDevice.instance,
+      );
+      addTearDown(() {
+        scrubber.dispose();
+        controller.dispose();
+        store.dispose();
+      });
+      return (
+        scrubber: scrubber,
+        device: device,
+        standIn: (CutId cut) => active = cut,
+      );
+    }
+
+    test('from a silent cut into one with sound: it sounds', () async {
+      final (:scrubber, :device, :standIn) = await scrubOver(
+        _twoCuts(soundUnder: 'cut-b'),
+      );
+
+      scrubber.onScrubFrame(3);
+      expect(scrubber.isArmed, isFalse, reason: 'fixture: cut A is silent');
+
+      standIn(const CutId('cut-b'));
+      scrubber.onScrubFrame(3);
+      expect(scrubber.isArmed, isTrue, reason: 'cut B has sound of its own');
+      expect(await _waitFor(() => device.positionSamples >= 14400), isTrue);
+      scrubber.onScrubEnd();
+    }, skip: skip);
+
+    test('from a cut with sound into a silent one: the cut it left goes '
+        'quiet — never played at the frame numbers of the cut it reached',
+        () async {
+      final (:scrubber, :device, :standIn) = await scrubOver(
+        _twoCuts(soundUnder: 'cut-a'),
+      );
+
+      scrubber.onScrubFrame(3);
+      expect(scrubber.isArmed, isTrue, reason: 'fixture: cut A sounds');
+
+      standIn(const CutId('cut-b'));
+      scrubber.onScrubFrame(5);
+      expect(scrubber.isArmed, isFalse);
+      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      scrubber.onScrubEnd();
+    }, skip: skip);
   });
 
   test('missing PCM stands the gesture down and kicks the conform for the '

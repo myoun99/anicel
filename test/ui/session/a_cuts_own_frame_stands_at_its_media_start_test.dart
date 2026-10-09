@@ -254,14 +254,19 @@ void main() {
       expect((session.activeCutId, session.currentFrameIndex), (b, 12));
     });
 
-    test('🚨parked over another cut shows that cut on its own frame — and '
+    test('🚨crossing into another cut stands on that cut\'s own frame — and '
         'lands there', () {
       final session = sessionOf()..selectCut(a);
-      // A press and a move, both off the open cut: the move engages the
-      // live preview.
+      // A press and a move, both off the open cut: the press crosses into
+      // it (I-57 ②), the move engages the live scrub. ↩️Both parked there.
       session.frameScrub.scrubGlobalFrame(29);
       session.frameScrub.scrubGlobalFrame(30);
       expect(session.frameScrub.active.value, isTrue, reason: 'fixture');
+      expect(
+        (session.activeCutId, session.currentFrameIndex),
+        (b, 12),
+        reason: 'crossed before the release',
+      );
 
       final shown = session.cutUnderPlayhead.resolve()!;
       expect((shown.cut.id, shown.startFrame, shown.localFrame), (b, 24, 12));

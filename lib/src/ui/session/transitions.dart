@@ -296,8 +296,10 @@ class Transitions {
   /// sit on; the sheet has no warning channel, so it prints only what
   /// applies.
   ///
-  /// F-90: for the cut the sheet PRINTS — a scrub over another cut makes it
-  /// a different one from the cut open for editing.
+  /// F-90: for the cut the sheet PRINTS — the cut under the playhead
+  /// ([CutUnderPlayhead]). ↩️A scrub over another cut made it a different
+  /// one from the cut open for editing until the scrub crossed into it
+  /// (I-57 ②).
   ///
   /// [olWord] is the sheet's: it prints in the NOTATION language (F-229).
   Layer trackTransitionSheetLayerFor({
