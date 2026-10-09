@@ -174,7 +174,10 @@ void main() {
 
     expect(
       _sessionOf(tester).rowSelection.value,
-      containsAll(<TimelineRowAddress>[const TrackRowAddress(_trackId), _conteRow]),
+      containsAll(<TimelineRowAddress>[
+        const TrackRowAddress(_trackId),
+        _conteRow,
+      ]),
     );
   });
 

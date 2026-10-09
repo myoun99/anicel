@@ -109,9 +109,10 @@ void main() {
         .cuts
         .single
         .layers)
-      layer.attachedToLayerId == null
-          ? layer.id.value
-          : '${layer.id.value}/${layer.attachedPlacement.name}',
+      if (layer.attachedToLayerId == null)
+        layer.id.value
+      else
+        '${layer.id.value}/${layer.attachedPlacement.name}',
   ];
 
   test('🚨two riders carried under their base both ride under it', () {

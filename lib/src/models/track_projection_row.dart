@@ -2,7 +2,9 @@ import 'conte_group.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'project.dart';
 import 'timeline_row_address.dart';
+import 'track_camera_head.dart' show cameraHeadOf;
 import 'track_camera_row.dart';
 import 'track_conte_row.dart';
 import 'track_id.dart';
@@ -53,6 +55,24 @@ LayerRowAddress? projectionRowUnder(TimelineRowAddress? row) => switch (row) {
     LayerRowAddress(layerId),
   _ => null,
 };
+
+/// The row whose NAME the projection row [rowId] shows — its HEAD, which
+/// every row it stands for wears (I-73, `headMirrorTargets`): the first row
+/// of its track's cuts at its seat ([conteHeadRowAt]), or the track's first
+/// camera ([cameraHeadOf]). Null for any other id, and while no cut holds a
+/// row there.
+Layer? projectionRowHeadOf(Project project, LayerId rowId) {
+  final trackId = trackIdOfProjectionRow(rowId);
+  for (final track in project.tracks) {
+    if (track.id == trackId) {
+      return switch (trackConteRowOf(rowId)) {
+        final conte? => conteHeadRowAt(track.cuts, conte.seat),
+        null => cameraHeadOf(track.cuts),
+      };
+    }
+  }
+  return null;
+}
 
 /// [projectedRowOf] read backwards: the projection row of [trackId] that
 /// shows [cut]'s row [layerId] — the camera row for its camera, the conte

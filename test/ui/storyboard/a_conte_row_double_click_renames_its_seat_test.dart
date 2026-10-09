@@ -121,7 +121,9 @@ const _field = ValueKey<String>('rename-layer-text-field');
 
 Future<void> _rename(WidgetTester tester, String name) async {
   await tester.enterText(find.byKey(_field), name);
-  await tester.tap(find.byKey(const ValueKey<String>('rename-layer-ok-button')));
+  await tester.tap(
+    find.byKey(const ValueKey<String>('rename-layer-ok-button')),
+  );
   await tester.pumpAndSettle();
 }
 

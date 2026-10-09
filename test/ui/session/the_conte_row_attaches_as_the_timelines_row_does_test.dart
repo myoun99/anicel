@@ -99,7 +99,11 @@ void main() {
 
   EditorSessionManager standingAt(TimelineRowAddress row, int frame) {
     final session = sessionOf()
-      ..standOnRow(row, panel: WorkingPanel.storyboard, globalFrameIndex: frame);
+      ..standOnRow(
+        row,
+        panel: WorkingPanel.storyboard,
+        globalFrameIndex: frame,
+      );
     expect(session.storyboardStandingRow, row, reason: 'fixture: standing');
     return session;
   }
@@ -240,7 +244,10 @@ void main() {
     test('a gap', () {
       final session = standingAt(conteRow, 26);
       expect(session.activeCutOrNull, isNull, reason: '⛔전제');
-      expect(StoryboardToolbarPanelContext(session).canAddAttachedLayer, isFalse);
+      expect(
+        StoryboardToolbarPanelContext(session).canAddAttachedLayer,
+        isFalse,
+      );
     });
   });
 
