@@ -16,9 +16,10 @@ import '../../helpers/project_scratch_folder.dart';
 /// window. A row that names none is one of three things, and the ledger
 /// says which:
 ///
-///   · OWED — a row of the scope chosen above that is not an action YET.
-///     The rounds of I-40 empty this list, and it only shrinks: a new menu
-///     row arrives as an action, or it arrives here and says why.
+///   · ↩️OWED — a row of the scope chosen above that was not an action
+///     YET. The rounds of I-40 emptied it on 2026-10-09, the last two
+///     declined (I-40-Q5 · Q6): a new menu row arrives as an action, or here
+///     as one of the three below.
 ///   · A CHOICE — one value out of a list (a font, a colour label, an edge
 ///     mode). The answer leaves these out: 「도구 설정의 선택지 · 스위치 …
 ///     에는 키를 줄 수 없다」 was the cost 유저 took with it.
@@ -30,7 +31,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// tests' (`timeline_bar_rows_are_actions_test`, `menu_rows_are_actions_
 /// test`). What it holds is the one thing those cannot — that no row was
 /// left out because nobody listed it.
-enum Why { owed, aChoice, aSecondLevel, declined }
+enum Why { aChoice, aSecondLevel, declined }
 
 const ledger = <String, Why>{
   "brush/text_tool_settings.dart | 'text-tool-font-\${_nameOf(family)}'":
@@ -58,16 +59,14 @@ const ledger = <String, Why>{
   "media/media_viewer_tab_host.dart | _key('register-asset-button')":
       Why.declined,
   "media/media_viewer_tab_host.dart | _key('swap-button')": Why.declined,
-  // One row per recent project — a list that is the user's own, as the
-  // brush library's rows are (I-56 made those actions out of the library as
-  // it stands). What shape an action takes here is asked when its round
-  // comes; the row above it only opens that list.
-  "menu/editor_top_strip.dart | 'menu-recent-\${entry.path}'": Why.owed,
+  // 🗣️I-40-Q5 (유저 2026-10-09, a row per recent project — 「몇 번째 줄」
+  // or 「그 파일」?): 「주지 않는다」. The row above it only opens that list.
+  "menu/editor_top_strip.dart | 'menu-recent-\${entry.path}'": Why.declined,
   "menu/editor_top_strip.dart | 'menu-recent-projects'": Why.aSecondLevel,
-  // One row per tab that did not fit the strip: picking it shows that
-  // panel, which a panel's own action also does.
+  // 🗣️I-40-Q6 (유저 2026-10-09, a row per tab that did not fit the strip —
+  // a panel's own action already shows it): 「주지 않는다」.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":
-      Why.owed,
+      Why.declined,
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
