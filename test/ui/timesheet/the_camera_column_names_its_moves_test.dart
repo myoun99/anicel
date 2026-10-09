@@ -30,12 +30,12 @@ void main() {
   CameraPose at(double x, {double zoom = 1}) =>
       CameraPose(center: CanvasPoint(x: x, y: 0), zoom: zoom);
 
-  TimesheetDocument sheetOf(Map<int, CameraPose> keys) =>
+  TimesheetDocument sheetOf(Map<int, CameraPose> keys, {int duration = 24}) =>
       TimesheetDocument.fromCut(
         cut: Cut(
           id: const CutId('cut'),
           name: '1',
-          duration: 24,
+          duration: duration,
           canvasSize: const CanvasSize(width: 1920, height: 1080),
           layers: const [],
           camera: CutCamera(keyframes: keys),
@@ -105,11 +105,13 @@ void main() {
   });
 
   /// How many pixels the sheet prints right of the first CAM column's line,
-  /// over the rows from 2 to 14.
+  /// over [rows] of [half] of the first page.
   Future<int> inkedBesideTheLine(
     WidgetTester tester,
-    TimesheetDocument document,
-  ) async {
+    TimesheetDocument document, {
+    int half = 0,
+    ({int from, int to}) rows = (from: 2, to: 15),
+  }) async {
     final layout = TimesheetDocumentLayout(document: document);
     final painter = TimesheetDocumentPainter(
       document: document,
@@ -136,14 +138,15 @@ void main() {
     picture.dispose();
 
     final column = cameraColumnOf(document);
-    final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
+    final left = layout.halfLeft(0, half) + layout.columnLeftInHalf(column);
     final columnWidth = layout.columnWidthFor(TimesheetColumnKind.camera);
     // Clear of the line and its keys' dots (3.4 round the middle).
     final from = (left + columnWidth / 2 + 5).ceil();
     final to = (left + columnWidth - 1).floor();
-    final top = layout.halfRowsTop(0) + 2 * TimesheetDocumentLayout.rowHeight;
+    final top =
+        layout.halfRowsTop(0) + rows.from * TimesheetDocumentLayout.rowHeight;
     final bottom =
-        layout.halfRowsTop(0) + 15 * TimesheetDocumentLayout.rowHeight;
+        layout.halfRowsTop(0) + rows.to * TimesheetDocumentLayout.rowHeight;
     var inked = 0;
     for (var y = top.ceil(); y < bottom.floor() && y < height; y += 1) {
       for (var x = from; x < to; x += 1) {
@@ -159,5 +162,28 @@ void main() {
       'where the camera holds still', (tester) async {
     expect(await inkedBesideTheLine(tester, sheetOf(still)), 0);
     expect(await inkedBesideTheLine(tester, sheetOf(moving)), greaterThan(0));
+  });
+
+  testWidgets('🚨a move that runs on into the next half of the page is named '
+      'once, on the half its middle lies in', (tester) async {
+    // A six-second page is two halves of 72 rows: 20 → 100 has its middle
+    // on 60, and runs on through the second half's first 29 rows.
+    final document = sheetOf({20: at(0), 100: at(80)}, duration: 120);
+
+    expect(
+      await inkedBesideTheLine(tester, document, rows: (from: 20, to: 72)),
+      greaterThan(0),
+      reason: '⛔전제: the name, on the first half',
+    );
+    expect(
+      await inkedBesideTheLine(
+        tester,
+        document,
+        half: 1,
+        rows: (from: 0, to: 29),
+      ),
+      0,
+      reason: 'the rest of its line, and no second name',
+    );
   });
 }
