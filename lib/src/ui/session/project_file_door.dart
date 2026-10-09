@@ -36,7 +36,7 @@ import '../../services/media/project_media_sources.dart'
         projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
-    show AnicelSessionFields;
+    show AnicelSessionFields, projectDisplayName;
 import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
@@ -486,7 +486,10 @@ class ProjectFileDoor {
     void Function(double)? onProgress,
   }) async {
     final asOf = _file.editCount;
-    await _saveArchive(copy, _carryFor(onProgress: onProgress));
+    await _saveArchive(
+      copy,
+      _carryFor(projectPath, onProgress: onProgress),
+    );
     _file.keptInFailedCopy(copy, asOf: asOf);
     _failedCopies.record(copy, projectPath);
   }
@@ -549,7 +552,7 @@ class ProjectFileDoor {
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(onProgress: onProgress),
+      _carryFor(path, onProgress: onProgress),
     );
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
@@ -701,10 +704,23 @@ class ProjectFileDoor {
   ///
   /// ⚠️Call it AFTER `_settleWorkInFlight`: what is still in flight is not
   /// in the project yet.
-  _SaveCarry _carryFor({void Function(double)? onProgress}) {
-    final project = _solo.projectAsSavedWithoutSolo(
+  ///
+  /// The project goes in named as [namedAfter] — the file it is the
+  /// project of (유저 10-09: 「애초에 프로젝트이름=파일이름아닌가? 애니셀이든
+  /// 뭐든」): the name it holds is its file's from the write on, and the
+  /// session takes the same once bound ([ProjectFile.bindToSavedFile]).
+  /// ↩️Named only by the binding, after the write, the file held the name
+  /// it was saved FROM — and a Save As back onto the first file rewrote it
+  /// with another name, moving every entry behind it.
+  _SaveCarry _carryFor(
+    String namedAfter, {
+    void Function(double)? onProgress,
+  }) {
+    final saved = _solo.projectAsSavedWithoutSolo(
       _project.repository.requireProject(),
     );
+    final name = projectDisplayName(namedAfter);
+    final project = saved.name == name ? saved : saved.copyWith(name: name);
     return (
       project: project,
       // What the readers hold is stored too, whatever the pool names now
@@ -903,7 +919,7 @@ class ProjectFileDoor {
     // capture stayed, for the reason further down.
     final previousPath = _file.path;
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(onProgress: onProgress),
+      _carryFor(filePath, onProgress: onProgress),
     );
     final mediaToStore = carry.mediaToStore;
     // 🚨A Save As is「writing somewhere else」and nothing more subtle: the

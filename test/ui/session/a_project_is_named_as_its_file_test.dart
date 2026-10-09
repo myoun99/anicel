@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/session/project_file_door.dart'
+    show SaveAsked, readProjectFile;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
@@ -49,12 +50,21 @@ void main() {
       isFalse,
       reason: 'the name is the file\'s, not an edit to save',
     );
+    expect(
+      (await readProjectFile(at('cut12.anicel'))).project.name,
+      'cut12',
+      reason: 'the file holds its own name from the write on',
+    );
 
     await s.projectDoor.saveProjectToFile(
       at('cut12 v2.anicel'),
       asked: SaveAsked.byAPerson,
     );
     expect(s.repository.requireProject().name, 'cut12 v2');
+    expect(
+      (await readProjectFile(at('cut12 v2.anicel'))).project.name,
+      'cut12 v2',
+    );
   });
 
   test('a file opened is called by its own name, whatever name it was '
