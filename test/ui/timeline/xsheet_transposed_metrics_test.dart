@@ -825,5 +825,16 @@ layers: [folder, member],
       expect(await glyph(collapsed: false), layerRailTwirlIcon(expanded: true));
       expect(await glyph(collapsed: true), layerRailTwirlIcon(expanded: false));
     });
+
+    testWidgets('its box is turned with the sheet — its slot along the '
+        'column, the row\'s 24 across it', (tester) async {
+      await tester.pumpWidget(gridWithFolder(onToggleCollapsed: (_) {}));
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        ),
+        const Size(24, layerLaneToggleSlotWidth),
+      );
+    });
   });
 }

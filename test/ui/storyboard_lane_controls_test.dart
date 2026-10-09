@@ -215,6 +215,32 @@ void main() {
     expect(vRowOpen(), isFalse);
   });
 
+  testWidgets('an S row\'s twirl is the timeline\'s, and stands as tall as '
+      'the row\'s cells, as its InkWell did', (tester) async {
+    await _pumpPanel(tester, project: _project());
+    final twirl = find.byKey(
+      const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+    );
+    final typeCell = find.byKey(
+      const ValueKey<String>('storyboard-layer-type-button-lane-track-s1'),
+    );
+    expect(
+      tester.getSize(twirl).height,
+      tester.getSize(typeCell).height,
+      reason: 'both are handed the row\'s height',
+    );
+    expect(
+      tester.getSize(twirl).height,
+      greaterThan(24),
+      reason: '⛔CONTROL: the row is taller than a rail row\'s 24',
+    );
+    expect(
+      tester.appIconButton(twirl).tooltip,
+      isNotEmpty,
+      reason: 'the one twirl says what it does, here as on the timeline',
+    );
+  });
+
   testWidgets('one open row makes the legend button the CLOSING verb, and '
       'it shuts the rest with it', (tester) async {
     // The mixed state: with a single S row twirled open by hand, the button

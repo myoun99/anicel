@@ -391,6 +391,30 @@ void main() {
       expect(_laneKey('rotation', 4), findsNothing);
     });
 
+    testWidgets('a lane group\'s twirl keeps the box its glyph had — the one '
+        'twirl, as small as the header is', (tester) async {
+      await _pump(tester, _project());
+      final rowTwirl = find.byKey(
+        const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+      );
+      await tester.ensureVisible(rowTwirl);
+      await tester.pumpAndSettle();
+      await tester.tap(rowTwirl);
+      await tester.pumpAndSettle();
+
+      final groupTwirl = find.byKey(
+        const ValueKey<String>(
+          'timeline-lane-group-toggle-lane-draw-layer-transform-group',
+        ),
+      );
+      expect(groupTwirl, findsOneWidget, reason: 'fixture premise');
+      expect(
+        tester.getSize(groupTwirl),
+        const Size(16, 16),
+        reason: 'it was its 16px glyph alone before it was the one twirl',
+      );
+    });
+
     testWidgets('drawing layers twirl down the same Transform lanes onto '
         'their OWN track (L3), keyed and undone through the session', (
       tester,
