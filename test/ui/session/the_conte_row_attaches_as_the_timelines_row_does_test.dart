@@ -280,8 +280,8 @@ void main() {
       expect(session.storyboardStandingRow, const TrackRowAddress(trackId));
     });
 
-    test('🚨a cut stood on keeps the rail on the cut, whatever row of it the '
-        'timeline comes back on', () {
+    test('🚨a flip onto a cut keeps the rail on the cut, whatever row of it '
+        'the timeline comes back on', () {
       // 「컷에 설때는 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에
       // 서야 콘티행에 서도록」 (I-73, 유저 2026-10-08).
       final session = sessionOf()
@@ -294,12 +294,11 @@ void main() {
         );
       expect(session.activeCutId, const CutId('a'), reason: '⛔전제');
 
-      session.standOnRow(
-        const TrackRowAddress(trackId),
-        panel: WorkingPanel.storyboard,
-        globalFrameIndex: 15,
-      );
+      // ⛔Not a second press: a press stores the rail's row after the cut
+      // has switched, and would hide a rail moved on the way.
+      session.trackAxisWalk.flipCuts(trackId, forward: true);
 
+      expect(session.activeCutId, const CutId('b'), reason: '⛔전제');
       expect(
         session.activeLayerId,
         const LayerId('b-conte'),
