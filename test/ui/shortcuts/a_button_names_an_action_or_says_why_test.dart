@@ -45,6 +45,7 @@ const ledger = <String, Why>{
   'camera/camera_view_toggle_button.dart | keyValue': Why.owed,
   "media/media_pool_panel.dart | 'media-import-button'": Why.owed,
   "media/media_viewer_tab_host.dart | _key('open-file-button')": Why.owed,
+  "media/media_viewer_tab_host.dart | _key('close-file-button')": Why.owed,
   "timeline/timeline_panel.dart | 'timeline-orientation-toggle-button'":
       Why.owed,
   'timeline/timeline_view_cluster.dart | zoomIn ? '

@@ -261,7 +261,13 @@ void main() {
   /// translations as of this round. ★The debt went DOWN (that switch, and
   /// its 「Unpin」 twin) while the number went up by twenty-two: the number
   /// is where English is written, not how much is owed.
-  const untranslatedElsewhere = 118;
+  ///
+  /// 122 (117 + 5 — I-40, the view pill and the playback bar, 2026-10-09):
+  /// the English rows of five new registry actions — the pill's vertical
+  /// flip, straighten, fit and 1:1, and the bar's loop. Their buttons keep
+  /// the words they wore; each action is answered in the other four
+  /// languages by id. The ceiling had one line of slack (117) when it came.
+  const untranslatedElsewhere = 122;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
