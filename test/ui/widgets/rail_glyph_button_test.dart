@@ -257,6 +257,43 @@ void main() {
         reason: 'the comparison can see a glyph',
       );
     });
+
+    testWidgets('a button that CHANGES shows what a fresh one would — the '
+        'face repaints and lays out again only when it must, never less', (
+      tester,
+    ) async {
+      Widget rail(RailGlyphButton button) =>
+          RepaintBoundary(key: const ValueKey<String>('rail'), child: button);
+      RailGlyphButton button({required bool on, required String word}) =>
+          RailGlyphButton(
+            keyValue: 'changing',
+            tooltip: 'Changing',
+            glyph: RailTextGlyph(word, style: const TextStyle(fontSize: 13)),
+            onPressed: () {},
+            isSelected: on,
+            size: AppIconButtonSize.micro,
+          );
+
+      // The ON state: the face only repaints.
+      await pump(tester, rail(button(on: false, word: 'x')));
+      final rest = await pixels(tester, 'rail');
+      await pump(tester, rail(button(on: true, word: 'x')));
+      final changed = await pixels(tester, 'rail');
+      await pump(tester, const SizedBox());
+      await pump(tester, rail(button(on: true, word: 'x')));
+      expect(changed, await pixels(tester, 'rail'), reason: 'repainted');
+      expect(changed, isNot(rest), reason: '⛔CONTROL: the state shows');
+
+      // A bigger word: the face lays out again (a token's box grows with
+      // its glyph, up to the token's width).
+      final small = tester.getSize(byKey('changing'));
+      await pump(tester, rail(button(on: true, word: 'xxxxxxxx')));
+      final grown = tester.getSize(byKey('changing'));
+      await pump(tester, const SizedBox());
+      await pump(tester, rail(button(on: true, word: 'xxxxxxxx')));
+      expect(grown, tester.getSize(byKey('changing')), reason: 'laid out');
+      expect(grown, isNot(small), reason: '⛔CONTROL: the word moves the box');
+    });
   });
 
   group('a screen reader hears what it heard from the app\'s button', () {
@@ -376,10 +413,54 @@ void main() {
           size: box,
         ),
       );
-      final data = tester.getSemantics(byKey('reader-dead')).getSemanticsData();
-      expect(data.hasAction(SemanticsAction.tap), isFalse);
+      final node = tester.getSemantics(byKey('reader-dead'));
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+      expect(
+        node,
+        isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
+        reason: 'a dead button, said so',
+      );
       handle.dispose();
     });
+  });
+
+  testWidgets('the cursor says whether a press does anything', (tester) async {
+    await pump(
+      tester,
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RailGlyphButton(
+            keyValue: 'live',
+            tooltip: 'Live',
+            glyph: const RailIconGlyph(Icons.draw),
+            onPressed: () {},
+            size: box,
+          ),
+          const SizedBox(width: 40),
+          const RailGlyphButton(
+            keyValue: 'dead',
+            tooltip: 'Dead',
+            glyph: RailIconGlyph(Icons.draw),
+            onPressed: null,
+            size: box,
+          ),
+        ],
+      ),
+    );
+    final mouse = await mouseAt(tester, Offset.zero);
+    // A test mouse is device 1, whatever its pointer.
+    MouseCursor cursor() =>
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1)!;
+
+    await mouse.moveTo(tester.getCenter(byKey('live')));
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.click);
+    await mouse.moveTo(tester.getCenter(byKey('dead')));
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.basic);
+    await mouse.moveTo(const Offset(790, 590));
+    await settleTooltip(tester);
   });
 
   group('a press is the button\'s', () {
@@ -520,6 +601,47 @@ void main() {
       expect(find.text('tip 3'), findsNothing);
       expect(SummonedTooltip.debugShownMessage, isNull);
       expect(globalRoutes(), bare);
+    });
+
+    testWidgets('it fades in, as an AppTooltip does', (tester) async {
+      await pumpRail(tester);
+      final mouse = await mouseAt(tester, Offset.zero);
+      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      double opacity() => tester
+          .widget<FadeTransition>(
+            find.ancestor(
+              of: find.text('tip 3'),
+              matching: find.byType(FadeTransition),
+            ),
+          )
+          .opacity
+          .value;
+      expect(opacity(), allOf(greaterThan(0), lessThan(1)), reason: 'midway');
+      await settleTooltip(tester);
+      expect(opacity(), 1);
+      await mouse.moveTo(const Offset(790, 590));
+      await settleTooltip(tester);
+    });
+
+    testWidgets('a button taken off the screen while its window shows takes '
+        'the window and the route with it', (tester) async {
+      await pump(tester, const SizedBox());
+      final bare = globalRoutes();
+      await pumpRail(tester);
+      final mouse = await mouseAt(tester, Offset.zero);
+      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await settleTooltip(tester);
+      expect(find.text('tip 3'), findsOneWidget);
+
+      await pump(tester, const SizedBox());
+      await tester.pump();
+      expect(find.text('tip 3'), findsNothing);
+      expect(SummonedTooltip.debugTarget, isNull);
+      expect(globalRoutes(), bare);
+      await mouse.moveTo(const Offset(790, 590));
+      await settleTooltip(tester);
     });
 
     testWidgets('ONE window for the crowd: the next button takes it over, '
