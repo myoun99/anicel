@@ -210,6 +210,24 @@ void main() {
       placement: null,
       effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1])],
     ),
+    // A colour key LEADING the chain runs on the cel's own pixels, which
+    // the surface's painter carries — the paint takes the rest alone. Here
+    // the key takes every pixel, so a paint that ran it too keys it all.
+    'a keyed row': (
+      opacity: 1.0,
+      blendMode: LayerBlendMode.normal,
+      placement: null,
+      effects: [
+        ResolvedLayerEffect(
+          kind: EffectKind.deleteColor,
+          values: [0, 0, 0, 255, 100],
+        ),
+        ResolvedLayerEffect(
+          kind: EffectKind.brightnessContrast,
+          values: [20, 15],
+        ),
+      ],
+    ),
   };
 
   for (final MapEntry(key: name, value: paint) in routes.entries) {
