@@ -1826,6 +1826,30 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // The brush library's ⋯ and the two buttons beside it — before the
   // settings menu's rows, which close the registry.
   ..._brushLibraryActions(),
+  // I-40: the panels' own buttons, each under its panel's name — the media
+  // pool's ＋ (by the window it opens), the timesheet's format window and
+  // its notation ⇄ data switch.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.mediaPoolImport,
+    name: (language) => '${AppStrings.of(language).imImport}…',
+    category: 'Media',
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.timesheetFormat,
+    name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
+    category: 'Timesheet',
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timesheetDataMode,
+    label: 'Notation / data sheet',
+    category: 'Timesheet',
+    defaultActivators: [],
+    panelButton: true,
+  ),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
   // nothing and is no action; the rows under it are.
@@ -1921,33 +1945,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: panelActionCategory,
     defaultActivators: [],
     menuRow: true,
-  ),
-  // I-40: the panels' own buttons — the media pool's ＋ (「미디어: 임포트」,
-  // the panel's name and the window's), the timesheet's format window and
-  // its notation ⇄ data switch.
-  EditorActionDefinition.composed(
-    id: EditorActionIds.mediaPoolImport,
-    name: (language) {
-      final words = AppStrings.of(language);
-      return '${words.panelMedia}: ${words.imImport}';
-    },
-    category: panelActionCategory,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  EditorActionDefinition.composed(
-    id: EditorActionIds.timesheetFormat,
-    name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
-    category: panelActionCategory,
-    defaultActivators: const [],
-    panelButton: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.timesheetDataMode,
-    label: 'Notation / data sheet',
-    category: panelActionCategory,
-    defaultActivators: [],
-    panelButton: true,
   ),
 ];
 

@@ -69,6 +69,23 @@ Future<void> takeUp(WidgetTester tester, String tool) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens the rail group [slot] on that side — a panel that ships shut is
+/// not mounted, and a key presses only a button a panel shows.
+Future<void> openRailGroup(
+  WidgetTester tester, {
+  required bool right,
+  required int slot,
+}) async {
+  await tester.tap(
+    find.byKey(
+      ValueKey<String>(
+        'rail-group-${EditorWorkspace.railGroupId(right: right, slot: slot)}',
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() => _held = null);
 
@@ -131,7 +148,7 @@ void main() {
         editorActionLabel(EditorActionIds.guideAddSymmetry),
         '대칭 가이드 추가',
       );
-      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '미디어: 임포트');
+      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
       expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
       expect(
         editorActionLabel(EditorActionIds.timesheetDataMode),
@@ -200,8 +217,12 @@ void main() {
             return const [];
           };
       await pumpHome(tester);
-
       await pressKeyOf(tester, EditorActionIds.mediaPoolImport);
+      expect(asked, 0, reason: 'the pool ships shut: no ＋ to press');
+
+      await openRailGroup(tester, right: true, slot: 3);
+      await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
       expect(asked, 1);
       await takeUp(tester, 'select');
       await tester.sendKeyEvent(k);
@@ -214,6 +235,8 @@ void main() {
       tester,
     ) async {
       await pumpTextToolApp(tester);
+      // The tool's settings ship shut — their 🗑 is not on screen.
+      await openRailGroup(tester, right: false, slot: 2);
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
       await clickAt(tester, c.dx, c.dy);
