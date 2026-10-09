@@ -42,8 +42,6 @@ const ledger = <String, Why>{
   "brush/text_tool_settings.dart | 'text-tool-project-font-\$family'":
       Why.aChoice,
   "brush/text_tool_settings.dart | 'text-tool-text-\$index'": Why.aChoice,
-  "conte/conte_tab_host.dart | 'conte-blank-page-toggle'": Why.owed,
-  "conte/conte_tab_host.dart | 'conte-cover-toggle'": Why.owed,
   "cut_command_group.dart | 'cut-mark-button'": Why.aSecondLevel,
   // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
   // take?): 「그런건 단축키 안만들어도됨」.

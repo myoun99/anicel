@@ -30,6 +30,8 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
@@ -427,9 +429,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // Every page shares one metrics.
       inkController.syncGeometry(pages.first.metrics);
     }
-    return KeyedSubtree(
-      key: const ValueKey<String>('conte-panel'),
-      child: _panel(source, pages),
+    // A key presses the settings' rows — the conte sheet is one panel,
+    // whatever is in hand (I-40).
+    return PanelKeysBinding(
+      menu: () => _frontSettings(source),
+      child: KeyedSubtree(
+        key: const ValueKey<String>('conte-panel'),
+        child: _panel(source, pages),
+      ),
     );
   }
 
@@ -440,12 +447,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
     PanelFlyoutItem(
       keyValue: 'conte-cover-toggle',
       label: AppText.strings.conteCoverPage,
+      shortcuts: const [EditorActionIds.conteCover],
       checked: source.cover,
       onSelected: () => _setFront(cover: !source.cover),
     ),
     PanelFlyoutItem(
       keyValue: 'conte-blank-page-toggle',
       label: AppText.strings.conteBlankPage,
+      shortcuts: const [EditorActionIds.conteBlankPage],
       checked: source.blankPage,
       onSelected: () => _setFront(blankPage: !source.blankPage),
     ),

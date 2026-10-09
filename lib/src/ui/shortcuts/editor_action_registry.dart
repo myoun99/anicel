@@ -750,6 +750,10 @@ abstract final class EditorActionIds {
   static const mediaPoolImport = 'media-pool-import';
   static const timesheetFormat = 'timesheet-format';
   static const timesheetDataMode = 'timesheet-data-mode';
+
+  /// The conte sheet's settings rows (I-40) — its front's two switches.
+  static const conteCover = 'conte-cover';
+  static const conteBlankPage = 'conte-blank-page';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
@@ -1849,6 +1853,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Timesheet',
     defaultActivators: [],
     panelButton: true,
+  ),
+  // I-40: the conte sheet's settings rows — the front its book is printed
+  // with, a cover and a blank page, each a switch.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.conteCover,
+    name: (language) => AppStrings.of(language).conteCoverPage,
+    category: 'Conte Sheet',
+    defaultActivators: const [],
+    menuRow: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.conteBlankPage,
+    name: (language) => AppStrings.of(language).conteBlankPage,
+    category: 'Conte Sheet',
+    defaultActivators: const [],
+    menuRow: true,
   ),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
