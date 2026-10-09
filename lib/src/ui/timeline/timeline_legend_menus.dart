@@ -214,21 +214,8 @@ class TimelineLegendMenus {
     };
   }
 
-  /// A column's SOLO row — the one solo glyph, ticked while it holds.
-  PanelFlyoutItem _soloRow({
-    required String keyValue,
-    required String label,
-    required String actionId,
-    required bool checked,
-    required VoidCallback onSelected,
-  }) => PanelFlyoutItem(
-    keyValue: keyValue,
-    label: label,
-    shortcuts: [actionId],
-    icon: Icons.center_focus_strong_outlined,
-    checked: checked,
-    onSelected: onSelected,
-  );
+  /// The one glyph a column's SOLO row wears.
+  static const IconData _soloGlyph = Icons.center_focus_strong_outlined;
 
   LegendFlyout? get sheet => _bulkThenSolos(
     (legend) => [
@@ -248,10 +235,11 @@ class TimelineLegendMenus {
       ),
     ],
     (legend) => [
-      _soloRow(
+      PanelFlyoutItem(
         keyValue: 'legend-filter-sheet',
         label: AppText.strings.tlSoloSheetOnRows,
-        actionId: RailLegendActionIds.soloSheet,
+        shortcuts: const [RailLegendActionIds.soloSheet],
+        icon: _soloGlyph,
         checked: rowFilter.onTimesheetOnly,
         onSelected: legend.onToggleSheetOnlyFilter,
       ),
@@ -345,10 +333,11 @@ class TimelineLegendMenus {
       ),
     ],
     (legend) => [
-      _soloRow(
+      PanelFlyoutItem(
         keyValue: 'legend-filter-fill-ref',
         label: AppText.strings.tlSoloFillReferences,
-        actionId: RailLegendActionIds.soloFillReference,
+        shortcuts: const [RailLegendActionIds.soloFillReference],
+        icon: _soloGlyph,
         checked: rowFilter.fillReferenceOnly,
         onSelected: legend.onToggleFillReferenceOnlyFilter,
       ),
@@ -371,10 +360,11 @@ class TimelineLegendMenus {
       ),
     ],
     (legend) => [
-      _soloRow(
+      PanelFlyoutItem(
         keyValue: 'legend-filter-fx',
         label: AppText.strings.tlSoloFxOnRows,
-        actionId: RailLegendActionIds.soloFx,
+        shortcuts: const [RailLegendActionIds.soloFx],
+        icon: _soloGlyph,
         checked: rowFilter.fxOnly,
         onSelected: legend.onToggleFxOnlyFilter,
       ),
@@ -429,11 +419,12 @@ class TimelineLegendMenus {
         icon: Icons.visibility_off,
         onSelected: legend.onHideAllLayers,
       ),
-      _soloRow(
+      PanelFlyoutItem(
         keyValue: 'legend-eye-solo',
         // The registry's name: `=` presses this item (I-19).
         label: editorActionLabel(EditorActionIds.layerVisibilitySolo),
-        actionId: EditorActionIds.layerVisibilitySolo,
+        shortcuts: const [EditorActionIds.layerVisibilitySolo],
+        icon: _soloGlyph,
         checked: visibilitySoloEnabled,
         onSelected: legend.onToggleVisibilitySolo,
       ),
