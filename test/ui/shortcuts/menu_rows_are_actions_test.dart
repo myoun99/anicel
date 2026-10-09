@@ -90,7 +90,7 @@ void main() {
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(21));
+      expect(menuActions, hasLength(25));
       expect(
         editorActionDefinitions.last.category,
         panelActionCategory,
@@ -361,15 +361,10 @@ void main() {
               row.submenuBuilder == null)
             row.keyValue,
       ];
-      // ⚠️Not yet actions, each for its reason: a recent project is data,
-      // not a command; the project settings' rows wear a VALUE as their
-      // name (「FPS 24」) and wait for one of their own (I-40, later).
+      // ⚠️Not yet an action: a recent project is data, not a command — what
+      // shape its action takes is asked when its round comes.
       expect(
-        silent.where(
-          (key) =>
-              !key.startsWith('menu-recent-') &&
-              !key.startsWith('project-settings-'),
-        ),
+        silent.where((key) => !key.startsWith('menu-recent-')),
         isEmpty,
       );
     });
@@ -401,6 +396,30 @@ void main() {
       expect(window, findsNothing);
       await pressKeyOf(tester, EditorActionIds.preferences);
       expect(window, findsOneWidget);
+    });
+
+    testWidgets('a project setting\'s key opens the window its row opens, '
+        'one level in — and is called by that window, not by the value the '
+        'row wears', (tester) async {
+      await pumpApp(tester);
+      for (final (action, window) in const [
+        (EditorActionIds.projectFrameRate, 'project-fps-dialog'),
+        (EditorActionIds.projectAudioRate, 'project-audio-rate-dialog'),
+        (EditorActionIds.projectCameraSize, 'camera-size-dialog'),
+        (EditorActionIds.projectPlaybackMode, 'playback-mode-dialog'),
+      ]) {
+        final opened = find.byKey(ValueKey<String>(window));
+        expect(opened, findsNothing, reason: '⛔premise: $action');
+        await pressKeyOf(tester, action);
+        expect(opened, findsOneWidget, reason: action);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        keys(tester).resetAction(action);
+      }
+      expect(
+        editorActionLabel(EditorActionIds.projectFrameRate),
+        'Project frame rate…',
+      );
     });
 
     testWidgets('a key flips what its checked row flips, and back', (

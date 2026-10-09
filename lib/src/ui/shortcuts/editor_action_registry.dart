@@ -615,6 +615,28 @@ List<EditorActionDefinition> _brushLibraryActions() {
   ];
 }
 
+/// The project settings' rows as actions, in the menu's order — each named
+/// by the window it opens, since the row itself wears its value as it
+/// stands (「FPS 24」), which no key could be called by.
+List<EditorActionDefinition> _projectSettingsActions() {
+  EditorActionDefinition opens(
+    String id,
+    String Function(AppStrings strings) title,
+  ) => EditorActionDefinition.composed(
+    id: id,
+    name: (language) => '${title(AppStrings.of(language))}…',
+    category: 'Settings',
+    defaultActivators: const [],
+    menuRow: true,
+  );
+  return [
+    opens(EditorActionIds.projectFrameRate, (s) => s.projectFpsTitle),
+    opens(EditorActionIds.projectAudioRate, (s) => s.tlProjectAudioRate),
+    opens(EditorActionIds.projectCameraSize, (s) => s.cameraSizeTitle),
+    opens(EditorActionIds.projectPlaybackMode, (s) => s.playbackMode),
+  ];
+}
+
 String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
     AppStrings.of(
       language,
@@ -782,6 +804,13 @@ abstract final class EditorActionIds {
   static const fileBackUpFailedCopy = 'file-back-up-failed-copy';
   static const fileExport = 'file-export';
   static const workSettings = 'work-settings';
+
+  /// The project settings' rows (I-40), one level under the ⚙ — each opens
+  /// its own change window.
+  static const projectFrameRate = 'project-frame-rate';
+  static const projectAudioRate = 'project-audio-rate';
+  static const projectCameraSize = 'project-camera-size';
+  static const projectPlaybackMode = 'project-playback-mode';
   static const keyboardShortcuts = 'edit-keyboard-shortcuts';
   static const preferences = 'edit-preferences';
   static const about = 'help-about';
@@ -1762,6 +1791,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  ..._projectSettingsActions(),
   const EditorActionDefinition(
     id: EditorActionIds.keyboardShortcuts,
     label: 'Keyboard shortcuts…',

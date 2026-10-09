@@ -66,12 +66,6 @@ const ledger = <String, Why>{
   // comes; the row above it only opens that list.
   "menu/editor_top_strip.dart | 'menu-recent-\${entry.path}'": Why.owed,
   "menu/editor_top_strip.dart | 'menu-recent-projects'": Why.aSecondLevel,
-  "menu/project_settings_menu.dart | 'project-settings-audio-rate'": Why.owed,
-  "menu/project_settings_menu.dart | 'project-settings-camera-size'":
-      Why.owed,
-  "menu/project_settings_menu.dart | 'project-settings-fps'": Why.owed,
-  "menu/project_settings_menu.dart | 'project-settings-playback-mode'":
-      Why.owed,
   // One row per tab that did not fit the strip: picking it shows that
   // panel, which a panel's own action also does.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":

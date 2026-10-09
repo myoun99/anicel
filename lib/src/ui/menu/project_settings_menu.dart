@@ -8,6 +8,7 @@ import '../dialogs/camera_size_dialog.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../session/canvas_adjust.dart' show CameraSizeDraft;
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart';
@@ -175,12 +176,14 @@ class ProjectSettingsMenu {
     return [
       PanelFlyoutItem(
         keyValue: 'project-settings-fps',
+        shortcuts: const [EditorActionIds.projectFrameRate],
         label: 'FPS ${session.projectSettings.projectFrameRate.label}',
         icon: Icons.speed_outlined,
         onSelected: () => unawaited(_editFrameRate(context)),
       ),
       PanelFlyoutItem(
         keyValue: 'project-settings-audio-rate',
+        shortcuts: const [EditorActionIds.projectAudioRate],
         label: ProjectSettingsMenu.audioSampleRateLabel(
           session.projectAudio.projectAudioSampleRate,
         ),
@@ -189,6 +192,7 @@ class ProjectSettingsMenu {
       ),
       PanelFlyoutItem(
         keyValue: 'project-settings-camera-size',
+        shortcuts: const [EditorActionIds.projectCameraSize],
         label: strings.exCameraTemplate
             .replaceAll('{w}', '${cameraSize.width}')
             .replaceAll('{h}', '${cameraSize.height}'),
@@ -197,6 +201,7 @@ class ProjectSettingsMenu {
       ),
       PanelFlyoutItem(
         keyValue: 'project-settings-playback-mode',
+        shortcuts: const [EditorActionIds.projectPlaybackMode],
         label:
             '${strings.playbackMode} · '
             '${ProjectSettingsMenu.playbackModeLabel(session.playbackRig.playbackMode)}',
