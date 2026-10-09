@@ -294,8 +294,14 @@ void main() {
       final shown = await pumpFiltered(
         tester,
         rowFilter: markFilter,
-        arrange: (session) =>
-            session.layerStack.addLayerOfKind(LayerKind.storyboard),
+        // The conte made is where the rail stands (F-322) and a filter
+        // spares the row stood on — so back to S1, and the filter is asked
+        // of the conte row.
+        arrange: (session) => session
+          ..layerStack.addLayerOfKind(LayerKind.storyboard)
+          ..selectRow(
+            LayerRowAddress(seLayerIdForTrack(session.selectedTrackId, 1)),
+          ),
       );
       expectConteRowHidden(shown.track);
     });

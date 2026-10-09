@@ -24,8 +24,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerKindDisplayName;
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show conteRowBornName;
 
 import '../helpers/app_shortcuts.dart';
 import '../helpers/conte_track_fixture.dart';
@@ -343,12 +343,13 @@ void main() {
     );
     expect(
       [for (final row in storyboard.rows.skip(2)) row.name],
-      ['S2', 'S1', 'V1', layerKindDisplayName(LayerKind.storyboard)],
+      ['S2', 'S1', storyboardVideoRowName(0), conteRowBornName],
       reason: 'the storyboard\'s own stack under its camera and transition '
           'rows — the conte row last, by the name its rail label wears (no '
-          'cut has a conte layer here, so the kind\'s own word)',
+          'cut has a conte layer here, so the name a conte is born with — '
+          'F-322: never the kind\'s word in the program\'s language)',
     );
-    expect(storyboard.currentRow!.name, 'V1');
+    expect(storyboard.currentRow!.name, storyboardVideoRowName(0));
 
     session.claimTimelineRow();
     final timeline = hud.debugSnapshotFor(FlipHudAxis.row)!;
