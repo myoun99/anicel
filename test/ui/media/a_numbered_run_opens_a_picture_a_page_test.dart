@@ -15,10 +15,11 @@ import 'package:anicel/src/ui/media/picture_run_document.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 
-/// One picture of a run: a one-page fake that counts how often it was let
-/// go of.
+/// One picture of a run: a fake of one page — or none, [empty] — that
+/// counts how often it was let go of.
 final class _Picture extends FakePdfDocument {
-  _Picture(ui.Size size) : super(pageSizes: [size]);
+  _Picture(ui.Size size, {bool empty = false})
+    : super(pageSizes: empty ? const [] : [size]);
 
   int disposals = 0;
 
@@ -32,12 +33,15 @@ final class _Picture extends FakePdfDocument {
 /// A run of pictures `p0` · `p1` …, each a one-page fake of its own size,
 /// and the door that opens them — a fresh picture every time it opens one.
 final class _Run {
-  _Run(this.sizes, {this.unreadable = const {}});
+  _Run(this.sizes, {this.unreadable = const {}, this.empty = const {}});
 
   final List<ui.Size> sizes;
 
   /// The pictures the door answers null for.
   final Set<int> unreadable;
+
+  /// The pictures that open with no page in them.
+  final Set<int> empty;
 
   /// Every picture the door was asked to open, in order.
   final List<int> asked = [];
@@ -63,7 +67,7 @@ final class _Run {
     if (unreadable.contains(index)) {
       return null;
     }
-    final picture = _Picture(sizes[index]);
+    final picture = _Picture(sizes[index], empty: empty.contains(index));
     _opened.add((index: index, picture: picture));
     return picture;
   }
@@ -178,16 +182,21 @@ void main() {
     expect(run.last(2).renderRequests, hasLength(2));
   });
 
-  test('a picture that cannot be read fails its own page, not the run',
-      () async {
-    final run = _Run(List.filled(3, _size), unreadable: {1});
+  test('a picture that cannot be read fails its own page, not the run — '
+      'one that opens with no page in it is let go', () async {
+    final run = _Run(List.filled(4, _size), unreadable: {1}, empty: {2});
     final doc = await run.open();
 
     await expectLater(
       doc.renderPage(1, width: 10, height: 5),
       throwsStateError,
     );
-    await _draw(doc, 2);
+    await expectLater(
+      doc.renderPage(2, width: 10, height: 5),
+      throwsStateError,
+    );
+    expect(run.last(2).disposals, 1);
+    await _draw(doc, 3);
   });
 
   test('no run opens without its first picture', () async {
@@ -198,6 +207,12 @@ void main() {
       await PictureRunDocument.openThrough(unread.files, unread.door),
       isNull,
     );
+    final blank = _Run([_size, _size], empty: {0});
+    expect(
+      await PictureRunDocument.openThrough(blank.files, blank.door),
+      isNull,
+    );
+    expect(blank.last(0).disposals, 1);
   });
 
   test('let go, the run lets go of every picture it holds — and of one '

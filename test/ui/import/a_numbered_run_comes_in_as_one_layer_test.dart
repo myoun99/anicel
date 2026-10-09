@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/settle_async.dart';
@@ -248,6 +249,21 @@ void main() {
     expect([for (final frame in added.single.frames) frame.name], ['2', '3']);
   });
 
+  testWidgets('OUT walked back to the run\'s last picture keeps to its end',
+      (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!]);
+    await span(tester, 2, 2);
+    expect(cellText(tester, 'option', files['A1']!), 'A2');
+
+    await span(tester, 2, 3);
+
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      AppText.strings.imRunSpan('A2', 'A3', 2),
+    );
+  });
+
   testWidgets('IN and OUT on ONE picture: that picture comes in alone, as a '
       'picture always did — whichever one they stood on', (tester) async {
     final files = await writeFolder(tester);
@@ -283,6 +299,11 @@ void main() {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
     final bake = find.byKey(ValueKey<String>('import-cell-bake-${files['A1']}'));
+    bool answerable() => tester
+        .widget<BooleanDot>(
+          find.descendant(of: bake, matching: find.byType(BooleanDot)),
+        )
+        .enabled;
     await tester.ensureVisible(bake);
     await settleLoadedPages(tester);
     expect(
@@ -290,8 +311,10 @@ void main() {
       AppText.strings.commonOn,
       reason: '⛔전제: the whole run bakes',
     );
+    expect(answerable(), isFalse, reason: 'locked: the run has one answer');
     await span(tester, 2, 2);
 
+    expect(answerable(), isTrue);
     await tester.tap(bake);
     await tester.pumpAndSettle();
     expect(cellText(tester, 'bake', files['A1']!), AppText.strings.commonOn);
