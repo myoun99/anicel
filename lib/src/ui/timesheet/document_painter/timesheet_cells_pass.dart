@@ -1,5 +1,30 @@
 part of '../timesheet_document_painter.dart';
 
+/// What the gutter prints beside the row of [frame] (from 0): the frame's
+/// number — on an even frame, and on the frame that closes a second — and,
+/// on that row, the second it closes. The cut's own count, sheet after
+/// sheet.
+///
+/// 🗣️유저 2026-10-09 (F-252): 「페이지별로 프레임번호 초기화한거
+/// 되돌려줘」 — ↩️each sheet counted its frames from 1 (the paper-faithful
+/// form's choice, 07-07), and the continuous view deleted on 10-08 was the
+/// one place the cut's count showed. And 「24라는 숫자 제대로 오게하고 그
+/// 왼쪽에 초 텍스트 넣어줘. 그리고 위치는 24 바로 옆이아니라 1초마다 진한
+/// 가로선있잖아. 그 가로선 옆에 오도록」 — ↩️the second's index printed in
+/// place of its last frame's number; it stands left of the numbers now, on
+/// the second's bold rule.
+({int? number, int? second}) timesheetGutterMarks(
+  int frame, {
+  required int fps,
+}) {
+  final printed = frame + 1;
+  final closesASecond = fps > 0 && printed % fps == 0;
+  return (
+    number: printed.isEven || closesASecond ? printed : null,
+    second: closesASecond ? printed ~/ fps : null,
+  );
+}
+
 /// THE CELLS PASS — one half of the sheet: the cells it shows for a
 /// layer, the row range on the page, and painting them — as its own
 /// object.
@@ -105,6 +130,9 @@ class _TimesheetCellsPass {
       firstRow: firstRow,
       lastRow: lastRow,
       numbersRight: left - 4,
+      // Clear of the numbers' gutter: in the paper's margin beside the
+      // first half, in the gap between halves beside the second.
+      secondsRight: left - TimesheetDocumentLayout.frameNumberGutterWidth - 2,
       lightPaint: lightPaint,
       mediumPaint: mediumPaint,
       boldPaint: boldPaint,
@@ -184,10 +212,7 @@ class _TimesheetCellsPass {
       );
     }
 
-    // Gutter frame numbers on even frames, bare on the paper left of the
-    // half, counted from the page's first frame. On each second's LAST
-    // frame row (24, 48, …) the second index prints BOLD in
-    // place of the frame number — the paper convention (A-1 form).
+    // The gutter, bare on the paper left of the half ([timesheetGutterMarks]).
     _paintRowNumbers(canvas, sheet);
 
     if (_painter._drawContent) {
@@ -201,36 +226,41 @@ class _TimesheetCellsPass {
     }
   }
 
-  /// The second numbers: one per [fps] rows, right-aligned in the margin,
-  /// bold; the other rows print their frame number small.
+  /// The gutter's marks ([timesheetGutterMarks]): a frame's number small,
+  /// right-aligned beside its row, and a second's index bold, further
+  /// left, on the bold rule that closes that second.
   void _paintRowNumbers(Canvas canvas, _HalfFrame sheet) {
     for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
-      final frame = sheet.startFrame + row;
-      final printed = frame % _painter.document.pageFrameCount + 1;
+      final marks = timesheetGutterMarks(
+        sheet.startFrame + row,
+        fps: _painter.document.fps,
+      );
       final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
-      if (printed % _painter.document.fps == 0) {
+      if (marks.number case final number?) {
         _painter._text(
           canvas,
-          '${printed ~/ _painter.document.fps}',
-          Offset(sheet.numbersRight, rowTop + 3),
+          '$number',
+          Offset(sheet.numbersRight, rowTop + 4),
+          fontSize: 8,
+          color: TimesheetDocumentPainter._gridMedium,
+          rightAlignedAtX: true,
+        );
+      }
+      if (marks.second case final second?) {
+        _painter._text(
+          canvas,
+          '$second',
+          Offset(
+            sheet.secondsRight,
+            rowTop + TimesheetDocumentLayout.rowHeight,
+          ),
           fontSize: 10,
           bold: true,
           color: TimesheetDocumentPainter._gridBold,
           rightAlignedAtX: true,
+          centeredAtY: true,
         );
-        continue;
       }
-      if (printed.isOdd) {
-        continue;
-      }
-      _painter._text(
-        canvas,
-        '$printed',
-        Offset(sheet.numbersRight, rowTop + 4),
-        fontSize: 8,
-        color: TimesheetDocumentPainter._gridMedium,
-        rightAlignedAtX: true,
-      );
     }
   }
 
@@ -636,6 +666,7 @@ class _HalfFrame {
     required this.firstRow,
     required this.lastRow,
     required this.numbersRight,
+    required this.secondsRight,
     required this.lightPaint,
     required this.mediumPaint,
     required this.boldPaint,
@@ -653,6 +684,9 @@ class _HalfFrame {
   final int firstRow;
   final int lastRow;
   final double numbersRight;
+
+  /// Where a second's index ends — left of the numbers.
+  final double secondsRight;
   final Paint lightPaint;
   final Paint mediumPaint;
   final Paint boldPaint;

@@ -923,6 +923,7 @@ class TimesheetDocumentPainter extends CustomPainter
     bool bold = false,
     bool centeredAtX = false,
     bool rightAlignedAtX = false,
+    bool centeredAtY = false,
     double? maxWidth,
   }) {
     final painter = TextPainter(
@@ -934,12 +935,15 @@ class TimesheetDocumentPainter extends CustomPainter
       maxLines: 1,
       ellipsis: '…',
     )..layout(maxWidth: maxWidth ?? double.infinity);
-    final offset = centeredAtX
+    final across = centeredAtX
         ? anchor - Offset(painter.width / 2, 0)
         : rightAlignedAtX
         ? anchor - Offset(painter.width, 0)
         : anchor;
-    painter.paint(canvas, offset);
+    painter.paint(
+      canvas,
+      centeredAtY ? across - Offset(0, painter.height / 2) : across,
+    );
   }
 
   @override
