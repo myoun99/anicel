@@ -10,6 +10,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -415,6 +416,30 @@ void main() {
   });
 
   group('the shortcut window', () {
+    final list = find.byKey(const ValueKey<String>('shortcut-action-list'));
+
+    /// Turns the mouse wheel over the list by [dy].
+    ///
+    /// ⚠️Not a drag: a fold row is pressed anywhere on itself (유저
+    /// 2026-10-09), so it is a control, and a drag that starts on a control
+    /// is that control's and no scroll — a list of shut headings is almost
+    /// all fold rows. The wheel turns the list wherever it stands.
+    Future<void> wheel(WidgetTester tester, double dy) async {
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(pointer.hover(tester.getCenter(list)));
+      await tester.sendEventToBinding(pointer.scroll(Offset(0, dy)));
+      await tester.pump();
+    }
+
+    /// Turns the wheel down until [finder] is built, then shows it.
+    Future<void> wheelUntilVisible(WidgetTester tester, Finder finder) async {
+      for (var turn = 0; turn < 200 && finder.evaluate().isEmpty; turn += 1) {
+        await wheel(tester, 300);
+      }
+      await tester.ensureVisible(finder);
+      await tester.pump();
+    }
+
     Future<EditorShortcutBindings> pump(WidgetTester tester) async {
       final bindings = EditorShortcutBindings()
         ..setBrushActions(brushActionsOf(groups, presets));
@@ -435,12 +460,7 @@ void main() {
         final twirl = find.byKey(
           ValueKey<String>('shortcut-bundle-category-$category'),
         );
-        await tester.dragUntilVisible(
-          twirl,
-          find.byKey(const ValueKey<String>('shortcut-action-list')),
-          const Offset(0, -300),
-          maxIteration: 50,
-        );
+        await wheelUntilVisible(tester, twirl);
         await tester.tap(twirl);
         await tester.pump();
       }
@@ -462,7 +482,6 @@ void main() {
           ),
         )
         .expanded;
-    final list = find.byKey(const ValueKey<String>('shortcut-action-list'));
     final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
 
     /// The rows of [tool]'s brushes the list holds, in order — built or not:
@@ -501,21 +520,14 @@ void main() {
     }
 
     /// Brings [finder]'s row into view from wherever the list stands. ⚠️A
-    /// row ABOVE what is shown is not built, and dragging on down would
+    /// row ABOVE what is shown is not built, and turning on down would
     /// never meet it — so a row that is not there is looked for from the
     /// top.
     Future<void> bringIn(WidgetTester tester, Finder finder) async {
       if (finder.evaluate().isEmpty) {
-        await tester.drag(list, const Offset(0, 100000));
-        await tester.pump();
+        await wheel(tester, -100000);
       }
-      await tester.dragUntilVisible(
-        finder,
-        list,
-        const Offset(0, -300),
-        maxIteration: 200,
-      );
-      await tester.pump();
+      await wheelUntilVisible(tester, finder);
     }
 
     testWidgets('holds a bundle per group, shut — once under each tool\'s '
@@ -546,6 +558,35 @@ void main() {
           reason: bundle,
         );
       }
+    });
+
+    // 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「그냥 그
+    // 줄 누르면 열리도록 … 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+    testWidgets('a group\'s title folds by its words — its record button '
+        'records and folds nothing — and its brushes\' words start under '
+        'the title\'s', (tester) async {
+      await pump(tester);
+      final title = find.byKey(
+        ValueKey<String>('shortcut-row-${groupId(inks)}'),
+      );
+      final words = find.descendant(of: title, matching: find.text('Inks'));
+      await bringIn(tester, words);
+      await tester.tap(words);
+      await tester.pump();
+      expect(isOpen(tester, groupId(inks)), isTrue);
+      expect(
+        tester.getRect(find.text('G pen')).left,
+        tester.getRect(words).left,
+      );
+
+      await tester.tap(rowOf(groupId(inks)));
+      await tester.pump();
+      expect(isOpen(tester, groupId(inks)), isTrue);
+      expect(
+        find.byKey(const ValueKey<String>('shortcut-recording-hint')),
+        findsOneWidget,
+        reason: 'the button on the row kept its own press',
+      );
     });
 
     testWidgets('a twirl opens its bundle and shuts it again — the root '

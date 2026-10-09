@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import '../../models/brush_group.dart';
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
+import '../input/control_press_claim.dart'
+    show ControlPressClaim, silentPress;
+import '../timeline/layer_label_controls.dart' show layerLaneToggleSlotWidth;
 import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
@@ -277,45 +280,77 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   /// A category's heading, carrying its fold as a brush bundle's title does.
-  Widget _categoryHeading(
-    ThemeData theme,
-    EditorActionDefinition definition,
-  ) => Padding(
-    key: ValueKey<String>('shortcut-category-${definition.category}'),
-    padding: const EdgeInsets.only(top: 12, bottom: 4),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            _categoryOf(definition),
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
+  Widget _categoryHeading(ThemeData theme, EditorActionDefinition definition) {
+    final bundle = _categoryBundleOf(definition.category);
+    return Padding(
+      key: ValueKey<String>('shortcut-category-${definition.category}'),
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: _foldRow(
+        bundle,
+        Row(
+          children: [
+            _twirl(bundle),
+            Expanded(
+              child: Text(
+                _categoryOf(definition),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
             ),
-          ),
+          ],
         ),
-        _twirl(_categoryBundleOf(definition.category)),
-      ],
+      ),
+    );
+  }
+
+  /// One step of the list's depth: the twirl's own width, so a row's words
+  /// start where the words of the row it folds under do.
+  static const double _step = layerLaneToggleSlotWidth;
+
+  /// A row that folds [bundle], pressed anywhere on itself — its twirl
+  /// first, left of its words, and only showing.
+  ///
+  /// 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
+  /// 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
+  /// 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
+  /// 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+  /// ↩️The twirl was the press, at the row's far edge where the layer rail
+  /// keeps its own (F-29) — and that edge is where the list's scrollbar
+  /// runs. A control ON the row (a brush group's record · unassign · reset
+  /// · touch) keeps its own press: the deepest claim wins.
+  Widget _foldRow(String bundle, Widget row) => ControlPressClaim(
+    onPressed: () => _toggleBundle(bundle),
+    child: InkWell(
+      onTap: silentPress(() => _toggleBundle(bundle)),
+      child: row,
     ),
   );
 
-  /// The fold of [bundle], where the layer rail's fold is (F-29): at the far
-  /// edge of the name it folds under — the app's one twirl.
+  /// The fold of [bundle] — the app's one twirl, showing it ([_foldRow]
+  /// is the press).
   Widget _twirl(String bundle) => LayerFoldTwirl(
     keyValue: 'shortcut-bundle-$bundle',
     expanded: _openBundles.contains(bundle),
-    onToggle: () => _toggleBundle(bundle),
+    onToggle: null,
   );
 
   Widget _rootTitleRow(ThemeData theme, String bundle) => Padding(
     key: ValueKey<String>('shortcut-row-$bundle'),
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(brushRootSectionLabel, style: theme.textTheme.bodyMedium),
-        ),
-        _twirl(bundle),
-      ],
+    padding: const EdgeInsets.only(left: _step, top: 2, bottom: 2),
+    child: _foldRow(
+      bundle,
+      Row(
+        children: [
+          _twirl(bundle),
+          Expanded(
+            child: Text(
+              brushRootSectionLabel,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
@@ -524,68 +559,70 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
     ];
 
+    // A row stands a step in from its category's heading, and a brush a
+    // step in from its bundle's title — each row's words where the words
+    // of the row it folds under start.
+    final depth = bundle != null && !titlesBundle ? 2 : 1;
+    final folds = bundle != null && titlesBundle ? bundle : null;
     return Padding(
       key: ValueKey<String>('shortcut-row-${definition.id}'),
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
       // 🗣️F-318: the row gained a button, and a row with several keys
       // and a touch gesture was already within a few pixels of its
       // width. The keys and the gesture take what they need up to
       // [_keysShare] of the row and WRAP past it — the name keeps the
       // rest, and no row overflows whatever is recorded on it.
       child: LayoutBuilder(
-        builder: (context, constraints) => Row(
-          children: [
-            Expanded(
-              // A brush stands under its bundle's title, a step in.
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: bundle == null || titlesBundle ? 0 : 16,
-                ),
+        builder: (context, constraints) {
+          final row = Row(
+            children: [
+              if (folds != null) _twirl(folds),
+              Expanded(
                 child: Text(
                   _labelOf(definition),
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
-            ),
-            if (bundle != null && titlesBundle) _twirl(bundle),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: constraints.maxWidth * _keysShare,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * _keysShare,
+                ),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 2,
+                  children: keys,
+                ),
               ),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: 2,
-                children: keys,
+              AppIconButton(
+                keyValue: 'shortcut-record-${definition.id}',
+                tooltip: AppText.strings.shortcutRecordNew,
+                icon: const Icon(Icons.keyboard),
+                onPressed: () => _startRecording(definition.id),
               ),
-            ),
-            AppIconButton(
-              keyValue: 'shortcut-record-${definition.id}',
-              tooltip: AppText.strings.shortcutRecordNew,
-              icon: const Icon(Icons.keyboard),
-              onPressed: () => _startRecording(definition.id),
-            ),
-            // Dead on a row with no key: there is nothing to take off.
-            AppIconButton(
-              keyValue: 'shortcut-unassign-${definition.id}',
-              tooltip: AppText.strings.shortcutUnassign,
-              icon: const Icon(Icons.backspace_outlined),
-              onPressed: activators.isEmpty
-                  ? null
-                  : () => _unassign(definition.id),
-            ),
-            AppIconButton(
-              keyValue: 'shortcut-reset-${definition.id}',
-              tooltip: AppText.strings.shortcutResetToDefault,
-              icon: const Icon(Icons.restart_alt),
-              onPressed:
-                  bindings.isOverridden(definition.id) ||
-                      bindings.isTouchOverridden(definition.id)
-                  ? () => bindings.resetAction(definition.id)
-                  : null,
-            ),
-          ],
-        ),
+              // Dead on a row with no key: there is nothing to take off.
+              AppIconButton(
+                keyValue: 'shortcut-unassign-${definition.id}',
+                tooltip: AppText.strings.shortcutUnassign,
+                icon: const Icon(Icons.backspace_outlined),
+                onPressed: activators.isEmpty
+                    ? null
+                    : () => _unassign(definition.id),
+              ),
+              AppIconButton(
+                keyValue: 'shortcut-reset-${definition.id}',
+                tooltip: AppText.strings.shortcutResetToDefault,
+                icon: const Icon(Icons.restart_alt),
+                onPressed:
+                    bindings.isOverridden(definition.id) ||
+                        bindings.isTouchOverridden(definition.id)
+                    ? () => bindings.resetAction(definition.id)
+                    : null,
+              ),
+            ],
+          );
+          return folds == null ? row : _foldRow(folds, row);
+        },
       ),
     );
   }

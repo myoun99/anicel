@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show actionLabelOf;
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -208,6 +210,74 @@ void main() {
       await tester.tap(twirlOf(first.category));
       await tester.pump();
       expect(isOpen(tester, first.category), isFalse);
+    });
+  });
+
+  // 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
+  // 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
+  // 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
+  // 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+  group('a fold is its whole row, its twirl left of its words', () {
+    Finder headingOf(String category) =>
+        find.byKey(ValueKey<String>('shortcut-category-$category'));
+    Finder wordsOf(Finder row) =>
+        find.descendant(of: row, matching: find.byType(Text));
+
+    testWidgets('pressing a heading\'s WORDS opens its rows, and pressing '
+        'its far end shuts them — the end the list\'s scrollbar runs by', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      final record = find.byKey(
+        ValueKey<String>('shortcut-record-${first.id}'),
+      );
+
+      await tester.tap(wordsOf(headingOf(first.category)));
+      await tester.pump();
+      expect(record, findsOneWidget);
+
+      final row = tester.getRect(headingOf(first.category));
+      await tester.tapAt(Offset(row.right - 40, row.center.dy));
+      await tester.pump();
+      expect(record, findsNothing);
+    });
+
+    testWidgets('the twirl stands left of the words, and only shows', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final category = bindings.definitions.first.category;
+      expect(
+        tester.getRect(twirlOf(category)).right,
+        lessThanOrEqualTo(
+          tester.getRect(wordsOf(headingOf(category))).left,
+        ),
+      );
+      expect(
+        tester
+            .widget<LayerFoldTwirl>(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is LayerFoldTwirl &&
+                    widget.keyValue == 'shortcut-bundle-category-$category',
+              ),
+            )
+            .onToggle,
+        isNull,
+      );
+    });
+
+    testWidgets('a row\'s words start where its heading\'s words do', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      await openCategoryOf(tester, bindings, first.id);
+      expect(
+        tester.getRect(find.text(actionLabelOf(first))).left,
+        tester.getRect(wordsOf(headingOf(first.category))).left,
+      );
     });
   });
 

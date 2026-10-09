@@ -120,28 +120,40 @@ class LayerFoldTwirl extends StatelessWidget {
 
   final String keyValue;
   final bool expanded;
-  final VoidCallback onToggle;
+
+  /// What a press on the twirl does — or null where the twirl only SHOWS
+  /// the fold and the row around it is what is pressed (the shortcut
+  /// window, 유저 2026-10-09: 「누르는건 그 항목 전체니까 접기펼치기 위젯은
+  /// 그냥 보이기만할뿐인것임」).
+  final VoidCallback? onToggle;
   final Axis axis;
 
   @override
-  Widget build(BuildContext context) => ControlPressClaim(
-    onPressed: onToggle,
-    child: InkWell(
-      key: ValueKey<String>(keyValue),
-      onTap: silentPress(onToggle),
-      // R26 #28
-      customBorder: const CircleBorder(),
-      child: alongBox(
+  Widget build(BuildContext context) {
+    final glyph = alongBox(
+      axis,
+      layerLaneToggleSlotWidth,
+      child: acrossBox(
         axis,
-        layerLaneToggleSlotWidth,
-        child: acrossBox(
-          axis,
-          24,
-          child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
-        ),
+        24,
+        child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
       ),
-    ),
-  );
+    );
+    final toggle = onToggle;
+    if (toggle == null) {
+      return KeyedSubtree(key: ValueKey<String>(keyValue), child: glyph);
+    }
+    return ControlPressClaim(
+      onPressed: toggle,
+      child: InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: silentPress(toggle),
+        // R26 #28
+        customBorder: const CircleBorder(),
+        child: glyph,
+      ),
+    );
+  }
 }
 
 /// [depth] is the folder nesting level: it spends [depth] blank cells and
