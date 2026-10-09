@@ -852,53 +852,49 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// What a run puts over the canvas that plays it ([PlaybackRunLayer]):
-  /// the ticker the clock runs on, the press that stops it, the bar — and
-  /// the streamer the ADR scribe rides on the picture (REC1-E).
-  Widget _runOverTheCanvas(EditorSessionManager session) => PlaybackRunLayer(
+  /// What a run puts over whatever draws it ([PlaybackRunLayer]): the ticker
+  /// the clock runs on, the press that stops it, the bar — and the streamer
+  /// the ADR scribe rides on the picture (REC1-E).
+  ///
+  /// 🚨ONE OF IT, IN ONE PLACE, for every run — the canvas, the composite
+  /// view and the track stack alike. A run can change what draws it under
+  /// itself (the camera view turned on or off), and a layer for each would
+  /// mount the next before the last was let go, the one going taking the
+  /// clock's ticker with it.
+  Widget _runLayer(EditorSessionManager session) => PlaybackRunLayer(
     controller: session.playbackRig.playback,
     prerenderProgress: session.playbackRig.prerenderScheduler.progress,
     child: RecordingStreamerOverlay(session: session),
   );
 
-  Stack _playbackContent(
+  /// The composite view a run plays on where the canvas does not play it —
+  /// the camera view, the whole film ([CanvasPlaybackView]).
+  Widget _playbackContent(
     EditorSessionManager session,
     CanvasViewport viewport,
-  ) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CanvasPlaybackView(
-          controller: session.playbackRig.playback,
-          compositeCache: session.renderCaches.cutFrameCompositeCache,
-          prerenderProgress: session.playbackRig.prerenderScheduler.progress,
-          picturesLanded: session.playbackRig.prerenderScheduler.landings,
-          cameraViewEnabled: widget.cameraViewEnabled.value,
-          cameraFrameSize: session.camera.cameraFrameSize,
-          cameraPoseOf: session.camera.cameraPoseForCut,
-          seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-          cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-          viewport: viewport,
-          background: session.projectSettings.projectBackground,
-          pasteboardArgb: session.repository.requireProject().pasteboardArgb,
-          pasteboardNone: session.repository.requireProject().pasteboardNone,
-          trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
-          trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
-          // ALL-CUTS playback watches the whole stage: the
-          // frame is the track stack on the clock's global
-          // axis (R3a) — a selected-track gap shows what
-          // the OTHER tracks hold there instead of the
-          // void. Single-cut playback keeps its
-          // single-cut frame (the editing context).
-          trackStack:
-              session.playbackRig.playback.scope == PlaybackScope.allCuts
-              ? _buildTrackStackView(session, viewport, ofTheRun: true)
-              : null,
-        ),
-        RecordingStreamerOverlay(session: session),
-      ],
-    );
-  }
+  ) => CanvasPlaybackView(
+    controller: session.playbackRig.playback,
+    compositeCache: session.renderCaches.cutFrameCompositeCache,
+    picturesLanded: session.playbackRig.prerenderScheduler.landings,
+    cameraViewEnabled: widget.cameraViewEnabled.value,
+    cameraFrameSize: session.camera.cameraFrameSize,
+    cameraPoseOf: session.camera.cameraPoseForCut,
+    seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
+    cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
+    viewport: viewport,
+    background: session.projectSettings.projectBackground,
+    pasteboardArgb: session.repository.requireProject().pasteboardArgb,
+    pasteboardNone: session.repository.requireProject().pasteboardNone,
+    trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
+    trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
+    // ALL-CUTS playback watches the whole stage: the frame is the track
+    // stack on the clock's global axis (R3a) — a selected-track gap shows
+    // what the OTHER tracks hold there instead of the void. Single-cut
+    // playback keeps its single-cut frame (the editing context).
+    trackStack: session.playbackRig.playback.scope == PlaybackScope.allCuts
+        ? _buildTrackStackView(session, viewport, ofTheRun: true)
+        : null,
+  );
 
   bool _pressNeedsCel(CanvasTool tool, EditorSessionManager session) {
     if (!canvasToolMarksCel(tool)) {

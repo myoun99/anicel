@@ -5,16 +5,17 @@ import '../input/control_press_claim.dart';
 import 'canvas_playback_controller.dart';
 import 'playback_prerender_scheduler.dart';
 
-/// What a RUN puts over the canvas while it plays — everything of playback
-/// that is not a picture: the ticker the controller's clock runs on, the one
-/// press that stops it, and the bar that says how much of what the run wants
-/// is made. [child] is what plays under it, or nothing where the canvas
-/// itself plays (playback-plays-the-screen-material).
+/// What a RUN puts over whatever draws it — everything of playback that is
+/// not a picture: the ticker the controller's clock runs on, the one press
+/// that stops it, and the bar that says how much of what the run wants is
+/// made. [child] rides over the picture with them (the ADR streamer).
 ///
-/// 🚨★★★THE CLOCK'S TICKER LIVES HERE, and so a run has one of these mounted
-/// for as long as it is active — whatever draws the picture. It used to be
-/// the composite view's, which tied the clock to the one way of drawing a
-/// frame that the overhaul retires.
+/// 🚨★★★THE CLOCK'S TICKER LIVES HERE, and so a run has ONE of these
+/// mounted, in one place, for as long as it is active — whatever draws the
+/// picture: the canvas, the composite view or the track stack
+/// (playback-plays-the-screen-material). It used to be the composite
+/// view's, which tied the clock to the one way of drawing a frame that the
+/// overhaul retires.
 class PlaybackRunLayer extends StatefulWidget {
   const PlaybackRunLayer({
     super.key,
@@ -26,7 +27,7 @@ class PlaybackRunLayer extends StatefulWidget {
   final CanvasPlaybackController controller;
   final ValueListenable<PrerenderProgress> prerenderProgress;
 
-  /// What plays under the layer's press and bar.
+  /// What rides over the picture with the layer — the ADR streamer.
   final Widget? child;
 
   @override
@@ -46,7 +47,7 @@ class _PlaybackRunLayerState extends State<PlaybackRunLayer>
 
   @override
   void dispose() {
-    widget.controller.detachTicker();
+    widget.controller.detachTicker(this);
     super.dispose();
   }
 

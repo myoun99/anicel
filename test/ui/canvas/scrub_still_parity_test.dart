@@ -40,7 +40,6 @@ import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
-import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
@@ -627,7 +626,6 @@ void main() {
             body: CanvasPlaybackView(
               controller: controller,
               compositeCache: composites,
-              prerenderProgress: ValueNotifier(PrerenderProgress.none),
               cameraViewEnabled: false,
               cameraFrameSize: canvasSize,
               cameraPoseOf: (cut, frameIndex) =>

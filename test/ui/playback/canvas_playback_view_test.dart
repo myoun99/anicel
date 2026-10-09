@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
+import 'package:anicel/src/ui/playback/playback_run_layer.dart';
 
 void main() {
   // The view's tests run under the law the app draws by: a frame that was
@@ -141,22 +142,28 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CanvasPlaybackView(
+          // Under the run's layer, as the canvas puts it: the clock's ticker,
+          // the press that stops it and the bar are the layer's, the
+          // picture is the view's (playback-plays-the-screen-material).
+          body: PlaybackRunLayer(
             controller: controller,
-            compositeCache: composites,
             prerenderProgress:
                 progress ?? ValueNotifier(PrerenderProgress.none),
-            picturesLanded: picturesLanded,
-            cameraViewEnabled: cameraViewEnabled,
-            cameraFrameSize: const CanvasSize(width: 4, height: 2),
-            cameraPoseOf: (cut, frameIndex) =>
-                CameraPose(center: CanvasPoint(x: 4, y: 4)),
-            cutFxEnabledOf: cutFxEnabledOf,
-            trackStack: trackStack,
-            transformTrackOf: transformTrack == null
-                ? null
-                : (_) => transformTrack,
-            trackGlobalFrameOf: (cutId, localFrame) => localFrame,
+            child: CanvasPlaybackView(
+              controller: controller,
+              compositeCache: composites,
+              picturesLanded: picturesLanded,
+              cameraViewEnabled: cameraViewEnabled,
+              cameraFrameSize: const CanvasSize(width: 4, height: 2),
+              cameraPoseOf: (cut, frameIndex) =>
+                  CameraPose(center: CanvasPoint(x: 4, y: 4)),
+              cutFxEnabledOf: cutFxEnabledOf,
+              trackStack: trackStack,
+              transformTrackOf: transformTrack == null
+                  ? null
+                  : (_) => transformTrack,
+              trackGlobalFrameOf: (cutId, localFrame) => localFrame,
+            ),
           ),
         ),
       ),
@@ -383,7 +390,6 @@ void main() {
           body: CanvasPlaybackView(
             controller: f.controller,
             compositeCache: f.composites,
-            prerenderProgress: ValueNotifier(PrerenderProgress.none),
             cameraViewEnabled: false,
             cameraFrameSize: const CanvasSize(width: 4, height: 2),
             cameraPoseOf: (cut, frameIndex) =>

@@ -269,7 +269,17 @@ void main() {
   /// keeps the starting folder the project Open had on a desktop, which
   /// `pickProjectGrantForUser` already takes for the same reason. The Open
   /// pick that passed it, `pickProjectToOpen`, is gone.
-  const wideSignatures = 388;
+  ///
+  /// ⚠️388 → 389 the same day, one named as the rule above asks
+  /// (playback-plays-the-screen-material — a cut played alone plays on the
+  /// canvas): `LayerFrameImageCache.peek` (five) is the look the warmer, the
+  /// ruler's bar and a waiting run share — what `prepareSyncOrNull` would
+  /// hand from what is held, WITHOUT counting as a use, which is what keeps
+  /// their counting from reordering the order the budget lets go by. Its
+  /// five are the slot (the cel, the level) and the three facts that decide
+  /// whether a held image is valid and drawable on the asking route — what
+  /// its two prepare siblings take.
+  const wideSignatures = 389;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

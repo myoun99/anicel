@@ -561,15 +561,13 @@ class _InteractiveCanvasBuild {
           ? null
           : (context, viewport) => _overlay(context, viewport, frame),
       // F-222: the standing row's box, over every tool — always there while
-      // editing, whatever it holds, for the overlay's reason above. A run
-      // the canvas plays puts ITS layer here, over the picture's overlay:
-      // the clock's ticker, the press that stops it, the bar, and the
-      // streamer the ADR scribe rides on the picture (REC1-E) — which a
-      // fade's wash must not cover.
-      viewportControlsBuilder: _canvasPlays
-          ? (context, viewport) => _state._runOverTheCanvas(session)
-          : _isPlaybackActive
-          ? null
+      // editing, whatever it holds, for the overlay's reason above. A RUN
+      // puts its layer here instead, whatever draws it: the clock's ticker,
+      // the press that stops it, the bar, and the streamer the ADR scribe
+      // rides on the picture (REC1-E) — over the picture's overlay, which a
+      // fade's wash must not cover ([_EditorCanvasAreaState._runLayer]).
+      viewportControlsBuilder: _isPlaybackActive
+          ? (context, viewport) => _state._runLayer(session)
           : (context, viewport) => _controls(context, viewport, frame),
       // 🚨T28-c: while playback owns the content a press only stops it, so no
       // tool takes the press — the same flag swaps the content in below.
@@ -579,10 +577,6 @@ class _InteractiveCanvasBuild {
       contentOverride: _canvasPlays
           ? (context, viewport) => const SizedBox.expand()
           : _isPlaybackActive
-          // The streamer rides ON the picture (REC1-E): the ADR
-          // scribe belongs over the projection, never in a side
-          // panel. Constant two-child Stack (the overlay shrinks
-          // itself) — the sibling-count rule.
           ? (context, viewport) => _state._playbackContent(session, viewport)
           // The parked state (no active cut): the multitrack
           // display path — every covered track's composite stacks

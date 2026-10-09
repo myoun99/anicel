@@ -102,8 +102,11 @@ class CanvasPictures implements PlaybackPictures {
     }
   }
 
-  /// The rows not there, each the whole canvas at the level — what it is at
-  /// most; a row stored as its ink alone is smaller.
+  /// The rows not there, each the canvas at the level — an estimate, made
+  /// before a pixel is read: an image covers its cel's TILES, so a canvas
+  /// that is no whole number of tiles, or a row inked out on the pasteboard,
+  /// makes a bigger one, and a row inked in a corner a smaller one. The trim
+  /// after each landing measures what was made.
   @override
   int bytesToMake(DemandedPicture picture) {
     final level = quality();

@@ -245,8 +245,9 @@ class CanvasPlaybackController extends ChangeNotifier
     return playlist == null ? 0 : _playbackTotalFrames(playlist);
   }
 
-  /// The playback view provides vsync; transport controls can call [play]
-  /// before or after attachment (ticking starts once both are ready).
+  /// The run's layer provides vsync ([PlaybackRunLayer]); transport
+  /// controls can call [play] before or after attachment (ticking starts
+  /// once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
     if (isPlaying && !_waiting && !_clock.isRunning) {
@@ -254,7 +255,14 @@ class CanvasPlaybackController extends ChangeNotifier
     }
   }
 
-  void detachTicker() {
+  /// Lets the clock's ticker go — unless [vsync] names a provider that no
+  /// longer holds it. A mount on its way out is let go of AFTER the one
+  /// taking its place has attached (the tree mounts before it unmounts), and
+  /// must not take the clock away from it.
+  void detachTicker([TickerProvider? vsync]) {
+    if (vsync != null && !identical(vsync, _vsync)) {
+      return;
+    }
     _stopTicker();
     _vsync = null;
   }

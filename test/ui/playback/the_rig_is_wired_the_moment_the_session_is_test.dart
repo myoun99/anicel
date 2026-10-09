@@ -9,6 +9,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_mode.dart';
+import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -299,6 +300,11 @@ void main() {
               );
               expect(playbackRigOf(s).playback.isWaiting, isFalse);
               expect(playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)), 0);
+              expect(
+                playbackRigOf(s).playbackCache.playbackReadyRuns(0, 4),
+                [(startIndex: 0, endIndexExclusive: 4)],
+                reason: 'the ruler\'s bar counts what the screen shows',
+              );
               playbackRigOf(s).playback.stop();
             });
           });
@@ -434,4 +440,82 @@ void main() {
       },
     );
   }
+
+  /// The screen changing what it shows a frame from — the camera view
+  /// turned off, the canvas drawing at another level.
+  group('when the screen changes', () {
+    testWidgets('🚨turning to the canvas, the composites made for the camera '
+        'view are the first the budget lets go of', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures(onTheCanvas: false);
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+        rig.playbackCache.debugSetPlaybackCacheBudgetBytes(2 * picture);
+        rig.playback.play(scope: PlaybackScope.activeCut);
+        await rested(rig);
+        expect([held(s, 0), held(s, 2)], [true, true], reason: '⛔premise');
+        rig.playback.stop();
+
+        rig.canvasShowsCuts = true;
+        await rested(rig);
+
+        expect(s.renderCaches.cutFrameCompositeCache.estimatedBytes, 0);
+        expect(
+          [held(s, 0), held(s, 2)],
+          [true, true],
+          reason: 'the line holds the canvas\'s pictures now',
+        );
+      });
+    });
+
+    testWidgets('🚨the canvas drawing at another level, the warmer makes the '
+        'images it will ask for', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures(onTheCanvas: true);
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+        rig.playback.play(scope: PlaybackScope.activeCut);
+        await rested(rig);
+        expect(held(s, 0), isTrue, reason: '⛔premise');
+
+        s.renderCaches.canvasQuality.value = PlaybackQuality.half;
+        expect(held(s, 0), isFalse, reason: 'nothing is made at half yet');
+        await rested(rig);
+        expect([held(s, 0), held(s, 2)], [true, true]);
+        rig.playback.stop();
+      });
+    });
+
+    testWidgets('on the canvas a screen\'s pins are inside the line — the '
+        'room is the line less what is lent; for composites they come off '
+        'it', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures(onTheCanvas: true);
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+        rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
+        await rig.canvasPictures.make(
+          (cut: s.requireActiveCut, frameIndex: 0),
+          shouldAbort: () => false,
+        );
+        s.renderCaches.layerFrameImageCache.retainPin(
+          s.brushFrameKeyForCut(
+            s.requireActiveCut,
+            const LayerId('layer'),
+            const FrameId('a'),
+          ),
+          PlaybackQuality.full,
+        );
+        expect(
+          s.renderCaches.layerFrameImageCache.pinnedBytes,
+          picture,
+          reason: '⛔premise: a screen holds one picture',
+        );
+
+        expect(rig.playbackCache.bytes, 4 * picture);
+        rig.canvasShowsCuts = false;
+        expect(rig.playbackCache.bytes, 3 * picture);
+      });
+    });
+  });
 }

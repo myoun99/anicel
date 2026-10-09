@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
@@ -17,8 +16,6 @@ import '../track_effect_paint_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
-import 'playback_prerender_scheduler.dart';
-import 'playback_run_layer.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../listenable_rebind.dart';
 
@@ -26,17 +23,24 @@ import '../listenable_rebind.dart';
 /// with the controller's ticker, rendered INSIDE the panel viewport so the
 /// panel chrome (zoom buttons, panbars) keeps working during playback.
 ///
-/// Tapping anywhere cancels playback. Cache misses keep the last displayed
-/// frame on screen (the stale-frame policy the tile cache also uses) while
-/// the bar at its foot says how much of what the run wants is made. With
-/// the camera view enabled the frame is projected through the cut's camera
-/// pose instead of shown in canvas space.
+/// Cache misses keep the last displayed frame on screen (the stale-frame
+/// policy the tile cache also uses). With the camera view enabled the frame
+/// is projected through the cut's camera pose instead of shown in canvas
+/// space.
+///
+/// ⛔A PICTURE AND NOTHING ELSE. The run's own layer — the clock's ticker,
+/// the press that stops it, the bar, the ADR streamer
+/// ([PlaybackRunLayer]) — sits over every run in ONE place, the canvas's
+/// controls slot, whatever draws the frame: this view, the track stack, or
+/// the canvas itself (playback-plays-the-screen-material). ↩️It lived in
+/// here, and so a run that changed what drew it (the camera view turned on
+/// under it) mounted a second layer before the first was let go — and the
+/// one going took the clock's ticker with it.
 class CanvasPlaybackView extends StatefulWidget {
   const CanvasPlaybackView({
     super.key,
     required this.controller,
     required this.compositeCache,
-    required this.prerenderProgress,
     this.picturesLanded,
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
@@ -55,7 +59,6 @@ class CanvasPlaybackView extends StatefulWidget {
 
   final CanvasPlaybackController controller;
   final CutFrameCompositeCache compositeCache;
-  final ValueListenable<PrerenderProgress> prerenderProgress;
 
   /// Ticks when a picture of the run has landed
   /// ([PlaybackPrerenderScheduler.landings]). The one under the playhead
@@ -109,9 +112,7 @@ class CanvasPlaybackView extends StatefulWidget {
 
   /// The multitrack display path for ALL-CUTS playback (R3a): when set,
   /// the FRAME is this widget — the parked canvas's track stack, following
-  /// the clock's global frame — and this view keeps everything else it
-  /// owns: the ticker it vends the controller, the tap-to-stop surface and
-  /// the warm-progress bar. Null = the single-cut painter (the activeCut
+  /// the clock's global frame. Null = the single-cut painter (the activeCut
   /// scope, where the editing context IS one cut).
   final Widget? trackStack;
 
@@ -184,12 +185,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView> {
     if (widget.trackStack case final stack?) {
       // The stack paints the frame; no composite is read or held here —
       // the stack view runs its own hold/clone lifecycle per covered cut.
-      //
-      // The tap is the CANVAS's half of the stop law (D13): the actuation
-      // gate's navigation hole lets pointers reach the panel so pan/zoom
-      // keep working during playback, and a plain tap — a press that
-      // navigates nothing — still means stop, as it did before T28-c.
-      return _runLayer(stack);
+      return stack;
     }
     final position = widget.controller.position;
     if (position != null) {
@@ -231,89 +227,78 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView> {
               position.localFrameIndex
         : 0;
 
-    // One press anywhere on the canvas cancels playback.
-    return _runLayer(
-      CustomPaint(
-        // ⛔The `willChange: true` hint this picture carried is GONE
-        // with the editing stack's (see `canvas_layer_stack_view.dart`
-        // for the #1100→R11 history and the two symptoms to watch for).
-        // It was here so the desktop raster cache could not snap this
-        // layer to integral device translation on engage — a 1px hop
-        // against the fractional offset panel layout used to produce.
-        // Layout no longer produces a fractional one.
-        //
-        // ⚠️The old text said "a PAUSED frame goes stable". There is no
-        // paused state: `isActive` and `isPlaying` are the same
-        // question and this view is mounted only while playback is
-        // active. The one window in which this picture goes still is a
-        // HOLD — the same composite shown for several ticks.
-        //
-        // ⚠️And this is the one retiring site where removal can COST
-        // rather than save: a hold past the cache's engage threshold
-        // now bakes an entry, and the next drawing evicts it. On a 24fps
-        // sheet full of 6–8 frame holds that is a repeated bake/evict
-        // cycle, so the thing to watch here is a raster hitch right
-        // after a drawing lands — not a hop.
-        painter: PlaybackFramePainter(
-          image: !inGap && _heldCanvasSize == canvasSize
-              ? _heldFrame
-              : null,
-          canvasSize: canvasSize,
-          viewport: widget.viewport,
-          // The pan-phase snap's device grid — the editing stack snaps
-          // to the same one, so entering playback cannot hop the
-          // picture by a sub-pixel.
-          devicePixelRatio:
-              EffectiveDevicePixelRatio.of(context),
-          cameraPose:
-              widget.cameraViewEnabled && cut != null && position != null
-              ? widget.cameraPoseOf(cut, position.localFrameIndex)
-              : null,
-          seNameTags: inGap || cut == null || position == null
-              ? const []
-              : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
-                    const [],
-          cameraFrameSize: widget.cameraViewEnabled
-              ? widget.cameraFrameSize
-              : null,
-          // No cutPose/cutAnchorPoint: the V row has no transform.
-          // The V row's fx chain over the cut's picture, sampled on the
-          // GLOBAL axis its keys live on and bypassed by the row's fx
-          // master.
-          cutEffects: inGap || cut == null || position == null
-              ? const <ResolvedLayerEffect>[]
-              : trackEffectsAt(
-                  widget.trackEffectsOf?.call(cut.id) ?? const [],
-                  trackFrame,
-                  enabled: cutFxEnabled,
-                ),
-          paperBackground: widget.background,
-          paintPaper: !inGap,
-          // The stage's apron rides the camera view (R3b): the camera
-          // sees the pasteboard wherever it reaches past the paper,
-          // and the fade thins the whole unit (transparency, no wash).
-          pasteboardColor: widget.cameraViewEnabled && !inGap
-              ? Color(widget.pasteboardArgb)
-              : null,
-          // F-114: an absent pasteboard or paper shows the checkerboard
-          // here as on the editing canvas — on screen only.
-          pasteboardNone: widget.pasteboardNone,
-          checkersAbsentPlanes: true,
-          // No fade here: single-cut playback shows one cut and so
-          // cannot show a cross-boundary ramp — the all-cuts track
-          // stack is where a transition plays. ↩️The track's STATIC
-          // opacity thinned this unit (R9 #21) until I-73 took it off
-          // the V row.
-        ),
+    return CustomPaint(
+      // ⛔The `willChange: true` hint this picture carried is GONE
+      // with the editing stack's (see `canvas_layer_stack_view.dart`
+      // for the #1100→R11 history and the two symptoms to watch for).
+      // It was here so the desktop raster cache could not snap this
+      // layer to integral device translation on engage — a 1px hop
+      // against the fractional offset panel layout used to produce.
+      // Layout no longer produces a fractional one.
+      //
+      // ⚠️The old text said "a PAUSED frame goes stable". There is no
+      // paused state: `isActive` and `isPlaying` are the same
+      // question and this view is mounted only while playback is
+      // active. The one window in which this picture goes still is a
+      // HOLD — the same composite shown for several ticks.
+      //
+      // ⚠️And this is the one retiring site where removal can COST
+      // rather than save: a hold past the cache's engage threshold
+      // now bakes an entry, and the next drawing evicts it. On a 24fps
+      // sheet full of 6–8 frame holds that is a repeated bake/evict
+      // cycle, so the thing to watch here is a raster hitch right
+      // after a drawing lands — not a hop.
+      painter: PlaybackFramePainter(
+        image: !inGap && _heldCanvasSize == canvasSize
+            ? _heldFrame
+            : null,
+        canvasSize: canvasSize,
+        viewport: widget.viewport,
+        // The pan-phase snap's device grid — the editing stack snaps
+        // to the same one, so entering playback cannot hop the
+        // picture by a sub-pixel.
+        devicePixelRatio:
+            EffectiveDevicePixelRatio.of(context),
+        cameraPose:
+            widget.cameraViewEnabled && cut != null && position != null
+            ? widget.cameraPoseOf(cut, position.localFrameIndex)
+            : null,
+        seNameTags: inGap || cut == null || position == null
+            ? const []
+            : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
+                  const [],
+        cameraFrameSize: widget.cameraViewEnabled
+            ? widget.cameraFrameSize
+            : null,
+        // No cutPose/cutAnchorPoint: the V row has no transform.
+        // The V row's fx chain over the cut's picture, sampled on the
+        // GLOBAL axis its keys live on and bypassed by the row's fx
+        // master.
+        cutEffects: inGap || cut == null || position == null
+            ? const <ResolvedLayerEffect>[]
+            : trackEffectsAt(
+                widget.trackEffectsOf?.call(cut.id) ?? const [],
+                trackFrame,
+                enabled: cutFxEnabled,
+              ),
+        paperBackground: widget.background,
+        paintPaper: !inGap,
+        // The stage's apron rides the camera view (R3b): the camera
+        // sees the pasteboard wherever it reaches past the paper,
+        // and the fade thins the whole unit (transparency, no wash).
+        pasteboardColor: widget.cameraViewEnabled && !inGap
+            ? Color(widget.pasteboardArgb)
+            : null,
+        // F-114: an absent pasteboard or paper shows the checkerboard
+        // here as on the editing canvas — on screen only.
+        pasteboardNone: widget.pasteboardNone,
+        checkersAbsentPlanes: true,
+        // No fade here: single-cut playback shows one cut and so
+        // cannot show a cross-boundary ramp — the all-cuts track
+        // stack is where a transition plays. ↩️The track's STATIC
+        // opacity thinned this unit (R9 #21) until I-73 took it off
+        // the V row.
       ),
     );
   }
-
-  /// [picture] under the run's press and bar ([PlaybackRunLayer] — the
-  /// ticker the clock runs on lives there too).
-  Widget _runLayer(Widget picture) => PlaybackRunLayer(
-    controller: widget.controller,
-    prerenderProgress: widget.prerenderProgress,
-    child: picture,
-  );
 }

@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Puts one real drawing — a cel with a dab of ink — on [s]'s current frame:
@@ -40,9 +41,8 @@ void inkTheCurrentCel(EditorSessionManager s) {
   );
 }
 
-/// A round dab of black ink, [size] across at [at], into [key]'s cel — any
-/// cel of [s]'s, the one stood on or not — the way [inkTheCurrentCel] puts
-/// its own: through a coordinator of its own, straight into the frame store.
+/// A dab of ink, [size] across at [at], into [key]'s cel — any cel of [s]'s,
+/// the one stood on or not — the way [inkTheCurrentCel] puts its own.
 void inkCel(
   EditorSessionManager s,
   BrushFrameKey key, {
@@ -50,20 +50,40 @@ void inkCel(
   required CanvasPoint at,
   required double size,
   BrushTipShape tipShape = BrushTipShape.round,
+}) => inkCelIn(
+  s.renderCaches.brushFrameStore,
+  key,
+  canvasSize: canvasSize,
+  at: at,
+  size: size,
+  tipShape: tipShape,
+);
+
+/// [inkCel] into a bare [store] — through a coordinator of its own, straight
+/// into the store, in [color] (black unless asked) on tiles of [tileSize].
+void inkCelIn(
+  BrushFrameStore store,
+  BrushFrameKey key, {
+  required CanvasSize canvasSize,
+  required CanvasPoint at,
+  required double size,
+  BrushTipShape tipShape = BrushTipShape.round,
+  int color = 0xFF000000,
+  int tileSize = 256,
 }) {
   BrushFrameEditingCoordinator(
     initialFrameKey: key,
-    frameStore: s.renderCaches.brushFrameStore,
+    frameStore: store,
     sessionStore: BrushFrameEditSessionStore(
       canvasSize: canvasSize,
-      tileSize: 256,
+      tileSize: tileSize,
     ),
     historyPolicy: const BrushHistoryPolicy(),
   ).commitSourceStroke(
     sourceDabs: [
       BrushDab(
         center: at,
-        color: 0xFF000000,
+        color: color,
         size: size,
         opacity: 1,
         flow: 1,
