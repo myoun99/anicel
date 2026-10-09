@@ -827,6 +827,40 @@ void main() {
       expect(keysOf(session, b), [2, 6, 12], reason: 'nothing moved');
     });
 
+    testWidgets('a tap on the row lets the selection go', (tester) async {
+      final session = await pumpPanel(tester);
+      await sweep(tester, at(tester, 26), at(tester, 30));
+      expect(selectionOf(session), isNotNull, reason: '⛔전제');
+
+      await tester.tapAt(at(tester, 40), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(selectionOf(session), isNull);
+    });
+
+    testWidgets('🚨a sweep inside the frames another row of the cut has '
+        'selected selects the camera\'s — it moves nothing of that row', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester);
+      session
+        ..selectCut(b)
+        ..updateFrameRangeSelectionDrag(
+          layerId: const LayerId('b-cel'),
+          anchorIndex: 0,
+          headIndex: 20,
+        );
+      await tester.pumpAndSettle();
+      expect(selectionOf(session)!.layerId, const LayerId('b-cel'));
+
+      await sweep(tester, at(tester, 26), at(tester, 30));
+
+      final selection = selectionOf(session)!;
+      expect(selection.layerId, const LayerId('b-cam'));
+      expect((selection.startIndex, selection.endIndexExclusive), (2, 7));
+      expect(keysOf(session, b), [2, 6, 12]);
+    });
+
     testWidgets('a selection the timeline made past the cut\'s end draws no '
         'band here', (tester) async {
       final session = await pumpPanel(tester);
