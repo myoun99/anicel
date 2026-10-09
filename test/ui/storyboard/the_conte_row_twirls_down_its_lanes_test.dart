@@ -282,12 +282,18 @@ void main() {
       await tester.tapAt(at(tester, 'position', 15));
       await tester.pumpAndSettle();
       expect(key('storyboard-lane-value-$rowId-position'), findsOneWidget);
+      expect(key('storyboard-lane-value-$rowId-opacity'), findsOneWidget);
 
       await tester.tapAt(at(tester, 'position', 30));
       await tester.pumpAndSettle();
 
       expect(laneLabel('position'), findsOneWidget);
       expect(key('storyboard-lane-value-$rowId-position'), findsNothing);
+      expect(
+        key('storyboard-lane-value-$rowId-opacity'),
+        findsNothing,
+        reason: 'no value read off any cut — the opacity\'s either',
+      );
     });
 
     testWidgets('🚨its group shut while you stand on a member, the header '
