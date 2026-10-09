@@ -283,23 +283,12 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
           _runLabels(context, shown),
           // Where each cut begins — the projection rows' dashed line, the
           // camera row's own ([StoryboardCutStartsPainter]).
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: ValueKey<String>('storyboard-conte-cut-starts-$_scope'),
-                  painter: StoryboardCutStartsPainter(
-                    starts: [
-                      for (final entry in layoutEntries) entry.startFrame,
-                    ],
-                    geometry: frameGeometry,
-                    colorScheme: Theme.of(context).colorScheme,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                  ),
-                ),
-              ),
-            ),
+          _StoryboardCutStarts(
+            paintKey: ValueKey<String>('storyboard-conte-cut-starts-$_scope'),
+            starts: [for (final entry in layoutEntries) entry.startFrame],
+            geometry: frameGeometry,
+            windowBucket: windowBucket,
+            viewportWidth: viewportWidth,
           ),
           if (seat == 0) _createButtons(context),
           // The cells' press — the S rows' and the transition row's own

@@ -1,5 +1,41 @@
 part of '../storyboard_panel.dart';
 
+/// A projection row's cut starts as a layer of its stack — over its paper,
+/// under everything that answers ([StoryboardCutStartsPainter]).
+class _StoryboardCutStarts extends StatelessWidget {
+  const _StoryboardCutStarts({
+    required this.paintKey,
+    required this.starts,
+    required this.geometry,
+    required this.windowBucket,
+    required this.viewportWidth,
+  });
+
+  final Key paintKey;
+  final List<int> starts;
+  final TimelineFrameGeometryHandle geometry;
+  final ValueListenable<int> windowBucket;
+  final double viewportWidth;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: paintKey,
+          painter: StoryboardCutStartsPainter(
+            starts: starts,
+            geometry: geometry,
+            colorScheme: Theme.of(context).colorScheme,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// WHERE EACH CUT BEGINS ON A PROJECTION ROW — a dashed line at each cut's
 /// place on the track, on the camera row, the conte row and every row
 /// riding it. The drawn proposal: 「투영 행은 컷이 시작하는 자리마다 세로

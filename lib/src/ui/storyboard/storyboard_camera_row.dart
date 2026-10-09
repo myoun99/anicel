@@ -140,44 +140,15 @@ class _StoryboardCameraRow extends StatelessWidget {
       height: height,
       child: Stack(
         children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: ValueKey<String>(
-                    'storyboard-camera-ground-${track.id.value}',
-                  ),
-                  painter: StoryboardCameraRowPainter(
-                    reaches: reaches,
-                    geometry: frameGeometry,
-                    crossAxisExtent: height,
-                    colorScheme: Theme.of(context).colorScheme,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                  ),
-                ),
-              ),
+          _ground(context),
+          _StoryboardCutStarts(
+            paintKey: ValueKey<String>(
+              'storyboard-camera-cut-starts-${track.id.value}',
             ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: ValueKey<String>(
-                    'storyboard-camera-cut-starts-${track.id.value}',
-                  ),
-                  painter: StoryboardCutStartsPainter(
-                    starts: [
-                      for (final reach in reaches) reach.entry.startFrame,
-                    ],
-                    geometry: frameGeometry,
-                    colorScheme: Theme.of(context).colorScheme,
-                    windowBucket: windowBucket,
-                    viewportMainExtent: viewportWidth,
-                  ),
-                ),
-              ),
-            ),
+            starts: [for (final reach in reaches) reach.entry.startFrame],
+            geometry: frameGeometry,
+            windowBucket: windowBucket,
+            viewportWidth: viewportWidth,
           ),
           Positioned.fill(child: IgnorePointer(child: _keys())),
           if (onRowFramePress != null ||
@@ -205,6 +176,26 @@ class _StoryboardCameraRow extends StatelessWidget {
       ),
     );
   }
+
+  /// The row's ground ([StoryboardCameraRowPainter]) — each cut's のりしろ
+  /// and the stretches two cuts share — painted, never pressed.
+  Widget _ground(BuildContext context) => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: ValueKey<String>('storyboard-camera-ground-${track.id.value}'),
+          painter: StoryboardCameraRowPainter(
+            reaches: reaches,
+            geometry: frameGeometry,
+            crossAxisExtent: height,
+            colorScheme: Theme.of(context).colorScheme,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+          ),
+        ),
+      ),
+    ),
+  );
 
   /// THE range gesture — the timeline's, as the conte row lays it — over
   /// [upper]'s half of the row: a pan selects a run of a cut's own frames,
