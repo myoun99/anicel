@@ -195,6 +195,27 @@ void main() {
     expect(pictures.failed(at(0)), isTrue, reason: 'frame 0 is a alone');
   });
 
+  testWidgets('🚨a frame\'s failure gives up only its rows still to come — a '
+      'row that was there is not given up on, so it is made again once it is '
+      'let go', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images, both: true);
+      await pictures.make(at(0), shouldAbort: () => false);
+      expect(
+        held(images, 'a', PlaybackQuality.full),
+        isTrue,
+        reason: '⛔premise',
+      );
+
+      pictures.noteFailure(at(3));
+
+      expect(pictures.gaveUpOn(row('a')), isFalse, reason: 'a was there');
+      expect(pictures.gaveUpOn(row('b')), isTrue);
+    });
+  });
+
   testWidgets('an interrupted making lands nothing and says so', (
     tester,
   ) async {
