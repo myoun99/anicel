@@ -97,11 +97,19 @@ class PlaybackCacheBudgetEnforcer {
   /// [demand] is the order pictures are wanted in: under a full budget the
   /// composites wanted latest go first. Without one the least recently used
   /// do.
+  ///
+  /// [canvasWantedAt] stands where the screen shows a frame from the
+  /// canvas's own images ([CanvasPictures.wantedAt]): see [_enforceForCanvas].
   void enforce({
     FrameDemand? demand,
     int reservedForDisplayBytes = 0,
     int lentBytes = 0,
+    LayerImageWantedAt? canvasWantedAt,
   }) {
+    if (canvasWantedAt != null) {
+      _enforceForCanvas(canvasWantedAt, lentBytes: lentBytes);
+      return;
+    }
     // ⚠️Half, and no more: a 500-layer stack asks for gigabytes, and a
     // reserve that big would starve the warm to buy cache nothing can hold
     // anyway. Past the clamp the layer cache's own LRU decides which of the
@@ -116,8 +124,35 @@ class PlaybackCacheBudgetEnforcer {
       laterThan: demand == null ? null : 0,
     );
     final remaining = maxBytes - lentBytes - composites.estimatedBytes;
-    layerImages.evictLeastRecentlyUsed(
-      targetBytes: remaining < reserve ? reserve : remaining,
+    layerImages.enforceBudget(
+      maxBytes: remaining < reserve ? reserve : remaining,
+    );
+  }
+
+  /// The trim while the screen shows a frame from the canvas's own images:
+  /// THEY are the pictures now, kept by when they are wanted — the latest
+  /// first — and no composite is one, so the composites give way before any
+  /// of them (playback-plays-the-screen-material: 「허용치 = 레이어 그림
+  /// 수요 순서」).
+  ///
+  /// ⛔No display reserve: what a screen holds is pinned, and a pin is never
+  /// let go of — and what the walk wants next is in the same order as what
+  /// it shows, so a floor beside the order would only keep pictures it ranks
+  /// last.
+  void _enforceForCanvas(
+    LayerImageWantedAt wantedAt, {
+    required int lentBytes,
+  }) {
+    final line = maxBytes - lentBytes;
+    composites.enforceBudget(
+      maxBytes: math.max(0, line - layerImages.estimatedBytes),
+    );
+    layerImages.enforceBudget(
+      maxBytes: line - composites.estimatedBytes,
+      wantedAt: wantedAt,
+      // The rows of the frame under the playhead stay whatever the cap, as
+      // its composite did.
+      laterThan: 0,
     );
   }
 
@@ -154,6 +189,28 @@ class PlaybackCacheBudgetEnforcer {
     stepOf: demand?.stepOf,
     laterThan: step,
   );
+
+  /// The bytes the canvas's images may hold while they are being made
+  /// ([_enforceForCanvas]): the line, less what is lent.
+  int roomForCanvas({int lentBytes = 0}) => math.max(0, maxBytes - lentBytes);
+
+  /// [makeRoomFor] while the screen shows the canvas's own images: the
+  /// composites go first, then the images wanted later than [step].
+  bool makeRoomForCanvas({
+    required int bytes,
+    required int step,
+    required int within,
+    required LayerImageWantedAt wantedAt,
+  }) {
+    composites.enforceBudget(
+      maxBytes: math.max(0, within - bytes - layerImages.estimatedBytes),
+    );
+    return layerImages.enforceBudget(
+      maxBytes: within - bytes - composites.estimatedBytes,
+      wantedAt: wantedAt,
+      laterThan: step,
+    );
+  }
 
   /// How much of the line a borrower may hold: all of it, less what
   /// [enforce] never takes back — the composites and the layer images a

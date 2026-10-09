@@ -55,6 +55,7 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
+import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
 import 'debug/input_inspector.dart';
@@ -441,12 +442,50 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return Offset.zero & Size(frame.width.toDouble(), frame.height.toDouble());
   }
 
+  /// Whether the run that plays is drawn ON THIS CANVAS — a cut played
+  /// alone, seen without the camera: the clock moves the playhead
+  /// ([_followTheRun]) and the canvas draws the frame it stands on, from the
+  /// images it draws standing still (playback-plays-the-screen-material).
+  /// The camera view and the whole film play on the composite view yet.
+  ///
+  /// The rig's answer, not a copy of it: the canvas shows a frame from its
+  /// own pictures exactly when the warmer makes them
+  /// ([PlaybackRig.canvasShown]).
+  bool get _playsOnTheCanvas {
+    final rig = widget.session.playbackRig;
+    return rig.playback.isActive && rig.canvasShown != null;
+  }
+
+  /// This canvas's word on how it shows a cut — on itself, or through the
+  /// camera on the composite view ([PlaybackRig.canvasShowsCuts]).
+  void _sayHowCutsShow() => widget.session.playbackRig.canvasShowsCuts =
+      !widget.cameraViewEnabled.value;
+
+  /// A run this canvas plays moves the playhead, as a scrub does
+  /// ([FrameScrub.followTheRun]), to the frame of the cut's own it shows.
+  void _followTheRun() {
+    if (!_playsOnTheCanvas) {
+      return;
+    }
+    final session = widget.session;
+    final position = session.playbackRig.playback.position;
+    if (position == null) {
+      return;
+    }
+    session.frameScrub.followTheRun(
+      session.playheadCursors.ownFrameOf(position),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     final playback = widget.session.playbackRig.playback;
     playback.globalFrameIndexListenable.addListener(_syncPlaybackFitCut);
     playback.isActiveListenable.addListener(_syncPlaybackFitCut);
+    playback.globalFrameIndexListenable.addListener(_followTheRun);
+    widget.cameraViewEnabled.addListener(_sayHowCutsShow);
+    _sayHowCutsShow();
   }
 
   @override
@@ -454,6 +493,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final playback = widget.session.playbackRig.playback;
     playback.globalFrameIndexListenable.removeListener(_syncPlaybackFitCut);
     playback.isActiveListenable.removeListener(_syncPlaybackFitCut);
+    playback.globalFrameIndexListenable.removeListener(_followTheRun);
+    widget.cameraViewEnabled.removeListener(_sayHowCutsShow);
     _playbackFitCut.dispose();
     _playbackViewport.dispose();
     _activeStrokeOverlay.dispose();
@@ -810,6 +851,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       widget.brushToolState.value.withActiveSize(next),
     );
   }
+
+  /// What a run puts over the canvas that plays it ([PlaybackRunLayer]):
+  /// the ticker the clock runs on, the press that stops it, the bar — and
+  /// the streamer the ADR scribe rides on the picture (REC1-E).
+  Widget _runOverTheCanvas(EditorSessionManager session) => PlaybackRunLayer(
+    controller: session.playbackRig.playback,
+    prerenderProgress: session.playbackRig.prerenderScheduler.progress,
+    child: RecordingStreamerOverlay(session: session),
+  );
 
   Stack _playbackContent(
     EditorSessionManager session,

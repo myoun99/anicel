@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -28,6 +29,8 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+
+import '../../helpers/draw_on_current_frame.dart';
 
 /// 🚨A CUT'S OWN FRAME 0 IS ITS MEDIA START (I-73-ol-index-space).
 ///
@@ -726,6 +729,20 @@ void main() {
     );
     addTearDown(session.dispose);
     session.transitions.updateTransitionInstructions({18: ol});
+    // Ink in the cel, so it is a picture to make on whichever screen shows
+    // the cut — the canvas counts a cel with nothing in it as made.
+    final b = session.repository.requireProject().tracks.single.cuts.last;
+    inkCel(
+      session,
+      session.brushFrameKeyForCut(
+        b,
+        const LayerId('cel'),
+        const FrameId('drawn'),
+      ),
+      canvasSize: b.canvasSize,
+      at: CanvasPoint(x: 4, y: 4),
+      size: 6,
+    );
 
     expect(storyboardReadyRuns(session, 0, 48), [
       (startIndex: 0, endIndexExclusive: 26),

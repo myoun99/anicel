@@ -180,8 +180,7 @@ class FrameScrub {
       return;
     }
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
-      _controllers.timelineController.selectFrameIndex(frameIndex);
-      _editingFrameCursor.value = frameIndex;
+      _standTheCursorAt(frameIndex);
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       _playbackRig.audioScrubber.onScrubFrame(frameIndex);
       if (!active.value) {
@@ -193,6 +192,30 @@ class FrameScrub {
     } else {
       _editingFrameCursor.value = frameIndex;
     }
+  }
+
+  /// A run the canvas plays moves the playhead the way a scrub moves it —
+  /// the cursor alone, with no session notify — and the editing canvas
+  /// draws the frame it stands on (playback-plays-the-screen-material).
+  ///
+  /// ⛔None of the scrub GESTURE comes with it: no slice of the mix (the run
+  /// plays its own sound), no scrub flag, no warm (the run's warmer is
+  /// following it already). Only the refusal does — a run's step is a seek
+  /// like any other, and no seek moves the playhead under a live stroke.
+  void followTheRun(int frameIndex) {
+    if (_brushInputActive.value ||
+        frameIndex == _controllers.timelineController.currentFrameIndex) {
+      return;
+    }
+    _standTheCursorAt(frameIndex);
+  }
+
+  /// Stands the playhead on [frameIndex] without a session notify: the
+  /// timeline controller the canvas's plan reads, and the cursor the canvas
+  /// listens to — the one move a scrub and a run the canvas plays both make.
+  void _standTheCursorAt(int frameIndex) {
+    _controllers.timelineController.selectFrameIndex(frameIndex);
+    _editingFrameCursor.value = frameIndex;
   }
 
   /// The scrub gesture's release: ends the preview and commits the

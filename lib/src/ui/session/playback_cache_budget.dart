@@ -5,6 +5,7 @@ import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
+import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import 'render_caches.dart';
@@ -21,6 +22,11 @@ abstract interface class PlaybackRun {
   /// The order pictures are wanted in now — what the warmer follows — or
   /// null while it follows nothing.
   FrameDemand? get demand;
+
+  /// The canvas's own pictures while the screen shows a frame from them —
+  /// the budget keeps THEM then, by [demand] — or null while it shows a
+  /// cut's composite.
+  CanvasPictures? get canvasShown;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -116,22 +122,36 @@ class PlaybackCacheBudget implements PictureRoom {
     demand: _run.demand,
     reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
     lentBytes: _lentBytes,
+    canvasWantedAt: _run.canvasShown?.wantedAt(_run.demand),
   );
 
   @override
-  int get bytes => _playbackCacheBudgetEnforcer.roomForComposites(
-    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
-    lentBytes: _lentBytes,
-  );
+  int get bytes => _run.canvasShown == null
+      ? _playbackCacheBudgetEnforcer.roomForComposites(
+          reservedForDisplayBytes:
+              _renderCaches.layerFrameImageCache.pinnedBytes,
+          lentBytes: _lentBytes,
+        )
+      : _playbackCacheBudgetEnforcer.roomForCanvas(lentBytes: _lentBytes);
 
   @override
-  bool makeRoomFor({required int bytes, required int step}) =>
-      _playbackCacheBudgetEnforcer.makeRoomFor(
+  bool makeRoomFor({required int bytes, required int step}) {
+    final canvas = _run.canvasShown;
+    if (canvas != null) {
+      return _playbackCacheBudgetEnforcer.makeRoomForCanvas(
         bytes: bytes,
         step: step,
         within: this.bytes,
-        demand: _run.demand,
+        wantedAt: canvas.wantedAt(_run.demand),
       );
+    }
+    return _playbackCacheBudgetEnforcer.makeRoomFor(
+      bytes: bytes,
+      step: step,
+      within: this.bytes,
+      demand: _run.demand,
+    );
+  }
 
   /// What an export run holds on this line while it goes — the row
   /// pictures its held cut pictures are made of (F-289-Q21, 유저 2026-10-07:
@@ -197,16 +217,25 @@ class PlaybackCacheBudget implements PictureRoom {
   /// every frame on screen. The key the cache hands back is kept, so the
   /// next ask of a held picture is `identical` rather than a walk over
   /// every layer node (measured: that walk was most of what was left).
+  ///
+  /// 🚨THE BAR COUNTS WHAT THE SCREEN SHOWS (playback-plays-the-screen-
+  /// material): where it shows a frame from the canvas's own images, a span
+  /// is ready when they are — the same question a run asks before it goes
+  /// on ([CanvasPictures.has]), asked of the span's first frame.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
     Cut cut,
     int start,
     int end,
   ) {
     final composites = _renderCaches.cutFrameCompositeCache;
+    final canvas = _run.canvasShown;
     final signed = _signedStructuresOf(cut);
     bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
       if (structure.nodes.isEmpty) {
         return true;
+      }
+      if (canvas != null) {
+        return canvas.has((cut: cut, frameIndex: frameIndex));
       }
       final held = composites.heldSignature(
         signed[structure] ??= composites.signatureOf(

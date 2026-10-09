@@ -15,6 +15,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 
+import '../../models/cut.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -27,7 +28,10 @@ import '../playback/audioplayers_clip_player.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/playback/playback_picture_wait.dart';
+import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
+import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
+import '../playback/playback_pictures.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
@@ -61,7 +65,10 @@ class PlaybackRig implements PlaybackRun {
       int startGlobalFrame,
     )
     onPlaylistWarmRequested,
-  }) : _project = project,
+    required List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
+    canvasRowsOf,
+  }) : _canvasRowsOf = canvasRowsOf,
+       _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
@@ -99,6 +106,66 @@ class PlaybackRig implements PlaybackRun {
   )
   _onPlaylistWarmRequested;
 
+  /// The rows a cut's frame draws as images on the canvas while a run plays
+  /// it — the session's editing canvas answers ([CanvasPictures.rowsOf]).
+  final List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
+  _canvasRowsOf;
+
+  // ── what the screen shows a frame from ──────────────────────────────
+
+  /// A cut's frame as one composite — the composite view's and the track
+  /// stack's.
+  late final CompositePictures compositePictures = CompositePictures(
+    _renderCaches.cutFrameCompositeCache,
+  );
+
+  /// A cut's frame as the canvas draws it — its rows' images at the level
+  /// the canvas draws at.
+  late final CanvasPictures canvasPictures = CanvasPictures(
+    layerImages: _renderCaches.layerFrameImageCache,
+    rowsOf: _canvasRowsOf,
+    quality: () => _renderCaches.canvasQuality.value,
+  );
+
+  /// Whether the canvas shows a cut played alone on itself — the canvas
+  /// view says ([canvasShowsCuts]); it does unless it looks through the
+  /// camera (the composite view's, until the camera view stands on the
+  /// same pictures).
+  bool _canvasShowsCuts = true;
+
+  bool get canvasShowsCuts => _canvasShowsCuts;
+
+  /// The canvas view's word on how it shows a cut — what is made, kept and
+  /// counted follows it from here.
+  set canvasShowsCuts(bool value) {
+    if (_canvasShowsCuts == value) {
+      return;
+    }
+    _canvasShowsCuts = value;
+    _shownPicturesChanged();
+  }
+
+  /// The pictures the screen shows a frame from now: the canvas's own while
+  /// it shows one cut — standing, scrubbed, or played alone — and a cut's
+  /// composite where the composite view shows it (the camera view, the
+  /// whole film).
+  PlaybackPictures get shownPictures => canvasShown ?? compositePictures;
+
+  @override
+  CanvasPictures? get canvasShown =>
+      _canvasShowsCuts &&
+          !(playback.isActive && playback.scope == PlaybackScope.allCuts)
+      ? canvasPictures
+      : null;
+
+  /// What was walked over, and what a waiting run waited for, were counted
+  /// in pictures the screen no longer shows from — or at a level it no
+  /// longer draws at.
+  void _shownPicturesChanged() {
+    prerenderScheduler.wake(fromTheStart: true);
+    playback.lookAgain();
+  }
+
   // ── the playback cache budget: its own object ───────────────────────
   //
   // A collaborator (session/playback_cache_budget.dart). It reads the
@@ -112,7 +179,7 @@ class PlaybackRig implements PlaybackRun {
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
-        composites: _renderCaches.cutFrameCompositeCache,
+        pictures: ShownPictures(() => shownPictures),
         resolveCut: _project.cutById,
         room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
@@ -294,6 +361,9 @@ class PlaybackRig implements PlaybackRun {
     // may have changed: a picture landed, one was given up on, or it has
     // come to rest — which is what a run that renders first waits for.
     prerenderScheduler.changes.addListener(playback.lookAgain);
+    // The canvas draws its rows at another level: what was made at the old
+    // one is not what it will ask for.
+    _renderCaches.canvasQuality.addListener(_shownPicturesChanged);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -312,6 +382,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _renderCaches.canvasQuality.removeListener(_shownPicturesChanged);
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

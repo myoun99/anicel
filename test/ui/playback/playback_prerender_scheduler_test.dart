@@ -26,6 +26,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/playback_pictures.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 void main() {
@@ -134,7 +135,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => runwayCut(),
         idleDelay: Duration.zero,
       );
@@ -170,7 +171,7 @@ void main() {
       final f = fixture();
       final filled = <int>[];
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         idleDelay: Duration.zero,
         beforeCompose: (asked, frameIndex) async {
@@ -213,7 +214,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         idleDelay: Duration.zero,
       );
@@ -252,7 +253,7 @@ void main() {
       final f = fixture();
       var warmed = 0;
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         afterFrameCached: () => warmed += 1,
         idleDelay: Duration.zero,
@@ -294,7 +295,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         idleDelay: const Duration(hours: 1),
       );
@@ -330,7 +331,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(duration: 40),
         idleDelay: Duration.zero,
       );
@@ -360,7 +361,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         idleDelay: Duration.zero,
       );
@@ -407,7 +408,7 @@ void main() {
     await tester.runAsync(() async {
       final f = fixture();
       final scheduler = PlaybackPrerenderScheduler(
-        composites: f.composites,
+        pictures: CompositePictures(f.composites),
         resolveCut: (_) => cut(),
         idleDelay: Duration.zero,
       );
@@ -516,7 +517,7 @@ void main() {
         // The order pictures were MADE in: the hook answers before each.
         final made = <String>[];
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (id) => id == const CutId('cut-b') ? nextCut() : cut(),
           idleDelay: Duration.zero,
           beforeCompose: (asked, _) async => made.add(asked.id.value),
@@ -566,7 +567,7 @@ void main() {
       await tester.runAsync(() async {
         final f = fixture();
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (id) => id == const CutId('cut') ? cut() : null,
           idleDelay: Duration.zero,
         );
@@ -652,7 +653,7 @@ void main() {
       await tester.runAsync(() async {
         final f = fixture();
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: const Duration(hours: 1),
         );
@@ -679,7 +680,7 @@ void main() {
         final made = <int>[];
         var landings = 0;
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
           beforeCompose: (_, frameIndex) async => made.add(frameIndex),
@@ -704,7 +705,7 @@ void main() {
       await tester.runAsync(() async {
         final f = fixture();
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
         );
@@ -746,7 +747,7 @@ void main() {
         final f = fixture();
         final made = <int>[];
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
           beforeCompose: (_, frameIndex) async => made.add(frameIndex),
@@ -783,7 +784,7 @@ void main() {
         final f = fixture();
         const slow = Duration(milliseconds: 40);
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
           // What a frame reads from outside the cel store is part of what
@@ -821,7 +822,7 @@ void main() {
         final room = _Room(f.composites, 2 * pictureBytes);
         final made = <int>[];
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           room: room,
           idleDelay: Duration.zero,
@@ -872,7 +873,7 @@ void main() {
         final room = _Room(f.composites, 2 * pictureBytes);
         final said = <PrerenderProgress>[];
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           room: room,
           idleDelay: Duration.zero,
@@ -901,7 +902,7 @@ void main() {
         final f = fixture();
         final room = _Room(f.composites, 0);
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           room: room,
           idleDelay: Duration.zero,
@@ -928,7 +929,7 @@ void main() {
       await tester.runAsync(() async {
         final f = fixture();
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
         );
@@ -954,7 +955,7 @@ void main() {
         final f = fixture();
         var asked = 0;
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => cut(duration: 40),
           idleDelay: Duration.zero,
         );
@@ -993,7 +994,7 @@ void main() {
       await tester.runAsync(() async {
         final f = fixture();
         final scheduler = PlaybackPrerenderScheduler(
-          composites: f.composites,
+          pictures: CompositePictures(f.composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
         );
@@ -1029,7 +1030,7 @@ void main() {
         FlutterError.onError = (details) => reported.add(details.exception);
         addTearDown(() => FlutterError.onError = previous);
         final scheduler = PlaybackPrerenderScheduler(
-          composites: composites,
+          pictures: CompositePictures(composites),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
         );

@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
@@ -133,7 +134,15 @@ void main() {
     await tester.pump();
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(playbackView().picturesLanded, same(landings));
+    expect(
+      tester
+          .widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+          .run
+          ?.landings,
+      same(landings),
+      reason: 'a cut played alone plays on the canvas, from the warmer\'s '
+          'pictures (playback-plays-the-screen-material)',
+    );
     s.playbackRig.playback.stop();
     await drainWarming(tester);
   });

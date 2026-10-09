@@ -167,6 +167,7 @@ import 'session/cut_move_drag.dart';
 import 'session/trimmed_pieces.dart';
 import 'session/layer_switch_verbs.dart';
 import 'session/editing_canvas.dart';
+import 'track_effect_paint_policy.dart' show trackEffectsAt;
 import 'package:flutter/painting.dart' show ImageCache;
 
 /// Owns the editable project session for [HomePage]: the repository, undo
@@ -501,6 +502,8 @@ class EditorSessionManager extends ChangeNotifier
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
+    canvasRowsOf: (cut, frameIndex) =>
+        editingCanvas.playedRowsAt(cut, frameIndex),
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -1723,6 +1726,11 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     opacityVerbs: opacityVerbs,
     trackSe: trackSe,
+    cutEffectsAt: (cutId, frameIndex) => trackEffectsAt(
+      effectsAndFx.trackEffectsForCut(cutId),
+      rowSpans.trackGlobalFrameOf(cutId, frameIndex),
+      enabled: effectsAndFx.isCutFxEnabled(cutId),
+    ),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────

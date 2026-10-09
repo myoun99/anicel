@@ -98,7 +98,7 @@ void main() {
         );
 
         cache.retainPin(keyFor('frame-a'), PlaybackQuality.full);
-        cache.evictLeastRecentlyUsed(targetBytes: 0);
+        cache.enforceBudget(maxBytes: 0);
 
         expect(
           cache.validImageOrNull(
@@ -128,7 +128,7 @@ void main() {
 
         cache.releasePin(keyFor('frame-a'), PlaybackQuality.full);
         expect(cache.pinnedBytes, 0);
-        cache.evictLeastRecentlyUsed(targetBytes: 0);
+        cache.enforceBudget(maxBytes: 0);
         expect(
           cache.validImageOrNull(
             keyFor('frame-a'),

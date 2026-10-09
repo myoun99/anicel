@@ -467,7 +467,7 @@ void main() {
       );
 
       // 8×8 RGBA = 256 bytes per image; keep room for exactly one.
-      cache.evictLeastRecentlyUsed(targetBytes: 256);
+      cache.enforceBudget(maxBytes: 256);
 
       expect(
         cache.validImageOrNull(

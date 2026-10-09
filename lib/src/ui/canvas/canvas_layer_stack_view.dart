@@ -122,6 +122,14 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 }
 
+/// What a view showing a RUN takes from the run's maker
+/// ([CanvasLayerStackView.run]): the signal that a picture landed, and the
+/// rows it gave up on — a frame waits for nothing that will not come.
+typedef StackRun = ({
+  Listenable landings,
+  bool Function(CanvasLayerImageRequest row) gaveUpOn,
+});
+
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest extends CanvasStackRow {
   const CanvasLayerImageRequest({
@@ -208,8 +216,25 @@ class CanvasLayerStackView extends StatefulWidget {
     this.debugDisableSingleBuffer = false,
     this.debugBufferCache,
     this.onBufferBytes,
+    this.onQualityShown,
     this.alreadyShown = false,
+    this.run,
   });
+
+  /// The RUN this view shows, when it shows one
+  /// (playback-plays-the-screen-material): its maker makes the rows' images
+  /// ahead of the playhead, so this view makes none — it takes each as it
+  /// [StackRun.landings] — and it changes frames WHOLE: a frame whose rows
+  /// are not all there leaves the last whole one on screen, as a run's
+  /// composite did (유저 2026-10-08: 「재생바는 지나가고있는데 그림이
+  /// 없어서 비어있다던가」). Null for every other view, which makes what it
+  /// lacks and shows rows as they come.
+  final StackRun? run;
+
+  /// Told the level this view asks its rows' images at, whenever that
+  /// changes — so what is made ahead of it is what it will ask for
+  /// ([RenderCaches.canvasQuality]). Pushed, as [onBufferBytes] is.
+  final ValueChanged<PlaybackQuality>? onQualityShown;
 
   /// Whether what this stack shows is on screen already, painted by
   /// another route this view takes over from — the conte's printed
@@ -328,6 +353,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   bool _preparing = false;
   bool _rerunRequested = false;
 
+  /// The tree this view PAINTS — [CanvasLayerStackView.nodes], save under a
+  /// run, where a frame not yet whole leaves the last whole one standing
+  /// ([CanvasLayerStackView.run]): its images stay held until then.
+  late List<CompositeNode<CanvasStackRow>> _shownNodes = widget.nodes;
+
   /// Cels whose image could not be built, and the revision it failed at.
   ///
   /// Skipping the failure but FORGETTING it re-kicked the same broken
@@ -403,6 +433,21 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // The first sweep runs in [didChangeDependencies]: the level it asks
     // images at needs the effective ratio, which is a dependency.
     InputInspector.visible.addListener(_rebuildForInspector);
+    widget.run?.landings.addListener(_takeWhatLanded);
+  }
+
+  /// A picture of the run's landed: the rows it brought are taken, and the
+  /// frame goes up if that made it whole.
+  void _takeWhatLanded() {
+    if (!mounted) {
+      return;
+    }
+    final revision = _imagesRevision;
+    final shown = _shownNodes;
+    _syncImagesWithCache();
+    if (revision != _imagesRevision || !identical(shown, _shownNodes)) {
+      setState(() {});
+    }
   }
 
   @override
@@ -427,6 +472,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     final leftLineage = oldWidget.activeSurfacePainter?.lineage;
     if (leftLineage != widget.activeSurfacePainter?.lineage) {
       TilePyramid.instance.dropSeed(leftLineage);
+    }
+    if (!identical(oldWidget.run?.landings, widget.run?.landings)) {
+      oldWidget.run?.landings.removeListener(_takeWhatLanded);
+      widget.run?.landings.addListener(_takeWhatLanded);
     }
     _syncImagesWithCache(shownAlready: oldWidget.activeCels.toSet());
     unawaited(_ensureImages());
@@ -592,6 +641,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
+    widget.run?.landings.removeListener(_takeWhatLanded);
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
@@ -632,6 +682,17 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void _syncImagesWithCache({
     Set<BrushFrameKey> shownAlready = const {},
   }) {
+    final quality = _quality;
+    if (quality != _qualityShown) {
+      _qualityShown = quality;
+      // Told after the frame: whoever hears it may let a waiting run go on,
+      // and a run that goes on tells its views — never from inside a build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _qualityShown == quality) {
+          widget.onQualityShown?.call(quality);
+        }
+      });
+    }
     labProbe(
       'layerStackSyncSweep(${widget.layers.length})',
       () => _syncSweepBody(shownAlready),
@@ -685,6 +746,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     displayLevelOf(displayScaleOf(widget.viewport.zoom, _devicePixelRatio)),
   );
 
+  /// The level last told ([CanvasLayerStackView.onQualityShown]).
+  PlaybackQuality? _qualityShown;
+
   /// The effective ratio this view composes at ([EffectiveDevicePixelRatio]),
   /// read where dependencies change — so [_quality] is right from the first
   /// sweep, which therefore runs there and not in [initState].
@@ -727,11 +791,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   }
 
   void _syncSweepBody(Set<BrushFrameKey> shownAlready) {
-    final wanted = <BrushFrameKey>{
-      for (final layer in widget.layers) layer.frameKey,
-    };
+    _adoptWhatIsThere(shownAlready);
+    // What is shown is the frame asked for — or, under a run, the last
+    // whole frame until this one is whole ([CanvasLayerStackView.run]).
+    if (widget.run == null || _isWhole(widget.layers)) {
+      _shownNodes = widget.nodes;
+    }
+    final kept = _keptKeys();
     for (final key in _images.keys.toList()) {
-      if (!wanted.contains(key)) {
+      if (!kept.contains(key)) {
         final held = _images.remove(key)!;
         _handToTheActiveRow(key, held);
         _dropImage(key, held);
@@ -740,7 +808,45 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // A row that left the stack takes its failure record with it — the
     // note exists to stop a per-rebuild retry, not to remember cels this
     // stack no longer shows.
-    _failedRevisions.removeWhere((key, _) => !wanted.contains(key));
+    _failedRevisions.removeWhere((key, _) => !kept.contains(key));
+  }
+
+  /// The cels whose images this view holds on to: the rows asked for, and
+  /// the rows of the frame it still shows in their place.
+  Set<BrushFrameKey> _keptKeys() => {
+    for (final layer in widget.layers) layer.frameKey,
+    if (!identical(_shownNodes, widget.nodes))
+      for (final layer in _layersOf(_shownNodes)) layer.frameKey,
+  };
+
+  static Iterable<CanvasLayerImageRequest> _layersOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) sync* {
+    for (final node in preorderNodes(nodes)) {
+      if (node case CompositeLeaf(
+        payload: final CanvasLayerImageRequest request,
+      )) {
+        yield request;
+      }
+    }
+  }
+
+  /// Whether every one of [layers] can be drawn now — held, or with nothing
+  /// to draw, or given up on (by this view or by the run's maker): nothing
+  /// of the frame is still to come.
+  bool _isWhole(Iterable<CanvasLayerImageRequest> layers) => layers.every(
+    (layer) =>
+        _images.containsKey(layer.frameKey) ||
+        !widget.imageCache.frameStore.celHasRenderableContent(
+          layer.frameKey,
+        ) ||
+        _shouldSkipFailed(layer.frameKey) ||
+        (widget.run?.gaveUpOn(layer) ?? false),
+  );
+
+  /// Adopts every requested row whose image is valid in the cache now — or
+  /// composes the ones that may not wait ([_wasOnScreen]).
+  void _adoptWhatIsThere(Set<BrushFrameKey> shownAlready) {
     for (final layer in widget.layers) {
       // Valid cache image, or a synchronous per-tile compose — either way
       // the artwork paints THIS frame. A cel that was on screen a frame ago
@@ -885,6 +991,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _preparing = true;
     try {
       do {
+        // A RUN's rows are its maker's to make ([CanvasLayerStackView.run]):
+        // made here as well, the same cel would be made twice at once.
+        if (widget.run != null) {
+          return;
+        }
         _rerunRequested = false;
         var changed = false;
         final wanted = <BrushFrameKey>{};
@@ -896,8 +1007,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           }
           changed = changed || refreshed;
         }
+        // A run that began during the pass shows a frame of its own: what it
+        // still shows is not this pass's to let go of.
+        final kept = {...wanted, ..._keptKeys()};
         for (final key in _images.keys.toList()) {
-          if (!wanted.contains(key)) {
+          if (!kept.contains(key)) {
             _dropImage(key, _images.remove(key)!);
             changed = true;
           }
@@ -1016,7 +1130,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   Widget build(BuildContext context) {
     _noteBoundaryOnGrid(context);
-    final nodes = _resolvedTree(widget.nodes);
+    final nodes = _resolvedTree(_shownNodes);
     // This build's painter draws with a settle's new handles, so the ones
     // they replaced can go ([_settleHeldImage]).
     _releaseSettled();

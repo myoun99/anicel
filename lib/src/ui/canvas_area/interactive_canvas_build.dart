@@ -24,6 +24,12 @@ class _InteractiveCanvasBuild {
   );
 
   late final bool _isPlaybackActive;
+
+  /// Whether the run that plays is drawn on THIS canvas
+  /// ([_EditorCanvasAreaState._playsOnTheCanvas]): the picture stays — the
+  /// rows' images, at the frame the run moved the playhead to — and the
+  /// editing goes, as it goes under any run.
+  late final bool _canvasPlays;
   late final bool _inGap;
   late final bool _cameraOverlayVisible;
   late final ({
@@ -70,6 +76,7 @@ class _InteractiveCanvasBuild {
     required bool showCameraOverlay,
   }) {
     _isPlaybackActive = session.playbackRig.playback.isActive;
+    _canvasPlays = _state._playsOnTheCanvas;
     // 🚨★★★ #26 (2026-08-15): A RULER SCRUB IS NOT A SECOND DISPLAY MODE.
     // 「그냥 액티브레이어급으로 그냥 원본 보여주게하고싶어 … 그냥 항상 full」
     //
@@ -98,6 +105,8 @@ class _InteractiveCanvasBuild {
             activeLayerOpacity: 1.0,
             activeSourceEffects: const <ResolvedLayerEffect>[],
           )
+        : _canvasPlays
+        ? session.editingCanvas.playingStack
         : session.editingCanvas.stack;
     // T12 field probe (no-op while the Input Inspector is hidden, and it
     // prints only when one of the four answers CHANGES — a line per build
@@ -290,9 +299,10 @@ class _InteractiveCanvasBuild {
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
       // composite tree and a folder's group buffer can enclose
-      // the layer being drawn on. Playback swaps the whole viewport
-      // content, so merged mode stands down there (no underlay
-      // builder, no active painter).
+      // the layer being drawn on. A run draws on nothing, so
+      // merged mode stands down while one plays: the composite
+      // view has no underlay at all, and a run the canvas plays
+      // draws every row as an image (no active painter).
       activeStrokeOverlayModel: _isPlaybackActive
           ? null
           : _state._activeStrokeOverlay,
@@ -514,10 +524,11 @@ class _InteractiveCanvasBuild {
       // Layers below/above the active one composite around the
       // interactive view from the layer image cache — this is what makes
       // the other layers (and their visibility/opacity) visible while
-      // editing. During playback the composite covers everything. Under
-      // an active CUT pose (R9-B) the paper splits out of the wrap: the
-      // canvas is the static stage, only the content rides the pose.
-      viewportUnderlayBuilder: _isPlaybackActive
+      // editing. A run the canvas plays is drawn HERE too, every row an
+      // image; a run on the composite view covers everything. Under an
+      // active CUT pose (R9-B) the paper splits out of the wrap: the canvas
+      // is the static stage, only the content rides the pose.
+      viewportUnderlayBuilder: _isPlaybackActive && !_canvasPlays
           ? null
           : (context, viewport, activeSurfacePainter, floatOverlay) =>
                 _underlay(
@@ -532,11 +543,12 @@ class _InteractiveCanvasBuild {
       // [EditingCanvas.stack].
       activeSourceEffects: _layerStack.activeSourceEffects,
       interactiveContentPose: _interactivePose,
-      // The playback view renders the camera framing itself; the editing
+      // The composite view renders the camera framing itself; the editing
       // overlay would show a stale playhead pose on top of it. A scrub
-      // keeps the CAMERA overlay only — the preview is the current view
-      // moving through time, so the frame stays visible and rides the
-      // cursor.
+      // keeps the CAMERA overlay — the preview is the current view moving
+      // through time, so the frame stays visible and rides the cursor —
+      // and a run the canvas plays keeps what the picture has
+      // ([_overlayStack]).
       // The ABOVE-layers stack is gone from here: the merged
       // underlay paints the whole tree in one picture now, which is
       // the only way a group buffer can span the active layer. What
@@ -545,18 +557,28 @@ class _InteractiveCanvasBuild {
       // with a drag it hears for itself ([_overlay]), and a slot that came
       // and went with the SE tags or the fade would be the area's to rebuild
       // for every drag that moved them.
-      viewportOverlayBuilder: _isPlaybackActive
+      viewportOverlayBuilder: _isPlaybackActive && !_canvasPlays
           ? null
           : (context, viewport) => _overlay(context, viewport, frame),
       // F-222: the standing row's box, over every tool — always there while
-      // editing, whatever it holds, for the overlay's reason above.
-      viewportControlsBuilder: _isPlaybackActive
+      // editing, whatever it holds, for the overlay's reason above. A run
+      // the canvas plays puts ITS layer here, over the picture's overlay:
+      // the clock's ticker, the press that stops it, the bar, and the
+      // streamer the ADR scribe rides on the picture (REC1-E) — which a
+      // fade's wash must not cover.
+      viewportControlsBuilder: _canvasPlays
+          ? (context, viewport) => _state._runOverTheCanvas(session)
+          : _isPlaybackActive
           ? null
           : (context, viewport) => _controls(context, viewport, frame),
       // 🚨T28-c: while playback owns the content a press only stops it, so no
       // tool takes the press — the same flag swaps the content in below.
       toolInputEnabled: !_isPlaybackActive,
-      contentOverride: _isPlaybackActive
+      // A run the canvas plays builds no interactive view: the picture is
+      // the underlay's, the press is the run's, and nothing is drawn on.
+      contentOverride: _canvasPlays
+          ? (context, viewport) => const SizedBox.expand()
+          : _isPlaybackActive
           // The streamer rides ON the picture (REC1-E): the ADR
           // scribe belongs over the projection, never in a side
           // panel. Constant two-child Stack (the overlay shrinks
@@ -620,12 +642,15 @@ class _InteractiveCanvasBuild {
       // MERGED: the whole tree, active layer included, so
       // a folder's group buffer encloses the layer being
       // drawn on. Onion ghosts (P2) sit above the other
-      // layers and directly UNDER the active drawing;
-      // playback and scrubs never reach here, so they
-      // auto-hide. A gap parking shows the VOID (R16-⑥):
-      // no ghosts either.
+      // layers and directly UNDER the active drawing, and
+      // a scrub shows them as it crosses frames — but a RUN
+      // shows the film, and a ghost is editing scaffolding
+      // as a guide is. A gap parking shows the VOID
+      // (R16-⑥): no ghosts either.
       nodes: _inGap
           ? const []
+          : _canvasPlays
+          ? frame.session.editingCanvas.playingStack.nodes
           : _EditorCanvasAreaState._stackNodesWithGhosts(
               frame.session.editingCanvas.stack.nodes,
               frame.session.onionSkin.onionSkinCanvasRequests(),
@@ -639,6 +664,16 @@ class _InteractiveCanvasBuild {
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>
           frame.session.renderCaches.canvasBufferBytes = bytes,
+      onQualityShown: (quality) =>
+          frame.session.renderCaches.canvasQuality.value = quality,
+      // A run this canvas plays: its maker makes the rows, and the frame
+      // goes up whole.
+      run: _canvasPlays
+          ? (
+              landings: frame.session.playbackRig.prerenderScheduler.landings,
+              gaveUpOn: frame.session.playbackRig.canvasPictures.gaveUpOn,
+            )
+          : null,
       canvasSize: _canvasSize,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers
@@ -675,6 +710,10 @@ class _InteractiveCanvasBuild {
     final session = frame.session;
     final fade = _fadeShown(session);
     final seNameTags = _seNameTagsShown(session);
+    // A RUN shows the film: what is over the picture is what the picture
+    // has — its SE tags and its fade — and none of the chrome about editing
+    // it, the way playback has never drawn a guide or the camera's frame.
+    final editing = !_isPlaybackActive;
     return Stack(
       children: [
         // Guides are EDITING scaffolding: they are drawn
@@ -683,7 +722,7 @@ class _InteractiveCanvasBuild {
         // prints. Under the camera frame and the gizmos,
         // which are chrome about the shot rather than about
         // the drawing.
-        if (frame.session.cutVerbs.activeCutGuides.isNotEmpty)
+        if (editing && frame.session.cutVerbs.activeCutGuides.isNotEmpty)
           _state._guideOverlay(
             frame.session,
             viewport,
@@ -693,7 +732,7 @@ class _InteractiveCanvasBuild {
           ),
         // The handle layer mounts ONLY for the guide tool,
         // so it never stands between the brush and the cel.
-        if (frame.tool == CanvasTool.guide)
+        if (editing && frame.tool == CanvasTool.guide)
           _state._guideEditLayer(frame.session, viewport),
         if (seNameTags.isNotEmpty)
           _state._seNameTagOverlay(viewport, _canvasSize, seNameTags, context),
@@ -706,7 +745,7 @@ class _InteractiveCanvasBuild {
             fade.veils,
             context,
           ),
-        if (_cameraOverlayVisible)
+        if (editing && _cameraOverlayVisible)
           _state._cameraOverlay(frame.session, viewport),
       ],
     );

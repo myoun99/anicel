@@ -125,6 +125,11 @@ class _LayerFrameImageEntry {
 /// drawing state, so brush edits and undo/redo invalidate without any event
 /// plumbing. [invalidateFrame] additionally drops entries eagerly on sink
 /// events to free memory sooner.
+/// How many steps on a cached slot's image is next shown — null where no
+/// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
+typedef LayerImageWantedAt =
+    int? Function((BrushFrameKey, PlaybackQuality) slot);
+
 class LayerFrameImageCache {
   LayerFrameImageCache({required this.frameStore});
 
@@ -157,6 +162,38 @@ class LayerFrameImageCache {
     required CanvasSize canvasSize,
     required List<ResolvedLayerEffect> sourceEffects,
   }) {
+    final entry = _validEntry(key, quality, canvasSize, sourceEffects);
+    if (entry == null) {
+      return null;
+    }
+    entry.lastUsed = ++_useCounter;
+    return entry.positioned;
+  }
+
+  /// The image [prepareSyncOrNull] would hand a route drawing [key]'s row
+  /// at [quality] from what is held ALREADY — without counting as a use.
+  ///
+  /// ⛔A LOOK, NOT A USE: what asks it is counting pictures — the warmer
+  /// walking a window, the ruler's bar, a run asking whether it may go on —
+  /// and a count that touched every row it read would make each one the
+  /// most recently used, which is the order the budget lets go by.
+  LayerFrameImage? peek(
+    BrushFrameKey key,
+    PlaybackQuality quality, {
+    required CanvasSize canvasSize,
+    required List<ResolvedLayerEffect> sourceEffects,
+    required bool inkSuffices,
+  }) => _drawable(
+    _validEntry(key, quality, canvasSize, sourceEffects)?.positioned,
+    inkSuffices: inkSuffices,
+  );
+
+  _LayerFrameImageEntry? _validEntry(
+    BrushFrameKey key,
+    PlaybackQuality quality,
+    CanvasSize canvasSize,
+    List<ResolvedLayerEffect> sourceEffects,
+  ) {
     final entry = _entries[(key, quality)];
     if (entry == null ||
         entry.canvasSize != canvasSize ||
@@ -167,8 +204,7 @@ class LayerFrameImageCache {
         entry.sourceRevision != _currentRevision(key)) {
       return null;
     }
-    entry.lastUsed = ++_useCounter;
-    return entry.positioned;
+    return entry;
   }
 
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
@@ -617,22 +653,49 @@ class LayerFrameImageCache {
     return total;
   }
 
-  /// Evicts least-recently-used entries until at or under [targetBytes].
-  void evictLeastRecentlyUsed({required int targetBytes}) {
-    final ordered = _entries.entries.toList()
-      ..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
+  /// Lets go of images until at or under [maxBytes] — the ones wanted
+  /// LATEST first ([wantedAt]: how many frames on a slot's image is next
+  /// shown, null where nothing ahead shows it), the least recently used
+  /// among equals — and answers whether that was enough. With [laterThan],
+  /// never one wanted that soon or sooner: a picture is made only by
+  /// letting go of pictures wanted after it.
+  ///
+  /// Without [wantedAt] every image is wanted equally, and recency alone
+  /// orders them. The composites' twin is
+  /// [CutFrameCompositeCache.enforceBudget].
+  bool enforceBudget({
+    required int maxBytes,
+    LayerImageWantedAt? wantedAt,
+    int? laterThan,
+  }) {
     var bytes = estimatedBytes;
-    for (final entry in ordered) {
-      if (bytes <= targetBytes) {
+    if (bytes <= maxBytes) {
+      return true;
+    }
+    final ordered =
+        <(MapEntry<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry>, int)>[
+          for (final entry in _entries.entries)
+            // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
+            // anyway (the holder's clone shares the pixels) and puts the
+            // very image the canvas is drawing back on the cold path — the
+            // "worked harder, got emptier" loop PR #1065 documented.
+            // Recency cannot express "someone is holding this"; only the
+            // pin can.
+            if (!_pins.isPinned(entry.key))
+              (entry, wantedAt?.call(entry.key) ?? _neverWanted),
+        ]..sort((a, b) {
+          final latestFirst = b.$2.compareTo(a.$2);
+          return latestFirst != 0
+              ? latestFirst
+              : a.$1.value.lastUsed.compareTo(b.$1.value.lastUsed);
+        });
+    for (final (entry, wanted) in ordered) {
+      if (bytes <= maxBytes) {
         break;
       }
-      // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
-      // anyway (the holder's clone shares the pixels) and puts the very
-      // image the canvas is drawing back on the cold path — the "worked
-      // harder, got emptier" loop PR #1065 documented. Recency cannot
-      // express "someone is holding this"; only the pin can.
-      if (_pins.isPinned(entry.key)) {
-        continue;
+      if (laterThan != null && wanted <= laterThan) {
+        // Latest first: everything from here on is wanted sooner still.
+        break;
       }
       bytes -= estimatedImageBytes(
         entry.value.image.width,
@@ -640,7 +703,11 @@ class LayerFrameImageCache {
       );
       _dropEntry(entry.key);
     }
+    return bytes <= maxBytes;
   }
+
+  /// Wanted by no frame at all — later than any step.
+  static const int _neverWanted = 1 << 62;
 
   // --- Display pins (A6) ----------------------------------------------
   //

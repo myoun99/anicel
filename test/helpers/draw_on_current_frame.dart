@@ -1,7 +1,9 @@
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -25,28 +27,48 @@ void drawOnCurrentFrame(EditorSessionManager s) {
 /// stands on — for a test that has to see that cel BEFORE it is inked.
 void inkTheCurrentCel(EditorSessionManager s) {
   final selection = s.editingCanvas.activeBrushEditorSelection!;
-  BrushFrameEditingCoordinator(
-    initialFrameKey: s.brushFrameKeyForCut(
+  inkCel(
+    s,
+    s.brushFrameKeyForCut(
       s.requireActiveCut,
       selection.layerId,
       selection.frameId,
     ),
+    canvasSize: s.requireActiveCut.canvasSize,
+    at: CanvasPoint(x: 10, y: 10),
+    size: 4,
+  );
+}
+
+/// A round dab of black ink, [size] across at [at], into [key]'s cel — any
+/// cel of [s]'s, the one stood on or not — the way [inkTheCurrentCel] puts
+/// its own: through a coordinator of its own, straight into the frame store.
+void inkCel(
+  EditorSessionManager s,
+  BrushFrameKey key, {
+  required CanvasSize canvasSize,
+  required CanvasPoint at,
+  required double size,
+  BrushTipShape tipShape = BrushTipShape.round,
+}) {
+  BrushFrameEditingCoordinator(
+    initialFrameKey: key,
     frameStore: s.renderCaches.brushFrameStore,
     sessionStore: BrushFrameEditSessionStore(
-      canvasSize: s.requireActiveCut.canvasSize,
+      canvasSize: canvasSize,
       tileSize: 256,
     ),
     historyPolicy: const BrushHistoryPolicy(),
   ).commitSourceStroke(
     sourceDabs: [
       BrushDab(
-        center: CanvasPoint(x: 10, y: 10),
+        center: at,
         color: 0xFF000000,
-        size: 4,
+        size: size,
         opacity: 1,
         flow: 1,
         hardness: 1,
-        tipShape: BrushTipShape.round,
+        tipShape: tipShape,
         pressure: 1,
         sequence: 0,
       ),

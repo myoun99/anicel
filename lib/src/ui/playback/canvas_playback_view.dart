@@ -18,8 +18,8 @@ import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
+import 'playback_run_layer.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../input/control_press_claim.dart';
 import '../listenable_rebind.dart';
 
 /// The canvas panel's playback content: cached composite frames advancing
@@ -119,11 +119,7 @@ class CanvasPlaybackView extends StatefulWidget {
   State<CanvasPlaybackView> createState() => _CanvasPlaybackViewState();
 }
 
-// TickerProviderStateMixin (multi), NOT the single variant: the controller
-// disposes and recreates its ticker on every pause/resume/seek, and a single
-// ticker provider asserts after the first creation (pause → play was dead).
-class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
-    with TickerProviderStateMixin {
+class _CanvasPlaybackViewState extends State<CanvasPlaybackView> {
   /// Our own clone of the last displayed composite: the cache may evict and
   /// dispose its image at any time, a clone shares the pixels but has an
   /// independent lifetime.
@@ -154,7 +150,6 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   @override
   void initState() {
     super.initState();
-    widget.controller.attachTicker(this);
     widget.controller.addListener(_onPlaybackChanged);
     widget.picturesLanded?.addListener(_onPlaybackChanged);
   }
@@ -173,7 +168,6 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   void dispose() {
     widget.picturesLanded?.removeListener(_onPlaybackChanged);
     widget.controller.removeListener(_onPlaybackChanged);
-    widget.controller.detachTicker();
     _swapHeldPin(null);
     _heldFrame?.dispose();
     super.dispose();
@@ -195,12 +189,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       // gate's navigation hole lets pointers reach the panel so pan/zoom
       // keep working during playback, and a plain tap — a press that
       // navigates nothing — still means stop, as it did before T28-c.
-      return _stopsOnPress(
-        Stack(
-          fit: StackFit.expand,
-          children: [stack, _prerenderProgressBar(context)],
-        ),
-      );
+      return _runLayer(stack);
     }
     final position = widget.controller.position;
     if (position != null) {
@@ -243,129 +232,88 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
         : 0;
 
     // One press anywhere on the canvas cancels playback.
-    return _stopsOnPress(
-      Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(
-            // ⛔The `willChange: true` hint this picture carried is GONE
-            // with the editing stack's (see `canvas_layer_stack_view.dart`
-            // for the #1100→R11 history and the two symptoms to watch for).
-            // It was here so the desktop raster cache could not snap this
-            // layer to integral device translation on engage — a 1px hop
-            // against the fractional offset panel layout used to produce.
-            // Layout no longer produces a fractional one.
-            //
-            // ⚠️The old text said "a PAUSED frame goes stable". There is no
-            // paused state: `isActive` and `isPlaying` are the same
-            // question and this view is mounted only while playback is
-            // active. The one window in which this picture goes still is a
-            // HOLD — the same composite shown for several ticks.
-            //
-            // ⚠️And this is the one retiring site where removal can COST
-            // rather than save: a hold past the cache's engage threshold
-            // now bakes an entry, and the next drawing evicts it. On a 24fps
-            // sheet full of 6–8 frame holds that is a repeated bake/evict
-            // cycle, so the thing to watch here is a raster hitch right
-            // after a drawing lands — not a hop.
-            painter: PlaybackFramePainter(
-              image: !inGap && _heldCanvasSize == canvasSize
-                  ? _heldFrame
-                  : null,
-              canvasSize: canvasSize,
-              viewport: widget.viewport,
-              // The pan-phase snap's device grid — the editing stack snaps
-              // to the same one, so entering playback cannot hop the
-              // picture by a sub-pixel.
-              devicePixelRatio:
-                  EffectiveDevicePixelRatio.of(context),
-              cameraPose:
-                  widget.cameraViewEnabled && cut != null && position != null
-                  ? widget.cameraPoseOf(cut, position.localFrameIndex)
-                  : null,
-              seNameTags: inGap || cut == null || position == null
-                  ? const []
-                  : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
-                        const [],
-              cameraFrameSize: widget.cameraViewEnabled
-                  ? widget.cameraFrameSize
-                  : null,
-              // No cutPose/cutAnchorPoint: the V row has no transform.
-              // The V row's fx chain over the cut's picture, sampled on the
-              // GLOBAL axis its keys live on and bypassed by the row's fx
-              // master.
-              cutEffects: inGap || cut == null || position == null
-                  ? const <ResolvedLayerEffect>[]
-                  : trackEffectsAt(
-                      widget.trackEffectsOf?.call(cut.id) ?? const [],
-                      trackFrame,
-                      enabled: cutFxEnabled,
-                    ),
-              paperBackground: widget.background,
-              paintPaper: !inGap,
-              // The stage's apron rides the camera view (R3b): the camera
-              // sees the pasteboard wherever it reaches past the paper,
-              // and the fade thins the whole unit (transparency, no wash).
-              pasteboardColor: widget.cameraViewEnabled && !inGap
-                  ? Color(widget.pasteboardArgb)
-                  : null,
-              // F-114: an absent pasteboard or paper shows the checkerboard
-              // here as on the editing canvas — on screen only.
-              pasteboardNone: widget.pasteboardNone,
-              checkersAbsentPlanes: true,
-              // No fade here: single-cut playback shows one cut and so
-              // cannot show a cross-boundary ramp — the all-cuts track
-              // stack is where a transition plays. ↩️The track's STATIC
-              // opacity thinned this unit (R9 #21) until I-73 took it off
-              // the V row.
-            ),
-          ),
-          _prerenderProgressBar(context),
-        ],
-      ),
-    );
-  }
-
-  /// The whole view as one press that stops playback.
-  ///
-  /// 🚨A CLAIMED PRESS, not a tap recogniser (H24, 2026-09-15). The canvas
-  /// surface this sits on takes the arena on the first movement, and a tap
-  /// recogniser loses its tap to whatever wins it — so a finger that wobbled
-  /// would no longer have stopped playback. The claim fires on the release,
-  /// and not for a press the canvas turned into a gesture: D13's 「a press
-  /// that navigates nothing」, kept exactly.
-  Widget _stopsOnPress(Widget picture) => ControlPressClaim(
-    onPressed: widget.controller.stop,
-    child: GestureDetector(
-      key: const ValueKey<String>('canvas-playback-view'),
-      behavior: HitTestBehavior.opaque,
-      onTap: silentPress(widget.controller.stop),
-      child: picture,
-    ),
-  );
-
-  /// How much of what the run wants ahead of its playhead is made: a bar
-  /// whose seat is always there (유저 답 F-296-Q5: 「자리를 늘 두는 막대로
-  /// 바꾼다」). While a run waits for its picture it is the one thing on the
-  /// canvas that moves. ↩️It was a strip that came with the English words
-  /// 「caching N/M」 while pictures were being made and went when they were
-  /// — 없다가 생기는 UI, and what it said the ruler's green bar said too.
-  Widget _prerenderProgressBar(BuildContext context) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: ValueListenableBuilder<PrerenderProgress>(
-        valueListenable: widget.prerenderProgress,
-        builder: (context, progress, _) => LinearProgressIndicator(
-          key: const ValueKey<String>('canvas-playback-progress'),
-          // Nothing asked for is nothing left to make.
-          value: progress.total == 0
-              ? 1.0
-              : (progress.cached / progress.total).clamp(0.0, 1.0),
-          minHeight: 2,
+    return _runLayer(
+      CustomPaint(
+        // ⛔The `willChange: true` hint this picture carried is GONE
+        // with the editing stack's (see `canvas_layer_stack_view.dart`
+        // for the #1100→R11 history and the two symptoms to watch for).
+        // It was here so the desktop raster cache could not snap this
+        // layer to integral device translation on engage — a 1px hop
+        // against the fractional offset panel layout used to produce.
+        // Layout no longer produces a fractional one.
+        //
+        // ⚠️The old text said "a PAUSED frame goes stable". There is no
+        // paused state: `isActive` and `isPlaying` are the same
+        // question and this view is mounted only while playback is
+        // active. The one window in which this picture goes still is a
+        // HOLD — the same composite shown for several ticks.
+        //
+        // ⚠️And this is the one retiring site where removal can COST
+        // rather than save: a hold past the cache's engage threshold
+        // now bakes an entry, and the next drawing evicts it. On a 24fps
+        // sheet full of 6–8 frame holds that is a repeated bake/evict
+        // cycle, so the thing to watch here is a raster hitch right
+        // after a drawing lands — not a hop.
+        painter: PlaybackFramePainter(
+          image: !inGap && _heldCanvasSize == canvasSize
+              ? _heldFrame
+              : null,
+          canvasSize: canvasSize,
+          viewport: widget.viewport,
+          // The pan-phase snap's device grid — the editing stack snaps
+          // to the same one, so entering playback cannot hop the
+          // picture by a sub-pixel.
+          devicePixelRatio:
+              EffectiveDevicePixelRatio.of(context),
+          cameraPose:
+              widget.cameraViewEnabled && cut != null && position != null
+              ? widget.cameraPoseOf(cut, position.localFrameIndex)
+              : null,
+          seNameTags: inGap || cut == null || position == null
+              ? const []
+              : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
+                    const [],
+          cameraFrameSize: widget.cameraViewEnabled
+              ? widget.cameraFrameSize
+              : null,
+          // No cutPose/cutAnchorPoint: the V row has no transform.
+          // The V row's fx chain over the cut's picture, sampled on the
+          // GLOBAL axis its keys live on and bypassed by the row's fx
+          // master.
+          cutEffects: inGap || cut == null || position == null
+              ? const <ResolvedLayerEffect>[]
+              : trackEffectsAt(
+                  widget.trackEffectsOf?.call(cut.id) ?? const [],
+                  trackFrame,
+                  enabled: cutFxEnabled,
+                ),
+          paperBackground: widget.background,
+          paintPaper: !inGap,
+          // The stage's apron rides the camera view (R3b): the camera
+          // sees the pasteboard wherever it reaches past the paper,
+          // and the fade thins the whole unit (transparency, no wash).
+          pasteboardColor: widget.cameraViewEnabled && !inGap
+              ? Color(widget.pasteboardArgb)
+              : null,
+          // F-114: an absent pasteboard or paper shows the checkerboard
+          // here as on the editing canvas — on screen only.
+          pasteboardNone: widget.pasteboardNone,
+          checkersAbsentPlanes: true,
+          // No fade here: single-cut playback shows one cut and so
+          // cannot show a cross-boundary ramp — the all-cuts track
+          // stack is where a transition plays. ↩️The track's STATIC
+          // opacity thinned this unit (R9 #21) until I-73 took it off
+          // the V row.
         ),
       ),
     );
   }
+
+  /// [picture] under the run's press and bar ([PlaybackRunLayer] — the
+  /// ticker the clock runs on lives there too).
+  Widget _runLayer(Widget picture) => PlaybackRunLayer(
+    controller: widget.controller,
+    prerenderProgress: widget.prerenderProgress,
+    child: picture,
+  );
 }

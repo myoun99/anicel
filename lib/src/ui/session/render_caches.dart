@@ -22,6 +22,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/brush_frame_key.dart';
@@ -29,6 +31,7 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
+import '../../models/playback_quality.dart';
 import '../../models/timesheet_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -130,6 +133,17 @@ class RenderCaches {
   /// `CanvasLayerStackView` site keeps its own map below
   /// ([livePictureBufferBytes]) rather than overwriting this.
   int canvasBufferBytes = 0;
+
+  /// The level the editing canvas draws its rows' images at — what a frame
+  /// is made of where the canvas shows it ([CanvasPictures]), so the warmer
+  /// makes the images the canvas will ask for and the ruler's bar counts
+  /// them. Full until the canvas first says, and wherever it is not shown.
+  ///
+  /// PUSHED, as [canvasBufferBytes] is: the level is the canvas view's own
+  /// answer for its zoom and its screen, and the session owns neither.
+  final ValueNotifier<PlaybackQuality> canvasQuality = ValueNotifier(
+    PlaybackQuality.full,
+  );
 
   /// What each LIVE picture's display buffer holds — the conte's pictures,
   /// composited live while its brush is on (유저 답 conte-picture-display-Q1
@@ -344,5 +358,6 @@ class RenderCaches {
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
+    canvasQuality.dispose();
   }
 }
