@@ -31,6 +31,16 @@ void main() {
 
   tearDown(() => deleteTempQuietly(temp));
 
+  /// [count] samples that do not repeat for a while — no two windows of a
+  /// long sound alike.
+  Float32List tone(int count) {
+    final out = Float32List(count);
+    for (var index = 0; index < count; index += 1) {
+      out[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
+    }
+    return out;
+  }
+
   Float32List ramp(int frames, int channels) {
     final out = Float32List(frames * channels);
     for (var index = 0; index < out.length; index += 1) {
@@ -720,14 +730,6 @@ void main() {
       // three frames a bucket, so buckets straddle the windows' edges.
       const rate = 100;
       const long = (1 << 18) * 2 + 4321;
-      Float32List tone(int frames) {
-        final out = Float32List(frames);
-        for (var index = 0; index < frames; index += 1) {
-          out[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
-        }
-        return out;
-      }
-
       String sourceOf(String name, int frames) {
         final path = '${temp.path}/$name';
         File(path).writeAsBytesSync(
@@ -792,10 +794,7 @@ void main() {
       // carries its state across their edges.
       const frames = (1 << 18) * 2 + 7777;
       for (final (rate, channels) in const [(48000, 1), (44100, 2)]) {
-        final samples = Float32List(frames * channels);
-        for (var index = 0; index < samples.length; index += 1) {
-          samples[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
-        }
+        final samples = tone(frames * channels);
         final streams = <MemoryDecodeStream>[];
         final pipeline = AudioConformPipeline(
           decode: (source) {
@@ -894,10 +893,7 @@ void main() {
       // and over two of the pipeline's windows.
       const rate = 100;
       const long = (1 << 18) * 2 + 4321;
-      final samples = Float32List(long);
-      for (var index = 0; index < long; index += 1) {
-        samples[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
-      }
+      final samples = tone(long);
       final source = '${temp.path}/refused.wav';
       File(source).writeAsBytesSync(
         encodeConform(samples: samples, channels: 1, sampleRate: rate),
@@ -932,6 +928,43 @@ void main() {
         result.samples,
         decodeConform(File(source).readAsBytesSync()).samples,
         reason: 'and is held after all',
+      );
+    });
+
+    test('a long sound whose cache will not open at all is held from its one '
+        'pass — never left for a disk that was not there', () {
+      const rate = 100;
+      const long = (1 << 18) * 2 + 4321;
+      final source = '${temp.path}/nowhere.wav';
+      File(source).writeAsBytesSync(
+        encodeConform(samples: tone(long), channels: 1, sampleRate: rate),
+      );
+      final base = pipelineFor(projectSampleRate: rate);
+      var decodes = 0;
+      final pipeline = AudioConformPipeline(
+        decode: (source) {
+          decodes += 1;
+          return base.decode(source);
+        },
+        resample: base.resample,
+        projectSampleRate: rate,
+      );
+      // A FILE where the cache wants a directory: nothing lands under it.
+      final blocker = '${temp.path}/blocker-long';
+      File(blocker).writeAsBytesSync(const [0]);
+
+      final result = pipeline.ensureConform(
+        sourcePath: source,
+        conformPath: '$blocker/nested/nowhere.wav.wav',
+      );
+
+      expect(result.outcome, ConformOutcome.built);
+      expect(result.conformBytes, isNull);
+      expect(result.error, contains('could not cache'));
+      expect(decodes, 1, reason: 'kept as it was made');
+      expect(
+        result.samples,
+        decodeConform(File(source).readAsBytesSync()).samples,
       );
     });
 
