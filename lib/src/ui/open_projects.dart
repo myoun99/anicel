@@ -3,6 +3,13 @@ import 'package:flutter/foundation.dart';
 import '../models/project.dart';
 import '../services/persistence/same_file.dart';
 import 'editor_session_manager.dart';
+import 'text/app_strings.dart';
+
+/// What the [n]th untitled project of this run is called — 「제목 없음 2」, in
+/// the program's language: its tab, and the project itself until a file
+/// names it.
+String untitledProjectName(int n) =>
+    AppText.strings.untitledProjectTab.replaceAll('{n}', '$n');
 
 /// The projects open in this window — a SESSION per project, one of them on
 /// screen.
@@ -137,10 +144,21 @@ class OpenProjects extends ChangeNotifier {
   final Map<EditorSessionManager, int> _untitledNumbers = {};
   int _untitledMinted = 0;
 
+  /// An untitled tab's project is called what its tab is, until a file
+  /// names it (유저 10-09, project-name-is-its-file-name-Q1: 「안의 이름도
+  /// 탭과 같게 — 「제목 없음 2」」) — so what is exported before the first
+  /// save wears the tab's name. Not an edit, as the file's naming is not
+  /// (`ProjectFile._nameAfter`): nothing to undo, nothing unsaved.
   void _admit(EditorSessionManager session, {required bool untitled}) {
     _sessions.add(session);
     if (untitled) {
-      _untitledNumbers[session] = _untitledMinted += 1;
+      final number = _untitledMinted += 1;
+      _untitledNumbers[session] = number;
+      final name = untitledProjectName(number);
+      session.repository.updateProject(
+        (project) =>
+            project.name == name ? project : project.copyWith(name: name),
+      );
     }
   }
 

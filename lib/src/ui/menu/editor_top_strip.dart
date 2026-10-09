@@ -1346,7 +1346,7 @@ String projectTabLabel(OpenProjects projects, EditorSessionManager session) {
   if (untitled == null) {
     return session.repository.requireProject().name;
   }
-  return AppText.strings.untitledProjectTab.replaceAll('{n}', '$untitled');
+  return untitledProjectName(untitled);
 }
 
 /// The open projects, one tab each — the strip's middle (I-7).
