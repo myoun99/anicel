@@ -373,7 +373,6 @@ void main() {
     'cutAddCut': (s) => s.cutAddCut,
     'mediaActions': (s) => s.mediaActions,
     'mediaPoolEmpty': (s) => s.mediaPoolEmpty,
-    'mediaImportAudio': (s) => s.mediaImportAudio,
     'mediaRename': (s) => s.mediaRename,
     'mediaPlace': (s) => s.mediaPlace,
     'mediaRelink': (s) => s.mediaRelink,

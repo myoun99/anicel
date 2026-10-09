@@ -59,7 +59,7 @@ Future<void> _pump(
               return callbacks.promoteResult;
             },
             onOpenAsset: callbacks.opened.add,
-            audioFilePicker: picker,
+            mediaFilePicker: picker,
             storedBytes: storedBytes,
             conformBytes: conformBytes,
             // RELINK-2: the panel no longer probes the disk — the session
@@ -211,6 +211,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(callbacks.importRequests, 1);
+    // Named as that window is — not 「오디오 불러오기」, from when the pool
+    // held sound only (유저 10-09).
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('media-import-button')),
+        matching: find.byTooltip(AppText.strings.imImport),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('rename flows through the dialog — the NAME only, with the '

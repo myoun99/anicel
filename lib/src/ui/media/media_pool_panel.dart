@@ -67,7 +67,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
-    this.audioFilePicker,
+    this.mediaFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
     this.storedBytes = const <String, int>{},
@@ -128,8 +128,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// mode, so the answers are the same ones a fresh import gives.
   final void Function(MediaAsset asset)? onPlaceAsset;
 
-  /// Injectable file dialog; defaults to the platform audio picker.
-  final Future<String?> Function()? audioFilePicker;
+  /// Injectable file dialog for a relink; defaults to the platform picker
+  /// over every kind the pool registers.
+  final Future<String?> Function()? mediaFilePicker;
 
   /// Starts the batch relink: pick a folder, match, preview, apply. Null
   /// hides the banner's button (the banner itself still counts).
@@ -171,7 +172,7 @@ class MediaPoolPanel extends StatelessWidget {
     // and it used to throw the picker's bookmark away, which made the
     // relink work for one session and be refused at the next launch. The
     // injected picker (tests) still answers in paths and mints nothing.
-    final injected = audioFilePicker;
+    final injected = mediaFilePicker;
     if (injected != null) {
       final next = await injected();
       if (next != null) {
@@ -474,7 +475,10 @@ class MediaPoolPanel extends StatelessWidget {
               const SizedBox(width: 4),
               AppIconButton(
                 keyValue: 'media-import-button',
-                tooltip: AppText.strings.mediaImportAudio,
+                // The window it opens, by that window's own title: the pool
+                // once held sound only, and 「오디오 불러오기」 outlived it
+                // (유저 10-09).
+                tooltip: AppText.strings.imImport,
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,

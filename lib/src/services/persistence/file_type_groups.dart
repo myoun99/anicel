@@ -259,19 +259,8 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiMovie],
   );
 
-  /// What the import window can place on the timeline: stills, documents and
-  /// sound. Video is absent because placement is not implemented — the import
-  /// window refuses a movie by kind, so offering one in its picker would only
-  /// produce a warning row.
-  static const XTypeGroup importableMedia = XTypeGroup(
-    label: 'Media',
-    extensions: [...imageFileExtensions, 'pdf', ...audioFileExtensions],
-    uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiAudio],
-  );
-
-  /// Everything the media pool will register, movies included. Wider than
-  /// [importableMedia] because the browser registers assets rather than
-  /// placing them.
+  /// Everything the media pool will register, movies included — the one
+  /// import window's picker, whichever entrance opened it, and a relink's.
   static const XTypeGroup poolMedia = XTypeGroup(
     label: 'Media',
     extensions: [

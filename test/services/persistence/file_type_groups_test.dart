@@ -38,7 +38,6 @@ void main() {
     'brushes': FileTypeGroups.brushesFor('ios'),
     'images': FileTypeGroups.images,
     'viewableMedia': FileTypeGroups.viewableMedia,
-    'importableMedia': FileTypeGroups.importableMedia,
     'poolMedia': FileTypeGroups.poolMedia,
   };
 
@@ -108,13 +107,6 @@ void main() {
         'pdf',
       ]) {
         expect(pool, contains(extension));
-      }
-    });
-
-    test('the import group offers no video, because placement refuses it', () {
-      final importable = FileTypeGroups.importableMedia.extensions!;
-      for (final extension in videoFileExtensions) {
-        expect(importable, isNot(contains(extension)));
       }
     });
   });

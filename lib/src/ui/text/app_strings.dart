@@ -893,7 +893,6 @@ enum AppStrings {
   // --- The media pool ---
   String get mediaActions => _s('mediaActions');
   String get mediaPoolEmpty => _s('mediaPoolEmpty');
-  String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
 
   /// The pool row's way onto the timeline for a hand that would rather
@@ -2158,7 +2157,6 @@ enum AppStrings {
     'cutSettingsTitle': 'Cut settings',
     'mediaActions': 'Media actions',
     'mediaPoolEmpty': 'No media',
-    'mediaImportAudio': 'Import audio',
     'mediaRename': 'Rename media',
     'mediaPlace': 'Place…',
     'mediaRelink': 'Relink…',
@@ -3426,7 +3424,6 @@ enum AppStrings {
     'shortcutAction.cut-move-right': 'カットを右へ',
     'mediaActions': 'メディア操作',
     'mediaPoolEmpty': 'メディアがありません',
-    'mediaImportAudio': '音声を読み込み',
     'mediaRename': 'メディア名を変更',
     'mediaPlace': '配置…',
     'mediaRelink': '再リンク…',
@@ -4842,7 +4839,6 @@ enum AppStrings {
     'shortcutAction.cut-move-right': '컷 오른쪽으로',
     'mediaActions': '미디어 작업',
     'mediaPoolEmpty': '미디어가 없습니다',
-    'mediaImportAudio': '오디오 불러오기',
     'mediaRename': '미디어 이름 변경',
     'mediaPlace': '배치…',
     'mediaRelink': '다시 연결…',
@@ -6288,7 +6284,6 @@ enum AppStrings {
     'shortcutAction.cut-move-right': 'Déplacer le plan à droite',
     'mediaActions': 'Actions média',
     'mediaPoolEmpty': 'Aucun média',
-    'mediaImportAudio': "Importer de l'audio",
     'mediaRename': 'Renommer le média',
     'mediaPlace': 'Placer…',
     'mediaRelink': 'Relier…',
@@ -7733,7 +7728,6 @@ enum AppStrings {
     'shortcutAction.cut-move-right': '镜头右移',
     'mediaActions': '媒体操作',
     'mediaPoolEmpty': '没有媒体',
-    'mediaImportAudio': '导入音频',
     'mediaRename': '重命名媒体',
     'mediaPlace': '放置…',
     'mediaRelink': '重新链接…',
