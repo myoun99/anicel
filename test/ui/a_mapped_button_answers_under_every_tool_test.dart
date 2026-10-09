@@ -927,24 +927,27 @@ void main() {
       expect(shell.picked, isEmpty);
     });
 
-    testWidgets('🚨while the 「이동」 key is held every tool stands down for '
-        'the pan — a mapped button with them (I-15)', (tester) async {
-      final shell = await _Shell.pump(tester, tool: CanvasTool.select);
-      CanvasViewHold.held.value = ViewHold.pan;
-      await tester.pump();
+    // I-15's 「이동」, and I-88's 「회전」 through the same gate.
+    for (final hold in ViewHold.values) {
+      testWidgets('🚨while the view\'s ${hold.name} key is held every tool '
+          'stands down for it — a mapped button with them', (tester) async {
+        final shell = await _Shell.pump(tester, tool: CanvasTool.select);
+        CanvasViewHold.held.value = hold;
+        await tester.pump();
 
-      final right = await tester.startGesture(
-        shell.at(const Offset(10, 10)),
-        kind: PointerDeviceKind.mouse,
-        buttons: kSecondaryMouseButton,
-      );
-      await tester.pump();
-      await right.up();
-      await tester.pump();
+        final right = await tester.startGesture(
+          shell.at(const Offset(10, 10)),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pump();
+        await right.up();
+        await tester.pump();
 
-      expect(shell.holds, isEmpty);
-      expect(shell.picked, isEmpty);
-    });
+        expect(shell.holds, isEmpty);
+        expect(shell.picked, isEmpty);
+      });
+    }
 
     testWidgets('a FINGER has no buttons: a touch holds nothing', (
       tester,
