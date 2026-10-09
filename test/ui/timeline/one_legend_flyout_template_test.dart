@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// **ONE LEGEND FLYOUT TEMPLATE.**
 ///
@@ -41,6 +42,8 @@ void main() {
     required bool withLegend,
     required bool showRowSolos,
     Set<LayerMark> marksInUse = const {},
+    TimelineRowFilter rowFilter = TimelineRowFilter.none,
+    bool visibilitySoloEnabled = false,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -52,6 +55,8 @@ void main() {
               legend: withLegend ? callbacks() : null,
               showRowSolos: showRowSolos,
               marksInUse: marksInUse,
+              rowFilter: rowFilter,
+              visibilitySoloEnabled: visibilitySoloEnabled,
             ),
           ),
         ),
@@ -123,6 +128,39 @@ void main() {
       );
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('a solo row is ticked while its solo holds, and only then', (
+    tester,
+  ) async {
+    for (final held in [false, true]) {
+      await pump(
+        tester,
+        withLegend: true,
+        showRowSolos: true,
+        rowFilter: held
+            ? const TimelineRowFilter(
+                onTimesheetOnly: true,
+                fxOnly: true,
+                fillReferenceOnly: true,
+              )
+            : TimelineRowFilter.none,
+        visibilitySoloEnabled: held,
+      );
+      for (final (cell, solo) in [
+        for (final (cell, _, solo) in cells) (cell, solo),
+        ('legend-eye', 'legend-eye-solo'),
+      ]) {
+        await tester.tap(find.byKey(ValueKey<String>(cell)));
+        await tester.pumpAndSettle();
+        final row = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
+          find.byKey(ValueKey<String>(solo)),
+        );
+        expect(row.value!.checked, held, reason: '$solo, held: $held');
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+      }
     }
   });
 
