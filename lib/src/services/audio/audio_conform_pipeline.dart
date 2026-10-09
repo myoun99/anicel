@@ -67,6 +67,7 @@ import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
 import 'audio_peaks_extractor.dart';
 import 'conform_pcm_codec.dart';
+import 'conform_pcm_stream.dart';
 
 /// Decodes a container to PCM at the file's own rate. The native decoder
 /// supplies this; tests supply a fake so the pipeline's logic is exercised
@@ -463,23 +464,77 @@ class AudioConformPipeline {
   /// 「least recently used」 and the mtime was the only record of wanting.
   /// There is no eviction any more: a conform lives in the run's scratch
   /// until the save absorbs it, and the room goes when the run does.
-  ConformResult _reuse(ConformAudio existing, MediaByteSource? readFrom) {
-    return ConformResult(
-      outcome: ConformOutcome.reused,
-      conformBytes: readFrom,
-      peaks: peaksFromSamples(
-        samples: existing.samples,
-        channels: existing.channels,
-        sampleRate: existing.sampleRate,
-        bucketsPerSecond: bucketsPerSecond,
-      ),
-      samples: existing.samples,
-      channels: existing.channels,
-      sampleRate: existing.sampleRate,
-      frames: existing.length,
-      speedNumerator: speedNumerator,
-      speedDenominator: speedDenominator,
+  ///
+  /// 🚨★★★**A LONG CONFORM IS MEASURED A WINDOW AT A TIME** — its peaks
+  /// folded as it is read ([peaksFromWindows]), its samples left on disk
+  /// ([conformStaysOnDisk]). This answer used to decode the whole conform to
+  /// count its peaks and hand every sample back, on every open of a project
+  /// that holds one — an hour of dialogue is 0.7 GB of PCM in the worker
+  /// before the store let go of it. Null when the PCM does not read to its
+  /// end: rebuilt, as a conform that will not decode always was.
+  ConformResult? _reuse(
+    ConformPcmStreamReader reader,
+    MediaByteSource readFrom,
+  ) {
+    final onDisk = conformStaysOnDisk(
+      frames: reader.length,
+      sampleRate: reader.sampleRate,
+      onDisk: true,
     );
+    try {
+      final samples = onDisk ? null : _wholeOf(reader);
+      return ConformResult(
+        outcome: ConformOutcome.reused,
+        conformBytes: readFrom,
+        peaks: peaksFromWindows(
+          windows: samples == null ? _windowsOf(reader) : [samples],
+          channels: reader.channels,
+          sampleRate: reader.sampleRate,
+          bucketsPerSecond: bucketsPerSecond,
+        ),
+        samples: samples,
+        channels: reader.channels,
+        sampleRate: reader.sampleRate,
+        frames: reader.length,
+        speedNumerator: speedNumerator,
+        speedDenominator: speedDenominator,
+      );
+    } on ConformFormatException {
+      return null;
+    }
+  }
+
+  /// How much of a long conform is held at once while it is measured: a
+  /// quarter of a million frames — 5.5 s of 48 kHz stereo, 2 MB of floats.
+  static const int _windowFrames = 1 << 18;
+
+  /// [reader]'s PCM a window at a time, in order — or a
+  /// [ConformFormatException] where one comes back short of the end.
+  static Iterable<Float32List> _windowsOf(
+    ConformPcmStreamReader reader,
+  ) sync* {
+    for (var start = 0; start < reader.length; start += _windowFrames) {
+      final want = reader.length - start < _windowFrames
+          ? reader.length - start
+          : _windowFrames;
+      yield _read(reader, start, want);
+    }
+  }
+
+  /// All of [reader]'s PCM — a conform short enough to stay in memory.
+  static Float32List _wholeOf(ConformPcmStreamReader reader) =>
+      _read(reader, 0, reader.length);
+
+  static Float32List _read(
+    ConformPcmStreamReader reader,
+    int start,
+    int frames,
+  ) {
+    final samples = reader.readWindow(start, frames).samples;
+    if (samples.length != frames * reader.channels) {
+      throw const ConformFormatException('the conform does not read whole');
+    }
+    return samples;
   }
 
   ConformResult ensureConform({
@@ -523,10 +578,9 @@ class AudioConformPipeline {
     final cached =
         (conformPath == null ? null : _readConform(conformPath)) ??
         (carriedConform == null ? null : _readConformFrom(carriedConform));
-    final existing = cached?.audio;
-    // Where the conform was READ from — the scratch file in either
-    // spelling, or the range inside the project file.
-    final reusableAt = cached?.bytes;
+    // What the conform says it is — its header alone; its PCM is read only
+    // once it is to be reused, and a long one a window at a time ([_reuse]).
+    final existing = cached?.reader.header;
     // A conform at another rate is stale even with a matching source: the
     // project's audio rate is a setting now (EXPORT-AUDIO ③), and playing
     // 44.1k PCM on a 48k schedule would shift every clip. The same goes for
@@ -547,23 +601,19 @@ class AudioConformPipeline {
     // open, and skipping it made every project pay a full read of every
     // original before it could discover there was nothing to do — on the
     // very devices where a big allocation gets the app killed.
-    if (settingsMatch && stat != null && existing.sourceStat == stat) {
-      return _reuse(existing, reusableAt);
-    }
+    var current = settingsMatch && stat != null && existing.sourceStat == stat;
 
     // The archive's fast path: the entry header already knows the CRC, so
     // the whole identity question is answered without reading a byte.
     final knownCrc = src.knownCrc32;
-    if (settingsMatch &&
-        knownCrc != null &&
-        conformMatchesSource(
-          existing,
-          ConformSourceFingerprint(
-            sourceLength: src.lengthSync(),
-            sourceCrc32: knownCrc,
-          ),
-        )) {
-      return _reuse(existing, reusableAt);
+    if (!current && settingsMatch && knownCrc != null) {
+      current = conformMatchesSource(
+        existing.fingerprint,
+        ConformSourceFingerprint(
+          sourceLength: src.lengthSync(),
+          sourceCrc32: knownCrc,
+        ),
+      );
     }
 
     // SLOW PATH: the hint missed, which says nothing by itself — a copied,
@@ -587,7 +637,7 @@ class AudioConformPipeline {
     // defined as `existing != null && …`. A second null test here reads as
     // if it could be otherwise.
     ConformSourceFingerprint? fingerprint;
-    if (settingsMatch) {
+    if (!current && settingsMatch) {
       try {
         fingerprint = fingerprintOfSource(src);
       } on Object catch (error) {
@@ -604,8 +654,15 @@ class AudioConformPipeline {
       if (wrongBytes != null) {
         return wrongBytes;
       }
-      if (conformMatchesSource(existing, fingerprint)) {
-        return _reuse(existing, reusableAt);
+      current = conformMatchesSource(existing.fingerprint, fingerprint);
+    }
+    // Where the conform was READ from — the scratch file in either
+    // spelling, or the range inside the project file. One that will not
+    // read to its end is made again below, as a corrupt one always was.
+    if (current) {
+      final reused = _reuse(cached!.reader, cached.bytes);
+      if (reused != null) {
+        return reused;
       }
     }
 
@@ -630,8 +687,8 @@ class AudioConformPipeline {
       );
     }
 
-    final decoded = decode(src);
-    if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
+    final pcm = _decodedAtProjectRate(src);
+    if (pcm == null) {
       return const ConformResult(
         outcome: ConformOutcome.undecodable,
         error: 'no decoder recognized this file',
@@ -651,23 +708,6 @@ class AudioConformPipeline {
         return wrongBytes;
       }
     }
-
-    // Equal rates at unity speed skip the filter entirely and stay
-    // bit-exact — most SE libraries and dialogue are already at the
-    // project rate, so this is the common path. A non-unity speed (the
-    // NTSC pull) REINTERPRETS the source rate: both sides of the resample
-    // scale by the exact rational, so 48k pulled by 1001/1000 is a
-    // 48048000→48000000 conversion — integer ratios end to end, and the
-    // output lands at the project rate holding 0.1% less time.
-    final unitySpeed = speedNumerator == speedDenominator;
-    final converted = decoded.sampleRate == projectSampleRate && unitySpeed
-        ? decoded.samples
-        : resample(
-            samples: decoded.samples,
-            channels: decoded.channels,
-            inputRate: decoded.sampleRate * speedNumerator,
-            outputRate: projectSampleRate * speedDenominator,
-          );
 
     // Failing to CACHE a conform is not failing to CONFORM one. The decoded,
     // resampled PCM is already in hand at this point — the very bytes the
@@ -704,9 +744,9 @@ class AudioConformPipeline {
     String? cacheError;
     if (conformPath != null) {
       try {
-        final wav = encodeConform(
-          samples: converted,
-          channels: decoded.channels,
+        final header = ConformHeader.of(
+          samples: pcm.samples,
+          channels: pcm.channels,
           sampleRate: projectSampleRate,
           fingerprint: fingerprint,
           // Recorded from the stat taken BEFORE the read, so the hint
@@ -722,11 +762,14 @@ class AudioConformPipeline {
         // Streamed out rather than compressed whole: an hour of dialogue
         // is hundreds of megabytes, and holding every compressed block
         // beside the PCM to find out whether they were worth keeping is
-        // the allocation this build exists not to make.
+        // the allocation this build exists not to make. 🆕And laid out as
+        // it is read ([conformBytesReader]): the 16-bit copy of the whole
+        // conform the write used to start from was half as big again as
+        // the PCM beside it.
         cachedAt = writeMediaBlob(
           basePath: conformPath,
-          length: wav.length,
-          readInto: mediaBytesReader(wav),
+          length: header.totalBytes,
+          readInto: conformBytesReader(header, pcm.samples),
         ).path;
         // ⛔The OTHER spelling goes. A rebuild that flips framedness — a
         // build without an engine, or audio that stopped shrinking — would
@@ -743,22 +786,66 @@ class AudioConformPipeline {
       }
     }
 
+    final frames = pcm.samples.length ~/ pcm.channels;
     return ConformResult(
       outcome: ConformOutcome.built,
       conformBytes: cachedAt == null ? null : mediaAppFileSource(cachedAt),
       error: cacheError,
       peaks: peaksFromSamples(
-        samples: converted,
-        channels: decoded.channels,
+        samples: pcm.samples,
+        channels: pcm.channels,
         sampleRate: projectSampleRate,
         bucketsPerSecond: bucketsPerSecond,
       ),
-      samples: converted,
-      channels: decoded.channels,
+      // A long one written to disk is played from there ([_reuse]'s rule):
+      // its PCM goes with this worker instead of crossing to the store.
+      samples:
+          conformStaysOnDisk(
+            frames: frames,
+            sampleRate: projectSampleRate,
+            onDisk: cachedAt != null,
+          )
+          ? null
+          : pcm.samples,
+      channels: pcm.channels,
       sampleRate: projectSampleRate,
-      frames: decoded.channels <= 0 ? 0 : converted.length ~/ decoded.channels,
+      frames: frames,
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
+    );
+  }
+
+  /// [src] decoded, at the project's rate — or null when no decoder
+  /// recognized it.
+  ///
+  /// ⛔Its own function so the decoder's buffer is let go once the resample
+  /// has made the project's: the decode stayed alive beside its resample to
+  /// the end of the build, two full copies of the sound at once.
+  ({Float32List samples, int channels})? _decodedAtProjectRate(
+    MediaByteSource src,
+  ) {
+    final decoded = decode(src);
+    if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
+      return null;
+    }
+    // Equal rates at unity speed skip the filter entirely and stay
+    // bit-exact — most SE libraries and dialogue are already at the
+    // project rate, so this is the common path. A non-unity speed (the
+    // NTSC pull) REINTERPRETS the source rate: both sides of the resample
+    // scale by the exact rational, so 48k pulled by 1001/1000 is a
+    // 48048000→48000000 conversion — integer ratios end to end, and the
+    // output lands at the project rate holding 0.1% less time.
+    final unitySpeed = speedNumerator == speedDenominator;
+    return (
+      samples: decoded.sampleRate == projectSampleRate && unitySpeed
+          ? decoded.samples
+          : resample(
+              samples: decoded.samples,
+              channels: decoded.channels,
+              inputRate: decoded.sampleRate * speedNumerator,
+              outputRate: projectSampleRate * speedDenominator,
+            ),
+      channels: decoded.channels,
     );
   }
 
@@ -771,7 +858,7 @@ class AudioConformPipeline {
   /// knows the order to ask in, and [mediaAppFileSource] the one place that
   /// knows the name decides how to read it.
   /// The conform sitting beside [basePath] in either spelling, or null.
-  ({ConformAudio audio, MediaByteSource bytes})? _readConform(
+  ({ConformPcmStreamReader reader, MediaByteSource bytes})? _readConform(
     String basePath,
   ) {
     for (final candidate in mediaFramedOrPlainPaths(basePath)) {
@@ -790,15 +877,16 @@ class AudioConformPipeline {
   /// file does, and everything below judges it by the same settings and
   /// fingerprint checks a locally built one faces. ⛔It is read, not
   /// trusted — deciding staleness twice is how two answers drift apart.
-  ({ConformAudio audio, MediaByteSource bytes})? _readConformFrom(
+  ///
+  /// ⚠️Only its HEADER is read here — what it was rendered at and of which
+  /// source — and that the file holds the PCM the header claims; the PCM
+  /// itself is read when it is reused ([_reuse]).
+  ({ConformPcmStreamReader reader, MediaByteSource bytes})? _readConformFrom(
     MediaByteSource source,
   ) {
-    try {
-      return (audio: decodeConform(source.readSync()), bytes: source);
-    } on Object {
-      // Unreadable, foreign, or framed with no engine on this build:
-      // rebuilt, exactly as a missing one would be.
-      return null;
-    }
+    // Unreadable, foreign, or framed with no engine on this build: rebuilt,
+    // exactly as a missing one would be (the reader answers null).
+    final reader = ConformPcmStreamReader.over(source);
+    return reader?.header == null ? null : (reader: reader!, bytes: source);
   }
 }

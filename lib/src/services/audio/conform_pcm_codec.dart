@@ -211,6 +211,41 @@ class ConformHeader {
     this.decodeRecipe = 0,
   });
 
+  /// The header a conform of [samples] is written with today — the one
+  /// [encodeConform] and the pipeline's streamed write both lay down.
+  factory ConformHeader.of({
+    required Float32List samples,
+    required int channels,
+    required int sampleRate,
+    ConformSourceFingerprint? fingerprint,
+    MediaSourceStamp? sourceStat,
+    int speedNumerator = 1,
+    int speedDenominator = 1,
+  }) {
+    if (channels <= 0) {
+      throw const ConformFormatException('channels must be positive');
+    }
+    if (sampleRate <= 0) {
+      throw const ConformFormatException('sampleRate must be positive');
+    }
+    // ⚠️The stat rides ONLY alongside a fingerprint. It is the cheap half of
+    // one question — 「has the source changed」 — and on its own it cannot
+    // answer it: a conform written before the fingerprint was content-based
+    // carried a timestamp and nothing to derive a hash from, and those had
+    // to be treated as unknown. Storing a stat with no fingerprint would put
+    // that state back within reach.
+    return ConformHeader(
+      sampleRate: sampleRate,
+      channels: channels,
+      frames: samples.length ~/ channels,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+      fingerprint: fingerprint,
+      sourceStat: fingerprint == null ? null : sourceStat,
+      decodeRecipe: conformDecodeRecipe,
+    );
+  }
+
   /// Bytes before the first sample. Fixed — that is the whole point.
   static const int length = 64;
 
@@ -355,40 +390,73 @@ Uint8List encodeConform({
   int speedNumerator = 1,
   int speedDenominator = 1,
 }) {
-  if (channels <= 0) {
-    throw const ConformFormatException('channels must be positive');
-  }
-  if (sampleRate <= 0) {
-    throw const ConformFormatException('sampleRate must be positive');
-  }
-  // ⚠️The stat rides ONLY alongside a fingerprint. It is the cheap half of
-  // one question — 「has the source changed」 — and on its own it cannot
-  // answer it: a conform written before the fingerprint was content-based
-  // carried a timestamp and nothing to derive a hash from, and those had to
-  // be treated as unknown. Storing a stat with no fingerprint would put that
-  // state back within reach.
-  final header = ConformHeader(
-    sampleRate: sampleRate,
+  final header = ConformHeader.of(
+    samples: samples,
     channels: channels,
-    frames: samples.length ~/ channels,
+    sampleRate: sampleRate,
+    fingerprint: fingerprint,
+    sourceStat: sourceStat,
     speedNumerator: speedNumerator,
     speedDenominator: speedDenominator,
-    fingerprint: fingerprint,
-    sourceStat: fingerprint == null ? null : sourceStat,
-    decodeRecipe: conformDecodeRecipe,
   );
-  final out = Uint8List(ConformHeader.length + header.dataBytes);
-  out.setRange(0, ConformHeader.length, header.toBytes());
-  final view = ByteData.sublistView(out, ConformHeader.length);
-  final count = header.frames * channels;
-  for (var index = 0; index < count; index += 1) {
-    view.setInt16(
-      index * 2,
-      int16FromUnitSample(samples[index]),
-      Endian.little,
-    );
-  }
+  final out = Uint8List(header.totalBytes);
+  conformBytesReader(header, samples)(out, 0, out.length);
   return out;
+}
+
+/// The bytes of the conform [header] describes over [samples], laid out on
+/// demand: [size] of them from [position] into the front of a buffer —
+/// what [encodeConform] fills whole and [writeMediaBlob] reads a block at a
+/// time, so a long conform reaches the disk without a second, 16-bit copy
+/// of its PCM in memory. Answers how many landed: short only at the end.
+int Function(Uint8List buffer, int position, int size) conformBytesReader(
+  ConformHeader header,
+  Float32List samples,
+) {
+  final head = header.toBytes();
+  final total = header.totalBytes;
+  // One byte of the layout — the header's, or half a little-endian sample.
+  int byteAt(int at) {
+    if (at < ConformHeader.length) {
+      return head[at];
+    }
+    final pcmByte = at - ConformHeader.length;
+    final value = int16FromUnitSample(samples[pcmByte >> 1]) & 0xFFFF;
+    return pcmByte.isEven ? value & 0xFF : value >> 8;
+  }
+
+  return (buffer, position, size) {
+    final end = position + size > total ? total : position + size;
+    var at = position;
+    // Byte by byte up to the first whole sample the buffer can take as a
+    // 16-bit view ([conformPcmToFloat32]'s rule, written instead of read)…
+    while (at < end &&
+        (at < ConformHeader.length ||
+            (at - ConformHeader.length).isOdd ||
+            (buffer.offsetInBytes + at - position).isOdd)) {
+      buffer[at - position] = byteAt(at);
+      at += 1;
+    }
+    // …then whole samples at a time, and the odd byte a block's edge leaves.
+    final whole = (end - at) >> 1;
+    if (whole > 0) {
+      final view = Int16List.view(
+        buffer.buffer,
+        buffer.offsetInBytes + at - position,
+        whole,
+      );
+      final first = (at - ConformHeader.length) >> 1;
+      for (var index = 0; index < whole; index += 1) {
+        view[index] = int16FromUnitSample(samples[first + index]);
+      }
+      at += whole * 2;
+    }
+    while (at < end) {
+      buffer[at - position] = byteAt(at);
+      at += 1;
+    }
+    return end > position ? end - position : 0;
+  };
 }
 
 /// 16-bit PCM to float32, at the one scale this app uses.
@@ -459,13 +527,13 @@ ConformAudio decodeConform(Uint8List bytes) {
   );
 }
 
+/// Whether a conform whose header records [recorded] is still of the source
+/// that now fingerprints as [current].
+///
 /// A conform with NO fingerprint counts as stale: it was not written by us,
 /// so nothing is known about what it came from, and guessing wrong means
 /// playing the wrong audio against someone's drawing.
 bool conformMatchesSource(
-  ConformAudio conform,
+  ConformSourceFingerprint? recorded,
   ConformSourceFingerprint current,
-) {
-  final fingerprint = conform.fingerprint;
-  return fingerprint != null && fingerprint.matches(current);
-}
+) => recorded != null && recorded.matches(current);

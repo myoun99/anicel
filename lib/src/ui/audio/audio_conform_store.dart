@@ -139,13 +139,6 @@ class AudioConformStore extends ChangeNotifier {
     }
   }
 
-  /// Length past which a conform's PCM stays ON DISK and playback streams
-  /// windows of it (AUDIO-PRO R6). Two stereo minutes resident is 23 MB;
-  /// a guide dialogue track is easily fifteen times that, which on a
-  /// tablet is the whole memory budget. Under the threshold nothing
-  /// changes — residency is a policy the mixer never sees.
-  static const int streamingThresholdSeconds = 120;
-
   final Map<String, ConformPcmStreamReader> _streamReaders = {};
 
   /// Whether [sourcePath]'s conform is DISK-BACKED: usable (length, peaks
@@ -403,32 +396,15 @@ class AudioConformStore extends ChangeNotifier {
       // a retry candidate — the same bytes will not decode differently
       // next time.
       _failures.remove(sourcePath);
-      // Past the streaming threshold the PCM is DROPPED here (AUDIO-PRO
+      // A conform past the streaming threshold comes with NO PCM (AUDIO-PRO
       // R6): the conform on disk is the copy of record and playback reads
       // windows of it — out of the run's scratch, or out of the project
-      // file once a save has absorbed it. Memory-only conforms (a project
-      // with nowhere to write yet) have nothing to stream from and stay
-      // resident.
-      var kept = result;
-      if (result.isUsable &&
-          result.conformBytes != null &&
-          result.sampleRate > 0 &&
-          result.frames > result.sampleRate * streamingThresholdSeconds) {
-        kept = ConformResult(
-          outcome: result.outcome,
-          conformBytes: result.conformBytes,
-          peaks: result.peaks,
-          samples: null,
-          channels: result.channels,
-          sampleRate: result.sampleRate,
-          frames: result.frames,
-          speedNumerator: result.speedNumerator,
-          speedDenominator: result.speedDenominator,
-          error: result.error,
-        );
-      }
+      // file once a save has absorbed it. 🪦It was dropped HERE, after the
+      // worker had held it whole and carried it across; the pipeline now
+      // decides before it holds any ([conformStaysOnDisk]), and the store
+      // keeps what it is given.
       _closeStreamReader(sourcePath);
-      _entries[sourcePath] = kept;
+      _entries[sourcePath] = result;
     } else if (result.isTransientFailure) {
       // Records the ATTEMPT TIME but not the attempt: a source that is
       // there and merely not readable yet (a cloud placeholder still

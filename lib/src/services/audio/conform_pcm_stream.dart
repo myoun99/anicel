@@ -4,6 +4,32 @@ import '../media/media_byte_source.dart';
 import 'conform_pcm_codec.dart';
 import 'wav16_header.dart';
 
+/// Length past which a conform's PCM stays ON DISK and playback streams
+/// windows of it (AUDIO-PRO R6). Two stereo minutes resident is 23 MB; a
+/// guide dialogue track is easily fifteen times that, which on a tablet is
+/// the whole memory budget. Under the threshold nothing changes —
+/// residency is a policy the mixer never sees.
+const int conformStreamingThresholdSeconds = 120;
+
+/// Whether a conform of [frames] at [sampleRate] stays on disk rather than
+/// in memory: past the threshold, when it is [onDisk] to be read from — a
+/// memory-only conform (nowhere to write it yet) has nothing to stream from
+/// and stays resident.
+///
+/// 🚨★★★**ASKED WHERE THE PCM IS MADE.** The store used to drop the samples
+/// of a long conform once the worker had handed them over — after the
+/// worker had decoded a reopened conform whole and carried every sample
+/// across, only for them to be thrown away. The pipeline asks this before
+/// it holds any of them, and the store keeps what it is given.
+bool conformStaysOnDisk({
+  required int frames,
+  required int sampleRate,
+  required bool onDisk,
+}) =>
+    onDisk &&
+    sampleRate > 0 &&
+    frames > sampleRate * conformStreamingThresholdSeconds;
+
 /// Windowed access to a conform (AUDIO-PRO R6).
 ///
 /// A resident conform costs 4 bytes per sample per channel — 23 MB per
@@ -58,6 +84,7 @@ class ConformPcmStreamReader {
     this._source, {
     required ({int channels, int sampleRate, int frames}) layout,
     required int dataOffset,
+    this.header,
   }) : channels = layout.channels,
        sampleRate = layout.sampleRate,
        length = layout.frames,
@@ -73,6 +100,10 @@ class ConformPcmStreamReader {
 
   /// Samples per channel.
   final int length;
+
+  /// A conform's own header — what it was rendered at and of which source
+  /// ([over]); null over a WAV ([overWav16]).
+  final ConformHeader? header;
 
   /// Opens the conform at [path] — framed or not, decided by its name.
   ///
@@ -91,6 +122,7 @@ class ConformPcmStreamReader {
           channels: header.channels,
           sampleRate: header.sampleRate,
           frames: header.frames,
+          header: header,
         );
       });
 
@@ -111,6 +143,7 @@ class ConformPcmStreamReader {
           channels: wav.channels,
           sampleRate: wav.sampleRate,
           frames: wav.dataBytes ~/ (2 * wav.channels),
+          header: null,
         );
       });
 
@@ -119,7 +152,8 @@ class ConformPcmStreamReader {
   static ConformPcmStreamReader? _over(
     MediaByteSource source,
     int headLength,
-    ({int channels, int sampleRate, int frames})? Function(Uint8List head)
+    ({int channels, int sampleRate, int frames, ConformHeader? header})?
+    Function(Uint8List head)
     layoutOf,
   ) {
     try {
@@ -140,8 +174,13 @@ class ConformPcmStreamReader {
       }
       return ConformPcmStreamReader._(
         source,
-        layout: layout,
+        layout: (
+          channels: layout.channels,
+          sampleRate: layout.sampleRate,
+          frames: layout.frames,
+        ),
         dataOffset: headLength,
+        header: layout.header,
       );
     } on Object {
       // A source that will not read, or a framed entry no engine here can

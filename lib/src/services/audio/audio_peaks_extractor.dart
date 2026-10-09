@@ -141,6 +141,22 @@ AudioPeaks peaksFromSamples({
   required int channels,
   required int sampleRate,
   int bucketsPerSecond = 40,
+}) => peaksFromWindows(
+  windows: [samples],
+  channels: channels,
+  sampleRate: sampleRate,
+  bucketsPerSecond: bucketsPerSecond,
+);
+
+/// The same envelope of PCM that arrives a window at a time — [windows] in
+/// order, each a run of whole interleaved frames — folded as one buffer
+/// would be: a bucket runs on across a window's edge. What a long conform
+/// is measured by without its PCM in memory.
+AudioPeaks peaksFromWindows({
+  required Iterable<Float32List> windows,
+  required int channels,
+  required int sampleRate,
+  int bucketsPerSecond = 40,
 }) {
   if (channels <= 0 || sampleRate <= 0 || bucketsPerSecond <= 0) {
     return AudioPeaks(
@@ -152,10 +168,12 @@ AudioPeaks peaksFromSamples({
   if (samplesPerBucket <= 0) {
     return AudioPeaks(bucketsPerSecond: bucketsPerSecond, peaks: Float32List(0));
   }
-  final frameCount = samples.length ~/ channels;
   final fold = AudioPeakBucketFold(samplesPerBucket: samplesPerBucket);
-  for (var frame = 0; frame < frameCount; frame += 1) {
-    fold.add(loudestChannelMagnitude(samples, frame * channels, channels));
+  for (final samples in windows) {
+    final frameCount = samples.length ~/ channels;
+    for (var frame = 0; frame < frameCount; frame += 1) {
+      fold.add(loudestChannelMagnitude(samples, frame * channels, channels));
+    }
   }
   // A file has an end: the last partial bucket lands.
   fold.flush();

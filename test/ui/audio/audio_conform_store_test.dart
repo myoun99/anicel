@@ -9,6 +9,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/whole_carry.dart';
@@ -372,14 +373,15 @@ void main() {
 
     tearDown(() => deleteTempQuietly(directory));
 
-    /// A conform WAV on disk plus the runner result describing it, LONGER
-    /// than the streaming threshold (a tiny sample rate keeps the fixture
-    /// small — the threshold is in seconds, and the policy reads the
-    /// result's own rate).
-    (String, ConformResult) longConform() {
+    /// A conform on disk plus the runner result describing it, LONGER than
+    /// the streaming threshold (a tiny sample rate keeps the fixture small
+    /// — the threshold is in seconds, and the policy reads the result's own
+    /// rate) — with NO PCM, as the pipeline hands a long conform it wrote
+    /// ([conformStaysOnDisk]); the samples it holds come back beside it.
+    (String, ConformResult, Float32List) longConform() {
       const sampleRate = 100;
       const frames =
-          sampleRate * AudioConformStore.streamingThresholdSeconds + 50;
+          sampleRate * conformStreamingThresholdSeconds + 50;
       final samples = Float32List(frames);
       for (var index = 0; index < frames; index += 1) {
         samples[index] = (index % 100) / 100.0;
@@ -397,17 +399,22 @@ void main() {
             bucketsPerSecond: 80,
             peaks: Float32List.fromList([1.0]),
           ),
-          samples: samples,
           channels: 1,
           sampleRate: sampleRate,
           frames: frames,
         ),
+        samples,
       );
     }
 
-    test('past the threshold the PCM is dropped: length and peaks answer, '
-        'samples stream from disk', () async {
-      final (conformPath, result) = longConform();
+    test('a conform past the threshold STREAMS: no resident PCM, its length '
+        'and peaks answer, its samples read from disk', () async {
+      final (conformPath, result, samples) = longConform();
+      expect(
+        conformStaysOnDisk(frames: result.frames, sampleRate: 100, onDisk: true),
+        isTrue,
+        reason: 'the premise: the pipeline hands this one over with no PCM',
+      );
       final store = AudioConformStore(
         resolveConformPath: (_) => conformPath,
         // The fixture's tiny rate IS the project rate — otherwise the
@@ -439,7 +446,7 @@ void main() {
       for (var index = 0; index < 100; index += 1) {
         expect(
           window.samples[index],
-          closeTo(result.samples![500 + index], 1e-4),
+          closeTo(samples[500 + index], 1e-4),
           reason: 'streamed sample ${500 + index} diverged from the decode',
         );
       }
@@ -457,7 +464,7 @@ void main() {
     test('🚨a carry changed under a STREAMING entry lets it go at whatever is '
         'asked first — the stream and its reader are the first carry\'s',
         () async {
-      final (conformPath, result) = longConform();
+      final (conformPath, result, _) = longConform();
       MediaCarry? carry;
       Future<AudioConformStore> streaming() async {
         carry = wholeCarry('long.wav', 'c1');
@@ -498,11 +505,11 @@ void main() {
         runner: (request) async => ConformResult(
           outcome: ConformOutcome.built,
           samples: Float32List(
-            48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+            48000 * (conformStreamingThresholdSeconds + 5),
           ),
           channels: 1,
           sampleRate: 48000,
-          frames: 48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+          frames: 48000 * (conformStreamingThresholdSeconds + 5),
         ),
         log: (_) {},
       );

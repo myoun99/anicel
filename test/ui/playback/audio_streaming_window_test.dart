@@ -6,6 +6,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
@@ -49,7 +50,7 @@ void main() {
   const sampleRate = 100;
   const rate = ProjectFrameRate.integer(10);
   const longFrames =
-      sampleRate * AudioConformStore.streamingThresholdSeconds + 50;
+      sampleRate * conformStreamingThresholdSeconds + 50;
 
   Float32List ramp(int length) {
     final samples = Float32List(length);
@@ -70,11 +71,12 @@ void main() {
     final store = AudioConformStore(
       resolveConformPath: (_) => conformPath,
       projectSampleRate: sampleRate,
+      // The long one arrives with no PCM, as the pipeline hands a long
+      // conform it wrote ([conformStaysOnDisk]).
       runner: (request) async => request.sourcePath == 'long'
           ? ConformResult(
               outcome: ConformOutcome.built,
               conformBytes: mediaAppFileSource(conformPath),
-              samples: longSamples,
               channels: 1,
               sampleRate: sampleRate,
               frames: longFrames,

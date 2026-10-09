@@ -144,6 +144,38 @@ void main() {
     });
   });
 
+  test('🎯folded a window at a time, the envelope is the whole buffer\'s — a '
+      'bucket runs on across a window\'s edge (a long conform is measured '
+      'so)', () {
+    final samples = Float32List(2 * 1001);
+    for (var index = 0; index < samples.length; index += 1) {
+      samples[index] = ((index * 37) % 199 - 99) / 100.0;
+    }
+    // 300 Hz at 40 a second: seven frames a bucket, so the cuts land inside
+    // buckets as well as on their edges.
+    final whole = peaksFromSamples(
+      samples: samples,
+      channels: 2,
+      sampleRate: 300,
+    );
+    const cuts = [0, 3, 7, 10, 11, 500, 1001];
+    final folded = peaksFromWindows(
+      windows: [
+        for (var index = 1; index < cuts.length; index += 1)
+          Float32List.sublistView(
+            samples,
+            cuts[index - 1] * 2,
+            cuts[index] * 2,
+          ),
+      ],
+      channels: 2,
+      sampleRate: 300,
+    );
+
+    expect(folded.peaks, whole.peaks);
+    expect(whole.peaks, hasLength(143), reason: '1001 / 7, the last whole');
+  });
+
   group('degenerate input', () {
     test('empty, zero-channel and zero-rate inputs stay empty', () {
       for (final probe in [

@@ -4,8 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
@@ -710,6 +712,80 @@ void main() {
       expect(second.outcome, ConformOutcome.reused);
       expect(log, isEmpty, reason: 'reuse must not redo the work');
       expect(second.peaks, isNotNull);
+    });
+
+    test('🎯a conform past the streaming threshold comes back with NO PCM, '
+        'built and reused alike — its peaks those of its whole PCM, measured '
+        'a window at a time across the windows\' edges; a short one stays '
+        'resident', () {
+      // A tiny project rate keeps a "long" conform small: 100 Hz, past the
+      // threshold, and over two of the pipeline's windows (2^18 frames) —
+      // three frames a bucket, so buckets straddle the windows' edges.
+      const rate = 100;
+      const long = (1 << 18) * 2 + 4321;
+      Float32List tone(int frames) {
+        final out = Float32List(frames);
+        for (var index = 0; index < frames; index += 1) {
+          out[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
+        }
+        return out;
+      }
+
+      String sourceOf(String name, int frames) {
+        final path = '${temp.path}/$name';
+        File(path).writeAsBytesSync(
+          encodeConform(samples: tone(frames), channels: 1, sampleRate: rate),
+        );
+        return path;
+      }
+
+      final base = pipelineFor(projectSampleRate: rate);
+      final pipeline = AudioConformPipeline(
+        decode: base.decode,
+        resample: base.resample,
+        projectSampleRate: rate,
+        bucketsPerSecond: 30,
+      );
+      expect(conformStaysOnDisk(
+        frames: long,
+        sampleRate: rate,
+        onDisk: true,
+      ), isTrue, reason: 'the premise: this one is long');
+      final longSource = sourceOf('long.wav', long);
+      final shortSource = sourceOf('short.wav', rate * 3);
+      final whole = peaksFromSamples(
+        samples: decodeConform(File(longSource).readAsBytesSync()).samples,
+        channels: 1,
+        sampleRate: rate,
+        bucketsPerSecond: 30,
+      ).peaks;
+
+      for (final pass in [ConformOutcome.built, ConformOutcome.reused]) {
+        final longOne = pipeline.ensureConform(
+          sourcePath: longSource,
+          conformPath: '${temp.path}/Conformed/long.wav.wav',
+        );
+        expect(longOne.outcome, pass);
+        expect(longOne.samples, isNull, reason: '$pass: its PCM is on disk');
+        expect(longOne.conformBytes, isNotNull, reason: pass.name);
+        expect((longOne.frames, longOne.channels), (long, 1));
+        expect(longOne.peaks!.peaks, whole, reason: '$pass: its peaks');
+
+        final shortOne = pipeline.ensureConform(
+          sourcePath: shortSource,
+          conformPath: '${temp.path}/Conformed/short.wav.wav',
+        );
+        expect(shortOne.outcome, pass);
+        expect(shortOne.samples?.length, rate * 3, reason: '$pass: resident');
+      }
+
+      // With nowhere to write it, a long one has nothing to stream from.
+      final memoryOnly = pipeline.ensureConform(
+        sourcePath: longSource,
+        conformPath: null,
+      );
+      expect(memoryOnly.conformBytes, isNull);
+      expect(memoryOnly.samples?.length, long, reason: 'resident, then');
     });
 
     test('a replaced source rebuilds the conform', () {
