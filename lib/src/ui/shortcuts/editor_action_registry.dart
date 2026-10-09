@@ -238,9 +238,7 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
 List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
   for (final shape in canvasToolShapes(verb))
     EditorActionDefinition.composed(
-      // Named for the rail tool the tile belongs to — 'tool-select-lasso',
-      // 'tool-fill-rect' — which is the id the rectangle select already had.
-      id: 'tool-${canvasToolRailGroup(verb).name}-${shape.name}',
+      id: shapeTileActionId(verb, shape),
       name: (language) => shapeTileLabel(verb, shape, AppStrings.of(language)),
       category: 'Tools',
       defaultActivators: [
@@ -263,6 +261,12 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
       toolPress: ShapeTilePress(verb, shape),
     ),
 ];
+
+/// The id of [verb]'s [shape] tile — named for the rail tool the tile
+/// belongs to ('tool-select-lasso', 'tool-fill-rect'), which is the id the
+/// rectangle select already had.
+String shapeTileActionId(CanvasTool verb, CanvasShapeKind shape) =>
+    'tool-${canvasToolRailGroup(verb).name}-${shape.name}';
 
 /// The tool blend modes as actions, one per [BrushBlendMode] — the strip's
 /// blend chooser, in its order.
@@ -1588,21 +1592,27 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️I-63 ③ (유저 2026-10-03): 「프레임추가는 이름이 새 그림인데
   // 그게아니라 프레임 추가로 하고」 — the row is named for the button it
   // presses, the frame pill's ＋. ↩️It read 'New Drawing' (「새 그림」).
+  // 🗣️I-63-Q4 (유저 2026-10-09): 「anicel엔 tvp기반으로 넣도록. 겹치면 알아서
+  // 판단」 — TVPaint makes the drawing here on `I`, which is the eyedropper
+  // here, so the frame takes Shift+I: TVPaint's own key for making it on the
+  // next frame, the nearest key that program gives the verb.
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
     label: 'Add Frame',
     category: 'Timeline',
-    defaultActivators: [],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI, shift: true)],
   ),
   // 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
   // 기본값 등록하고싶음 … j말고 왼손쪽에 다른걸로 할당하고싶음」 — the
-  // layer pill's ＋ is a row now, beside Add Frame. Which key each takes is
-  // the user's to name; no key was said, so both wait unbound.
+  // layer pill's ＋ is a row now, beside Add Frame. 🗣️Its key is TVPaint's
+  // new animation layer, Ctrl+N (I-63-Q4, the answer above).
   const EditorActionDefinition(
     id: EditorActionIds.layerAdd,
     label: _addLayerLabel,
     category: 'Timeline',
-    defaultActivators: [],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyN, control: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameBlankExposure,

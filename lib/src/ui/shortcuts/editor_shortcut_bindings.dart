@@ -88,12 +88,15 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// The layout the keys start from (I-63).
   ///
-  /// ⚠️It starts as [ShortcutPreset.anicel] — the keys this app had before
-  /// there were presets, so nobody's keys move by themselves. Which preset a
-  /// NEW install opens with is asked on the board (I-63-Q5); the first words
-  /// (유저 2026-10-03: 「기본값은 일반으로」) named a preset that became two.
+  /// 🗣️I-63-Q5 (유저 2026-10-09): an install opens on 「클립 스튜디오
+  /// 기반」. ↩️It opened on [ShortcutPreset.anicel] until that answer; the
+  /// first words (유저 2026-10-03: 「기본값은 일반으로」) named a preset that
+  /// became the two programs' ones.
+  /// ⚠️Only the shortcut file tells a device in use from a new install, and
+  /// a device whose keys were never changed has none — it opens here too, as
+  /// the question said it would.
   ShortcutPreset get preset => _preset;
-  ShortcutPreset _preset = ShortcutPreset.anicel;
+  ShortcutPreset _preset = ShortcutPreset.clipStudio;
 
   /// What the user recorded, PER PRESET: a key recorded while one layout is
   /// in use is a change to that layout, and stays with it.
@@ -429,7 +432,7 @@ class EditorShortcutBindings extends ChangeNotifier {
       return;
     }
     // ⚠️NOT the preset an install with no file opens on ([preset]'s first
-    // value) — the two only agree today. A file that names no preset this
+    // value, Clip Studio's since I-63-Q5). A file that names no preset this
     // build knows was written over the registry's keys: before the presets,
     // or by a build whose preset this one lacks.
     _preset = ShortcutPreset.named(payload?['preset']) ?? ShortcutPreset.anicel;

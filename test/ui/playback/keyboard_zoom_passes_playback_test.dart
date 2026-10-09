@@ -11,9 +11,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/fake_playback_transport.dart';
 import '../../helpers/panel_finders.dart';
 
@@ -40,6 +40,7 @@ void main() {
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     return tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
         .session;
@@ -114,7 +115,7 @@ void main() {
   testWidgets('a FIT key passes while the canvas plays, and fits — a '
       'straighten key stops it', (tester) async {
     final session = await playingCanvas(tester);
-    EditorShortcutScope.peek(tester.element(find.byType(EditorCanvasArea)))!
+    appShortcuts(tester)
       ..setActivators(EditorActionIds.canvasFit, const [
         SingleActivator(LogicalKeyboardKey.keyK),
       ])
@@ -146,9 +147,7 @@ void main() {
   testWidgets('a zoom moved to `\'` zooms from a JIS Shift+7 while the canvas '
       'plays — the gate and the map read the same typed form', (tester) async {
     final session = await playingCanvas(tester);
-    EditorShortcutScope.peek(
-      tester.element(find.byType(EditorCanvasArea)),
-    )!.setActivators(EditorActionIds.canvasZoomIn, const [
+    appShortcuts(tester).setActivators(EditorActionIds.canvasZoomIn, const [
       SingleActivator(LogicalKeyboardKey.quoteSingle),
     ]);
     await tester.pump();

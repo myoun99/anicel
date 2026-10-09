@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../flyout_test_helpers.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/frame_keys.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
@@ -27,6 +28,7 @@ void main() {
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
   }
 
   // The counter stacks track-global over cut-local (2026-08-10); the flip

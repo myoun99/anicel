@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerKindDisplayName;
 
+import '../helpers/app_shortcuts.dart';
 import '../helpers/conte_track_fixture.dart';
 import '../helpers/home_page_probes.dart';
 
@@ -53,6 +54,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project)),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
   }
 
   Future<void> key(WidgetTester tester, LogicalKeyboardKey key) async {

@@ -5,10 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/panel_finders.dart';
 
 /// 🗣️I-19 (유저 2026-09-12): 「이런 버튼들 툴버튼도 그런데 툴팁으로 숏컷 키
@@ -23,6 +23,7 @@ Future<void> _pumpApp(WidgetTester tester) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(const AnicelApp());
   await tester.pumpAndSettle();
+  await useAnicelKeys(tester);
 }
 
 String _tooltip(WidgetTester tester, Finder face) =>
@@ -68,8 +69,8 @@ void main() {
       ('tool-cut-button', 'Cut Tool'),
       ('tool-select-button', 'Select Tool'),
       ('tool-move-button', 'Transform Tool'),
-      // The film verbs ship unbound, so they show their name alone.
-      ('new-frame-button', 'Add'),
+      // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with TVPaint's key.
+      ('new-frame-button', 'Add (Shift+I)'),
     ]) {
       expect(_tooltip(tester, _button(key)), tooltip, reason: key);
     }
@@ -83,9 +84,7 @@ void main() {
   testWidgets('re-recording a key re-labels the SAME mounted button — the '
       'cached toolbar group included', (tester) async {
     await _pumpApp(tester);
-    final bindings = tester
-        .widget<EditorShortcutScope>(find.byType(EditorShortcutScope))
-        .notifier!;
+    final bindings = appShortcuts(tester);
 
     bindings.setActivators(EditorActionIds.editCopy, const [
       SingleActivator(LogicalKeyboardKey.keyK, control: true),
@@ -101,7 +100,7 @@ void main() {
       reason: 'an unbound action shows no key at all',
     );
 
-    // An unbound film verb gains one the moment it is recorded.
+    // A film verb wears a recorded key the moment it is recorded.
     bindings.setActivators(EditorActionIds.frameNewDrawing, const [
       SingleActivator(LogicalKeyboardKey.keyN),
     ]);
@@ -111,7 +110,7 @@ void main() {
     // The layer pill's ＋ is a strap — its body wears its action's name and
     // reads the same bindings (I-63 ③).
     const addLayer = 'timeline-toolbar-add-layer-button';
-    expect(_tooltip(tester, _button(addLayer)), 'Add Layer');
+    expect(_tooltip(tester, _button(addLayer)), 'Add Layer (Ctrl+N)');
     bindings.setActivators(EditorActionIds.layerAdd, const [
       SingleActivator(LogicalKeyboardKey.keyN, shift: true),
     ]);
@@ -144,12 +143,9 @@ void main() {
     await _pumpApp(tester);
     // Save As and its Ctrl+Shift+S are one level in since backlog-21-Q1, so
     // this menu's second, longer key is one recorded here.
-    tester
-        .widget<EditorShortcutScope>(find.byType(EditorShortcutScope))
-        .notifier!
-        .setActivators(EditorActionIds.fileNew, const [
-          SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true),
-        ]);
+    appShortcuts(tester).setActivators(EditorActionIds.fileNew, const [
+      SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true),
+    ]);
     await tester.pumpAndSettle();
     await tester.tap(_button('top-strip-project-button'));
     await tester.pumpAndSettle();

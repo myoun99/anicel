@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/app_shortcuts.dart';
 
 /// P2 wiring: the session's onion requests, the O shortcut and the panel.
 void main() {
@@ -73,6 +74,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
 
     // The onion settings have their OWN sub-strip button now (유저, R3 #10)
     // and ship closed — open the group, then its tab.

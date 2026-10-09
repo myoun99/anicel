@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 const k = LogicalKeyboardKey.keyK;
@@ -44,13 +45,10 @@ EditorTopStrip strip(WidgetTester tester) =>
 BuildContext stripContext(WidgetTester tester) =>
     tester.element(find.byType(EditorTopStrip));
 
-EditorShortcutBindings keys(WidgetTester tester) =>
-    EditorShortcutScope.peek(stripContext(tester))!;
-
 /// Records [k] for [actionId] and presses it, once the app has taken the
 /// recording in.
 Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
-  keys(tester).setActivators(actionId, const [SingleActivator(k)]);
+  appShortcuts(tester).setActivators(actionId, const [SingleActivator(k)]);
   await tester.pump();
   await tester.sendKeyEvent(k);
   await tester.pumpAndSettle();
@@ -344,7 +342,7 @@ void main() {
 
       // Each action of the registry, and each panel the workspace told of.
       final live = [
-        for (final definition in keys(tester).definitions)
+        for (final definition in appShortcuts(tester).definitions)
           if (definition.menuRow &&
               stripCategories.contains(definition.category))
             definition.id,
@@ -371,7 +369,7 @@ void main() {
 
     testWidgets('a row wears its action\'s name and key', (tester) async {
       await pumpApp(tester);
-      keys(tester).setActivators(EditorActionIds.preferences, const [
+      appShortcuts(tester).setActivators(EditorActionIds.preferences, const [
         SingleActivator(k, control: true),
       ]);
       await tester.pump();
@@ -414,7 +412,7 @@ void main() {
         expect(opened, findsOneWidget, reason: action);
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
-        keys(tester).resetAction(action);
+        appShortcuts(tester).resetAction(action);
       }
       expect(
         editorActionLabel(EditorActionIds.projectFrameRate),

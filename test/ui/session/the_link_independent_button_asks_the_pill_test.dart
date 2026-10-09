@@ -15,7 +15,6 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/working_panel.dart';
-import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -24,11 +23,11 @@ import 'package:anicel/src/ui/session/cut_verbs.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/pill_row_clipboard.dart';
 
@@ -464,9 +463,9 @@ void main() {
         MaterialApp(home: HomePage(initialProject: createDefaultProject())),
       );
       await tester.pumpAndSettle();
-      EditorShortcutScope.peek(
-        tester.element(find.byType(EditorCanvasArea)),
-      )!.setActivators(EditorActionIds.editUnlink, const [
+      // U is free on the registry's keys.
+      await useAnicelKeys(tester);
+      appShortcuts(tester).setActivators(EditorActionIds.editUnlink, const [
         SingleActivator(key),
       ]);
       await tester.pumpAndSettle();

@@ -330,7 +330,7 @@ void main() {
         final saved =
             jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
         expect(
-          ((saved['overrides'] as Map)['anicel'] as Map).keys,
+          ((saved['overrides'] as Map)[next.preset.name] as Map).keys,
           containsAll([presetId('maru'), EditorActionIds.undo]),
         );
         expect((saved['touch'] as Map).keys, contains(groupId(inks)));

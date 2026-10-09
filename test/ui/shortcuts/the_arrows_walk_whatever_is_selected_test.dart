@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 
 void main() {
@@ -40,6 +41,7 @@ void main() {
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final area = tester.widget<EditorCanvasArea>(find.byType(EditorCanvasArea));
     final session = area.session;
     final commands = area.canvasSelectionCommands!;

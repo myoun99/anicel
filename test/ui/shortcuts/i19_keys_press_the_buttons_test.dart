@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
-import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/panel_finders.dart';
 
@@ -57,11 +56,10 @@ Future<void> _typeUnderShift(
 /// binding the layout half of the I-19 law is asked of. ↩️`=` was Solo's
 /// default until F-261 moved it to T.
 Future<void> _soloOnEquals(WidgetTester tester) async {
-  EditorShortcutScope.peek(
-    tester.element(find.byType(EditorCanvasArea)),
-  )!.setActivators(EditorActionIds.layerVisibilitySolo, const [
-    SingleActivator(LogicalKeyboardKey.equal),
-  ]);
+  appShortcuts(tester).setActivators(
+    EditorActionIds.layerVisibilitySolo,
+    const [SingleActivator(LogicalKeyboardKey.equal)],
+  );
   await tester.pump();
 }
 
@@ -83,6 +81,7 @@ Future<({List<String> before, List<String> after})> _onAFreshDrawing(
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(const AnicelApp());
   await tester.pumpAndSettle();
+  await useAnicelKeys(tester);
   final before = _glyphs();
   await act();
   return (before: before, after: _glyphs());
@@ -172,6 +171,7 @@ void main() {
       'nothing since F-261', (tester) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
@@ -201,6 +201,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
@@ -218,6 +219,7 @@ void main() {
       'is `_` on a US board', (tester) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
@@ -238,6 +240,7 @@ void main() {
     // binding it is asked of is Solo's `=` (recorded here since F-261).
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
@@ -274,6 +277,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
 
     String readout() => tester
         .widget<Text>(

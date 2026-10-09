@@ -27,12 +27,18 @@ void main() {
     }
   });
 
-  test('the film verbs ship deliberately unbound', () {
+  test('the film verbs ship deliberately unbound — but Add Frame, whose key '
+      'the user named', () {
     // Which key belongs on these is a working habit, not something to
     // guess — and the digits are already the comma set's. Registering
     // them unbound is what puts a row in the shortcut dialog to fill in.
+    // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame takes TVPaint's key.
     for (final id in filmVerbs) {
-      expect(definitionFor(id).defaultActivators, isEmpty, reason: id);
+      expect(
+        definitionFor(id).defaultActivators,
+        id == EditorActionIds.frameNewDrawing ? isNotEmpty : isEmpty,
+        reason: id,
+      );
     }
   });
 

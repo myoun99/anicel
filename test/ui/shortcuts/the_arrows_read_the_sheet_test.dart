@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/sheet_arrow.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 
 /// 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
 /// 레이어 이렇게 개편」 · 「컨트롤+화살표가 아니라 쉬프트+화살표로 변경」 ·
@@ -43,7 +44,11 @@ void main() {
   }) {
     final sheet = FlipHudController()..framesRunVertically = xSheet;
     addTearDown(sheet.dispose);
-    final bindings = EditorShortcutBindings()..sheet = sheet;
+    // The registry's own keys, which the moves below are named on — an
+    // install opens on Clip Studio's (I-63-Q5).
+    final bindings = EditorShortcutBindings()
+      ..setPreset(ShortcutPreset.anicel)
+      ..sheet = sheet;
     addTearDown(bindings.dispose);
     return (bindings: bindings, sheet: sheet);
   }

@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/storyboard_layer_policy.dart'
     show storyboardLayerForCut;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/device_viewport.dart';
@@ -60,6 +61,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: conteTrackProject())),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     await showStoryboardPanel(tester);
     final session = sessionOf(tester);
     session.selectCut(cut1);
