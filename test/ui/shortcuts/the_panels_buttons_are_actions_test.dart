@@ -11,7 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
-    show FolderPicker;
+    show FolderGrant, FolderPicker;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -214,7 +214,7 @@ void main() {
       FolderPicker.debugFilePicker =
           ({required acceptedTypeGroups, required allowMultiple}) async {
             asked += 1;
-            return const [];
+            return const [FolderGrant.cancelled()];
           };
       await pumpHome(tester);
       await pressKeyOf(tester, EditorActionIds.mediaPoolImport);
