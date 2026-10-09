@@ -2,7 +2,6 @@ import '../editing/default_cut_helpers.dart';
 import '../editing/default_layer_helpers.dart';
 import '../editing/editing_session_state.dart';
 import '../../models/cut.dart';
-import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -30,9 +29,13 @@ import 'transitions_ride_the_cuts.dart';
 ///   copied linked: the drawing rows and the FOLDER rows holding them, and
 ///   — F-84, 유저 2026-09-11 — the conte row and the CAMERA row, which is
 ///   how the linked cut has a camera at all. SE/instruction rows are fresh
-///   per-use fixtures. The camera's LANES arrive copied, not shared
-///   ("카메라·SE·타임시트는 각자" still holds for what they say): only a
-///   NAMED key carries a value across afterwards — the transform law.
+///   per-use fixtures. The camera's KEYS do not come along: its timeline
+///   starts empty, as every linked row's does — 🗣️유저 2026-10-09
+///   (I-73-camera-row-Q6): 「겸용컷이 키를 복사하는게 의도한게아님. 겸용컷은
+///   소재는 링크되도 타임라인은 초기화되어야하는건데」. ↩️They arrived
+///   copied, and a source longer than a new cut put keys past the new
+///   cut's end. A NAMED key still carries a value across once both cuts
+///   hold the name — the transform law.
 /// - Attach structure and folder membership mirror onto planned ids.
 /// - The registry gains one pair per linked row (extending existing
 ///   groups, so a second 겸용 joins the same bank) — folder rows included,
@@ -126,11 +129,8 @@ class CreateLinkedCutCommand implements Command {
           layers: withEnsuredSectionLayers(newCutId, linkedLayers),
           duration: duration,
           canvasSize: source.canvasSize,
-          // The camera row came across linked; its lanes come across COPIED.
-          // The immutable track is shared as the plain duplicate shares it:
-          // a pose-view round-trip would resynchronize independently keyed
-          // properties.
-          camera: CutCamera.fromTrack(source.camera.track),
+          // The camera row came across linked; its keys stay behind — a new
+          // cut's camera, empty, as a new cut's length is a new cut's.
         ),
         source,
       );
