@@ -375,9 +375,7 @@ Path pictureShowsOnScreen(SheetDeviceGrid grid, SheetPictureOverInk over) =>
 CanvasViewport pictureCanvasViewport(
   CanvasViewport view,
   Matrix4 canvasToPaper,
-) => viewportOfSimilarity(
-  viewportTransformMatrix(view).multiplied(canvasToPaper),
-)!;
+) => viewportAfter(view, canvasToPaper);
 
 /// Where [picture]'s raster ([pictureRasterOf]) is laid on screen, its
 /// print and its live composite alike: its frame through the page's

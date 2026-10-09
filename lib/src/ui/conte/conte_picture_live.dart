@@ -9,6 +9,7 @@ import '../../services/cel_surface_as_shown.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
 import '../sheet_painting.dart';
@@ -154,7 +155,7 @@ class ContePictureLive extends StatelessWidget {
         const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
         Positioned.fill(
           child: ClipPath(
-            clipper: _Outline([
+            clipper: OutlineClipper([
               for (final corner in [
                 corners.topLeft,
                 corners.topRight,
@@ -192,12 +193,12 @@ class ContePictureLive extends StatelessWidget {
   /// Where [picture] shows on the screen: the camera's frame in its slot,
   /// cut INSIDE on the page's grid ([SheetDeviceGrid.livePicture], F-197),
   /// the one call the paper's ink around it stops at too (F-216).
-  _Outline _shotOf(ContePicture picture) {
+  OutlineClipper _shotOf(ContePicture picture) {
     final shot = SheetDeviceGrid.through(
       viewport,
       effectiveRatio,
     ).livePicture(picture.mark);
-    return _Outline([
+    return OutlineClipper([
       shot.topLeft,
       shot.topRight,
       shot.bottomRight,
@@ -215,25 +216,6 @@ class ContePictureLive extends StatelessWidget {
       buffers[id] = bytes;
     }
   }
-}
-
-/// An outline on screen: a picture's shot, or the canvas in it — turned
-/// when the camera is.
-///
-/// ⛔Never a rect clipper, even for the square shot: a
-/// `CustomClipper<Rect>` is the ink window's clip, and there is one
-/// (`one_sheet_ink_layer_test`).
-class _Outline extends CustomClipper<Path> {
-  const _Outline(this.corners);
-
-  final List<Offset> corners;
-
-  @override
-  Path getClip(Size size) => Path()..addPolygon(corners, true);
-
-  @override
-  bool shouldReclip(_Outline oldClipper) =>
-      !listEquals(oldClipper.corners, corners);
 }
 
 /// The camera's work over the live pictures — its frames, the trails of
