@@ -8,6 +8,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
@@ -180,7 +181,6 @@ void main() {
         warnings: const [],
       ),
       name: 'file',
-      hiddenFolderName: 'Hidden',
       trackId: const TrackId('track'),
       mint: ImportIdMint(
         nextLayerId: () => LayerId('layer-${layers += 1}'),
@@ -213,7 +213,7 @@ void main() {
   group('one timeline', () {
     test('🎯a folder stays a folder — nesting, eye, opacity, blend and the '
         'fold — and a layer outside the cels is an image row holding its '
-        'one picture, named', () {
+        'one picture, named 1', () {
       final bg = layer('BG', opacity: 128, composite: 2);
       final process = folder(
         'LO',
@@ -239,10 +239,15 @@ void main() {
       expect(image.kind, LayerKind.image);
       expect(image.folderId, lo.id);
       expect((image.opacity, image.blendMode), (0.5, LayerBlendMode.multiply));
-      expect(image.frames.single.name, 'BG', reason: 'F-98 · F-278');
+      expect(
+        image.frames.single.name,
+        '1',
+        reason: 'named, so a 겸용 cut\'s edit is every cut\'s (F-98 · F-278) '
+            '— and 1, not its layer\'s name (유저 10-09)',
+      );
       expect(
         blocks(image),
-        [(0, 1, 'BG')],
+        [(0, 1, '1')],
         reason: 'the image row\'s one cel and its hold (D22)',
       );
       expect(folderStructureProblem(cut.layers), isNull);
@@ -283,7 +288,9 @@ void main() {
 
     test('🎯a cel that is a folder: its top visible layer is the base\'s '
         'picture, the ones under it attach rows below, synced — named '
-        'A-2, A-3 from the top', () {
+        'A-1, A-2 from the top, as the app names a row it adds below a '
+        'base (유저 10-09: 「그냥 우리방식대로 A라는 기준레이어랑 A-1 '
+        '이런식으로」)', () {
       final line = layer('line');
       final colour = layer('colour');
       final shadow = layer('shadow');
@@ -297,22 +304,23 @@ void main() {
       ]);
       final cut = result.cuts.single;
 
-      expect(names(cut), ['A-3', 'A-2', 'A', 'A']);
+      expect(names(cut), ['A-2', 'A-1', 'A', 'A']);
       final base = cut.layers.firstWhere((layer) => layer.name == 'A');
+      final a1 = row(cut, 'A-1');
       final a2 = row(cut, 'A-2');
-      final a3 = row(cut, 'A-3');
-      for (final attach in [a2, a3]) {
+      for (final attach in [a1, a2]) {
         expect(attach.attachedToLayerId, base.id);
         expect(attach.attachedPlacement, AttachedPlacement.below);
         expect(attach.attachedMode, AttachedMode.synced);
         expect(attach.onTimesheet, isFalse);
         expect(attach.timeline, isEmpty, reason: 'a synced row has no lane');
         expect(attach.folderId, base.folderId);
+        expect(attach.isVisible, isTrue);
       }
       final [baseOf1, baseOf2] = [for (final cel in base.frames) cel.id];
-      expect(a2.baseFrameLinks, {
-        baseOf1: attachedMirrorCelId(a2.id, baseOf1),
-        baseOf2: attachedMirrorCelId(a2.id, baseOf2),
+      expect(a1.baseFrameLinks, {
+        baseOf1: attachedMirrorCelId(a1.id, baseOf1),
+        baseOf2: attachedMirrorCelId(a1.id, baseOf2),
       });
       expect(
         identical(cutWithReconciledAttachedMirrors(cut), cut),
@@ -325,52 +333,170 @@ void main() {
       expect(into, {
         'line': baseOf1,
         '2': baseOf2,
-        'colour': attachedMirrorCelId(a2.id, baseOf1),
-        'shadow': attachedMirrorCelId(a3.id, baseOf1),
+        'colour': attachedMirrorCelId(a1.id, baseOf1),
+        'shadow': attachedMirrorCelId(a2.id, baseOf1),
       });
       expect(folderStructureProblem(cut.layers), isNull);
     });
 
-    test('🎯hidden layers come too — attach rows of their own count, in a '
-        'folder whose eye is off and that is folded; the rows inside keep '
-        'theirs on', () {
-      final rough = layer('rough', shown: false);
-      final inked = layer('inked');
-      final hiddenFolder = folder('old', [layer('older')], shown: false);
-      final cel = folder('1', [rough, hiddenFolder, inked], composite: 0);
-      final a = animation('A', [cel]);
+    test('🎯hidden layers come too and line up like every other — by name or '
+        'by place — only their eyes off; a line shown in one cel and hidden '
+        'in another is two rows, as one that blends two ways is (유저 10-09: '
+        '「숨긴레이어 이상한 규칙 만들지말고 그냥 눈만 끄게하면되는거야」) — and '
+        'no folder the file never had (「이 숨김이라는 폴더는 뭐지?」)', () {
+      final a = animation('A', [
+        folder('1', [
+          layer('under1'),
+          layer('rough', shown: false),
+          layer('line1'),
+        ]),
+        folder('2', [layer('under2'), layer('rough'), layer('line2')]),
+        folder('3', [
+          folder('old', [layer('older')], shown: false),
+          layer('line3'),
+        ]),
+      ]);
       final result = plan(root([a]), [
         timeline([
-          keyed(a, [(0, '1')]),
+          keyed(a, [(0, '1'), (4, '2'), (8, '3')]),
         ]),
       ]);
       final cut = result.cuts.single;
-
-      expect(names(cut), ['A-3', 'A-2', 'Hidden', 'A', 'A']);
-      final organizer = row(cut, 'Hidden');
-      expect(
-        (organizer.isVisible, organizer.collapsed),
-        (false, true),
-        reason: 'its eye off and folded',
-      );
       final base = cut.layers.firstWhere((layer) => layer.name == 'A');
-      expect(attachOrganizerBaseOf(organizer, cut.layers), base.id);
-      for (final name in ['A-2', 'A-3']) {
-        expect(row(cut, name).folderId, organizer.id);
-        expect(row(cut, name).isVisible, isTrue);
+
+      /// The row cel [cel]'s layer [name] was baked into.
+      String rowOfLayer(String cel, String name) {
+        final frameId = result.bakes
+            .singleWhere(
+              (bake) => bake.source.name == name && bake.label == 'A / $cel',
+            )
+            .frameId;
+        return cut.layers
+            .singleWhere((layer) => layer.frameById(frameId) != null)
+            .name;
       }
-      final into = {
-        for (final bake in result.bakes) bake.source.name: bake.frameId,
-      };
-      final cel1 = base.frames.single.id;
-      expect(into['inked'], cel1);
+
+      expect(names(cut), ['A-4', 'A-3', 'A-2', 'A-1', 'A', 'A']);
       expect(
-        into['older'],
-        attachedMirrorCelId(row(cut, 'A-2').id, cel1),
-        reason: 'hidden by its folder, the top of the hidden ones',
+        [
+          for (final name in ['A-1', 'A-2', 'A-3', 'A-4'])
+            row(cut, name).isVisible,
+        ],
+        [false, true, false, true],
       );
-      expect(into['rough'], attachedMirrorCelId(row(cut, 'A-3').id, cel1));
+      expect(
+        [
+          rowOfLayer('1', 'rough'),
+          rowOfLayer('2', 'rough'),
+          rowOfLayer('3', 'older'),
+          rowOfLayer('1', 'under1'),
+          rowOfLayer('2', 'under2'),
+        ],
+        ['A-1', 'A-2', 'A-3', 'A-4', 'A-4'],
+        reason: 'one name, two eyes: two rows; a hidden layer keeps its place '
+            'among the shown ones, and the shown ones under it keep theirs',
+      );
+      expect(
+        [
+          for (final layer in cut.layers)
+            if (layer.kind == LayerKind.folder) layer.id,
+        ],
+        [base.folderId],
+        reason: 'the animation folder is the one folder row',
+      );
+      for (final name in ['A-1', 'A-2', 'A-3', 'A-4']) {
+        expect(row(cut, name).folderId, base.folderId);
+        expect(row(cut, name).attachedToLayerId, base.id);
+      }
       expect(folderStructureProblem(cut.layers), isNull);
+    });
+
+    test('🎯a layer whose name another cel\'s layer wears stands in that '
+        'name\'s row, one whose name no other cel wears by its place from '
+        'the top (유저 10-09: 「같은이름 있으면 같은행 없으면 전처럼 '
+        '위치관계기준」) — and the rows keep every cel\'s own order', () {
+      final a = animation('A', [
+        folder('1', [layer('colour'), layer('shadow'), layer('line1')]),
+        folder('2', [layer('colour'), layer('line2')]),
+        folder('3', [
+          layer('colour'),
+          layer('shadow'),
+          layer('extra'),
+          layer('line3'),
+        ]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1'), (4, '2'), (8, '3')]),
+        ]),
+      ]);
+      final cut = result.cuts.single;
+      final base = cut.layers.firstWhere((layer) => layer.name == 'A');
+      final [cel1, cel2, cel3] = [for (final cel in base.frames) cel.id];
+
+      /// The row cel [cel]'s layer [name] was baked into.
+      String rowOfLayer(String cel, String name) {
+        final frameId = result.bakes
+            .singleWhere(
+              (bake) => bake.source.name == name && bake.label == 'A / $cel',
+            )
+            .frameId;
+        return cut.layers
+            .singleWhere((layer) => layer.frameById(frameId) != null)
+            .name;
+      }
+
+      expect(names(cut), ['A-3', 'A-2', 'A-1', 'A', 'A']);
+      expect(
+        [for (final cel in ['1', '3']) rowOfLayer(cel, 'shadow')],
+        ['A-2', 'A-2'],
+        reason: 'one row for the name two cels wear, at the second place '
+            'in one and the third in the other',
+      );
+      expect(
+        [for (final cel in ['1', '2', '3']) rowOfLayer(cel, 'colour')],
+        ['A-3', 'A-3', 'A-3'],
+      );
+      expect(
+        rowOfLayer('3', 'extra'),
+        'A-1',
+        reason: 'worn by one cel: by its place, above the rows under it',
+      );
+      expect(
+        {
+          for (final bake in result.bakes)
+            if (bake.source.name.startsWith('line')) bake.frameId,
+        },
+        {cel1, cel2, cel3},
+        reason: 'every cel\'s top layer is the base\'s, whatever its name',
+      );
+      expect(
+        [for (final warning in result.warnings) warning.key],
+        ['clipCelLayers'],
+        reason: 'no cel\'s order crossed',
+      );
+    });
+
+    test('cels that stack two names both ways cross one of them — and it is '
+        'said', () {
+      final a = animation('A', [
+        folder('1', [layer('b'), layer('a'), layer('top1')]),
+        folder('2', [layer('a'), layer('b'), layer('top2')]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1'), (6, '2')]),
+        ]),
+      ]);
+
+      expect(names(result.cuts.single), ['A-2', 'A-1', 'A', 'A']);
+      expect(
+        [
+          for (final warning in result.warnings)
+            (warning.key, warning.values['count']),
+        ],
+        [('clipCelLayers', null), ('clipLineOrder', '1')],
+      );
     });
 
     test('🎯every cel row stands at 100%, and each cel is baked at its OWN '
@@ -402,7 +528,7 @@ void main() {
           for (final layer in cut.layers)
             if (layer.kind == LayerKind.animation) (layer.name, layer.opacity),
         ],
-        [('A-2', 1), ('A', 1)],
+        [('A-1', 1), ('A', 1)],
         reason: 'the rows are at 100% — the faint cels stay faint by their '
             'pictures, not by a row that could be raised',
       );
@@ -450,10 +576,10 @@ void main() {
       final cut = result.cuts.single;
       final base = cut.layers.firstWhere((layer) => layer.name == 'A');
 
-      expect(names(cut), ['A-4', 'A-3', 'A-2', 'A', 'A']);
+      expect(names(cut), ['A-3', 'A-2', 'A-1', 'A', 'A']);
       expect(base.blendMode, LayerBlendMode.normal);
       expect(
-        [for (final n in ['A-2', 'A-3', 'A-4']) row(cut, n).blendMode],
+        [for (final n in ['A-1', 'A-2', 'A-3']) row(cut, n).blendMode],
         [
           LayerBlendMode.multiply,
           LayerBlendMode.multiply,
@@ -464,11 +590,11 @@ void main() {
       );
       expect(
         [for (final s in ['l1', 'l2', 'l3', 'l4']) rowOf(result, s)],
-        ['A-2', 'A', 'A', 'A'],
+        ['A-1', 'A', 'A', 'A'],
       );
       expect(
         [for (final s in ['s1', 's2', 's3', 's4']) rowOf(result, s)],
-        ['A-4', 'A-3', 'A-3', 'A-3'],
+        ['A-3', 'A-2', 'A-2', 'A-2'],
       );
     });
 
@@ -485,7 +611,7 @@ void main() {
       ]);
 
       expect(rowOf(result, 'm'), 'A');
-      expect(rowOf(result, 'n'), 'A-2');
+      expect(rowOf(result, 'n'), 'A-1');
     });
 
     test('a folder inside a cel hands its blend to a layer alone in it; the '
@@ -636,7 +762,7 @@ void main() {
 
       expect((first.name, first.duration), ('one', 12));
       expect((second.name, second.duration), ('two', 4));
-      for (final name in ['BG', 'A-2']) {
+      for (final name in ['BG', 'A-1']) {
         expect(row(first, name).frames, row(second, name).frames);
         expect(row(first, name).id, isNot(row(second, name).id));
       }
@@ -651,15 +777,15 @@ void main() {
         reason: 'not in that timeline: an empty row there',
       );
       expect(
-        row(second, 'A-2').attachedToLayerId,
+        row(second, 'A-1').attachedToLayerId,
         baseOf(second).id,
         reason: 'each cut\'s attach rides its own base',
       );
       expect(
-        row(second, 'A-2').baseFrameLinks,
+        row(second, 'A-1').baseFrameLinks,
         {
           for (final cel in baseOf(first).frames)
-            cel.id: attachedMirrorCelId(row(first, 'A-2').id, cel.id),
+            cel.id: attachedMirrorCelId(row(first, 'A-1').id, cel.id),
         },
         reason: 'every cut mirrors a base cel with the canonical row\'s cel '
             '(F-278)',
@@ -772,7 +898,7 @@ void main() {
     final cut = result.cuts.single;
 
     expect((cut.name, cut.duration), ('file', defaultCutDuration));
-    expect(blocks(row(cut, 'BG')), [(0, 1, 'BG')]);
+    expect(blocks(row(cut, 'BG')), [(0, 1, '1')]);
     expect(result.fps, isNull);
   });
 
@@ -789,7 +915,7 @@ void main() {
       final shown = row(result.cuts.single, 'BG');
 
       expect(shown.kind, LayerKind.animation);
-      expect(blocks(shown), [(0, 4, 'BG'), (8, 4, 'BG')]);
+      expect(blocks(shown), [(0, 4, '1'), (8, 4, '1')]);
       expect(shown.frames, hasLength(1), reason: 'one picture, placed twice');
       expect(result.warnings, isEmpty);
       expect(
@@ -819,8 +945,8 @@ void main() {
       );
       // Lists apart: a record holding a list compares it by identity.
       expect([for (final cut in result.cuts) blocks(row(cut, 'BG'))], [
-        [(0, 6, 'BG')],
-        [(0, 12, 'BG')],
+        [(0, 6, '1')],
+        [(0, 12, '1')],
         <(int, int, String?)>[],
       ]);
     });
@@ -842,17 +968,20 @@ void main() {
     });
   });
 
-  test('what has no place here is said by name, and a layer whose track the '
-      'timeline does not hold shows throughout', () {
-    final text = layer('words', kind: ClipLayerKind.lettering, drawn: false);
+  test('🎯a kind of layer this app does not carry is left out, named in '
+      'every decoder\'s one word (유저 10-09: 「이 레이어 종류는 … 지원되지 '
+      '않습니다」); what comes in short is said too, and a layer whose track '
+      'the timeline does not hold shows throughout', () {
     final result = plan(
       root([
         layer('v', kind: ClipLayerKind.vector, drawn: false),
-        text,
-        layer('p', kind: ClipLayerKind.paper, drawn: false),
-        layer('f', kind: ClipLayerKind.fill, drawn: false),
+        // Each declares a render, as the file's do: left out, nothing of
+        // them is baked.
+        layer('words', kind: ClipLayerKind.lettering),
+        layer('p', kind: ClipLayerKind.paper),
+        layer('f', kind: ClipLayerKind.fill),
         layer('s', kind: ClipLayerKind.sound, drawn: false),
-        layer('o', kind: ClipLayerKind.other, drawn: false),
+        layer('o', kind: ClipLayerKind.other),
         layer('odd', composite: 5),
       ]),
       [timeline(const [])],
@@ -860,21 +989,53 @@ void main() {
     final cut = result.cuts.single;
 
     expect(
-      [for (final warning in result.warnings) warning.key],
       [
-        'clipVector',
-        'clipText',
-        'clipPaper',
-        'clipFill',
-        'clipSound',
-        'clipUnknownLayer',
-        'clipBlend',
+        for (final warning in result.warnings)
+          (warning.key, warning.values['name']),
+      ],
+      [
+        ('clipVector', 'v'),
+        ('unsupportedLayerKind', 'words'),
+        ('unsupportedLayerKind', 'p'),
+        ('unsupportedLayerKind', 'f'),
+        ('clipSound', 's'),
+        ('unsupportedLayerKind', 'o'),
+        ('clipBlend', 'odd'),
       ],
     );
-    expect(names(cut), ['v', 'words', 'p', 'f', 'o', 'odd']);
-    expect(blocks(row(cut, 'words')), [(0, 1, 'words')]);
+    expect(result.warnings[1], unsupportedLayerKind('words'));
+    expect(names(cut), ['v', 'odd']);
     expect(row(cut, 'odd').blendMode, LayerBlendMode.normal);
     expect(result.bakes.single.source.name, 'odd');
+  });
+
+  test('a kind not carried inside a cel is left out before it takes a place '
+      '— the layers under it line up as if it were not there — and named by '
+      'its folder and cel', () {
+    final a = animation('A', [
+      folder('1', [
+        layer('line1'),
+        layer('words', kind: ClipLayerKind.lettering),
+      ]),
+      folder('2', [layer('line2')]),
+    ]);
+    final result = plan(root([a]), [
+      timeline([
+        keyed(a, [(0, '1'), (6, '2')]),
+      ]),
+    ]);
+    final cut = result.cuts.single;
+    final base = cut.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.animation,
+    );
+
+    expect(names(cut), ['A', 'A'], reason: 'no row for the text');
+    expect(
+      {for (final bake in result.bakes) bake.source.name: bake.frameId},
+      {'line1': base.frames[0].id, 'line2': base.frames[1].id},
+      reason: 'cel 1\'s top is the layer under the text',
+    );
+    expect(result.warnings, contains(unsupportedLayerKind('A / 1')));
   });
 
   test('a vector layer with strokes is baked like any picture — and what its '

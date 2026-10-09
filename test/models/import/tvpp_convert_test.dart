@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
@@ -125,6 +126,37 @@ void main() {
       expect(a.blocks[2].name, '');
       // frame 8 = a head again.
       expect(a.blocks[2].breakdownOffsets, isEmpty);
+    });
+
+    test('🎯a layer of a kind the parser does not know is left out and named '
+        'in every decoder\'s one word (유저 10-09) — and the image marks '
+        'behind it still land on their own layer', () {
+      final clip = _clip(
+        layers: [
+          _layer('cam', kind: TvppLayerKind.camera),
+          _layer('puppet', kind: TvppLayerKind.unknown, slots: [_image()]),
+          _layer('A', start: 3, slots: [_image(), _hold(), _hold()]),
+        ],
+        marks: [
+          // layerIndex counts INTO clip.layers: 2 = A, past the puppet.
+          const TvppImageMark(layerIndex: 2, frame: 4, colorIndex: 1),
+        ],
+      );
+      final conversion = convertTvppClip(clip, clipIndex: 0);
+
+      expect([for (final layer in conversion.result.layers) layer.name], [
+        'A',
+      ]);
+      expect(
+        conversion.result.layers.single.blocks.single.breakdownOffsets,
+        const [1],
+      );
+      expect(conversion.result.warnings, [unsupportedLayerKind('puppet')]);
+      expect(
+        conversion.slotsByFile.keys,
+        everyElement(startsWith('tvpp:2:')),
+        reason: 'nothing of the puppet is decoded',
+      );
     });
 
     test('hidden stays hidden and opacity lands on the artist\'s percent',

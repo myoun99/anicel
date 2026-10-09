@@ -99,7 +99,8 @@ Layer createInstructionLayer({required CutId cutId, String? name}) {
 /// wears, counting up from [firstIndex].
 ///
 /// ⛔FIVE ROW KINDS NAME THEMSELVES THIS WAY — direction rows, fx rows, SE
-/// rows, cels, and attach rows (`nextAttachedLayerName`). "Skip the names
+/// rows, cels, and attach rows (`nextAttachedLayerName`, and the CLIP
+/// STUDIO import's through `attachedLayerNameAmong`). "Skip the names
 /// already in use" is the whole of it, and each wrote its own
 /// `while (true)`: the one that stopped skipping hands two rows the same
 /// name, which the timesheet then prints twice with nothing to tell them
@@ -110,12 +111,23 @@ String firstUnusedLayerName(
   List<Layer> layers,
   String Function(int index) nameForIndex, {
   int firstIndex = 1,
+}) => firstUnusedName(
+  {for (final layer in layers) layer.name},
+  nameForIndex,
+  firstIndex: firstIndex,
+);
+
+/// [firstUnusedLayerName] among [used] names — for rows that are not
+/// [Layer]s yet, as an import's plan holds them.
+String firstUnusedName(
+  Set<String> used,
+  String Function(int index) nameForIndex, {
+  int firstIndex = 1,
 }) {
-  final usedNames = layers.map((layer) => layer.name).toSet();
   var index = firstIndex;
   while (true) {
     final name = nameForIndex(index);
-    if (!usedNames.contains(name)) {
+    if (!used.contains(name)) {
       return name;
     }
     index += 1;

@@ -16,7 +16,8 @@ enum ClipLayerKind {
   raster,
 
   /// A picture dropped into the file (an image material): its picture is
-  /// the ORIGINAL, placed by its transform; the render side stays empty.
+  /// the ORIGINAL, placed by its transform. Its render is declared and
+  /// never stored — all 22 of the samples' (10-09).
   picture,
   vector,
   paper,
@@ -125,7 +126,7 @@ final class ClipLayer {
   bool get isCollapsed => folderFlags & 16 != 0;
 
   /// Whether it has a picture: a render, a dropped picture's original, or
-  /// a vector layer's strokes. A text or a paper layer has none.
+  /// a vector layer's strokes.
   bool get hasPicture =>
       render != null || original != null || vectorData.isNotEmpty;
 
@@ -383,6 +384,7 @@ final class _DocumentReader {
     'AnimationFolder',
     'AudioLayer',
     'GradationFillInfo',
+    'TextLayerType',
   ];
 
   /// A mipmap's 100% picture, by the mipmap's id.
@@ -490,7 +492,9 @@ final class _DocumentReader {
     if (type == 8720 || _int(row['AudioLayer']) == 1) {
       return ClipLayerKind.sound;
     }
-    if (type == 800) {
+    // A text layer is 800 — or 0 with its text's columns filled (four in
+    // two samples, 10-09).
+    if (type == 800 || row['TextLayerType'] != null) {
       return ClipLayerKind.lettering;
     }
     if (type == 1584) {

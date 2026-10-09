@@ -336,6 +336,41 @@ void main() {
     expect(document.warnings, isEmpty);
   });
 
+  test('a text layer is 800 — or 0 with its text\'s columns filled, as four '
+      'in two samples were (10-09)', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN TextLayerType INTEGER')
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerNextIndex, TextLayerType) VALUES (2, 'words', 0, 0, 3, 1)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+          "VALUES (3, 'plain', 1, 0)",
+        );
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(
+      [for (final layer in document.root.children) (layer.name, layer.kind)],
+      [('words', ClipLayerKind.lettering), ('plain', ClipLayerKind.raster)],
+    );
+  });
+
   test('the shooting frame: its size, and its centre the canvas\'s moved by '
       'the crop\'s offset and the inner frame\'s', () {
     final database = databaseBytes((db) {

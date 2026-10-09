@@ -252,7 +252,8 @@ void main() {
   });
 
   group('what is left behind', () {
-    test('an adjustment layer is dropped and named', () {
+    test('an adjustment layer is dropped and named — in every decoder\'s '
+        'one word for a kind not supported (유저 10-09)', () {
       final result = plan(
         document([raster('art'), raster('Curves 1', adjustment: 'curv')]),
       );
@@ -260,10 +261,7 @@ void main() {
         result.layers.map((layer) => layer.name).toList(),
         ['art', 'BG_a12.psd'],
       );
-      expect(
-        result.warnings.any((w) => w.english.contains('Curves 1')),
-        isTrue,
-      );
+      expect(result.warnings, [unsupportedLayerKind('Curves 1')]);
     });
 
     test('layer effects are named — on a layer and on a group — and the '

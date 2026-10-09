@@ -1315,7 +1315,6 @@ enum AppStrings {
       _s('imNotFoundTemplate').replaceAll('{path}', path);
 
   /// The folder a CLIP STUDIO cel's hidden layers stand in, its eye off.
-  String get clipHiddenLayers => _s('clipHiddenLayers');
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
@@ -2344,7 +2343,6 @@ enum AppStrings {
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
-    'clipHiddenLayers': 'Hidden',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
         'moment.',
@@ -3605,7 +3603,6 @@ enum AppStrings {
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
-    'clipHiddenLayers': '非表示',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
@@ -3621,7 +3618,6 @@ enum AppStrings {
     'importWarning.psdIndexedNoPalette': 'パレットのないインデックスカラーをグレースケールとして読みました。',
     'importWarning.psdCmyk': 'CMYKをプロファイルなしでRGBに変換しました — 色が変わります。',
     'importWarning.psdLab': 'LabをプロファイルなしでRGBに変換しました — 色が変わります。',
-    'importWarning.psdAdjustment': '{name}: 調整レイヤーは適用しませんでした。',
     'importWarning.psdClipping': '{name}: クリッピングマスクは適用しませんでした。',
     'importWarning.psdLayerEffects': '{name}: レイヤー効果は適用しませんでした。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
@@ -3639,17 +3635,16 @@ enum AppStrings {
     'importWarning.clipFps': 'タイムラインごとにフレームレートが違います — プロジェクトは最初のタイムラインの {fps} fps にしました。',
     'importWarning.clipUnplaced': '{name}: どのタイムラインにも置かれていないセルが{count}枚あります — 取り込みませんでした。',
     'importWarning.clipNoSuchCel': '{name}: フォルダーにないセルを指すキーが{count}個あります。',
-    'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
+    'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは、ほかのセルと同じ名前なら名前で、それ以外は上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
     'importWarning.clipSpread': '{name}: {count}枚のセルで、フォルダーの不透明度や合成モードを中の各レイヤーに分けて付けました — レイヤーが重なる所は見え方が変わることがあります。',
+    'importWarning.clipLineOrder': '{name}: {count}枚のセルで、2枚のレイヤーの重なり順がCLIP STUDIOと逆になりました — レイヤーが重なる所は見え方が変わることがあります。',
     'importWarning.clipVector':
         '{name}: ベクターレイヤー — 丸ペンで描画しました。ブラシの形と質感は再現していません。',
     'importWarning.clipVectorUnread':
         '{name}: 読めない種類のベクター線 {count} 本 — 描画していません。',
-    'importWarning.clipText': '{name}: テキストレイヤー — 描画していません。',
-    'importWarning.clipPaper': '{name}: 用紙レイヤー — 色は適用していません。',
-    'importWarning.clipFill': '{name}: 塗りつぶしレイヤー — 描画していません。',
     'importWarning.clipSound': '{name}: 音声レイヤーは取り込みませんでした。',
-    'importWarning.clipUnknownLayer': '{name}: この取り込みでは読めない種類のレイヤーです。',
+    'importWarning.unsupportedLayerKind':
+        '{name}: このレイヤーの種類には対応していません。',
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
     'importWarning.clipNotColour': '{name}: グレー・モノクロのレイヤー — 描画していません。',
     'importWarning.clipTransform': '{name}: 画像の拡大縮小・回転は適用していません。',
@@ -5022,7 +5017,6 @@ enum AppStrings {
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
-    'clipHiddenLayers': '숨김',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
@@ -5038,7 +5032,6 @@ enum AppStrings {
     'importWarning.psdIndexedNoPalette': '팔레트가 없는 인덱스 컬러를 그레이스케일로 읽었습니다.',
     'importWarning.psdCmyk': 'CMYK를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
     'importWarning.psdLab': 'Lab를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
-    'importWarning.psdAdjustment': '{name}: 조정 레이어는 적용하지 않았습니다.',
     'importWarning.psdClipping': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
     'importWarning.psdLayerEffects': '{name}: 레이어 효과는 적용하지 않았습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
@@ -5056,17 +5049,16 @@ enum AppStrings {
     'importWarning.clipFps': '타임라인마다 프레임 레이트가 다릅니다 — 프로젝트는 첫 타임라인의 {fps} fps 로 했습니다.',
     'importWarning.clipUnplaced': '{name}: 어느 타임라인에도 놓이지 않은 셀 {count}장은 가져오지 않았습니다.',
     'importWarning.clipNoSuchCel': '{name}: 폴더에 없는 셀을 가리키는 키가 {count}개 있습니다.',
-    'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
+    'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 다른 셀과 이름이 같으면 이름으로, 아니면 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
     'importWarning.clipSpread': '{name}: 셀 {count}장에서 폴더의 불투명도나 합성 모드를 안의 레이어마다 나눠 줬습니다 — 레이어가 겹치는 자리는 다르게 보일 수 있습니다.',
+    'importWarning.clipLineOrder': '{name}: 셀 {count}장에서 두 레이어의 순서가 CLIP STUDIO와 반대가 됐습니다 — 레이어가 겹치는 자리는 다르게 보일 수 있습니다.',
     'importWarning.clipVector':
         '{name}: 벡터 레이어 — 둥근 펜으로 그렸습니다. 브러시의 모양과 질감은 옮기지 못했습니다.',
     'importWarning.clipVectorUnread':
         '{name}: 읽지 못하는 종류의 벡터 선 {count}개 — 그리지 않았습니다.',
-    'importWarning.clipText': '{name}: 텍스트 레이어 — 그리지 않았습니다.',
-    'importWarning.clipPaper': '{name}: 용지 레이어 — 색은 적용하지 않았습니다.',
-    'importWarning.clipFill': '{name}: 채우기 레이어 — 그리지 않았습니다.',
     'importWarning.clipSound': '{name}: 소리 레이어는 가져오지 않았습니다.',
-    'importWarning.clipUnknownLayer': '{name}: 이 가져오기가 읽지 못하는 종류의 레이어입니다.',
+    'importWarning.unsupportedLayerKind':
+        '{name}: 이 레이어 종류는 지원되지 않습니다.',
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.clipNotColour': '{name}: 그레이 · 모노크롬 레이어 — 그리지 않았습니다.',
     'importWarning.clipTransform': '{name}: 그림의 크기 · 회전은 적용하지 않았습니다.',
@@ -6486,7 +6478,6 @@ enum AppStrings {
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imNotClip':
         'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
-    'clipHiddenLayers': 'Masqués',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
         'dans un instant.',
@@ -6516,7 +6507,6 @@ enum AppStrings {
         'CMJN converti en RVB sans profil — les couleurs changent.',
     'importWarning.psdLab':
         'Lab converti en RVB sans profil — les couleurs changent.',
-    'importWarning.psdAdjustment': '{name} : calque de réglage non appliqué.',
     'importWarning.psdClipping': '{name} : masque d\'écrêtage non appliqué.',
     'importWarning.psdLayerEffects': '{name} : effets de calque non appliqués.',
     'importWarning.psdBlend':
@@ -6560,26 +6550,27 @@ enum AppStrings {
     'importWarning.clipNoSuchCel':
         '{name} : {count} clé(s) désignent un cellulo absent du dossier.',
     'importWarning.clipCelLayers':
-        '{name} : les calques de ses cellulos sont devenus des rangées selon '
-        'leur place depuis le haut — leurs noms et leurs dossiers ne sont '
-        'pas conservés.',
+        '{name} : les calques de ses cellulos sont devenus des rangées — par '
+        'leur nom quand d\'autres cellulos le partagent, sinon selon leur '
+        'place depuis le haut ; leurs noms et leurs dossiers ne sont pas '
+        'conservés.',
     'importWarning.clipSpread':
         '{name} : dans {count} cellulo(s), l\'opacité ou le mode de fusion '
         'd\'un dossier a été donné à chacun de ses calques — là où ils se '
         'chevauchent, le rendu peut différer.',
+    'importWarning.clipLineOrder':
+        '{name} : dans {count} cellulo(s), deux calques se superposent dans '
+        'l\'ordre inverse de CLIP STUDIO — là où ils se chevauchent, le '
+        'rendu peut différer.',
     'importWarning.clipVector':
         '{name} : calque vectoriel — dessiné au stylo rond ; la forme et la '
         'texture de la brosse ne sont pas reprises.',
     'importWarning.clipVectorUnread':
         '{name} : {count} traits vectoriels d’un type illisible — non '
         'dessinés.',
-    'importWarning.clipText': '{name} : calque de texte — non dessiné.',
-    'importWarning.clipPaper':
-        '{name} : calque papier — sa couleur n\'est pas appliquée.',
-    'importWarning.clipFill': '{name} : calque de remplissage — non dessiné.',
     'importWarning.clipSound': '{name} : calque son non importé.',
-    'importWarning.clipUnknownLayer':
-        '{name} : un type de calque que cet import ne lit pas.',
+    'importWarning.unsupportedLayerKind':
+        "{name} : ce type de calque n'est pas pris en charge.",
     'importWarning.clipBlend':
         '{name} : le mode de fusion {mode} n\'a pas d\'équivalent — réglé '
         'sur normal.',
@@ -7914,7 +7905,6 @@ enum AppStrings {
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
-    'clipHiddenLayers': '隐藏',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
@@ -7930,7 +7920,6 @@ enum AppStrings {
     'importWarning.psdIndexedNoPalette': '无调色板的索引颜色按灰度读取。',
     'importWarning.psdCmyk': 'CMYK 在无配置文件的情况下转为 RGB——颜色会偏移。',
     'importWarning.psdLab': 'Lab 在无配置文件的情况下转为 RGB——颜色会偏移。',
-    'importWarning.psdAdjustment': '{name}：未应用调整图层。',
     'importWarning.psdClipping': '{name}：未应用剪贴蒙版。',
     'importWarning.psdLayerEffects': '{name}：未应用图层效果。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
@@ -7948,15 +7937,13 @@ enum AppStrings {
     'importWarning.clipFps': '各时间轴的帧率不同——项目采用第一条时间轴的 {fps} fps。',
     'importWarning.clipUnplaced': '{name}：有 {count} 张赛璐珞不在任何时间轴上——未导入。',
     'importWarning.clipNoSuchCel': '{name}：有 {count} 个关键帧指向文件夹中不存在的赛璐珞。',
-    'importWarning.clipCelLayers': '{name}：赛璐珞中的图层按从上往下的位置分成了行——各自的名称和文件夹不保留。',
+    'importWarning.clipCelLayers': '{name}：赛璐珞中的图层与其他赛璐珞同名的按名称、其余按从上往下的位置分成了行——各自的名称和文件夹不保留。',
     'importWarning.clipSpread': '{name}：在 {count} 张赛璐珞中，文件夹的不透明度或混合模式分给了其中的每个图层——图层重叠处看起来可能不同。',
+    'importWarning.clipLineOrder': '{name}：在 {count} 张赛璐珞中，两个图层的叠放顺序与 CLIP STUDIO 相反——图层重叠处看起来可能不同。',
     'importWarning.clipVector': '{name}：矢量图层——已用圆头笔绘制；笔刷的形状和质感未能保留。',
     'importWarning.clipVectorUnread': '{name}：{count} 条无法读取的矢量线——未绘制。',
-    'importWarning.clipText': '{name}：文字图层——未绘制。',
-    'importWarning.clipPaper': '{name}：纸张图层——未应用其颜色。',
-    'importWarning.clipFill': '{name}：填充图层——未绘制。',
     'importWarning.clipSound': '{name}：未导入声音图层。',
-    'importWarning.clipUnknownLayer': '{name}：此导入无法读取的图层类型。',
+    'importWarning.unsupportedLayerKind': '{name}：不支持此图层类型。',
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',
     'importWarning.clipTransform': '{name}：未应用图片的缩放或旋转。',

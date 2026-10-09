@@ -566,7 +566,6 @@ void main() {
     'exCanvasPerCut': (s) => s.exCanvasPerCut,
     'imNotTvpp': (s) => s.imNotTvpp,
     'imNotClip': (s) => s.imNotClip,
-    'clipHiddenLayers': (s) => s.clipHiddenLayers,
     'imFileUnreadable': (s) => s.imFileUnreadable,
 
     'imImport': (s) => s.imImport,

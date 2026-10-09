@@ -19,7 +19,7 @@ import 'layer_folder.dart';
 export 'layer_folder.dart'
     show attachFolderLevelsAbove, attachGroupBaseOf, attachOrganizerBaseOf;
 import 'layer_id.dart';
-import 'layer_section_defaults.dart' show firstUnusedLayerName;
+import 'layer_section_defaults.dart' show firstUnusedName;
 import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -468,15 +468,30 @@ List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
 /// 나눠쓰는 규칙 그대로 쓰면서 통일할거 통일해서 제대로 순서대로 생성하도록」.
 /// ↩️The number was the side's COUNT plus one, so a side that had lost a
 /// row handed out a name still in use. It is the first one no row of
-/// [layers] wears ([firstUnusedLayerName]) — the cels' own rule, and the
+/// [layers] wears (`firstUnusedLayerName`) — the cels' own rule, and the
 /// fifth row kind to name itself by it: A with A-2 gets A-1.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
   AttachedPlacement placement,
+) => attachedLayerNameAmong(
+  base.name,
+  {for (final layer in layers) layer.name},
+  placement,
+);
+
+/// [nextAttachedLayerName] among [used] names, for a base named [baseName]
+/// whose cut is still a plan — the CLIP STUDIO import names the attach
+/// rows its cels' layers make by it (유저 10-09: 「레이어이름은
+/// 들쭉날쭉하니까 무시해도되. 그래서 그냥 우리방식대로 A라는 기준레이어랑
+/// A-1 이런식으로 해줘」).
+String attachedLayerNameAmong(
+  String baseName,
+  Set<String> used,
+  AttachedPlacement placement,
 ) {
   final sign = placement == AttachedPlacement.above ? '+' : '-';
-  return firstUnusedLayerName(layers, (index) => '${base.name}$sign$index');
+  return firstUnusedName(used, (index) => '$baseName$sign$index');
 }
 
 /// Whether [layer] wears its BASE's composite instead of authoring its own

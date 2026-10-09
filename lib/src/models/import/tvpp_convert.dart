@@ -56,6 +56,10 @@ TvppClipConversion convertTvppClip(
     if (layer.kind == TvppLayerKind.camera) {
       continue; // the camera layer is the clip's camera, not a row.
     }
+    if (layer.kind == TvppLayerKind.unknown) {
+      warnings.add(unsupportedLayerKind(layer.name));
+      continue;
+    }
     position += 1;
 
     if (layer.kind == TvppLayerKind.folder) {

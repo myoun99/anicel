@@ -168,14 +168,9 @@ PsdExpandPlan planPsdExpansion({
           // An adjustment cannot be reproduced without Photoshop's colour
           // maths, and reproducing it would also flatten everything under
           // it. The composite already has it applied — which is why MERGE
-          // exists — so this says what was lost and where.
-          warnings.add(
-            ImportWarning(
-              'psdAdjustment',
-              '{name}: adjustment layer not applied.',
-              {'name': source.name},
-            ),
-          );
+          // exists — so this says what was lost and where, in every
+          // decoder's one word for a kind it does not carry.
+          warnings.add(unsupportedLayerKind(source.name));
           continue;
         }
         if (source.clipping) {

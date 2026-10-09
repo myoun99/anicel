@@ -36,7 +36,6 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
-import '../text/app_strings.dart';
 import 'project_file.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -98,7 +97,6 @@ Future<ClipProjectRead?> readClipProject({
   final plan = planClipImport(
     document: document,
     name: name,
-    hiddenFolderName: AppText.strings.clipHiddenLayers,
     trackId: _track,
     mint: ImportIdMint.forANewProject(),
   );
