@@ -1101,7 +1101,7 @@ class _StoryboardRailRows {
           // activation on every pointer move.
           StoryboardTrackLabelRow(
             track: track,
-            trackLabel: _vRowName(index),
+            trackLabel: storyboardVideoRowName(index),
             laneHeight: _state.widget.trackLaneHeight,
             laneExpanded: _state.widget.expandedTransformTracks.contains(
               track.id.value,

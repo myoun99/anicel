@@ -115,7 +115,11 @@ import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart'
     show StandingCut, storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart'
-    show StoryboardPanel, StoryboardPlayheadTint, StoryboardTrackLabelRow;
+    show
+        StoryboardPanel,
+        StoryboardPlayheadTint,
+        StoryboardTrackLabelRow,
+        storyboardVideoRowName;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';

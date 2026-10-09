@@ -591,7 +591,7 @@ class _StoryboardRowsAndLabels {
       grabOffsetWithinRun: _state._railRows._trackGroupExtentAboveVRow(track),
       axis: Axis.horizontal,
       hooks: hooks,
-      grip: () => [(icon: _vRowGlyph, label: _vRowName(index))],
+      grip: () => [(icon: _vRowGlyph, label: storyboardVideoRowName(index))],
       isLastRow: index == trackCount - 1,
       // A track holds nothing, so its middle means nothing: the caret is
       // the only answer and the on-row arm stays unused (the S rows'
@@ -603,8 +603,7 @@ class _StoryboardRowsAndLabels {
   }
 }
 
-/// A V row's name and glyph — what its label row shows, and what its chip
-/// says once the row is picked up (I-39), so the two cannot name the row
-/// differently.
-String _vRowName(int index) => 'V${index + 1}';
+/// A V row's glyph — what its label row shows beside its name
+/// ([storyboardVideoRowName]), and what its chip shows once the row is
+/// picked up (I-39).
 const IconData _vRowGlyph = Icons.movie_outlined;

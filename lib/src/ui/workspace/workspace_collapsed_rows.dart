@@ -182,10 +182,10 @@ class _WorkspaceCollapsedRows {
           ? null
           : StoryboardTrackLabelRow(
               track: track,
-              // The panel labels its V rows by POSITION, and this is the
+              // The panel names its V rows by POSITION, and this is the
               // selected one; a film has one track (전제 8), so the index
-              // is 0 and the label is V1.
-              trackLabel: 'V1',
+              // is 0.
+              trackLabel: storyboardVideoRowName(0),
               laneHeight: height,
               chromeless: true,
             ),

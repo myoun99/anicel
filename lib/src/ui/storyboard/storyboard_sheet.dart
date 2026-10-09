@@ -64,7 +64,7 @@ class _StoryboardSheet {
       final track = project.tracks[trackIndex];
       final group = (
         track: track,
-        vRowName: _vRowName(trackIndex),
+        vRowName: storyboardVideoRowName(trackIndex),
         cuts: [
           for (final entry in layout)
             if (entry.trackId == track.id) entry,
