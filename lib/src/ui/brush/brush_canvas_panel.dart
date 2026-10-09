@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 
 import '../canvas/shown_cels.dart';
+import '../timeline/memo_token.dart' show ByList;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/cel_source_effect_pass.dart';
@@ -1901,14 +1902,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               viewport: _viewportState._viewport,
               canvasSize: widget
                   .canvasSize,
-              // No frame = a stable sentinel:
-              // the selection survives until a
-              // real frame context arrives.
-              frameToken:
-                  widget
-                      .coordinator
-                      ?.activeFrameKey ??
-                  'selection-no-frame',
+              frameToken: _whatALiftTakesUp,
               selectionCommands:
                   widget
                       .selectionCommands,
@@ -2239,6 +2233,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   // The text tool (R9-rest): the hand it holds a text with, and its layer.
   late final _CanvasPanelText _text = _CanvasPanelText(this);
+
+  /// What a session of the selection layer belongs to
+  /// ([CanvasSelectionLayer.frameToken]) — the cels a lift takes up here:
+  /// a folder's underfoot, or the cel this canvas edits. When it changes, an
+  /// open box walks.
+  ///
+  /// 🚨A FOLDER'S CELS, not the edited one (I-37): stood on a folder, the
+  /// playhead moves the cels underfoot while the cel this canvas edits stays
+  /// put, and a box keyed on that one did not walk — it went on showing the
+  /// frame it was opened on, lifted, over the frame it stood on.
+  ///
+  /// No frame = a stable sentinel: the selection survives until a real
+  /// frame context arrives.
+  Object get _whatALiftTakesUp => switch (widget.folderCelsUnderfoot?.call()) {
+    final cels? => ByList(cels),
+    null => widget.coordinator?.activeFrameKey ?? 'selection-no-frame',
+  };
 
   /// The cels a lift takes up where you stand, each with the placement its
   /// row shows it at, and whether it is the cel this canvas edits — the live
