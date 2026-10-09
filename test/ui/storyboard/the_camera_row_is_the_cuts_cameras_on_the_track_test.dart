@@ -24,7 +24,10 @@ import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
-    show StoryboardCameraRowPainter, StoryboardPanel;
+    show
+        StoryboardCameraRowPainter,
+        StoryboardCutStartsPainter,
+        StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
@@ -223,6 +226,14 @@ void main() {
       tester.widget<CustomPaint>(key('storyboard-camera-ground-t1')).painter!
           as StoryboardCameraRowPainter;
 
+  /// Where the row dashes each cut's start, row-local x.
+  List<double> cutStartsOf(WidgetTester tester) =>
+      (tester
+                  .widget<CustomPaint>(key('storyboard-camera-cut-starts-t1'))
+                  .painter!
+              as StoryboardCutStartsPainter)
+          .cutStarts();
+
   /// The stretches two cuts share on the ground, in frames.
   List<(double, double)> sharedFrames(WidgetTester tester) => [
     for (final (from, to) in ground(tester).sharedMiddles())
@@ -360,7 +371,7 @@ void main() {
     testWidgets('a dashed line where each cut begins', (tester) async {
       await pumpPanel(tester);
 
-      expect(ground(tester).cutStarts(), [0.0, 24 * 12.0, 52 * 12.0]);
+      expect(cutStartsOf(tester), [0.0, 24 * 12.0, 52 * 12.0]);
       expect(ground(tester).noriShiroWashes(), isEmpty, reason: 'no のりしろ');
       expect(ground(tester).sharedMiddles(), isEmpty);
     });
@@ -437,7 +448,7 @@ void main() {
       ]);
       expect(sharedFrames(tester), [(18.0, 30.0)]);
       expect(
-        ground(tester).cutStarts(),
+        cutStartsOf(tester),
         [0.0, 24 * px, 52 * px],
         reason: 'b begins at its place, not where its のりしろ is drawn from',
       );

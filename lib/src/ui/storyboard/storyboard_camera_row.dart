@@ -159,6 +159,26 @@ class _StoryboardCameraRow extends StatelessWidget {
               ),
             ),
           ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: ValueKey<String>(
+                    'storyboard-camera-cut-starts-${track.id.value}',
+                  ),
+                  painter: StoryboardCutStartsPainter(
+                    starts: [
+                      for (final reach in reaches) reach.entry.startFrame,
+                    ],
+                    geometry: frameGeometry,
+                    colorScheme: Theme.of(context).colorScheme,
+                    windowBucket: windowBucket,
+                    viewportMainExtent: viewportWidth,
+                  ),
+                ),
+              ),
+            ),
+          ),
           Positioned.fill(child: IgnorePointer(child: _keys())),
           if (onRowFramePress != null ||
               onCameraCutPress != null ||
@@ -334,14 +354,14 @@ class _StoryboardCameraRow extends StatelessWidget {
   /// in between, as the V row's blocks are painted.
   Widget _keys() => ValueListenableBuilder<int>(
     valueListenable: windowBucket,
-    builder: (context, bucket, _) {
-      final window = viewportWidth <= 0
-          ? (startIndex: 0, endIndexExclusive: 1 << 30)
-          : timelineFrameWindowFor(
-              bucket: bucket,
-              cellExtent: timelineScale.pixelsPerFrame,
-              viewportExtent: viewportWidth,
-            );
+    builder: (context, _, _) {
+      final window = visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportWidth,
+        cellExtent: timelineScale.pixelsPerFrame,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 1 << 30,
+      );
       return TimelineFrameSpanLayout(
         key: ValueKey<String>('storyboard-camera-keys-${track.id.value}'),
         geometry: frameGeometry,
@@ -541,9 +561,6 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
   /// The のりしろ's wash — the drawn proposal's 30%.
   static const double noriShiroWashAlpha = 0.3;
 
-  /// The dashes of a cut's start: two on, three off.
-  static const DashPattern cutStartDashes = DashPattern(on: 2, off: 3);
-
   /// The frames as laid out now and the panel's window over them — where
   /// every probe below starts — or null while a cell has no extent to lay
   /// anything on.
@@ -559,13 +576,13 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     }
     return (
       frames: frames,
-      window: viewportMainExtent <= 0
-          ? (startIndex: 0, endIndexExclusive: 1 << 30)
-          : timelineFrameWindowFor(
-              bucket: windowBucket.value,
-              cellExtent: cell,
-              viewportExtent: viewportMainExtent,
-            ),
+      window: visibleFrameWindowFor(
+        bucket: windowBucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: cell,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 1 << 30,
+      ),
     );
   }
 
@@ -633,21 +650,6 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     ];
   }
 
-  /// Where each cut begins inside the window, row-local x.
-  List<double> cutStarts() {
-    final laid = _laidOut();
-    if (laid == null) {
-      return const [];
-    }
-    final (:frames, :window) = laid;
-    return [
-      for (final reach in reaches)
-        if (reach.entry.startFrame >= window.startIndex &&
-            reach.entry.startFrame < window.endIndexExclusive)
-          frames.edgeAt(reach.entry.startFrame),
-    ];
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
     final wash = Paint()
@@ -660,18 +662,6 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
       ..strokeWidth = 1;
     for (final (from, to) in sharedMiddles()) {
       canvas.drawLine(from, to, divider);
-    }
-    final dash = Paint()
-      ..color = colorScheme.outline
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    for (final x in cutStarts()) {
-      final edge = Path()
-        ..moveTo(x, 0)
-        ..lineTo(x, size.height);
-      for (final piece in dashesAlong(edge, cutStartDashes)) {
-        canvas.drawPath(piece, dash);
-      }
     }
   }
 

@@ -281,6 +281,26 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
           // Each panel's length at its end — the timeline row's own print
           // (F-228), over the paper and under everything that answers.
           _runLabels(context, shown),
+          // Where each cut begins — the projection rows' dashed line, the
+          // camera row's own ([StoryboardCutStartsPainter]).
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: ValueKey<String>('storyboard-conte-cut-starts-$_scope'),
+                  painter: StoryboardCutStartsPainter(
+                    starts: [
+                      for (final entry in layoutEntries) entry.startFrame,
+                    ],
+                    geometry: frameGeometry,
+                    colorScheme: Theme.of(context).colorScheme,
+                    windowBucket: windowBucket,
+                    viewportMainExtent: viewportWidth,
+                  ),
+                ),
+              ),
+            ),
+          ),
           if (seat == 0) _createButtons(context),
           // The cells' press — the S rows' and the transition row's own
           // layer, addressed to this row ([trackConteRowId], the id the
@@ -808,13 +828,13 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
     if (cell <= 0) {
       return const [];
     }
-    final window = viewportMainExtent <= 0
-        ? (startIndex: 0, endIndexExclusive: 1 << 30)
-        : timelineFrameWindowFor(
-            bucket: windowBucket.value,
-            cellExtent: cell,
-            viewportExtent: viewportMainExtent,
-          );
+    final window = visibleFrameWindowFor(
+      bucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      cellExtent: cell,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 1 << 30,
+    );
     return [
       for (final span in spans)
         if (span.endExclusive > window.startIndex &&

@@ -181,7 +181,7 @@ import 'timeline/timeline_row_run_labels_painter.dart'
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
-import 'timeline/timeline_frame_window.dart' show timelineFrameWindowFor;
+import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline/memo_token.dart' show ByList;
 import 'repaint_props.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
@@ -209,6 +209,7 @@ import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
 part 'storyboard/storyboard_camera_row.dart';
 part 'storyboard/storyboard_conte_row.dart';
+part 'storyboard/storyboard_cut_starts.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
