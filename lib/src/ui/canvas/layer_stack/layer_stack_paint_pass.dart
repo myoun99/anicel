@@ -724,20 +724,13 @@ class _LayerStackPaintPass {
                 paintChildren,
               );
             case CompositeLeaf(payload: final _PaintActiveSurface active):
-              _paintSurfaceRow(
-                canvas,
-                _activeSlot!,
-                active.paint,
-                rasterScale,
-                live: true,
-              );
+              _paintSurfaceRow(canvas, _activeSlot!, active.paint, rasterScale);
             case CompositeLeaf(payload: final _PaintLiftedSurface lifted):
               _paintSurfaceRow(
                 canvas,
                 _liftedSlotOf(lifted),
                 lifted.paint,
                 rasterScale,
-                live: false,
               );
             case CompositeLeaf(payload: final _PaintImage image):
               _paintImageNode(canvas, image, rasterScale);
@@ -844,15 +837,13 @@ class _LayerStackPaintPass {
   /// A surface layer — the live one, or one a folder's lift holds (I-37):
   /// drawn straight onto the canvas when its paint can ride the draws,
   /// through one buffer when it cannot (an outset effect, overlapping
-  /// coverage, a float overlay, or pre-steps). [live] says it is the row
-  /// a stroke draws into.
+  /// coverage, a float overlay, or pre-steps).
   void _paintSurfaceRow(
     Canvas canvas,
     _SurfaceSlot slot,
     _SurfaceRowPaint paint,
-    double rasterScale, {
-    required bool live,
-  }) {
+    double rasterScale,
+  ) {
     final (:opacity, :blendMode, :effects, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
@@ -925,7 +916,8 @@ class _LayerStackPaintPass {
     // Null when the buffer carries it, so nothing applies twice.
     final ridingPaint = needsBuffer ? null : activePaint;
     assert(() {
-      if (live) {
+      // The probe is the LIVE row's — the row a stroke draws into.
+      if (identical(slot, _activeSlot)) {
         debugLiveLayerRodeTheDraws = !needsBuffer;
       }
       return true;
