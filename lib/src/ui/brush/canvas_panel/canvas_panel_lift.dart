@@ -334,8 +334,7 @@ class _CanvasPanelLift {
       final historyManager = _state.widget.historyManager;
       final doors = _selectionDoors();
       final landed = <BrushFrameKey, Command>{};
-      for (var i = 0; i < session.cels.length; i += 1) {
-        final cel = session.cels[i];
+      for (final (i, cel) in session.cels.indexed) {
         landed.putIfAbsent(
           coordinator.frameStore.canonicalKeyOf(cel.key),
           () => BrushLiftMoveHistoryCommand(
