@@ -363,7 +363,8 @@ void main() {
     String,
     Future<void> Function(WidgetTester, String path),
   )>[
-    ('span', (tester, _) => span(tester, 1, 2)),
+    ('span\'s start', (tester, _) => span(tester, 2, 3)),
+    ('span\'s end', (tester, _) => span(tester, 1, 2)),
     ('place', (tester, path) => answer(tester, 'into', path, 'newCut')),
     ('fit', (tester, path) => answer(tester, 'fit', path, 'none')),
   ]) {
