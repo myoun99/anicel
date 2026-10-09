@@ -15,6 +15,20 @@ import 'package:anicel/src/ui/media/picture_run_document.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 
+/// One picture of a run: a one-page fake that counts how often it was let
+/// go of.
+final class _Picture extends FakePdfDocument {
+  _Picture(ui.Size size) : super(pageSizes: [size]);
+
+  int disposals = 0;
+
+  @override
+  Future<void> dispose() async {
+    disposals += 1;
+    await super.dispose();
+  }
+}
+
 /// A run of pictures `p0` · `p1` …, each a one-page fake of its own size,
 /// and the door that opens them — a fresh picture every time it opens one.
 final class _Run {
@@ -28,7 +42,7 @@ final class _Run {
   /// Every picture the door was asked to open, in order.
   final List<int> asked = [];
 
-  final List<({int index, FakePdfDocument picture})> _opened = [];
+  final List<({int index, _Picture picture})> _opened = [];
 
   /// Openings held until their gate completes — a door still out.
   final Map<int, Completer<void>> held = {};
@@ -36,7 +50,7 @@ final class _Run {
   List<String> get files => [for (var i = 0; i < sizes.length; i += 1) 'p$i'];
 
   /// The picture [index] opened as last.
-  FakePdfDocument last(int index) =>
+  _Picture last(int index) =>
       _opened.lastWhere((opened) => opened.index == index).picture;
 
   Future<ViewerDocument?> door(String file) async {
@@ -49,7 +63,7 @@ final class _Run {
     if (unreadable.contains(index)) {
       return null;
     }
-    final picture = FakePdfDocument(pageSizes: [sizes[index]]);
+    final picture = _Picture(sizes[index]);
     _opened.add((index: index, picture: picture));
     return picture;
   }
@@ -107,16 +121,24 @@ void main() {
       await _draw(doc, page);
     }
 
-    expect(run.last(0).disposed, isTrue, reason: 'p0 was asked for first');
+    expect(run.last(0).disposals, 1, reason: 'p0 was asked for first');
     expect(
-      [for (var page = 1; page <= kept; page += 1) run.last(page).disposed],
-      everyElement(isFalse),
+      [for (var page = 1; page <= kept; page += 1) run.last(page).disposals],
+      everyElement(0),
     );
 
     await _draw(doc, 0);
 
     expect(run.asked.where((page) => page == 0), hasLength(2));
-    expect(run.last(1).disposed, isTrue, reason: 'now p1 is the oldest');
+    expect(run.last(1).disposals, 1, reason: 'now p1 is the oldest');
+
+    await _draw(doc, 1);
+
+    expect(
+      run.asked.where((page) => page == 1),
+      hasLength(2),
+      reason: 'a picture opened on an ask opens again, too',
+    );
   });
 
   test('a picture a render is still reading is never let go under it',
@@ -132,11 +154,11 @@ void main() {
       await _draw(doc, page);
     }
 
-    expect(run.last(0).disposed, isFalse, reason: 'p0 is still being read');
-    expect(run.last(1).disposed, isTrue, reason: 'the next oldest goes');
+    expect(run.last(0).disposals, 0, reason: 'p0 is still being read');
+    expect(run.last(1).disposals, 1, reason: 'the next oldest goes');
     run.last(0).releaseRender(0);
     (await reading).dispose();
-    expect(run.last(0).disposed, isFalse);
+    expect(run.last(0).disposals, 0);
   });
 
   test('one opening per picture, however many asks are out at once',
@@ -189,10 +211,27 @@ void main() {
 
     await doc.dispose();
 
-    expect([run.last(0).disposed, run.last(1).disposed], [true, true]);
+    expect([run.last(0).disposals, run.last(1).disposals], [1, 1]);
     run.held.remove(2)!.complete();
     await expectLater(arriving, throwsStateError);
-    expect(run.last(2).disposed, isTrue);
+    expect(run.last(2).disposals, 1);
+  });
+
+  test('two asks waiting on one picture when the run is let go: it is let '
+      'go of once', () async {
+    final run = _Run(List.filled(3, _size));
+    final doc = await run.open();
+    run.held[2] = Completer<void>();
+    final first = doc.renderPage(2, width: 10, height: 5);
+    final second = doc.renderPage(2, width: 10, height: 5);
+    await pumpEventQueue();
+
+    await doc.dispose();
+    run.held.remove(2)!.complete();
+
+    await expectLater(first, throwsStateError);
+    await expectLater(second, throwsStateError);
+    expect(run.last(2).disposals, 1);
   });
 
   test('a region is read from its picture\'s own page', () async {

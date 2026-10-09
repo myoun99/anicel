@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -184,17 +185,50 @@ void main() {
   // 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
   // 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
   // ↩️「함께 / 이 파일만」 in the cell.
+  int previewPages(WidgetTester tester) =>
+      tester.widget<TransportBar>(find.byType(TransportBar)).frameCount;
+
+  String? plate(WidgetTester tester) => tester
+      .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+      .documentName;
+
   testWidgets('the preview pages through the run — its transport counts the '
-      'run\'s pictures', (tester) async {
+      'run\'s pictures, and its plate names the one stood on',
+      (tester) async {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
     await settleLoadedPages(tester);
 
-    expect(
-      tester.widget<TransportBar>(find.byType(TransportBar)).frameCount,
-      3,
-      reason: 'A1 · A2 · A3, a page each',
+    expect(previewPages(tester), 3, reason: 'A1 · A2 · A3, a page each');
+    expect(plate(tester), 'A1.png');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('transport-step-forward')),
     );
+    await settleLoadedPages(tester);
+
+    expect(plate(tester), 'A2.png', reason: '시안: 「A2.png · 2 / 3」');
+  });
+
+  testWidgets('a row that only registers is no run: the preview shows its '
+      'own file', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!]);
+    final into = find.byKey(ValueKey<String>('import-cell-into-${files['A1']}'));
+    await tester.ensureVisible(into);
+    await settleLoadedPages(tester);
+    expect(previewPages(tester), 3, reason: '⛔전제: placed, it is its run');
+
+    await tester.tap(into);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-pool')),
+    );
+    await settleLoadedPages(tester);
+
+    expect(previewPages(tester), 1, reason: 'registering brings the file in '
+        'as it is');
+    expect(cellText(tester, 'option', files['A1']!), '—');
   });
 
   testWidgets('IN and OUT keep a span of the run: A2–A3 come in as one '
@@ -242,6 +276,28 @@ void main() {
       isNull,
       reason: 'nothing of the run but that picture came in',
     );
+  });
+
+  testWidgets('IN and OUT on one picture leave its bake to the row — two or '
+      'more always bake', (tester) async {
+    final files = await writeFolder(tester);
+    await open(tester, [files['A1']!]);
+    final bake = find.byKey(ValueKey<String>('import-cell-bake-${files['A1']}'));
+    await tester.ensureVisible(bake);
+    await settleLoadedPages(tester);
+    expect(
+      cellText(tester, 'bake', files['A1']!),
+      AppText.strings.commonOn,
+      reason: '⛔전제: the whole run bakes',
+    );
+    await span(tester, 2, 2);
+
+    await tester.tap(bake);
+    await tester.pumpAndSettle();
+    expect(cellText(tester, 'bake', files['A1']!), AppText.strings.commonOn);
+    await tester.tap(bake);
+    await tester.pumpAndSettle();
+    expect(cellText(tester, 'bake', files['A1']!), AppText.strings.commonOff);
   });
 
   testWidgets('two pictures of one run picked together bring it once',

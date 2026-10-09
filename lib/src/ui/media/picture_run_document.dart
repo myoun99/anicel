@@ -80,7 +80,7 @@ final class PictureRunDocument implements ViewerDocument {
   final Map<int, ui.Size> _sizes = {};
 
   /// Pictures on their way open — one open per picture, however many asks.
-  final Map<int, Future<ViewerDocument?>> _opening = {};
+  final Map<int, Future<ViewerDocument>> _opening = {};
 
   /// Pages being rendered: their pictures are not let go under them.
   final Map<int, int> _rendering = {};
@@ -144,32 +144,33 @@ final class PictureRunDocument implements ViewerDocument {
   }
 
   /// [pageIndex]'s picture, opened if it is not — and asked for last.
-  Future<ViewerDocument> _picture(int pageIndex) async {
+  Future<ViewerDocument> _picture(int pageIndex) {
     final open = _open.remove(pageIndex);
     if (open != null) {
       _open[pageIndex] = open;
-      return open;
+      return Future.value(open);
     }
-    final opened = await _opening.putIfAbsent(
-      pageIndex,
-      () => _openOne(_files[pageIndex]),
-    );
-    _opening.removeWhere((page, _) => page == pageIndex);
-    if (opened == null || opened.pageCount == 0) {
-      await opened?.dispose();
-      throw StateError('the picture ${_files[pageIndex]} could not be read');
+    return _opening.putIfAbsent(pageIndex, () => _openAndKeep(pageIndex));
+  }
+
+  /// Opens [pageIndex]'s picture and keeps it — ONCE however many asks
+  /// wait on it, so one that cannot stay is let go once.
+  Future<ViewerDocument> _openAndKeep(int pageIndex) async {
+    try {
+      final opened = await _openOne(_files[pageIndex]);
+      if (opened == null || opened.pageCount == 0) {
+        await opened?.dispose();
+        throw StateError('the picture ${_files[pageIndex]} could not be read');
+      }
+      if (_disposed) {
+        await opened.dispose();
+        throw StateError('the run was let go of while it opened');
+      }
+      _keep(pageIndex, opened);
+      return opened;
+    } finally {
+      _opening.removeWhere((page, _) => page == pageIndex);
     }
-    if (_disposed) {
-      await opened.dispose();
-      throw StateError('the run was let go of while it opened');
-    }
-    final already = _open[pageIndex];
-    if (already != null && !identical(already, opened)) {
-      await opened.dispose();
-      return already;
-    }
-    _keep(pageIndex, opened);
-    return opened;
   }
 
   void _keep(int pageIndex, ViewerDocument picture) {
