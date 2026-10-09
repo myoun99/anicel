@@ -148,6 +148,19 @@ void main() {
     expect(projects.untitledNumberOf(three), 3, reason: 'never reused');
   });
 
+  test('🗣️a project READ out of a file takes no number even before it is '
+      'bound to one — a .tvpp or .clip names it (유저 10-09: 「클튜 '
+      '임포트하니까 프로젝트이름 제목없음 이런식인데 파일이름대로」)', () {
+    final projects = make();
+    final converted = projects.prepare(createDefaultProject());
+    projects.adopt(converted);
+    final next = projects.open(createDefaultProject());
+
+    expect(converted.projectFile.path, isNull, reason: 'not saved yet');
+    expect(projects.untitledNumberOf(converted), isNull);
+    expect(projects.untitledNumberOf(next), 2, reason: 'the first tab is 1');
+  });
+
   test('boundTo finds the tab bound to the same file, however the path is '
       'spelled', () {
     final projects = make();

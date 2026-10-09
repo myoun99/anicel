@@ -30,7 +30,8 @@ class OpenProjects extends ChangeNotifier {
     required void Function(EditorSessionManager session) letGo,
   }) : _openSession = openSession,
        _letGo = letGo {
-    _admit(_openSession(first));
+    final session = _openSession(first);
+    _admit(session, untitled: session.projectFile.path == null);
     _shareTheAllowance();
   }
 
@@ -45,10 +46,12 @@ class OpenProjects extends ChangeNotifier {
   /// The project on screen.
   EditorSessionManager get active => _sessions[_active];
 
-  /// Opens [project] in a tab of its own after the others, and shows it.
+  /// Opens [project] — a NEW one, with no file — in a tab of its own after
+  /// the others, and shows it.
   EditorSessionManager open(Project project) {
     final session = prepare(project);
-    adopt(session);
+    _admit(session, untitled: true);
+    _show(_sessions.length - 1);
     return session;
   }
 
@@ -60,9 +63,12 @@ class OpenProjects extends ChangeNotifier {
   EditorSessionManager prepare(Project project) => _openSession(project);
 
   /// Puts a [prepare]d session in a tab of its own after the others, and
-  /// shows it.
+  /// shows it — a project READ out of a file: the .anicel it is bound to,
+  /// or the .tvpp or .clip it was converted from and is named after. Never
+  /// an untitled one (유저 10-09: 「클튜 임포트하니까 프로젝트이름 제목없음
+  /// 이런식인데 파일이름대로」).
   void adopt(EditorSessionManager session) {
-    _admit(session);
+    _admit(session, untitled: false);
     _show(_sessions.length - 1);
   }
 
@@ -120,18 +126,20 @@ class OpenProjects extends ChangeNotifier {
   /// project that came from a file.
   ///
   /// Minted when the tab is added, one after the last this run, and kept:
-  /// a tab's name does not change because another closed. Only a project
-  /// with no file takes one, so the untitled ones count 1, 2, 3 however
-  /// many files are open between them.
+  /// a tab's name does not change because another closed. Only a NEW
+  /// project takes one, so the untitled ones count 1, 2, 3 however many
+  /// files are open between them. ↩️「No file」 was the test, and a .tvpp or
+  /// .clip — read out of a file, not saved yet — took a number too: its tab
+  /// read 「제목 없음 2」 over the name it came with.
   int? untitledNumberOf(EditorSessionManager session) =>
       _untitledNumbers[session];
 
   final Map<EditorSessionManager, int> _untitledNumbers = {};
   int _untitledMinted = 0;
 
-  void _admit(EditorSessionManager session) {
+  void _admit(EditorSessionManager session, {required bool untitled}) {
     _sessions.add(session);
-    if (session.projectFile.path == null) {
+    if (untitled) {
       _untitledNumbers[session] = _untitledMinted += 1;
     }
   }

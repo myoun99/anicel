@@ -1328,8 +1328,10 @@ class _BlendModeControl extends StatelessWidget {
 }
 
 /// What a project tab says: the saved file's name without its extension,
-/// or 「Untitled n」 for a project never saved — the one label the tab row
-/// and its overflow list both show.
+/// the name a project not saved yet came with from the file it was read
+/// out of (a .tvpp, a .clip — 유저 10-09: 「애초에 프로젝트이름=파일이름
+/// 아닌가? 애니셀이든 뭐든」), or 「Untitled n」 for a new one — the one
+/// label the tab row and its overflow list both show.
 ///
 /// ↩️The strip's middle used to be BLANK before the first save: 「a
 /// standing "Untitled" would be a label that never becomes anything; the
@@ -1345,10 +1347,11 @@ String projectTabLabel(OpenProjects projects, EditorSessionManager session) {
   if (path != null) {
     return projectDisplayName(path);
   }
-  return AppText.strings.untitledProjectTab.replaceAll(
-    '{n}',
-    '${projects.untitledNumberOf(session) ?? 1}',
-  );
+  final untitled = projects.untitledNumberOf(session);
+  if (untitled == null) {
+    return session.repository.requireProject().name;
+  }
+  return AppText.strings.untitledProjectTab.replaceAll('{n}', '$untitled');
 }
 
 /// The open projects, one tab each — the strip's middle (I-7).

@@ -496,7 +496,8 @@ void main() {
   }
 
   testWidgets('a .tvpp opened from the menu opens in a tab of its own — a NEW '
-      'project, untitled and unsaved', (tester) async {
+      'project, unsaved, its tab named after the file (유저 10-09: 「애초에 '
+      '프로젝트이름=파일이름아닌가?」)', (tester) async {
     final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
     deleteAfterSessionEnds(folder);
     final path = '${folder.path.replaceAll(r'\', '/')}/next.tvpp';
@@ -520,6 +521,11 @@ void main() {
     expect(opened.repository.requireProject().name, 'next');
     expect(opened.projectFile.path, isNull, reason: 'bound to no file');
     expect(opened.projectFile.hasUnsavedChanges, isTrue);
+    expect(
+      projectTabLabel(projects, opened),
+      'next',
+      reason: 'not 「Untitled 2」 — the file it came from names it',
+    );
   });
 
   testWidgets('a pick that will not read in place opens from a staged copy — '

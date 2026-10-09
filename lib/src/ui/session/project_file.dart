@@ -46,7 +46,8 @@ import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
         anicelMediaEntryName,
-        anicelMediaEntryPrefix;
+        anicelMediaEntryPrefix,
+        projectDisplayName;
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/same_file.dart'
@@ -992,6 +993,7 @@ class ProjectFile {
     _mediaInFile = mediaInFile;
     _fontsInFile = fontsInFile;
     _projectFilePath = filePath;
+    _nameAfter(filePath);
     _editsInFile = cleanAsOf;
     _forgetFailedCopy();
     _fileGeneration += 1;
@@ -1027,6 +1029,7 @@ class ProjectFile {
     _mediaInFile = mediaInFile;
     _fontsInFile = fontsInFile;
     _projectFilePath = filePath;
+    _nameAfter(filePath);
     _fileGeneration += 1;
     invalidateConformStoredBytes();
     // A different project is a different session; a discard that belonged
@@ -1036,12 +1039,17 @@ class ProjectFile {
     _forgetFailedCopy();
   }
 
-  /// This session is bound to NO file — what an imported project is until
-  /// it is saved for the first time.
-  void unbind() {
-    _projectFilePath = null;
-    _discardedUnsavedWork = false;
-    _forgetFailedCopy();
+  /// Names the project as the file it is now bound to — so the name the
+  /// exports, the sheets' titles and Save As call it by is the name its tab
+  /// shows (유저 10-09: 「애초에 프로젝트이름=파일이름아닌가? 애니셀이든
+  /// 뭐든」). ↩️The name was set once, when the project was made, and a new
+  /// project saved as `cut12.anicel` still exported as 「Untitled Project」.
+  /// Not an edit: nothing to undo, nothing unsaved — the file IS its name.
+  void _nameAfter(String filePath) {
+    final name = projectDisplayName(filePath);
+    _project.repository.updateProject(
+      (project) => project.name == name ? project : project.copyWith(name: name),
+    );
   }
 
   /// This binding's FAILED COPY (실패본): the file in this run's room its

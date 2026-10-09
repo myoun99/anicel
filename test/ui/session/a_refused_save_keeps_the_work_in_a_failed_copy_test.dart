@@ -196,6 +196,8 @@ void main() {
     );
   });
 
+  // ↩️A second moment was an import leaving the session unbound: no import
+  // does since a converted file opens a session of its own (I-7).
   for (final (moment, rebind) in [
     (
       'another project is opened',
@@ -205,10 +207,6 @@ void main() {
         fontsInFile: const {},
         unsaved: false,
       ),
-    ),
-    (
-      'an import leaves the session unbound',
-      (ProjectFile file, String another) => file.unbind(),
     ),
   ]) {
     test('🚨a failed copy outlives its binding — when $moment, the next '
