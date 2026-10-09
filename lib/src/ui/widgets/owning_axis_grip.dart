@@ -48,8 +48,9 @@ class OwningAxisGrip extends StatelessWidget {
 
   /// The axis the grip's VALUE follows. A cross-axis drag still holds the
   /// pointer and changes nothing, which is what 「you are operating this
-  /// grip now」 means.
-  final Axis axis;
+  /// grip now」 means. Null for a HANDLE dragged both ways — a panel's
+  /// corner (I-60), the pan twin ([OwningPanGestureRecognizer]).
+  final Axis? axis;
 
   /// What the drag does — the caller's, exactly as `DragVerbClaim`'s note
   /// says: a splitter moves an edge, an exposure grip moves a comma.
@@ -68,7 +69,12 @@ class OwningAxisGrip extends StatelessWidget {
       child: RawGestureDetector(
         behavior: behavior,
         gestures: <Type, GestureRecognizerFactory>{
-          if (axis == Axis.horizontal)
+          if (axis == null)
+            OwningPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  OwningPanGestureRecognizer
+                >(() => OwningPanGestureRecognizer(debugOwner: this), configure)
+          else if (axis == Axis.horizontal)
             OwningHorizontalDragGestureRecognizer:
                 GestureRecognizerFactoryWithHandlers<
                   OwningHorizontalDragGestureRecognizer

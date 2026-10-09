@@ -485,6 +485,7 @@ class _WorkspaceRail {
             ),
             _widthGrip(railId, room),
             _heightGrip(railId, railExtent),
+            _cornerGrip(railId, room, railExtent),
           ],
         ),
       );
@@ -683,23 +684,26 @@ class _WorkspaceRail {
     child: DockEdgeSplitter(
       key: ValueKey<String>('dock-resize-$railId'),
       axis: Axis.vertical,
-      onDragDelta: (delta) {
-        // ⚠️The sign flip has to be UNDONE on the way back.
-        // A right rail grows as the pointer moves LEFT, so
-        // reporting the width's own delta would hand the
-        // splitter a debt pointing the wrong way — and a
-        // debt with the wrong sign is worse than none: it
-        // would make the edge run ahead instead of behind.
-        final used = _state._layout.resizeDock(
-          EditorWorkspace.railWidthKey(right: room.right),
-          room.right ? -delta : delta,
-          fallback: room.width,
-          maxExtent: room.dragCeiling,
-        );
-        return room.right ? -used : used;
-      },
+      onDragDelta: (delta) => _resizeWidth(room, delta),
     ),
   );
+
+  /// One frame of the width edge's travel — its grip's and its corner's.
+  double _resizeWidth(_RailRoom room, double delta) {
+    // ⚠️The sign flip has to be UNDONE on the way back.
+    // A right rail grows as the pointer moves LEFT, so
+    // reporting the width's own delta would hand the
+    // splitter a debt pointing the wrong way — and a
+    // debt with the wrong sign is worse than none: it
+    // would make the edge run ahead instead of behind.
+    final used = _state._layout.resizeDock(
+      EditorWorkspace.railWidthKey(right: room.right),
+      room.right ? -delta : delta,
+      fallback: room.width,
+      maxExtent: room.dragCeiling,
+    );
+    return room.right ? -used : used;
+  }
 
   /// The HEIGHT grip, on this panel's bottom edge. It costs no layout,
   /// so the gap below stays a gap. The rail extent is handed in for the
@@ -712,7 +716,13 @@ class _WorkspaceRail {
     child: DockEdgeSplitter(
       key: ValueKey<String>('dock-resize-$railId-height'),
       axis: Axis.horizontal,
-      onDragDelta: (delta) => _state._layout.resizeDock(
+      onDragDelta: (delta) => _resizeHeight(railId, railExtent, delta),
+    ),
+  );
+
+  /// One frame of the height edge's travel — its grip's and its corner's.
+  double _resizeHeight(String railId, double railExtent, double delta) =>
+      _state._layout.resizeDock(
         railId,
         delta,
         fallback: EditorWorkspace.railGroupHeight,
@@ -727,9 +737,22 @@ class _WorkspaceRail {
         // edge 9px. It is the same defect this round already
         // fixed for the floating region.
         maxExtent: railExtent.isFinite ? railExtent : null,
-      ),
-    ),
-  );
+      );
+
+  /// The CORNER where those two edges meet — the inner one at the bottom
+  /// (I-60): one drag, both edges, each through its own travel above.
+  Widget _cornerGrip(String railId, _RailRoom room, double railExtent) =>
+      Positioned(
+        left: room.right ? 0 : null,
+        right: room.right ? null : 0,
+        bottom: 0,
+        child: DockCornerGrip(
+          key: ValueKey<String>('dock-resize-$railId-corner'),
+          corner: room.right ? Alignment.bottomLeft : Alignment.bottomRight,
+          onDragX: (delta) => _resizeWidth(room, delta),
+          onDragY: (delta) => _resizeHeight(railId, railExtent, delta),
+        ),
+      );
 
   Widget buildRailColumn(
     EditorPanelDockSide side, {

@@ -1992,26 +1992,40 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         },
         onDragStart: () => _bottomInsetDragRaw = inset,
         onDragEnd: () => _bottomInsetDragRaw = null,
-        onDragDelta: (delta) {
-          // Pulling the LEFT edge right and the RIGHT edge left both grow
-          // the inset, which is what "symmetric" means from the hand's side.
-          final before = _bottomInsetDragRaw ?? inset;
-          final raw = (before + (right ? -delta : delta))
-              .clamp(0.0, maxInset)
-              .toDouble();
-          _bottomInsetDragRaw = raw;
-          _bottomInsetOverride.value = _detented(raw, railSpan);
-          _layoutPersistence.scheduleLayoutSave();
-          // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
-          // un-snapped total (R3 #2), so the magnet can be left. The WALLS
-          // at 0 and maxInset do cost, and that is what goes back to the
-          // splitter, converted out of inset units into pointer ones.
-          final movedInset = raw - before;
-          return right ? -movedInset : movedInset;
-        },
+        onDragDelta: _insetTravel(
+          right: right,
+          inset: inset,
+          railSpan: railSpan,
+          maxInset: maxInset,
+        ),
       ),
     );
   }
+
+  /// The side edge's travel, one frame of it — its grip's and its
+  /// corner's.
+  double Function(double delta) _insetTravel({
+    required bool right,
+    required double inset,
+    required double railSpan,
+    required double maxInset,
+  }) => (delta) {
+    // Pulling the LEFT edge right and the RIGHT edge left both grow
+    // the inset, which is what "symmetric" means from the hand's side.
+    final before = _bottomInsetDragRaw ?? inset;
+    final raw = (before + (right ? -delta : delta))
+        .clamp(0.0, maxInset)
+        .toDouble();
+    _bottomInsetDragRaw = raw;
+    _bottomInsetOverride.value = _detented(raw, railSpan);
+    _layoutPersistence.scheduleLayoutSave();
+    // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
+    // un-snapped total (R3 #2), so the magnet can be left. The WALLS
+    // at 0 and maxInset do cost, and that is what goes back to the
+    // splitter, converted out of inset units into pointer ones.
+    final movedInset = raw - before;
+    return right ? -movedInset : movedInset;
+  };
 
   /// Snaps to the rail's width when the drag lands near it, so the
   /// pass-through boundary is reachable on purpose.
@@ -2576,6 +2590,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         railSpan: frame.rightRailSpanRaw,
         maxInset: maxInset,
       ),
+      // Where those sides meet the height's edge (I-60) — gone with the
+      // height grip while folded, which is the axis the fold is about.
+      if (!_bottomDockCollapsed) ...[
+        _bottomCornerGrip(right: false, frame: frame, maxInset: maxInset),
+        _bottomCornerGrip(right: true, frame: frame, maxInset: maxInset),
+      ],
     ];
   }
 
@@ -2701,56 +2721,97 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           'dock-resize-bottom',
         ),
         axis: Axis.horizontal,
-        onDragDelta: (delta) {
-          // What the edge used, back in
-          // POINTER units — the sign flip
-          // below has to be undone or the
-          // splitter would bank the debt
-          // the wrong way round.
-          final used = _layout.resizeDock(
-            EditorWorkspace.bottomGroupId,
-            // Toward the artwork GROWS the
-            // region, on either edge: down
-            // when it is on top, up when it
-            // is on the bottom.
-            onTop ? delta : -delta,
-            fallback: EditorWorkspace
-                .bottomPanelHeight,
-            // The splitter stops where the
-            // panels stop shrinking, and
-            // never banks height past what
-            // the window can show — a
-            // surplus behind the ceiling is
-            // spent before the edge moves
-            // again, which reads as a
-            // splitter that lags the cursor.
-            minExtent: math.min(
-              _verticalDockMinimumExtent(
-                EditorWorkspace
-                    .bottomGroupId,
-              ),
-              _docks.bottomDockCeiling(
-                constraints.maxHeight,
-              ),
-            ),
-            // The model's own 640 still
-            // applies here — the region
-            // has always had it, and
-            // lifting it is a separate
-            // decision from fixing the
-            // banking.
-            // 결정 8: the HAND stops at
-            // half the window.
-            maxExtent: math.min(
-              EditorPanelLayoutModel
-                  .maxDockExtent,
-              _docks.bottomDockDragCeiling(
-                constraints.maxHeight,
-              ),
-            ),
-          );
-          return onTop ? used : -used;
+        onDragDelta: _heightTravel(onTop, constraints),
+      ),
+    );
+  }
+
+  /// The artwork-facing edge's travel, one frame of it — its grip's and
+  /// its corners'.
+  double Function(double delta) _heightTravel(
+    bool onTop,
+    BoxConstraints constraints,
+  ) => (delta) {
+    // What the edge used, back in
+    // POINTER units — the sign flip
+    // below has to be undone or the
+    // splitter would bank the debt
+    // the wrong way round.
+    final used = _layout.resizeDock(
+      EditorWorkspace.bottomGroupId,
+      // Toward the artwork GROWS the
+      // region, on either edge: down
+      // when it is on top, up when it
+      // is on the bottom.
+      onTop ? delta : -delta,
+      // ↩️It fell back on the fixed 350 while the region is DRAWN at its
+      // D37 opening (half the window), so the first pull of a region
+      // nobody had sized jumped it to 350 and moved on from there — 125px
+      // the wrong way on a 1000px window (found by I-60's corner, which is
+      // this edge). The same opening the drawing reads.
+      fallback: EditorWorkspace.bottomDockHeightFallbackFor(
+        constraints.maxHeight,
+        DeviceGrid.of(context),
+      ),
+      // The splitter stops where the
+      // panels stop shrinking, and
+      // never banks height past what
+      // the window can show — a
+      // surplus behind the ceiling is
+      // spent before the edge moves
+      // again, which reads as a
+      // splitter that lags the cursor.
+      minExtent: math.min(
+        _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
+        _docks.bottomDockCeiling(constraints.maxHeight),
+      ),
+      // The model's own 640 still
+      // applies here — the region
+      // has always had it, and
+      // lifting it is a separate
+      // decision from fixing the
+      // banking.
+      // 결정 8: the HAND stops at
+      // half the window.
+      maxExtent: math.min(
+        EditorPanelLayoutModel.maxDockExtent,
+        _docks.bottomDockDragCeiling(constraints.maxHeight),
+      ),
+    );
+    return onTop ? used : -used;
+  };
+
+  /// A CORNER of the artwork-facing edge, where a side edge meets it
+  /// (I-60): one drag, the side's width and the height, each through the
+  /// travel its own grip spends.
+  Positioned _bottomCornerGrip({
+    required bool right,
+    required _WorkspaceFrame frame,
+    required double maxInset,
+  }) {
+    final onTop = frame.onTop;
+    return Positioned(
+      left: right ? null : 0,
+      right: right ? 0 : null,
+      top: onTop ? null : 0,
+      bottom: onTop ? 0 : null,
+      child: DockCornerGrip(
+        key: ValueKey<String>('bottom-corner-${right ? 'right' : 'left'}'),
+        corner: switch ((onTop, right)) {
+          (false, false) => Alignment.topLeft,
+          (false, true) => Alignment.topRight,
+          (true, false) => Alignment.bottomLeft,
+          (true, true) => Alignment.bottomRight,
         },
+        onDragStart: () => _bottomInsetDragRaw = frame.bottomInset,
+        onDragEnd: () => _bottomInsetDragRaw = null,
+        onDragX: _insetTravel(
+          right: right,
+          inset: frame.bottomInset,
+          railSpan: right ? frame.rightRailSpanRaw : frame.leftRailSpanRaw,
+          maxInset: maxInset,
+        ),
+        onDragY: _heightTravel(onTop, frame.constraints),
       ),
     );
   }
