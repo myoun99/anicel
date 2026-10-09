@@ -232,7 +232,7 @@ class _PanelBuild {
         // while active (marquee/lasso/move) —
         // strokes cannot start below the layer.
         if (_selectionLayerActive)
-          _state._selectionLayer(underlayBuilder),
+          _state._selectionLayer(),
         // R9-rest: the text tool owns the pointer while it is in hand — a
         // press sets a text or takes hold of one, and no stroke starts
         // below.

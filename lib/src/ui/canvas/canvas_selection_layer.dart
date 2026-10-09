@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -49,6 +48,21 @@ import 'canvas_press.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
 
+/// One picture a lift takes up: the stamp that floats, and where it shows.
+///
+/// [showsOn] is where its pixels go (TS1): the composite that draws the row
+/// it was lifted from reads it and draws them at that row's depth, so the
+/// rows above occlude the live preview exactly as they occlude the
+/// committed result. Null = no composite behind this layer (the conte, the
+/// timesheet, the cut envelope, and tests that mount the layer alone): the
+/// float then draws itself here, from the same description — the mount
+/// point differs, the drawing does not.
+///
+/// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 — a folder's lift
+/// takes one up from each row it holds, each shown in its own row; a cel's
+/// lift takes one.
+typedef LiftedFloat = ({BrushDab stampDab, SelectionFloatOverlay? showsOn});
+
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
 ///
@@ -91,20 +105,8 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
-    this.floatOverlay,
     this.oneFingerAction,
   });
-
-  /// Where the FLOAT's pixels go (TS1): the composite that draws the active
-  /// layer reads this and draws them at that layer's depth, so the layers
-  /// above occlude the live preview exactly as they occlude the committed
-  /// result.
-  ///
-  /// Null = no composite behind this layer (the conte, the timesheet, the cut
-  /// envelope, and tests that mount the layer alone). The float then draws
-  /// itself here, from the same description — the mount point differs, the
-  /// drawing does not.
-  final SelectionFloatOverlay? floatOverlay;
 
   /// The host's own one-finger answer — a finger drives this layer only
   /// where that answer is draw ([AppInput.toolAcceptsPointer]). Null = the
@@ -245,9 +247,10 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// R14-④/R15-④ bitmap lift: called ONCE per selection shape when the
   /// Move tool first drags it. The host commits the shape's
   /// ERASE (origin pixels vanish immediately) and returns that command's
-  /// id plus the lifted STAMP dab, which the layer floats until the
-  /// session confirms — so the original is never visible while moving and
-  /// a reverted/zero-move session restores it exactly. Null return = the
+  /// id plus the lifted STAMP dabs — one per cel it took pixels up from,
+  /// never none ([LiftedFloat]) — which the layer floats until the session
+  /// confirms, so the original is never visible while moving and a
+  /// reverted/zero-move session restores it exactly. Null return = the
   /// shape covers no pixels: the move is a no-op. R19 pixel model: every
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
@@ -256,25 +259,30 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// lift copied from — the predecessor of every tile of the float built
   /// from this stamp (F-68), which was how that float painted on its first
   /// frame. A float's tiles picture themselves inside the paint now.
-  final ({int liftToken, BrushDab stampDab})? Function(
+  final ({int liftToken, List<LiftedFloat> floats})? Function(
     CanvasSelectionRegion region,
   )?
   onLiftRequested;
 
-  /// Raw landing of the floating stamp at its pending position (no
+  /// Raw landing of the floating stamps at their pending positions (no
   /// history entry) — the abandon fallback so a reset can never lose the
-  /// float's pixels.
-  final void Function(int liftToken, BrushDab stampDab)? onLiftLanded;
+  /// floats' pixels. One stamp per float, in the order the lift gave them.
+  final void Function(int liftToken, List<BrushDab> stampDabs)? onLiftLanded;
 
-  /// CONFIRM of a move session (R16-①): the host lands [stampDab] and
-  /// adopts the whole session (raw lift + landed stamp) as ONE history
-  /// entry (BrushLiftMoveHistoryCommand).
+  /// CONFIRM of a move session (R16-①): the host lands [stampDabs] — one
+  /// per float, in the order the lift gave them — and adopts the whole
+  /// session (raw lift + landed stamps) as ONE history entry
+  /// (BrushLiftMoveHistoryCommand).
   /// ⚠️The TRANSFORM travels with the stamp ([StampCarry]): the cels a
   /// range confirm reaches never floated anything, so they need the whole
   /// of it to apply to their own pixels — a displacement read off the stamp
   /// loses the scale and the rotation entirely (유저 2026-09-22, 실기), and
   /// the affine alone loses a quad's or a mesh's warp.
-  final void Function(int liftToken, BrushDab stampDab, StampCarry? carry)?
+  final void Function(
+    int liftToken,
+    List<BrushDab> stampDabs,
+    StampCarry? carry,
+  )?
   onLiftConfirmed;
 
   /// REVERT (R17-①): the host restores the pre-lift picture byte-exactly;
@@ -338,35 +346,32 @@ enum _SessionEnd {
 
 /// One open move session, as ONE value.
 ///
-/// ⛔[stamp] and [moved] are mutable because a drag changes them while the
-/// session stays the same session; [token] and [startShape] are what the
-/// session IS and cannot change without it being a different one.
+/// ⛔Its floats' stamps and [moved] are mutable because a drag changes them
+/// while the session stays the same session; [token] and [startShape] are
+/// what the session IS and cannot change without it being a different one.
 class _MoveSession {
   _MoveSession({
     required this.token,
-    required this.stamp,
+    required this.floats,
     required this.startShape,
-  }) : _lifted = stamp;
+  });
 
   /// The lift command owning this selection's pixels (R15-④).
   final int token;
 
-  /// The stamp dab currently FLOATING — removed from the command so the
-  /// base never shows it (no double image).
-  BrushDab stamp;
+  /// What floats — one per cel the lift took pixels up from, in the order
+  /// the lift gave them. Never empty.
+  final List<_Float> floats;
 
-  /// The float as it was lifted, to ask [holdsAChange] of.
-  final BrushDab _lifted;
-
-  /// Whether the float is anything but the pixels that were lifted — a
+  /// Whether any float is anything but the pixels that were lifted — a
   /// session that holds none lands nothing
   /// ([_CanvasSelectionLayerState._endLanded]).
   ///
-  /// ⛔Asked of the float itself. [landed] is written by the same fold and
-  /// would read the same today, but it answers another question — what the
-  /// range's other cels are to be put through — and one flag answering two
-  /// is how a third writer breaks one of them.
-  bool get holdsAChange => !identical(stamp, _lifted);
+  /// ⛔Asked of the floats themselves. [landed] is written by the same fold
+  /// and would read the same today, but it answers another question — what
+  /// the range's other cels are to be put through — and one flag answering
+  /// two is how a third writer breaks one of them.
+  bool get holdsAChange => floats.any((float) => float.holdsAChange);
 
   /// The region as the session found it — the revert restores it, and the
   /// transform draws it as the green 「before」 outline (I-38).
@@ -397,6 +402,52 @@ class _MoveSession {
   /// 기준점은 **항상 상자의 중심**」, and with a range live that is the one
   /// box on screen.
   StampCarry? landed;
+}
+
+/// One picture an open move session floats: its stamp, what draws it, and
+/// where it shows ([LiftedFloat]).
+///
+/// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. A folder's lift
+/// floats one per row it holds and a cel's lift one, and every one of them
+/// rides the one box ([FloatWarp.base]) — ⛔ONE CODE: a cel's lift is a
+/// session with one float, not a second mechanism.
+///
+/// 🚨★★★**ITS PICTURES ARE THE SESSION'S, SO THEY END WITH IT.** The
+/// surface and the resample lived on the layer while there was one float,
+/// and outlived the session they were made from: a box walked onto a cel
+/// with nothing to lift went on showing the cel it had left
+/// (`a-box-walked-onto-an-empty-cel-floats-the-old-picture`, measured
+/// 2026-10-09).
+class _Float {
+  _Float({required this.stamp, required this.showsOn, required this.preview})
+    : _lifted = stamp;
+
+  /// The stamp dab currently FLOATING — removed from the command so the
+  /// base never shows it (no double image).
+  BrushDab stamp;
+
+  /// The float as it was lifted, to ask [holdsAChange] of.
+  final BrushDab _lifted;
+
+  /// Whether this float is anything but the pixels that were lifted.
+  bool get holdsAChange => !identical(stamp, _lifted);
+
+  /// Where it shows ([LiftedFloat.showsOn]).
+  final SelectionFloatOverlay? showsOn;
+
+  /// It through the open warp, resampled and decoded for the screen — see
+  /// [FloatResamplePreview]. Empty outside a warp.
+  final FloatResamplePreview preview;
+
+  /// The floating copy of its pixels (built once at drag start).
+  BitmapSurface? surface;
+
+  /// Canvas-space centre [surface]'s pixels were materialized at.
+  CanvasPoint? surfaceCentre;
+
+  /// The stamp IMAGE [surface] was materialized from — the identity
+  /// [_CanvasSelectionLayerState._buildFloatSurface] reuses the surface by.
+  BrushStampImage? surfaceStamp;
 }
 
 /// 🚨★★★**WHAT AN INTERRUPTION DOES TO AN OPEN EDIT. THERE ARE TWO.**
@@ -556,7 +607,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// way. 유저: 「절대로 낡지않을 구조로 튼튼하게」.
   _MoveSession? _session;
 
-  BrushDab? get _pendingLiftStamp => _session?.stamp;
+  /// What floats now — nothing outside a session.
+  List<_Float> get _floats => _session?.floats ?? const [];
 
   /// True once the session actually MOVED — the ants turn red until the
   /// confirm (green = confirmed / untouched).
@@ -586,15 +638,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     _session = null;
+    // Its pictures go with it ([_Float]) — the decoded resample is a GPU
+    // allocation the size of the selection.
+    for (final float in session.floats) {
+      float.preview.discard();
+    }
+    final stamps = [for (final float in session.floats) float.stamp];
     _tellHost(() {
       switch (how) {
         case _SessionEnd.confirm:
           final confirm = widget.onLiftConfirmed;
           if (confirm != null) {
-            confirm(session.token, session.stamp, session.landed);
+            confirm(session.token, stamps, session.landed);
           } else {
             // Headless hosts (focused tests): land without history.
-            widget.onLiftLanded?.call(session.token, session.stamp);
+            widget.onLiftLanded?.call(session.token, stamps);
           }
         case _SessionEnd.revert:
         case _SessionEnd.letGo:
@@ -652,9 +710,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           }
           _shapeNeedsLift = true;
         }
-        if (_transform == null) {
-          _floatSurface = null;
-        }
       });
     }
     _syncAnts();
@@ -699,15 +754,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
 
     if (mounted) {
-      setState(() {
-        settle();
-        // The float goes with the session. Not under an open box — the
-        // fold closes a box that changed anything, so one still open here
-        // changed nothing and is the caller's to close.
-        if (_transform == null) {
-          _dropFloat();
-        }
-      });
+      // The floats went with the session ([_endSession]). A box still open
+      // here changed nothing — the fold closes a box that changed anything
+      // — and is the caller's to close.
+      setState(settle);
     } else {
       settle();
     }
@@ -747,13 +797,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     MoveDrag(:final screenDelta) => screenDelta,
     _ => Offset.zero,
   };
-
-  /// The floating copy of the selected pixels (built once at drag start).
-  BitmapSurface? _floatSurface;
-
-  /// The float through the open warp, resampled and decoded for the
-  /// screen — see [FloatResamplePreview]. Empty outside a warp session.
-  late final FloatResamplePreview _preview = FloatResamplePreview(this);
 
   /// The drag so far in WHOLE CANVAS PIXELS — what a move can actually
   /// land on (TP5).
@@ -1013,7 +1056,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             oldWidget.transformOptions.meshRows !=
                 widget.transformOptions.meshRows)) {
       setState(_syncOffsetsToMode);
-      _preview.schedule();
+      _scheduleResamples();
       _syncAnts();
     }
     // 🧪The MODE picks which transform 적용 would replay, so it is news to
@@ -1030,13 +1073,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // is neither — the box would keep painting the window it was given
     // and the picture would simply be absent outside it.
     if (_transform != null && oldWidget.viewport != widget.viewport) {
-      _preview.schedule();
+      _scheduleResamples();
     }
     if (oldWidget._resampleMode != widget._resampleMode) {
       // P3a: flipping the switch with a box already open re-resamples on
       // the spot. Waiting for the next drag would show the old kernel's
       // picture and land the new one's.
-      _preview.schedule();
+      _scheduleResamples();
     }
     // Note what is NOT here: cancelling an open polygon trace on a tool
     // change. This layer does not mount for the painting tools, so on the
@@ -1087,19 +1130,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // a build, and the history execute must not. The interaction hold
     // still releases NOW, above, so a leak can never lock seeks.
     //
-    // ↩️This spelled its own fold — `_preview.warped() ?? _pendingLiftStamp`,
+    // ↩️This spelled its own fold — `_preview.warped() ?? <the stamp>`,
     // with no identity guard and no region move — beside a function whose
     // doc already said 「every path that ends a session while a box is open
     // needs this」. Two implementations of one algorithm is a copy however
     // differently it reads, and these two had already drifted apart.
     _disposing = true;
+    // ⚠️The landing above ends the session, and a session's resamples end
+    // with it ([_endSession]) — the GPU images and the in-flight decodes'
+    // claims on this state alike.
     _interrupted(SessionInterruption.land);
-    // The preview image is a GPU allocation and an in-flight decode holds
-    // a callback into this state. Neither is reached by _clearTransform on
-    // this path — dispose does not close the box, it folds it — so the
-    // discard has to be explicit here or every tool switch during a
-    // transform leaks a full-selection image.
-    _preview.discard();
     _cursor.dispose();
     _ants.dispose();
     super.dispose();
@@ -1168,7 +1208,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       box.affine = edit(box.affine);
     });
-    _preview.schedule();
+    _scheduleResamples();
     _syncAnts();
   }
 
@@ -1190,7 +1230,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       box.affine = SelectionAffine(pivot: box.affine.pivot);
       box.warp.reset();
     });
-    _preview.schedule();
+    _scheduleResamples();
     _syncAnts();
   }
 
@@ -1375,7 +1415,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// [SessionInterruption.land]: whatever the box shows becomes the cel.
   ///
   /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK HERE**, for every
-  /// landing and not just the dispose one. [_publishFloat] runs from BUILD,
+  /// landing and not just the dispose one. [_publishFloats] runs from BUILD,
   /// so an ending that does not rebuild — a dispose, or a land that closes
   /// the session in the same frame — leaves the composite holding a
   /// picture nobody owns, drawn over the one that just landed (유저
@@ -1392,7 +1432,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // found the box still open over the folded stamp and ran the picture
     // through its transform a second time (measured 2026-10-06).
     _foldOpenBox();
-    widget.floatOverlay?.value = null;
+    _takeBackFloats();
     if (_disposing) {
       // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
       // of a commit that paints — closing the box, re-running the ants —
@@ -1420,7 +1460,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(box.popStep);
     _publishTransformValues();
-    _preview.schedule();
+    _scheduleResamples();
     _syncAnts();
     return true;
   }
@@ -1533,9 +1573,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(() {
         // The numbers travel; the box is re-read from the region HERE.
         _aimTransformAt(region, keeping: _transform);
-        _floatSurface = _buildFloatSurface();
+        _buildFloatSurfaces();
       });
-      _preview.schedule();
+      _scheduleResamples();
       _syncAnts();
     });
   }
@@ -1550,12 +1590,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   int get _meshColumns => widget.transformOptions.meshColumns;
   int get _meshRows => widget.transformOptions.meshRows;
 
-  /// The open box laid over the float as the layer holds it right now: the
-  /// box, the pending stamp and the tool's knobs, read at the call.
-  @override
-  FloatWarp get floatWarp => FloatWarp(
+  /// The open box laid over what floats, as the layer holds it right now:
+  /// the box, the rect it stands on and the tool's knobs, read at the call.
+  FloatWarp get floatWarp => _warpOver(null);
+
+  /// [floatWarp] over one [float] — what its preview resamples.
+  FloatWarp _floatWarpOf(_Float float) => _warpOver(float.stamp);
+
+  FloatWarp _warpOver(BrushDab? float) => FloatWarp(
     box: _box,
-    float: _pendingLiftStamp,
+    base: stampRectHolding([
+      for (final floating in _floats) ?stampRectOf(floating.stamp),
+    ]),
+    float: float,
     options: widget.transformOptions,
     pasteboard: widget.canvasSize.pasteboardRegion,
   );
@@ -1569,6 +1616,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     boxOpen: _transform != null,
     warp: floatWarp,
   );
+
+  /// Asks every float's preview to catch up with the box
+  /// ([FloatResamplePreview.schedule]).
+  void _scheduleResamples() {
+    for (final float in _floats) {
+      float.preview.schedule();
+    }
+  }
 
   /// Brings the open box's warp in line with [_mode] and the armed grid
   /// ([BoxWarp.syncToMode]). Callers wrap in setState.
@@ -1691,16 +1746,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ↩️So does everything else the box held: they were thirteen fields
     // cleared here by name, and are one object dropped ([TransformBox]).
     _box = null;
-    _preview.discard();
-    if (confirming) {
-      // The landing is warped and the float is not, so the float has
-      // nothing to stay for.
-      _floatSurface = null;
-      return;
+    for (final float in _floats) {
+      float.preview.discard();
+      // Confirming, the landing is warped and the float is not, so the
+      // float has nothing to stay for. Otherwise a pending session's float
+      // must keep rendering — its pixels are NOT in the base surface (they
+      // left with the lift's erase).
+      float.surface = confirming ? null : _buildFloatSurface(float);
     }
-    // A pending session's float must keep rendering — its pixels are NOT
-    // in the base surface (they left with the lift's erase).
-    _floatSurface = _movePending ? _buildFloatSurface() : null;
   }
 
   /// Ctrl+T: opens the free-transform box on the live selection (R19
@@ -1798,7 +1851,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.onLiftRequested == null) {
       return;
     }
-    final hadPendingLift = _pendingLiftStamp != null;
+    final hadPendingLift = _movePending;
     if (!_ensureLifted(targetRegion)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
@@ -1808,7 +1861,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _aimTransformAt(targetRegion);
       _box!.openedLift = !hadPendingLift;
       _syncOffsetsToMode();
-      _floatSurface = _buildFloatSurface();
+      _buildFloatSurfaces();
     });
     _syncAnts();
   }
@@ -1849,25 +1902,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (box == null || session == null) {
       return false;
     }
-    final pending = session.stamp;
-    // `_preview.warped()` returns the buffer the PREVIEW is already showing
-    // when nothing has changed since, so the landing is the same bytes the
-    // screen held rather than a second computation that ought to match.
-    // Null is a box that changes no pixel; the stamp itself is a quad too
-    // degenerate to warp through.
-    final warped = _preview.warped() ?? pending;
-    if (identical(warped, pending)) {
+    // A float's `preview.warped()` returns the buffer its PREVIEW is
+    // already showing when nothing has changed since, so the landing is the
+    // same bytes the screen held rather than a second computation that
+    // ought to match. Null is a box that changes no pixel; the stamp itself
+    // is a quad too degenerate to warp through.
+    final floats = session.floats;
+    final warped = [
+      for (final float in floats) float.preview.warped() ?? float.stamp,
+    ];
+    var changes = false;
+    for (var i = 0; i < floats.length; i += 1) {
+      changes = changes || !identical(warped[i], floats[i].stamp);
+    }
+    if (!changes) {
       return false;
     }
-    // ⚠️Both read BEFORE the stamp is replaced: the quad and the mesh stand
-    // on the stamp's own rect.
+    // ⚠️Both read BEFORE the stamps are replaced: the quad and the mesh
+    // stand on the rect they make ([FloatWarp.base]).
     final region = _region;
     final landedRegion = region == null ? null : _regionThroughOpenBox(region);
     final carry = floatWarp.carry;
     _recordTransformRecall(box);
-    session
-      ..stamp = warped
-      ..landed = carry;
+    for (var i = 0; i < floats.length; i += 1) {
+      floats[i].stamp = warped[i];
+    }
+    session.landed = carry;
     if (landedRegion != null) {
       _moveRegion(landedRegion);
     }
@@ -2038,7 +2098,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// under the shape to move.
   bool _ensureLifted(CanvasSelectionRegion region) {
     if (!_shapeNeedsLift) {
-      return _pendingLiftStamp != null;
+      return _movePending;
     }
     final lift = widget.onLiftRequested!(region);
     if (lift == null) {
@@ -2058,38 +2118,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ends. A session is made whole or not at all.
     _session = _MoveSession(
       token: lift.liftToken,
-      stamp: lift.stampDab,
+      floats: [for (final lifted in lift.floats) _floatOf(lifted)],
       startShape: region,
     );
     return true;
   }
 
-  /// Lets go of everything the float was — the surface, the centre it was
-  /// materialized at, the decoded resample. Call inside a setState, and
-  /// only once the landing has been handed to the base: the compose reads
-  /// all three.
-  ///
-  /// All of it, always: a kept resample image that outlived the session
-  /// would keep painting one transform state over every later edit.
-  void _dropFloat() {
-    _floatSurface = null;
-    _floatSurfaceCentre = null;
-    _floatSurfaceStamp = null;
-    _preview.discard();
+  /// [lifted] as this layer floats it, with a resample of its own through
+  /// the one box ([_floatWarpOf]).
+  _Float _floatOf(LiftedFloat lifted) {
+    late final _Float float;
+    return float = _Float(
+      stamp: lifted.stampDab,
+      showsOn: lifted.showsOn,
+      preview: FloatResamplePreview(this, () => _floatWarpOf(float)),
+    );
   }
 
-  /// What is floating right now, in canvas space — see [SelectionFloatPaint].
+  /// What [float] shows right now, in canvas space — see
+  /// [SelectionFloatPaint].
   ///
   /// The two reasons to draw a float are unchanged; only where the drawing
   /// happens moved. A warp open ⇒ the resampled preview IS the result. A pure
   /// move ⇒ the untouched lift at an offset is byte-exact by short circuit.
-  SelectionFloatPaint _floatPaint({
-    required ui.Image? resampledImage,
-    required BrushDab? resampledDab,
-    required BitmapSurface? floatSurface,
-    required SelectionAffine? transform,
-  }) {
+  SelectionFloatPaint _floatPaint(_Float float) {
     final pasteboard = widget.canvasSize.pasteboardRect;
+    // The image and the dab it was decoded from travel together, so the
+    // rect the preview draws into always belongs to the pixels in it.
+    final resampledImage = float.preview.image;
+    final resampledDab = float.preview.imageDab;
     if (resampledImage != null && resampledDab != null) {
       return SelectionFloatPaint(
         image: resampledImage,
@@ -2111,9 +2168,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       );
     }
     // ↩️`_drag is MoveDrag` stood here too, from when a move was its own
-    // mechanism. An inside grab opens the box now, so that term could only
-    // ever be true alongside the one beside it.
-    if (floatSurface != null && (transform != null || _movePending)) {
+    // mechanism, and then 「a box is open or a session pending」 — which a
+    // float is asked only inside, so neither term could ever be false.
+    final floatSurface = float.surface;
+    if (floatSurface != null) {
       return SelectionFloatPaint(
         surface: BitmapSurfacePainter(
           surface: floatSurface,
@@ -2125,24 +2183,44 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // out the `(layerId, frameId)` scopes the brush depends on.
           lineage: TilePyramid.noLineage,
         ),
-        surfaceOffset: _floatDrawCanvasOffset,
+        surfaceOffset: _floatDrawCanvasOffset(float),
       );
     }
     return SelectionFloatPaint();
   }
 
-  /// Hands [paint] to the composite, if this layer has one behind it.
+  /// The composite slots this layer has handed a float to
+  /// ([LiftedFloat.showsOn]) — what it takes back once nothing floats there.
+  Set<SelectionFloatOverlay> _shownOn = {};
+
+  /// Hands each float's paint to the composite slot it shows in, and takes
+  /// back every slot it handed one to before and no float shows in now.
   ///
   /// Called from build: the underlay is built BEFORE this layer in the panel's
   /// stack, so the notification reaches a mounted painter and lands in the
   /// same frame. A repaint is all it triggers — no listener here calls
   /// setState — which is what makes a write during build safe.
-  void _publishFloat(SelectionFloatPaint paint) {
-    final overlay = widget.floatOverlay;
-    if (overlay == null) {
-      return;
+  void _publishFloats(List<(_Float, SelectionFloatPaint)> paints) {
+    final shownOn = <SelectionFloatOverlay>{};
+    for (final (float, paint) in paints) {
+      final overlay = float.showsOn;
+      if (overlay != null) {
+        overlay.value = paint.isEmpty ? null : paint;
+        shownOn.add(overlay);
+      }
     }
-    overlay.value = paint.isEmpty ? null : paint;
+    for (final overlay in _shownOn.difference(shownOn)) {
+      overlay.value = null;
+    }
+    _shownOn = shownOn;
+  }
+
+  /// Takes back every float this layer handed out ([_landOpenSession]).
+  void _takeBackFloats() {
+    for (final overlay in _shownOn) {
+      overlay.value = null;
+    }
+    _shownOn = {};
   }
 
   CanvasPoint _toCanvas(Offset local) =>
@@ -2334,7 +2412,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         () => _adoptImplicitWholePictureShape(implicitRegion.singleShape!),
       );
     }
-    final hadPendingLift = _pendingLiftStamp != null;
+    final hadPendingLift = _movePending;
     if (!_ensureLifted(implicitRegion)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
@@ -2343,7 +2421,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       _box = candidate..openedLift = !hadPendingLift;
       _syncOffsetsToMode();
-      _floatSurface = _buildFloatSurface();
+      _buildFloatSurfaces();
     });
     return (box: candidate, insideImplicitBox: false);
   }
@@ -2391,7 +2469,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // asks: did this gesture open the session, or ride one that was
     // already pending? 취소 needs it — a box that opened the lift reverts
     // the whole thing, one that rode a pending move only loses the box.
-    final hadPendingLift = _pendingLiftStamp != null;
+    final hadPendingLift = _movePending;
     // R14-④/R19 pixel model: the shape's PIXELS are the content — the
     // first gesture on a selection (or on a confirmed landing) lifts
     // them fresh from the current raster.
@@ -2427,7 +2505,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         txAtStart: affine.tx,
         tyAtStart: affine.ty,
       );
-      _floatSurface = _buildFloatSurface();
+      _buildFloatSurfaces();
     });
     return true;
   }
@@ -2608,7 +2686,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // would decode the same megabyte image once per pointer move for
         // a picture that has not changed a pixel.
         if (_transform?.isPureTranslation == false) {
-          _preview.schedule();
+          _scheduleResamples();
         }
       case TransformDrag():
         _updateTransformDrag(drag, _toCanvas(event.localPosition));
@@ -2621,7 +2699,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// preview stopped updating" being impossible and being a future bug.
   void _updateTransformDrag(TransformDrag drag, CanvasPoint pointer) {
     _updateTransformDragGeometry(drag, pointer);
-    _preview.schedule();
+    _scheduleResamples();
   }
 
   void _updateTransformDragGeometry(TransformDrag drag, CanvasPoint pointer) {
@@ -2974,11 +3052,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.onDrawShapeDragged?.call(null);
     }
     _drag = null;
-    if (_transform == null && !_movePending) {
-      _floatSurface = null;
-    }
     if (wasTransformDrag && _transform != null) {
-      _preview.schedule();
+      _scheduleResamples();
     }
     if (notify && drag != null) {
       _notifyDragActive(false);
@@ -3213,36 +3288,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// F-68 family's raw material, plus 651 ms to re-materialize a
   /// 2340×1654 cel scaled to the pasteboard. Only a different image
   /// builds: a fresh lift, or a warp folded into the stamp.
-  BitmapSurface _buildFloatSurface() {
-    final pending = _pendingLiftStamp;
-    final existing = _floatSurface;
-    if (existing != null &&
-        pending != null &&
-        identical(pending.stamp, _floatSurfaceStamp)) {
+  BitmapSurface _buildFloatSurface(_Float float) {
+    final pending = float.stamp;
+    final existing = float.surface;
+    if (existing != null && identical(pending.stamp, float.surfaceStamp)) {
       return existing;
     }
-    final surface = BitmapSurface(canvasSize: widget.canvasSize);
     // Recorded HERE so every build zeroes the drift by construction —
     // [_floatDrawCanvasOffset] measures from the place the surface was
     // actually materialized at, not from the lift, so a build mid-session
     // cannot leave an offset applied twice.
-    _floatSurfaceCentre = pending?.center;
-    _floatSurfaceStamp = pending?.stamp;
-    if (pending == null) {
-      return surface;
-    }
+    float
+      ..surfaceCentre = pending.center
+      ..surfaceStamp = pending.stamp;
     return materializeBrushDabSequenceOnBitmapSurface(
-      surface: surface,
+      surface: BitmapSurface(canvasSize: widget.canvasSize),
       sequence: BrushDabSequence([pending]),
     ).surface;
   }
 
-  /// Canvas-space centre [_floatSurface]'s pixels were materialized at.
-  CanvasPoint? _floatSurfaceCentre;
-
-  /// The stamp IMAGE [_floatSurface] was materialized from — the identity
-  /// [_buildFloatSurface] reuses the surface by.
-  BrushStampImage? _floatSurfaceStamp;
+  /// Every float's surface, built or kept ([_buildFloatSurface]).
+  void _buildFloatSurfaces() {
+    for (final float in _floats) {
+      float.surface = _buildFloatSurface(float);
+    }
+  }
 
   /// Where the float is drawn relative to its own surface: the live drag
   /// offset, plus the drift its stamp has accumulated since the surface was
@@ -3261,7 +3331,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the float wrapped widgets. It draws inside a viewport-transformed canvas
   /// now, so they meet here instead — and the drag delta comes back through
   /// the same mapping that carried it out, rotation and flip included.
-  CanvasPoint get _floatDrawCanvasOffset {
+  CanvasPoint _floatDrawCanvasOffset(_Float float) {
     // ⚠️Read off the AFFINE, not off the drag: the move lives there now,
     // so this is also what carries it between drags — the stamp no longer
     // moves and the drift below is zero until a warp folds into it.
@@ -3269,9 +3339,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final dragged = affine == null
         ? CanvasPoint(x: 0, y: 0)
         : CanvasPoint(x: affine.appliedTx, y: affine.appliedTy);
-    final from = _floatSurfaceCentre;
-    final to = _pendingLiftStamp?.center;
-    if (from == null || to == null) {
+    final from = float.surfaceCentre;
+    final to = float.stamp.center;
+    if (from == null) {
       return dragged;
     }
     return CanvasPoint(
@@ -3282,14 +3352,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   @override
   Widget build(BuildContext context) {
-    final floatSurface = _floatSurface;
     final transform = _transform;
     final region = _region;
     final warpCorners = floatWarp.warpCorners;
-    // The image and the dab it was decoded from travel together, so the
-    // rect the preview draws into always belongs to the pixels in it.
-    final resampledImage = _preview.image;
-    final resampledDab = _preview.imageDab;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
@@ -3337,13 +3402,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // TS1: one description of what is floating, published for the composite
     // and used by the fallback painter below. Built here because this is
     // where every piece of it is already in scope.
-    final floatPaint = _floatPaint(
-      resampledImage: resampledImage,
-      resampledDab: resampledDab,
-      floatSurface: floatSurface,
-      transform: transform,
-    );
-    _publishFloat(floatPaint);
+    final floatPaints = [
+      for (final float in _floats) (float, _floatPaint(float)),
+    ];
+    _publishFloats(floatPaints);
+    // What no composite stands behind, this layer draws itself.
+    final drawnHere = [
+      for (final (float, paint) in floatPaints)
+        if (float.showsOn == null && !paint.isEmpty) paint,
+    ];
     return Listener(
       key: const ValueKey<String>('canvas-selection-layer'),
       behavior: HitTestBehavior.opaque,
@@ -3373,8 +3440,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // timesheet, the cut envelope, and the tests that mount this
           // layer alone) is the same description drawn here instead —
           // one painting code path, two mount points.
-          if (widget.floatOverlay == null && !floatPaint.isEmpty)
-            _floatPreview(floatPaint, context),
+          if (drawnHere.isNotEmpty) _floatPreview(drawnHere, context),
           _antsLayer(displayShape, region, chrome),
           // R16-①: the CONFIRM button — in the pill under the box while
           // there is something to confirm.
@@ -3579,13 +3645,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  Positioned _floatPreview(SelectionFloatPaint floatPaint, BuildContext context) {
+  Positioned _floatPreview(
+    List<SelectionFloatPaint> floats,
+    BuildContext context,
+  ) {
     return Positioned.fill(
       child: IgnorePointer(
         child: CustomPaint(
           key: const ValueKey<String>('transform-resample-preview'),
           painter: SelectionFloatPainter(
-            float: floatPaint,
+            floats: floats,
             viewport: widget.viewport,
             // The pan-phase snap's device grid — same source the
             // ink view behind this fallback reads.

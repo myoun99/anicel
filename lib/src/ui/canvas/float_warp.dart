@@ -39,17 +39,18 @@ import 'transform_box.dart';
 // and its failure mode (native on one side, Dart on the other; two
 // radius floors) is silent.
 
-/// The open box laid over the float: where the box's points sit on the
-/// canvas, the rect the float lands in through it, and the float resampled
+/// The open box laid over what floats: where the box's points sit on the
+/// canvas, the rect a float lands in through it, and a float resampled
 /// through it.
 ///
 /// A view of the selection layer's state at one moment — built on demand
-/// from the box, the pending lift stamp and the tool's knobs, owning none
+/// from the box, the pending lift stamps and the tool's knobs, owning none
 /// of them. The box's warp and its LAW live on [BoxWarp]; this is where
-/// that warp puts the float.
+/// that warp puts a float.
 class FloatWarp {
   const FloatWarp({
     required this.box,
+    required this.base,
     required this.float,
     required this.options,
     required this.pasteboard,
@@ -58,7 +59,15 @@ class FloatWarp {
   /// The open box, or null when no box is up.
   final TransformBox? box;
 
-  /// The pending lift stamp — the float — or null outside a move session.
+  /// The rect the box stands on: what the session floats, all of it — the
+  /// one float's own rect when a cel is lifted, the rect holding every
+  /// float when a folder's rows are (I-37, [stampRectHolding]). The quad's
+  /// corners and the mesh's grid are laid over it, so every float rides
+  /// the one mapping of the canvas ([carry]). Null outside a move session.
+  final StampRect? base;
+
+  /// The float THIS warp resamples — one of those [base] holds — or null
+  /// when only the box is asked about (its chrome, its carry).
   final BrushDab? float;
 
   /// Which of 일반/퍼스/메쉬 is armed, and how pixels are resampled.
@@ -71,25 +80,24 @@ class FloatWarp {
   /// The open box's affine; null when no box is up.
   SelectionAffine? get _affine => box?.affine;
 
-  /// The pending stamp's canvas rect corners (TL/TR/BR/BL) — the quad's
-  /// BASE. Initializing corners as affine(base) makes an untouched quad
-  /// exactly identity for [transformStampDabQuad].
+  /// The [base]'s corners (TL/TR/BR/BL) — the quad's BASE. Initializing
+  /// corners as affine(base) makes an untouched quad exactly identity for
+  /// [transformStampDabQuad].
   List<CanvasPoint>? stampRectCorners() {
-    final pending = float;
-    return pending == null ? null : stampCornersOf(pending);
+    final rect = base;
+    return rect == null ? null : cornersOfStampRect(rect);
   }
 
-  /// The mesh grid's BASE points over the pending stamp's rect, row-major
-  /// — the mesh's equivalent of [stampRectCorners].
+  /// The mesh grid's BASE points over the [base], row-major — the mesh's
+  /// equivalent of [stampRectCorners].
   List<CanvasPoint>? meshBasePoints({
     required int columns,
     required int rows,
   }) {
-    final pending = float;
-    final base = pending == null ? null : stampRectOf(pending);
-    return base == null
+    final rect = base;
+    return rect == null
         ? null
-        : meshRestGrid(base, columns: columns, rows: rows);
+        : meshRestGrid(rect, columns: columns, rows: rows);
   }
 
   /// Base points + offsets through the affine — the control points as they
@@ -221,15 +229,15 @@ class FloatWarp {
   }
 
   /// What the open warp does, as a mapping any stamp on the canvas can be
-  /// carried through ([StampCarry]): the float itself, and the picture of
-  /// every other cel a confirm over a frame range reaches. Null when there
-  /// is nothing to resample — the identity, or no box at all.
+  /// carried through ([StampCarry]): every float, and the picture of every
+  /// other cel a confirm over a frame range reaches. Null when there is
+  /// nothing to resample — the identity, or no box at all.
   ///
-  /// ⚠️Read while the float is still the PENDING stamp: the quad and the
-  /// mesh stand on its rect.
+  /// ⚠️Read while the floats are still the PENDING stamps: the quad and the
+  /// mesh stand on the rect they make ([base]).
   StampCarry? get carry {
-    final pending = float;
-    if (pending == null) {
+    final rect = base;
+    if (rect == null) {
       return null;
     }
     // 🚨Nothing is resampled past the pasteboard wall, because nothing
@@ -245,7 +253,7 @@ class FloatWarp {
     if (mesh != null) {
       return MeshCarry(
         (
-          base: stampRectOf(pending)!,
+          base: rect,
           columns: box!.warp.meshColumns,
           rows: box!.warp.meshRows,
           points: mesh,
@@ -257,7 +265,7 @@ class FloatWarp {
     final quad = warpCorners;
     if (quad != null) {
       return QuadCarry(
-        base: stampCornersOf(pending)!,
+        base: cornersOfStampRect(rect),
         corners: quad,
         mode: mode,
         within: wall,
@@ -271,8 +279,8 @@ class FloatWarp {
   }
 
   /// The float through whatever warp is open — through [carry], the one
-  /// place the three warp functions are called from, for the float and for
-  /// every other stamp alike.
+  /// place the three warp functions are called from, for every float and
+  /// for every other stamp alike.
   BrushDab? _resample({SelectionVisibleRect? visible}) {
     final pending = float;
     if (pending == null) {
@@ -367,14 +375,10 @@ class _ResampleKey {
   int get hashCode => Object.hash(mode, identityHashCode(source), shape);
 }
 
-/// What the resample preview asks of the layer: the open warp as the layer
-/// holds it, the window a drag clips it to, and a way to say the picture
-/// changed.
+/// What the resample preview asks of the layer: the window a drag clips it
+/// to, and a way to say the picture changed.
 abstract interface class FloatWarpHost {
   bool get mounted;
-
-  /// The open box over the float, as the layer holds it right now.
-  FloatWarp get floatWarp;
 
   /// The visible rect the PREVIEW clips to mid-drag; null means all of it.
   SelectionVisibleRect? previewVisibleRect();
@@ -383,20 +387,24 @@ abstract interface class FloatWarpHost {
   void previewChanged();
 }
 
-/// The float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
-/// mesh): the newest resample of the pending stamp through the warp, and
+/// A float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
+/// mesh): the newest resample of its pending stamp through the warp, and
 /// the decoded copy of the last resample that finished — the picture the
 /// screen draws.
 ///
-/// Owned by the layer for the layer's lifetime, and EMPTY outside a warp
-/// session: every session end calls [discard], which is also what lets go
-/// of a whole-picture image (tens of megabytes on a big cel). The layer
-/// keeps the warp's geometry and answers for it through [FloatWarpHost];
-/// this keeps the pictures, and the coalescing that makes them.
+/// One per float, owned by the float for the session's lifetime, and
+/// EMPTY outside a warp: every session end calls [discard], which is also
+/// what lets go of a whole-picture image (tens of megabytes on a big cel).
+/// The layer keeps the warp's geometry and answers for it ([_warp], and the
+/// window through [FloatWarpHost]); this keeps the pictures, and the
+/// coalescing that makes them.
 class FloatResamplePreview {
-  FloatResamplePreview(this._host);
+  FloatResamplePreview(this._host, this._warp);
 
   final FloatWarpHost _host;
+
+  /// The open box over THIS float, as the layer holds it right now.
+  final FloatWarp Function() _warp;
 
   /// The newest resample, keyed by what it belongs to. Computed and stored
   /// before its decode is even requested.
@@ -462,7 +470,7 @@ class FloatResamplePreview {
     // A selection that already fits gets no window at all, and stays on
     // the path where the commit reuses this very buffer.
     final visible = _host.previewVisibleRect();
-    final warp = _host.floatWarp;
+    final warp = _warp();
     final key = warp._resampleKey(visible: visible);
     if (key == null) {
       _dirty = false;
@@ -568,7 +576,7 @@ class FloatResamplePreview {
   /// commit gets the whole picture or computes it, and never lands a
   /// rectangle of one.
   BrushDab? warped() {
-    final warp = _host.floatWarp;
+    final warp = _warp();
     final key = warp._resampleKey();
     if (key == null) {
       return null;

@@ -188,7 +188,7 @@ class _CanvasPanelSelection {
   /// predecessors too. A tile pictures itself inside the paint now, the
   /// erased ones and the float's alike, so nothing is announced, composed
   /// or carried.
-  ({int liftToken, BrushDab stampDab})? handleSelectionLift(
+  ({int liftToken, List<LiftedFloat> floats})? handleSelectionLift(
     CanvasSelectionRegion region,
   ) {
     final coordinator = _state.widget._editableCoordinator;
@@ -237,7 +237,12 @@ class _CanvasPanelSelection {
     _state._rebuild(() {});
     return (
       liftToken: token,
-      stampDab: stampOnCanvas(lift.stampDab, placement),
+      floats: [
+        (
+          stampDab: stampOnCanvas(lift.stampDab, placement),
+          showsOn: _state._activeRowFloatSlot,
+        ),
+      ],
     );
   }
 

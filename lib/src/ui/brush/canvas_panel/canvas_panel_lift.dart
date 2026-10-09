@@ -290,9 +290,12 @@ class _CanvasPanelLift {
   /// R16-① confirm: lands the move as ONE undo entry whose undo target is
   /// the picture the session opened on — which is simply the cel as it
   /// stands, because the session never wrote to it.
+  ///
+  /// [stampDabs] is one per float the lift gave the layer — this panel lifts
+  /// the standing cel, so one.
   void handleLiftConfirmed(
     int liftToken,
-    BrushDab stampDab,
+    List<BrushDab> stampDabs,
     StampCarry? carry,
   ) {
     final coordinator = _state.widget._editableCoordinator;
@@ -300,6 +303,7 @@ class _CanvasPanelLift {
     if (coordinator == null || session == null) {
       return;
     }
+    final stampDab = stampDabs.single;
     // The setState rebuilds the interactive view onto the post-confirm
     // surface (R17-①b: without it the landed stamp stayed invisible until
     // an unrelated rebuild). Mounted guard: the layer's unmount path
@@ -399,8 +403,10 @@ class _CanvasPanelLift {
   }
 
   /// Raw landing of the floating stamp (no history entry) — the abandon
-  /// fallback so a reset never loses the float's pixels.
-  void handleLiftLanded(int liftToken, BrushDab stampDab) {
+  /// fallback so a reset never loses the float's pixels. One stamp, as in
+  /// [handleLiftConfirmed].
+  void handleLiftLanded(int liftToken, List<BrushDab> stampDabs) {
+    final stampDab = stampDabs.single;
     final coordinator = _state.widget._editableCoordinator;
     final session = _closeSession(liftToken);
     if (coordinator == null || session == null) {

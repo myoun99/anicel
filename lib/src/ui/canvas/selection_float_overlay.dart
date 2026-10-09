@@ -9,6 +9,7 @@ import 'bitmap_surface_painter.dart';
 import 'landing_preview.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
+import '../timeline/memo_token.dart' show ByList;
 
 /// What a selection MOVE or TRANSFORM is holding, described in CANVAS space
 /// so that whoever draws the active layer can draw it AT THAT LAYER'S DEPTH.
@@ -164,9 +165,9 @@ class SelectionFloatPaint implements LandingPreview {
 /// composite that draws it. Null value = nothing floating.
 typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 
-/// Draws a [SelectionFloatPaint] for hosts with NO composite behind them (the
+/// Draws [SelectionFloatPaint]s for hosts with NO composite behind them (the
 /// conte, the timesheet, the cut envelope, and tests that mount the selection
-/// layer alone).
+/// layer alone) — every float the session holds, in the order it holds them.
 ///
 /// The description is in canvas space, so this applies the viewport itself —
 /// the only difference from the merged route, where the stack painter has
@@ -174,12 +175,12 @@ typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 /// drawing.
 class SelectionFloatPainter extends CustomPainter with RepaintOnProps {
   SelectionFloatPainter({
-    required this.float,
+    required this.floats,
     required this.viewport,
     this.devicePixelRatio = 1.0,
   });
 
-  final SelectionFloatPaint float;
+  final List<SelectionFloatPaint> floats;
   final CanvasViewport viewport;
 
   /// The pan-phase snap's device grid — the ink view behind this float
@@ -195,10 +196,12 @@ class SelectionFloatPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
-    float.paintInto(canvas);
+    for (final float in floats) {
+      float.paintInto(canvas);
+    }
     canvas.restore();
   }
 
   @override
-  Object get props => (float, viewport, devicePixelRatio);
+  Object get props => (ByList(floats), viewport, devicePixelRatio);
 }

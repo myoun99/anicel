@@ -1046,6 +1046,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// underlay is rebuilt by the host.
   final SelectionFloatOverlay _selectionFloat = SelectionFloatOverlay(null);
 
+  /// Where a float lifted off the active row shows ([LiftedFloat.showsOn]):
+  /// with a composite behind this canvas it goes into it, at that row's
+  /// depth; without one the selection layer draws it itself.
+  SelectionFloatOverlay? get _activeRowFloatSlot =>
+      widget.viewportUnderlayBuilder == null ? null : _selectionFloat;
+
   /// R28-S: the dash phase for the ants the panel paints when NO selection
   /// layer is mounted — the region belongs to the document, so it keeps
   /// showing while the brush/eraser/fill is armed (R26 #18).
@@ -1784,7 +1790,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  Positioned _selectionLayer(CanvasUnderlayBuilder? underlayBuilder) {
+  Positioned _selectionLayer() {
     return Positioned.fill(
       child: ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
@@ -1935,18 +1941,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // waiting for the next gesture.
               transformOptions:
                   transformOptions,
-              // TS1: with a
-              // composite behind
-              // this layer the
-              // float goes into
-              // it; without one
-              // the layer draws
-              // its own.
-              floatOverlay:
-                  underlayBuilder ==
-                      null
-                  ? null
-                  : _selectionFloat,
             ),
       ),
     );

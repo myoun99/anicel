@@ -29,6 +29,7 @@ void main() {
     boxOpen: boxOpen,
     warp: FloatWarp(
       box: null,
+      base: null,
       float: null,
       options: TransformToolOptions(mode: mode),
       pasteboard: canvas.pasteboardRegion,
