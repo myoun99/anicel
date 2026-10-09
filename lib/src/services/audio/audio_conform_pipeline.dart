@@ -531,12 +531,15 @@ class AudioConformPipeline {
     // project's audio rate is a setting now (EXPORT-AUDIO ③), and playing
     // 44.1k PCM on a 48k schedule would shift every clip. The same goes for
     // the audio speed (④) — a pulled conform against an unpulled project is
-    // 0.1% of drift back in the door.
+    // 0.1% of drift back in the door. And for a conform another decode made
+    // ([conformDecodeRecipe]): the same file decodes to other samples now —
+    // an m4a made before 2026-10-09 still holds its encoder's 1,024 frames.
     final settingsMatch =
         existing != null &&
         existing.sampleRate == projectSampleRate &&
         existing.speedNumerator == speedNumerator &&
-        existing.speedDenominator == speedDenominator;
+        existing.speedDenominator == speedDenominator &&
+        existing.decodeRecipe == conformDecodeRecipe;
 
     // FAST PATH: the source still has the length and timestamp it had when
     // this conform was written, so nothing on this machine has touched it

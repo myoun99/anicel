@@ -124,6 +124,22 @@ void main() {
       expect(conformMatchesSource(decoded, regrown), isFalse);
     });
 
+    test('the decode that made the PCM rides in the header — today\'s when '
+        'this app writes, 0 on a conform from before it was recorded', () {
+      final bytes = encodeConform(
+        samples: ramp(64),
+        channels: 1,
+        sampleRate: 48000,
+        fingerprint: fingerprint,
+      );
+      expect(decodeConform(bytes).decodeRecipe, conformDecodeRecipe);
+
+      // The slot was reserved and written as 0 until it was given this job.
+      bytes.fillRange(56, 60, 0);
+      expect(decodeConform(bytes).decodeRecipe, 0);
+      expect(decodeConform(bytes).fingerprint, fingerprint);
+    });
+
     test('a conform with no fingerprint counts as stale', () {
       // Written by another tool: nothing is known about where it came
       // from, and guessing wrong plays the wrong sound against someone's

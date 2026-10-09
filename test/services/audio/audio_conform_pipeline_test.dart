@@ -658,6 +658,37 @@ void main() {
       expect(decodeConform(File(conform).readAsBytesSync()).sampleRate, 48000);
     });
 
+    test('a conform an older decode made is made again — the same file '
+        'decodes to other samples now', () {
+      final source = writeSource('olddecode.wav', rate: 44100);
+      final conform = '${temp.path}/Conformed/olddecode.wav.wav';
+      expect(
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conform)
+            .outcome,
+        ConformOutcome.built,
+      );
+
+      // The same conform, as a decode before the recipe was recorded wrote
+      // it: an m4a's then still held its encoder's 1,024 frames.
+      final bytes = File(conform).readAsBytesSync()..fillRange(56, 60, 0);
+      File(conform).writeAsBytesSync(bytes);
+
+      final again = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conform,
+      );
+      expect(
+        again.outcome,
+        ConformOutcome.built,
+        reason: 'what it holds is not what opening the file plays today',
+      );
+      expect(
+        decodeConform(File(conform).readAsBytesSync()).decodeRecipe,
+        conformDecodeRecipe,
+      );
+    });
+
     test('a matching conform is reused instead of rebuilt', () {
       final log = <String>[];
       final source = writeSource('reuse.wav', rate: 44100);
