@@ -8,7 +8,8 @@ import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
-import '../services/project_lookup.dart' show brushFrameKeyIn, cutPositionOf;
+import '../services/project_lookup.dart'
+    show brushFrameKeyIn, cutIdOfLayer, cutPositionOf;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -775,15 +776,18 @@ class EditorSessionManager extends ChangeNotifier
   /// 상태 접힌 상태 공유하라는것. 법통일」 — and the conte rows since I-73
   /// (10-08), whose head is one: 「콘티행도 동일하게 하고싶으니까 어태치
   /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」.
+  ///
+  /// The row is found in its OWN cut, the active one or not: the
+  /// storyboard's rail presses the rows of every cut, a gap's included
+  /// (I-73 ④ⓔ). ↩️It asked the active cut, and in a gap answered the row
+  /// alone — a head shut there shut one row, and [RailView.followHeads] let
+  /// it back open beside the rest.
   List<LayerId> rowsFoldingWith(LayerId row) {
-    final cutId = activeCutId;
+    final project = repository.requireProject();
+    final cutId = cutIdOfLayer(project, row) ?? activeCutId;
     return cutId == null
         ? [row]
-        : headMirrorRows(
-            repository.requireProject(),
-            cutId: cutId,
-            layerId: row,
-          );
+        : headMirrorRows(project, cutId: cutId, layerId: row);
   }
 
   /// The timeline zoom each of this project's cuts was left at (F-253) —

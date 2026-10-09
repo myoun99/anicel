@@ -649,6 +649,19 @@ class Standing {
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
       panel: panel,
     );
+    // …and a group the storyboard's projection row draws shuts there too
+    // (I-73 ④ⓔ): its header swallows the members you stood in.
+    final projection = panel == WorkingPanel.timeline
+        ? _projectionRowShowing(layerId)
+        : null;
+    if (projection != null) {
+      handOffOnFold(
+        swallower: LaneRowAddress(projection, laneId),
+        vanished: (address) =>
+            currentRowIsInsideGroup(address, projection, laneId),
+        panel: WorkingPanel.storyboard,
+      );
+    }
   }
 
   /// The storyboard's projection row that shows [layerId] — the camera row

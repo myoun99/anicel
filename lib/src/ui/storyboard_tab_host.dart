@@ -78,6 +78,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleAttachGroup,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
+    this.expandedLaneGroupKeys = const {},
+    this.onToggleLaneGroupKey,
     this.rowsChannel,
     this.transformOptions,
     this.cameraViewEnabled,
@@ -105,6 +107,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// row's twirl opens its lanes here as on the timeline's rail (I-73 ④ⓔ).
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
+
+  /// …and the lane GROUPS twirled open in them, the same set and verb
+  /// ([TimelineTabHost.expandedLaneGroupKeys]): a conte row's groups twirl
+  /// here as on the timeline's rail (I-73 ④ⓔ).
+  final Set<String> expandedLaneGroupKeys;
+  final ValueChanged<String>? onToggleLaneGroupKey;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -669,6 +677,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleAttachGroup: widget.onToggleAttachGroup,
                     expandedLaneLayerIds: widget.expandedLaneLayerIds,
                     onToggleLayerLanes: widget.onToggleLayerLanes,
+                    expandedLaneGroupKeys: widget.expandedLaneGroupKeys,
+                    onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _dragPreview,
                     // While playing, the highlight follows the PLAYING cut

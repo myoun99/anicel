@@ -420,6 +420,82 @@ void main() {
     });
   });
 
+  group('its labels — the timeline lane\'s own, on the cut stood in', () {
+    String valueOf(WidgetTester tester, String laneId) => tester
+        .widget<Text>(
+          find.descendant(
+            of: key('storyboard-lane-value-$rowId-$laneId'),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+
+    testWidgets('🚨its ◆ keys that lane of the camera stood in, at the frame '
+        'of its own', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 28));
+      await tester.pumpAndSettle();
+
+      await tester.tap(key('storyboard-lane-key-toggle-$rowId-scale'));
+      await tester.pumpAndSettle();
+
+      expect(scaleKeysOf(session, b), [2, 4, 6, 12], reason: 'b\'s own 4');
+      expect(positionKeysOf(session, b), [2, 6, 12]);
+    });
+
+    testWidgets('🚨a value scrubbed on it shows in flight and lands on the '
+        'camera stood in, at the frame of its own', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 28));
+      await tester.pumpAndSettle();
+      final before = valueOf(tester, 'scale');
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(key('storyboard-lane-value-$rowId-scale')),
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var step = 0; step < 6; step += 1) {
+        await gesture.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+      final during = valueOf(tester, 'scale');
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(during, isNot(before), reason: 'the label follows the scrub');
+      expect(scaleKeysOf(session, b), contains(4), reason: 'keyed at b\'s 4');
+      expect(scaleKeysOf(session, a), [0, 12, 20, 30]);
+    });
+
+    testWidgets('in a gap they keep their names and no value', (tester) async {
+      await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 28));
+      await tester.pumpAndSettle();
+      expect(key('storyboard-lane-value-$rowId-scale'), findsOneWidget);
+
+      await tester.tapAt(at(tester, 'scale', 50));
+      await tester.pumpAndSettle();
+
+      expect(laneLabel('scale'), findsOneWidget);
+      expect(key('storyboard-lane-value-$rowId-scale'), findsNothing);
+    });
+
+    testWidgets('🚨in a gap the legend\'s twirl-all still shuts them', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 50));
+      await tester.pumpAndSettle();
+      expect(session.activeCutOrNull, isNull);
+
+      await tester.tap(key('legend-lanes-toggle'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(laneStrip('scale'), findsNothing);
+    });
+  });
+
   group('a double click on a lane — the timeline lane\'s own', () {
     setUp(TimelineDoubleTapGate.reset);
 
@@ -486,6 +562,22 @@ void main() {
       final rotation = tester.getRect(laneStrip('rotation'));
       final position = tester.getRect(laneStrip('position'));
       expect(band.height, closeTo(rotation.bottom - position.top, 0.5));
+    });
+
+    testWidgets('🚨a sweep begun on a lane\'s lower half reaches the lane its '
+        'pointer is in, measured from the lane\'s top', (tester) async {
+      final session = await pumpPanel(tester);
+
+      await sweep(
+        tester,
+        at(tester, 'position', 10, across: 0.6),
+        at(tester, 'rotation', 12, across: 0.2),
+      );
+
+      expect(
+        session.laneRangeSelection.value!.laneIds,
+        ['position', 'scale', 'rotation'],
+      );
     });
 
     testWidgets('🚨over an O.L the band stands on the line of the cut', (

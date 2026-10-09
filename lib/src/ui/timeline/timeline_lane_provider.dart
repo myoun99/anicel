@@ -1,5 +1,6 @@
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../services/project_lookup.dart' show cutIdOfLayer, requireCut;
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
@@ -48,8 +49,19 @@ List<PropertyLaneRow> timelineLanesForLayer({
 
 /// The CAMERA row's lanes: its cut's camera track, the member lanes alone.
 List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
-  // A camera row on screen implies an active cut.
-  final cut = session.requireActiveCut;
+  // The cut that holds the row — the active one wherever the timeline
+  // draws it, but the storyboard's camera row twirls any cut's camera, a
+  // gap's included (I-73 ④ⓔ). ↩️It read the active cut, required: in a gap
+  // the storyboard's twirl-all threw here.
+  final project = session.repository.requireProject();
+  final cutId = cutIdOfLayer(project, row.id) ?? session.activeCutId;
+  if (cutId == null) {
+    return const [];
+  }
+  final cut = requireCut(project, cutId);
+  if (cut.id != session.activeCutId) {
+    return cameraPropertyLanes(row, cut.camera.track, canvasSize: cut.canvasSize);
+  }
   // ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
   // 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
   // 펼치면 포지션/스케일/로테이션만 남도록.」

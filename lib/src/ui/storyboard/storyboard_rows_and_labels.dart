@@ -85,6 +85,12 @@ class _StoryboardRowsAndLabels {
     /// one (an S row's groups key by [laneGroupKey], the V row's effect chain
     /// by effect).
     required String Function(PropertyLaneRow lane) groupKeyOf,
+
+    /// What a header's chevron turns its group by, [groupKeyOf]'s key: the
+    /// rail's own twirls ([StoryboardPanel.onToggleTransformGroup]) unless
+    /// the rows twirl with the timeline's — a projection row's, whose head is
+    /// the timeline's row (I-73 ④ⓔ).
+    ValueChanged<String>? onToggleGroup,
     ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
 
@@ -115,7 +121,7 @@ class _StoryboardRowsAndLabels {
       layerRowHeight: laneHeight - 2,
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
-    final onToggleGroup = _state.widget.onToggleTransformGroup;
+    final toggleGroup = onToggleGroup ?? _state.widget.onToggleTransformGroup;
     Widget row(Layer shown, PropertyLaneRow lane) => TimelineLaneControlsRow(
       layer: shown,
       lane: lane,
@@ -127,9 +133,9 @@ class _StoryboardRowsAndLabels {
           ? onSelectFrame
           : null,
       laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
-      onToggleLaneGroup: onToggleGroup == null
+      onToggleLaneGroup: toggleGroup == null
           ? null
-          : (_, _) => onToggleGroup(groupKeyOf(lane)),
+          : (_, _) => toggleGroup(groupKeyOf(lane)),
       onToggleLaneGroupEnabled: onToggleGroupEnabled == null
           ? null
           : (_, _) => onToggleGroupEnabled(lane),
@@ -372,10 +378,24 @@ class _StoryboardRowsAndLabels {
   ) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final select = _state.widget.onSelectLayer;
+    final toggleLanes = _state.widget.onToggleLayerLanes;
     return TimelineLayerControlsRow(
       keyPrefix: 'storyboard',
       layer: head.row,
       active: _state.widget.selectedRow == LayerRowAddress(rowId),
+      // Its twirl — the timeline row's — opens the row's lanes under it
+      // (I-73 ④ⓔ), the rows at its seat in every cut as one; a row riding
+      // the conte has none to open, as on the timeline.
+      hasLanes: _state._railRows._conteLanes(track, seat).isNotEmpty,
+      lanesExpanded: _state._railRows._conteLanesOpen(track, seat),
+      onToggleLanes: toggleLanes == null
+          ? null
+          : (_) {
+              final row = _state._railRows._conteTwirlOf(track, seat);
+              if (row != null) {
+                toggleLanes(row);
+              }
+            },
       metrics: TimelineGridMetrics.defaults.copyWith(
         layerControlsWidth: _state._naturalRailWidth,
         layerRowHeight: _state._rowHeights.conte,

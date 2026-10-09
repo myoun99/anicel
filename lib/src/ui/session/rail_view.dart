@@ -146,6 +146,38 @@ class RailView {
         rows.value = next;
       }
     }
+    _followHeadGroups(families);
+  }
+
+  /// [followHeads]' rule for the GROUPS open inside the rows' lanes — a
+  /// conte's Transform and effect groups, twirled on the storyboard's conte
+  /// row as on the timeline's (I-73 ④ⓔ): where a group is open in any row
+  /// of a family, it is open in every row, by lane. A row a command just
+  /// made takes on what the others show, so the rows a projection row draws
+  /// do not come and go with the cut it stands in.
+  void _followHeadGroups(Iterable<List<LayerId>> families) {
+    final keys = expandedLaneGroupKeys.value;
+    if (keys.isEmpty) {
+      return;
+    }
+    final next = Set<String>.of(keys);
+    for (final family in families) {
+      final members = family.toSet();
+      final open = {
+        for (final key in keys)
+          if (parseLaneGroupKey(key) case final row?
+              when members.contains(row.layerId))
+            row.laneId,
+      };
+      for (final member in family) {
+        for (final laneId in open) {
+          next.add(laneGroupKey(member, laneId));
+        }
+      }
+    }
+    if (!setEquals(next, keys)) {
+      expandedLaneGroupKeys.value = next;
+    }
   }
 
   void dispose() {

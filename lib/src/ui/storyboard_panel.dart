@@ -89,7 +89,7 @@ import 'timeline/timeline_lane_rows.dart'
         timelineLaneKeySpan,
         timelineStretchWordSpan;
 import 'timeline/effect_lane_policy.dart'
-    show effectPropertyLanes, parseEffectLaneId;
+    show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
@@ -109,7 +109,8 @@ import 'timeline/transform_lane_policy.dart'
         cameraPropertyLanes,
         cameraUnionHeader,
         laneSelectionCoversBandRow,
-        transformGroupHeader;
+        transformGroupHeader,
+        transformGroupHeaderLane;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
@@ -621,6 +622,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleAttachGroup,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
+    this.expandedLaneGroupKeys = const {},
+    this.onToggleLaneGroupKey,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -1200,6 +1203,13 @@ class StoryboardPanel extends StatefulWidget {
   /// one.
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
+
+  /// The lane GROUPS twirled open inside those rows, and their twirl — the
+  /// timeline rail's own pair, by [laneGroupKey]: a conte row's Transform
+  /// and effect groups twirl with the timeline's (I-73 ④ⓔ), in every cut
+  /// of the track at once.
+  final Set<String> expandedLaneGroupKeys;
+  final ValueChanged<String>? onToggleLaneGroupKey;
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers

@@ -34,7 +34,9 @@ import 'transform_lane_policy.dart'
 /// two things that ARE the rail's come in as arguments:
 ///
 ///  * [valueSourceAt] — the row and frame a lane's value at a rail frame is
-///    read off;
+///    read off. Null leaves the lanes without a value: a rail with no cut to
+///    read them in (the storyboard's conte rows in a gap, I-73 ④ⓔ). An S row
+///    is never read so, and its name tag would resolve on the row itself;
 ///  * [poseCentre] — the frame an unkeyed pose sits in the middle of: the
 ///    open cut's canvas on a cut's rail, the camera frame on a track's rail,
 ///    where a row spans cuts and following the open one showed another
@@ -50,9 +52,10 @@ List<PropertyLaneRow> propertyLanesForRow({
   required Layer layer,
   required List<Layer> rows,
   required Set<String> expandedGroupKeys,
-  required ({Layer layer, int frame}) Function(int frameIndex) valueSourceAt,
+  required ({Layer layer, int frame}) Function(int frameIndex)? valueSourceAt,
   required CanvasSize? poseCentre,
 }) {
+  final source = valueSourceAt;
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own in v1. R9: the 공정 ORGANIZER folder joins
   // them. It follows its base like its members do, so a transform or
@@ -101,29 +104,34 @@ List<PropertyLaneRow> propertyLanesForRow({
       layer.transformTrack,
       scaleForm: scaleLaneFormOf(layer),
       includeAnchorAndOpacity: true,
-      poseAt: centre == null
+      poseAt: centre == null || source == null
           ? null
           : (frameIndex) {
-              final at = valueSourceAt(frameIndex);
+              final at = source(frameIndex);
               return at.layer.transformTrack.resolveAt(
                 frameIndex: at.frame,
                 orElse: () => layerIdentityPose(centre),
               );
             },
-      anchorAt: centre == null
+      anchorAt: centre == null || source == null
           ? null
           : (frameIndex) {
-              final at = valueSourceAt(frameIndex);
+              final at = source(frameIndex);
               return resolveAnchorTrackAt(
                     at.layer.transformTrack.anchorPoint,
                     at.frame,
                   ) ??
                   layerIdentityPose(centre).center;
             },
-      opacityAt: (frameIndex) {
-        final at = valueSourceAt(frameIndex);
-        return resolveOpacityTrackAt(at.layer.transformTrack.opacity, at.frame);
-      },
+      opacityAt: source == null
+          ? null
+          : (frameIndex) {
+              final at = source(frameIndex);
+              return resolveOpacityTrackAt(
+                at.layer.transformTrack.opacity,
+                at.frame,
+              );
+            },
     );
   }
 
@@ -140,15 +148,17 @@ List<PropertyLaneRow> propertyLanesForRow({
       isExpanded: (effectId) => expandedGroupKeys.contains(
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),
-      valueAt: (effectId, parameterId, frameIndex) {
-        final at = valueSourceAt(frameIndex);
-        return effectParameterValueAt(
-          at.layer.effects,
-          effectId,
-          parameterId,
-          at.frame,
-        );
-      },
+      valueAt: source == null
+          ? null
+          : (effectId, parameterId, frameIndex) {
+              final at = source(frameIndex);
+              return effectParameterValueAt(
+                at.layer.effects,
+                effectId,
+                parameterId,
+                at.frame,
+              );
+            },
     );
   }
 
@@ -176,7 +186,8 @@ List<PropertyLaneRow> propertyLanesForRow({
             laneGroupKey(layer.id, seNameTagGroupLaneId),
           ),
           resolveAt: (frameIndex) {
-            final at = valueSourceAt(frameIndex);
+            final at =
+                source?.call(frameIndex) ?? (layer: layer, frame: frameIndex);
             return (at.layer.seNameTag ?? const SeNameTag()).resolveAt(
               at.frame,
             );
