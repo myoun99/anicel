@@ -22,23 +22,14 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/cel_source_effect_pass.dart';
+import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
-/// I-37 — A ROW A FOLDER'S LIFT HOLDS SHOWS WHAT THE LIVE ROW WOULD.
-///
-/// 유저 2026-10-02: 「폴더 전체를 하나로 들도록」. A folder's rows show at
-/// the same frame, so while its box is open each of them is drawn as its
-/// cel with the hole the lift cut and its own float over it — in its own
-/// slot, with its own opacity, blend, pose and effects. That is exactly
-/// what the LIVE row is while a box is open on it, and one body draws both
-/// ([LiftedRowPaint]). Here the same surface and the same float are drawn
-/// once as the live row and once as a lifted row, and the bytes must agree
-/// through every route the body has: riding the draws, a plain buffer, an
-/// advanced blend's image, a pose, a spreading effect, inside a folder.
 /// One row's composite paint, written once for both of its shapes.
 typedef _RowPaint = ({
   double opacity,
@@ -47,6 +38,17 @@ typedef _RowPaint = ({
   List<ResolvedLayerEffect> effects,
 });
 
+/// I-37 — A ROW A FOLDER'S LIFT HOLDS SHOWS WHAT THE LIVE ROW WOULD.
+///
+/// 유저 2026-10-02: 「폴더 전체를 하나로 들도록」. A folder's rows show at
+/// the same frame, so while its box is open each of them is drawn as its
+/// cel with the hole the lift cut and its own float over it — in its own
+/// slot, with its own opacity, blend, pose and effects. That is exactly
+/// what the LIVE row is while a box is open on it, and one body draws both
+/// ([LiftedCel]). Here the same surface and the same float are drawn
+/// once as the live row and once as a lifted row, and the bytes must agree
+/// through every route the body has: riding the draws, a plain buffer, an
+/// advanced blend's image, a pose, a spreading effect, inside a folder.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -104,6 +106,17 @@ void main() {
     return float;
   }
 
+  /// [cel] as the canvas draws the LIVE row: through the seam every cel is
+  /// shown through, with its row's keys — as the view draws a lifted one.
+  BitmapSurfacePainter liveAs(BitmapSurfacePainter cel, _RowPaint paint) =>
+      BitmapSurfacePainter(
+        surface: celSurfaceAsShown(
+          cel.surface,
+          splitSourceEffects(paint.effects).source,
+        ),
+        showTransparentBackground: false,
+      );
+
   CompositeNode<CanvasStackRow> liveRow(_RowPaint paint) =>
       CompositeLeaf<CanvasStackRow>(
         CanvasActiveLayerRow(
@@ -130,7 +143,7 @@ void main() {
     required List<CompositeNode<CanvasStackRow>> nodes,
     BitmapSurfacePainter? live,
     SelectionFloatOverlay? liveFloat,
-    Map<BrushFrameKey, LiftedRowPaint> lifted = const {},
+    Map<BrushFrameKey, LiftedCel> lifted = const {},
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -238,14 +251,14 @@ void main() {
       final live = await pumpStack(
         tester,
         nodes: [liveRow(paint)],
-        live: cel,
+        live: liveAs(cel, paint),
         liveFloat: float,
       );
       final asLive = await shot(tester, live);
       final lifted = await pumpStack(
         tester,
         nodes: [liftedRow('a', paint)],
-        lifted: {keyOf('a'): (surface: cel, float: float)},
+        lifted: {keyOf('a'): (surface: cel.surface, float: float)},
       );
       final asLifted = await shot(tester, lifted);
 
@@ -282,17 +295,17 @@ void main() {
     final withLiveTop = await pumpStack(
       tester,
       nodes: [folder(liveRow(overPaint))],
-      live: over,
+      live: liveAs(over, overPaint),
       liveFloat: overFloat,
-      lifted: {keyOf('under'): (surface: under, float: underFloat)},
+      lifted: {keyOf('under'): (surface: under.surface, float: underFloat)},
     );
     final liveTop = await shot(tester, withLiveTop);
     final bothLifted = await pumpStack(
       tester,
       nodes: [folder(liftedRow('over', overPaint))],
       lifted: {
-        keyOf('under'): (surface: under, float: underFloat),
-        keyOf('over'): (surface: over, float: overFloat),
+        keyOf('under'): (surface: under.surface, float: underFloat),
+        keyOf('over'): (surface: over.surface, float: overFloat),
       },
     );
     final allLifted = await shot(tester, bothLifted);
@@ -320,7 +333,7 @@ void main() {
       await pumpStack(
         tester,
         nodes: [liftedRow('a', plain)],
-        lifted: {keyOf('a'): (surface: cel, float: float)},
+        lifted: {keyOf('a'): (surface: cel.surface, float: float)},
       ),
     );
     final withoutFloat = await shot(
@@ -328,7 +341,7 @@ void main() {
       await pumpStack(
         tester,
         nodes: [liftedRow('a', plain)],
-        lifted: {keyOf('a'): (surface: cel, float: empty)},
+        lifted: {keyOf('a'): (surface: cel.surface, float: empty)},
       ),
     );
     final notLifted = await shot(
@@ -360,7 +373,7 @@ void main() {
       tester,
       nodes: [liveRow(plain), liftedRow('a', plain)],
       live: holedCel(2),
-      lifted: {keyOf('a'): (surface: holedCel(1), float: floatOf(1))},
+      lifted: {keyOf('a'): (surface: holedCel(1).surface, float: floatOf(1))},
     );
     await shot(tester, painter);
 
@@ -374,7 +387,7 @@ void main() {
     final painter = await pumpStack(
       tester,
       nodes: [liftedRow('a', plain)],
-      lifted: {keyOf('a'): (surface: holedCel(1), float: float)},
+      lifted: {keyOf('a'): (surface: holedCel(1).surface, float: float)},
     );
     var repaints = 0;
     painter.addListener(() => repaints += 1);

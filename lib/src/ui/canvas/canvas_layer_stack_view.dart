@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
 import '../../core/collection_equality.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
@@ -35,6 +36,7 @@ import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../../services/cel_source_effect_pass.dart';
+import '../../services/cel_surface_as_shown.dart';
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 import 'tile_pyramid.dart';
@@ -122,9 +124,9 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 }
 
-/// A cel a FOLDER's move session holds lifted (I-37): drawn by [surface] —
-/// the cel with the hole the lift cut — and [float] over it, in its own
-/// row's slot, with its own row's opacity, blend and effects.
+/// A cel a FOLDER's move session holds lifted (I-37): [surface] — the cel
+/// with the hole the lift cut — with [float] over it, drawn in its own row's
+/// slot, with its own row's opacity, blend and effects.
 ///
 /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. A folder's rows
 /// show at the SAME frame, so each one's hole and each one's float have to
@@ -134,7 +136,15 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
 /// ⛔Not a live row: a row stays live because a stroke draws into it, and a
 /// lifted row only shows. While one is up the display keeps no buffer —
 /// exactly as while the active row's float is up ([SelectionFloatPaint]).
-typedef LiftedRowPaint = ({
+///
+/// ⚠️A SURFACE, not a painter: the view draws it as its row's cel is shown —
+/// through the seam with that row's keys ([celSurfaceAsShown]), which the
+/// view knows from the row and the lift does not.
+typedef LiftedCel = ({BitmapSurface surface, SelectionFloatOverlay float});
+
+/// A [LiftedCel] as the view draws it: the painter its surface is shown by,
+/// and its float.
+typedef _LiftedRowPaint = ({
   BitmapSurfacePainter surface,
   SelectionFloatOverlay float,
 });
@@ -310,8 +320,8 @@ class CanvasLayerStackView extends StatefulWidget {
 
   /// The cels a folder's move session holds lifted (I-37), by the cel each
   /// image row in [nodes] names: such a row draws its lifted surface and its
-  /// float instead of its cel's image ([LiftedRowPaint]).
-  final Map<BrushFrameKey, LiftedRowPaint> liftedRows;
+  /// float instead of its cel's image ([LiftedCel]).
+  final Map<BrushFrameKey, LiftedCel> liftedRows;
 
   /// The composite tree, bottom → top.
   final List<CompositeNode<CanvasStackRow>> nodes;
@@ -1048,6 +1058,53 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
+  /// The painter each row a folder's lift holds is drawn by, by its cel —
+  /// kept while its surface and its row's keys stay what they were: a new
+  /// painter is a new set of tile pictures, and a drag step changes neither.
+  final Map<
+    BrushFrameKey,
+    ({BitmapSurface surface, List<double> keys, BitmapSurfacePainter painter})
+  >
+  _liftedPainters = {};
+
+  /// [lifted] as [request]'s row draws it ([_liftedPainters]).
+  _LiftedRowPaint _liftedRowPaint(
+    CanvasLayerImageRequest request,
+    LiftedCel lifted,
+  ) {
+    final keys = celSourceEffectSignature(request.sourceEffects);
+    final held = _liftedPainters[request.frameKey];
+    if (held != null &&
+        identical(held.surface, lifted.surface) &&
+        listEquals(held.keys, keys)) {
+      return (surface: held.painter, float: lifted.float);
+    }
+    final painter = BitmapSurfacePainter(
+      // Shown as the row's image is: its texts laid, then its row's keys —
+      // the CPU half of the chain; the paint half rides the row's paint.
+      surface: celSurfaceAsShown(lifted.surface, request.sourceEffects),
+      // The stack draws in canvas space, as for the live row.
+      showTransparentBackground: false,
+      lineage: (request.frameKey.layerId, request.frameKey.frameId),
+    );
+    _liftedPainters[request.frameKey] = (
+      surface: lifted.surface,
+      keys: keys,
+      painter: painter,
+    );
+    return (surface: painter, float: lifted.float);
+  }
+
+  /// [_liftedPainters] as this build draws them — none for a cel the lift no
+  /// longer holds.
+  Map<BrushFrameKey, _LiftedRowPaint> _liftedRowsDrawn() {
+    _liftedPainters.removeWhere((key, _) => !widget.liftedRows.containsKey(key));
+    return {
+      for (final MapEntry(:key, :value) in _liftedPainters.entries)
+        key: (surface: value.painter, float: widget.liftedRows[key]!.float),
+    };
+  }
+
   /// The tree with each image request replaced by the clone we hold —
   /// requests whose image is not ready yet simply drop out, and a group
   /// left empty by that drops with them (an empty buffer is a wasted
@@ -1064,7 +1121,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       case final CanvasLayerImageRequest request
           when widget.liftedRows.containsKey(request.frameKey):
         return _PaintLiftedSurface(
-          lifted: widget.liftedRows[request.frameKey]!,
+          lifted: _liftedRowPaint(
+            request,
+            widget.liftedRows[request.frameKey]!,
+          ),
           opacity: request.opacity,
           blendMode: request.blendMode,
           placement: request.placement,
@@ -1357,7 +1417,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,
           floatOverlay: widget.floatOverlay,
-          liftedRows: widget.liftedRows,
+          liftedRows: _liftedRowsDrawn(),
           canvasSize: widget.canvasSize,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
@@ -1587,7 +1647,7 @@ final class _PaintActiveSurface extends _SurfaceRow {
       Object.hash(opacity, blendMode, placement, Object.hashAll(effects));
 }
 
-/// A row a folder's move session holds lifted ([LiftedRowPaint]): drawn by
+/// A row a folder's move session holds lifted ([LiftedCel]): drawn by
 /// its lifted surface with its float over it, by the same body the active
 /// row is drawn with — in its own slot, with its own row's paint.
 final class _PaintLiftedSurface extends _SurfaceRow {
@@ -1599,7 +1659,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
     required this.effects,
   });
 
-  final LiftedRowPaint lifted;
+  final _LiftedRowPaint lifted;
   @override
   final double opacity;
   @override
@@ -1922,8 +1982,8 @@ class _LayerStackPainter extends CustomPainter {
   /// step has to reach the canvas without a widget rebuild.
   final SelectionFloatOverlay? floatOverlay;
 
-  /// See [CanvasLayerStackView.liftedRows].
-  final Map<BrushFrameKey, LiftedRowPaint> liftedRows;
+  /// See [CanvasLayerStackView.liftedRows], as this build draws them.
+  final Map<BrushFrameKey, _LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final bool paintPaper;
