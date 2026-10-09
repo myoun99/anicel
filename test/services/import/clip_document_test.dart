@@ -371,6 +371,172 @@ void main() {
     );
   });
 
+  test('🎯a sound layer holds its sound — the chunk its file is in, its name '
+      'and extension — and its track\'s clip says what plays from which '
+      'second on which frame (memory `csp-clip-format-notes` §3)', () {
+    const uuidVoice = '99990000-aaaa-bbbb-cccc-ddddeeeeffff';
+    const object = 'AAAA1111-2222-3333-4444-555566667777';
+    const bank = 'bbbb1111-2222-3333-4444-555566667777';
+    final soundTrack = trackDataBytes(
+      cmtDocumentBytes(
+        clipTrackSpec([
+          CmtSpec(
+            'ActionNodeClip',
+            'null',
+            children: [
+              // Ticks at 60 a second: the clip is seconds 1 … 5, frames
+              // 24 … 120 at 24 fps.
+              const CmtSpec(
+                'TimeClip',
+                'null',
+                children: [
+                  CmtSpec('Start', 'Double', value: 60),
+                  CmtSpec('End', 'Double', value: 300),
+                  CmtSpec('Rate', 'Double', value: 60),
+                ],
+              ),
+              const CmtSpec(
+                'MotionClip',
+                'null',
+                children: [
+                  CmtSpec('Start', 'Double', value: 60),
+                  CmtSpec('End', 'Double', value: 300),
+                ],
+              ),
+              CmtSpec(
+                'AnimInfo',
+                'null',
+                children: [
+                  const CmtSpec(
+                    'Param',
+                    'Int32',
+                    value: 7,
+                    attributes: {'Name': 'AudioPlayer', 'Tag': object},
+                  ),
+                  const CmtSpec(
+                    'Param',
+                    'Double',
+                    value: 80,
+                    attributes: {'Name': 'AudioVolume'},
+                  ),
+                  // Half a second in on the clip's first frame, two seconds
+                  // over two seconds — its own speed.
+                  CmtSpec(
+                    'FCurve',
+                    'null',
+                    attributes: const {'Type': 'PlayTime'},
+                    children: [
+                      const CmtSpec('Frame', 'Double[]', value: [60, 180]),
+                      const CmtSpec('Value', 'Double[]', value: [0.5, 2.5]),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ]),
+      ),
+    );
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN AudioLayer INTEGER')
+        ..execute('ALTER TABLE Layer ADD COLUMN FirstLayerObject INTEGER')
+        ..execute(
+          'CREATE TABLE LayerObject(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, LayerId INTEGER, ObjectUuid TEXT, '
+          'BankItemUuid TEXT, ObjectName TEXT, ObjectNext INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItem(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemUuid TEXT, ItemType TEXT, '
+          'ItemFileExtension TEXT, ItemBinaryMainIndex INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItemBinary(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemBinaryData TEXT)',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, AudioLayer, FirstLayerObject) '
+          "VALUES (2, 'voice', 8720, 0, 1, '$uuidVoice', 1, 10)",
+        )
+        ..execute(
+          'INSERT INTO LayerObject(MainId, LayerId, ObjectUuid, '
+          'BankItemUuid, ObjectName, ObjectNext) '
+          "VALUES (10, 2, '$object', '$bank', 'take.mp3', 0)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItem(MainId, ItemUuid, ItemType, '
+          'ItemFileExtension, ItemBinaryMainIndex) '
+          "VALUES (20, '$bank', 'Audio', 'mp3', 30)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItemBinary(MainId, ItemBinaryData) '
+          "VALUES (30, '${externalId(5)}')",
+        )
+        ..execute(
+          'INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex) '
+          'VALUES (1, 40, 0)',
+        )
+        ..execute(
+          'INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, '
+          'FrameRate, StartFrame, EndFrame, FirstTrack) '
+          "VALUES (40, 0, 'cut', 24.0, 0, 120, 50)",
+        );
+      final track = db.prepare(
+        'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+        'LayerUuidWithTrack, TrackActionMixer, TrackActionMixer2, '
+        'TrackLabelFirstIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      );
+      track
+        ..execute([50, 0, 4001, clipUuidBytes(uuidVoice), '', externalId(6), 0])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, {
+        externalId(5): [0x49, 0x44, 0x33, 4, 0, 0],
+        externalId(6): soundTrack,
+      }),
+      scratch: folder,
+    );
+
+    final voice = document.root.children.single;
+    expect(voice.kind, ClipLayerKind.sound);
+    expect(voice.sounds, [
+      (
+        objectUuid: 'aaaa1111222233334444555566667777',
+        binaryId: externalId(5),
+        name: 'take.mp3',
+        extension: 'mp3',
+      ),
+    ]);
+    final track = document.timelines.single.tracks[uuidVoice.replaceAll(
+      '-',
+      '',
+    )]!;
+    expect(track.sounds, [
+      (
+        span: (start: 24, end: 120),
+        player: 'aaaa1111222233334444555566667777',
+        frame: 24,
+        startSeconds: 0.5,
+        speed: 1.0,
+        volume: 0.8,
+        volumeVaries: false,
+      ),
+    ]);
+  });
+
   test('the shooting frame: its size, and its centre the canvas\'s moved by '
       'the crop\'s offset and the inner frame\'s', () {
     final database = databaseBytes((db) {

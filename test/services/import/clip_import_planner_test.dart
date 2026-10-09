@@ -167,7 +167,11 @@ void main() {
     tracks: Map.fromEntries(tracks),
   );
 
-  ClipImportPlan plan(ClipLayer tree, List<ClipTimeline> timelines) {
+  ClipImportPlan plan(
+    ClipLayer tree,
+    List<ClipTimeline> timelines, {
+    Map<String, String> sounds = const {},
+  }) {
     var layers = 0;
     var frames = 0;
     var cuts = 0;
@@ -187,6 +191,7 @@ void main() {
         nextFrameId: (_) => FrameId('frame-${frames += 1}'),
         nextCutId: () => CutId('cut-${cuts += 1}'),
       ),
+      soundPaths: sounds,
     );
   }
 
@@ -1062,6 +1067,8 @@ void main() {
         layer('words', kind: ClipLayerKind.lettering),
         layer('p', kind: ClipLayerKind.paper),
         layer('f', kind: ClipLayerKind.fill),
+        // A sound is no row of pictures — and its timeline plays nothing
+        // of it here, so there is nothing to say (the sound's own group).
         layer('s', kind: ClipLayerKind.sound, drawn: false),
         layer('o', kind: ClipLayerKind.other),
         layer('odd', composite: 5),
@@ -1080,7 +1087,6 @@ void main() {
         ('unsupportedLayerKind', 'words'),
         ('unsupportedLayerKind', 'p'),
         ('unsupportedLayerKind', 'f'),
-        ('clipSound', 's'),
         ('unsupportedLayerKind', 'o'),
         ('clipBlend', 'odd'),
       ],
@@ -1160,5 +1166,208 @@ void main() {
       [('clipCelLayers', null), ('clipSpread', '1')],
       reason: 'cel 2 holds one layer — exact, nothing to say',
     );
+  });
+
+  group('🗣️a sound plays on its cut\'s SE rows (유저 10-09: 「소리도 가져오게 '
+      '못하나? 단일파일안에있을거아냐」)', () {
+    ClipLayer sound(String name, {bool shown = true}) {
+      nextId += 1;
+      return ClipLayer(
+        id: nextId,
+        name: name,
+        kind: ClipLayerKind.sound,
+        visibility: shown ? 1 : 0,
+        opacity: 256,
+        composite: 0,
+        folderFlags: 0,
+        isAnimationFolder: false,
+        uuid: 'uuid$nextId',
+        left: 0,
+        top: 0,
+        offsetX: 0,
+        offsetY: 0,
+        render: null,
+        original: null,
+        originalTransform: null,
+        sounds: [
+          (
+            objectUuid: 'object$nextId',
+            binaryId: 'chunk$nextId',
+            name: '$name.mp3',
+            extension: 'mp3',
+          ),
+        ],
+        children: const [],
+      );
+    }
+
+    ClipSoundCue cue(
+      ClipLayer layer, {
+      ClipSpan span = (start: 0, end: 12),
+      int frame = 0,
+      double startSeconds = 0,
+      double speed = 1,
+      double volume = 1,
+      bool varies = false,
+    }) => (
+      span: span,
+      player: layer.sounds.single.objectUuid,
+      frame: frame,
+      startSeconds: startSeconds,
+      speed: speed,
+      volume: volume,
+      volumeVaries: varies,
+    );
+
+    MapEntry<String, ClipTrack> plays(
+      ClipLayer layer,
+      List<ClipSoundCue> cues,
+    ) => MapEntry(
+      layer.uuid,
+      ClipTrack(
+        kind: 4001,
+        pieces: [for (final cue in cues) (span: cue.span, cels: const [])],
+        labels: const [],
+        sounds: cues,
+      ),
+    );
+
+    Map<String, String> takenOut(ClipLayer layer) => {
+      layer.sounds.single.objectUuid: 'C:/run/voice.mp3',
+    };
+
+    Layer seRow(Cut cut) =>
+        cut.layers.singleWhere((layer) => layer.kind == LayerKind.se);
+
+    test('🎯the sound starts where its clip\'s cue puts it, plays from the '
+        'second the cue says, at its volume, to the clip\'s end — its own '
+        'name, nothing said', () {
+      final voice = sound('voice');
+      final result = plan(
+        root([voice]),
+        [
+          timeline([
+            plays(voice, [
+              cue(
+                voice,
+                span: (start: 0, end: 12),
+                frame: 4,
+                startSeconds: 0.5,
+                volume: 0.8,
+              ),
+            ]),
+          ]),
+        ],
+        sounds: takenOut(voice),
+      );
+      final row = seRow(result.cuts.single);
+
+      expect((row.name, row.muted), ('voice', false));
+      expect(blocks(row), [(4, 8, null)]);
+      final clip = row.audioClips.single;
+      expect(
+        (clip.filePath, clip.frameId, clip.offsetFrames, clip.gain),
+        ('C:/run/voice.mp3', row.frames.single.id, 12, 0.8),
+        reason: 'half a second in at 24 fps',
+      );
+      expect(result.warnings, isEmpty);
+      expect(result.bakes, isEmpty, reason: 'a sound has no picture to bake');
+    });
+
+    test('a cut that starts after the sound did plays it from where the cut '
+        'meets it', () {
+      final voice = sound('voice');
+      final result = plan(
+        root([voice]),
+        [
+          ClipTimeline(
+            name: 'late',
+            fps: 24,
+            start: 10,
+            end: 22,
+            tracks: Map.fromEntries([
+              plays(voice, [
+                cue(voice, span: (start: 0, end: 20), frame: 2),
+              ]),
+            ]),
+          ),
+        ],
+        sounds: takenOut(voice),
+      );
+      final row = seRow(result.cuts.single);
+
+      expect(blocks(row), [(0, 10, null)]);
+      expect(
+        row.audioClips.single.offsetFrames,
+        8,
+        reason: 'the cut\'s head is the timeline\'s frame 10, 8 past the cue',
+      );
+    });
+
+    test('every timeline its own SE row — none in one that does not play it '
+        '— and a hidden sound layer is a MUTED row', () {
+      final voice = sound('voice', shown: false);
+      final result = plan(
+        root([voice]),
+        [
+          timeline([
+            plays(voice, [cue(voice, frame: 2)]),
+          ], name: 'one'),
+          timeline(const [], name: 'two'),
+        ],
+        sounds: takenOut(voice),
+      );
+      final [one, two] = result.cuts;
+
+      expect(seRow(one).muted, isTrue);
+      expect(two.layers.where((layer) => layer.kind == LayerKind.se), isEmpty);
+      expect(
+        result.links.groups.every(
+          (group) => group.members.every(
+            (member) => member.layerId != seRow(one).id,
+          ),
+        ),
+        isTrue,
+        reason: 'SE rows go to the track, not into the cuts\' links',
+      );
+    });
+
+    test('what does not come over is said by the layer\'s name: a sound the '
+        'file does not hold, another speed, a volume that moves', () {
+      final lost = sound('lost');
+      final fast = sound('fast');
+      final swell = sound('swell');
+      final result = plan(
+        root([lost, fast, swell]),
+        [
+          timeline([
+            plays(lost, [cue(lost)]),
+            plays(fast, [cue(fast, speed: 2)]),
+            plays(swell, [cue(swell, varies: true)]),
+          ]),
+        ],
+        sounds: {...takenOut(fast), ...takenOut(swell)},
+      );
+
+      expect(
+        [
+          for (final warning in result.warnings)
+            (warning.key, warning.values['name']),
+        ],
+        [
+          ('clipSoundMissing', 'lost'),
+          ('clipSoundSpeed', 'fast'),
+          ('clipSoundVolume', 'swell'),
+        ],
+      );
+      expect(
+        [
+          for (final layer in result.cuts.single.layers)
+            if (layer.kind == LayerKind.se) layer.name,
+        ],
+        ['fast', 'swell'],
+        reason: 'the lost one has nothing to play',
+      );
+    });
   });
 }

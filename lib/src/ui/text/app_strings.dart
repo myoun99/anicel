@@ -3642,6 +3642,12 @@ enum AppStrings {
     'importWarning.clipVectorUnread':
         '{name}: 読めない種類のベクター線 {count} 本 — 描画していません。',
     'importWarning.clipSound': '{name}: 音声レイヤーは取り込みませんでした。',
+    'importWarning.clipSoundMissing':
+        '{name}: その音声がファイルに入っていません — 再生しません。',
+    'importWarning.clipSoundSpeed':
+        '{name}: CLIP STUDIO では別の速度で再生しています — ここでは元の速度で再生します。',
+    'importWarning.clipSoundVolume':
+        '{name}: クリップの途中で音量が変わります — クリップの始まりの音量にしました。',
     'importWarning.unsupportedLayerKind':
         '{name}: このレイヤーの種類には対応していません。',
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
@@ -5054,6 +5060,12 @@ enum AppStrings {
     'importWarning.clipVectorUnread':
         '{name}: 읽지 못하는 종류의 벡터 선 {count}개 — 그리지 않았습니다.',
     'importWarning.clipSound': '{name}: 소리 레이어는 가져오지 않았습니다.',
+    'importWarning.clipSoundMissing':
+        '{name}: 그 소리가 파일에 들어 있지 않습니다 — 재생하지 않습니다.',
+    'importWarning.clipSoundSpeed':
+        '{name}: CLIP STUDIO 에서는 다른 속도로 재생됩니다 — 여기서는 제 속도로 재생합니다.',
+    'importWarning.clipSoundVolume':
+        '{name}: 클립 안에서 음량이 바뀝니다 — 클립이 시작할 때의 음량으로 맞췄습니다.',
     'importWarning.unsupportedLayerKind':
         '{name}: 이 레이어 종류는 지원되지 않습니다.',
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
@@ -6564,6 +6576,14 @@ enum AppStrings {
         '{name} : {count} traits vectoriels d’un type illisible — non '
         'dessinés.',
     'importWarning.clipSound': '{name} : calque son non importé.',
+    'importWarning.clipSoundMissing':
+        "{name} : son son n'est pas dans le fichier — il n'est pas joué.",
+    'importWarning.clipSoundSpeed':
+        '{name} : CLIP STUDIO le joue à une autre vitesse — il est joué ici à '
+        'la sienne.',
+    'importWarning.clipSoundVolume':
+        '{name} : son volume change au cours du clip — réglé sur celui du '
+        'début du clip.',
     'importWarning.unsupportedLayerKind':
         "{name} : ce type de calque n'est pas pris en charge.",
     'importWarning.clipBlend':
@@ -7936,6 +7956,10 @@ enum AppStrings {
     'importWarning.clipVector': '{name}：矢量图层——已用圆头笔绘制；笔刷的形状和质感未能保留。',
     'importWarning.clipVectorUnread': '{name}：{count} 条无法读取的矢量线——未绘制。',
     'importWarning.clipSound': '{name}：未导入声音图层。',
+    'importWarning.clipSoundMissing': '{name}：文件中没有它的声音——不播放。',
+    'importWarning.clipSoundSpeed':
+        '{name}：CLIP STUDIO 以其他速度播放——这里按原速播放。',
+    'importWarning.clipSoundVolume': '{name}：音量在片段中途变化——已设为片段开始时的音量。',
     'importWarning.unsupportedLayerKind': '{name}：不支持此图层类型。',
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',

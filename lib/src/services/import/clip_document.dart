@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
@@ -44,6 +45,33 @@ final class ClipPictureSource {
   final String blocksId;
 }
 
+/// One sound a sound layer holds — the file CLIP STUDIO took in, whole, in
+/// the external chunk [binaryId] (an mp3 of the samples began 「ID3」 —
+/// memory `csp-clip-format-notes` §3): what a sound track's clip names to
+/// play it by ([objectUuid]), what it was called ([name]), and the
+/// extension it was kept under.
+typedef ClipSound = ({
+  String objectUuid,
+  String binaryId,
+  String name,
+  String extension,
+});
+
+/// What one clip of a sound track plays: the sound [player] names
+/// ([ClipSound.objectUuid]), from [startSeconds] into it on [frame] — the
+/// timeline frame it starts on — at [speed] (1 = as it was recorded) and
+/// [volume] (1 = its own level), until the clip ends at [span]'s end.
+/// [volumeVaries] when the clip's volume moves within it.
+typedef ClipSoundCue = ({
+  ClipSpan span,
+  String player,
+  int frame,
+  double startSeconds,
+  double speed,
+  double volume,
+  bool volumeVaries,
+});
+
 /// One layer of a CLIP STUDIO PAINT document's tree.
 final class ClipLayer {
   ClipLayer({
@@ -64,6 +92,7 @@ final class ClipLayer {
     required this.original,
     required this.originalTransform,
     this.vectorData = const [],
+    this.sounds = const [],
     required this.children,
   });
 
@@ -118,6 +147,10 @@ final class ClipLayer {
   /// no blocks in the file (the one sample with vectors, all seven layers).
   final List<String> vectorData;
 
+  /// A sound layer's sounds, in its objects' chain order — the ones whose
+  /// bytes the file holds the address of.
+  final List<ClipSound> sounds;
+
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
 
@@ -157,6 +190,7 @@ final class ClipTrack {
     required this.kind,
     required this.pieces,
     required this.labels,
+    this.sounds = const [],
   });
 
   /// `TrackKind`: 2000 animation folder · 2001 layer · 1000 folder ·
@@ -168,6 +202,9 @@ final class ClipTrack {
 
   /// The frames a label (`LabelType` 1 — a breakdown) stands on.
   final List<int> labels;
+
+  /// A sound track's clips, as what each plays — in order of frame.
+  final List<ClipSoundCue> sounds;
 }
 
 /// One timeline — a cut.
@@ -385,6 +422,7 @@ final class _DocumentReader {
     'AudioLayer',
     'GradationFillInfo',
     'TextLayerType',
+    'FirstLayerObject',
   ];
 
   /// A mipmap's 100% picture, by the mipmap's id.
@@ -432,6 +470,54 @@ final class _DocumentReader {
     return out;
   }
 
+  /// Each sound layer's sounds (memory `csp-clip-format-notes` §3): the
+  /// layer's objects (`FirstLayerObject` → `LayerObject.ObjectNext`), each
+  /// through its bank item (`CanvasItem`, by `BankItemUuid`) to the
+  /// external chunk the sound file is in (`CanvasItemBinary.ItemBinaryData`).
+  /// An object whose chunk is named nowhere is left out.
+  List<ClipSound> _soundsOf(Map<String, Object?> layer) {
+    final objects = _soundObjects;
+    final out = <ClipSound>[];
+    final seen = <int>{};
+    var objectId = _int(layer['FirstLayerObject']);
+    while (objectId != 0 && seen.add(objectId)) {
+      final object = objects[objectId];
+      if (object == null) {
+        break;
+      }
+      final item = _soundItems[_hex(object['BankItemUuid'])];
+      final binaryId = _text(
+        _soundBinaries[_int(item?['ItemBinaryMainIndex'])]?['ItemBinaryData'],
+      );
+      if (item != null && binaryId.isNotEmpty) {
+        out.add((
+          objectUuid: _hex(object['ObjectUuid']),
+          binaryId: binaryId,
+          name: _text(object['ObjectName']),
+          extension: _text(item['ItemFileExtension']),
+        ));
+      }
+      objectId = _int(object['ObjectNext']);
+    }
+    return out;
+  }
+
+  late final _soundObjects = _rows('LayerObject', [
+    'ObjectUuid',
+    'BankItemUuid',
+    'ObjectName',
+    'ObjectNext',
+  ]);
+  late final _soundItems = {
+    for (final row in _rows('CanvasItem', [
+      'ItemUuid',
+      'ItemFileExtension',
+      'ItemBinaryMainIndex',
+    ]).values)
+      _hex(row['ItemUuid']): row,
+  };
+  late final _soundBinaries = _rows('CanvasItemBinary', ['ItemBinaryData']);
+
   /// What every step of the tree walk asks: the layer table, the 100%
   /// pictures, and the layers' vector data.
   late final _layerRows = _rows('Layer', _layerColumns);
@@ -459,10 +545,11 @@ final class _DocumentReader {
     }
     final pictures = _pictures;
     final transform = row['ResizableImageInfo'];
+    final kind = _kindOf(row, _vectorData.containsKey(id));
     return ClipLayer(
       id: id,
       name: _text(row['LayerName']),
-      kind: _kindOf(row, _vectorData.containsKey(id)),
+      kind: kind,
       visibility: _int(row['LayerVisibility']),
       opacity: _int(row['LayerOpacity']),
       composite: _int(row['LayerComposite']),
@@ -477,6 +564,7 @@ final class _DocumentReader {
       original: pictures[_int(row['ResizableOriginalMipmap'])],
       originalTransform: transform is Uint8List ? transform : null,
       vectorData: _vectorData[id] ?? const [],
+      sounds: kind == ClipLayerKind.sound ? _soundsOf(row) : const [],
       children: children,
     );
   }
@@ -589,12 +677,17 @@ final class _DocumentReader {
         : _text(track['TrackActionMixer']);
     final mixer = container.externals[mixerId];
     final pieces = <ClipPiece>[];
+    final sounds = <ClipSoundCue>[];
     if (mixer != null) {
       final document = cmtDocumentOfTrackData(readClipPlace(file, mixer));
       for (final clip in document.everyNode) {
         if (clip.name == 'ActionNodeClip') {
-          if (_clip(clip, fps) case final piece?) {
-            pieces.add(piece);
+          final read = _clip(clip, fps, sound: kind == _soundTrackKind);
+          if (read != null) {
+            pieces.add(read.piece);
+            if (read.sound case final cue?) {
+              sounds.add(cue);
+            }
           }
         }
       }
@@ -616,47 +709,27 @@ final class _DocumentReader {
       kind: kind,
       pieces: pieces..sort((a, b) => a.span.start.compareTo(b.span.start)),
       labels: labelFrames..sort(),
+      sounds: sounds..sort((a, b) => a.frame.compareTo(b.frame)),
     );
   }
 
-  /// One clip of a track: where it shows, and the cels it keys.
-  ///
-  /// `frame = (TimeClip.Start + (tick − MotionClip.Start) × stretch) × fps
-  /// ÷ Rate`, with `stretch = (TimeClip.End − TimeClip.Start) ÷
-  /// (MotionClip.End − MotionClip.Start)` (1 when the motion has no
-  /// length) — memory `csp-clip-format-notes` §3. A key holds until the
-  /// next one; the last one holds to the clip's end.
-  ClipPiece? _clip(CmtNode clip, double fps) {
-    final time = clip.child('TimeClip');
-    final motion = clip.child('MotionClip');
-    if (time == null) {
-      return null;
-    }
-    double field(CmtNode? node, String name) {
-      final value = node?.child(name)?.value;
-      return value is num ? value.toDouble() : 0;
-    }
+  /// `TrackKind` of a sound track.
+  static const _soundTrackKind = 4001;
 
-    final rate = field(time, 'Rate') != 0
-        ? field(time, 'Rate')
-        : field(clip.child('TimeInfo'), 'Rate');
-    if (rate == 0) {
-      warnings.add('a clip says no tick rate');
+  /// One clip of a track: where it shows, the cels it keys, and — on a
+  /// [sound] track — what it plays. A key holds until the next one; the
+  /// last one holds to the clip's end.
+  ({ClipPiece piece, ClipSoundCue? sound})? _clip(
+    CmtNode clip,
+    double fps, {
+    required bool sound,
+  }) {
+    final timing = _timingOf(clip, fps);
+    if (timing == null) {
       return null;
     }
-    final timeStart = field(time, 'Start');
-    final timeEnd = field(time, 'End');
-    final motionStart = field(motion, 'Start');
-    final motionLength = field(motion, 'End') - motionStart;
-    final stretch = motionLength == 0
-        ? 1.0
-        : (timeEnd - timeStart) / motionLength;
-    int frameOf(double tick) =>
-        ((timeStart + (tick - motionStart) * stretch) * fps / rate).round();
-    final span = (
-      start: (timeStart * fps / rate).round(),
-      end: (timeEnd * fps / rate).round(),
-    );
+    final (:span, :frameAt) = timing;
+    int frameOf(double tick) => frameAt(tick).round();
     final cels = <ClipCelKey>[];
     for (final curve in clip.everyNode) {
       if (curve.name != 'FCurve' ||
@@ -677,7 +750,142 @@ final class _DocumentReader {
       }
     }
     cels.sort((a, b) => a.frame.compareTo(b.frame));
-    return (span: span, cels: cels);
+    return (
+      piece: (span: span, cels: cels),
+      sound: sound ? _soundCueOf(clip, span, frameAt, fps) : null,
+    );
+  }
+
+  /// Where one clip stands: its span in the timeline's frames, and the
+  /// frame — unrounded — a tick of its motion lands on.
+  ///
+  /// `frame = (TimeClip.Start + (tick − MotionClip.Start) × stretch) × fps
+  /// ÷ Rate`, with `stretch = (TimeClip.End − TimeClip.Start) ÷
+  /// (MotionClip.End − MotionClip.Start)` (1 when the motion has no
+  /// length) — memory `csp-clip-format-notes` §3.
+  ({ClipSpan span, double Function(double tick) frameAt})? _timingOf(
+    CmtNode clip,
+    double fps,
+  ) {
+    final time = clip.child('TimeClip');
+    final motion = clip.child('MotionClip');
+    if (time == null) {
+      return null;
+    }
+    final rate = _number(time, 'Rate') != 0
+        ? _number(time, 'Rate')
+        : _number(clip.child('TimeInfo'), 'Rate');
+    if (rate == 0) {
+      warnings.add('a clip says no tick rate');
+      return null;
+    }
+    final timeStart = _number(time, 'Start');
+    final timeEnd = _number(time, 'End');
+    final motionStart = _number(motion, 'Start');
+    final motionLength = _number(motion, 'End') - motionStart;
+    final stretch = motionLength == 0
+        ? 1.0
+        : (timeEnd - timeStart) / motionLength;
+    return (
+      span: (
+        start: (timeStart * fps / rate).round(),
+        end: (timeEnd * fps / rate).round(),
+      ),
+      frameAt: (tick) =>
+          (timeStart + (tick - motionStart) * stretch) * fps / rate,
+    );
+  }
+
+  /// [name]'s number under [node] — 0 when there is none.
+  static double _number(CmtNode? node, String name) {
+    final value = node?.child(name)?.value;
+    return value is num ? value.toDouble() : 0;
+  }
+
+  /// What a sound track's clip plays (memory `csp-clip-format-notes` §3):
+  /// the sound its `AudioPlayer` names, at the level its `AudioVolume` gives
+  /// (100 = the sound's own), placed so its `PlayTime` curve holds — the
+  /// first key says which second of the sound plays on its frame, the
+  /// second how fast; with no curve, the clip plays its `PlayTime` second
+  /// on from its start. The sound starts where its second 0 lands, but
+  /// never before its clip — then from the second the clip's start meets.
+  static ClipSoundCue? _soundCueOf(
+    CmtNode clip,
+    ClipSpan span,
+    double Function(double tick) frameAt,
+    double fps,
+  ) {
+    final anim = clip.child('AnimInfo');
+    if (anim == null) {
+      return null;
+    }
+    CmtNode? named(String node, String key, String value) {
+      for (final child in anim.children) {
+        if (child.name == node && child.attributes[key] == value) {
+          return child;
+        }
+      }
+      return null;
+    }
+
+    List<double> numbers(CmtNode? curve, String name) => switch (curve
+        ?.child(name)
+        ?.value) {
+      final List<Object?> values => [
+        for (final value in values)
+          if (value is num) value.toDouble(),
+      ],
+      _ => const [],
+    };
+
+    final playerTags = named('FCurve', 'Type', 'AudioPlayer')?.child('Tag');
+    final player =
+        named('Param', 'Name', 'AudioPlayer')?.attributes['Tag'] ??
+        switch (playerTags?.value) {
+          [final String first, ...] => first,
+          _ => null,
+        };
+    if (player == null) {
+      return null;
+    }
+    final playCurve = named('FCurve', 'Type', 'PlayTime');
+    final ticks = numbers(playCurve, 'Frame');
+    final seconds = numbers(playCurve, 'Value');
+    final keyed = ticks.isNotEmpty && seconds.isNotEmpty;
+    final f0 = keyed ? frameAt(ticks[0]) : span.start.toDouble();
+    final v0 = keyed
+        ? seconds[0]
+        : switch (named('Param', 'Name', 'PlayTime')?.value) {
+            final num second => second.toDouble(),
+            _ => 0.0,
+          };
+    final speed =
+        keyed &&
+            ticks.length >= 2 &&
+            seconds.length >= 2 &&
+            frameAt(ticks[1]) != f0
+        ? (seconds[1] - v0) * fps / (frameAt(ticks[1]) - f0)
+        : 1.0;
+    // A sound cannot run backwards or stand still: placed as if at its own
+    // speed, which the planner says it is not.
+    final pace = speed > 0 ? speed : 1.0;
+    final frame = math.max(span.start.toDouble(), f0 - v0 * fps / pace);
+    final volumes = numbers(named('FCurve', 'Type', 'AudioVolume'), 'Value');
+    final level = volumes.isNotEmpty
+        ? volumes.first
+        : switch (named('Param', 'Name', 'AudioVolume')?.value) {
+            final num volume => volume.toDouble(),
+            _ => 100.0,
+          };
+    return (
+      span: span,
+      player: _hex(player),
+      frame: frame.round(),
+      startSeconds: v0 + (frame - f0) * pace / fps,
+      speed: speed,
+      volume: level / 100,
+      volumeVaries: volumes.any((volume) => volume != volumes.first),
+    );
   }
 
   static int _int(Object? value) => switch (value) {

@@ -501,6 +501,145 @@ void main() {
     expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
   });
 
+  test('🎯a sound the file holds comes in CARRIED — on the track\'s SE row, '
+      'its bytes the project\'s, the copy taken out gone, nothing to undo '
+      '(유저 10-09: 「소리도 가져오게 못하나? 단일파일안에있을거아냐」)', () async {
+    const uuidVoice = '99990000-aaaa-bbbb-cccc-ddddeeeeffff';
+    const object = 'aaaa1111-2222-3333-4444-555566667777';
+    const bank = 'bbbb1111-2222-3333-4444-555566667777';
+    final mp3 = [0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 1, 2, 3];
+    final database = clipDatabaseBytes(temp, (db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN AudioLayer INTEGER')
+        ..execute('ALTER TABLE Layer ADD COLUMN FirstLayerObject INTEGER')
+        ..execute(
+          'CREATE TABLE LayerObject(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, LayerId INTEGER, ObjectUuid TEXT, '
+          'BankItemUuid TEXT, ObjectName TEXT, ObjectNext INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItem(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemUuid TEXT, ItemType TEXT, '
+          'ItemFileExtension TEXT, ItemBinaryMainIndex INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItemBinary(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemBinaryData TEXT)',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, AudioLayer, FirstLayerObject) '
+          "VALUES (2, 'voice', 8720, 0, 1, '$uuidVoice', 1, 10)",
+        )
+        ..execute(
+          'INSERT INTO LayerObject(MainId, LayerId, ObjectUuid, '
+          'BankItemUuid, ObjectName, ObjectNext) '
+          "VALUES (10, 2, '$object', '$bank', 'take.mp3', 0)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItem(MainId, ItemUuid, ItemType, '
+          'ItemFileExtension, ItemBinaryMainIndex) '
+          "VALUES (20, '$bank', 'Audio', 'mp3', 30)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItemBinary(MainId, ItemBinaryData) '
+          "VALUES (30, '${externalId(5)}')",
+        )
+        ..execute('''
+          INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex)
+            VALUES (1, 40, 0);
+          INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
+            StartFrame, EndFrame, FirstTrack) VALUES
+            (40, 0, 'one', 24.0, 0, 48, 50);
+        ''');
+      final track = db.prepare(
+        'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+        'LayerUuidWithTrack, TrackActionMixer2) VALUES (?, ?, ?, ?, ?)',
+      );
+      track
+        ..execute([50, 0, 4001, clipUuidBytes(uuidVoice), externalId(6)])
+        ..close();
+    });
+    final path = '${temp.path}${Platform.pathSeparator}voiced.clip';
+    File(path).writeAsBytesSync(
+      clipFileBytes(
+        database: database,
+        externals: {
+          externalId(5): mp3,
+          // The sound from the clip's head, its own speed, at its level.
+          externalId(6): trackDataBytes(
+            cmtDocumentBytes(
+              clipTrackSpec([
+                CmtSpec(
+                  'ActionNodeClip',
+                  'null',
+                  children: [
+                    ...clipNodeSpec(time: [0, 120], motion: [0, 120]).children,
+                    const CmtSpec(
+                      'AnimInfo',
+                      'null',
+                      children: [
+                        CmtSpec(
+                          'Param',
+                          'Int32',
+                          value: 3,
+                          attributes: {'Name': 'AudioPlayer', 'Tag': object},
+                        ),
+                        CmtSpec(
+                          'Param',
+                          'Double',
+                          value: 100,
+                          attributes: {'Name': 'AudioVolume'},
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+        },
+      ),
+    );
+
+    final opened = await openedClip(path);
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    final project = session.repository.requireProject();
+    // A track keeps two SE rows at least; the sound's is the one it plays on.
+    final row = project.tracks.single.seLayers.singleWhere(
+      (layer) => layer.audioClips.isNotEmpty,
+    );
+    final clip = row.audioClips.single;
+    expect(clip.filePath, endsWith('/take.mp3'), reason: 'called as it was');
+    expect((clip.offsetFrames, clip.gain), (0, 1.0));
+    final asset = session.mediaPool.mediaAssets.singleWhere(
+      (asset) => asset.path == clip.filePath,
+    );
+    expect(asset.carriedAs, isNotNull, reason: 'carried, as a recording is');
+    expect(session.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
+    expect(
+      File(clip.filePath).existsSync(),
+      isFalse,
+      reason: 'the copy taken out goes once the project holds its bytes',
+    );
+    expect(session.historyManager.canUndo, isFalse, reason: 'not an edit');
+    expect(
+      [for (final warning in opened.warnings) warning.key],
+      isNot(contains('clipSound')),
+    );
+  });
+
   test('a file that is not a CLIP STUDIO file is not one', () async {
     final path = '${temp.path}${Platform.pathSeparator}not.clip';
     File(path).writeAsStringSync('nothing in particular');

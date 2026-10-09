@@ -17,6 +17,7 @@ import '../../models/camera_pose.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/project_id.dart';
@@ -36,7 +37,9 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
+import 'media_pool.dart';
 import 'project_file.dart';
+import 'project_file_door.dart' show ProjectFileDoor;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -50,8 +53,10 @@ final class ClipProjectRead {
     required this.project,
     required ClipImportPlan plan,
     required ({String path, bool staged}) source,
+    required List<String> sounds,
   }) : _plan = plan,
-       _source = source;
+       _source = source,
+       _sounds = sounds;
 
   /// The project the file becomes — every timeline a 겸용 cut, its layers
   /// and cels as the planner shaped them.
@@ -61,6 +66,10 @@ final class ClipProjectRead {
   /// The bytes the pictures are baked from — a staged copy the bake
   /// deletes when it is done with it.
   final ({String path, bool staged}) _source;
+
+  /// The sounds taken out of the file, where the project's SE rows play
+  /// them from until the bake carries them into the project.
+  final List<String> _sounds;
 }
 
 /// Reads the CLIP STUDIO file at [clipPath] and plans the project it opens
@@ -94,17 +103,92 @@ Future<ClipProjectRead?> readClipProject({
   final name = ProviderDocuments.nameOf(
     clipPath,
   ).replaceAll(RegExp(r'\.clip$', caseSensitive: false), '');
+  final sounds = await _takeSoundsOut(
+    source.path,
+    [
+      for (final layer in document.root.everyLayer)
+        for (final sound in layer.sounds)
+          (
+            objectUuid: sound.objectUuid,
+            binaryId: sound.binaryId,
+            fileName: _soundFileName(sound, layer.name),
+          ),
+    ],
+    '${scratch.path}/clip-sound-${DateTime.now().microsecondsSinceEpoch}',
+  );
   final plan = planClipImport(
     document: document,
     name: name,
     trackId: _track,
     mint: ImportIdMint.forANewProject(),
+    soundPaths: sounds,
   );
   return ClipProjectRead._(
     project: _projectOf(name, document, plan),
     plan: plan,
     source: source,
+    sounds: [...sounds.values],
   );
+}
+
+/// What a sound taken out of the file is called: the name CLIP STUDIO took
+/// it in by — its layer's when it kept none — with the extension it was
+/// kept under, in characters every file system takes.
+String _soundFileName(ClipSound sound, String layerName) {
+  final own = sound.name.isNotEmpty
+      ? sound.name
+      : (layerName.isNotEmpty ? layerName : 'sound');
+  final dotted = '.${sound.extension}'.toLowerCase();
+  final named = sound.extension.isEmpty || own.toLowerCase().endsWith(dotted)
+      ? own
+      : '$own.${sound.extension}';
+  return named.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+}
+
+/// Each of [sounds] written out of the file at [path] into [folder], under
+/// its own name — a second one of a name taken gets ` (2)` — by its
+/// [ClipSound.objectUuid]. A sound whose bytes the file does not hold is
+/// not there.
+///
+/// ⛔ITS OWN FUNCTION on a worker, for [_readStructure]'s reason: the
+/// index walk and the bytes are the file's size and kind of work.
+Future<Map<String, String>> _takeSoundsOut(
+  String path,
+  List<({String objectUuid, String binaryId, String fileName})> sounds,
+  String folder,
+) {
+  if (sounds.isEmpty) {
+    return Future.value(const {});
+  }
+  return Isolate.run(() {
+    final file = File(path).openSync();
+    try {
+      final container = ClipContainer.indexOf(file);
+      final out = <String, String>{};
+      final taken = <String>{};
+      Directory(folder).createSync(recursive: true);
+      for (final sound in sounds) {
+        final place = container.externals[sound.binaryId];
+        if (place == null) {
+          continue;
+        }
+        var name = sound.fileName;
+        for (var n = 2; !taken.add(name.toLowerCase()); n += 1) {
+          final dot = sound.fileName.lastIndexOf('.');
+          name = dot <= 0
+              ? '${sound.fileName} ($n)'
+              : '${sound.fileName.substring(0, dot)} ($n)'
+                    '${sound.fileName.substring(dot)}';
+        }
+        final target = File('$folder/$name')
+          ..writeAsBytesSync(readClipPlace(file, place), flush: true);
+        out[sound.objectUuid] = normalizedMediaPath(target.path);
+      }
+      return out;
+    } finally {
+      file.closeSync();
+    }
+  });
 }
 
 /// The structure of the file at [path], read on a worker of its own — or
@@ -180,15 +264,21 @@ final class ClipImportDoor {
     required ChangeSink changes,
     required RenderCaches renderCaches,
     required ProjectFile file,
+    required ProjectFileDoor projectDoor,
+    required MediaPool mediaPool,
   }) : _project = project,
        _changes = changes,
        _renderCaches = renderCaches,
-       _file = file;
+       _file = file,
+       _projectDoor = projectDoor,
+       _mediaPool = mediaPool;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final RenderCaches _renderCaches;
   final ProjectFile _file;
+  final ProjectFileDoor _projectDoor;
+  final MediaPool _mediaPool;
 
   /// Bakes every picture of [read] into THIS session — the one born for it
   /// (`OpenProjects.prepare(read.project)`) — and answers what the import
@@ -206,11 +296,33 @@ final class ClipImportDoor {
     MemoryBlackBox.begin('clip-import');
     final warnings = [...read._plan.warnings];
     await _bakeEveryCel(read, warnings: warnings, onProgress: onProgress);
+    await _carrySounds(read._sounds);
     _file.markDirty();
     _changes.warmActiveCut();
     _changes.notifyChanged();
     MemoryBlackBox.end('clip-import');
     return warnings;
+  }
+
+  /// The sounds taken out of the file become the project's own — CARRIED,
+  /// as a recording is: their bytes held in the project, so the copies
+  /// taken out go once held (the pool does not call a carried asset whose
+  /// original left 「missing」). Registered as the file's, not as an edit
+  /// to undo — the .tvpp door's way with its sounds.
+  Future<void> _carrySounds(List<String> paths) async {
+    if (paths.isEmpty) {
+      return;
+    }
+    await _mediaPool.addMediaAssets(paths, carried: true);
+    _project.historyManager.clear();
+    _projectDoor.warmAudioConforms();
+    for (final path in paths) {
+      try {
+        File(path).deleteSync();
+      } on FileSystemException {
+        // The run's room goes at its end; a copy still held open waits.
+      }
+    }
   }
 
   /// Every picture [read] planned, decoded out of its file and baked into

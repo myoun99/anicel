@@ -2299,12 +2299,15 @@ class EditorSessionManager extends ChangeNotifier
 
   // The CLIP STUDIO door (session/clip_import_door.dart) — a .clip opens AS
   // A PROJECT the way a .tvpp does, and what it does here is the same: bake
-  // the pictures the plan made room for, into this session's stores.
+  // the pictures the plan made room for, into this session's stores, and
+  // carry the sounds the file holds into its pool.
   late final ClipImportDoor clipDoor = ClipImportDoor(
     project: this,
     changes: this,
     renderCaches: renderCaches,
     file: projectFile,
+    projectDoor: projectDoor,
+    mediaPool: mediaPool,
   );
 
   bool disposed = false;
