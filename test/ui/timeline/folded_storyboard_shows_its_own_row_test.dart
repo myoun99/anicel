@@ -187,19 +187,22 @@ void main() {
     expect(standing(tester), hasLength(1));
   });
 
-  testWidgets('F-248: standing on an S row instead, none is', (tester) async {
+  // ↩️F-322 (유저 2026-10-09: 「콘티패널 간편오버레이가 … V행고정인데
+  // 서있는곳 보여주도록」): standing on an S row, the folded row is that S
+  // row, so no cut row is shown to wear the wash. ↩️F-248 had the V row
+  // stay, its bands unwashed.
+  testWidgets('F-248 ↩️F-322: standing on an S row instead, the folded row '
+      'is that row — no cut row is left to wear the wash', (tester) async {
     await _pumpFolded(tester, storyboard: true);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final rows = session.activeTrack.seLayers;
     expect(rows, isNotEmpty, reason: 'premise: an S row to stand on');
-    final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
-    expect(render.debugNeedsPaint, isFalse, reason: 'premise: settled');
+    expect(_cutBlocks(), findsOneWidget, reason: 'premise: the V row first');
     session.standing.selectRow(LayerRowAddress(rows.first.id));
-    expect(render.debugNeedsPaint, isTrue, reason: 'the row heard it at once');
-    await tester.pump();
-    expect(standing(tester), isEmpty);
+    await tester.pumpAndSettle();
+    expect(_cutBlocks(), findsNothing);
   });
 
   testWidgets('a folded TIMELINE is untouched — it still shows its own rail '

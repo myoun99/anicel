@@ -39,16 +39,21 @@ class _StoryboardSheet {
 
   /// The flip window's picture of [rows]: each row's blocks on the TRACK's
   /// axis — the storyboard's rows are the track's own, not a cut's copy —
-  /// drawn by the builders the timeline's window uses.
-  FlipHudSnapshot flipHudSnapshot(FlipHudAxis axis) {
+  /// drawn by the builders the timeline's window uses — standing on
+  /// [standing] when it is given (the folded overlay's row, F-322), else on
+  /// the row the panel being worked in stands on.
+  FlipHudSnapshot flipHudSnapshot(
+    FlipHudAxis axis, {
+    TimelineRowAddress? standing,
+  }) {
     final project = _state.widget.project;
     final layout = buildStoryboardTimelineLayout(project);
     final addresses = rows();
     if (addresses.isEmpty || layout.isEmpty) {
       return FlipHudSnapshot.empty;
     }
-    final standing = _state.widget.currentRowHooks?.currentRow.value;
-    var rowIndex = standing == null ? -1 : addresses.indexOf(standing);
+    final stood = standing ?? _state.widget.currentRowHooks?.currentRow.value;
+    var rowIndex = stood == null ? -1 : addresses.indexOf(stood);
     if (rowIndex == -1) {
       rowIndex = _state.widget.selectedRow == null
           ? -1

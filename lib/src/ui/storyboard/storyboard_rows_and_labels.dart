@@ -267,7 +267,19 @@ class _StoryboardRowsAndLabels {
   /// creates on an empty frame.
   Widget transitionLabelRow(Track track) {
     final layer = track.transitionLayer;
-    final label = _StoryboardLayerRowLabel(
+    return selectOnly(
+      LayerRowSubject(layer.id),
+      _state._rowHeights.transition,
+      _transitionLabel(track),
+      grip: () => [(icon: layerKindIcon(layer.kind), label: layer.name)],
+    );
+  }
+
+  /// [transitionLabelRow]'s label, [chromeless] on the folded overlay.
+  Widget _transitionLabel(Track track, {bool chromeless = false}) {
+    final layer = track.transitionLayer;
+    return _StoryboardLayerRowLabel(
+      chromeless: chromeless,
       track: track,
       rowId: layer.id,
       kind: LayerKind.transition,
@@ -281,12 +293,6 @@ class _StoryboardRowsAndLabels {
       onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
       onLayerMarkSelected: _state.widget.onLayerMarkSelected,
       onToggleLayerTimesheet: _state.widget.onToggleLayerTimesheet,
-    );
-    return selectOnly(
-      LayerRowSubject(layer.id),
-      _state._rowHeights.transition,
-      label,
-      grip: () => [(icon: layerKindIcon(layer.kind), label: layer.name)],
     );
   }
 
@@ -381,24 +387,28 @@ class _StoryboardRowsAndLabels {
     );
   }
 
-  Widget _conteLabel(Track track, int seat) {
+  Widget _conteLabel(Track track, int seat, {bool chromeless = false}) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final head = conteHeadAt(track.cuts, seat);
     final verbs = _timelineHeadVerbs();
     if (head == null || verbs == null) {
-      return _headlessLabel(track, (
-        id: rowId,
-        kind: LayerKind.storyboard,
-        keyName: conteLabelKeyName(seat),
-        name: trackConteRowName(track.cuts, seat: seat),
-        height: _state._rowHeights.conte,
-      ));
+      return _headlessLabel(
+        track,
+        (
+          id: rowId,
+          kind: LayerKind.storyboard,
+          keyName: conteLabelKeyName(seat),
+          name: trackConteRowName(track.cuts, seat: seat),
+          height: _state._rowHeights.conte,
+        ),
+        chromeless: chromeless,
+      );
     }
     return KeyedSubtree(
       key: ValueKey<String>(
         'storyboard-${conteLabelKeyName(seat)}-label-${track.id.value}',
       ),
-      child: _conteHead(track, seat, head, verbs),
+      child: _conteHead(track, seat, head, chromeless: chromeless),
     );
   }
 
@@ -439,28 +449,33 @@ class _StoryboardRowsAndLabels {
     ],
   );
 
-  Widget _cameraLabel(Track track) {
+  Widget _cameraLabel(Track track, {bool chromeless = false}) {
     final rowId = trackCameraRowId(track.id);
     final active = _state.widget.selectedRow == LayerRowAddress(rowId);
     final head = _state._railRows._cameraHeadOf(track);
     final verbs = _timelineHeadVerbs();
     if (head == null || verbs == null) {
-      return _headlessLabel(track, (
-        id: rowId,
-        kind: LayerKind.camera,
-        keyName: 'camera',
-        name: trackCameraRowName(
-          track.cuts,
-          standingIn: _state.widget.activeCutId,
+      return _headlessLabel(
+        track,
+        (
+          id: rowId,
+          kind: LayerKind.camera,
+          keyName: 'camera',
+          name: trackCameraRowName(
+            track.cuts,
+            standingIn: _state.widget.activeCutId,
+          ),
+          height: _state._rowHeights.camera,
         ),
-        height: _state._rowHeights.camera,
-      ));
+        chromeless: chromeless,
+      );
     }
     final select = _state.widget.onSelectLayer;
     final view = _state.widget.cameraViewEnabled;
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-camera-label-${track.id.value}'),
       child: TimelineLayerControlsRow(
+        chromeless: chromeless,
         keyPrefix: 'storyboard',
         layer: view == null ? head : head.copyWith(isVisible: view.value),
         active: active,
@@ -505,8 +520,10 @@ class _StoryboardRowsAndLabels {
       String name,
       double height,
     })
-    row,
-  ) => _StoryboardLayerRowLabel(
+    row, {
+    bool chromeless = false,
+  }) => _StoryboardLayerRowLabel(
+    chromeless: chromeless,
     track: track,
     rowId: row.id,
     kind: row.kind,
@@ -545,12 +562,15 @@ class _StoryboardRowsAndLabels {
   Widget _conteHead(
     Track track,
     int seat,
-    ({Cut cut, Layer row}) head,
-    _TimelineHeadVerbs verbs,
-  ) {
+    ({Cut cut, Layer row}) head, {
+    bool chromeless = false,
+  }) {
+    // Its caller stood down without them ([_conteLabel]).
+    final verbs = _timelineHeadVerbs()!;
     final rowId = trackConteRowId(track.id, seat: seat);
     final select = _state.widget.onSelectLayer;
     return TimelineLayerControlsRow(
+      chromeless: chromeless,
       keyPrefix: 'storyboard',
       layer: head.row,
       active: _state.widget.selectedRow == LayerRowAddress(rowId),
@@ -720,9 +740,10 @@ class _StoryboardRowsAndLabels {
     );
   }
 
-  Widget _seLabel(Track track, int slot) {
+  Widget _seLabel(Track track, int slot, {bool chromeless = false}) {
     final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
+      chromeless: chromeless,
       track: track,
       slot: slot,
       height: _state._rowHeights.se,

@@ -228,6 +228,7 @@ part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
 part 'storyboard/storyboard_rail_rows.dart';
 part 'storyboard/storyboard_sheet.dart';
+part 'storyboard/storyboard_folded_row.dart';
 
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
@@ -1580,7 +1581,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     this,
     rows: _sheet.rows,
     snapshotOf: _sheet.flipHudSnapshot,
+    foldedRowFor: _folded.rowFor,
   );
+
+  /// The row the storyboard stands on, as the folded overlay shows it.
+  late final _StoryboardFolded _folded = _StoryboardFolded(this);
 
   /// R5: the same "bring the selection back into view" tick the timeline
   /// answers, in THIS surface's terms — the strips run on the GLOBAL frame
@@ -3094,6 +3099,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     required this.track,
     required this.slot,
     required this.height,
+    this.chromeless = false,
     this.laneExpanded = false,
     this.onToggleLane,
     this.activeLayer,
@@ -3166,6 +3172,9 @@ class _StoryboardSeLabel extends StatelessWidget {
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
 
+  /// Drawn without its ground — the folded overlay's ([_StoryboardFolded]).
+  final bool chromeless;
+
   @override
   Widget build(BuildContext context) {
     final layer = activeLayer;
@@ -3177,6 +3186,7 @@ class _StoryboardSeLabel extends StatelessWidget {
       selectKey: ValueKey<String>(
         'storyboard-se-label-${track.id.value}-${slot + 1}',
       ),
+      chromeless: chromeless,
       onTap: trackLayer == null || onSelect == null
           ? null
           : () => onSelect(trackLayer.id),
@@ -3352,6 +3362,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
     required this.layer,
     required this.active,
     required this.height,
+    this.chromeless = false,
     this.onSelectLayer,
     this.labelDoubleClick,
     this.onToggleLayerVisibility,
@@ -3392,6 +3403,9 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
+  /// Drawn without its ground — the folded overlay's ([_StoryboardFolded]).
+  final bool chromeless;
+
   @override
   Widget build(BuildContext context) {
     final onSelect = onSelectLayer;
@@ -3403,6 +3417,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
       selectKey: ValueKey<String>(
         'storyboard-$keyName-label-${track.id.value}',
       ),
+      chromeless: chromeless,
       onTap: onSelect == null ? null : () => onSelect(rowId),
       layerId: layer?.id,
       labelDoubleClick: labelDoubleClick,

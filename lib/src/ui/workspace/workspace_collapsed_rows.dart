@@ -71,7 +71,8 @@ class _WorkspaceCollapsedRows {
   /// today. If it ever grows a second, that function is where it grows and
   /// this line follows it there.
   double collapsedRowHeight() => _collapsedRowIsStoryboard
-      ? _state._storyboardLaneHeight(_state.context)
+      ? _state._foldedStoryboard.row()?.height ??
+            _state._storyboardLaneHeight(_state.context)
       : timelineLayerRowHeightIn(_state.context);
 
   Widget _collapsedRow() {
@@ -154,6 +155,14 @@ class _WorkspaceCollapsedRows {
   /// panel it folded.
   Widget _collapsedTrackRow() {
     final session = _state.widget.session;
+    // Standing on another row than the V row, the folded row is that one
+    // (F-322, [_WorkspaceFoldedStoryboard]).
+    if (_state._foldedStoryboard.row() case final folded?) {
+      return _state._foldedStoryboard.overlay(
+        folded,
+        _follows(session.playheadCursors.trackFrame),
+      );
+    }
     // ⛔The session's track axis, not a walk of its own: this narrowed the
     // layout to the selected track by hand, the same walk
     // [EditorSessionManager.trackFrameAxis] makes (one track a film, 전제 8,
@@ -383,8 +392,13 @@ class _WorkspaceCollapsedRows {
   /// on screen (I-7). They read the project's own notifiers, so a pair
   /// made once for the window would go on hearing the first project.
   void bindSession(EditorSessionManager session) {
+    // The folded storyboard is the row it stands on (F-322).
+    _state._foldedStoryboard.bindSession(session);
     _collapsedRowStructure = Listenable.merge([
       session,
+      // A stand is drawn on the rows' own channel, no session notify — and
+      // the folded storyboard is the row its rail stands on (F-322).
+      session.standing.currentRowListenable,
       session.railView.expandedLaneLayerIds,
       session.railView.expandedLaneGroupKeys,
       session.railView.hiddenSections,

@@ -176,6 +176,7 @@ import 'timesheet_tab_host.dart';
 import 'input/control_press_claim.dart';
 
 part 'workspace/workspace_collapsed_rows.dart';
+part 'workspace/workspace_folded_storyboard.dart';
 part 'workspace/workspace_docks.dart';
 part 'workspace/workspace_layout_persistence.dart';
 part 'workspace/workspace_tabs.dart';
@@ -1417,6 +1418,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // Its pictures go with it; the store reports the zero to [session].
     _storyboardThumbnails.dispose();
     _views.unbindSession();
+    _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
@@ -1436,6 +1438,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final _WorkspaceCollapsedRows _collapsedRows = _WorkspaceCollapsedRows(
     this,
   );
+
+  /// The folded storyboard where it stands on another row than its V row
+  /// (workspace/workspace_folded_storyboard.dart, F-322).
+  late final _WorkspaceFoldedStoryboard _foldedStoryboard =
+      _WorkspaceFoldedStoryboard(this);
 
   /// What the STORYBOARD panel stacks — bound by that panel, read by the ↑/↓
   /// walk and the flip window while it is the panel being worked in.
@@ -1686,6 +1693,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   void dispose() {
     _unbindSession(widget.session);
+    _foldedStoryboard.dispose();
     _mediaDropVerdict.dispose();
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
@@ -2285,6 +2293,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     listenable: Listenable.merge([
                       _layout.extentRevision,
                       _bottomInsetOverride,
+                      // The folded storyboard is the row it stands on, as
+                      // tall as that row (F-322).
+                      _foldedStoryboard.stand,
                     ]),
                     child: _docks.buildCenterDock(),
                     builder: (context, floor) =>
