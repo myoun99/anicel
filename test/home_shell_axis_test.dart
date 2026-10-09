@@ -32,7 +32,8 @@ void main() {
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
     );
-    expect(find.byTooltip('Add'), findsOneWidget);
+    // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
+    expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);

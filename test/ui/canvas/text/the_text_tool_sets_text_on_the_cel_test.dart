@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/app_shortcuts.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/key_chords.dart';
 
@@ -192,6 +193,8 @@ void main() {
       tester,
     ) async {
       final c = await hiOnTheCel(tester);
+      // Delete is 삭제 on the registry's keys — Clip Studio's is its Erase.
+      await useAnicelKeys(tester);
       await clickAt(tester, c.dx + 10, c.dy + 30);
       final history = sessionOf(tester).historyManager;
       final steps = history.undoCount;

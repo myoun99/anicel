@@ -603,7 +603,8 @@ Future<void> tapRedoButton(WidgetTester tester) async {
 void expectTimelineActionTooltips() {
   // Direct icons only (R-toolbar round) — the rest moved into the Layer ▾ /
   // Frame ▾ flyouts, and the exposure ± buttons are GONE (edge grips).
-  expect(find.byTooltip('Add'), findsOneWidget);
+  // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
+  expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
   expect(find.byTooltip('Blank / X'), findsOneWidget);
   expect(find.byTooltip('Mark ●'), findsOneWidget);
   expect(find.byTooltip('Decrease Exposure'), findsNothing);
