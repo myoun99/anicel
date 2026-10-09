@@ -21,7 +21,7 @@ import '../../models/transform_track.dart';
 import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
 import 'timeline_span_name.dart' show timelineInstructionInk;
@@ -195,7 +195,7 @@ List<PropertyLaneRow> transformPropertyLanes(
             ? null
             : (frame) {
                 final anchor = anchorAt(frame);
-                return '${formatTrimmedDecimal(anchor.x)}, ${formatTrimmedDecimal(anchor.y)}';
+                return '${columnValueText(anchor.x)}, ${columnValueText(anchor.y)}';
               },
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
@@ -237,7 +237,7 @@ List<PropertyLaneRow> transformPropertyLanes(
         track.opacity,
         valueLabel: opacityAt == null
             ? null
-            : (frame) => '${formatTrimmedDecimal(opacityAt(frame) * 100)}%',
+            : (frame) => '${columnValueText(opacityAt(frame) * 100)}%',
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
       ),
@@ -352,8 +352,8 @@ bool laneSelectionCoversBandRow(
 /// AE-style value formatting for a transform lane.
 String formatTransformLaneValue(String laneId, TransformPose pose) {
   return switch (laneId) {
-    'position' => '${formatTrimmedDecimal(pose.center.x)}, ${formatTrimmedDecimal(pose.center.y)}',
-    'rotation' => '${formatTrimmedDecimal(pose.rotationDegrees)}°',
+    'position' => '${columnValueText(pose.center.x)}, ${columnValueText(pose.center.y)}',
+    'rotation' => '${columnValueText(pose.rotationDegrees)}°',
     _ => '',
   };
 }
@@ -382,20 +382,20 @@ String? scrubTransformLaneValue(
       if (x == null || y == null) {
         return null;
       }
-      return '${formatTrimmedDecimal(x + dragDelta.dx)}, ${formatTrimmedDecimal(y + dragDelta.dy)}';
+      return '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}';
     case 'rotation':
       final degrees = parse(currentLabel);
       if (degrees == null) {
         return null;
       }
-      return '${formatTrimmedDecimal(degrees + dragDelta.dx * 0.5)}°';
+      return '${columnValueText(degrees + dragDelta.dx * 0.5)}°';
     case 'opacity':
       final percent = parse(currentLabel);
       if (percent == null) {
         return null;
       }
       final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
-      return '${formatTrimmedDecimal(scrubbed)}%';
+      return '${columnValueText(scrubbed)}%';
   }
   return null;
 }

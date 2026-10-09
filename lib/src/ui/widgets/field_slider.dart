@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
+import '../text/readout_text.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
@@ -18,38 +19,6 @@ import 'axis_bar_gesture.dart';
 import 'ground_ink_writing.dart';
 import 'superellipse_clip.dart';
 import '../repaint_props.dart';
-
-/// THE number a slider writes: [value] to [decimals] places, then [unit].
-///
-/// F-9 (유저 2026-08-24):
-///
-/// > 「슬라이더 값에 소수점 텍스트 표시 (1.2px) … 브러시 사이즈만이 아니라
-/// > **조절 가능한 모든 슬라이더**」
-///
-/// The panels used to `.round()` at each call site, so a bar you could set to
-/// 1.2 read `1` — and then setting it again from the number you could see
-/// moved the value. Rounding is a DISPLAY choice, and it was being made by
-/// twenty call sites that could not agree.
-///
-/// 🚨F-34 (유저 확정 2026-09-01, 선택 1) is why [decimals] has NO DEFAULT:
-///
-/// > 「**슬라이더가 스스로 정한다 — 위젯이 자기 스텝을 보고 자릿수를
-/// > 고른다**」
-///
-/// This used to hide the decimal whenever the value happened to be whole, so
-/// one bar read `1`, then `1.2` under the same finger, then `1` again — 유저
-/// 2026-08-31: 「소수점이 있는 슬라이더는 처음부터 소수점까지 보여주도록.
-/// **없는 UI가 생겨나지 않게 하라는 원칙이 이 경우를 말함**」. The digit
-/// count belongs to the BAR (`FieldSlider._decimals`), and the few
-/// labels that are not plain numbers (`L50`, `off`, `Auto`) name their own.
-String sliderValueText(num value, {required int decimals, String unit = ''}) {
-  final text = value.toStringAsFixed(decimals);
-  // ⚠️`-0`: a value a hair below zero rounds to zero and KEEPS its sign, and
-  // `-0%` beside a `0%` reads as a different number. Rounding alone can reach
-  // it, so the guard is here rather than at the values.
-  final zero = 0.toStringAsFixed(decimals);
-  return '${text == '-$zero' ? zero : text}$unit';
-}
 
 /// How a [FieldSlider] maps track position to value.
 enum FieldSliderScale {
@@ -130,7 +99,7 @@ class FieldSlider extends StatefulWidget {
   /// 없다고생각. 조절시 자연수이도록.**」
   ///
   /// The hundred divisions are what make that true WHILE DRAGGING.
-  /// [sliderValueText] only ever rounded the label, so a bar reading `50%`
+  /// [readoutText] only ever rounded the label, so a bar reading `50%`
   /// could be holding 0.4963 — and the next thing to read that number (a
   /// composite, an export) got the 0.4963.
   ///
@@ -330,7 +299,7 @@ class FieldSlider extends StatefulWidget {
   /// (On the bar rather than on its state since 2026-10-07: [narrowestIn]
   /// asks it of a bar that is not on screen.)
   String _textFor(double value) {
-    final derived = sliderValueText(
+    final derived = readoutText(
       value * displayScale,
       decimals: _decimals,
       unit: unit,

@@ -5,7 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/transform_pose.dart' show uniformScale;
 import '../../models/transform_values.dart' show scaleCarriedBy;
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 
 /// WHAT A ROW'S SCALE LANE HOLDS — and so how it is printed, typed and
 /// scrubbed. The three are one law, kept in one place: what the lane
@@ -63,7 +63,7 @@ final class OneZoom extends ScaleLaneForm {
   const OneZoom();
 
   @override
-  String label(CanvasPoint scale) => '${formatTrimmedDecimal(scale.x * 100)}%';
+  String label(CanvasPoint scale) => '${columnValueText(scale.x * 100)}%';
 
   @override
   CanvasPoint? typed(
@@ -82,7 +82,7 @@ final class OneZoom extends ScaleLaneForm {
     final percent = _percent(label);
     return percent == null
         ? null
-        : '${formatTrimmedDecimal(percent + dragDelta.dx * _percentPerPixel)}%';
+        : '${columnValueText(percent + dragDelta.dx * _percentPerPixel)}%';
   }
 
   @override
@@ -97,8 +97,8 @@ final class TwoScales extends ScaleLaneForm {
 
   @override
   String label(CanvasPoint scale) =>
-      '${formatTrimmedDecimal(scale.x * 100)}, '
-      '${formatTrimmedDecimal(scale.y * 100)}%';
+      '${columnValueText(scale.x * 100)}, '
+      '${columnValueText(scale.y * 100)}%';
 
   /// ONE number is both axes (`150` — the layer at one and a half its
   /// size). TWO are across and down; [linked], the one the editor's two
@@ -143,7 +143,7 @@ final class TwoScales extends ScaleLaneForm {
   }
 
   static bool _printsAs(double percent, double scale) =>
-      formatTrimmedDecimal(percent) == formatTrimmedDecimal(scale * 100);
+      columnValueText(percent) == columnValueText(scale * 100);
 
   /// ONE drag scrubs ONE number, as After Effects' two numbers are each
   /// scrubbed on their own: across drives the scale across, down the scale
@@ -164,8 +164,8 @@ final class TwoScales extends ScaleLaneForm {
     final alongAcross = dragDelta.dx.abs() >= dragDelta.dy.abs();
     final dx = alongAcross ? dragDelta.dx : 0.0;
     final dy = alongAcross ? 0.0 : dragDelta.dy;
-    return '${formatTrimmedDecimal(across + dx * _percentPerPixel)}, '
-        '${formatTrimmedDecimal(down + dy * _percentPerPixel)}%';
+    return '${columnValueText(across + dx * _percentPerPixel)}, '
+        '${columnValueText(down + dy * _percentPerPixel)}%';
   }
 
   @override

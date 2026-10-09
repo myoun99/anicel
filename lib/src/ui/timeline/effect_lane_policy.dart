@@ -4,7 +4,7 @@ import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
@@ -163,9 +163,9 @@ bool effectGroupHeaderCovered(String headerLaneId, List<String> spanLaneIds) {
 /// AE-style value formatting for an effect parameter.
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {
   return switch (spec.unit) {
-    EffectParameterUnit.number => formatTrimmedDecimal(value),
-    EffectParameterUnit.degrees => '${formatTrimmedDecimal(value)}°',
-    EffectParameterUnit.pixels => '${formatTrimmedDecimal(value)} px',
+    EffectParameterUnit.number => columnValueText(value),
+    EffectParameterUnit.degrees => '${columnValueText(value)}°',
+    EffectParameterUnit.pixels => '${columnValueText(value)} px',
   };
 }
 

@@ -414,7 +414,7 @@ class _BottomBarBuild {
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
           // Every digit the angle has — the zoom readout's law (F-122).
-          text: sliderValueText(
+          text: readoutText(
             rotationDegrees,
             decimals: CanvasViewport.readoutDecimals,
             unit: '°',
@@ -532,8 +532,8 @@ class _BottomBarBuild {
       // read `55%` for every zoom from 54.5 to 55.5. Every zoom verb LANDS
       // on this grid ([CanvasZoomScale.landed]), so the digits written here
       // are all the digits there are — and the count never changes under
-      // the finger, which is the slider's law too ([sliderValueText], F-34).
-      text: sliderValueText(
+      // the finger, which is the slider's law too ([readoutText], F-34).
+      text: readoutText(
         displayPercent,
         decimals: CanvasViewport.readoutDecimals,
         unit: '%',

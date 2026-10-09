@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/text/readout_text.dart';
 import '../helpers/dart_sources.dart';
 
 /// F-9 — **a slider shows the value it actually has.**
@@ -21,26 +21,26 @@ void main() {
   group('the formatter', () {
     test('it writes the digits it was given — the same count at every '
         'value, which is the whole of F-34', () {
-      expect(sliderValueText(1.2, decimals: 1, unit: ' px'), '1.2 px');
-      expect(sliderValueText(2, decimals: 1, unit: ' px'), '2.0 px');
-      expect(sliderValueText(2.0, decimals: 0, unit: ' px'), '2 px');
-      expect(sliderValueText(50, decimals: 0, unit: '%'), '50%');
+      expect(readoutText(1.2, decimals: 1, unit: ' px'), '1.2 px');
+      expect(readoutText(2, decimals: 1, unit: ' px'), '2.0 px');
+      expect(readoutText(2.0, decimals: 0, unit: ' px'), '2 px');
+      expect(readoutText(50, decimals: 0, unit: '%'), '50%');
     });
 
     test('it rounds rather than truncating', () {
-      expect(sliderValueText(1.24, decimals: 1), '1.2');
-      expect(sliderValueText(1.25, decimals: 1), '1.3');
-      expect(sliderValueText(1.96, decimals: 1), '2.0');
-      expect(sliderValueText(1.96, decimals: 0), '2');
+      expect(readoutText(1.24, decimals: 1), '1.2');
+      expect(readoutText(1.25, decimals: 1), '1.3');
+      expect(readoutText(1.96, decimals: 1), '2.0');
+      expect(readoutText(1.96, decimals: 0), '2');
     });
 
     test('a value a hair below zero does not read as a different number '
         'from the zero beside it', () {
-      expect(sliderValueText(-0.2, decimals: 0, unit: '%'), '0%');
-      expect(sliderValueText(-0.04, decimals: 1, unit: '%'), '0.0%');
+      expect(readoutText(-0.2, decimals: 0, unit: '%'), '0%');
+      expect(readoutText(-0.04, decimals: 1, unit: '%'), '0.0%');
       // ⚠️And the guard stops there: a real negative keeps its sign.
-      expect(sliderValueText(-3, decimals: 0, unit: ' px'), '-3 px');
-      expect(sliderValueText(-0.6, decimals: 0), '-1');
+      expect(readoutText(-3, decimals: 0, unit: ' px'), '-3 px');
+      expect(readoutText(-0.6, decimals: 0), '-1');
     });
   });
 
@@ -57,7 +57,7 @@ void main() {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       if (key == 'lib/src/ui/widgets/field_slider.dart') {
-        // The formatter itself.
+        // The bar itself — the one place that rounds for a label.
         continue;
       }
       final lines = entry.readAsLinesSync();

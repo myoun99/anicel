@@ -36,7 +36,7 @@ import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
 import '../text/imported_fonts.dart';
 import '../text/model_vocabulary.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
@@ -864,7 +864,7 @@ class _BoxValue {
   final double perUnit;
 
   String shown(TransformValues values) =>
-      '${formatTrimmedDecimal(read(values) / perUnit, fractionDigits: 2)}'
+      '${columnValueText(read(values) / perUnit)}'
       '$unit';
 }
 

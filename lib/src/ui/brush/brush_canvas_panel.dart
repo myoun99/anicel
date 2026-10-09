@@ -106,7 +106,7 @@ import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
 import '../canvas/canvas_target_pill.dart' show CanvasPillRoom;
 import '../widgets/drag_value_label.dart';
-import '../widgets/field_slider.dart' show sliderValueText;
+import '../text/readout_text.dart' show readoutText;
 import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';

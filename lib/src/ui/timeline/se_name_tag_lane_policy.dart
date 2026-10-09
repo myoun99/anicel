@@ -1,7 +1,7 @@
 import '../../models/se_name_tag.dart';
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 
 /// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
@@ -54,8 +54,8 @@ bool laneIsSeNameTag(String? laneId) =>
 String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
   const hex = formatLaneColorValue;
   return switch (laneId) {
-    seNameTagSizeLaneId => formatTrimmedDecimal(resolved.style.fontSize),
-    seNameTagTrackingLaneId => formatTrimmedDecimal(
+    seNameTagSizeLaneId => columnValueText(resolved.style.fontSize),
+    seNameTagTrackingLaneId => columnValueText(
       resolved.style.letterSpacing,
     ),
     seNameTagBoldLaneId => resolved.style.bold ? 'on' : 'off',
