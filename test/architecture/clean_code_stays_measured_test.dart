@@ -279,7 +279,15 @@ void main() {
   /// five are the slot (the cel, the level) and the three facts that decide
   /// whether a held image is valid and drawable on the asking route — what
   /// its two prepare siblings take.
-  const wideSignatures = 389;
+  ///
+  /// ⚠️389 → 390, the other one the same round added: `letGoWantedLatest`
+  /// (eight) is the ONE order a playback budget lets go by — the composites
+  /// and the canvas's layer images both trim through it, where each had
+  /// written it out. Generic over the entry, it is handed the entries, what
+  /// is held and the line, the three things it asks of an entry (when it is
+  /// next wanted, when it was last used, its bytes), the letting go, and the
+  /// floor no picture wanted that soon goes under.
+  const wideSignatures = 390;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
