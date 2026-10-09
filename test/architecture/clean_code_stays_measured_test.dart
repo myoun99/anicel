@@ -451,7 +451,14 @@ void main() {
   /// `_twoZones` gave its preview to `_preview` — the run made the picture
   /// zone a question of its own. 🔬The lane's scan against master
   /// (`34f161c64`, at 410) named that one gone and nothing added.
-  const longBodies = 409;
+  ///
+  /// ⚠️409 → 408 on 2026-10-10, lowered as the rule asks (board
+  /// long-sound-conform-memory, a conform made as it is decoded):
+  /// `resampleAudioReference` left — its filter design and its loop are the
+  /// `_ResamplerDesign` the piece-at-a-time stream runs too. 🔬The lane's
+  /// scan against its base (`e5074ed43`, at 410) named that one gone and
+  /// nothing added.
+  const longBodies = 408;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

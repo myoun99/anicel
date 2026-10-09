@@ -305,49 +305,6 @@ void main() {
       );
     });
   });
-
-  test('🎯the bytes laid out on demand are encodeConform\'s, however the '
-      'reads are cut — across the header\'s end, through a sample, into a '
-      'buffer a 16-bit view cannot take', () {
-    // Some past full scale, so the clip is the same on both roads.
-    final samples = Float32List.fromList([
-      for (var index = 0; index < 301; index += 1)
-        ((index * 13) % 97 - 48) / 40.0,
-    ]);
-    const fingerprint = ConformSourceFingerprint(
-      sourceLength: 1234,
-      sourceCrc32: 0x89ABCDEF,
-    );
-    final whole = encodeConform(
-      samples: samples,
-      channels: 1,
-      sampleRate: 48000,
-      fingerprint: fingerprint,
-    );
-    final read = conformBytesReader(
-      ConformHeader.of(
-        samples: samples,
-        channels: 1,
-        sampleRate: 48000,
-        fingerprint: fingerprint,
-      ),
-      samples,
-    );
-    for (final odd in [false, true]) {
-      final out = <int>[];
-      var at = 0;
-      for (final size in [5, 59, 1, 2, 3, 1, 100, 7, 1000]) {
-        final buffer = odd
-            ? Uint8List.sublistView(Uint8List(size + 1), 1)
-            : Uint8List(size);
-        final got = read(buffer, at, size);
-        out.addAll(buffer.sublist(0, got));
-        at += got;
-      }
-      expect(out, whole, reason: odd ? 'odd buffers' : 'even buffers');
-    }
-    expect(read(Uint8List(4), whole.length, 4), 0, reason: 'past the end');
-  });
 }
 
 /// Byte offset of the named chunk header, or -1.

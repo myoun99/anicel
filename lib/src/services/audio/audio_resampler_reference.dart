@@ -154,6 +154,294 @@ Float64List buildResamplerKernel({
   return kernel;
 }
 
+/// A conversion fed a piece at a time — what the next piece needs of the
+/// ones before it, carried across. Both resamplers answer it: the Dart
+/// reference ([AudioResampleStreamReference]) and the C twin
+/// (`QaAudioNativeResampling.openResampler`), bit for bit alike.
+///
+/// 🚨★★★**THE PIECES' OUTPUTS ARE THE WHOLE CONVERSION'S** (user
+/// 2026-10-10, board long-sound-conform-memory-Q1: 「지금 한다 — 전
+/// 플랫폼」). A long sound is conformed as the decoder hands it back, so it
+/// is never held whole — and an output frame reads the inputs it reads
+/// either way, the same taps in the same order. [resampleAudioReference] is
+/// the same loop over input that has all arrived.
+abstract interface class AudioResampleStream {
+  /// Takes [samples] — whole interleaved frames — and answers every output
+  /// frame they complete.
+  Float32List push(Float32List samples);
+
+  /// Answers the rest, once nothing more comes.
+  Float32List finish();
+
+  /// Lets go of what the conversion holds.
+  void close();
+}
+
+/// What a conversion between two rates runs: its polyphase geometry and the
+/// prototype's taps — the C's `qa_audio_resample_design`.
+final class _ResamplerDesign {
+  _ResamplerDesign._({
+    required this.interpolation,
+    required this.decimation,
+    required this.taps,
+    required this.beta,
+    required this.kernel,
+  }) : halfLength = (taps - 1) ~/ 2;
+
+  /// The design for [inputRate] → [outputRate]; both positive and unequal.
+  factory _ResamplerDesign.of({
+    required int inputRate,
+    required int outputRate,
+    required double stopbandDb,
+    required double bandwidth,
+  }) {
+    final divisor = _gcd(inputRate, outputRate);
+    final interpolation = outputRate ~/ divisor; // L
+    final decimation = inputRate ~/ divisor; // M
+    final larger = interpolation > decimation ? interpolation : decimation;
+
+    // Everything is normalized to the INTERPOLATED rate (L × inputRate).
+    // The lower of the two Nyquist limits sits at 0.5 / larger; the passband
+    // stops short of it and the transition band covers the rest.
+    final nyquist = 0.5 / larger;
+    final passbandEdge = nyquist * bandwidth;
+    final transition = nyquist - passbandEdge;
+    final cutoff = (passbandEdge + nyquist) / 2.0;
+    final beta = kaiserBeta(stopbandDb);
+
+    // Length comes from the Kaiser design formula, NOT a fixed multiple of
+    // the ratio. Sizing it as a multiple looks reasonable until a simple
+    // ratio arrives: 48k → 24k has larger = 2, which bought 65 taps and only
+    // 93 dB of rejection — a 15 kHz source folding back to an audible 9 kHz
+    // tone that was never played. The transition band is what sets the
+    // length, and it does not get easier just because the ratio is tidy.
+    final estimated = transition <= 0
+        ? maxResamplerTaps
+        : ((stopbandDb - 8.0) / (2.285 * 2.0 * math.pi * transition)).ceil();
+    var taps = estimated < 15 ? 15 : estimated;
+    if (taps > maxResamplerTaps) {
+      taps = maxResamplerTaps;
+    }
+    // Odd, so the centre lands ON a sample and the group delay is an exact
+    // integer at the interpolated rate — which is what lets the delay cancel
+    // exactly rather than approximately.
+    if (taps.isEven) {
+      taps += 1;
+    }
+    return _ResamplerDesign._(
+      interpolation: interpolation,
+      decimation: decimation,
+      taps: taps,
+      beta: beta,
+      kernel: buildResamplerKernel(
+        taps: taps,
+        cutoff: cutoff,
+        beta: beta,
+        interpolation: interpolation,
+      ),
+    );
+  }
+
+  final int interpolation;
+  final int decimation;
+  final int taps;
+  final int halfLength;
+  final double beta;
+  final Float64List kernel;
+
+  /// One past the last output frame this design can write from [total] input
+  /// frames: every one there is once the input has [ended], and before that
+  /// only those whose every input has arrived.
+  int readyEnd(int total, {required bool ended}) {
+    final limit = total <= 0 ? 0 : (total * interpolation) ~/ decimation;
+    if (ended) {
+      return limit;
+    }
+    // An output reads back from its base frame, (frame × M + half) / L, so
+    // it is complete once that frame has arrived: frame × M + half < total
+    // × L.
+    final reach = total * interpolation - halfLength;
+    final complete = reach <= 0 ? 0 : (reach + decimation - 1) ~/ decimation;
+    return complete < limit ? complete : limit;
+  }
+
+  /// [count] output frames from frame [from], read out of [input].
+  ///
+  /// ⚠️What the caller promises: every input those outputs read from the
+  /// input's first frame on is held, and while more input may come, none
+  /// reads past its total ([readyEnd]). An input past the end is skipped,
+  /// which is right only at the sound's end.
+  Float32List run(_HeldInput input, {required int from, required int count}) {
+    final (samples: held, :channels, :first, :total) = input;
+    final out = Float32List(count * channels);
+    for (var at = 0; at < count; at += 1) {
+      // The + halfLength is the delay compensation: it centres the filter on
+      // the output instant, so the result carries NO net time shift. Doing
+      // it here rather than trimming later means it never has to be a whole
+      // number of output samples.
+      final position = (from + at) * decimation + halfLength;
+      final phase = position % interpolation;
+      final base = position ~/ interpolation;
+
+      for (var channel = 0; channel < channels; channel += 1) {
+        var sum = 0.0;
+        var tap = phase;
+        var source = base;
+        // Walking one polyphase branch: tap strides by L while the source
+        // index walks backwards. Once source goes below what is held every
+        // later one does too, so the loop ends there; a source past the END
+        // is merely skipped, since the branch may still reach back into
+        // range.
+        while (tap < taps && source >= first) {
+          if (source < total) {
+            sum += kernel[tap] * held[(source - first) * channels + channel];
+          }
+          tap += interpolation;
+          source -= 1;
+        }
+        out[at * channels + channel] = sum;
+      }
+    }
+    return out;
+  }
+}
+
+/// Input frames [first, total) of a sound — its frames from [first] on,
+/// [total] of them so far — interleaved by [channels] at the front of
+/// [samples].
+typedef _HeldInput = ({
+  Float32List samples,
+  int channels,
+  int first,
+  int total,
+});
+
+/// The Dart reference's [AudioResampleStream] — the C's
+/// `qa_audio_resampler`, line for line.
+final class AudioResampleStreamReference implements AudioResampleStream {
+  /// A conversion of [channels] from [inputRate] to [outputRate] through the
+  /// conform's filter: all positive, the rates unequal — equal ones skip the
+  /// filter (see [resampleAudioReference]).
+  factory AudioResampleStreamReference({
+    required int channels,
+    required int inputRate,
+    required int outputRate,
+  }) {
+    if (channels <= 0 ||
+        inputRate <= 0 ||
+        outputRate <= 0 ||
+        inputRate == outputRate) {
+      throw ArgumentError(
+        'no conversion of $channels channels from $inputRate to $outputRate',
+      );
+    }
+    return AudioResampleStreamReference._(
+      channels,
+      _ResamplerDesign.of(
+        inputRate: inputRate,
+        outputRate: outputRate,
+        stopbandDb: defaultResamplerStopbandDb,
+        bandwidth: defaultResamplerBandwidth,
+      ),
+    );
+  }
+
+  AudioResampleStreamReference._(this.channels, this._design);
+
+  final int channels;
+  final _ResamplerDesign _design;
+
+  /// Input frames [_first, _first + _heldFrames), interleaved, at the front
+  /// of [_held].
+  Float32List _held = Float32List(0);
+  int _first = 0;
+  int _heldFrames = 0;
+
+  /// The next output frame.
+  int _next = 0;
+  bool _ended = false;
+
+  /// Input frames it holds now — for the tests that tell a conversion that
+  /// lets go of its input from one that keeps the whole sound.
+  int get heldFrames => _heldFrames;
+
+  @override
+  Float32List push(Float32List samples) {
+    if (_ended) {
+      throw StateError('the input has ended');
+    }
+    _letGo();
+    final frames = samples.length ~/ channels;
+    final wanted = (_heldFrames + frames) * channels;
+    if (wanted > _held.length) {
+      var capacity = _held.isEmpty ? 4096 * channels : _held.length;
+      while (capacity < wanted) {
+        capacity *= 2;
+      }
+      _held = Float32List(capacity)
+        ..setRange(0, _heldFrames * channels, _held);
+    }
+    _held.setRange(_heldFrames * channels, wanted, samples);
+    _heldFrames += frames;
+    return _pull();
+  }
+
+  @override
+  Float32List finish() {
+    _ended = true;
+    return _pull();
+  }
+
+  @override
+  void close() {
+    _held = Float32List(0);
+    _heldFrames = 0;
+  }
+
+  /// Lets go of the held input no output still to come reads: output frame
+  /// f reads back to input (f × M + half − taps) / L + 1.
+  void _letGo() {
+    final reach =
+        _next * _design.decimation +
+        _design.halfLength -
+        _design.taps +
+        _design.interpolation;
+    final lowest = reach <= 0 ? 0 : reach ~/ _design.interpolation;
+    var drop = lowest - _first;
+    if (drop > _heldFrames) {
+      drop = _heldFrames;
+    }
+    if (drop <= 0) {
+      return;
+    }
+    _held.setRange(
+      0,
+      (_heldFrames - drop) * channels,
+      _held,
+      drop * channels,
+    );
+    _heldFrames -= drop;
+    _first += drop;
+  }
+
+  Float32List _pull() {
+    final end = _design.readyEnd(_first + _heldFrames, ended: _ended);
+    final count = end > _next ? end - _next : 0;
+    final out = _design.run(
+      (
+        samples: _held,
+        channels: channels,
+        first: _first,
+        total: _first + _heldFrames,
+      ),
+      from: _next,
+      count: count,
+    );
+    _next += count;
+    return out;
+  }
+}
+
 /// Converts [samples] from [inputRate] to [outputRate].
 ///
 /// Equal rates return the input UNTOUCHED — bit-exact, no filter, no
@@ -188,86 +476,25 @@ ResampledAudio resampleAudioReference({
     );
   }
 
-  final divisor = _gcd(inputRate, outputRate);
-  final interpolation = outputRate ~/ divisor; // L
-  final decimation = inputRate ~/ divisor; // M
-  final larger = interpolation > decimation ? interpolation : decimation;
-
-  // Everything is normalized to the INTERPOLATED rate (L × inputRate).
-  // The lower of the two Nyquist limits sits at 0.5 / larger; the passband
-  // stops short of it and the transition band covers the rest.
-  final nyquist = 0.5 / larger;
-  final passbandEdge = nyquist * bandwidth;
-  final transition = nyquist - passbandEdge;
-  final cutoff = (passbandEdge + nyquist) / 2.0;
-  final beta = kaiserBeta(stopbandDb);
-
-  // Length comes from the Kaiser design formula, NOT a fixed multiple of
-  // the ratio. Sizing it as a multiple looks reasonable until a simple
-  // ratio arrives: 48k → 24k has larger = 2, which bought 65 taps and only
-  // 93 dB of rejection — a 15 kHz source folding back to an audible 9 kHz
-  // tone that was never played. The transition band is what sets the
-  // length, and it does not get easier just because the ratio is tidy.
-  final estimated = transition <= 0
-      ? maxResamplerTaps
-      : ((stopbandDb - 8.0) / (2.285 * 2.0 * math.pi * transition)).ceil();
-  var taps = estimated < 15 ? 15 : estimated;
-  if (taps > maxResamplerTaps) {
-    taps = maxResamplerTaps;
-  }
-  // Odd, so the centre lands ON a sample and the group delay is an exact
-  // integer at the interpolated rate — which is what lets the delay cancel
-  // exactly rather than approximately.
-  if (taps.isEven) {
-    taps += 1;
-  }
-  final halfLength = (taps - 1) ~/ 2;
-  final kernel = buildResamplerKernel(
-    taps: taps,
-    cutoff: cutoff,
-    beta: beta,
-    interpolation: interpolation,
+  final design = _ResamplerDesign.of(
+    inputRate: inputRate,
+    outputRate: outputRate,
+    stopbandDb: stopbandDb,
+    bandwidth: bandwidth,
   );
-
   final inputFrames = samples.length ~/ channels;
-  final outputFrames =
-      inputFrames <= 0 ? 0 : (inputFrames * interpolation) ~/ decimation;
-  final out = Float32List(outputFrames * channels);
-
-  for (var frame = 0; frame < outputFrames; frame += 1) {
-    // The + halfLength is the delay compensation: it centres the filter on
-    // the output instant, so the result carries NO net time shift. Doing it
-    // here rather than trimming later means it never has to be a whole
-    // number of output samples.
-    final position = frame * decimation + halfLength;
-    final phase = position % interpolation;
-    final base = position ~/ interpolation;
-
-    for (var channel = 0; channel < channels; channel += 1) {
-      var sum = 0.0;
-      var tap = phase;
-      var source = base;
-      // Walking one polyphase branch: tap strides by L while the source
-      // index walks backwards. Once source goes negative every later one
-      // does too, so the loop ends there; a source past the END is merely
-      // skipped, since the branch may still reach back into range.
-      while (tap < taps && source >= 0) {
-        if (source < inputFrames) {
-          sum += kernel[tap] * samples[source * channels + channel];
-        }
-        tap += interpolation;
-        source -= 1;
-      }
-      out[frame * channels + channel] = sum;
-    }
-  }
+  final out = design.run(
+    (samples: samples, channels: channels, first: 0, total: inputFrames),
+    from: 0,
+    count: design.readyEnd(inputFrames, ended: true),
+  );
 
   return ResampledAudio(
     samples: out,
     channels: channels,
     sampleRate: outputRate,
-    taps: taps,
-    beta: beta,
+    taps: design.taps,
+    beta: design.beta,
     passthrough: false,
   );
 }

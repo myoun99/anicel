@@ -212,6 +212,59 @@ void main() {
       );
     }, skip: skip);
 
+    test('🎯fed a piece at a time, the native conversion is the whole '
+        'reference one bit for bit — and lets go of its input as the '
+        'reference does', () {
+      final native = requireNative();
+      const pairs = [(44100, 48000), (48000, 44100), (8000, 48000)];
+      const pieces = [1, 7, 333, 4096, 5000, 2];
+      for (final (inputRate, outputRate) in pairs) {
+        for (final channels in const [1, 2]) {
+          final samples = noise(20000, channels, inputRate + channels);
+          final fromNative = native.openResampler(
+            channels: channels,
+            inputRate: inputRate,
+            outputRate: outputRate,
+          );
+          final fromDart = AudioResampleStreamReference(
+            channels: channels,
+            inputRate: inputRate,
+            outputRate: outputRate,
+          );
+          final out = <double>[];
+          var at = 0;
+          for (var turn = 0; at < samples.length; turn += 1) {
+            final end = math.min(
+              at + pieces[turn % pieces.length] * channels,
+              samples.length,
+            );
+            final piece = Float32List.sublistView(samples, at, end);
+            out.addAll(fromNative.push(piece));
+            fromDart.push(piece);
+            expect(
+              fromNative.heldFrames,
+              fromDart.heldFrames,
+              reason: '$inputRate → $outputRate, $channels ch: held, turn '
+                  '$turn',
+            );
+            at = end;
+          }
+          out.addAll(fromNative.finish());
+          fromNative.close();
+          expectIdentical(
+            Float32List.fromList(out),
+            resampleAudioReference(
+              samples: samples,
+              channels: channels,
+              inputRate: inputRate,
+              outputRate: outputRate,
+            ).samples,
+            what: '$inputRate → $outputRate, $channels ch, in pieces',
+          );
+        }
+      }
+    }, skip: skip);
+
     test('degenerate geometry agrees instead of crashing', () {
       final native = requireNative();
       expect(

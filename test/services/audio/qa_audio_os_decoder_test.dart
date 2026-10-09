@@ -853,6 +853,78 @@ void main() {
     }
     expect(peak, inInclusiveRange(0.35, 0.65));
   }, skip: skip);
+
+  test('🎯a sound opened as a stream and read a piece at a time is the whole '
+      'decode — a movie\'s PCM through its edit list, an m4a through the OS '
+      'stack, an ogg, a movie kept framed', () {
+    // A conform is made from the stream (user 10-10, board
+    // long-sound-conform-memory-Q1), so its pieces — of any size, across the
+    // decoders' own blocks — must be the whole decode's frames exactly, the
+    // lead the file says counted once.
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final directory = Directory.systemTemp.createTempSync('qa_stream');
+    deleteAfterSessionEnds(directory);
+    MediaSpan written(String name, Uint8List bytes) {
+      final path = '${directory.path}${Platform.pathSeparator}$name';
+      File(path).writeAsBytesSync(bytes);
+      return (path: path, offset: 0, length: bytes.length, framed: false);
+    }
+
+    final framed = framedMovie('test/fixtures/tone_with_video.mp4');
+    for (final (what, span) in [
+      (
+        'a movie\'s PCM',
+        written(
+          'pcm.mov',
+          pcmMovie(_roomToneThenTone(), edits: [(from: 480, keep: 24000)]),
+        ),
+      ),
+      ('an m4a', written('tone.m4a', fixtureBytes())),
+      (
+        'an ogg',
+        written('tone.ogg', File('test/fixtures/tone.ogg').readAsBytesSync()),
+      ),
+      (
+        'a movie kept framed',
+        (
+          path: framed,
+          offset: 0,
+          length: File(framed).lengthSync(),
+          framed: true,
+        ),
+      ),
+    ]) {
+      final whole = decoder!.decodeSpan(span);
+      final stream = decoder.openSpan(span);
+      if (whole == null) {
+        expect(Platform.isLinux, isTrue, reason: '$what: nothing decoded it');
+        expect(stream, isNull, reason: '$what: nor opened it');
+        continue;
+      }
+      expect(
+        (stream!.format, stream.channels, stream.sampleRate),
+        (whole.format, whole.channels, whole.sampleRate),
+        reason: what,
+      );
+      final read = <double>[];
+      const pieces = [1, 7, 333, 4096, 5000, 2];
+      for (var turn = 0; ; turn += 1) {
+        final piece = stream.read(pieces[turn % pieces.length]);
+        if (piece.isEmpty) {
+          break;
+        }
+        read.addAll(piece);
+      }
+      expect(stream.read(16), isEmpty, reason: '$what: nothing past the end');
+      stream.close();
+      expect(
+        read,
+        orderedEquals(whole.samples),
+        reason: '$what: the whole decode\'s own frames',
+      );
+    }
+  }, skip: skip);
 }
 
 /// A real 16-bit PCM WAV — a FOREIGN format to this app now.

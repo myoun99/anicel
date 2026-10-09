@@ -56,6 +56,21 @@ extern int32_t qa_audio_decode_span_window(const char* path,
                                            int32_t* out_channels,
                                            int32_t* out_sample_rate);
 
+typedef struct qa_audio_stream qa_audio_stream;
+
+extern qa_audio_stream* qa_audio_stream_open(const char* path,
+                                             int64_t offset,
+                                             int64_t length,
+                                             int32_t framed,
+                                             int32_t* out_format,
+                                             int32_t* out_channels,
+                                             int32_t* out_sample_rate);
+
+extern int64_t qa_audio_stream_read(qa_audio_stream* stream, float* out,
+                                    int64_t frames);
+
+extern void qa_audio_stream_close(qa_audio_stream* stream);
+
 static int g_failures;
 
 static void expect_int(const char* what, long long got, long long want) {
@@ -623,6 +638,110 @@ int main(void) {
       qa_audio_decode_free(whole);
     }
     remove(path);
+  }
+
+  // 11. A STREAM READ A PIECE AT A TIME IS THE WHOLE DECODE. A conform is
+  // made from the stream as it reads on, so the pieces — of any size, across
+  // the decoders' own blocks — must be the whole decode's frames exactly,
+  // the lead counted once (an MP3's standard one, a LAME tag's), and nothing
+  // past the end.
+  {
+    static uint8_t mp3[MP3_FRAMES * MP3_FRAME_BYTES];
+    static uint8_t tagged[MP3_FRAMES * MP3_FRAME_BYTES];
+    static uint8_t flac[FLAC_BYTES];
+    const struct {
+      const char* name;
+      const uint8_t* body;
+      size_t bytes;
+      int32_t format;
+    } sounds[] = {
+        {"a WAV", wav, wav_bytes, QA_AUDIO_FORMAT_WAV},
+        {"a FLAC", flac, build_flac(flac), QA_AUDIO_FORMAT_FLAC},
+        {"an MP3", mp3, build_mp3_frames(mp3), QA_AUDIO_FORMAT_MP3},
+        {"an MP3 with a LAME tag", tagged, build_tagged_mp3_frames(tagged),
+         QA_AUDIO_FORMAT_MP3},
+    };
+    static const int64_t pieces[] = {1, 7, 333, 4096, 5000, 2};
+    const char* path = "qa_audio_stream_fixture.bin";
+    for (size_t index = 0; index < sizeof(sounds) / sizeof(sounds[0]);
+         index += 1) {
+      FILE* file = fopen(path, "wb");
+      if (file == NULL) {
+        printf("FAIL fixture: could not write %s\n", path);
+        g_failures += 1;
+        break;
+      }
+      fwrite(sounds[index].body, 1, sounds[index].bytes, file);
+      fclose(file);
+      const int64_t length = (int64_t)sounds[index].bytes;
+      float* whole = NULL;
+      int64_t whole_frames = 0;
+      int32_t channels = 0;
+      int32_t rate = 0;
+      qa_audio_decode_span(path, 0, length, 0, &whole, &whole_frames,
+                           &channels, &rate);
+
+      char label[128];
+      int32_t format = 0;
+      int32_t stream_channels = 0;
+      int32_t stream_rate = 0;
+      qa_audio_stream* stream = qa_audio_stream_open(
+          path, 0, length, 0, &format, &stream_channels, &stream_rate);
+      snprintf(label, sizeof(label), "%s, as a stream: which decoder",
+               sounds[index].name);
+      expect_int(label, format, sounds[index].format);
+      snprintf(label, sizeof(label), "%s, as a stream: channels and rate",
+               sounds[index].name);
+      expect_int(label, stream_channels * 1000000LL + stream_rate,
+                 channels * 1000000LL + rate);
+      if (stream != NULL && whole != NULL && channels > 0) {
+        // A piece of room past the whole, so a stream that runs on shows.
+        float* read = (float*)malloc((size_t)(whole_frames + 5000) *
+                                     (size_t)channels * sizeof(float));
+        int64_t frames = 0;
+        for (size_t piece = 0; read != NULL; piece += 1) {
+          const int64_t want =
+              pieces[piece % (sizeof(pieces) / sizeof(*pieces))];
+          const int64_t got =
+              qa_audio_stream_read(stream, read + frames * channels, want);
+          if (got <= 0 || frames + got > whole_frames) {
+            frames += got > 0 ? got : 0;
+            break;
+          }
+          frames += got;
+        }
+        snprintf(label, sizeof(label), "%s, as a stream: frames",
+                 sounds[index].name);
+        expect_int(label, frames, whole_frames);
+        int same = read != NULL && frames == whole_frames;
+        for (int64_t sample = 0; same && sample < frames * channels;
+             sample += 1) {
+          same = read[sample] == whole[sample];
+        }
+        snprintf(label, sizeof(label),
+                 "%s, as a stream: the whole decode's own frames",
+                 sounds[index].name);
+        expect_int(label, same, 1);
+        float spare[16];
+        snprintf(label, sizeof(label), "%s, as a stream: nothing past the end",
+                 sounds[index].name);
+        expect_int(label, qa_audio_stream_read(stream, spare, 4), 0);
+        free(read);
+      }
+      qa_audio_stream_close(stream);
+      qa_audio_decode_free(whole);
+    }
+    remove(path);
+    int32_t format = -1;
+    int32_t stream_channels = -1;
+    int32_t stream_rate = -1;
+    expect_int("a missing file opens no stream",
+               qa_audio_stream_open("qa_no_such_file.bin", 0, 16, 0, &format,
+                                    &stream_channels, &stream_rate) == NULL,
+               1);
+    expect_int("and says nothing about one", format + stream_channels +
+                                                 stream_rate,
+               0);
   }
 
   if (g_failures == 0) {

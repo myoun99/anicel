@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../services/audio/audio_decode_stream.dart';
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// Which decoder read a file — reported so a log can say what happened
@@ -62,7 +64,7 @@ class QaDecodedAudio {
 /// `qa_platform_path.h` — so the hazard is now handled in one place instead
 /// of avoided in two.
 final class QaAudioDecoder {
-  QaAudioDecoder._(this._decodeSpan, this._free);
+  QaAudioDecoder._(this._decodeSpan, this._free, this._stream);
 
   final int Function(
     Pointer<Utf8>,
@@ -78,6 +80,7 @@ final class QaAudioDecoder {
   )
   _decodeSpan;
   final void Function(Pointer<Float>) _free;
+  final _QaAudioStreamApi _stream;
 
   static QaAudioDecoder? _instance;
   static bool _tried = false;
@@ -133,6 +136,7 @@ final class QaAudioDecoder {
           Void Function(Pointer<Float>),
           void Function(Pointer<Float>)
         >('qa_audio_decode_free'),
+        _QaAudioStreamApi(library),
       );
     } on Object {
       return null;
@@ -190,6 +194,53 @@ final class QaAudioDecoder {
     }
   }
 
+  /// The container stored in [span]'s length bytes of its path from its
+  /// offset, opened once to be read on — its frames [decodeSpan]'s, a piece
+  /// at a time; null when no decoder recognized it, the span is not inside
+  /// the file, or the file will not open. [QaAudioStream.close] lets it go.
+  ///
+  /// 🚨What a conform is made from: a long sound is decoded, resampled and
+  /// written as it comes and never held whole (user 2026-10-10, board
+  /// long-sound-conform-memory-Q1).
+  QaAudioStream? openSpan(
+    ({String path, int offset, int length, bool framed}) span,
+  ) {
+    final (:path, :offset, :length, :framed) = span;
+    if (path.isEmpty || offset < 0 || length <= 0) {
+      return null;
+    }
+    final native = path.toNativeUtf8();
+    final formatOut = calloc<Int32>();
+    final channelsOut = calloc<Int32>();
+    final sampleRateOut = calloc<Int32>();
+    try {
+      final handle = _stream.open(
+        native,
+        offset,
+        length,
+        framed ? 1 : 0,
+        formatOut,
+        channelsOut,
+        sampleRateOut,
+      );
+      if (handle == nullptr) {
+        return null;
+      }
+      return QaAudioStream._(
+        _stream,
+        handle,
+        channels: channelsOut.value,
+        sampleRate: sampleRateOut.value,
+        format: _formatOf(formatOut.value),
+      );
+    } finally {
+      calloc.free(sampleRateOut);
+      calloc.free(channelsOut);
+      calloc.free(formatOut);
+      calloc.free(native);
+    }
+  }
+
   /// The four out-parameters, and what to do with what comes back.
   QaDecodedAudio? _harvest(
     int Function(
@@ -230,9 +281,7 @@ final class QaAudioDecoder {
           samples: copied,
           channels: channels,
           sampleRate: sampleRateOut.value,
-          format: format >= 1 && format <= 5
-              ? QaAudioFormat.values[format]
-              : QaAudioFormat.unknown,
+          format: _formatOf(format),
         );
       } finally {
         if (samples != nullptr) {
@@ -244,6 +293,115 @@ final class QaAudioDecoder {
       calloc.free(channelsOut);
       calloc.free(frameCountOut);
       calloc.free(samplesOut);
+    }
+  }
+}
+
+QaAudioFormat _formatOf(int format) => format >= 1 && format <= 5
+    ? QaAudioFormat.values[format]
+    : QaAudioFormat.unknown;
+
+/// The engine's sound streams — `qa_audio_stream_*`.
+final class _QaAudioStreamApi {
+  _QaAudioStreamApi(DynamicLibrary library)
+    : open = library
+          .lookupFunction<
+            Pointer<Void> Function(
+              Pointer<Utf8>,
+              Int64,
+              Int64,
+              Int32,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Pointer<Int32>,
+            ),
+            Pointer<Void> Function(
+              Pointer<Utf8>,
+              int,
+              int,
+              int,
+              Pointer<Int32>,
+              Pointer<Int32>,
+              Pointer<Int32>,
+            )
+          >('qa_audio_stream_open'),
+      read = library
+          .lookupFunction<
+            Int64 Function(Pointer<Void>, Pointer<Float>, Int64),
+            int Function(Pointer<Void>, Pointer<Float>, int)
+          >('qa_audio_stream_read'),
+      close = library
+          .lookupFunction<
+            Void Function(Pointer<Void>),
+            void Function(Pointer<Void>)
+          >('qa_audio_stream_close');
+
+  final Pointer<Void> Function(
+    Pointer<Utf8>,
+    int,
+    int,
+    int,
+    Pointer<Int32>,
+    Pointer<Int32>,
+    Pointer<Int32>,
+  )
+  open;
+  final int Function(Pointer<Void>, Pointer<Float>, int) read;
+  final void Function(Pointer<Void>) close;
+}
+
+/// A sound the engine opened to read on ([QaAudioDecoder.openSpan]).
+final class QaAudioStream implements AudioDecodeStream {
+  QaAudioStream._(
+    this._api,
+    this._handle, {
+    required this.channels,
+    required this.sampleRate,
+    required this.format,
+  });
+
+  final _QaAudioStreamApi _api;
+  Pointer<Void> _handle;
+
+  @override
+  final int channels;
+
+  @override
+  final int sampleRate;
+
+  final QaAudioFormat format;
+
+  /// ⚠️One for the isolate, not one per stream: nothing here suspends
+  /// between the native read and the copy out.
+  static final NativeScratch<Float> _room = NativeScratch<Float>(
+    (count) => calloc<Float>(count),
+    bytesPerElement: sizeOf<Float>(),
+  );
+
+  @override
+  Float32List read(int frames) {
+    if (_handle == nullptr) {
+      throw StateError('the stream is closed');
+    }
+    if (frames <= 0 || channels <= 0) {
+      return Float32List(0);
+    }
+    final room = _room.ensure(frames * channels);
+    final got = _api.read(_handle, room, frames);
+    if (got < 0) {
+      throw const AudioDecodeFailure(
+        'the decoder failed partway through the sound',
+      );
+    }
+    // Copied out: the room is the next read's.
+    return Float32List.fromList(room.asTypedList(got * channels));
+  }
+
+  @override
+  void close() {
+    if (_handle != nullptr) {
+      _api.close(_handle);
+      _handle = nullptr;
     }
   }
 }

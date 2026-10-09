@@ -211,10 +211,10 @@ class ConformHeader {
     this.decodeRecipe = 0,
   });
 
-  /// The header a conform of [samples] is written with today — the one
+  /// The header a conform of [frames] is written with today — the one
   /// [encodeConform] and the pipeline's streamed write both lay down.
   factory ConformHeader.of({
-    required Float32List samples,
+    required int frames,
     required int channels,
     required int sampleRate,
     ConformSourceFingerprint? fingerprint,
@@ -237,7 +237,7 @@ class ConformHeader {
     return ConformHeader(
       sampleRate: sampleRate,
       channels: channels,
-      frames: samples.length ~/ channels,
+      frames: frames,
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
       fingerprint: fingerprint,
@@ -391,7 +391,7 @@ Uint8List encodeConform({
   int speedDenominator = 1,
 }) {
   final header = ConformHeader.of(
-    samples: samples,
+    frames: channels <= 0 ? 0 : samples.length ~/ channels,
     channels: channels,
     sampleRate: sampleRate,
     fingerprint: fingerprint,
@@ -400,63 +400,15 @@ Uint8List encodeConform({
     speedDenominator: speedDenominator,
   );
   final out = Uint8List(header.totalBytes);
-  conformBytesReader(header, samples)(out, 0, out.length);
+  out.setRange(0, ConformHeader.length, header.toBytes());
+  final count = header.frames * channels;
+  // The 64-byte header keeps the PCM's start even, so a 16-bit view lands
+  // on it ([conformPcmToFloat32]'s rule, written instead of read).
+  int16PcmOf(
+    Float32List.sublistView(samples, 0, count),
+    into: Int16List.view(out.buffer, ConformHeader.length, count),
+  );
   return out;
-}
-
-/// The bytes of the conform [header] describes over [samples], laid out on
-/// demand: [size] of them from [position] into the front of a buffer —
-/// what [encodeConform] fills whole and [writeMediaBlob] reads a block at a
-/// time, so a long conform reaches the disk without a second, 16-bit copy
-/// of its PCM in memory. Answers how many landed: short only at the end.
-int Function(Uint8List buffer, int position, int size) conformBytesReader(
-  ConformHeader header,
-  Float32List samples,
-) {
-  final head = header.toBytes();
-  final total = header.totalBytes;
-  // One byte of the layout — the header's, or half a little-endian sample.
-  int byteAt(int at) {
-    if (at < ConformHeader.length) {
-      return head[at];
-    }
-    final pcmByte = at - ConformHeader.length;
-    final value = int16FromUnitSample(samples[pcmByte >> 1]) & 0xFFFF;
-    return pcmByte.isEven ? value & 0xFF : value >> 8;
-  }
-
-  return (buffer, position, size) {
-    final end = position + size > total ? total : position + size;
-    var at = position;
-    // Byte by byte up to the first whole sample the buffer can take as a
-    // 16-bit view ([conformPcmToFloat32]'s rule, written instead of read)…
-    while (at < end &&
-        (at < ConformHeader.length ||
-            (at - ConformHeader.length).isOdd ||
-            (buffer.offsetInBytes + at - position).isOdd)) {
-      buffer[at - position] = byteAt(at);
-      at += 1;
-    }
-    // …then whole samples at a time, and the odd byte a block's edge leaves.
-    final whole = (end - at) >> 1;
-    if (whole > 0) {
-      final view = Int16List.view(
-        buffer.buffer,
-        buffer.offsetInBytes + at - position,
-        whole,
-      );
-      final first = (at - ConformHeader.length) >> 1;
-      for (var index = 0; index < whole; index += 1) {
-        view[index] = int16FromUnitSample(samples[first + index]);
-      }
-      at += whole * 2;
-    }
-    while (at < end) {
-      buffer[at - position] = byteAt(at);
-      at += 1;
-    }
-    return end > position ? end - position : 0;
-  };
 }
 
 /// 16-bit PCM to float32, at the one scale this app uses.

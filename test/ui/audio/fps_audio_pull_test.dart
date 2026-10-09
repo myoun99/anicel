@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/dialogs/fps_audio_choice_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_audio.dart';
 
+import '../../helpers/memory_decode_stream.dart';
+
 /// EXPORT-AUDIO ④: the fps-change audio question — when it arises, what
 /// the pull does, and that one undo step moves rate and pull together.
 /// The collaborator that owns the pull — named so `tool/mutation_run.dart`
@@ -201,17 +203,15 @@ void main() {
       final resampled = <String>[];
       AudioConformPipeline pipelineWith({int num = 1, int den = 1}) =>
           AudioConformPipeline(
-            decode: (source) =>
-                (samples: Float32List(4800), channels: 1, sampleRate: 48000),
+            decode: (source) => MemoryDecodeStream(
+              Float32List(4800),
+              channels: 1,
+              sampleRate: 48000,
+            ),
             resample:
-                ({
-                  required samples,
-                  required channels,
-                  required inputRate,
-                  required outputRate,
-                }) {
+                ({required channels, required inputRate, required outputRate}) {
                   resampled.add('$inputRate→$outputRate');
-                  return samples;
+                  return UnchangedResampleStream();
                 },
             speedNumerator: num,
             speedDenominator: den,

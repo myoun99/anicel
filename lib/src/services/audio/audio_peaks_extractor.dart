@@ -158,27 +158,64 @@ AudioPeaks peaksFromWindows({
   required int sampleRate,
   int bucketsPerSecond = 40,
 }) {
-  if (channels <= 0 || sampleRate <= 0 || bucketsPerSecond <= 0) {
-    return AudioPeaks(
-      bucketsPerSecond: bucketsPerSecond < 1 ? 1 : bucketsPerSecond,
-      peaks: Float32List(0),
-    );
-  }
-  final samplesPerBucket = sampleRate ~/ bucketsPerSecond;
-  if (samplesPerBucket <= 0) {
-    return AudioPeaks(bucketsPerSecond: bucketsPerSecond, peaks: Float32List(0));
-  }
-  final fold = AudioPeakBucketFold(samplesPerBucket: samplesPerBucket);
-  for (final samples in windows) {
+  final fold = AudioPeaksOfWindows(
+    channels: channels,
+    sampleRate: sampleRate,
+    bucketsPerSecond: bucketsPerSecond,
+  );
+  windows.forEach(fold.add);
+  return fold.finish();
+}
+
+/// [peaksFromWindows] a window at a time, for a pass that does more with each
+/// window than measure it — a conform written as it is made.
+final class AudioPeaksOfWindows {
+  AudioPeaksOfWindows({
+    required this.channels,
+    required int sampleRate,
+    required this.bucketsPerSecond,
+  }) : _fold =
+           channels <= 0 ||
+               sampleRate <= 0 ||
+               bucketsPerSecond <= 0 ||
+               sampleRate ~/ bucketsPerSecond <= 0
+           ? null
+           : AudioPeakBucketFold(
+               samplesPerBucket: sampleRate ~/ bucketsPerSecond,
+             );
+
+  final int channels;
+  final int bucketsPerSecond;
+
+  /// Null where the geometry measures nothing.
+  final AudioPeakBucketFold? _fold;
+
+  /// Folds [samples] — whole interleaved frames, after the ones before.
+  void add(Float32List samples) {
+    final fold = _fold;
+    if (fold == null) {
+      return;
+    }
     final frameCount = samples.length ~/ channels;
     for (var frame = 0; frame < frameCount; frame += 1) {
       fold.add(loudestChannelMagnitude(samples, frame * channels, channels));
     }
   }
-  // A file has an end: the last partial bucket lands.
-  fold.flush();
-  return AudioPeaks(
-    bucketsPerSecond: bucketsPerSecond,
-    peaks: fold.toFloat32List(),
-  );
+
+  /// The envelope, once the last window is in.
+  AudioPeaks finish() {
+    final fold = _fold;
+    if (fold == null) {
+      return AudioPeaks(
+        bucketsPerSecond: bucketsPerSecond < 1 ? 1 : bucketsPerSecond,
+        peaks: Float32List(0),
+      );
+    }
+    // A file has an end: the last partial bucket lands.
+    fold.flush();
+    return AudioPeaks(
+      bucketsPerSecond: bucketsPerSecond,
+      peaks: fold.toFloat32List(),
+    );
+  }
 }

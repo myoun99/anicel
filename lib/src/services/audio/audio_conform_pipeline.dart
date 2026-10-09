@@ -65,35 +65,11 @@ import '../persistence/anicel_incremental_writer.dart'
     show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
 import '../persistence/app_save_settings.dart' show AppSave;
 import '../persistence/media_blob_codec.dart';
+import 'audio_decode_stream.dart';
 import 'audio_peaks_extractor.dart';
+import 'conform_making.dart';
 import 'conform_pcm_codec.dart';
 import 'conform_pcm_stream.dart';
-
-/// Decodes a container to PCM at the file's own rate. The native decoder
-/// supplies this; tests supply a fake so the pipeline's logic is exercised
-/// without a binary.
-///
-/// 🚨★★★**IT TAKES THE SOURCE, NOT THE BYTES.** It used to take a
-/// `Uint8List`, which meant the whole container was in memory before any
-/// decoder was asked to look at it — and that, not the decoders, is why a
-/// movie's soundtrack could not be conformed: a three-gigabyte reference
-/// video is not a byte array. A source can name itself as a path plus a
-/// span ([MediaByteSource.span]), and the native decoder takes exactly
-/// that.
-typedef AudioDecodeCallback =
-    ({Float32List samples, int channels, int sampleRate})? Function(
-      MediaByteSource source,
-    );
-
-/// Converts PCM to the project rate. The native polyphase resampler
-/// supplies this.
-typedef AudioResampleCallback =
-    Float32List Function({
-      required Float32List samples,
-      required int channels,
-      required int inputRate,
-      required int outputRate,
-    });
 
 /// Why a conform attempt ended the way it did — enough for a log line that
 /// explains itself, instead of a silent missing waveform.
@@ -504,19 +480,15 @@ class AudioConformPipeline {
     }
   }
 
-  /// How much of a long conform is held at once while it is measured: a
-  /// quarter of a million frames — 5.5 s of 48 kHz stereo, 2 MB of floats.
-  static const int _windowFrames = 1 << 18;
-
   /// [reader]'s PCM a window at a time, in order — or a
   /// [ConformFormatException] where one comes back short of the end.
   static Iterable<Float32List> _windowsOf(
     ConformPcmStreamReader reader,
   ) sync* {
-    for (var start = 0; start < reader.length; start += _windowFrames) {
-      final want = reader.length - start < _windowFrames
+    for (var start = 0; start < reader.length; start += conformWindowFrames) {
+      final want = reader.length - start < conformWindowFrames
           ? reader.length - start
-          : _windowFrames;
+          : conformWindowFrames;
       yield _read(reader, start, want);
     }
   }
@@ -687,168 +659,140 @@ class AudioConformPipeline {
       );
     }
 
-    final pcm = _decodedAtProjectRate(src);
-    if (pcm == null) {
-      return const ConformResult(
-        outcome: ConformOutcome.undecodable,
-        error: 'no decoder recognized this file',
-      );
-    }
-    if (fingerprint == null) {
-      try {
-        fingerprint = fingerprintOfSource(src);
-      } on Object catch (error) {
-        return ConformResult(
-          outcome: ConformOutcome.sourceUnreadable,
-          error: 'could not read the source (retrying): $error',
+    // 🚨★★★**MADE AS IT IS DECODED** (user 2026-10-10, board
+    // long-sound-conform-memory-Q1: 「지금 한다 — 전 플랫폼」). One pass
+    // decodes, resamples, measures and writes the conform a window at a
+    // time ([ConformMaking]), so a long sound is never held whole on its way
+    // in.
+    final scratch = conformPath == null
+        ? null
+        : ConformScratch.open(conformPath);
+    try {
+      final pass = _making.passOver(src, scratch);
+      if (pass == null) {
+        return const ConformResult(
+          outcome: ConformOutcome.undecodable,
+          error: 'no decoder recognized this file',
         );
       }
-      final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
-      if (wrongBytes != null) {
-        return wrongBytes;
+      if (fingerprint == null) {
+        try {
+          fingerprint = fingerprintOfSource(src);
+        } on Object catch (error) {
+          return ConformResult(
+            outcome: ConformOutcome.sourceUnreadable,
+            error: 'could not read the source (retrying): $error',
+          );
+        }
+        final wrongBytes = _archiveMovedUnderUs(knownCrc, fingerprint);
+        if (wrongBytes != null) {
+          return wrongBytes;
+        }
       }
-    }
-
-    // Failing to CACHE a conform is not failing to CONFORM one. The decoded,
-    // resampled PCM is already in hand at this point — the very bytes the
-    // success below returns — so throwing it away because a directory could
-    // not be created costs the user their sound to save nothing.
-    //
-    // That mattered less when the cache lived under the project's own
-    // folder, which the app already had a grant for. The cache root is a
-    // setting now, and Preferences invites the user to point it at another
-    // drive; an unplugged one, a folder they deleted, or a macOS path whose
-    // sandbox scope did not survive the relaunch all land here. The store
-    // spends one of three attempts per failure and then returns null
-    // forever, so the old answer was: the clip goes silent for the session
-    // and exports silent, over a cache.
-    //
-    // Uncached is a normal state — a never-saved project runs this way on
-    // purpose. So report exactly that: built, cached nowhere, with the
-    // reason. The next ensure tries the write again, which is what lets a
-    // volume coming back fix itself.
-    //
-    // 🚨★★★**AND IT IS WRITTEN COMPRESSED.** A conform is ~12× its source
-    // and zstd takes 38–51% of it back, measured on the user's own audio
-    // (see [writeMediaBlob]). 유저 2026-08-30 chose this against the
-    // alternative — 「다른 앱으로 들을 필요성을 못느끼겟고 그럴거면
-    // 압축해제시켜서 내보내기 기능 만들면 되는거아닌가?」 — which is why
-    // `conform_pcm_codec.dart`'s「any audio tool can open it」is now a
-    // property of the EXPORT, not of the cache file.
-    //
-    // ⛔Block-framed, never one frame: a long conform is read as a sliding
-    // WINDOW by [ConformPcmStreamReader], and a whole frame has no random
-    // access. This is the same codec media uses, so「how do I read this」
-    // has one answer for both.
-    var cachedAt = conformPath;
-    String? cacheError;
-    if (conformPath != null) {
-      try {
-        final header = ConformHeader.of(
-          samples: pcm.samples,
-          channels: pcm.channels,
+      return _builtFrom(
+        src,
+        pass,
+        scratch,
+        ConformHeader.of(
+          frames: pass.frames,
+          channels: pass.channels,
           sampleRate: projectSampleRate,
           fingerprint: fingerprint,
           // Recorded from the stat taken BEFORE the read, so the hint
           // describes the file this conform actually came from. Re-statting
           // now could catch a write that landed mid-build and bless a
           // conform of the previous contents. Null for an archive range —
-          // no stat exists, and the content fingerprint above is the
-          // whole identity there anyway.
+          // no stat exists, and the content fingerprint above is the whole
+          // identity there anyway.
           sourceStat: stat,
           speedNumerator: speedNumerator,
           speedDenominator: speedDenominator,
-        );
-        // Streamed out rather than compressed whole: an hour of dialogue
-        // is hundreds of megabytes, and holding every compressed block
-        // beside the PCM to find out whether they were worth keeping is
-        // the allocation this build exists not to make. 🆕And laid out as
-        // it is read ([conformBytesReader]): the 16-bit copy of the whole
-        // conform the write used to start from was half as big again as
-        // the PCM beside it.
-        cachedAt = writeMediaBlob(
-          basePath: conformPath,
-          length: header.totalBytes,
-          readInto: conformBytesReader(header, pcm.samples),
-        ).path;
-        // ⛔The OTHER spelling goes. A rebuild that flips framedness — a
-        // build without an engine, or audio that stopped shrinking — would
-        // otherwise leave both, and [mediaFramedOrPlainPaths] asks framed
-        // first, so the stale one is the one the next open would find.
-        for (final other in mediaFramedOrPlainPaths(conformPath)) {
-          if (other != cachedAt && File(other).existsSync()) {
-            File(other).deleteSync();
-          }
-        }
+        ),
+      );
+    } on AudioDecodeFailure catch (failure) {
+      return ConformResult(
+        outcome: ConformOutcome.undecodable,
+        error: failure.message,
+      );
+    } finally {
+      scratch?.delete();
+    }
+  }
+
+  /// The making of this pipeline's conforms.
+  ConformMaking get _making => ConformMaking(
+    decode: decode,
+    resample: resample,
+    projectSampleRate: projectSampleRate,
+    bucketsPerSecond: bucketsPerSecond,
+    speedNumerator: speedNumerator,
+    speedDenominator: speedDenominator,
+  );
+
+  /// The conform [pass] made of [src], kept from [scratch] with [header]
+  /// when there is one.
+  ///
+  /// Failing to CACHE a conform is not failing to CONFORM one. The pass is
+  /// done at this point — its PCM in hand, or on disk to be made again in
+  /// memory below — so throwing the sound away because a directory could
+  /// not be created costs the user their sound to save nothing.
+  ///
+  /// That mattered less when the cache lived under the project's own
+  /// folder, which the app already had a grant for. The cache root is a
+  /// setting now, and Preferences invites the user to point it at another
+  /// drive; an unplugged one, a folder they deleted, or a macOS path whose
+  /// sandbox scope did not survive the relaunch all land here. The store
+  /// spends one of three attempts per failure and then returns null
+  /// forever, so the old answer was: the clip goes silent for the session
+  /// and exports silent, over a cache.
+  ///
+  /// Uncached is a normal state — a never-saved project runs this way on
+  /// purpose. So report exactly that: built, cached nowhere, with the
+  /// reason. The next ensure tries the write again, which is what lets a
+  /// volume coming back fix itself.
+  ConformResult _builtFrom(
+    MediaByteSource src,
+    ConformPass pass,
+    ConformScratch? scratch,
+    ConformHeader header,
+  ) {
+    String? cachedAt;
+    String? cacheError;
+    if (scratch != null) {
+      try {
+        cachedAt = scratch.keep(header);
       } on Object catch (error) {
-        cachedAt = null;
         cacheError = 'could not cache the conform: $error';
       }
     }
-
-    final frames = pcm.samples.length ~/ pcm.channels;
+    var made = pass;
+    // A long one written to disk is played from there ([_reuse]'s rule): its
+    // PCM went with the pass instead of crossing to the store. Cached
+    // nowhere after all, it has nothing to stream from — so it is made again
+    // in memory, as a conform with nowhere to go always was.
+    if (cachedAt == null && made.samples == null) {
+      final again = _making.passOver(src, null);
+      if (again == null) {
+        return const ConformResult(
+          outcome: ConformOutcome.undecodable,
+          error: 'no decoder recognized this file',
+        );
+      }
+      made = again;
+    }
     return ConformResult(
       outcome: ConformOutcome.built,
       conformBytes: cachedAt == null ? null : mediaAppFileSource(cachedAt),
       error: cacheError,
-      peaks: peaksFromSamples(
-        samples: pcm.samples,
-        channels: pcm.channels,
-        sampleRate: projectSampleRate,
-        bucketsPerSecond: bucketsPerSecond,
-      ),
-      // A long one written to disk is played from there ([_reuse]'s rule):
-      // its PCM goes with this worker instead of crossing to the store.
-      samples:
-          conformStaysOnDisk(
-            frames: frames,
-            sampleRate: projectSampleRate,
-            onDisk: cachedAt != null,
-          )
-          ? null
-          : pcm.samples,
-      channels: pcm.channels,
+      peaks: made.peaks,
+      samples: made.samples,
+      channels: made.channels,
       sampleRate: projectSampleRate,
-      frames: frames,
+      frames: made.frames,
       speedNumerator: speedNumerator,
       speedDenominator: speedDenominator,
     );
   }
-
-  /// [src] decoded, at the project's rate — or null when no decoder
-  /// recognized it.
-  ///
-  /// ⛔Its own function so the decoder's buffer is let go once the resample
-  /// has made the project's: the decode stayed alive beside its resample to
-  /// the end of the build, two full copies of the sound at once.
-  ({Float32List samples, int channels})? _decodedAtProjectRate(
-    MediaByteSource src,
-  ) {
-    final decoded = decode(src);
-    if (decoded == null || decoded.channels <= 0 || decoded.sampleRate <= 0) {
-      return null;
-    }
-    // Equal rates at unity speed skip the filter entirely and stay
-    // bit-exact — most SE libraries and dialogue are already at the
-    // project rate, so this is the common path. A non-unity speed (the
-    // NTSC pull) REINTERPRETS the source rate: both sides of the resample
-    // scale by the exact rational, so 48k pulled by 1001/1000 is a
-    // 48048000→48000000 conversion — integer ratios end to end, and the
-    // output lands at the project rate holding 0.1% less time.
-    final unitySpeed = speedNumerator == speedDenominator;
-    return (
-      samples: decoded.sampleRate == projectSampleRate && unitySpeed
-          ? decoded.samples
-          : resample(
-              samples: decoded.samples,
-              channels: decoded.channels,
-              inputRate: decoded.sampleRate * speedNumerator,
-              outputRate: projectSampleRate * speedDenominator,
-            ),
-      channels: decoded.channels,
-    );
-  }
-
 
   /// The conform cached under [basePath], and WHICH of its two names it is
   /// actually under.

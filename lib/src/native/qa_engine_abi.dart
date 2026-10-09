@@ -225,7 +225,14 @@ import 'dart:io';
 ///   only those held: a piece cut from a long reel decodes from the start
 ///   but keeps the piece (board sound-lands-on-its-exact-sample-Q5, 유저
 ///   2026-10-09). `qa_audio_decode_span` is its whole window.
-const int kQaEngineAbiVersion = 42;
+/// - v43: `qa_audio_stream_open` / `_read` / `_close` — a sound opened once
+///   and read on, every decoder through one door (the window decode is that
+///   stream, passed over to the window) — and `qa_audio_resampler_*`, the
+///   resampler fed a piece at a time through the loop `qa_audio_resample`
+///   runs. A long sound is conformed as it is decoded instead of whole in
+///   memory (board long-sound-conform-memory-Q1, 유저 2026-10-10 「지금
+///   한다 — 전 플랫폼」).
+const int kQaEngineAbiVersion = 43;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
