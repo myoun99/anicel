@@ -174,7 +174,13 @@ class _CanvasPanelSelection {
   /// needs no upload at all: the hole is a surface, not a paint-time punch,
   /// so there is no `saveLayer` and no `dstOut` over the layers below.
   ///
-  /// Null when the shape covers no pixels.
+  /// Every cel underfoot is lifted the same way ([_BrushCanvasPanelState.
+  /// _celsUnderfoot]) — the one this canvas edits, or each drawing row's
+  /// inside a folder (I-37): through the outline the box was opened on,
+  /// restated on that cel's own row. ⛔ONE CODE: a cel's lift is a folder's
+  /// with one cel, and it lifts exactly what it always lifted.
+  ///
+  /// Null when the shape covers no pixels of any of them.
   ///
   /// 🪦Two things stood at the end of this until 2026-09-11, both about the
   /// frame the lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에
@@ -191,59 +197,74 @@ class _CanvasPanelSelection {
   ({int liftToken, List<LiftedFloat> floats})? handleSelectionLift(
     CanvasSelectionRegion region,
   ) {
-    final coordinator = _state.widget._editableCoordinator;
+    final coordinator = _state.widget.coordinator;
     if (coordinator == null) {
       return null;
     }
-    // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
-    // (a-marquee-on-a-posed-row): the marquee is taken back to the artwork
-    // it shows ([regionOnTheRow]), and the lifted stamp comes out on the
-    // canvas, where the box that moves it lives ([stampOnCanvas]).
-    final placement = _state.widget.interactiveContentPose;
-    final inArtwork = regionOnTheRow(region);
-    if (inArtwork == null) {
-      return null;
+    final liftId = '${DateTime.now().microsecondsSinceEpoch}';
+    final cels = <_LiftedCel>[];
+    final floats = <LiftedFloat>[];
+    for (final under in _state._celsUnderfoot()) {
+      // 🚨THE SHAPE IS THE CANVAS'S, THE PIXELS ARE THE ROW'S OWN
+      // (a-marquee-on-a-posed-row): the marquee is taken back to the
+      // artwork it shows ([regionInArtworkSpace]), and the lifted stamp
+      // comes out on the canvas, where the box that moves it lives
+      // ([stampOnCanvas]). A row that shows nothing has nothing under it.
+      final inArtwork = regionInArtworkSpace(
+        region: region,
+        placement: under.placement,
+      );
+      if (inArtwork == null) {
+        continue;
+      }
+      final lift = buildSelectionLiftDabs(
+        region: inArtwork,
+        surface: coordinator.currentSurfaceOf(under.key),
+        liftId: '$liftId-${cels.length}',
+        options:
+            _state.widget.selectionMaskOptions?.value ??
+            SelectionMaskOptions.none,
+      );
+      // ⛔THE SAME DABS THE CONFIRM WILL LAND, through the same materialize:
+      // the hole the user sees and the erase the commit writes cannot drift
+      // apart at the mask's edge, because they are one computation.
+      final holed = lift == null
+          ? null
+          : coordinator.deriveSurfaceWith([lift.eraseDab], key: under.key);
+      if (lift == null || holed == null) {
+        // 「불가능하면 그냥 무시」 — nothing of this cel under the outline.
+        continue;
+      }
+      // The cel this canvas edits floats in the live row's slot; a cel it
+      // does not edit, in a slot of its own the composite draws in its row.
+      final ownSlot = under.live ? null : SelectionFloatOverlay(null);
+      cels.add(
+        _LiftedCel(
+          key: under.key,
+          eraseDab: lift.eraseDab,
+          placement: under.placement,
+          ownSlot: ownSlot,
+          holed: holed,
+        ),
+      );
+      floats.add((
+        stampDab: stampOnCanvas(lift.stampDab, under.placement),
+        showsOn: ownSlot ?? _state._activeRowFloatSlot,
+      ));
     }
-    final lift = buildSelectionLiftDabs(
-      region: inArtwork,
-      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      liftId: '${DateTime.now().microsecondsSinceEpoch}',
-      options:
-          _state.widget.selectionMaskOptions?.value ??
-          SelectionMaskOptions.none,
-    );
-    if (lift == null) {
-      return null;
-    }
-    // ⛔THE SAME DABS THE CONFIRM WILL LAND, through the same materialize:
-    // the hole the user sees and the erase the commit writes cannot drift
-    // apart at the mask's edge, because they are one computation.
-    final holed = coordinator.deriveSurfaceWith([lift.eraseDab]);
-    if (holed == null) {
+    if (cels.isEmpty) {
       return null;
     }
     final token = ++_liftTokenSeq;
     _state._lift.openSession(
       token: token,
-      holed: holed,
-      eraseDab: lift.eraseDab,
-      key: coordinator.activeFrameKey,
-      region: region,
       // What the USER selected (F-108's [CanvasSelectionCommands.region]) —
       // null when this box is the move tool's own whole-picture target.
       userSelection: _state.widget.selectionCommands?.region,
-      placement: placement,
+      cels: cels,
     );
     _state._rebuild(() {});
-    return (
-      liftToken: token,
-      floats: [
-        (
-          stampDab: stampOnCanvas(lift.stampDab, placement),
-          showsOn: _state._activeRowFloatSlot,
-        ),
-      ],
-    );
+    return (liftToken: token, floats: floats);
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands

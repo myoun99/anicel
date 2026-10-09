@@ -196,7 +196,10 @@ class _PanelBuild {
               // 트랜스폼에 서면 그림이 사라져」. The builder answers null
               // by itself when there is nothing to paint.
               _state._activeSurfacePainter(),
-              _state._selectionFloat,
+              (
+                liveRow: _state._selectionFloat,
+                liftedRows: _state._lift.liftedRows,
+              ),
             ),
           ),
         Positioned.fill(child: _canvasView),

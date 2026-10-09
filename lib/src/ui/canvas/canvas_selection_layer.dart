@@ -99,7 +99,6 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onDragActiveChanged,
     this.onModifierTouchDragActiveChanged,
     this.onLiftRequested,
-    this.onLiftLanded,
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.alwaysShowTransformBox = false,
@@ -263,11 +262,6 @@ class CanvasSelectionLayer extends StatefulWidget {
     CanvasSelectionRegion region,
   )?
   onLiftRequested;
-
-  /// Raw landing of the floating stamps at their pending positions (no
-  /// history entry) — the abandon fallback so a reset can never lose the
-  /// floats' pixels. One stamp per float, in the order the lift gave them.
-  final void Function(int liftToken, List<BrushDab> stampDabs)? onLiftLanded;
 
   /// CONFIRM of a move session (R16-①): the host lands [stampDabs] — one
   /// per float, in the order the lift gave them — and adopts the whole
@@ -647,13 +641,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _tellHost(() {
       switch (how) {
         case _SessionEnd.confirm:
-          final confirm = widget.onLiftConfirmed;
-          if (confirm != null) {
-            confirm(session.token, stamps, session.landed);
-          } else {
-            // Headless hosts (focused tests): land without history.
-            widget.onLiftLanded?.call(session.token, stamps);
-          }
+          // 🪦A raw-landing door (`onLiftLanded`) answered here for a host
+          // with no confirm, and no host was one: the panel always handed
+          // both, so it went unreached and went (I-37, 2026-10-10).
+          widget.onLiftConfirmed?.call(session.token, stamps, session.landed);
         case _SessionEnd.revert:
         case _SessionEnd.letGo:
           // The same call, and they are the same fact: a session writes

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import 'bitmap_surface_painter.dart';
@@ -164,6 +165,24 @@ class SelectionFloatPaint implements LandingPreview {
 /// The channel between the selection layer (which owns the float) and the
 /// composite that draws it. Null value = nothing floating.
 typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
+
+/// A cel a FOLDER's move session holds lifted (I-37): [surface] — the cel
+/// with the hole the lift cut — with [float] over it, drawn in its own row's
+/// slot, with its own row's opacity, blend and effects.
+///
+/// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. A folder's rows
+/// show at the SAME frame, so each one's hole and each one's float have to
+/// be on screen while the box is open — one float merged from all of them
+/// would composite differently from what each row lands as.
+///
+/// ⛔Not a live row: a row stays live because a stroke draws into it, and a
+/// lifted row only shows. While one is up the display keeps no buffer —
+/// exactly as while the active row's float is up ([SelectionFloatPaint]).
+///
+/// ⚠️A SURFACE, not a painter: the composite draws it as its row's cel is
+/// shown — through the seam, with that row's keys (`celSurfaceAsShown`) —
+/// which the composite knows from the row and the lift does not.
+typedef LiftedCel = ({BitmapSurface surface, SelectionFloatOverlay float});
 
 /// Draws [SelectionFloatPaint]s for hosts with NO composite behind them (the
 /// conte, the timesheet, the cut envelope, and tests that mount the selection

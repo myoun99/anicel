@@ -313,11 +313,15 @@ class _InteractiveCanvasBuild {
       //
       // 🗣️유저: 「몇 행에 걸쳐서 적용하던 동시적용은 가능하게 … 여러프레임
       // 확정가능하게」. ⚠️With no range live this answers 「the cel you stand
-      // on」, which is why nothing downstream has a case for 「many」.
-      transformTargetKeys: session.pixelVerbs.pixelVerbCellKeys,
+      // on」, which is why nothing downstream has a case for 「many」 — and
+      // a FOLDER stands for the drawing rows inside it (I-37-Q1 「변형만」).
+      transformTargetKeys: session.pixelVerbs.transformCellKeys,
       // …each through its OWN row's placement, the one the pixel verbs
       // restate an outline through (a-marquee-on-a-posed-row ④).
       cellPlacementOf: session.pixelVerbs.placementOf,
+      // I-37: stood on a folder, a transform takes up every drawing row
+      // inside it — the same ladder's answer at the playhead.
+      folderCelsUnderfoot: session.pixelVerbs.folderCelsUnderfoot,
       // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
       // ground is read by the one that reads it for the paste.
       pieceGround: session.pixelVerbs.pieceGround,
@@ -530,14 +534,13 @@ class _InteractiveCanvasBuild {
       // is the static stage, only the content rides the pose.
       viewportUnderlayBuilder: _isPlaybackActive && !_canvasPlays
           ? null
-          : (context, viewport, activeSurfacePainter, floatOverlay) =>
-                _underlay(
-                  context,
-                  viewport,
-                  activeSurfacePainter,
-                  floatOverlay,
-                  frame,
-                ),
+          : (context, viewport, activeSurfacePainter, floats) => _underlay(
+              context,
+              viewport,
+              activeSurfacePainter,
+              floats,
+              frame,
+            ),
       interactiveContentOpacity: _layerStack.activeLayerOpacity,
       // The CPU half of the row you are drawing on — see
       // [EditingCanvas.stack].
@@ -629,17 +632,17 @@ class _InteractiveCanvasBuild {
     BuildContext context,
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
-    SelectionFloatOverlay floatOverlay,
+    CanvasFloats floats,
     _HostFrame frame,
   ) => _followingDragAndRun(
     frame.session,
-    (context) => _stackView(viewport, activeSurfacePainter, floatOverlay, frame),
+    (context) => _stackView(viewport, activeSurfacePainter, floats, frame),
   );
 
   Widget _stackView(
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
-    SelectionFloatOverlay floatOverlay,
+    CanvasFloats floats,
     _HostFrame frame,
   ) {
     final below = CanvasLayerStackView(
@@ -662,8 +665,10 @@ class _InteractiveCanvasBuild {
       activeSurfacePainter: activeSurfacePainter,
       // TS1: the _selection's float draws in the active
       // layer's slot, so the rows above it occlude the live
-      // preview the way they occlude the landed pixels.
-      floatOverlay: floatOverlay,
+      // preview the way they occlude the landed pixels —
+      // and a folder's lifted rows each in its own (I-37).
+      floatOverlay: floats.liveRow,
+      liftedRows: floats.liftedRows,
       imageCache: frame.session.renderCaches.layerFrameImageCache,
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>

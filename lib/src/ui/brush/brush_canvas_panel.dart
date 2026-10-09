@@ -169,8 +169,18 @@ typedef CanvasUnderlayBuilder =
       BuildContext context,
       CanvasViewport viewport,
       BitmapSurfacePainter? activeSurfacePainter,
-      SelectionFloatOverlay floatOverlay,
+      CanvasFloats floats,
     );
+
+/// What floats on the canvas while a box is open, for the composite to draw
+/// where each belongs: the float of the row this canvas edits, in that
+/// row's slot ([CanvasLayerStackView.floatOverlay]) — and the cels a
+/// FOLDER's lift holds, each in its own row ([CanvasLayerStackView.
+/// liftedRows], I-37).
+typedef CanvasFloats = ({
+  SelectionFloatOverlay liveRow,
+  Map<BrushFrameKey, LiftedCel> liftedRows,
+});
 
 class BrushCanvasPanel extends StatefulWidget {
   const BrushCanvasPanel({
@@ -180,6 +190,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.folderCelsUnderfoot,
     this.pieceGround,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
@@ -340,6 +351,16 @@ class BrushCanvasPanel extends StatefulWidget {
   /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
   /// every cel through the standing row's, the one the lift crossed.
   final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
+
+  /// What a transform takes up where you stand on a FOLDER: the cel of each
+  /// drawing row inside it at the playhead (`PixelVerbs.folderCelsUnderfoot`)
+  /// — null when you do not stand on one, and a lift takes up the cel this
+  /// canvas edits.
+  ///
+  /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. ⛔A FUNCTION, not
+  /// a list, for [transformTargetKeys]'s reason: the playhead and the rows
+  /// change under this panel.
+  final List<BrushFrameKey>? Function()? folderCelsUnderfoot;
 
   /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
   /// lands on, read by the session that reads it for the paste
@@ -1911,8 +1932,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // strokes) — 유저 direction ⑧b.
               onLiftRequested:
                   _selectionSeat.handleSelectionLift,
-              onLiftLanded:
-                  _lift.handleLiftLanded,
               onLiftConfirmed:
                   _lift.handleLiftConfirmed,
               onLiftReverted:
@@ -1921,7 +1940,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // whole-picture box frames the
               // cel's tight ink bounds.
               contentBoundsProvider:
-                  _activeCelContentBounds,
+                  _inkBoundsUnderfoot,
               // ⛔A PENDING MOVE NO LONGER HOLDS THE EDIT LOCK, and the
               // callback that said so went with it (2026-09-17). R15-⑤ is
               // about a gesture IN FLIGHT — 「the playhead moves when the
@@ -2221,51 +2240,114 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The text tool (R9-rest): the hand it holds a text with, and its layer.
   late final _CanvasPanelText _text = _CanvasPanelText(this);
 
-  /// R26 #13 follow-up: the active cel's tight ink bounds — the implicit
-  /// whole-picture transform box frames exactly the picture, PS-style.
-  /// Null (no coordinator, or a blank cel) falls back to the canvas rect
-  /// inside the selection layer.
+  /// The cels a lift takes up where you stand, each with the placement its
+  /// row shows it at, and whether it is the cel this canvas edits — the live
+  /// row: that one, or — stood on a FOLDER — the cel of each drawing row
+  /// inside it, none of them live (I-37, [BrushCanvasPanel.
+  /// folderCelsUnderfoot]). Empty where nothing can be lifted.
   ///
-  /// 🚨ON THE CANVAS, where the row shows its ink (a-marquee-on-a-posed-row):
-  /// the box is drawn around what the user SEES, and a posed row's ink sits
-  /// somewhere else in its own artwork.
-  ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _activeCelContentBounds() =>
-      _whereTheRowShows(_activeCelContentBoundsInArtwork());
-
-  ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _activeCelContentBoundsInArtwork() {
+  /// ⚠️A folder's rows only into a COMPOSITE: a cel the canvas does not edit
+  /// is drawn by the composite, and with none behind this canvas the lift
+  /// would have nowhere to show the rows it took up.
+  List<({BrushFrameKey key, LayerPlacement? placement, bool live})>
+  _celsUnderfoot() {
+    final folderCels = widget.folderCelsUnderfoot?.call();
+    if (folderCels != null) {
+      if (widget.viewportUnderlayBuilder == null) {
+        return const [];
+      }
+      final placementOf = widget.cellPlacementOf;
+      return [
+        for (final key in folderCels)
+          (key: key, placement: placementOf?.call(key), live: false),
+      ];
+    }
     final coordinator = widget._editableCoordinator;
+    return coordinator == null
+        ? const []
+        : [
+            (
+              key: coordinator.activeFrameKey,
+              placement: widget.interactiveContentPose,
+              live: true,
+            ),
+          ];
+  }
+
+  /// R26 #13 follow-up: the tight ink bounds of what a lift takes up where
+  /// you stand ([_celsUnderfoot]) — the implicit whole-picture transform box
+  /// frames exactly the picture, PS-style, and on a FOLDER all of its rows'
+  /// together (I-37: 「변형도구 실루엣은 전체를 기준으로」). Null (no
+  /// coordinator, or blank cels) falls back to the canvas rect inside the
+  /// selection layer.
+  ///
+  /// 🚨ON THE CANVAS, where each row shows its ink (a-marquee-on-a-posed-
+  /// row): the box is drawn around what the user SEES, and a posed row's ink
+  /// sits somewhere else in its own artwork.
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _inkBoundsUnderfoot() {
+    final coordinator = widget.coordinator;
     if (coordinator == null) {
       return null;
     }
-    final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
-    // Memoized on the surface INSTANCE. `bitmapSurfaceContentBounds`
-    // documents itself as "never a per-frame path", and that was false:
-    // the selection layer calls this provider from `build` to frame the
-    // always-on move box, so it ran once per rebuild — a full alpha scan
-    // of every tile, preceded by `surface.tiles`, which is
-    // `Map.unmodifiable(_tiles)` and copies the whole tile map on each
-    // read. BitmapSurface is immutable with structural tile sharing (the
-    // painter's shouldRepaint already relies on that), so identity is an
-    // exact key: a changed cel is always a new instance.
-    if (identical(surface, _contentBoundsSurface)) {
-      return _contentBoundsCached;
+    ({int left, int top, int rightExclusive, int bottomExclusive})? held;
+    final asked = Set<BitmapSurface>.identity();
+    for (final under in _celsUnderfoot()) {
+      final surface = coordinator.currentSurfaceOf(under.key);
+      asked.add(surface);
+      final shown = _whereTheRowShows(_inkOf(surface), under.placement);
+      if (shown == null) {
+        continue;
+      }
+      held = held == null
+          ? shown
+          : (
+              left: math.min(held.left, shown.left),
+              top: math.min(held.top, shown.top),
+              rightExclusive: math.max(
+                held.rightExclusive,
+                shown.rightExclusive,
+              ),
+              bottomExclusive: math.max(
+                held.bottomExclusive,
+                shown.bottomExclusive,
+              ),
+            );
     }
-    final bounds = bitmapSurfaceContentBounds(surface);
-    _contentBoundsSurface = surface;
-    _contentBoundsCached = bounds;
-    return bounds;
+    _inkMemo.removeWhere((surface, _) => !asked.contains(surface));
+    return held;
   }
 
-  /// [bounds] — the active row's ink in its own artwork — as the canvas
-  /// shows it: the box around the four corners the row's placement carries
+  /// [surface]'s ink bounds in its own artwork.
+  ///
+  /// Memoized on the surface INSTANCE. `bitmapSurfaceContentBounds`
+  /// documents itself as "never a per-frame path", and that was false: the
+  /// selection layer calls this provider from `build` to frame the always-on
+  /// move box, so it ran once per rebuild — a full alpha scan of every tile,
+  /// preceded by `surface.tiles`, which is `Map.unmodifiable(_tiles)` and
+  /// copies the whole tile map on each read. BitmapSurface is immutable with
+  /// structural tile sharing (the painter's shouldRepaint already relies on
+  /// that), so identity is an exact key: a changed cel is always a new
+  /// instance.
+  ({int left, int top, int rightExclusive, int bottomExclusive})? _inkOf(
+    BitmapSurface surface,
+  ) => _inkMemo.putIfAbsent(surface, () => bitmapSurfaceContentBounds(surface));
+
+  /// [_inkOf]'s answers, for the surfaces asked about last.
+  final Map<
+    BitmapSurface,
+    ({int left, int top, int rightExclusive, int bottomExclusive})?
+  >
+  _inkMemo = Map.identity();
+
+  /// [bounds] — a row's ink in its own artwork — as the canvas shows it at
+  /// [placement]: the box around the four corners the placement carries
   /// them to. An unplaced row's come back as they are.
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _whereTheRowShows(
     ({int left, int top, int rightExclusive, int bottomExclusive})? bounds,
+    LayerPlacement? placement,
   ) {
-    final placement = widget.interactiveContentPose;
     if (bounds == null || placement == null) {
       return bounds;
     }
@@ -2637,10 +2719,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         options:
             widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
       );
-
-  BitmapSurface? _contentBoundsSurface;
-  ({int left, int top, int rightExclusive, int bottomExclusive})?
-  _contentBoundsCached;
 
   /// 확정's normal-state half: the last drawing action, laid down again at
   /// the same place on the cel you stand on — one step, one undo

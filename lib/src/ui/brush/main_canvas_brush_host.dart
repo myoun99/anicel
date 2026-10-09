@@ -117,6 +117,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.folderCelsUnderfoot,
     this.pieceGround,
   });
 
@@ -388,6 +389,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
   final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
 
+  /// What a transform takes up where you stand on a folder (I-37) — passed
+  /// straight through to the panel ([BrushCanvasPanel.folderCelsUnderfoot]).
+  final List<BrushFrameKey>? Function()? folderCelsUnderfoot;
+
   /// Where the cut tool's stamp lands (F-293) — passed straight through to
   /// the panel ([BrushCanvasPanel.pieceGround]).
   final PieceGround Function()? pieceGround;
@@ -580,6 +585,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,
+      folderCelsUnderfoot: widget.folderCelsUnderfoot,
       pieceGround: widget.pieceGround,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
