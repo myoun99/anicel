@@ -236,8 +236,18 @@ import '../../tool/refactor/clone_scan.dart';
 /// two filters, and the difference is what the bake is for. 🧪Measured the
 /// same day, one raster through each: what a baked word loses through
 /// Blend is in the comment over `boxFilterA8`.
+///
+/// 90 → 89 (2026-10-09, the .clip reader's chains): the pairs
+/// `_DocumentReader._picturesById` · `_track` and `_timelines` · `_track`
+/// left. Every chain the file keeps — the timelines, a timeline's tracks, a
+/// track's labels, a layer's children and its objects, a mipmap's scales —
+/// is walked by ONE `_chain` now; the sound objects' walk had been the
+/// third copy. The pair that came, `_layer` · `_timelines` (44 tokens), is
+/// two calls of it, the walk's arguments and nothing else.
+/// 🔬Measured on the lane against its base (`2e56d2a0c`, at 90): those two
+/// gone, that one added.
 void main() {
-  const ceiling = 90;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -1,11 +1,14 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
 import 'clip_cmt.dart';
 import 'clip_container.dart';
+import 'clip_track_clip.dart';
+
+export 'clip_track_clip.dart'
+    show ClipCelKey, ClipPiece, ClipSoundCue, ClipSpan;
 
 /// What a CLIP STUDIO PAINT layer is, as the import tells them apart.
 enum ClipLayerKind {
@@ -57,21 +60,6 @@ typedef ClipSound = ({
   String extension,
 });
 
-/// What one clip of a sound track plays: the sound [player] names
-/// ([ClipSound.objectUuid]), from [startSeconds] into it on [frame] — the
-/// timeline frame it starts on — at [speed] (1 = as it was recorded) and
-/// [volume] (1 = its own level), until the clip ends at [span]'s end.
-/// [volumeVaries] when the clip's volume moves within it.
-typedef ClipSoundCue = ({
-  ClipSpan span,
-  String player,
-  int frame,
-  double startSeconds,
-  double speed,
-  double volume,
-  bool volumeVaries,
-});
-
 /// One layer of a CLIP STUDIO PAINT document's tree.
 final class ClipLayer {
   ClipLayer({
@@ -117,8 +105,8 @@ final class ClipLayer {
   /// `AnimationFolder` = 1 — its children are cels.
   final bool isAnimationFolder;
 
-  /// `LayerUuid` without its hyphens, lower case — what a track names its
-  /// layer by.
+  /// `LayerUuid` as [clipUuidKey] spells it — what a track names its layer
+  /// by.
   final String uuid;
 
   /// Where the picture's top-left stands on the canvas:
@@ -171,18 +159,6 @@ final class ClipLayer {
     }
   }
 }
-
-/// Where a track shows its layer, in the timeline's frames: from [start]
-/// up to (not including) [end].
-typedef ClipSpan = ({int start, int end});
-
-/// A cel shown from [frame] on — until the next key, or its clip's end.
-typedef ClipCelKey = ({int frame, String cel});
-
-/// One clip of a track: where it shows its layer, and the cels it keys
-/// (in order of frame). A key holds until the next one or the clip's end,
-/// never into the next clip — the gap between two clips shows nothing.
-typedef ClipPiece = ({ClipSpan span, List<ClipCelKey> cels});
 
 /// One layer's track on one timeline.
 final class ClipTrack {
@@ -332,6 +308,33 @@ final class _DocumentReader {
     };
   }
 
+  /// The rows of [table] a chain walks: from [first] along each row's
+  /// [next] to 0 — every list the file keeps is one (the timelines, a
+  /// timeline's tracks, a track's labels, a layer's children and objects, a
+  /// mipmap's scales). It stops where the chain comes back on itself, and
+  /// where it names a row that is not there — said as [missing] when the
+  /// chain is one a reader must not lose quietly.
+  Iterable<Map<String, Object?>> _chain(
+    Map<int, Map<String, Object?>> table,
+    int first,
+    String next, {
+    String? missing,
+  }) sync* {
+    final seen = <int>{};
+    var id = first;
+    while (id != 0 && seen.add(id)) {
+      final row = table[id];
+      if (row == null) {
+        if (missing != null) {
+          warnings.add('$missing $id, which is not there');
+        }
+        return;
+      }
+      yield row;
+      id = _int(row[next]);
+    }
+  }
+
   ClipDocument read() {
     final canvas = _rows('Canvas', [
       'CanvasWidth',
@@ -432,23 +435,19 @@ final class _DocumentReader {
     final offscreens = _rows('Offscreen', ['Attribute', 'BlockData']);
     final out = <int, ClipPictureSource>{};
     mipmaps.forEach((id, mipmap) {
-      var infoId = _int(mipmap['BaseMipmapInfo']);
-      final seen = <int>{};
-      while (infoId != 0 && seen.add(infoId)) {
-        final info = infos[infoId];
-        if (info == null) {
-          break;
-        }
-        if (_num(info['ThisScale']) == 100) {
-          final offscreen = offscreens[_int(info['Offscreen'])];
-          final attribute = offscreen?['Attribute'];
-          final blocks = _text(offscreen?['BlockData']);
-          if (attribute is Uint8List && blocks.isNotEmpty) {
-            out[id] = ClipPictureSource(attribute: attribute, blocksId: blocks);
-          }
-          break;
-        }
-        infoId = _int(info['NextIndex']);
+      final full = _chain(
+        infos,
+        _int(mipmap['BaseMipmapInfo']),
+        'NextIndex',
+      ).where((info) => _num(info['ThisScale']) == 100).firstOrNull;
+      if (full == null) {
+        return;
+      }
+      final offscreen = offscreens[_int(full['Offscreen'])];
+      final attribute = offscreen?['Attribute'];
+      final blocks = _text(offscreen?['BlockData']);
+      if (attribute is Uint8List && blocks.isNotEmpty) {
+        out[id] = ClipPictureSource(attribute: attribute, blocksId: blocks);
       }
     });
     return out;
@@ -476,28 +475,24 @@ final class _DocumentReader {
   /// external chunk the sound file is in (`CanvasItemBinary.ItemBinaryData`).
   /// An object whose chunk is named nowhere is left out.
   List<ClipSound> _soundsOf(Map<String, Object?> layer) {
-    final objects = _soundObjects;
     final out = <ClipSound>[];
-    final seen = <int>{};
-    var objectId = _int(layer['FirstLayerObject']);
-    while (objectId != 0 && seen.add(objectId)) {
-      final object = objects[objectId];
-      if (object == null) {
-        break;
-      }
-      final item = _soundItems[_hex(object['BankItemUuid'])];
+    for (final object in _chain(
+      _soundObjects,
+      _int(layer['FirstLayerObject']),
+      'ObjectNext',
+    )) {
+      final item = _soundItems[clipUuidKey(object['BankItemUuid'])];
       final binaryId = _text(
         _soundBinaries[_int(item?['ItemBinaryMainIndex'])]?['ItemBinaryData'],
       );
       if (item != null && binaryId.isNotEmpty) {
         out.add((
-          objectUuid: _hex(object['ObjectUuid']),
+          objectUuid: clipUuidKey(object['ObjectUuid']),
           binaryId: binaryId,
           name: _text(object['ObjectName']),
           extension: _text(item['ItemFileExtension']),
         ));
       }
-      objectId = _int(object['ObjectNext']);
     }
     return out;
   }
@@ -514,7 +509,7 @@ final class _DocumentReader {
       'ItemFileExtension',
       'ItemBinaryMainIndex',
     ]).values)
-      _hex(row['ItemUuid']): row,
+      clipUuidKey(row['ItemUuid']): row,
   };
   late final _soundBinaries = _rows('CanvasItemBinary', ['ItemBinaryData']);
 
@@ -524,7 +519,8 @@ final class _DocumentReader {
   late final _pictures = _picturesById();
   late final _vectorData = _vectorDataByLayer();
 
-  /// The layers the walk has reached — a chain that loops stops there.
+  /// The layers the walk has reached — one a chain names again, as its own
+  /// folder's child or another's, is not walked twice.
   final _walked = <int>{};
 
   ClipLayer? _layer(int id) {
@@ -533,15 +529,19 @@ final class _DocumentReader {
       return null;
     }
     final children = <ClipLayer>[];
-    var childId = _int(row['LayerFirstChildIndex']);
-    while (childId != 0) {
+    for (final childRow in _chain(
+      _layerRows,
+      _int(row['LayerFirstChildIndex']),
+      'LayerNextIndex',
+      missing: 'a layer chain names layer',
+    )) {
+      final childId = _int(childRow['MainId']);
       final child = _layer(childId);
       if (child == null) {
-        warnings.add('a layer chain names layer $childId, which is not there');
-        break;
+        warnings.add('a layer chain names layer $childId a second time');
+        continue;
       }
       children.add(child);
-      childId = _int(_layerRows[childId]!['LayerNextIndex']);
     }
     final pictures = _pictures;
     final transform = row['ResizableImageInfo'];
@@ -555,7 +555,7 @@ final class _DocumentReader {
       composite: _int(row['LayerComposite']),
       folderFlags: _int(row['LayerFolder']),
       isAnimationFolder: _int(row['AnimationFolder']) == 1,
-      uuid: _text(row['LayerUuid']).replaceAll('-', '').toLowerCase(),
+      uuid: clipUuidKey(row['LayerUuid']),
       left: _int(row['LayerOffsetX']) + _int(row['LayerRenderOffscrOffsetX']),
       top: _int(row['LayerOffsetY']) + _int(row['LayerRenderOffscrOffsetY']),
       offsetX: _int(row['LayerOffsetX']),
@@ -626,40 +626,32 @@ final class _DocumentReader {
       'LabelNextIndex',
     ]);
     final out = <ClipTimeline>[];
-    final seen = <int>{};
-    var id = _int(bank['FirstTimeLine']);
-    while (id != 0 && seen.add(id)) {
-      final row = timelines[id];
-      if (row == null) {
-        warnings.add('the timeline chain names timeline $id, not there');
-        break;
-      }
+    for (final row in _chain(
+      timelines,
+      _int(bank['FirstTimeLine']),
+      'NextTimeLine',
+      missing: 'the timeline chain names timeline',
+    )) {
       final fps = _num(row['FrameRate']);
-      final byLayer = <String, ClipTrack>{};
-      final seenTracks = <int>{};
-      var trackId = _int(row['FirstTrack']);
-      while (trackId != 0 && seenTracks.add(trackId)) {
-        final track = tracks[trackId];
-        if (track == null) {
-          warnings.add('a track chain names track $trackId, not there');
-          break;
-        }
-        final uuid = _hex(track['LayerUuidWithTrack']);
-        if (uuid.isNotEmpty) {
-          byLayer[uuid] = _track(track, fps, labels);
-        }
-        trackId = _int(track['TrackNextIndex']);
-      }
       out.add(
         ClipTimeline(
           name: _text(row['TimeLineName']),
           fps: fps,
           start: _int(row['StartFrame']),
           end: _int(row['EndFrame']),
-          tracks: byLayer,
+          tracks: {
+            for (final track in _chain(
+              tracks,
+              _int(row['FirstTrack']),
+              'TrackNextIndex',
+              missing: 'a track chain names track',
+            ))
+              if (clipUuidKey(track['LayerUuidWithTrack']) case final uuid
+                  when uuid.isNotEmpty)
+                uuid: _track(track, fps, labels),
+          },
         ),
       );
-      id = _int(row['NextTimeLine']);
     }
     return out;
   }
@@ -682,7 +674,12 @@ final class _DocumentReader {
       final document = cmtDocumentOfTrackData(readClipPlace(file, mixer));
       for (final clip in document.everyNode) {
         if (clip.name == 'ActionNodeClip') {
-          final read = _clip(clip, fps, sound: kind == _soundTrackKind);
+          final read = readTrackClip(
+            clip,
+            fps,
+            kind: kind,
+            warnings: warnings,
+          );
           if (read != null) {
             pieces.add(read.piece);
             if (read.sound case final cue?) {
@@ -692,199 +689,19 @@ final class _DocumentReader {
         }
       }
     }
-    final labelFrames = <int>[];
-    final seen = <int>{};
-    var labelId = _int(track['TrackLabelFirstIndex']);
-    while (labelId != 0 && seen.add(labelId)) {
-      final label = labels[labelId];
-      if (label == null) {
-        break;
-      }
-      if (_int(label['LabelType']) == 1) {
-        labelFrames.add(_int(label['LabelFrame']));
-      }
-      labelId = _int(label['LabelNextIndex']);
-    }
+    final labelFrames = [
+      for (final label in _chain(
+        labels,
+        _int(track['TrackLabelFirstIndex']),
+        'LabelNextIndex',
+      ))
+        if (_int(label['LabelType']) == 1) _int(label['LabelFrame']),
+    ];
     return ClipTrack(
       kind: kind,
       pieces: pieces..sort((a, b) => a.span.start.compareTo(b.span.start)),
       labels: labelFrames..sort(),
       sounds: sounds..sort((a, b) => a.frame.compareTo(b.frame)),
-    );
-  }
-
-  /// `TrackKind` of a sound track.
-  static const _soundTrackKind = 4001;
-
-  /// One clip of a track: where it shows, the cels it keys, and — on a
-  /// [sound] track — what it plays. A key holds until the next one; the
-  /// last one holds to the clip's end.
-  ({ClipPiece piece, ClipSoundCue? sound})? _clip(
-    CmtNode clip,
-    double fps, {
-    required bool sound,
-  }) {
-    final timing = _timingOf(clip, fps);
-    if (timing == null) {
-      return null;
-    }
-    final (:span, :frameAt) = timing;
-    int frameOf(double tick) => frameAt(tick).round();
-    final cels = <ClipCelKey>[];
-    for (final curve in clip.everyNode) {
-      if (curve.name != 'FCurve' ||
-          curve.attributes['Type'] != 'ImageCelName') {
-        continue;
-      }
-      final frames = curve.child('Frame')?.value;
-      final tags = curve.child('Tag')?.value;
-      if (frames is! List || tags is! List) {
-        continue;
-      }
-      for (var i = 0; i < frames.length && i < tags.length; i += 1) {
-        final tick = frames[i];
-        final tag = tags[i];
-        if (tick is num && tag is String) {
-          cels.add((frame: frameOf(tick.toDouble()), cel: tag));
-        }
-      }
-    }
-    cels.sort((a, b) => a.frame.compareTo(b.frame));
-    return (
-      piece: (span: span, cels: cels),
-      sound: sound ? _soundCueOf(clip, span, frameAt, fps) : null,
-    );
-  }
-
-  /// Where one clip stands: its span in the timeline's frames, and the
-  /// frame — unrounded — a tick of its motion lands on.
-  ///
-  /// `frame = (TimeClip.Start + (tick − MotionClip.Start) × stretch) × fps
-  /// ÷ Rate`, with `stretch = (TimeClip.End − TimeClip.Start) ÷
-  /// (MotionClip.End − MotionClip.Start)` (1 when the motion has no
-  /// length) — memory `csp-clip-format-notes` §3.
-  ({ClipSpan span, double Function(double tick) frameAt})? _timingOf(
-    CmtNode clip,
-    double fps,
-  ) {
-    final time = clip.child('TimeClip');
-    final motion = clip.child('MotionClip');
-    if (time == null) {
-      return null;
-    }
-    final rate = _number(time, 'Rate') != 0
-        ? _number(time, 'Rate')
-        : _number(clip.child('TimeInfo'), 'Rate');
-    if (rate == 0) {
-      warnings.add('a clip says no tick rate');
-      return null;
-    }
-    final timeStart = _number(time, 'Start');
-    final timeEnd = _number(time, 'End');
-    final motionStart = _number(motion, 'Start');
-    final motionLength = _number(motion, 'End') - motionStart;
-    final stretch = motionLength == 0
-        ? 1.0
-        : (timeEnd - timeStart) / motionLength;
-    return (
-      span: (
-        start: (timeStart * fps / rate).round(),
-        end: (timeEnd * fps / rate).round(),
-      ),
-      frameAt: (tick) =>
-          (timeStart + (tick - motionStart) * stretch) * fps / rate,
-    );
-  }
-
-  /// [name]'s number under [node] — 0 when there is none.
-  static double _number(CmtNode? node, String name) {
-    final value = node?.child(name)?.value;
-    return value is num ? value.toDouble() : 0;
-  }
-
-  /// What a sound track's clip plays (memory `csp-clip-format-notes` §3):
-  /// the sound its `AudioPlayer` names, at the level its `AudioVolume` gives
-  /// (100 = the sound's own), placed so its `PlayTime` curve holds — the
-  /// first key says which second of the sound plays on its frame, the
-  /// second how fast; with no curve, the clip plays its `PlayTime` second
-  /// on from its start. The sound starts where its second 0 lands, but
-  /// never before its clip — then from the second the clip's start meets.
-  static ClipSoundCue? _soundCueOf(
-    CmtNode clip,
-    ClipSpan span,
-    double Function(double tick) frameAt,
-    double fps,
-  ) {
-    final anim = clip.child('AnimInfo');
-    if (anim == null) {
-      return null;
-    }
-    CmtNode? named(String node, String key, String value) {
-      for (final child in anim.children) {
-        if (child.name == node && child.attributes[key] == value) {
-          return child;
-        }
-      }
-      return null;
-    }
-
-    List<double> numbers(CmtNode? curve, String name) => switch (curve
-        ?.child(name)
-        ?.value) {
-      final List<Object?> values => [
-        for (final value in values)
-          if (value is num) value.toDouble(),
-      ],
-      _ => const [],
-    };
-
-    final playerTags = named('FCurve', 'Type', 'AudioPlayer')?.child('Tag');
-    final player =
-        named('Param', 'Name', 'AudioPlayer')?.attributes['Tag'] ??
-        switch (playerTags?.value) {
-          [final String first, ...] => first,
-          _ => null,
-        };
-    if (player == null) {
-      return null;
-    }
-    final playCurve = named('FCurve', 'Type', 'PlayTime');
-    final ticks = numbers(playCurve, 'Frame');
-    final seconds = numbers(playCurve, 'Value');
-    final keyed = ticks.isNotEmpty && seconds.isNotEmpty;
-    final f0 = keyed ? frameAt(ticks[0]) : span.start.toDouble();
-    final v0 = keyed
-        ? seconds[0]
-        : switch (named('Param', 'Name', 'PlayTime')?.value) {
-            final num second => second.toDouble(),
-            _ => 0.0,
-          };
-    final speed =
-        keyed &&
-            ticks.length >= 2 &&
-            seconds.length >= 2 &&
-            frameAt(ticks[1]) != f0
-        ? (seconds[1] - v0) * fps / (frameAt(ticks[1]) - f0)
-        : 1.0;
-    // A sound cannot run backwards or stand still: placed as if at its own
-    // speed, which the planner says it is not.
-    final pace = speed > 0 ? speed : 1.0;
-    final frame = math.max(span.start.toDouble(), f0 - v0 * fps / pace);
-    final volumes = numbers(named('FCurve', 'Type', 'AudioVolume'), 'Value');
-    final level = volumes.isNotEmpty
-        ? volumes.first
-        : switch (named('Param', 'Name', 'AudioVolume')?.value) {
-            final num volume => volume.toDouble(),
-            _ => 100.0,
-          };
-    return (
-      span: span,
-      player: _hex(player),
-      frame: frame.round(),
-      startSeconds: v0 + (frame - f0) * pace / fps,
-      speed: speed,
-      volume: level / 100,
-      volumeVaries: volumes.any((volume) => volume != volumes.first),
     );
   }
 
@@ -904,8 +721,4 @@ final class _DocumentReader {
     final Uint8List v => String.fromCharCodes(v),
     _ => '',
   };
-
-  static String _hex(Object? value) => value is Uint8List
-      ? [for (final b in value) b.toRadixString(16).padLeft(2, '0')].join()
-      : _text(value).replaceAll('-', '').toLowerCase();
 }

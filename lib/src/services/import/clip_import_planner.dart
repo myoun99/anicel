@@ -197,24 +197,7 @@ ClipImportPlan planClipImport({
   final canvas = CanvasSize(width: document.width, height: document.height);
   final cuts = [
     for (var i = 0; i < views.length; i += 1)
-      cutWithCoveringImageRows(
-        importedCut(
-          defaultCut: createDefaultCut(
-            cutId: cutIds[i],
-            name: views[i].name,
-            layerId: mint.nextLayerId(),
-            canvasSize: canvas,
-          ),
-          layers: [
-            for (final row in planner.rows) row.layerIn(i, views[i]),
-            // Each cut's sound as SE rows of its own, the way the file
-            // keeps it — the door lifts them onto the track.
-            ...planner.soundRowsIn(views[i]),
-          ],
-          duration: views[i].duration,
-        ),
-        drawnFrameCount: views[i].duration,
-      ),
+      planner.cutIn(i, cutId: cutIds[i], canvas: canvas),
   ];
   return ClipImportPlan(
     cuts: cuts,
@@ -650,23 +633,24 @@ final class _Planner {
     required this.views,
     required this.mint,
     required this.warnings,
-    required this.soundPaths,
-  });
+    required Map<String, String> soundPaths,
+  }) : sounds = _SoundRows(
+         views: views,
+         mint: mint,
+         warnings: warnings,
+         paths: soundPaths,
+       );
 
   final List<_CutView> views;
   final ImportIdMint mint;
   final List<ImportWarning> warnings;
 
-  /// Where each sound was taken out to, by its [ClipSound.objectUuid].
-  final Map<String, String> soundPaths;
-
   /// Bottom first, the order a cut stores.
   final rows = <_Row>[];
   final bakes = <_Bake>[];
 
-  /// The sound layers outside the cels, as the walk met them, each with
-  /// the folders above it.
-  final _sounds = <(ClipLayer, List<ClipLayer>)>[];
+  /// The sound layers the walk meets, which play on each cut's SE rows.
+  final _SoundRows sounds;
 
   /// The attach rows as they were made: each animation folder's from the
   /// top.
@@ -676,6 +660,30 @@ final class _Planner {
   final _blendsSaid = <int>{};
 
   List<LayerId> _ids() => [for (final _ in views) mint.nextLayerId()];
+
+  /// Cut [i] as the file shows it, on a [canvas] the file's size: every
+  /// row's layer in it, and its own sound rows.
+  Cut cutIn(int i, {required CutId cutId, required CanvasSize canvas}) {
+    final view = views[i];
+    return cutWithCoveringImageRows(
+      importedCut(
+        defaultCut: createDefaultCut(
+          cutId: cutId,
+          name: view.name,
+          layerId: mint.nextLayerId(),
+          canvasSize: canvas,
+        ),
+        layers: [
+          for (final row in rows) row.layerIn(i, view),
+          // Each cut's sound as SE rows of its own, the way the file keeps
+          // it — the door lifts them onto the track.
+          ...sounds.rowsIn(view),
+        ],
+        duration: view.duration,
+      ),
+      drawnFrameCount: view.duration,
+    );
+  }
 
   /// Names every attach row as the app names one it adds below its base —
   /// `A-1`, `A-2` …, the first no row wears ([attachedLayerNameAmong]) —
@@ -698,106 +706,6 @@ final class _Planner {
       );
       used.add(row.name);
     }
-  }
-
-  /// [view]'s cut's SE rows: one per sound layer its timeline plays, a block
-  /// for each clip of the layer's track — from where the clip's cue starts
-  /// the sound, or the cut's head, to the clip's end, cut down where the
-  /// folders above do not show — playing the sound from the second the cue
-  /// says, at its volume. A hidden layer is a MUTED row: a CLIP STUDIO sound
-  /// layer's eye is whether it is heard, and an SE row's mute is the audio
-  /// counterpart of an eye ([Layer.muted]).
-  List<Layer> soundRowsIn(_CutView view) {
-    final fps = view.timeline?.fps ?? 0;
-    final out = <Layer>[];
-    for (final (layer, folders) in _sounds) {
-      final placed = <(ClipSoundCue, ClipSpan, String)>[];
-      for (final cue in view.trackOf(layer)?.sounds ?? const <ClipSoundCue>[]) {
-        final path = soundPaths[cue.player];
-        final held = view.inCut((start: cue.frame, end: cue.span.end));
-        if (path == null || held == null) {
-          continue;
-        }
-        for (final block in _overlap([held], view.within(folders))) {
-          placed.add((cue, block, path));
-        }
-      }
-      if (placed.isEmpty) {
-        continue;
-      }
-      final id = mint.nextLayerId();
-      final frames = <Frame>[];
-      final clips = <AudioClip>[];
-      final timeline = SplayTreeMap<int, TimelineExposure>();
-      for (final (cue, block, path) in placed) {
-        final frameId = mint.nextFrameId(id);
-        frames.add(Frame(id: frameId, duration: 1, strokes: const []));
-        clips.add(
-          AudioClip(
-            filePath: path,
-            frameId: frameId,
-            // The cue's second, and the frames the block starts past it.
-            offsetFrames: math.max(
-              0,
-              (cue.startSeconds * fps).round() +
-                  block.start +
-                  view.start -
-                  cue.frame,
-            ),
-            gain: math.max(0, cue.volume),
-          ),
-        );
-        timeline[block.start] = TimelineExposure.drawing(
-          frameId,
-          length: block.end - block.start,
-        );
-      }
-      out.add(
-        Layer(
-          id: id,
-          name: layer.name,
-          kind: LayerKind.se,
-          frames: frames,
-          timeline: timeline,
-          audioClips: clips,
-          muted: !(layer.isShown && folders.every((folder) => folder.isShown)),
-        ),
-      );
-    }
-    return out;
-  }
-
-  /// Says what of [layer]'s sound does not come over: a clip whose sound
-  /// the file does not hold, one CLIP STUDIO plays at another speed —
-  /// played at its own — and one whose volume moves within it — held
-  /// where it starts.
-  void _saySoundsOf(ClipLayer layer) {
-    final cues = [
-      for (final view in views) ...?view.trackOf(layer)?.sounds,
-    ];
-    void say(bool Function(ClipSoundCue cue) when, String key, String text) {
-      if (cues.any(when)) {
-        warnings.add(ImportWarning(key, text, {'name': layer.name}));
-      }
-    }
-
-    say(
-      (cue) => soundPaths[cue.player] == null,
-      'clipSoundMissing',
-      '{name}: its sound is not in the file — not played.',
-    );
-    say(
-      (cue) => (cue.speed - 1).abs() > 0.001,
-      'clipSoundSpeed',
-      '{name}: CLIP STUDIO plays it at another speed — it plays at its own '
-          'here.',
-    );
-    say(
-      (cue) => cue.volumeVaries,
-      'clipSoundVolume',
-      '{name}: its volume moves within its clip — held where the clip '
-          'starts.',
-    );
   }
 
   /// Plans [folder]'s children, bottom to top, into [parent]; [folders] are
@@ -832,11 +740,10 @@ final class _Planner {
     _FolderRow? parent,
     List<ClipLayer> folders,
   ) {
-    // A sound plays on each cut's SE rows ([soundRowsIn]), not in a row of
-    // pictures (유저 10-09: 「소리도 가져오게 못하나? 단일파일안에있을거아냐」).
+    // A sound plays on each cut's SE rows ([_SoundRows]), not in a row of
+    // pictures.
     if (layer.kind == ClipLayerKind.sound) {
-      _sounds.add((layer, folders));
-      _saySoundsOf(layer);
+      sounds.add(layer, folders);
       return;
     }
     if (!_comesIn(layer, layer.name)) {
@@ -1261,5 +1168,133 @@ final class _Planner {
     return mode == LayerBlendMode.passThrough && !layer.isFolder
         ? LayerBlendMode.normal
         : mode;
+  }
+}
+
+/// The file's sound layers outside the cels, as each cut's SE rows — what a
+/// sound layer becomes, apart from the rows of pictures the walk plans (유저
+/// 10-09: 「소리도 가져오게 못하나? 단일파일안에있을거아냐」).
+final class _SoundRows {
+  _SoundRows({
+    required this.views,
+    required this.mint,
+    required this.warnings,
+    required this.paths,
+  });
+
+  final List<_CutView> views;
+  final ImportIdMint mint;
+  final List<ImportWarning> warnings;
+
+  /// Where each sound was taken out to, by its [ClipSound.objectUuid].
+  final Map<String, String> paths;
+
+  /// The sound layers as the walk met them, each with the folders above it.
+  final _layers = <(ClipLayer, List<ClipLayer>)>[];
+
+  /// Takes [layer], under [folders], in — and says what of it cannot come.
+  void add(ClipLayer layer, List<ClipLayer> folders) {
+    _layers.add((layer, folders));
+    _sayAbout(layer);
+  }
+
+  /// [view]'s cut's SE rows: one per sound layer its timeline plays, a block
+  /// for each clip of the layer's track — from where the clip's cue starts
+  /// the sound, or the cut's head, to the clip's end, cut down where the
+  /// folders above do not show — playing the sound from the second the cue
+  /// says, at its volume. A hidden layer is a MUTED row: a CLIP STUDIO sound
+  /// layer's eye is whether it is heard, and an SE row's mute is the audio
+  /// counterpart of an eye ([Layer.muted]).
+  List<Layer> rowsIn(_CutView view) {
+    final fps = view.timeline?.fps ?? 0;
+    final out = <Layer>[];
+    for (final (layer, folders) in _layers) {
+      final placed = <(ClipSoundCue, ClipSpan, String)>[];
+      for (final cue in view.trackOf(layer)?.sounds ?? const <ClipSoundCue>[]) {
+        final path = paths[cue.player];
+        final held = view.inCut((start: cue.frame, end: cue.span.end));
+        if (path == null || held == null) {
+          continue;
+        }
+        for (final block in _overlap([held], view.within(folders))) {
+          placed.add((cue, block, path));
+        }
+      }
+      if (placed.isEmpty) {
+        continue;
+      }
+      final id = mint.nextLayerId();
+      final frames = <Frame>[];
+      final clips = <AudioClip>[];
+      final timeline = SplayTreeMap<int, TimelineExposure>();
+      for (final (cue, block, path) in placed) {
+        final frameId = mint.nextFrameId(id);
+        frames.add(Frame(id: frameId, duration: 1, strokes: const []));
+        clips.add(
+          AudioClip(
+            filePath: path,
+            frameId: frameId,
+            // The cue's second, and the frames the block starts past it.
+            offsetFrames: math.max(
+              0,
+              (cue.startSeconds * fps).round() +
+                  block.start +
+                  view.start -
+                  cue.frame,
+            ),
+            gain: math.max(0, cue.volume),
+          ),
+        );
+        timeline[block.start] = TimelineExposure.drawing(
+          frameId,
+          length: block.end - block.start,
+        );
+      }
+      out.add(
+        Layer(
+          id: id,
+          name: layer.name,
+          kind: LayerKind.se,
+          frames: frames,
+          timeline: timeline,
+          audioClips: clips,
+          muted: !(layer.isShown && folders.every((folder) => folder.isShown)),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Says what of [layer]'s sound does not come over: a clip whose sound
+  /// the file does not hold, one CLIP STUDIO plays at another speed —
+  /// played at its own — and one whose volume moves within it — held
+  /// where it starts.
+  void _sayAbout(ClipLayer layer) {
+    final cues = [
+      for (final view in views) ...?view.trackOf(layer)?.sounds,
+    ];
+    void say(bool Function(ClipSoundCue cue) when, String key, String text) {
+      if (cues.any(when)) {
+        warnings.add(ImportWarning(key, text, {'name': layer.name}));
+      }
+    }
+
+    say(
+      (cue) => paths[cue.player] == null,
+      'clipSoundMissing',
+      '{name}: its sound is not in the file — not played.',
+    );
+    say(
+      (cue) => (cue.speed - 1).abs() > 0.001,
+      'clipSoundSpeed',
+      '{name}: CLIP STUDIO plays it at another speed — it plays at its own '
+          'here.',
+    );
+    say(
+      (cue) => cue.volumeVaries,
+      'clipSoundVolume',
+      '{name}: its volume moves within its clip — held where the clip '
+          'starts.',
+    );
   }
 }

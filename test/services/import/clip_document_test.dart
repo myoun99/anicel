@@ -380,13 +380,13 @@ void main() {
     final soundTrack = trackDataBytes(
       cmtDocumentBytes(
         clipTrackSpec([
-          CmtSpec(
+          const CmtSpec(
             'ActionNodeClip',
             'null',
             children: [
               // Ticks at 60 a second: the clip is seconds 1 … 5, frames
               // 24 … 120 at 24 fps.
-              const CmtSpec(
+              CmtSpec(
                 'TimeClip',
                 'null',
                 children: [
@@ -395,7 +395,7 @@ void main() {
                   CmtSpec('Rate', 'Double', value: 60),
                 ],
               ),
-              const CmtSpec(
+              CmtSpec(
                 'MotionClip',
                 'null',
                 children: [
@@ -407,13 +407,13 @@ void main() {
                 'AnimInfo',
                 'null',
                 children: [
-                  const CmtSpec(
+                  CmtSpec(
                     'Param',
                     'Int32',
                     value: 7,
                     attributes: {'Name': 'AudioPlayer', 'Tag': object},
                   ),
-                  const CmtSpec(
+                  CmtSpec(
                     'Param',
                     'Double',
                     value: 80,
@@ -424,10 +424,10 @@ void main() {
                   CmtSpec(
                     'FCurve',
                     'null',
-                    attributes: const {'Type': 'PlayTime'},
+                    attributes: {'Type': 'PlayTime'},
                     children: [
-                      const CmtSpec('Frame', 'Double[]', value: [60, 180]),
-                      const CmtSpec('Value', 'Double[]', value: [0.5, 2.5]),
+                      CmtSpec('Frame', 'Double[]', value: [60, 180]),
+                      CmtSpec('Value', 'Double[]', value: [0.5, 2.5]),
                     ],
                   ),
                 ],
