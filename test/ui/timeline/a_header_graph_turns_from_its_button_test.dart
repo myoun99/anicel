@@ -131,11 +131,11 @@ void main() {
   });
 
   testWidgets('a swipe from one header\'s button turns the next header\'s '
-      'on too — read LIVE, a build before the grid hears of the press', (
-    tester,
-  ) async {
+      'on too — read LIVE, a build before the grid hears of the press — '
+      'and passes the lanes between, which head none', (tester) async {
     final s = await _pump(tester);
     await _openLanes(tester, _drawId);
+    await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
     final from = find.byKey(
       ValueKey<String>(_headerGraph('timeline', _transform)),
     );
@@ -148,20 +148,22 @@ void main() {
         )
         .height;
     // UP, from Transform to the effect above it: the press opens its own
-    // group BELOW it, so the row the sweep goes on to stays where it was.
-    expect(
-      tester.getCenter(to).dy,
-      moreOrLessEquals(tester.getCenter(from).dy - rowHeight, epsilon: 0.5),
-      reason: '⛔전제: effects are listed above Transform',
-    );
+    // group BELOW it, so the rows the sweep goes on to stay where they
+    // were.
+    final rows =
+        ((tester.getCenter(from).dy - tester.getCenter(to).dy) / rowHeight)
+            .round();
+    expect(rows, 3, reason: '⛔전제: the effect\'s two lanes lie between');
 
     final gesture = await tester.startGesture(
       tester.getCenter(from),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(Offset(0, -rowHeight));
-    await tester.pump(const Duration(milliseconds: 16));
+    for (var step = 1; step <= rows; step += 1) {
+      await gesture.moveBy(Offset(0, -rowHeight));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     await gesture.up();
     await tester.pumpAndSettle();
 
