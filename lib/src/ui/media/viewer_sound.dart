@@ -60,7 +60,7 @@ class ViewerSound {
     this.resolveOutputDeviceName,
     int Function(int sampleRate)? resolveUserOffsetSamples,
   }) : _resolveDevice = resolveDevice ?? audioOutputUnlessTesting,
-       _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
+       resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
 
   /// [session]'s sound — every surface that plays a file's sound in it:
   /// the media viewer, and the import window's preview.
@@ -80,7 +80,7 @@ class ViewerSound {
   final QaAudioDevice? Function() _resolveDevice;
 
   /// The user's own A/V correction, in samples at a device's rate.
-  final int Function(int sampleRate) _resolveUserOffsetSamples;
+  final int Function(int sampleRate) resolveUserOffsetSamples;
 
   /// The chosen output (AUDIO-PRO R4). ⚠️Only consulted when the device is
   /// not already open — the playback transport owns reopen-on-change, and
@@ -245,7 +245,7 @@ class ViewerSound {
         device.readClock(),
         frameTime: frameTime,
         latencySamples: device.latencySamples,
-        userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
+        userOffsetSamples: resolveUserOffsetSamples(_deviceRate),
       ),
     );
     return (

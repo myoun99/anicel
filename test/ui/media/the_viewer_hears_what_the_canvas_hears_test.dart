@@ -1,10 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -143,13 +146,43 @@ void main() {
       greaterThanOrEqualTo(frames),
       reason: 'and by then the device had been handed all of it',
     );
+    expect(device.latencySamples, greaterThan(0), reason: 'fixture: it holds');
+    // Long past what the device held at its end: the line has run on
+    // through it, and stopped where the sound did.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(
-      sound.heardAt()!.seconds,
-      greaterThanOrEqualTo(frames / rate),
-      reason: 'what is heard stands at the end',
+      sound.heardAt()!.seconds * rate,
+      closeTo(frames, 0.5),
+      reason: 'what is heard stands AT the end — the device\'s latency off '
+          'the line it reads, which runs on past what was handed only as far '
+          'as the device held',
     );
     sound.stop();
   }, skip: skip);
+
+  testWidgets('🚨a session\'s viewer sound takes the user\'s correction the '
+      'canvas takes — read in one place, the rig', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.appSettings.audioSyncSettings.value = const AudioSyncSettings(
+      offset: 80,
+    );
+
+    final sound = ViewerSound.ofSession(session);
+
+    expect(
+      sound.resolveUserOffsetSamples(rate),
+      rate * 80 ~/ 1000,
+      reason: 'eighty milliseconds at 48k',
+    );
+    expect(
+      sound.resolveUserOffsetSamples(rate),
+      session.playbackRig.userOffsetSamples(rate),
+      reason: 'the canvas\'s own number',
+    );
+  });
 
   test('🚨a press reads where it was pressed while the device\'s latency '
       'drains — never behind it', () async {
