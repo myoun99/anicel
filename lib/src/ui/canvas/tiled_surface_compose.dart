@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/placed_tile.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
@@ -14,6 +15,7 @@ import '../../core/dev_profile.dart';
 import '../../services/cel_text_laying.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
+import 'level_image.dart';
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 
@@ -216,7 +218,54 @@ Future<ui.Image?> composeTiledSurfaceImage(
   deferred: false,
 );
 
-/// THE tile compose, async: draw every tile 1:1 at its integer offset and
+/// How a compose lays each tile on its recording over the canvas-space rect
+/// [over]: 1:1 at its integer offset, or — [halved] — halved at its place
+/// through the one halving law ([drawHalvings]), the first level of the
+/// surface made from the tiles themselves.
+///
+/// ⚠️A halved compose is exact only on the halving grid: [over]'s corners
+/// even, as every tile's are, so each 2×2 block lies inside one tile.
+class _TileLaying {
+  _TileLaying(this.canvas, this.over, {required this.halved})
+    : assert(
+        !halved ||
+            [over.left, over.top, over.width, over.height].every(
+              (edge) => edge.round().isEven && edge == edge.roundToDouble(),
+            ),
+        'a halved compose lies on the halving grid (got $over)',
+      ) {
+    if (!halved) {
+      canvas.translate(-over.left, -over.top);
+    }
+  }
+
+  final ui.Canvas canvas;
+  final ui.Rect over;
+  final bool halved;
+  final ui.Paint _paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final List<LevelSource> _halvings = [];
+
+  void lay(PlacedTile placed, ui.Image picture) {
+    final origin = tileOriginOffset(placed);
+    if (halved) {
+      _halvings.add((image: picture, at: (origin - over.topLeft) / 2));
+    } else {
+      canvas.drawImage(picture, origin, _paint);
+    }
+  }
+
+  /// Draws what was laid for a halving, once every tile is in.
+  void finish() {
+    if (halved) {
+      drawHalvings(canvas, _halvings);
+    }
+  }
+
+  int get width => (over.width / (halved ? 2 : 1)).round();
+  int get height => (over.height / (halved ? 2 : 1)).round();
+}
+
+/// THE tile compose, async: draw every tile at its place ([_TileLaying]) and
 /// raster the canvas-space rect [over] (the canvas, the content grown by
 /// the pasteboard, or the part of it that holds the ink).
 ///
@@ -236,11 +285,10 @@ Future<ui.Image?> _composeAsync(
   required MissingTilePictures missing,
   required ui.Rect over,
   required bool deferred,
+  bool halved = false,
 }) async {
   final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  canvas.translate(-over.left, -over.top);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final laying = _TileLaying(ui.Canvas(recorder), over, halved: halved);
   final transient = <ui.Image>[];
   var recorderClosed = false;
   final watch = Stopwatch()..start();
@@ -265,12 +313,9 @@ Future<ui.Image?> _composeAsync(
         image = BitmapTileImageCache.pictureOfTile(tile);
         transient.add(image);
       }
-      canvas.drawImage(
-        image,
-        tileOriginOffset((coord: entry.key, tile: tile)),
-        paint,
-      );
+      laying.lay((coord: entry.key, tile: tile), image);
     }
+    laying.finish();
 
     final picture = recorder.endRecording();
     recorderClosed = true;
@@ -278,8 +323,8 @@ Future<ui.Image?> _composeAsync(
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      final width = over.width.round();
-      final height = over.height.round();
+      final width = laying.width;
+      final height = laying.height;
       return deferred
           ? picture.toImageSync(width, height)
           : await waitedSnapshot(picture, width, height);
@@ -332,11 +377,10 @@ Future<ui.Image?> _composeAsync(
   required bool makePictures,
   required bool snapshot,
   required ui.Rect over,
+  bool halved = false,
 }) {
   final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  canvas.translate(-over.left, -over.top);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final laying = _TileLaying(ui.Canvas(recorder), over, halved: halved);
 
   for (final entry in _tilesShownBy(surface).entries) {
     final tile = entry.value;
@@ -345,16 +389,13 @@ Future<ui.Image?> _composeAsync(
       recorder.endRecording().dispose();
       return null;
     }
-    canvas.drawImage(
-      image,
-      tileOriginOffset((coord: entry.key, tile: tile)),
-      paint,
-    );
+    laying.lay((coord: entry.key, tile: tile), image);
   }
+  laying.finish();
   return rasterPictureAndSnapshot(
     recorder,
-    over.width.round(),
-    over.height.round(),
+    laying.width,
+    laying.height,
     snapshot: snapshot,
   );
 }
@@ -392,19 +433,12 @@ ui.Image composeTiledSurfaceImageNow(
 /// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
-///
-/// [deferred] hands back the recording rastered DEFERRED, with nothing
-/// waited for — for a caller that draws it into the next step of a chain
-/// and keeps only the chain's last step, a plain snapshot. ⛔Never an image
-/// to keep: a deferred image pins every tile picture it drew for as long as
-/// it lives (`raster_picture.dart`).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
   MissingTilePictures missing = MissingTilePictures.madeInTurn,
   ui.Rect? over,
-  bool deferred = false,
 }) async {
   final worldRect = _composedOver(surface, over);
   final image = await _composeAsync(
@@ -413,7 +447,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     shouldAbort: shouldAbort,
     missing: missing,
     over: worldRect,
-    deferred: deferred,
+    deferred: false,
   );
   return image == null
       ? null
@@ -451,6 +485,55 @@ composePositionedSurfaceImageSync(
     real: composed.real,
   );
 }
+
+/// The FIRST LEVEL of [surface] over [over] — every tile halved at its
+/// place through the one halving law ([drawHalvings]) — so a level of the
+/// display's pyramid begins at half size instead of as the whole image at
+/// full size, halved after ([LayerFrameImageCache] says what follows).
+///
+/// The same bytes the full-size image halved holds, wherever [over] lies on
+/// the halving grid (corners even, as every tile's are): each 2×2 block is
+/// inside one tile, and halving it there or in the whole image is the same
+/// mean of the same four texels.
+///
+/// [deferred] hands back the recording rastered DEFERRED, with nothing
+/// waited for — for a caller that draws it into the next step of a chain
+/// and keeps only the chain's last step, a plain snapshot. ⛔Never an image
+/// to keep: a deferred image pins every tile picture it drew for as long as
+/// it lives (`raster_picture.dart`).
+Future<ui.Image?> composeHalvedSurfaceImage(
+  BitmapSurface surface, {
+  BitmapTileImageCache? reuse,
+  bool Function()? shouldAbort,
+  MissingTilePictures missing = MissingTilePictures.madeInTurn,
+  required ui.Rect over,
+  bool deferred = false,
+}) => _composeAsync(
+  surface,
+  reuse: reuse,
+  shouldAbort: shouldAbort,
+  missing: missing,
+  over: _composedOver(surface, over),
+  deferred: deferred,
+  halved: true,
+);
+
+/// [composeHalvedSurfaceImage] made now — [_composeSync] says what
+/// [makePictures] and [snapshot] mean.
+({ui.Image deferred, Future<ui.Image>? real})? composeHalvedSurfaceImageSync(
+  BitmapSurface surface, {
+  required BitmapTileImageCache reuse,
+  required bool makePictures,
+  required bool snapshot,
+  required ui.Rect over,
+}) => _composeSync(
+  surface,
+  reuse: reuse,
+  makePictures: makePictures,
+  snapshot: snapshot,
+  over: _composedOver(surface, over),
+  halved: true,
+);
 
 /// The rect a positioned compose rasters: [over], or the whole content.
 ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {

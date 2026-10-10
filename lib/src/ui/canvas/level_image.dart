@@ -1,8 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
 /// A source of one level picture: an image and where its halved self lands
 /// in the level — the origin for a cel's single image, a quadrant for each
 /// of the four pictures under a level tile.
@@ -34,8 +32,10 @@ ui.Picture halvingPicture(Iterable<LevelSource> sources) {
 }
 
 /// Draws each of [sources] onto [canvas] halved at its place — the body of
-/// [halvingPicture], open so a spy canvas can read which draw each source
-/// took (no picture can: the two draws below make the same bytes).
+/// [halvingPicture], and the draw a cel's first level is made with straight
+/// from its tiles (`composeHalvedSurfaceImage`). Open so a spy canvas can
+/// read which draw each source took (no picture can: the two draws below
+/// make the same bytes).
 ///
 /// 🚨★★★AN EVEN IMAGE IS ONE TEXTURE DRAW, not a rect under an image shader
 /// (2026-09-24, measured on the real Windows app, Impeller GLES): a bilinear
@@ -59,7 +59,6 @@ ui.Picture halvingPicture(Iterable<LevelSource> sources) {
 /// Vulkan, whose addressing of a sub-rectangle rounds differently from the
 /// whole. An odd image is only ever a whole cel, one rect in its picture,
 /// so the shader is paid once per level there, not once per tile.
-@visibleForTesting
 void drawHalvings(ui.Canvas canvas, Iterable<LevelSource> sources) {
   // Bilinear: at exactly 0.5 the box mean. Never `medium` (above).
   final paint = ui.Paint()

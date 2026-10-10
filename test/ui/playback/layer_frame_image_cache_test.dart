@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +20,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
+import 'package:anicel/src/ui/canvas/level_image.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -635,11 +636,12 @@ void main() {
 
     // 🔬Every raster of a picture is a multisampled render with a whole mip
     // chain — ~6ms for a working-size cel on the Windows app — so the full
-    // level composes the ink from its tiles rather than a whole image to cut.
-    testWidgets('the full level composes the ink straight from its tiles; '
-        'the levels below cut it out of their halved whole — both roads', (
-      tester,
-    ) async {
+    // level and the first compose the ink from its tiles rather than a whole
+    // image to cut. Deeper, the ink is cut out of the halved whole: a smaller
+    // image halves differently on Impeller Vulkan.
+    testWidgets('the full level and the first compose the ink straight from '
+        'its tiles; the levels below cut it out of their halved whole — both '
+        'roads', (tester) async {
       await tester.runAsync(() async {
         final async = LayerFrameImageCache(frameStore: storeWithInk());
         final sync = LayerFrameImageCache(frameStore: storeWithInk());
@@ -676,9 +678,15 @@ void main() {
           expect((await prepared(PlaybackQuality.half))!.isInk, isTrue);
           expect(
             debugInksCutOut,
+            0,
+            reason: '$road: the first level draws the ink halved straight '
+                'from its tiles',
+          );
+          expect((await prepared(PlaybackQuality.quarter))!.isInk, isTrue);
+          expect(
+            debugInksCutOut,
             1,
-            reason: '$road: below the full level the ink is cut out of the '
-                'halved whole',
+            reason: '$road: deeper the ink is cut out of the halved whole',
           );
         }
       });
@@ -772,5 +780,192 @@ void main() {
         expect(await bytesOf(inkNow.image), expected, reason: 'sync road');
       });
     });
+  });
+
+  // 🚨A LEVEL IS MADE FROM THE TILES AND IS THE WHOLE IMAGE HALVED
+  // (2026-10-10): the first halving draws each tile halved at its place
+  // instead of halving the whole content at full size — and must leave the
+  // bytes it always held, at every level, whole or ink, on both roads
+  // (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로 허용안하고」). The
+  // reference is made the way every level was made before: the whole content
+  // at full size, halved one exact box at a time, the ink cut out of that.
+  //
+  // ⚠️RED ON IMPELLER VULKAN (`--enable-impeller`) by 1/255 at a few
+  // channels, and that is the engine's halving, not the tiles: there neither
+  // halving is the exact mean — a 512×384 cel's first level was off it at 186
+  // channels drawn whole and 247 drawn from its tiles, by 1, the two apart at
+  // 61 (2026-10-10, board `halving-rounds-differently-per-engine`). The ink
+  // still lays back to the whole there: `a_cropped_cel_draws_the_same_bytes`
+  // runs green on Vulkan but for the blurred folder it names.
+  group('a level made from the tiles', () {
+    Future<Uint8List> bytesOf(ui.Image image) async => (await image
+            .toByteData(format: ui.ImageByteFormat.rawRgba))!
+        .buffer
+        .asUint8List();
+
+    Future<ui.Image> halvedOnce(ui.Image source) async {
+      final size = halvedSize(source.width, source.height);
+      final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+      try {
+        return await picture.toImage(size.width, size.height);
+      } finally {
+        picture.dispose();
+      }
+    }
+
+    /// The bytes of a [width]-wide image's [bytes] over [texels].
+    Uint8List cut(Uint8List bytes, int width, ui.Rect texels) {
+      final there = BytesBuilder();
+      for (var y = texels.top.round(); y < texels.bottom.round(); y += 1) {
+        final row = y * width;
+        there.add(
+          bytes.sublist(
+            (row + texels.left.round()) * 4,
+            (row + texels.right.round()) * 4,
+          ),
+        );
+      }
+      return there.toBytes();
+    }
+
+    BrushFrameStore storeWith(
+      CanvasSize canvas,
+      List<(double, double)> inkAt,
+    ) {
+      final store = BrushFrameStore();
+      BrushFrameEditingCoordinator(
+        initialFrameKey: key('scene'),
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: canvas,
+          tileSize: 16,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          for (final (i, (x, y)) in inkAt.indexed)
+            BrushDab(
+              center: CanvasPoint(x: x, y: y),
+              color: 0xFF2060C0,
+              size: 9,
+              opacity: 0.8,
+              flow: 1,
+              hardness: 0.3,
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: i,
+            ),
+        ],
+      );
+      return store;
+    }
+
+    for (final (scene, canvas, inkAt) in const [
+      (
+        'ink inside a canvas on the grid',
+        CanvasSize(width: 64, height: 48),
+        [(22.0, 21.0), (41.0, 19.0)],
+      ),
+      (
+        'ink by the right and bottom edges of a canvas off the grid',
+        CanvasSize(width: 75, height: 51),
+        [(70.0, 47.0), (3.0, 49.0)],
+      ),
+      (
+        'ink on the pasteboard',
+        CanvasSize(width: 64, height: 48),
+        [(-6.0, 10.0), (60.0, 40.0)],
+      ),
+      (
+        'ink away from the edges of a canvas off the grid',
+        CanvasSize(width: 75, height: 51),
+        [(20.0, 12.0)],
+      ),
+    ]) {
+      testWidgets('$scene: every level is the whole image halved — whole '
+          'or ink, both roads', (tester) async {
+        await tester.runAsync(() async {
+          final store = storeWith(canvas, inkAt);
+          final whole = LayerFrameImageCache(frameStore: store)
+            ..debugStoresWholeContent = true;
+          final ink = LayerFrameImageCache(frameStore: store);
+          final inkNow = LayerFrameImageCache(frameStore: store);
+          addTearDown(whole.dispose);
+          addTearDown(ink.dispose);
+          addTearDown(inkNow.dispose);
+          Future<LayerFrameImage> prepared(
+            LayerFrameImageCache cache,
+            PlaybackQuality quality, {
+            bool inkSuffices = false,
+          }) async => (await cache.prepare(
+            key: key('scene'),
+            canvasSize: canvas,
+            quality: quality,
+            sourceEffects: const [],
+            inkSuffices: inkSuffices,
+          ))!;
+
+          final full = await prepared(whole, PlaybackQuality.full);
+          expect(
+            (await bytesOf(full.image)).any((byte) => byte != 0),
+            isTrue,
+            reason: 'fixture: there is ink',
+          );
+          var reference = full.image;
+          for (var level = 1; level <= PlaybackQuality.deepestLevel; level++) {
+            final quality = PlaybackQuality.forLevel(level);
+            final previous = reference;
+            reference = await halvedOnce(previous);
+            if (!identical(previous, full.image)) {
+              previous.dispose();
+            }
+            final want = await bytesOf(reference);
+
+            final asWhole = await prepared(whole, quality);
+            expect(asWhole.isInk, isFalse, reason: 'anchor: the whole image');
+            expect(
+              (asWhole.image.width, asWhole.image.height),
+              (reference.width, reference.height),
+              reason: '$scene, level $level',
+            );
+            expect(
+              await bytesOf(asWhole.image),
+              want,
+              reason: '$scene, level $level: the whole',
+            );
+
+            final step = (1 << level).toDouble();
+            for (final (road, made) in [
+              ('async', await prepared(ink, quality, inkSuffices: true)),
+              (
+                'sync',
+                inkNow.prepareSyncOrNull(
+                  key: key('scene'),
+                  canvasSize: canvas,
+                  quality: quality,
+                  sourceEffects: const [],
+                  makePictures: true,
+                  inkSuffices: true,
+                )!,
+              ),
+            ]) {
+              final at = made.worldRect.shift(-asWhole.worldRect.topLeft);
+              final texels = ui.Rect.fromLTRB(
+                at.left / step,
+                at.top / step,
+                at.right / step,
+                at.bottom / step,
+              );
+              expect(
+                await bytesOf(made.image),
+                cut(want, reference.width, texels),
+                reason: '$scene, level $level, $road road: the ink',
+              );
+            }
+          }
+          reference.dispose();
+        });
+      });
+    }
   });
 }

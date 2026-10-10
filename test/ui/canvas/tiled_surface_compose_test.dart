@@ -166,10 +166,9 @@ void main() {
   });
 
   testWidgets('🚨the compose in turn is a snapshot WAITED FOR unless its '
-      'caller takes it as a step of a chain: the canvas-sized one always, '
-      'the positioned one by its word — the same pixels either way', (
-    tester,
-  ) async {
+      'caller takes it as a step of a chain: the canvas-sized and the '
+      'positioned one always, the halved one by its word — the same pixels '
+      'either way', (tester) async {
     await tester.runAsync(() async {
       final surface = patternedSurface(
         const CanvasSize(width: 300, height: 200),
@@ -183,18 +182,26 @@ void main() {
       canvasSized.dispose();
 
       waited.clear();
-      final kept = (await composePositionedSurfaceImage(surface))!;
-      expect(waited, [(kept.image.width, kept.image.height)]);
-      final want = await bytesOf(kept.image);
+      final positioned = (await composePositionedSurfaceImage(surface))!;
+      expect(waited, [(positioned.image.width, positioned.image.height)]);
+      positioned.image.dispose();
+
+      // The first level — the step a level image begins with.
+      final over = surfaceContentWorldRect(surface);
+      waited.clear();
+      final kept = (await composeHalvedSurfaceImage(surface, over: over))!;
+      expect(waited, [(kept.width, kept.height)]);
+      final want = await bytesOf(kept);
 
       waited.clear();
-      final step = (await composePositionedSurfaceImage(
+      final step = (await composeHalvedSurfaceImage(
         surface,
+        over: over,
         deferred: true,
       ))!;
       expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
-      expect(step.worldRect, kept.worldRect);
-      expect(await bytesOf(step.image), want);
+      expect((step.width, step.height), (kept.width, kept.height));
+      expect(await bytesOf(step), want);
     });
   });
 
