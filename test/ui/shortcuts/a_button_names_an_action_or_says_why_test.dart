@@ -11,8 +11,10 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// asked of the buttons. A button names an action to put its key in its
 /// tooltip and to be what that key presses. One that names none is:
 ///
-///   · OWED — a command of the scope chosen above that is not an action
-///     YET. The rounds of I-40 empty this list, and it only shrinks.
+///   · ↩️OWED — a command of the scope chosen above that was not an action
+///     YET. The rounds of I-40 emptied it on 2026-10-11, the tool settings'
+///     buttons last and the sheets' pills declined (I-40-Q7): a new button
+///     arrives as an action, or here as one of the five below.
 ///   · ON A ROW — it acts on its own row or item (a layer's eye, a lane's
 ///     reset, a project tab's ✕): 「레이어 행의 눈 · 잠금 … 에는 키를 줄 수
 ///     없다」 was the cost 유저 took with the answer.
@@ -35,11 +37,9 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
 /// would stand here with the same reason.
-enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
+enum Why { aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
-  // ── OWED ────────────────────────────────────────────────────────────
-
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
   "brush/guide_panels.dart | 'guide-make-vertical'": Why.aRow,
