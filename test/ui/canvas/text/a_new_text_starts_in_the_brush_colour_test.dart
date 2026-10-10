@@ -107,15 +107,17 @@ void main() {
       expect(beginAText(hand), red);
     });
 
-    test('a letter setting other than the colour gives the tool no colour of '
-        'its own', () {
+    test('a setting other than the colour — of the letters or of the box — '
+        'gives the tool no colour of its own', () {
       final (:hand, :values) = handWith();
 
       values(red).setLetters((style) => style.copyWith(fontSize: 30));
+      values(red).setAlign(TextCelAlign.center);
       hand.host.brushColour = blue;
       beginAText(hand);
 
       expect(hand.tool.letterStylesSpokenFor!.single.fontSize, 30);
+      expect(hand.tool.contentInHand!.align, TextCelAlign.center);
       expect(hand.tool.letterStylesSpokenFor!.single.color, blue);
     });
 
