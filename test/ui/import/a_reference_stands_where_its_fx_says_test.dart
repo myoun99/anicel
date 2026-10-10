@@ -685,6 +685,26 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    testWidgets('a page the renderer gives up on is a file that does not '
+        'read — the move lands nothing', (tester) async {
+      // The placing let go of the document; the same one, asked again,
+      // cancels every page it is asked for — pdfrx's way.
+      final (s, row) = await placed(
+        tester,
+        FakePdfDocument(
+          pageSizes: const [ui.Size(100, 50), ui.Size(100, 50)],
+          cancelsWhenDisposed: true,
+        ),
+      );
+      final canUndo = s.canUndo;
+
+      expect(await moved(tester, s, row), isA<ReferenceUnreadable>());
+
+      expect(s.canUndo, canUndo);
+      expect(inkOf(celOf(s, row, 0)), const ui.Rect.fromLTRB(0, 0, 200, 100));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('a document that has since lost the page a cel shows is not '
         'laid again — the move lands nothing, and every cel keeps what it '
         'showed', (tester) async {

@@ -16,6 +16,7 @@ import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart'
@@ -507,5 +508,43 @@ void main() {
       // The edit's own settling timers, run out on the test's clock.
       await tester.pump(const Duration(minutes: 1));
     });
+
+    testWidgets('a movie that does not open is a file that does not read — '
+        'nothing changes, and the drop says so', (tester) async {
+      debugVideoDecodeBackend = _NothingOpens();
+      addTearDown(() => debugVideoDecodeBackend = null);
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.repository.insertLayer(
+        cutId: session.requireActiveCut.id,
+        layer: movieRow('/work/take1.mp4'),
+      );
+      final row = session.layerById(takeRow);
+
+      final answer = await tester.runAsync(
+        () => session.importDoors.swapReference(
+          layerId: takeRow,
+          path: '/work/take2.mp4',
+        ),
+      );
+
+      expect(answer, isA<ReferenceUnreadable>());
+      expect(session.layerById(takeRow), row);
+      expect(
+        referenceSwapWords(answer!, '/work/take2.mp4'),
+        AppText.strings.imUnreadable('take2.mp4'),
+      );
+    });
   });
+}
+
+/// A decoder that opens no movie at all.
+class _NothingOpens extends FakeVideoBackend {
+  @override
+  Future<({int token, QaVideoInfo info})?> open(
+    String path, {
+    ({int offset, int length, bool framed})? span,
+  }) async => null;
 }
