@@ -1,5 +1,7 @@
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/property_track.dart';
-import 'package:anicel/src/models/transform_track.dart' show doubleKeySpace;
+import 'package:anicel/src/models/transform_track.dart'
+    show argbKeySpace, doubleKeySpace, pointKeySpace;
 import 'package:flutter_test/flutter_test.dart';
 
 /// I-89 (유저 2026-10-10: 「키 양쪽. 업계 표준인 전문 툴대로 하고싶어. 그게
@@ -117,6 +119,73 @@ void main() {
       for (final frame in [3, 7, 9, 11, 14, 18]) {
         expect(at(track, frame), closeTo(frame * 10.0, 1e-6));
       }
+    });
+
+    test('an auto key past a peak never climbs over it', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(
+            10,
+            100,
+            incoming: KeySide.auto,
+            outgoing: KeySide.auto,
+          )
+          .withKey(20, 50);
+      for (var frame = 10; frame <= 20; frame += 1) {
+        expect(at(track, frame), inInclusiveRange(50, 100));
+      }
+      expect(at(track, 11), greaterThan(99), reason: 'level at the peak');
+    });
+
+    test('an auto key in a flat stretch keeps it flat', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 5)
+          .withKey(10, 5, incoming: KeySide.auto, outgoing: KeySide.auto)
+          .withKey(20, 5);
+      for (var frame = 0; frame <= 20; frame += 1) {
+        expect(at(track, frame), 5);
+      }
+    });
+
+    test('an auto point on an even run moves like the ramp through it', () {
+      final track = PropertyTrack<CanvasPoint>()
+          .withKey(0, CanvasPoint(x: 0, y: 0))
+          .withKey(
+            10,
+            CanvasPoint(x: 10, y: 20),
+            incoming: KeySide.auto,
+            outgoing: KeySide.auto,
+          )
+          .withKey(20, CanvasPoint(x: 20, y: 40));
+      for (final frame in [4, 9, 13]) {
+        final point = track.resolveAt(
+          frameIndex: frame,
+          orElse: () => CanvasPoint(x: -1, y: -1),
+          space: pointKeySpace,
+        );
+        expect(point.x, closeTo(frame.toDouble(), 1e-6));
+        expect(point.y, closeTo(frame * 2.0, 1e-6));
+      }
+    });
+
+    test('an auto colour on an even run moves like the ramp through it', () {
+      final track = PropertyTrack<int>()
+          .withKey(0, 0xFF000000)
+          .withKey(
+            10,
+            0xFF646464,
+            incoming: KeySide.auto,
+            outgoing: KeySide.auto,
+          )
+          .withKey(20, 0xFFC8C8C8);
+      expect(
+        track.resolveAt(
+          frameIndex: 5,
+          orElse: () => 0,
+          space: argbKeySpace,
+        ),
+        0xFF323232,
+      );
     });
 
     test('an auto key never throws the curve past the values it joins', () {

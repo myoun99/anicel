@@ -203,8 +203,7 @@ KeyHandle keyHandleOf(KeySide side, double Function() autoSpeed) =>
 /// tangents); I-89 asks only for 「이웃 값이 정하는 속도」, so the clamp is
 /// mine (2026-10-10) — a curve that leaves the two values it joins is what
 /// an ease or a graph handle asks for on purpose.
-double autoSideSpeed(double reach) =>
-    reach.isFinite ? reach.clamp(0.0, 3.0).toDouble() : 1;
+double autoSideSpeed(double reach) => reach.clamp(0.0, 3.0).toDouble();
 
 /// How far a segment has come at [x], the fraction of its TIME gone (0..1):
 /// the unit cubic Bézier through (0, 0), the [leaving] key's handle
