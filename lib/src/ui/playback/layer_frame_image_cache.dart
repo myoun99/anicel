@@ -786,9 +786,12 @@ _composedNow(
 /// bytes on every engine (98442b79a; 유저 2026-09-23 「결과바뀌는건 절대로
 /// 허용안하고」).
 ///
-/// ⚠️THE WHOLE'S FIRST LEVEL IS THE CONTENT GROWN TO EVEN, not the
-/// level's whole: an odd content edge is halved through the clamp
-/// ([halvedSize]) one level at a time, exactly as the whole image was.
+/// ⚠️THE WHOLE'S FIRST LEVEL IS THE CONTENT GROWN TO EVEN — the very image
+/// the whole was halved to first — so every halving after it is the one the
+/// whole took, an odd edge clamped where it was ([halvedSize]). Over the
+/// level's own whole the bytes come out the same too, but only because a
+/// content edge off the tile grid holds no ink (the mutant survives,
+/// 2026-10-10).
 ({ui.Rect over, bool halved}) _firstStep(
   BitmapSurface preview,
   ({ui.Rect whole, ui.Rect? texels}) plan,
