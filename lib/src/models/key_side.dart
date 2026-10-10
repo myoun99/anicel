@@ -148,16 +148,22 @@ final class EaseSide extends KeySide {
 /// one at 50% are one kind.
 enum KeySideKind {
   /// AE's Linear — half a diamond.
-  linear,
+  linear('Linear'),
 
   /// AE's Bezier, 「천천히」 — half an hourglass.
-  ease,
+  ease('Ease'),
 
   /// AE's Auto Bezier, 「부드럽게 지나감」 — half a disc.
-  auto,
+  auto('Smooth'),
 
   /// AE's Hold — half a square. Only ever a leaving side ([KeyExit]).
-  hold,
+  hold('Hold');
+
+  const KeySideKind(this.label);
+
+  /// The kind's English name; every other language's is the string
+  /// tables' (I-4's contract — `labelFor` in `model_vocabulary.dart`).
+  final String label;
 }
 
 /// [side]'s kind.

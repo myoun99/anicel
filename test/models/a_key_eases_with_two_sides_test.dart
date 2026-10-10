@@ -419,6 +419,11 @@ void main() {
         isNull,
         reason: 'a straight side has no influence to agree on',
       );
+      expect(
+        keySidesTogether([ownEase, KeySide.linear]).influence,
+        isNull,
+        reason: 'sides of different kinds have no influence to agree on',
+      );
     });
   });
 }

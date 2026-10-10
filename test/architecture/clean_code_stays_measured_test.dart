@@ -304,7 +304,16 @@ void main() {
   /// between the lane's base and the lane names it and no other: the walk's
   /// ask ahead, which first took its context as nine parameters, lives on an
   /// object of its own (`_AskedAhead`).
-  const wideSignatures = 388;
+  ///
+  /// ⚠️388 → 389 on 2026-10-10, one named as the rule above asks (I-89 ②,
+  /// a key's mark): `paintKeyMark` (seven) is the ONE drawing every key on
+  /// the frame axis wears — the lanes, the unions, the storyboard's camera
+  /// rows and the flip window — and the key window's choices cut it in
+  /// half. Its seven are the canvas, the mark, the box it stands in (its
+  /// middle and its size), whether it stands on the sheet, its colour label
+  /// and the selection's ring. 🔬The lane's scan against its base
+  /// (`3fa5a239b`, at 388) named that one added and nothing gone.
+  const wideSignatures = 389;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

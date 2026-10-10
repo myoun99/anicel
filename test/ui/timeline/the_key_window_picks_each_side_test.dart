@@ -148,17 +148,35 @@ void main() {
     );
   });
 
-  testWidgets('a pick on one side leaves the other side\'s pick', (
+  testWidgets('a 세기 moved after picking 천천히 keeps the pick', (
     tester,
   ) async {
     await pumpRows(tester, [straight]);
-    await tap(tester, 'rename-key-out-hold');
-    await tap(tester, 'rename-key-in-auto');
+    await tap(tester, 'rename-key-in-ease');
+    await slide(tester, 'in', 0.6);
+    expect(lit(tester, 'rename-key-in-ease'), isTrue);
     expect(
       picked.applyTo(incoming: KeySide.linear, outgoing: KeySide.linear),
-      (incoming: KeySide.auto, outgoing: KeyExit.hold),
+      (incoming: const EaseSide(influence: 0.6), outgoing: KeySide.linear),
     );
   });
+
+  for (final order in [
+    ['rename-key-out-hold', 'rename-key-in-auto'],
+    ['rename-key-in-auto', 'rename-key-out-hold'],
+  ]) {
+    testWidgets('a pick on one side leaves the other side\'s pick — '
+        '${order.join(' then ')}', (tester) async {
+      await pumpRows(tester, [straight]);
+      for (final key in order) {
+        await tap(tester, key);
+      }
+      expect(
+        picked.applyTo(incoming: KeySide.linear, outgoing: KeySide.linear),
+        (incoming: KeySide.auto, outgoing: KeyExit.hold),
+      );
+    });
+  }
 
   testWidgets('each choice wears its half of the mark — the left for the '
       'side arriving, the right for the side leaving', (tester) async {
@@ -172,18 +190,19 @@ void main() {
         ),
       ),
     );
-    // A 9px box: the diamond's middle row runs 0..9, its seam at 4.5.
+    // A 9px box, cut at 4.5: the mark of a key straight on both sides,
+    // with the half its row does not say clipped away.
     expect(
       glyph('rename-key-in-linear'),
-      paints..path(includes: const [Offset(2, 4.5)], excludes: const [
-        Offset(7, 4.5),
-      ]),
+      paints
+        ..clipRect(rect: const Rect.fromLTRB(0, 0, 4.5, 9))
+        ..path(includes: const [Offset(2, 4.5), Offset(7, 4.5)]),
     );
     expect(
       glyph('rename-key-out-linear'),
-      paints..path(includes: const [Offset(7, 4.5)], excludes: const [
-        Offset(2, 4.5),
-      ]),
+      paints
+        ..clipRect(rect: const Rect.fromLTRB(4.5, 0, 9, 9))
+        ..path(includes: const [Offset(2, 4.5), Offset(7, 4.5)]),
     );
   });
 }

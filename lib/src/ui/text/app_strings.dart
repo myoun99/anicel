@@ -120,6 +120,13 @@ enum AppStrings {
   String effectParameterName(String id, String fallback) =>
       _values['effectParameter.$id'] ?? fallback;
 
+  /// A key side's kind, by the enum value's `name` (I-89 ②) — the contract
+  /// [layerProcessName] keeps: the English is the model's, the rest are
+  /// here. ↩️Rows of their own (`keyInterpolationLinear` · `…Hold`) while the
+  /// key window offered two of them.
+  String keySideKindName(String name, String fallback) =>
+      _values['keySideKind.$name'] ?? fallback;
+
   /// A selection mode's name, by the enum value's `name` — the same reversal;
   /// the ko rows are the user's own words (R26 #16).
   String selectionModeName(String name, String fallback) =>
@@ -341,14 +348,10 @@ enum AppStrings {
   String get seLinkedAudioNone => _s('seLinkedAudioNone');
   String get seUnlinkAudio => _s('seUnlinkAudio');
 
-  /// The key window's two sides (I-89 ②): a row each, and the kinds a side
-  /// can be.
+  /// The key window's two sides (I-89 ②), a row each — the kinds a side can
+  /// be are the model's words ([keySideKindName]).
   String get keySideIncoming => _s('keySideIncoming');
   String get keySideOutgoing => _s('keySideOutgoing');
-  String get keyInterpolationLinear => _s('keyInterpolationLinear');
-  String get keyInterpolationEase => _s('keyInterpolationEase');
-  String get keyInterpolationAuto => _s('keyInterpolationAuto');
-  String get keyInterpolationHold => _s('keyInterpolationHold');
 
   /// An eased side's influence, AE's — 33% is its Easy Ease.
   String get keyEaseInfluence => _s('keyEaseInfluence');
@@ -1868,10 +1871,6 @@ enum AppStrings {
     'seUnlinkAudio': 'Unlink',
     'keySideIncoming': 'In',
     'keySideOutgoing': 'Out',
-    'keyInterpolationLinear': 'Linear',
-    'keyInterpolationEase': 'Ease',
-    'keyInterpolationAuto': 'Smooth',
-    'keyInterpolationHold': 'Hold',
     'keyEaseInfluence': 'Influence',
     'convertLinkedCutTitle': 'Convert to linked cut',
     'convertLinkedCutBodyTemplate':
@@ -3002,10 +3001,10 @@ enum AppStrings {
     'seUnlinkAudio': 'リンクを解除',
     'keySideIncoming': 'イン',
     'keySideOutgoing': 'アウト',
-    'keyInterpolationLinear': 'リニア',
-    'keyInterpolationEase': 'イーズ',
-    'keyInterpolationAuto': 'スムーズ',
-    'keyInterpolationHold': 'ホールド',
+    'keySideKind.linear': 'リニア',
+    'keySideKind.ease': 'イーズ',
+    'keySideKind.auto': 'スムーズ',
+    'keySideKind.hold': 'ホールド',
     'keyEaseInfluence': '影響',
     'convertLinkedCutTitle': '兼用カットに変換',
     'convertLinkedCutBodyTemplate':
@@ -4467,10 +4466,10 @@ enum AppStrings {
     'seUnlinkAudio': '링크 해제',
     'keySideIncoming': '도착',
     'keySideOutgoing': '출발',
-    'keyInterpolationLinear': '리니어',
-    'keyInterpolationEase': '천천히',
-    'keyInterpolationAuto': '부드럽게',
-    'keyInterpolationHold': '홀드',
+    'keySideKind.linear': '리니어',
+    'keySideKind.ease': '천천히',
+    'keySideKind.auto': '부드럽게',
+    'keySideKind.hold': '홀드',
     'keyEaseInfluence': '세기',
     'convertLinkedCutTitle': '겸용컷으로 변환',
     'convertLinkedCutBodyTemplate':
@@ -5931,10 +5930,10 @@ enum AppStrings {
     'seUnlinkAudio': 'Dissocier',
     'keySideIncoming': 'Entrée',
     'keySideOutgoing': 'Sortie',
-    'keyInterpolationLinear': 'Linéaire',
-    'keyInterpolationEase': 'Lissage',
-    'keyInterpolationAuto': 'Fluide',
-    'keyInterpolationHold': 'Maintien',
+    'keySideKind.linear': 'Linéaire',
+    'keySideKind.ease': 'Lissage',
+    'keySideKind.auto': 'Fluide',
+    'keySideKind.hold': 'Maintien',
     'keyEaseInfluence': 'Influence',
     'convertLinkedCutTitle': 'Convertir en plan lié',
     'convertLinkedCutBodyTemplate':
@@ -7493,10 +7492,10 @@ enum AppStrings {
     'seUnlinkAudio': '解除链接',
     'keySideIncoming': '进入',
     'keySideOutgoing': '离开',
-    'keyInterpolationLinear': '线性',
-    'keyInterpolationEase': '缓动',
-    'keyInterpolationAuto': '平滑',
-    'keyInterpolationHold': '保持',
+    'keySideKind.linear': '线性',
+    'keySideKind.ease': '缓动',
+    'keySideKind.auto': '平滑',
+    'keySideKind.hold': '保持',
     'keyEaseInfluence': '影响',
     'convertLinkedCutTitle': '转换为链接镜头',
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',

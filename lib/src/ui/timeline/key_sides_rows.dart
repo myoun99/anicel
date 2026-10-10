@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../models/key_mark.dart' show SidesKeyMark;
 import '../../models/key_range_move.dart' show unionMixedKeyName;
 import '../../models/key_side.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart' show KeySideKindWords;
 import '../widgets/app_window.dart' show AppWindowField;
 import '../widgets/field_slider.dart';
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
-import 'key_mark_glyph.dart' show paintKeySideMark;
+import 'key_mark_glyph.dart' show paintKeyMark;
 import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 
 /// THE KEY WINDOW'S TWO SIDES (I-89 ②, 유저 2026-10-10: 「ae보다 조작감면에서
@@ -161,7 +163,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
     final kind = keySideKindOf(choice);
     return PillItem(
       keyValue: 'rename-key-$id-${kind.name}',
-      label: _kindLabel(kind),
+      label: kind.labelFor(AppText.language),
       selected: lit,
       onTap: () =>
           onPicked(KeySideEdit(side: choice, influence: picked?.influence)),
@@ -176,16 +178,8 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
 /// The box a choice's half mark stands in.
 const double _glyphSize = 9;
 
-String _kindLabel(KeySideKind kind) {
-  final strings = AppText.strings;
-  return switch (kind) {
-    KeySideKind.linear => strings.keyInterpolationLinear,
-    KeySideKind.ease => strings.keyInterpolationEase,
-    KeySideKind.auto => strings.keyInterpolationAuto,
-    KeySideKind.hold => strings.keyInterpolationHold,
-  };
-}
-
+/// A choice's glyph: the mark of a key both of whose sides are that kind,
+/// cut down the middle — the half its row's side draws on the frame axis.
 class _KeySidePainter extends CustomPainter {
   const _KeySidePainter(this.kind, {required this.leaving});
 
@@ -193,14 +187,26 @@ class _KeySidePainter extends CustomPainter {
   final bool leaving;
 
   @override
-  void paint(Canvas canvas, Size size) => paintKeySideMark(
-    canvas,
-    kind,
-    leaving: leaving,
-    center: size.center(Offset.zero),
-    size: size.shortestSide,
-    color: timelineDrawingHeldColor,
-  );
+  void paint(Canvas canvas, Size size) {
+    final middle = size.width / 2;
+    canvas
+      ..save()
+      ..clipRect(
+        leaving
+            ? Rect.fromLTRB(middle, 0, size.width, size.height)
+            : Rect.fromLTRB(0, 0, middle, size.height),
+      );
+    paintKeyMark(
+      canvas,
+      SidesKeyMark(incoming: kind, outgoing: kind),
+      center: size.center(Offset.zero),
+      size: size.shortestSide,
+      // A window's row reads left to right, as the timeline does.
+      standing: false,
+      color: timelineDrawingHeldColor,
+    );
+    canvas.restore();
+  }
 
   @override
   bool shouldRepaint(_KeySidePainter oldDelegate) =>

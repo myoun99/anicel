@@ -1,5 +1,6 @@
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/key_side.dart' show KeySideKind;
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
@@ -47,6 +48,12 @@ extension SeparableBlendModeWords on SeparableBlendMode {
 extension EffectKindWords on EffectKind {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).effectKindName(jsonValue, label);
+}
+
+/// A key side's kind — the key window's choices (I-89 ②).
+extension KeySideKindWords on KeySideKind {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).keySideKindName(name, label);
 }
 
 /// A row kind's name. Its words are rows of their own in the tables

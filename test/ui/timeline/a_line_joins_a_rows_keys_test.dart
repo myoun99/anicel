@@ -195,6 +195,17 @@ void main() {
 
     testWidgets('down the sheet it runs down', (tester) async {
       await pumpBand(tester, laneOf({3, 14}), axis: Axis.vertical);
+      expect(
+        tester
+            .widget<TimelineLaneKeyMarker>(
+              find.byKey(
+                const ValueKey<String>('timeline-lane-key-layer-a-position-3'),
+              ),
+            )
+            .axis,
+        Axis.vertical,
+        reason: 'the marks stand on the sheet as the line runs down it',
+      );
       final stroke = strokeOf(tester);
       expect(stroke.from, atMark(tester, 'position', 3));
       expect(stroke.to, atMark(tester, 'position', 14));
@@ -472,6 +483,15 @@ void main() {
           tester.widget<TimelineLaneKeysLine>(line).axis,
           sheet ? Axis.vertical : Axis.horizontal,
         );
+        for (final marker in tester.widgetList<TimelineLaneKeyMarker>(
+          find.byType(TimelineLaneKeyMarker),
+        )) {
+          expect(
+            marker.axis,
+            sheet ? Axis.vertical : Axis.horizontal,
+            reason: 'a mark stands on its row\'s axis',
+          );
+        }
         final stroke = strokeOf(tester);
         if (sheet) {
           expect(stroke.from.dx, moreOrLessEquals(stroke.to.dx));

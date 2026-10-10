@@ -17,18 +17,22 @@ import 'package:anicel/src/models/transform_track.dart';
 void main() {
   group('transform tracks (P3c #13)', () {
     TransformTrack track() => TransformTrack.properties(
-      anchorPoint: PropertyTrack.empty(),
+      anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+        1,
+        CanvasPoint(x: 0, y: 0),
+      ),
       position: PropertyTrack<CanvasPoint>().withKey(
         2,
         CanvasPoint(x: 1, y: 1),
       ),
       scale: PropertyTrack<CanvasPoint>().withKey(4, uniformScale(1.5)),
-      rotation: PropertyTrack.empty(),
+      rotation: PropertyTrack<double>().withKey(7, 45),
       opacity: PropertyTrack<double>().withKey(2, 0.5).withKey(9, 1.0),
     );
 
-    test('the union covers every lane\'s keyed frames', () {
-      expect(track().keyedFrames, {2, 4, 9});
+    test('the union covers every lane\'s keyed frames — each of the five', () {
+      expect(track().keyedFrames, {1, 2, 4, 7, 9});
+      expect(transformKeyMarkUnion(track()).keys.toSet(), {1, 2, 4, 7, 9});
     });
   });
 

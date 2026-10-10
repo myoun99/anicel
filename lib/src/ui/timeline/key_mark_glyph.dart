@@ -86,26 +86,6 @@ void paintKeyMark(
     ..restore();
 }
 
-/// One side's HALF of a mark, alone, in the [size]-square box centred on
-/// [center] — the left half for the side arriving at a key, the right for
-/// the side [leaving] it: the key window's choice of a side wears the half
-/// that kind draws on the frame axis (I-89 ②).
-void paintKeySideMark(
-  Canvas canvas,
-  KeySideKind kind, {
-  required bool leaving,
-  required Offset center,
-  required double size,
-  required Color color,
-}) => canvas.drawPath(
-  _half(
-    kind,
-    right: leaving,
-    unit: size / 12,
-  ).shift(center - Offset(size / 2, size / 2)),
-  Paint()..color = color,
-);
-
 /// One half on the 12-unit grid the mark is drawn on, [right] mirrored
 /// about the middle.
 Path _half(KeySideKind kind, {required bool right, required double unit}) {
