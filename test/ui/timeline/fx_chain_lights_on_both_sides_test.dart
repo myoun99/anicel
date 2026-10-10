@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 
 /// F-25 — **the fx chain lights on both sides of the splitter.**
 ///
@@ -135,7 +136,7 @@ void main() {
                   Positioned.fill(
                     child: TimelineRowsGridSheet(
                       rows: rows,
-                      rowExtent: 28,
+                      edges: TimelineRowEdges.uniform(rows.length, 28),
                       frameCellExtent: 16,
                       activeLayerId: null,
                       standing: standing,

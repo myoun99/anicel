@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
@@ -63,44 +65,49 @@ void main() {
     double cellWidth, {
     bool showSeconds = false,
     PropertyLaneRow? Function(Layer layer)? unionLaneForLayer,
-  }) => MaterialApp(
-    home: Scaffold(
-      body: Material(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: TimelineFrameRowsScrollBody(
-            rows: [
-              for (var i = 0; i < layers.length; i += 1)
-                TimelineDisplayRow.layer(layers[i], layerIndex: i),
-            ],
-            hooks: TimelineGridHooks(
-              activeLayerId: null,
-              frameCursor: ValueNotifier<int>(0),
-              playbackFrameCount: 12,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              showSeconds: showSeconds,
-              unionLaneForLayer: unionLaneForLayer,
-            ),
-            frameStartIndex: 0,
-            frameEndIndexExclusive: 12,
-            leadingFrameSpacerWidth: 0,
-            trailingFrameSpacerWidth: 0,
-            totalFrameContentWidth: 12 * cellWidth,
-            metrics: TimelineGridMetrics(
-              frameCellWidth: cellWidth,
-              layerRowHeight: 28,
+  }) {
+    final rows = [
+      for (var i = 0; i < layers.length; i += 1)
+        TimelineDisplayRow.layer(layers[i], layerIndex: i),
+    ];
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: cellWidth,
+      layerRowHeight: 28,
+    );
+    return MaterialApp(
+      home: Scaffold(
+        body: Material(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: TimelineFrameRowsScrollBody(
+              rows: rows,
+              edges: timelineRowEdgesOf(rows, metrics),
+              hooks: TimelineGridHooks(
+                activeLayerId: null,
+                frameCursor: ValueNotifier<int>(0),
+                playbackFrameCount: 12,
+                exposureStateForLayer: stateFor,
+                onSelectLayer: (_) {},
+                onSelectFrame: (_) {},
+                onToggleLayerVisibility: (_) {},
+                onLayerOpacityChanged: (_, _) {},
+                onToggleLayerTimesheet: (_) {},
+                onLayerMarkSelected: (_, _) {},
+                showSeconds: showSeconds,
+                unionLaneForLayer: unionLaneForLayer,
+              ),
+              frameStartIndex: 0,
+              frameEndIndexExclusive: 12,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              totalFrameContentWidth: 12 * cellWidth,
+              metrics: metrics,
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   /// The row widget object currently mounted for [layerId].
   TimelineFrameCellsRow rowWidget(WidgetTester tester, String layerId) =>

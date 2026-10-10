@@ -1,5 +1,10 @@
+import 'dart:math' as math;
+
+import '../../models/timeline_row_address.dart';
+import 'lane_graph_seats.dart' show timelineGraphBlocks;
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_section_policy.dart';
 
 /// A consecutive run of display rows belonging to one timesheet section —
@@ -74,31 +79,68 @@ double timelineDisplayRowExtent(
   return metrics.layerRowHeight;
 }
 
-/// Total layer-axis extent of [rows].
-double timelineDisplayRowsExtent(
+/// Where [rows] sit along the layer axis — each at its own extent
+/// ([timelineDisplayRowExtent]), an open graph's lanes joined into one unit
+/// with its ROOM after the last of them: what the graph stands past its
+/// lanes (I-89 ③).
+///
+/// ⛔Built once per pass and handed round. Every grid surface that turns a
+/// row into a place or a place into a row reads THIS, so the rail, the
+/// cells, the sheet and the cursor cannot disagree about where a row is.
+TimelineRowEdges timelineRowEdgesOf(
   List<TimelineDisplayRow> rows,
   TimelineGridMetrics metrics,
 ) {
-  var extent = 0.0;
-  for (final row in rows) {
-    extent += timelineDisplayRowExtent(row, metrics);
+  final slots = <TimelineRowSlot>[
+    for (final row in rows)
+      (
+        extent: timelineDisplayRowExtent(row, metrics),
+        room: 0,
+        joinsNext: false,
+      ),
+  ];
+  for (final block in timelineGraphBlocks(rows)) {
+    final last = block.start + block.count - 1;
+    var lanes = 0.0;
+    for (var index = block.start; index <= last; index += 1) {
+      lanes += slots[index].extent;
+      slots[index] = (
+        extent: slots[index].extent,
+        room: 0,
+        joinsNext: index < last,
+      );
+    }
+    slots[last] = (
+      extent: slots[last].extent,
+      room: math.max(
+        0.0,
+        block.seat.graph.extentAt(metrics.layerRowHeight) - lanes,
+      ),
+      joinsNext: false,
+    );
   }
-  return extent;
+  return TimelineRowEdges(slots);
 }
 
-/// Layer-axis extent of one section run.
+/// How many rows from [anchor] a pointer [crossOffset] from its start
+/// stands over, where [edges] put [rows] ([TimelineRowEdges.rowFrom]) — 0
+/// while [anchor] is not drawn. What every drag that spans rows reads: a
+/// rail row's select, a cells span, a key span.
+int timelineRowDeltaAt(
+  List<TimelineDisplayRow> rows,
+  TimelineRowEdges edges,
+  TimelineRowAddress anchor,
+  double crossOffset,
+) {
+  final at = rows.indexWhere((row) => row.address == anchor);
+  return at < 0 ? 0 : edges.rowFrom(at, crossOffset) - at;
+}
+
+/// Layer-axis extent of one section run — its rows', and the room among
+/// them ([edges] of the rows [run] was cut from).
 double timelineSectionRunExtent(
   TimelineSectionRun run,
-  List<TimelineDisplayRow> rows,
-  TimelineGridMetrics metrics,
-) {
-  var extent = 0.0;
-  for (
-    var index = run.startRowIndex;
-    index < run.startRowIndex + run.rowCount;
-    index += 1
-  ) {
-    extent += timelineDisplayRowExtent(rows[index], metrics);
-  }
-  return extent;
-}
+  TimelineRowEdges edges,
+) =>
+    edges.startOf(run.startRowIndex + run.rowCount) -
+    edges.startOf(run.startRowIndex);

@@ -46,9 +46,19 @@ class _LayerGridScroll {
   }
 
   /// The rows' window cut for the rows standing at [offset].
+  ///
+  /// The token is the WINDOW the rows would be cut to, read off the rows the
+  /// pass drew. ↩️It was the row index at the top, which was the window's
+  /// one moving part while every row was one height: a graph's room can
+  /// hold the top still while the bottom crosses rows (I-89 ③).
   void standAt(double offset) {
-    final rowExtent = _state._metrics.layerRowHeight;
-    final newBucket = (offset / rowExtent).floor();
+    final edges = _state._drawnEdges;
+    final window = edges.window(
+      scrollOffset: offset,
+      viewportExtent: _state._rowViewportExtent,
+    );
+    final newBucket =
+        window.startIndex * (edges.count + 1) + window.endIndexExclusive;
     _state._verticalScrollOffset = offset;
     // ⚠️Compared against the NOTIFIER, not against a bucket recomputed from
     // the old offset. They agree while nothing else moves, but a row-height

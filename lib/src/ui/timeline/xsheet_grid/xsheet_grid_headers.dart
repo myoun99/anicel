@@ -42,6 +42,7 @@ class _XSheetGridHeaders {
         row: entry,
         dragRows: () => _state._dragRows,
         rowExtent: _state._metrics.layerRowHeight,
+        dragEdges: () => _state._dragEdges,
         axis: Axis.vertical,
         hooks: _state.widget.hooks.rowDragHooks,
         onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,
@@ -125,6 +126,18 @@ class _XSheetGridHeaders {
   }
 
   final Map<LayerId, KeptLayerControlsRow> _kept = {};
+
+  /// Every column's [header] where [edges] puts it — the room after a
+  /// graph's last lane left empty, as the rail leaves it (I-89 ③).
+  List<Widget> headers(
+    List<TimelineDisplayRow> entries,
+    TimelineRowEdges edges,
+  ) => [
+    for (var index = 0; index < entries.length; index += 1) ...[
+      header(entries[index]),
+      if (edges.roomOf(index) > 0) SizedBox(width: edges.roomOf(index)),
+    ],
+  ];
 
   /// The header strip as its controls rows see it: the rail's record,
   /// turned on its side — each header laid out at the strip's natural

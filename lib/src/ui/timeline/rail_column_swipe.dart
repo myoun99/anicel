@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
@@ -12,6 +14,8 @@ import 'layer_label_controls.dart'
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
+import 'timeline_row_edges.dart';
+import 'timeline_visible_range.dart';
 
 /// A column a rail can SWIPE: where its band sits at a given row depth,
 /// what value a row shows there, and how to flip that row.
@@ -35,42 +39,41 @@ typedef RailToggleColumn<TRow> = ({
 /// identity the sweep dedupes by so one drag paints each row once.
 typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
 
-/// [RailColumnSwipe.rowsIn] for a strip of UNIFORM PITCH: the rows a
-/// segment covers are the whole index range between the row holding one
-/// end and the row holding the other, ends included, clipped to [count].
+/// [RailColumnSwipe.rowsIn] for a strip whose rows sit at [edges]: the rows
+/// a segment covers ([TimelineRowEdges.rowsIn] — every row from the one
+/// holding one end to the one holding the other, ends included), among the
+/// ones the window [built]: a row not built is not on screen to paint.
+/// Room between rows covers none.
 ///
 /// 🚨★★★BOTH TIMELINE GRIDS ARE THAT STRIP, AND WRITING IT TWICE IS A COPY
 /// WHATEVER THE TEXT (유저: 「사본 남으면 진짜 용서안할게」). The rail's rows
-/// and the x-sheet's columns are one `layerRowHeight` apart — the same rail
-/// turned on its side — so they had the same division in point form all
-/// along; splitting the point into a segment (F-66) is only what made the
-/// clone long enough to see, and the architecture ratchet named the pair
-/// the moment it did.
+/// and the x-sheet's columns are the same rail turned on its side, so they
+/// had the same division in point form all along; splitting the point into
+/// a segment (F-66) is only what made the clone long enough to see, and the
+/// architecture ratchet named the pair the moment it did.
 ///
-/// ⛔The STORYBOARD rail is not this strip and must not be pushed into it:
-/// it stacks a transition row, S rows and a V row at three heights with
-/// lane groups between them, so it walks its own layout instead.
+/// ↩️It divided by one row pitch until a header graph (I-89 ③) stood
+/// taller than its lanes; the edges are where the window cut the rows.
 ///
-/// [origin] is where row 0 starts — the layer rail's leading spacer, and 0
-/// for a strip that begins at its own edge. [rowAt] is the ONLY thing left
-/// that differs between the two: what a row at an index IS, and what
-/// identity it carries.
-List<RailSwipeRow<TRow>> uniformRailRowsIn<TRow>({
+/// ⛔The STORYBOARD rail walks its own layout: it stacks a transition row,
+/// S rows and a V row at three heights with lane groups between them, and
+/// builds each track's slots only as far as the walk reaches.
+///
+/// [rowAt] is the ONLY thing left that differs between the two grids: what
+/// a row at an index IS, and what identity it carries.
+List<RailSwipeRow<TRow>> railRowsAlong<TRow>({
   required double from,
   required double to,
-  required double origin,
-  required double pitch,
-  required int count,
+  required TimelineRowEdges edges,
+  required TimelineVisibleRange built,
   required RailSwipeRow<TRow> Function(int index) rowAt,
 }) {
-  var first = (((from <= to ? from : to) - origin) / pitch).floor();
-  var last = (((from <= to ? to : from) - origin) / pitch).floor();
-  if (first < 0) {
-    first = 0;
+  final covered = edges.rowsIn(from, to);
+  if (covered == null) {
+    return const [];
   }
-  if (last > count - 1) {
-    last = count - 1;
-  }
+  final first = math.max(covered.first, built.startIndex);
+  final last = math.min(covered.last, built.endIndexExclusive - 1);
   return [for (var index = first; index <= last; index += 1) rowAt(index)];
 }
 

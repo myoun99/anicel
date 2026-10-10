@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -1121,6 +1122,7 @@ void main() {
                 row: row,
                 dragRows: () => [row],
                 rowExtent: 28,
+                dragEdges: () => TimelineRowEdges.uniform(1, 28),
                 axis: Axis.horizontal,
                 hooks: TimelineRowDragHooks(
                   drag: drag,

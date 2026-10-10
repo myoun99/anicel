@@ -17,6 +17,8 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 
 import '../helpers/exposure_of.dart';
 import 'timeline/timeline_cell_probe.dart';
@@ -411,15 +413,17 @@ Widget _body({
   ValueChanged<int>? onSelectFrame,
   TimelineRangeGestureCallbacks? rangeGesture,
 }) {
+  final rows = buildTimelineDisplayRows(
+    layers: layers,
+    expandedLayerIds: const {},
+    lanesForLayer: (_) => const [],
+  );
   return MaterialApp(
     home: Scaffold(
       body: Material(
         child: TimelineFrameRowsScrollBody(
-          rows: buildTimelineDisplayRows(
-            layers: layers,
-            expandedLayerIds: const {},
-            lanesForLayer: (_) => const [],
-          ),
+          rows: rows,
+          edges: timelineRowEdgesOf(rows, metrics),
           hooks: TimelineGridHooks(
             activeLayerId: null,
             frameCursor: ValueNotifier<int>(0),

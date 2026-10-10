@@ -538,6 +538,7 @@ class _WorkspaceCollapsedRows {
         TimelineCursorLayer(
           frameCursor: session.playheadCursors.cutFrame,
           rows: [displayRow],
+          edges: TimelineRowEdges.uniform(1, metrics.layerRowHeight),
           activeLayerId: layer.id,
           currentRow: session.standing.currentRowListenable,
           frameStartIndex: geometry.value.frameStartIndex,

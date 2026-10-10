@@ -35,6 +35,8 @@ import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
 import 'row_control_surface.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
+import 'timeline_row_edges.dart';
+import 'timeline_section_runs.dart' show timelineRowDeltaAt;
 
 /// WHAT a row drag is moving. Two kinds share the gesture, the caret and
 /// the device policy; what differs is the list they are re-ordering, and
@@ -428,6 +430,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.onCrossed,
     this.onSelectCrossed,
     this.selectRowDeltaAt,
+    this.pointerRowsAt,
     required this.child,
     this.isLastRow = false,
     this.grabOffsetWithinRun = 0,
@@ -467,7 +470,8 @@ class LayerRowDragTarget extends StatelessWidget {
        onGripReleased = null,
        slotBefore = 0,
        isLastRow = false,
-       onCrossed = _neverCrosses;
+       onCrossed = _neverCrosses,
+       pointerRowsAt = null;
 
   static void _neverCrosses(int steps, int? onRow, int inRow) {}
 
@@ -540,6 +544,17 @@ class LayerRowDragTarget extends StatelessWidget {
   /// short of the row under the pointer.
   final int Function(double offset)? selectRowDeltaAt;
 
+  /// Where the pointer stands, in rows from this row's start — fractional,
+  /// asked with its distance from this widget's start — for a rail whose
+  /// rows are not all one height. Null counts it in [rowExtent].
+  ///
+  /// 🚨I-89 ③: a header graph stands taller than its lanes, and the room
+  /// it adds is no row. Counted in one row height, a layer dragged past it
+  /// took the room for rows and its caret ran ahead of the pointer — the
+  /// very thing ④ (유저 2026-08-12) pinned: 「커서가 A 아래에 가야 A 아래로
+  /// 간다」.
+  final double Function(double offset)? pointerRowsAt;
+
   /// Whether this is the last row of the rail — only it can show the
   /// trailing caret, or two adjacent rows would both draw the same gap.
   final bool isLastRow;
@@ -582,6 +597,7 @@ class LayerRowDragTarget extends StatelessWidget {
       onCrossed: onCrossed,
       onSelectCrossed: onSelectCrossed,
       selectRowDeltaAt: selectRowDeltaAt,
+      pointerRowsAt: pointerRowsAt,
       isLastRow: isLastRow,
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
@@ -605,6 +621,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.isLastRow,
     this.onSelectCrossed,
     this.selectRowDeltaAt,
+    this.pointerRowsAt,
     this.onGripTaken,
     this.onGripReleased,
     this.grip,
@@ -625,6 +642,9 @@ class _LayerRowDragBody extends StatefulWidget {
 
   /// See [LayerRowDragTarget.selectRowDeltaAt].
   final int Function(double offset)? selectRowDeltaAt;
+
+  /// See [LayerRowDragTarget.pointerRowsAt].
+  final double Function(double offset)? pointerRowsAt;
   final VoidCallback? onGripTaken;
   final VoidCallback? onGripReleased;
 
@@ -838,8 +858,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// row means the inside half, standing in the row past it means the
   /// outside half. So [inRow] is reported at every position, and [onRow] is
   /// the narrower claim.
-  ({int? onRow, int inRow}) _bandUnderPointer(double travelled) {
-    final at = _grabFraction + travelled;
+  ({int? onRow, int inRow}) _bandUnderPointer(double at) {
     final row = at.floor();
     final within = at - row;
     return (onRow: within >= 0.3 && within <= 0.7 ? row : null, inRow: row);
@@ -895,24 +914,24 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // 0 above it and 1 below it — and neither is a move, which is the
     // asymmetry [slotForSteps] documents; it is absorbed here instead of
     // being carried in the caller's arithmetic.
-    final travelled = _travelled / widget.rowExtent;
+    final at =
+        widget.pointerRowsAt?.call(_pressOffset + _travelled) ??
+        _grabFraction + _travelled / widget.rowExtent;
     // ⑨: a SELECT counts whole rows the pointer has entered — its span ends
     // ON a row, where a move's caret ends BETWEEN two. Same travel, two
     // readings, which is why this is not the caret's `steps`.
     if (_selecting) {
       final rowAt = widget.selectRowDeltaAt;
       widget.onSelectCrossed?.call(
-        rowAt == null
-            ? (_grabFraction + travelled).floor()
-            : rowAt(_pressOffset + _travelled),
+        rowAt == null ? at.floor() : rowAt(_pressOffset + _travelled),
       );
       return;
     }
-    final nearestGap = (_grabFraction + travelled).round();
+    final nearestGap = at.round();
     final steps = nearestGap > 1
         ? nearestGap - 1
         : (nearestGap < 0 ? nearestGap : 0);
-    final band = _bandUnderPointer(travelled);
+    final band = _bandUnderPointer(at);
     widget.onCrossed(steps, band.onRow, band.inRow);
   }
 
@@ -1154,6 +1173,7 @@ Widget? unmovableRowSelectTarget({
   required LayerKind kind,
   required LayerId layerId,
   required double rowExtent,
+  int Function(double offset)? selectRowDeltaAt,
   required Axis axis,
   required TimelineRowDragHooks? hooks,
   required void Function(int rowDelta) onSelectCrossed,
@@ -1169,6 +1189,7 @@ Widget? unmovableRowSelectTarget({
   return LayerRowDragTarget.selectOnly(
     subject: LayerRowSubject(layerId),
     rowExtent: rowExtent,
+    selectRowDeltaAt: selectRowDeltaAt,
     axis: axis,
     hooks: hooks,
     onSelectCrossed: onSelectCrossed,
@@ -1243,6 +1264,7 @@ Widget layerRowDragWrapper({
   required TimelineDisplayRow row,
   required List<TimelineDisplayRow> Function() dragRows,
   required double rowExtent,
+  required TimelineRowEdges Function() dragEdges,
   required Axis axis,
   required TimelineRowDragHooks? hooks,
   required void Function(List<TimelineDisplayRow> rows, int rowDelta)?
@@ -1256,6 +1278,7 @@ Widget layerRowDragWrapper({
   final address = row.address;
   final onGripTaken = pin == null ? null : () => pin.take(address);
   final onGripReleased = pin == null ? null : () => pin.release(address);
+  final reach = _rowReach(address, dragRows, dragEdges);
   List<DragChipItem> grip() => layerRowDragChips(
     rows: dragRows(),
     pressed: row.layer.id,
@@ -1271,6 +1294,7 @@ Widget layerRowDragWrapper({
             (
               axis: axis,
               rowExtent: rowExtent,
+              reach: reach,
               dragRows: dragRows,
               onRowSelectionSpan: onRowSelectionSpan,
               onGripTaken: onGripTaken,
@@ -1283,6 +1307,7 @@ Widget layerRowDragWrapper({
     kind: row.layer.kind,
     layerId: row.layer.id,
     rowExtent: rowExtent,
+    selectRowDeltaAt: reach.selectRowDeltaAt,
     axis: axis,
     hooks: hooks,
     onSelectCrossed: (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
@@ -1300,6 +1325,8 @@ Widget layerRowDragWrapper({
     subject: LayerRowSubject(row.layer.id),
     slotBefore: caret.slot,
     rowExtent: rowExtent,
+    selectRowDeltaAt: reach.selectRowDeltaAt,
+    pointerRowsAt: reach.pointerRowsAt,
     axis: axis,
     hooks: hooks,
     onGripTaken: onGripTaken,
@@ -1331,6 +1358,28 @@ Widget layerRowDragWrapper({
     child: child,
   );
 }
+
+/// How far a drag from the row at [address] has reached, read off where the
+/// rows of [dragRows] sit ([dragEdges]) at the EVENT — the pointer in rows
+/// ([LayerRowDragTarget.pointerRowsAt]) and a select span's head
+/// ([LayerRowDragTarget.selectRowDeltaAt]).
+_RowReach _rowReach(
+  TimelineRowAddress address,
+  List<TimelineDisplayRow> Function() dragRows,
+  TimelineRowEdges Function() dragEdges,
+) => (
+  pointerRowsAt: (offset) {
+    final index = dragRows().indexWhere((row) => row.address == address);
+    return index < 0 ? 0 : dragEdges().rowsAt(index, offset);
+  },
+  selectRowDeltaAt: (offset) =>
+      timelineRowDeltaAt(dragRows(), dragEdges(), address, offset),
+);
+
+typedef _RowReach = ({
+  double Function(double offset) pointerRowsAt,
+  int Function(double offset) selectRowDeltaAt,
+});
 
 /// What [layerRowDragWrapper] builds a row's wrapper FROM — equal while the
 /// wrapper it would build is the same one, so a rail that keeps its rows'
@@ -1384,7 +1433,12 @@ LayerRowDragInputs layerRowDragInputs({
 Widget _laneSelectOnlyDragTarget(
   ({TimelineDisplayRow row, String laneId}) lane,
   TimelineRowDragHooks hooks,
-  ({Axis axis, double rowExtent, void Function(int rowDelta)? onSelectCrossed})
+  ({
+    Axis axis,
+    double rowExtent,
+    _RowReach reach,
+    void Function(int rowDelta)? onSelectCrossed,
+  })
   wiring, {
   required Widget child,
 }) {
@@ -1396,6 +1450,8 @@ Widget _laneSelectOnlyDragTarget(
     subject: LaneRowSubject(lane.row.layer.id, lane.laneId),
     slotBefore: lane.row.layerIndex,
     rowExtent: wiring.rowExtent,
+    selectRowDeltaAt: wiring.reach.selectRowDeltaAt,
+    pointerRowsAt: wiring.reach.pointerRowsAt,
     axis: wiring.axis,
     hooks: hooks,
     isLastRow: false,
@@ -1435,6 +1491,7 @@ Widget _laneRowDragTarget(
   ({
     Axis axis,
     double rowExtent,
+    _RowReach reach,
     List<TimelineDisplayRow> Function() dragRows,
     void Function(List<TimelineDisplayRow> rows, int rowDelta)?
     onRowSelectionSpan,
@@ -1459,6 +1516,7 @@ Widget _laneRowDragTarget(
     (
       axis: wiring.axis,
       rowExtent: wiring.rowExtent,
+      reach: wiring.reach,
       onSelectCrossed: onSelectCrossed,
     ),
     child: child,
@@ -1481,6 +1539,8 @@ Widget _laneRowDragTarget(
     subject: EffectRowSubject(row.layer.id, parsed.effectId),
     slotBefore: slot,
     rowExtent: wiring.rowExtent,
+    selectRowDeltaAt: wiring.reach.selectRowDeltaAt,
+    pointerRowsAt: wiring.reach.pointerRowsAt,
     axis: wiring.axis,
     hooks: hooks,
     onGripTaken: wiring.onGripTaken,

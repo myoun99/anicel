@@ -14,6 +14,7 @@ import 'axis_turn.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_playhead.dart';
+import 'timeline_row_edges.dart';
 import '../text/app_strings.dart' show AppText;
 import '../widgets/tick_layer.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
@@ -33,6 +34,7 @@ class TimelineCursorLayer extends StatelessWidget {
     super.key,
     required this.frameCursor,
     required this.rows,
+    required this.edges,
     required this.activeLayerId,
     this.currentRow,
     required this.frameStartIndex,
@@ -74,6 +76,11 @@ class TimelineCursorLayer extends StatelessWidget {
   /// The grid's display rows (layer rows + expanded lanes), for the active
   /// layer's cross-axis position.
   final List<TimelineDisplayRow> rows;
+
+  /// Where [rows] sit across the frames. What stands or is selected on an
+  /// open graph's lane covers the graph — its unit, room and all: the
+  /// graph is one picture (I-89 ③).
+  final TimelineRowEdges edges;
   final LayerId? activeLayerId;
 
   /// The row you are STANDING on. There is exactly one, and the standing
@@ -182,6 +189,13 @@ class TimelineCursorLayer extends StatelessWidget {
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
   );
 
+  /// Across the rows [first] through [last], in whole units ([edges]).
+  ({double start, double extent}) _acrossOf(int first, int last) {
+    final start = edges.unitSpanOf(first).start;
+    final end = edges.unitSpanOf(last);
+    return (start: start, extent: end.start + end.extent - start);
+  }
+
   int? _rowIndexWhere(bool Function(TimelineDisplayRow row) test) {
     for (var index = 0; index < rows.length; index += 1) {
       if (test(rows[index])) return index;
@@ -214,20 +228,21 @@ class TimelineCursorLayer extends StatelessWidget {
       return null;
     }
     int? first;
-    var count = 1;
+    var last = 0;
     for (var index = 0; index < rows.length; index += 1) {
       if (!coversRow(rows[index])) continue;
       first ??= index;
-      count = index - first + 1;
+      last = index;
     }
     if (first == null) return null;
     final spanStart = _frameX(span.startIndex);
+    final across = _acrossOf(first, last);
     return placedAlong(
       axis,
       along: spanStart,
-      across: first * metrics.layerRowHeight,
+      across: across.start,
       alongExtent: _frameX(span.endIndexExclusive) - spanStart,
-      acrossExtent: count * metrics.layerRowHeight,
+      acrossExtent: across.extent,
       child: Semantics(
         key: semantics.key,
         label: semantics.label,
@@ -392,12 +407,13 @@ class TimelineCursorLayer extends StatelessWidget {
       return null;
     }
     final unitStart = _frameX(unit.startIndex);
+    final across = _acrossOf(standing.index, standing.index);
     return placedAlong(
       axis,
       along: unitStart,
-      across: standing.index * metrics.layerRowHeight,
+      across: across.start,
       alongExtent: _frameX(unit.endIndexExclusive) - unitStart,
-      acrossExtent: metrics.layerRowHeight,
+      acrossExtent: across.extent,
       child: DecoratedBox(
         key: const ValueKey<String>('timeline-standing-wash'),
         decoration: timelineStandingWashDecorationAt(
@@ -421,12 +437,13 @@ class TimelineCursorLayer extends StatelessWidget {
   /// the 3px ring (user, 2026-08-08: 진짜로 서 있게).
   Widget _standingCell(({int index, bool lane}) standing, int frame) {
     final spanStart = _frameX(frame);
+    final across = _acrossOf(standing.index, standing.index);
     return placedAlong(
       axis,
       along: spanStart,
-      across: standing.index * metrics.layerRowHeight,
+      across: across.start,
       alongExtent: _frameX(frame + 1) - spanStart,
-      acrossExtent: metrics.layerRowHeight,
+      acrossExtent: across.extent,
       child: Semantics(
         key: standing.lane
             ? const ValueKey<String>('timeline-lane-standing-cell')

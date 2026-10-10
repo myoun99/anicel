@@ -8,6 +8,9 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 
@@ -65,6 +68,7 @@ void main() {
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(0),
                   rows: rowsWithLanes(),
+                  edges: timelineRowEdgesOf(rowsWithLanes(), metrics),
                   activeLayerId: const LayerId('a'),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,
@@ -262,6 +266,7 @@ void main() {
                       layerIndex: 0,
                     ),
                   ],
+                  edges: TimelineRowEdges.uniform(2, metrics.layerRowHeight),
                   activeLayerId: const LayerId('a'),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,

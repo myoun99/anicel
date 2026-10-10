@@ -10,27 +10,6 @@ import 'package:anicel/src/ui/timeline/timeline_row_cross_offset.dart';
 /// UP from a tall V row stalled partway, while dragging DOWN survived only
 /// because the end clamp caught it.
 void main() {
-  group('uniform pitch — what the timeline and x-sheet use', () {
-    test('floors toward the row the pointer is inside', () {
-      int at(double offset) =>
-          uniformRowDeltaForCrossOffset(crossOffset: offset, rowExtent: 28);
-
-      expect(at(0), 0);
-      expect(at(27.9), 0);
-      expect(at(28), 1);
-      expect(at(-0.1), -1, reason: 'anything above this row is already -1');
-      expect(at(-28), -1);
-      expect(at(-28.1), -2);
-    });
-
-    test('a zero extent cannot divide, so nothing moves', () {
-      expect(
-        uniformRowDeltaForCrossOffset(crossOffset: 500, rowExtent: 0),
-        0,
-      );
-    });
-  });
-
   group('height table — what the storyboard rail needs', () {
     // The shape that produced the report: four SE rows of 30 stacked above
     // a V row the user had enlarged. Index 4 is the V row.

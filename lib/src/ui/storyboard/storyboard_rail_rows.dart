@@ -1717,9 +1717,10 @@ class _StoryboardRailRows {
             null => false,
           },
       ],
-      rowExtent: 0,
-      rowExtents: [for (final slot in slots) slot.height],
-      leadingSpacer: 0,
+      edges: TimelineRowEdges([
+        for (final slot in slots)
+          (extent: slot.height, room: 0, joinsNext: false),
+      ]),
       crossExtent: _state._naturalRailWidth - layerSectionLabelSlotWidth,
     );
   }

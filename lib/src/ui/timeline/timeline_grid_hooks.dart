@@ -19,6 +19,8 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'lane_graph.dart' show LaneGraphsView;
+import 'lane_graph_seats.dart' show seatLaneGraphs;
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
@@ -118,6 +120,7 @@ class TimelineGridHooks {
     this.runEdit,
     this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
+    this.laneGraphs = LaneGraphsView.none,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -405,6 +408,10 @@ class TimelineGridHooks {
   /// and the lane provider (generic — transform lanes now, FX lanes later).
   final Set<LayerId> expandedLaneLayerIds;
 
+  /// The rail's header graphs (I-89 ③): which groups' lanes are drawn as
+  /// one graph, and how. View state, like the twirls beside it.
+  final LaneGraphsView laneGraphs;
+
   /// A LIVE read of the twirl state, when the host can give one.
   ///
   /// 🚨[expandedLaneLayerIds] is a widget property: the host mutates its set
@@ -526,7 +533,8 @@ class TimelineGridHooks {
 
   /// The rows a grid shows for [layers]: [buildTimelineDisplayRows] fed the
   /// bundle's own view state — open twirls, hidden sections, the row
-  /// filter, folded attach groups, the active layer and the fx predicate.
+  /// filter, folded attach groups, the active layer and the fx predicate —
+  /// with the lanes of every open header graph seated in it.
   ///
   /// The rail and the sheet each listed these six hand-offs (the audit's
   /// clone scan, 2026-09-06); a grid that forgot one showed rows the other
@@ -537,15 +545,18 @@ class TimelineGridHooks {
     List<Layer> layers, {
     required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
     bool lanesPrecedeLayer = false,
-  }) => buildTimelineDisplayRows(
-    layers: layers,
-    expandedLayerIds: expandedLaneLayerIds,
-    lanesForLayer: lanesForLayer,
-    hiddenSections: hiddenSections,
-    rowFilter: rowFilter,
-    collapsedAttachBaseIds: collapsedAttachBaseIds,
-    activeLayerId: activeLayerId,
-    fxEnabledOf: isLayerFxEnabled,
-    lanesPrecedeLayer: lanesPrecedeLayer,
+  }) => seatLaneGraphs(
+    buildTimelineDisplayRows(
+      layers: layers,
+      expandedLayerIds: expandedLaneLayerIds,
+      lanesForLayer: lanesForLayer,
+      hiddenSections: hiddenSections,
+      rowFilter: rowFilter,
+      collapsedAttachBaseIds: collapsedAttachBaseIds,
+      activeLayerId: activeLayerId,
+      fxEnabledOf: isLayerFxEnabled,
+      lanesPrecedeLayer: lanesPrecedeLayer,
+    ),
+    laneGraphs.open,
   );
 }

@@ -47,8 +47,8 @@ class _Rail {
 
   /// Every row whose 40px band meets the stretch, ends included.
   ///
-  /// ⛔Written out BY HAND rather than calling `uniformRailRowsIn`, which
-  /// is what both timeline grids hand the widget. This is the oracle: a
+  /// ⛔Written out BY HAND rather than calling `railRowsAlong`, which is
+  /// what both timeline grids hand the widget. This is the oracle: a
   /// fake host that shares the product's arithmetic agrees with it while
   /// they are both wrong.
   List<RailSwipeRow<int>> rowsIn(double from, double to) {

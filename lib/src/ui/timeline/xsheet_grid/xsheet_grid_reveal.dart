@@ -41,11 +41,14 @@ class _XSheetGridReveal {
     ),
     rows: (
       controller: _state._layerScrollController,
-      extent: _state._metrics.layerRowHeight,
-      at: indexOfDisplayRow(
-        _state._dragRows,
-        current: _state.widget.hooks.currentRowHooks?.currentRow.value,
-        activeLayerId: _state.widget.hooks.activeLayerId,
+      item: revealedRowOf(
+        _state._dragEdges,
+        indexOfDisplayRow(
+          _state._dragRows,
+          current: _state.widget.hooks.currentRowHooks?.currentRow.value,
+          activeLayerId: _state.widget.hooks.activeLayerId,
+        ),
+        _state._metrics.layerRowHeight,
       ),
     ),
   );

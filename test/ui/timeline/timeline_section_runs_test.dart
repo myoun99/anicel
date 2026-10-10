@@ -81,12 +81,10 @@ void main() {
         TimelineSection.drawing,
         TimelineSection.camera,
       ]);
+      final edges = timelineRowEdgesOf(rows, metrics);
+      expect(edges.total, metrics.layerRowHeight * 2);
       expect(
-        timelineDisplayRowsExtent(rows, metrics),
-        metrics.layerRowHeight * 2,
-      );
-      expect(
-        timelineSectionRunExtent(runs[1], rows, metrics),
+        timelineSectionRunExtent(runs[1], edges),
         metrics.layerRowHeight,
       );
     });

@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_row_address.dart';
 import '../../models/timeline_run_behavior.dart';
+import 'lane_graph.dart' show TimelineGraphSeat;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -207,12 +208,14 @@ class TimelineDisplayRow {
     this.layer, {
     required this.layerIndex,
     this.depth = 0,
-  }) : lane = null;
+  }) : lane = null,
+       graph = null;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
+    this.graph,
   }) : depth = 0;
 
   /// The owning layer. A FOLDER row is just a layer row whose layer is a
@@ -226,6 +229,19 @@ class TimelineDisplayRow {
   final int layerIndex;
 
   final PropertyLaneRow? lane;
+
+  /// The open HEADER GRAPH this lane is drawn in (I-89 ③), or null — a
+  /// lane of a group whose graph is shut, every header, every layer row.
+  final TimelineGraphSeat? graph;
+
+  /// This lane, seated in [seat] — the same row, drawn in its group's graph.
+  TimelineDisplayRow seatedIn(TimelineGraphSeat seat) =>
+      TimelineDisplayRow.lane(
+        layer,
+        lane!,
+        layerIndex: layerIndex,
+        graph: seat,
+      );
 
   // R10: a folder row carried its union runs and its members here, for a
   // private band painter that no longer exists. The union is the band

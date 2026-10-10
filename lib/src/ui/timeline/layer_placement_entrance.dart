@@ -4,6 +4,7 @@ import '../../models/layer.dart';
 import '../media/media_asset_drop_target.dart';
 import 'layer_drop_policy.dart' show layerRowsOf, nearestLayerGap;
 import 'property_lane_model.dart' show TimelineDisplayRow;
+import 'timeline_row_edges.dart';
 
 /// The layer area as a place entrance: a file from the pool let go between
 /// two rows becomes a new layer at that gap (유저 2026-09-11, 미디어 배치
@@ -20,7 +21,6 @@ class LayerPlacementEntrance extends StatelessWidget {
   const LayerPlacementEntrance({
     super.key,
     required this.rowAxis,
-    required this.pitch,
     required this.rows,
     required this.onDrop,
     this.onHover,
@@ -31,12 +31,11 @@ class LayerPlacementEntrance extends StatelessWidget {
   /// The axis the rows run along: down the rail, across the sheet.
   final Axis rowAxis;
 
-  /// Every row's extent along [rowAxis] — the rail is a uniform strip.
-  final double pitch;
-
-  /// The rows as drawn, read when the drag moves rather than when this
-  /// built: the gap is counted in what is on screen (F-31).
-  final List<TimelineDisplayRow> Function() rows;
+  /// The rows as drawn and where they sit along [rowAxis], read when the
+  /// drag moves rather than when this built: the gap is counted in what is
+  /// on screen (F-31).
+  final ({List<TimelineDisplayRow> rows, TimelineRowEdges edges}) Function()
+  rows;
 
   final void Function(List<Layer> displayLayers, int slot, String path)
   onDrop;
@@ -70,8 +69,8 @@ class LayerPlacementEntrance extends StatelessWidget {
   );
 
   /// This widget's box IS the strip, row 0 at its start — the window's
-  /// spacers are whole rows — so a local offset along [rowAxis] is the
-  /// strip position [nearestLayerGap] counts in.
+  /// spacers stand for whole rows — so a local offset along [rowAxis] is
+  /// the strip position [nearestLayerGap] counts in.
   ({List<Layer> layers, int slot}) _gapAt(
     BuildContext context,
     Offset globalPosition,
@@ -82,11 +81,11 @@ class LayerPlacementEntrance extends StatelessWidget {
         ? box.globalToLocal(globalPosition)
         : Offset.zero;
     return (
-      layers: [for (final row in layerRowsOf(drawn)) row.layer],
+      layers: [for (final row in layerRowsOf(drawn.rows)) row.layer],
       slot: nearestLayerGap(
-        drawn,
+        drawn.rows,
         rowAxis == Axis.vertical ? local.dy : local.dx,
-        pitch,
+        drawn.edges,
       ),
     );
   }

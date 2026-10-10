@@ -18,22 +18,14 @@
 /// was the DERIVED value (a row delta) while the RAW value (the pointer's
 /// position) stayed private to each surface. The gesture emits the raw
 /// offset now, and each surface resolves it with the same heights it uses
-/// to PAINT — so the answer can no longer disagree with what is on screen.
-library;
-
-/// Uniform-pitch resolve, for a surface whose rows are all one height.
+/// to PAINT — so the answer can no longer disagree with what is on screen:
+/// the timeline grids with their row edges (`timelineRowDeltaAt`), the
+/// storyboard rail with the table below.
 ///
-/// [crossOffset] is measured from the anchor row's TOP (negative above it),
-/// which is what the gesture's local cross-axis position already is.
-int uniformRowDeltaForCrossOffset({
-  required double crossOffset,
-  required double rowExtent,
-}) {
-  if (rowExtent <= 0) {
-    return 0;
-  }
-  return (crossOffset / rowExtent).floor();
-}
+/// ↩️The grids divided by one row height until a header graph (I-89 ③)
+/// stood taller than its lanes — the same unstated invariant, one surface
+/// later.
+library;
 
 /// Height-table resolve, for a surface whose rows differ.
 ///

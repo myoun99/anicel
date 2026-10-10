@@ -55,6 +55,7 @@ import 'rail_eyes.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
@@ -232,6 +233,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final ValueNotifier<int> _rowWindowBucket = ValueNotifier<int>(0);
 
   double _verticalScrollOffset = 0;
+
+  /// How far the rows' viewport reached in the pass that drew them — what
+  /// the scroll's crossing cuts the window against ([_drawnEdges]).
+  double _rowViewportExtent = 0;
 
   /// The host's record of the layer axis ([LayerTimelineGrid.layerAxisOffset])
   /// — read ONCE, as the frame axis's is.
@@ -428,6 +433,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         hooks: () => widget.hooks,
         metrics: () => _metrics,
         dragRows: () => _dragRows,
+        dragEdges: () => _dragEdges,
         rangeMove: _rangeMoveResolver,
         // D42: EVERY range drag (select or move) takes the A5 grip, and the
         // held row is PINNED in the row window while it does.
@@ -483,11 +489,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     ),
     rows: (
       controller: _verticalScrollController,
-      extent: _metrics.layerRowHeight,
-      at: indexOfDisplayRow(
-        _dragRows,
-        current: widget.hooks.currentRowHooks?.currentRow.value,
-        activeLayerId: widget.hooks.activeLayerId,
+      item: revealedRowOf(
+        _dragEdges,
+        indexOfDisplayRow(
+          _dragRows,
+          current: widget.hooks.currentRowHooks?.currentRow.value,
+          activeLayerId: widget.hooks.activeLayerId,
+        ),
+        _metrics.layerRowHeight,
       ),
     ),
   );
@@ -538,6 +547,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
 
+  /// Where [_dragRows] sit — read by what turns a pointer into a row
+  /// between builds (a drag, a placement, a reveal).
+  TimelineRowEdges _dragEdges = TimelineRowEdges.uniform(0, 0);
+
+  /// Where the rows the pass DREW sit — [_dragRows], and the silhouette a
+  /// file held over the layer area stands in its gap. What the window was
+  /// cut from, so the scroll's crossing reads it too.
+  TimelineRowEdges _drawnEdges = TimelineRowEdges.uniform(0, 0);
+
   /// The row, made draggable. The wrapper is built fresh every pass and the
   /// memoized row travels through it untouched — the drag state lives in a
   /// notifier the wrapper subscribes to, so a caret moving does not
@@ -570,7 +588,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// same run functions on full lists now. Runs tile contiguously from row
   /// zero ([timelineSectionRuns] assigns every row a section), so the
   /// Column needs no leading spacer.
-  Widget _sectionBandOverlay(List<TimelineDisplayRow> rows) {
+  Widget _sectionBandOverlay(
+    List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
+  ) {
     final runs = timelineSectionRuns(rows);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,7 +601,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             key: ValueKey<String>('section-bracket-${run.section.name}'),
             child: SectionBandZone(
               label: timelineSectionLabel(run.section),
-              extent: timelineSectionRunExtent(run, rows, _metrics),
+              extent: timelineSectionRunExtent(run, edges),
             ),
           ),
       ],
@@ -594,25 +615,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The rows this pass builds. See [_RowWindow].
   _RowWindow _rowWindowFor(
     List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
     double bodyViewportHeight,
     double effectiveVerticalScrollOffset,
   ) {
     final rowWindow = bodyViewportHeight <= 0
         ? TimelineVisibleRange(startIndex: 0, endIndexExclusive: rows.length)
-        : calculateVisibleIndexRange(
+        : edges.window(
             scrollOffset: effectiveVerticalScrollOffset,
             viewportExtent: bodyViewportHeight,
-            itemExtent: _metrics.layerRowHeight,
-            itemCount: rows.length,
           );
     final windowRows = rows.sublist(
       rowWindow.startIndex,
       rowWindow.endIndexExclusive,
     );
-    final leadingRowSpacerHeight =
-        rowWindow.startIndex * _metrics.layerRowHeight;
+    final leadingRowSpacerHeight = edges.startOf(rowWindow.startIndex);
     final trailingRowSpacerHeight =
-        (rows.length - rowWindow.endIndexExclusive) * _metrics.layerRowHeight;
+        edges.total - edges.startOf(rowWindow.endIndexExclusive);
     // A5: the row a drag is holding stays
     // built when the window slides past it —
     // otherwise its State (and the pan
@@ -635,6 +654,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return _RowWindow(
       range: rowWindow,
       rows: windowRows,
+      edges: edges,
       leadingSpacerHeight: leadingRowSpacerHeight,
       trailingSpacerHeight: trailingRowSpacerHeight,
       pinnedIndex: pinnedIndex,
@@ -659,13 +679,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ) {
     final rowWindow = window.range;
     final windowRows = window.rows;
+    final edges = window.edges;
     final leadingRowSpacerHeight = window.leadingSpacerHeight;
     final trailingRowSpacerHeight = window.trailingSpacerHeight;
     final pinnedIndex = window.pinnedIndex;
-    final pinnedBefore = window.pinnedBefore;
-    final pinnedAfter = window.pinnedAfter;
+    // A graph's lanes hold no cells, so nothing of theirs on this side has
+    // a gesture to keep alive — their graph is drawn whole by the window.
+    final pinsCells = pinnedIndex >= 0 && rows[pinnedIndex].graph == null;
+    final pinnedBefore = window.pinnedBefore && pinsCells;
+    final pinnedAfter = window.pinnedAfter && pinsCells;
     return TimelineFrameRowsScrollBody(
       rows: windowRows,
+      edges: edges,
+      firstRowIndex: rowWindow.startIndex,
       leadingLayerSpacerHeight: leadingRowSpacerHeight,
       trailingLayerSpacerHeight: trailingRowSpacerHeight,
       // A5/D42: the held row rides
@@ -674,13 +700,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // vertical auto-pan sliding
       // the window past it.
       pinnedLeadingRow: pinnedBefore ? rows[pinnedIndex] : null,
-      pinnedLeadingOffset: pinnedBefore
-          ? pinnedIndex * _metrics.layerRowHeight
-          : 0,
+      pinnedLeadingOffset: pinnedBefore ? edges.startOf(pinnedIndex) : 0,
       pinnedTrailingRow: pinnedAfter ? rows[pinnedIndex] : null,
       pinnedTrailingOffset: pinnedAfter
-          ? (pinnedIndex - rowWindow.endIndexExclusive) *
-                _metrics.layerRowHeight
+          ? edges.startOf(pinnedIndex) -
+                edges.startOf(rowWindow.endIndexExclusive)
           : 0,
       hooks: widget.hooks,
       frameStartIndex: 0,
@@ -699,11 +723,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The grid sheet under the cells (I-44): every row's ground, every
   /// frame line and every row seam, once. [rows] is the list the rows body
   /// draws from, so the two agree on which row is where.
-  Widget _buildGridSheet(List<TimelineDisplayRow> rows) {
+  Widget _buildGridSheet(
+    List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
+  ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('timeline-grid-sheet'),
       rows: rows,
-      rowExtent: _metrics.layerRowHeight,
+      edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
       activeLayerId: widget.hooks.activeLayerId,
       standing: widget.hooks.currentRowHooks?.currentRow,
@@ -718,6 +745,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// stack already sized the layer to.
   Widget _buildPlayhead(
     List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
     TimelineFrameRangeHooks? rangeHooks,
     double verticalContentHeight,
     double viewportWidth,
@@ -732,6 +760,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       laneRangeSelection: widget.hooks.laneRange?.selection,
       dragPreview: widget.hooks.dragPreview,
       rows: rows,
+      edges: edges,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
@@ -815,7 +844,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // one sheet under EVERY
                   // row — grounds, lines
                   // and seams.
-                  gridSheet: _buildGridSheet(rows),
+                  gridSheet: _buildGridSheet(rows, window.edges),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the
@@ -838,6 +867,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   playheadExtent: totalFrameContentWidth,
                   playhead: _buildPlayhead(
                     rows,
+                    window.edges,
                     rangeHooks,
                     verticalContentHeight,
                     viewportWidth,
@@ -863,10 +893,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // how many rows sit between two fx headers (their members may be
     // twirled open). Held for the wrappers built below in the same pass.
     _dragRows = rows;
+    _dragEdges = timelineRowEdgesOf(rows, _metrics);
     // ⚠️AFTER the line above, never before: a file held over the layer area
     // is DRAWN as a row in its gap, and the gap it stands in is counted on
     // the list that does not have it ([rowsWithSilhouette] says why).
     final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
+    final drawnEdges = identical(drawnRows, rows)
+        ? _dragEdges
+        : timelineRowEdgesOf(drawnRows, _metrics);
+    _drawnEdges = drawnEdges;
     final rangeHooks = widget.hooks.rangeHooks;
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
@@ -951,8 +986,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           .clamp(0.0, double.infinity)
                                           .toDouble()
                                     : viewportHeight;
-                                // Rows are no longer uniformly tall: collapsed sections
-                                // fold to a slim strip.
+                                _rowViewportExtent = bodyViewportHeight;
+                                // The rows reach where their edges end — an
+                                // open graph's room included (I-89 ③).
                                 //
                                 // ⛔D43-2 (유저 확정, 2026-08-21): the viewport is NOT
                                 // a floor on this, and a version of this file that made
@@ -976,10 +1012,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                   // a gap makes the content one row taller,
                                   // and a scroll extent that forgot it would
                                   // clip the row it pushed down.
-                                  timelineDisplayRowsExtent(
-                                    drawnRows,
-                                    _metrics,
-                                  ),
+                                  drawnEdges.total,
                                   _metrics.layerRowHeight,
                                 );
                                 // Layer-axis window: only the rows in view (plus
@@ -1014,6 +1047,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 // among them) point into it.
                                 final window = _rowWindowFor(
                                   drawnRows,
+                                  drawnEdges,
                                   bodyViewportHeight,
                                   effectiveVerticalScrollOffset,
                                 );
@@ -1523,6 +1557,7 @@ class _RowWindow {
   const _RowWindow({
     required this.range,
     required this.rows,
+    required this.edges,
     required this.leadingSpacerHeight,
     required this.trailingSpacerHeight,
     required this.pinnedIndex,
@@ -1534,6 +1569,10 @@ class _RowWindow {
 
   /// The slice of the grid's rows [range] selects.
   final List<TimelineDisplayRow> rows;
+
+  /// Where ALL the grid's rows sit — [range] indexes it, as it indexes the
+  /// list [rows] was cut from.
+  final TimelineRowEdges edges;
 
   final double leadingSpacerHeight;
   final double trailingSpacerHeight;

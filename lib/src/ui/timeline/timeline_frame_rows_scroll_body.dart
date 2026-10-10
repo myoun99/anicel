@@ -11,6 +11,8 @@ import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_graph.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
 import '../listenable_rebind.dart';
@@ -19,6 +21,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
     required this.rows,
+    required this.edges,
+    this.firstRowIndex = 0,
     required this.hooks,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -56,6 +60,12 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
   /// preserve the scroll geometry of the rows sliced away.
   final List<TimelineDisplayRow> rows;
+
+  /// Where the FULL row list sits along the layer axis — [rows] begins at
+  /// its row [firstRowIndex].
+  final TimelineRowEdges edges;
+
+  final int firstRowIndex;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -240,6 +250,17 @@ class _TimelineFrameRowsScrollBodyState
         )
       : keptTimelineCellsRow(_rowMemo, row, _cellsRowGrid);
 
+  /// The window's rows as this body lays them ([timelineFrameSide]). The
+  /// window holds a graph's lanes whole ([TimelineRowEdges.window]).
+  List<Widget> _windowRows() => timelineFrameSide(
+    widget.rows,
+    edges: widget.edges,
+    first: widget.firstRowIndex,
+    frameExtent: widget.totalFrameContentWidth,
+    keyPrefix: 'timeline',
+    cells: _buildRow,
+  );
+
   @override
   Widget build(BuildContext context) {
     // Republish BEFORE the rows read it: the painted rows' render objects
@@ -248,7 +269,12 @@ class _TimelineFrameRowsScrollBodyState
     _windowedGeometry.value = _windowedGeometryFromWidget();
     final pinnedLeading = widget.pinnedLeadingRow;
     final pinnedTrailing = widget.pinnedTrailingRow;
-    final rowHeight = widget.metrics.layerRowHeight;
+    final leadingPinExtent = pinnedLeading == null
+        ? 0.0
+        : timelineDisplayRowExtent(pinnedLeading, widget.metrics);
+    final trailingPinExtent = pinnedTrailing == null
+        ? 0.0
+        : timelineDisplayRowExtent(pinnedTrailing, widget.metrics);
     final children = <Widget>[
       // A5/D42: a pinned (held) row is carved out of its spacer — the
       // total extent is unchanged, so the scroll geometry never notices.
@@ -258,33 +284,33 @@ class _TimelineFrameRowsScrollBodyState
         _buildRow(pinnedLeading),
         if (widget.leadingLayerSpacerHeight -
                 widget.pinnedLeadingOffset -
-                rowHeight >
+                leadingPinExtent >
             0)
           SizedBox(
             height:
                 widget.leadingLayerSpacerHeight -
                 widget.pinnedLeadingOffset -
-                rowHeight,
+                leadingPinExtent,
           ),
       ] else if (widget.leadingLayerSpacerHeight > 0)
         SizedBox(
           key: const ValueKey<String>('timeline-leading-layer-spacer'),
           height: widget.leadingLayerSpacerHeight,
         ),
-      for (final row in widget.rows) _buildRow(row),
+      ..._windowRows(),
       if (pinnedTrailing != null) ...[
         if (widget.pinnedTrailingOffset > 0)
           SizedBox(height: widget.pinnedTrailingOffset),
         _buildRow(pinnedTrailing),
         if (widget.trailingLayerSpacerHeight -
                 widget.pinnedTrailingOffset -
-                rowHeight >
+                trailingPinExtent >
             0)
           SizedBox(
             height:
                 widget.trailingLayerSpacerHeight -
                 widget.pinnedTrailingOffset -
-                rowHeight,
+                trailingPinExtent,
           ),
       ] else if (widget.trailingLayerSpacerHeight > 0)
         SizedBox(

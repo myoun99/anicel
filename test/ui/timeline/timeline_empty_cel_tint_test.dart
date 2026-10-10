@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -470,6 +471,10 @@ void main() {
             height: 200,
             child: TimelineFrameRowsScrollBody(
               rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
+              edges: TimelineRowEdges.uniform(
+                1,
+                TimelineGridMetrics.defaults.layerRowHeight,
+              ),
               hooks: TimelineGridHooks(
                 activeLayerId: null,
                 frameCursor: ValueNotifier<int>(0),

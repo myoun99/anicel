@@ -1,4 +1,5 @@
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +19,18 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const viewport = 200.0;
   const content = 2000.0;
+
+  /// The ROW axis on [controller], standing on row [at] of rows [extent]
+  /// apart — more of them than the strip is long, so the strip's own end
+  /// is what a walk past it meets.
+  RevealedRow rowsAt(
+    ScrollController controller, {
+    required double extent,
+    required int at,
+  }) => (
+    controller: controller,
+    item: revealedRowOf(TimelineRowEdges.uniform(200, extent), at, extent),
+  );
 
   Future<Map<Axis, ScrollController>> pumpScrollables(
     WidgetTester tester,
@@ -64,7 +77,7 @@ void main() {
     final controllers = await pumpScrollables(tester);
     revealSelectionOnBothAxes(
       frames: (controller: controllers[Axis.horizontal]!, extent: 24, at: 40),
-      rows: (controller: controllers[Axis.vertical]!, extent: 24, at: 40),
+      rows: rowsAt(controllers[Axis.vertical]!, extent: 24, at: 40),
     );
     await tester.pump();
 
@@ -81,7 +94,7 @@ void main() {
     final controllers = await pumpScrollables(tester);
     revealSelectionOnBothAxes(
       frames: (controller: controllers[Axis.vertical]!, extent: 24, at: 40),
-      rows: (controller: controllers[Axis.horizontal]!, extent: 24, at: 40),
+      rows: rowsAt(controllers[Axis.horizontal]!, extent: 24, at: 40),
     );
     await tester.pump();
 
@@ -100,7 +113,7 @@ void main() {
     // Step 100 of 24px is 2400px in: past the 2000px built.
     revealSelectionOnBothAxes(
       frames: (controller: frames, extent: 24, at: 100),
-      rows: (controller: rows, extent: 24, at: 100),
+      rows: rowsAt(rows, extent: 24, at: 100),
     );
 
     // Read at once: a strip with no cells to grow springs back afterwards —
@@ -134,7 +147,7 @@ void main() {
     revealSelectionOnBothAxes(
       // -1 is what indexOfDisplayRow answers for "not drawn".
       frames: (controller: controllers[Axis.horizontal]!, extent: 24, at: -1),
-      rows: (controller: controllers[Axis.vertical]!, extent: 24, at: 40),
+      rows: rowsAt(controllers[Axis.vertical]!, extent: 24, at: 40),
     );
     await tester.pump();
 
@@ -148,7 +161,7 @@ void main() {
     final controllers = await pumpScrollables(tester);
     revealSelectionOnBothAxes(
       frames: (controller: controllers[Axis.horizontal]!, extent: 0, at: 40),
-      rows: (controller: controllers[Axis.vertical]!, extent: 0, at: 40),
+      rows: rowsAt(controllers[Axis.vertical]!, extent: 0, at: 40),
     );
     await tester.pump();
 
@@ -162,7 +175,7 @@ void main() {
     final controllers = await pumpScrollables(tester);
     revealSelectionOnBothAxes(
       frames: (controller: controllers[Axis.horizontal]!, extent: 24, at: 2),
-      rows: (controller: controllers[Axis.vertical]!, extent: 24, at: 2),
+      rows: rowsAt(controllers[Axis.vertical]!, extent: 24, at: 2),
     );
     await tester.pump();
 

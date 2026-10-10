@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// 🚨★★★**A WAVEFORM THAT LANDS AFTER ITS ROW WAS BUILT IS DRAWN** (유저
@@ -50,6 +51,10 @@ void main() {
             layers: [layer],
             expandedLayerIds: const {},
             lanesForLayer: (_) => const [],
+          ),
+          edges: TimelineRowEdges.uniform(
+            1,
+            TimelineGridMetrics.defaults.layerRowHeight,
           ),
           hooks: TimelineGridHooks(
             activeLayerId: null,

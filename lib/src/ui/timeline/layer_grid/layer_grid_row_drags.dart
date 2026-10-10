@@ -24,6 +24,7 @@ class _LayerGridRowDrags {
     row: row,
     dragRows: () => _state._dragRows,
     rowExtent: _state._metrics.layerRowHeight,
+    dragEdges: () => _state._dragEdges,
     axis: Axis.horizontal,
     hooks: _state.widget.hooks.rowDragHooks,
     onRowSelectionSpan: _state.widget.hooks.onRowSelectionSpan,

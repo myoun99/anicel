@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -86,6 +87,7 @@ void main() {
             row: rowFor(lane),
             dragRows: () => rows,
             rowExtent: 28,
+            dragEdges: () => TimelineRowEdges.uniform(rows.length, 28),
             axis: axis,
             hooks: hooks,
             onRowSelectionSpan: (_, _) {},

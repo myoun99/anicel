@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import 'timeline_row_edges.dart';
 
 /// How far a drag at [pos] has pushed past either end of a [extent]-long
 /// axis, once it enters the [edge]-wide band at either end: negative near
@@ -342,6 +343,19 @@ void edgeAutoPanOvershoot(ScrollController controller, double delta) {
 /// [indexOfDisplayRow] and every other row walk already gives.
 typedef RevealedStep = ({ScrollController controller, double extent, int at});
 
+/// The ROW axis of a grid's reveal: the scrollable that runs it, and the row
+/// the selection stands on — null when it is not drawn — at its own place
+/// along the rail (I-89 ③: the rows are not all one height, so a row is no
+/// longer step `at` of one [RevealedStep.extent]).
+typedef RevealedRow = ({ScrollController controller, RevealedItem? item});
+
+/// Row [at] of [edges] as a reveal brings it into view, with [margin] of
+/// neighbour kept in sight around it — null for a row that is not drawn.
+RevealedItem? revealedRowOf(TimelineRowEdges edges, int at, double margin) =>
+    at < 0 || at >= edges.count
+    ? null
+    : (start: edges.startOf(at), extent: edges.extentOf(at), margin: margin);
+
 /// Brings the SELECTION back into view on BOTH of a grid's axes (R5, user
 /// 2026-08-09): the frame under the cursor along the frame axis, the row it
 /// stands on along the rail.
@@ -352,28 +366,25 @@ typedef RevealedStep = ({ScrollController controller, double extent, int at});
 /// 🚨ONE function for both grids. The timeline runs the frames across and
 /// the rows down, the X-sheet runs the frames down and the columns across,
 /// and each spelled the whole thing (the audit's clone scan, round 8). An
-/// axis is a [RevealedStep] here, so neither grid states an orientation at
-/// all — it hands its two scrollables in whichever order it holds them.
+/// axis is a [RevealedStep] or a [RevealedRow] here, so neither grid states
+/// an orientation at all — it hands its two scrollables in whichever order
+/// it holds them.
 ///
-/// An axis with no clients, a non-positive extent or a negative
-/// [RevealedStep.at] is left where it is; the other still moves.
+/// An axis with no clients, a non-positive extent or a selection it does
+/// not draw is left where it is; the other still moves.
 ///
 /// The two are NAMED for what they are because they no longer move alike:
 /// the [frames] reach past the built end (F-225), the [rows] do not.
 void revealSelectionOnBothAxes({
   required RevealedStep frames,
-  required RevealedStep rows,
+  required RevealedRow rows,
 }) {
   if (_axisCanMove(frames)) {
     jumpToReveal(frames.controller, _itemOf(frames));
   }
-  if (_axisCanMove(rows)) {
-    _jumpUsing(
-      rows.controller,
-      _itemOf(rows),
-      revealScrollOffset,
-      endless: false,
-    );
+  final row = rows.item;
+  if (row != null && row.extent > 0 && rows.controller.hasClients) {
+    _jumpUsing(rows.controller, row, revealScrollOffset, endless: false);
   }
 }
 

@@ -37,6 +37,7 @@ import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_drag_preview.dart'
     show MediaPlacementPreview, TimelineDragPreview;
+import 'timeline_row_edges.dart';
 import 'timeline_section_policy.dart';
 
 /// A legal landing: the cut's new stack order, and the rows whose folder
@@ -1165,7 +1166,7 @@ List<TimelineDisplayRow> rowsWithSilhouette(
 int nearestLayerGap(
   List<TimelineDisplayRow> rows,
   double along,
-  double pitch,
+  TimelineRowEdges edges,
 ) {
   // ⚠️[displayIndexForGap] walks the rows again per slot, so this is n² in
   // the rows ON SCREEN — a windowed rail, tens of them. Paid on purpose:
@@ -1175,7 +1176,7 @@ int nearestLayerGap(
   var nearest = 0;
   var nearestDistance = double.infinity;
   for (var slot = 0; slot <= slots; slot += 1) {
-    final edge = displayIndexForGap(rows, slot) * pitch;
+    final edge = edges.startOf(displayIndexForGap(rows, slot));
     final distance = (along - edge).abs();
     if (distance < nearestDistance) {
       nearest = slot;

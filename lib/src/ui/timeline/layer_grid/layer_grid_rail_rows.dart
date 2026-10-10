@@ -40,22 +40,19 @@ class _LayerGridRailRows {
   /// the code's own rule said only rows with NO control in a column are
   /// skipped. 유저 2026-08-29: 「버튼이면 다 가능하도록」.
   ///
-  /// ⚠️The uniform division holds for lane rows too — measured, both are
-  /// 28.0 tall and meet with no gap. That is what makes this rail the
-  /// UNIFORM strip, so the walk is [uniformRailRowsIn]'s and all that is
-  /// left here is what a row at an index is.
+  /// The walk is [railRowsAlong]'s, over the edges the window was cut from;
+  /// all that is left here is what a row at an index is.
   List<RailSwipeRow<TimelineDisplayRow>> _railRowsIn(
     double fromY,
     double toY,
-    List<TimelineDisplayRow> windowRows,
-    double leadingSpacerHeight,
-  ) => uniformRailRowsIn<TimelineDisplayRow>(
+    List<TimelineDisplayRow> rows,
+    _RowWindow window,
+  ) => railRowsAlong<TimelineDisplayRow>(
     from: fromY,
     to: toY,
-    origin: leadingSpacerHeight,
-    pitch: _state._metrics.layerRowHeight,
-    count: windowRows.length,
-    rowAt: (index) => _railSwipeRow(windowRows[index]),
+    edges: window.edges,
+    built: window.range,
+    rowAt: (index) => _railSwipeRow(rows[index]),
   );
 
   /// A row as the shared swipe wants it. The identity is what the sweep
@@ -254,6 +251,7 @@ class _LayerGridRailRows {
   ) {
     final rowWindow = window.range;
     final windowRows = window.rows;
+    final edges = window.edges;
     final leadingRowSpacerHeight = window.leadingSpacerHeight;
     final trailingRowSpacerHeight = window.trailingSpacerHeight;
     final pinnedIndex = window.pinnedIndex;
@@ -277,12 +275,7 @@ class _LayerGridRailRows {
           child: RailColumnSwipe<TimelineDisplayRow>(
             axis: Axis.vertical,
             columns: swipeColumns,
-            rowsIn: (fromY, toY) => _railRowsIn(
-              fromY,
-              toY,
-              windowRows,
-              leadingRowSpacerHeight,
-            ),
+            rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window),
             // The eyes ride past the row memo — see [RailEyes] for the
             // 3,051 elements a solo used to rebuild.
             child: RailEyes.forLayers(
@@ -315,44 +308,51 @@ class _LayerGridRailRows {
                       // extent is
                       // unchanged.
                       if (pinnedBefore) ...[
-                        if (pinnedIndex > 0)
-                          SizedBox(
-                            height:
-                                pinnedIndex * _state._metrics.layerRowHeight,
-                          ),
+                        if (edges.startOf(pinnedIndex) > 0)
+                          SizedBox(height: edges.startOf(pinnedIndex)),
                         KeyedSubtree(
                           key: _railRowKey(rows[pinnedIndex]),
                           child: _railRowMemoized(rows[pinnedIndex]),
                         ),
-                        if (rowWindow.startIndex - pinnedIndex - 1 > 0)
+                        if (leadingRowSpacerHeight - edges.endOf(pinnedIndex) >
+                            0)
                           SizedBox(
                             height:
-                                (rowWindow.startIndex - pinnedIndex - 1) *
-                                _state._metrics.layerRowHeight,
+                                leadingRowSpacerHeight -
+                                edges.endOf(pinnedIndex),
                           ),
                       ] else if (leadingRowSpacerHeight > 0)
                         SizedBox(height: leadingRowSpacerHeight),
-                      for (final row in windowRows)
+                      for (
+                        var index = rowWindow.startIndex;
+                        index < rowWindow.endIndexExclusive;
+                        index += 1
+                      ) ...[
                         KeyedSubtree(
-                          key: _railRowKey(row),
-                          child: _railRowMemoized(row),
+                          key: _railRowKey(rows[index]),
+                          child: _railRowMemoized(rows[index]),
                         ),
+                        // An open graph's room, after its last lane: no
+                        // row, so nothing of a row's is built in it.
+                        if (edges.roomOf(index) > 0)
+                          SizedBox(height: edges.roomOf(index)),
+                      ],
                       if (pinnedAfter) ...[
-                        if (pinnedIndex - rowWindow.endIndexExclusive > 0)
+                        if (edges.startOf(pinnedIndex) -
+                                edges.startOf(rowWindow.endIndexExclusive) >
+                            0)
                           SizedBox(
                             height:
-                                (pinnedIndex - rowWindow.endIndexExclusive) *
-                                _state._metrics.layerRowHeight,
+                                edges.startOf(pinnedIndex) -
+                                edges.startOf(rowWindow.endIndexExclusive),
                           ),
                         KeyedSubtree(
                           key: _railRowKey(rows[pinnedIndex]),
                           child: _railRowMemoized(rows[pinnedIndex]),
                         ),
-                        if (rows.length - pinnedIndex - 1 > 0)
+                        if (edges.total - edges.endOf(pinnedIndex) > 0)
                           SizedBox(
-                            height:
-                                (rows.length - pinnedIndex - 1) *
-                                _state._metrics.layerRowHeight,
+                            height: edges.total - edges.endOf(pinnedIndex),
                           ),
                       ] else if (trailingRowSpacerHeight > 0)
                         SizedBox(height: trailingRowSpacerHeight),
@@ -382,7 +382,7 @@ class _LayerGridRailRows {
                   Positioned(
                     left: 0,
                     top: 0,
-                    child: _state._sectionBandOverlay(rows),
+                    child: _state._sectionBandOverlay(rows, edges),
                   ),
                   // T1's one band
                   // per contiguous
@@ -411,8 +411,8 @@ class _LayerGridRailRows {
                             row.address,
                           ),
                       ],
-                      rowExtent: _state._metrics.layerRowHeight,
-                      leadingSpacer: leadingRowSpacerHeight,
+                      edges: edges,
+                      firstRow: rowWindow.startIndex,
                       crossExtent:
                           _state._metrics.layerControlsWidth -
                           layerSectionLabelSlotWidth,
@@ -429,8 +429,10 @@ class _LayerGridRailRows {
                           'timeline-layer-placement-entrance',
                         ),
                         rowAxis: Axis.vertical,
-                        pitch: _state._metrics.layerRowHeight,
-                        rows: () => _state._dragRows,
+                        rows: () => (
+                          rows: _state._dragRows,
+                          edges: _state._dragEdges,
+                        ),
                         onHover:
                             _state.widget.hooks.rowDragHooks?.onPlacementHover,
                         onLeave:

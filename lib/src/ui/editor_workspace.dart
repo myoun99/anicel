@@ -139,6 +139,7 @@ import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
 import 'timeline/timeline_frame_cursor_layer.dart' show TimelineCursorLayer;
+import 'timeline/timeline_row_edges.dart' show TimelineRowEdges;
 import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline/timeline_layer_controls_row.dart'

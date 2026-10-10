@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
-import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 
@@ -49,31 +49,32 @@ bool currentRowIsLane(TimelineRowAddress? row, LayerId layerId, String laneId) {
 /// wear the SAME wash, deliberately — which of them you are actually on is
 /// already visible on the frame side, and a second strength here would be
 /// one more thing to learn for something already answered.
-///
-/// The membership test is the lane-id grammar, which is why it can live in
-/// a widget: an effect's members carry its id (`fx:<effectId>:<param>`
-/// under `fx-group:<effectId>`), and the transform group's members are the
-/// named transform lanes. An SE audio lane belongs to neither, and answers
-/// false to both.
 bool currentRowIsInsideGroup(
   TimelineRowAddress? row,
   LayerId layerId,
   String headerLaneId,
-) {
-  if (row is! LaneRowAddress ||
-      row.layerId != layerId ||
-      row.laneId == headerLaneId) {
-    return false;
+) =>
+    row is LaneRowAddress &&
+    row.layerId == layerId &&
+    laneGroupOf(row.laneId) == headerLaneId;
+
+/// The header lane of the group [laneId] is a MEMBER of, or null — for a
+/// header itself, and for a lane in no group (an SE audio lane).
+///
+/// The membership is the lane-id grammar, which is why it can live in a
+/// widget: an effect's members carry its id (`fx:<effectId>:<param>` under
+/// `fx-group:<effectId>`), and the transform group's members are the named
+/// transform lanes — the camera row's included, the row being that group's
+/// header (㉙). The light a header wears while you stand inside it and the
+/// graph a header opens over its lanes (I-89 ③) ask it alike.
+String? laneGroupOf(String laneId) {
+  final effect = parseEffectLaneId(laneId);
+  if (effect != null) {
+    return effect.parameterId == null
+        ? null
+        : effectGroupLaneId(effect.effectId);
   }
-  final header = parseEffectLaneId(headerLaneId);
-  if (header != null) {
-    final member = parseEffectLaneId(row.laneId);
-    return member != null &&
-        member.parameterId != null &&
-        member.effectId == header.effectId;
-  }
-  if (headerLaneId != transformGroupHeaderLane.laneId) {
-    return false;
-  }
-  return transformLaneDisplayOrder.contains(row.laneId);
+  return transformLaneDisplayOrder.contains(laneId)
+      ? transformGroupHeaderLane.laneId
+      : null;
 }

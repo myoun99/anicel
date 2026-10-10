@@ -75,6 +75,7 @@ import 'timeline/property_lane_model.dart'
         laneAsPreviewed,
         laneGroupKey;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
+import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
