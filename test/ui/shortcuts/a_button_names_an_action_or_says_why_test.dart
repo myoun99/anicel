@@ -57,13 +57,6 @@ const ledger = <String, Why>{
   "brush/tool_settings_panel.dart | 'selection-close-polygon-button'":
       Why.owed,
   "brush/tool_settings_panel.dart | 'selection-invert-button'": Why.owed,
-  // The panels' own pills.
-  'brush/sheet_canvas_panel.dart | '
-          "'\${brush.keyPrefix}-brush-toggle-button'":
-      Why.owed,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'": Why.owed,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
-      Why.owed,
 
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
@@ -170,6 +163,17 @@ const ledger = <String, Why>{
   // 「둘 다 주지 않는다」.
   "editor_workspace.dart | 'rail-group-\$railId'": Why.declined,
   "menu/editor_top_strip.dart | 'top-strip-floor-\${tab.tabId}'":
+      Why.declined,
+  // 🗣️I-40-Q7 (유저 2026-10-10, the sheets' own pills — the 붓 that lets a
+  // sheet take ink, on the timesheet, the conte and the cut envelope alike,
+  // and the page turns of the first two: one button per panel, so which
+  // panel's would a key press?): 「주지 않는다」.
+  'brush/sheet_canvas_panel.dart | '
+          "'\${brush.keyPrefix}-brush-toggle-button'":
+      Why.declined,
+  "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'":
+      Why.declined,
+  "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
       Why.declined,
 };
 
