@@ -49,15 +49,9 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
         return;
       }
       final rows = dragRows();
-      // R9 #25: the gesture hands raw pixels, resolved where the grid
-      // paints its rows. ↩️In one row height until a graph (I-89 ③) stood
-      // taller than its lanes.
-      final headRowDelta = timelineRowDeltaAt(
-        rows,
-        dragEdges(),
-        row,
-        headCrossOffset,
-      );
+      // R9 #25: raw pixels in, resolved where the grid paints its rows.
+      final headRowDelta =
+          timelineRowDeltaAt(rows, dragEdges(), row, headCrossOffset);
       final head = headRowDelta == 0
           ? null
           : resolveSelectionSpanHead(

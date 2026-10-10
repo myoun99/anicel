@@ -140,11 +140,9 @@ class _XSheetGridColumns {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: timelineFrameSide(
-        entries,
-        edges: edges,
+        (rows: entries, first: 0, edges: edges),
+        grid,
         frameExtent: plan.totalFrameContentWidth,
-        keyPrefix: 'xsheet',
-        axis: Axis.vertical,
         cells: (entry) => _gatedColumn(entry, plan, grid),
       ),
     );

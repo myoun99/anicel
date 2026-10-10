@@ -253,11 +253,9 @@ class _TimelineFrameRowsScrollBodyState
   /// The window's rows as this body lays them ([timelineFrameSide]). The
   /// window holds a graph's lanes whole ([TimelineRowEdges.window]).
   List<Widget> _windowRows() => timelineFrameSide(
-    widget.rows,
-    edges: widget.edges,
-    first: widget.firstRowIndex,
+    (rows: widget.rows, first: widget.firstRowIndex, edges: widget.edges),
+    _cellsRowGrid,
     frameExtent: widget.totalFrameContentWidth,
-    keyPrefix: 'timeline',
     cells: _buildRow,
   );
 

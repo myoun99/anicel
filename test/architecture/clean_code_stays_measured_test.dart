@@ -313,7 +313,17 @@ void main() {
   /// middle and its size), whether it stands on the sheet, its colour label
   /// and the selection's ring. 🔬The lane's scan against its base
   /// (`3fa5a239b`, at 388) named that one added and nothing gone.
-  const wideSignatures = 389;
+  ///
+  /// ⚠️389 → 388 on 2026-10-11, following them down (I-89 ③ — rows sit
+  /// where one table of edges says): the grid's virtualization adapter
+  /// (`calculateLayerTimelineGridVirtualizationPlan`, eleven) went, nothing
+  /// calling it, and `uniformRailRowsIn` (six) is `railRowsAlong` (five),
+  /// the rail's walk over the edges — the one name the scan sees added.
+  /// The frame side takes its rows as laid (`TimelineLaidRows`) and the grid
+  /// its cells read, and the playhead reads its range hooks where it reads
+  /// every other hook. 🔬The lane's scan against its base (`fceb34c9e`, at
+  /// 389) named those three.
+  const wideSignatures = 388;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

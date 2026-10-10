@@ -741,19 +741,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// selection band, drawn once above every row.
   ///
   /// The third of `TimelineFrameGridStack`'s slots. It reads the rows for
-  /// their count and the hooks for the band; the two extents are what the
-  /// stack already sized the layer to.
+  /// where they sit and the hooks for the bands; the two extents are what
+  /// the stack already sized the layer to.
   Widget _buildPlayhead(
     List<TimelineDisplayRow> rows,
     TimelineRowEdges edges,
-    TimelineFrameRangeHooks? rangeHooks,
     double verticalContentHeight,
     double viewportWidth,
   ) {
     return TimelineCursorLayer(
       currentRow: widget.hooks.currentRowHooks?.currentRow,
       frameCursor: widget.hooks.frameCursor,
-      frameRangeSelection: rangeHooks?.selection,
+      frameRangeSelection: widget.hooks.rangeHooks?.selection,
       // R27 #14: the lane
       // span draws the SAME
       // band here.
@@ -777,13 +776,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ///
   /// The fourth slot of `TimelineLayerFrameBodyLayout`. It is composition:
   /// it sizes the area, then hands the rows body, the grid sheet and the
-  /// playhead to `TimelineFrameGridStack`. ⚠️Six parameters, and every
+  /// playhead to `TimelineFrameGridStack`. ⚠️Five parameters, and every
   /// one is passed straight through to a slot below — this method owns
   /// no logic of its own, which is why it may carry that many.
   Widget _buildFrameGridArea(
     List<TimelineDisplayRow> rows,
     _RowWindow window,
-    TimelineFrameRangeHooks? rangeHooks,
     TimelineRangeGestureCallbacks? rangeGesture,
     TimelineLaneRangeCallbacks? laneRange,
     double verticalContentHeight,
@@ -868,7 +866,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   playhead: _buildPlayhead(
                     rows,
                     window.edges,
-                    rangeHooks,
                     verticalContentHeight,
                     viewportWidth,
                   ),
@@ -902,7 +899,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         ? _dragEdges
         : timelineRowEdgesOf(drawnRows, _metrics);
     _drawnEdges = drawnEdges;
-    final rangeHooks = widget.hooks.rangeHooks;
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
@@ -1416,7 +1412,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                       _buildFrameGridArea(
                                                         drawnRows,
                                                         window,
-                                                        rangeHooks,
                                                         rangeGesture,
                                                         laneRange,
                                                         verticalContentHeight,

@@ -126,6 +126,10 @@ TimelineRowEdges timelineRowEdgesOf(
 /// stands over, where [edges] put [rows] ([TimelineRowEdges.rowFrom]) — 0
 /// while [anchor] is not drawn. What every drag that spans rows reads: a
 /// rail row's select, a cells span, a key span.
+///
+/// R9 #25: the gestures hand raw pixels and the grid resolves them where
+/// it paints its rows. ↩️In one row height until a graph (I-89 ③) stood
+/// taller than its lanes.
 int timelineRowDeltaAt(
   List<TimelineDisplayRow> rows,
   TimelineRowEdges edges,
