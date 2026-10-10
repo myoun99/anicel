@@ -57,10 +57,11 @@ class _CanvasPanelLift {
     ], key: cel.key);
   }
 
-  /// The cels a FOLDER's lift holds, for the composite (I-37): each one
-  /// this canvas does not draw itself, as its holed surface with its float
-  /// over it ([LiftedCel]). Empty for a cel's own lift — the canvas draws
-  /// that one, as the live row.
+  /// The cels a lift holds for the composite — a folder's rows (I-37), a
+  /// frame range's across rows (F-329): each one this canvas does not draw
+  /// itself, as its holed surface with its float over it ([LiftedCel]).
+  /// Empty for a cel's own lift — the canvas draws that one, as the live
+  /// row.
   Map<BrushFrameKey, LiftedCel> get liftedRows {
     final session = _session;
     if (session == null) {
@@ -508,8 +509,9 @@ class _LiftedCel {
   final LayerPlacement? placement;
 
   /// The composite slot its float shows in when this canvas does not draw
-  /// the cel itself — a folder's rows (I-37, [_CanvasPanelLift.liftedRows]).
-  /// Null for the cel the canvas edits: its float shows in the live row's.
+  /// the cel itself — a folder's rows, a range's (I-37 · F-329,
+  /// [_CanvasPanelLift.liftedRows]). Null for the cel the canvas edits: its
+  /// float shows in the live row's.
   final SelectionFloatOverlay? ownSlot;
 
   /// Null after a memory warning took it — never a lost edit, only a lost

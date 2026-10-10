@@ -166,7 +166,8 @@ class SelectionFloatPaint implements LandingPreview {
 /// composite that draws it. Null value = nothing floating.
 typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 
-/// A cel a FOLDER's move session holds lifted (I-37): [surface] — the cel
+/// A cel a move session holds lifted beside the live one — a folder's rows
+/// (I-37), a frame range's across rows (F-329): [surface] — the cel
 /// with the hole the lift cut — with [float] over it, drawn in its own row's
 /// slot, with its own row's opacity, blend and effects.
 ///

@@ -1058,9 +1058,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
-  /// The painter each row a folder's lift holds is drawn by, by its cel —
-  /// kept while its surface and its row's keys stay what they were: a new
-  /// painter is a new set of tile pictures, and a drag step changes neither.
+  /// The painter each row a lift holds beside the live one is drawn by, by
+  /// its cel — kept while its surface and its row's keys stay what they
+  /// were: a new painter is a new set of tile pictures, and a drag step
+  /// changes neither.
   final Map<
     BrushFrameKey,
     ({BitmapSurface surface, List<double> keys, BitmapSurfacePainter painter})
@@ -1115,9 +1116,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   _PaintRow? _paintRowFor(CanvasStackRow row) {
     switch (row) {
-      // A row a folder's lift holds draws its lifted surface — whether or
-      // not its image is held: that is the cel as it stands, and the lift
-      // is what shows while the box is open (I-37).
+      // A row a lift holds beside the live one draws its lifted surface —
+      // whether or not its image is held: that is the cel as it stands, and
+      // the lift is what shows while the box is open (I-37 · F-329).
       case final CanvasLayerImageRequest request
           when widget.liftedRows.containsKey(request.frameKey):
         return _PaintLiftedSurface(
@@ -1577,7 +1578,7 @@ final class _PaintImage extends _PaintRow {
   );
 }
 
-/// A row drawn as a SURFACE — the live one, or one a folder's lift holds —
+/// A row drawn as a SURFACE — the live one, or one a lift holds beside it —
 /// and what its layer composites with, for the one body that draws both
 /// ([_LayerStackPaintPass._paintSurfaceRow]).
 sealed class _SurfaceRow extends _PaintRow {

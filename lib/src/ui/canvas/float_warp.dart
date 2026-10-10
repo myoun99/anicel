@@ -61,9 +61,10 @@ class FloatWarp {
 
   /// The rect the box stands on: what the session floats, all of it — the
   /// one float's own rect when a cel is lifted, the rect holding every
-  /// float when a folder's rows are (I-37, [stampRectHolding]). The quad's
-  /// corners and the mesh's grid are laid over it, so every float rides
-  /// the one mapping of the canvas ([carry]). Null outside a move session.
+  /// float when many rows are — a folder's, a range's (I-37 · F-329,
+  /// [stampRectHolding]). The quad's corners and the mesh's grid are laid
+  /// over it, so every float rides the one mapping of the canvas ([carry]).
+  /// Null outside a move session.
   final StampRect? base;
 
   /// The float THIS warp resamples — one of those [base] holds — or null

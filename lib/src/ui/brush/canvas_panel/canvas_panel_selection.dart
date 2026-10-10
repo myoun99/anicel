@@ -171,8 +171,9 @@ class _CanvasPanelSelection {
   /// so there is no `saveLayer` and no `dstOut` over the layers below.
   ///
   /// Every cel underfoot is lifted the same way ([_BrushCanvasPanelState.
-  /// _celsUnderfoot]) — the one this canvas edits, or each drawing row's
-  /// inside a folder (I-37): through the outline the box was opened on,
+  /// _celsUnderfoot]) — the one this canvas edits, each drawing row's inside
+  /// a folder (I-37), each row's across a frame range at the playhead
+  /// (F-329): through the outline the box was opened on,
   /// restated on that cel's own row. ⛔ONE CODE: a cel's lift is a folder's
   /// with one cel, and it lifts exactly what it always lifted.
   ///

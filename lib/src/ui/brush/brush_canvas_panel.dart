@@ -175,9 +175,9 @@ typedef CanvasUnderlayBuilder =
 
 /// What floats on the canvas while a box is open, for the composite to draw
 /// where each belongs: the float of the row this canvas edits, in that
-/// row's slot ([CanvasLayerStackView.floatOverlay]) — and the cels a
-/// FOLDER's lift holds, each in its own row ([CanvasLayerStackView.
-/// liftedRows], I-37).
+/// row's slot ([CanvasLayerStackView.floatOverlay]) — and the cels a lift
+/// holds beside it, a folder's rows or a range's, each in its own row
+/// ([CanvasLayerStackView.liftedRows], I-37 · F-329).
 typedef CanvasFloats = ({
   SelectionFloatOverlay liveRow,
   Map<BrushFrameKey, LiftedCel> liftedRows,
@@ -191,7 +191,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
-    this.folderCelsUnderfoot,
+    this.transformCelsUnderfoot,
     this.pieceGround,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
@@ -353,15 +353,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// every cel through the standing row's, the one the lift crossed.
   final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
 
-  /// What a transform takes up where you stand on a FOLDER: the cel of each
-  /// drawing row inside it at the playhead (`PixelVerbs.folderCelsUnderfoot`)
-  /// — null when you do not stand on one, and a lift takes up the cel this
-  /// canvas edits.
+  /// What a transform takes up where you stand: every cel its confirm lands
+  /// on that shows at the playhead — a FOLDER's rows, a frame RANGE's rows —
+  /// each marked `live` when it is the cel this canvas edits
+  /// (`PixelVerbs.transformCelsUnderfoot`). Null when that cel is all there
+  /// is, and a lift takes up the cel this canvas edits.
   ///
-  /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」. ⛔A FUNCTION, not
-  /// a list, for [transformTargetKeys]'s reason: the playhead and the rows
-  /// change under this panel.
-  final List<BrushFrameKey>? Function()? folderCelsUnderfoot;
+  /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 · F-329 (10-10):
+  /// 「변형중에도 라이브로 선택된 다른행의 프레임도 변형중인거 보이도록」.
+  /// ⛔A FUNCTION, not a list, for [transformTargetKeys]'s reason: the
+  /// playhead and the rows change under this panel.
+  final List<({BrushFrameKey key, bool live})>? Function()?
+  transformCelsUnderfoot;
 
   /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
   /// lands on, read by the session that reads it for the paste
@@ -2219,54 +2222,51 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   late final _CanvasPanelText _text = _CanvasPanelText(this);
 
   /// What a session of the selection layer belongs to
-  /// ([CanvasSelectionLayer.frameToken]) — the cels a lift takes up here:
-  /// a folder's underfoot, or the cel this canvas edits. When it changes, an
-  /// open box walks.
+  /// ([CanvasSelectionLayer.frameToken]) — the cels a lift takes up here
+  /// ([BrushCanvasPanel.transformCelsUnderfoot]), or the cel this canvas
+  /// edits. When it changes, an open box walks.
   ///
-  /// 🚨A FOLDER'S CELS, not the edited one (I-37): stood on a folder, the
+  /// 🚨THE CELS UNDERFOOT, not the edited one (I-37): stood on a folder, the
   /// playhead moves the cels underfoot while the cel this canvas edits stays
   /// put, and a box keyed on that one did not walk — it went on showing the
   /// frame it was opened on, lifted, over the frame it stood on.
   ///
   /// No frame = a stable sentinel: the selection survives until a real
   /// frame context arrives.
-  Object get _whatALiftTakesUp => switch (widget.folderCelsUnderfoot?.call()) {
-    final cels? => ByList(cels),
-    null => widget.coordinator?.activeFrameKey ?? 'selection-no-frame',
-  };
+  Object get _whatALiftTakesUp =>
+      switch (widget.transformCelsUnderfoot?.call()) {
+        final cels? => ByList(cels),
+        null => widget.coordinator?.activeFrameKey ?? 'selection-no-frame',
+      };
 
   /// The cels a lift takes up where you stand, each with the placement its
   /// row shows it at, and whether it is the cel this canvas edits — the live
-  /// row: that one, or — stood on a FOLDER — the cel of each drawing row
-  /// inside it, none of them live (I-37, [BrushCanvasPanel.
-  /// folderCelsUnderfoot]). Empty where nothing can be lifted.
+  /// row. Past that one, every cel the transform lands on that shows at the
+  /// playhead ([BrushCanvasPanel.transformCelsUnderfoot]): stood on a
+  /// FOLDER, the cel of each drawing row inside it, none of them live
+  /// (I-37); with a frame RANGE across rows, each row's cel there (F-329).
+  /// Empty where nothing can be lifted.
   ///
-  /// ⚠️A folder's rows only into a COMPOSITE: a cel the canvas does not edit
-  /// is drawn by the composite, and with none behind this canvas the lift
-  /// would have nowhere to show the rows it took up.
+  /// ⚠️The rows not live only into a COMPOSITE: a cel the canvas does not
+  /// edit is drawn by the composite, and with none behind this canvas the
+  /// lift would have nowhere to show the rows it took up.
   List<({BrushFrameKey key, LayerPlacement? placement, bool live})>
   _celsUnderfoot() {
-    final folderCels = widget.folderCelsUnderfoot?.call();
-    if (folderCels != null) {
-      if (widget.viewportUnderlayBuilder == null) {
-        return const [];
-      }
-      final placementOf = widget.cellPlacementOf;
-      return [
-        for (final key in folderCels)
-          (key: key, placement: placementOf?.call(key), live: false),
-      ];
-    }
     final coordinator = widget._editableCoordinator;
-    return coordinator == null
-        ? const []
-        : [
-            (
-              key: coordinator.activeFrameKey,
-              placement: widget.interactiveContentPose,
-              live: true,
-            ),
-          ];
+    final underfoot = widget.transformCelsUnderfoot?.call();
+    final placementOf = widget.cellPlacementOf;
+    return [
+      if (coordinator != null)
+        (
+          key: coordinator.activeFrameKey,
+          placement: widget.interactiveContentPose,
+          live: true,
+        ),
+      if (underfoot != null && widget.viewportUnderlayBuilder != null)
+        for (final cel in underfoot)
+          if (!cel.live)
+            (key: cel.key, placement: placementOf?.call(cel.key), live: false),
+    ];
   }
 
   /// R26 #13 follow-up: the tight ink bounds of what a lift takes up where

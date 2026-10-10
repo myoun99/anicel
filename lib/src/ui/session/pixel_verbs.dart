@@ -120,19 +120,39 @@ class PixelVerbs {
       if (_holdsADrawing(key)) key,
   ];
 
-  /// What a transform lifts where you stand on a FOLDER (I-37): the cel of
-  /// each drawing row inside it, at the playhead, in stack order — each with
-  /// a drawing in it. Null when the row you stand on is not a folder.
-  List<BrushFrameKey>? folderCelsUnderfoot() {
+  /// What a transform lifts where you stand: of the cels its confirm lands
+  /// on ([transformCellKeys]), every one the canvas shows at the playhead,
+  /// and the cel you stand on — each marked `live` when it is that one,
+  /// which the canvas draws itself. Null when that cel is all there is.
+  ///
+  /// So stood on a FOLDER it is the cel of each drawing row inside it, none
+  /// live (I-37: 「폴더 전체를 하나로 들도록」), and with a frame RANGE across
+  /// rows it is each row's cel at the playhead (F-329).
+  ///
+  /// 🗣️F-329 (유저 2026-10-10): 「세로로 선택범위 작동해서 여러 행의 프레임
+  /// 변형도구 사용시, 확정하면 같이 적용되는거 잘 되있는데, 다른 레이어는
+  /// 확정해야 바껴서, 변형중에도 라이브로 선택된 다른행의 프레임도
+  /// 변형중인거 보이도록」. ↩️Only a folder's rows were lifted
+  /// (`folderCelsUnderfoot`); a range's other rows changed at the confirm
+  /// alone, though it lands on them by the same move.
+  List<({BrushFrameKey key, bool live})>? transformCelsUnderfoot() {
     final cut = _project.activeCutOrNull;
-    final standing = cut == null ? null : _standingLayer();
-    if (cut == null || standing == null || !standing.kind.groupsLayers) {
+    if (cut == null) {
       return null;
     }
-    return [
-      for (final key in _rowCels(cut, standing, null, intoFolders: true))
-        if (_holdsADrawing(key)) key,
-    ];
+    final shown = {
+      for (final layer in cut.layers) ?_celOf(cut, layer, null),
+    };
+    final standing = _standingCel(cut);
+    final lifted = {
+      ?standing,
+      for (final key in transformCellKeys())
+        if (shown.contains(key)) key,
+    };
+    if (lifted.isEmpty || (lifted.length == 1 && lifted.single == standing)) {
+      return null;
+    }
+    return [for (final key in lifted) (key: key, live: key == standing)];
   }
 
   /// 🚨A PIXEL VERB NEEDS A DRAWING TO ACT ON. 유저 2026-08-27: 「색변환은

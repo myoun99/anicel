@@ -69,7 +69,10 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               brushToolState: brush,
               selectionCommands: commands,
-              folderCelsUnderfoot: () => [keys[0], keys[1]],
+              transformCelsUnderfoot: () => [
+                (key: keys[0], live: false),
+                (key: keys[1], live: false),
+              ],
               // A composite behind the canvas — where a folder's rows show.
               viewportUnderlayBuilder: (context, viewport, painter, floats) =>
                   const SizedBox.expand(),

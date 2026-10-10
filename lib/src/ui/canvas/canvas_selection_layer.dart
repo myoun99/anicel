@@ -59,8 +59,8 @@ import 'canvas_viewport_offset.dart';
 /// point differs, the drawing does not.
 ///
 /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 — a folder's lift
-/// takes one up from each row it holds, each shown in its own row; a cel's
-/// lift takes one.
+/// takes one up from each row it holds, each shown in its own row, and so
+/// does a frame range's across rows (F-329); a cel's lift takes one.
 typedef LiftedFloat = ({BrushDab stampDab, SelectionFloatOverlay? showsOn});
 
 /// The P9 selection interaction layer, mounted over the canvas while a

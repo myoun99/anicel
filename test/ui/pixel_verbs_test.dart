@@ -464,6 +464,13 @@ void main() {
       for (final key in keys ?? const <BrushFrameKey>[]) key.frameId.value,
     ];
 
+    /// What a transform lifts where you stand, by cel — none of them live:
+    /// a folder is no cel the canvas edits.
+    List<String> underfoot(List<({BrushFrameKey key, bool live})>? lifted) {
+      expect(lifted?.where((cel) => cel.live), anyOf(isNull, isEmpty));
+      return cels(lifted?.map((cel) => cel.key).toList());
+    }
+
     testWidgets('standing on a folder, a transform takes up the cel of every '
         'drawing row inside it — and no other pixel verb reaches in', (
       tester,
@@ -472,7 +479,7 @@ void main() {
       final (:a, :b) = await rowsInAFolder(tester, session);
       final verbs = pixelVerbsOf(session);
 
-      expect(cels(verbs.folderCelsUnderfoot()), [
+      expect(underfoot(verbs.transformCelsUnderfoot()), [
         '${a.id.value}-cel-0',
         'twin-cel-0',
       ]);
@@ -493,7 +500,7 @@ void main() {
       final session = await pump(tester);
       final (:a, b: _) = await rowsInAFolder(tester, session, bShows: false);
 
-      expect(cels(pixelVerbsOf(session).folderCelsUnderfoot()), [
+      expect(underfoot(pixelVerbsOf(session).transformCelsUnderfoot()), [
         '${a.id.value}-cel-0',
       ]);
     });
@@ -521,9 +528,80 @@ void main() {
       await tester.pump();
       final verbs = pixelVerbsOf(session);
 
-      expect(verbs.folderCelsUnderfoot(), isNull);
+      expect(verbs.transformCelsUnderfoot(), isNull);
       expect(cels(verbs.transformCellKeys()), cels(verbs.pixelVerbCellKeys()));
       expect(verbs.transformCellKeys(), hasLength(1));
+    });
+  });
+
+  /// F-329 (유저 2026-10-10): 「변형중에도 라이브로 선택된 다른행의 프레임도
+  /// 변형중인거 보이도록」 — a frame range drawn down rows lifts each row's cel
+  /// on screen, beside the cel you stand on, as a folder's rows are lifted.
+  group('a TRANSFORM over a RANGE lifts each row\'s cel on screen', () {
+    /// The drawing row and a twin of it beside it, every cel inked, standing
+    /// on the row at frame 0.
+    Future<({Layer a, Layer b})> rowAndTwin(
+      WidgetTester tester,
+      EditorSessionManager session,
+    ) async {
+      final a = await drawableRow(tester, session);
+      final b = _twinOf(a, 'twin');
+      final cut = session.requireActiveCut;
+      session.repository.insertLayer(
+        cutId: cut.id,
+        layer: b,
+        index: cut.layers.indexWhere((layer) => layer.id == a.id) + 1,
+      );
+      session.refreshAfterCutCommand();
+      inkEveryCel(session);
+      session.selectLayer(a.id);
+      session.selectFrameIndex(0);
+      await tester.pump();
+      return (a: a, b: b);
+    }
+
+    /// What a transform lifts where you stand, by cel, and which is live.
+    List<(String, bool)>? lifted(EditorSessionManager session) =>
+        pixelVerbsOf(session).transformCelsUnderfoot()
+            ?.map((cel) => (cel.key.frameId.value, cel.live))
+            .toList();
+
+    testWidgets('across both rows: your cel live, and the other row\'s cel '
+        'at the playhead beside it — not the frames off screen', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final (:a, :b) = await rowAndTwin(tester, session);
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: a.id,
+        layerIds: [a.id, b.id],
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pump();
+
+      expect(lifted(session), [
+        ('${a.id.value}-cel-0', true),
+        ('twin-cel-0', false),
+      ]);
+    });
+
+    testWidgets('a range on the next row adds that row — it does not take '
+        'your own cel out of the lift', (tester) async {
+      final session = await pump(tester);
+      final (:a, :b) = await rowAndTwin(tester, session);
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: b.id,
+        layerIds: [b.id],
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pump();
+
+      expect(lifted(session), [
+        ('${a.id.value}-cel-0', true),
+        ('twin-cel-0', false),
+      ]);
     });
   });
 

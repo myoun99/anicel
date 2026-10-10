@@ -322,7 +322,7 @@ class _InteractiveCanvasBuild {
       cellPlacementOf: session.pixelVerbs.placementOf,
       // I-37: stood on a folder, a transform takes up every drawing row
       // inside it — the same ladder's answer at the playhead.
-      folderCelsUnderfoot: session.pixelVerbs.folderCelsUnderfoot,
+      transformCelsUnderfoot: session.pixelVerbs.transformCelsUnderfoot,
       // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
       // ground is read by the one that reads it for the paste.
       pieceGround: session.pixelVerbs.pieceGround,

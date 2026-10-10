@@ -552,8 +552,8 @@ class _LayerStackPaintPass {
         ),
       };
 
-  /// Each row a folder's lift holds, by its surface (I-37) — read once per
-  /// paint, as the live row's slot is.
+  /// Each row a lift holds beside the live one, by its surface (I-37 ·
+  /// F-329) — read once per paint, as the live row's slot is.
   final Map<BitmapSurfacePainter, _SurfaceSlot> _liftedSlots = Map.identity();
 
   _SurfaceSlot _liftedSlotOf(_PaintLiftedSurface row) =>
@@ -834,10 +834,10 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// A surface layer — the live one, or one a folder's lift holds (I-37):
-  /// drawn straight onto the canvas when its paint can ride the draws,
-  /// through one buffer when it cannot (an outset effect, overlapping
-  /// coverage, a float overlay, or pre-steps).
+  /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
+  /// F-329): drawn straight onto the canvas when its paint can ride the
+  /// draws, through one buffer when it cannot (an outset effect,
+  /// overlapping coverage, a float overlay, or pre-steps).
   void _paintSurfaceRow(
     Canvas canvas,
     _SurfaceSlot slot,
@@ -1256,9 +1256,9 @@ class _LayerStackPaintPass {
     // no live surface at all) keeps the original walk. The bake is an
     // optimisation, never a second way to be correct.
     //
-    // ⛔Nor while a folder's lift is up (I-37): the bake records the rows
-    // a stroke cannot change, and a lifted row's float moves under the
-    // hand.
+    // ⛔Nor while a lift holds rows beside the live one (I-37 · F-329): the
+    // bake records the rows a stroke cannot change, and a lifted row's
+    // float moves under the hand.
     if (_painter.bake == null ||
         _painter.activeSurfacePainter == null ||
         _painter.liftedRows.isNotEmpty) {
