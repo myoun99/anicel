@@ -989,7 +989,8 @@ void main() {
       final shell = await _Shell.pump(tester, tool: CanvasTool.brush);
 
       // ⚠️While the raw pen service runs, ITS report is the buttons to
-      // believe (`canvasPressButtons`) — the hover event's own are not read.
+      // believe once it says one is down (`canvasPressButtons`) — the hover
+      // event's own are read only while it says none is.
       // HID Invert with nothing touching: the pen is turned over in the air.
       raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
       await shell.hover(tester, const Offset(20, 20), buttons: 0);

@@ -26,7 +26,7 @@ import 'canvas_view_hold.dart';
 
 /// The buttons to BELIEVE for [event].
 ///
-/// A driver sidecar that speaks for this moment WINS — the same contract
+/// A driver sidecar that says a button is DOWN wins — the same contract
 /// the pen's pressure reading already follows, and for the same reason:
 /// the OS path can be lying about what the pen just did.
 ///
@@ -42,8 +42,21 @@ import 'canvas_view_hold.dart';
 /// reports 0 for every honest contact it ever makes, so reading the
 /// zero as "must be a barrel press" would turn every stroke on such a
 /// tablet into a button press.
-int canvasPressButtons(PointerEvent event) =>
-    PenSidecars.freshButtons() ?? event.buttons;
+///
+/// 🚨A DRIVER THAT SAYS NOTHING IS DOWN VETOES NOTHING (F-331, 유저
+/// 2026-10-10: 「윈도우 잉크를 끄면 애니셀 설정이 윈탭이든 표준이든 펜으로
+/// 선이 안그려짐. 마우스는 그려지는데」 — other tools draw such a pen as
+/// the mouse, at pressure 1). The driver's report and the pointer travel
+/// two queues with no order between them (H43 found the hovering report
+/// at a down), and nothing promises that a pen the OS hands over as a
+/// mouse carries its contact on the report at all. Either way a report
+/// that says the pen is hovering has not seen this press — and while its
+/// empty word won, a press under it drew nothing, though the OS said the
+/// button was down. ↩️The driver's word won whatever it said.
+int canvasPressButtons(PointerEvent event) {
+  final driver = PenSidecars.freshButtons();
+  return driver == null || driver == 0 ? event.buttons : driver;
+}
 
 /// R28: whether the primary contact is down — a MASK test, not equality.
 /// A barrel button held while the tip touches down reports
