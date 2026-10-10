@@ -183,6 +183,12 @@ void main() {
           'covers both',
     );
     expect(piece.image.rgba.sublist(0, 4), blue);
+    expect(
+      pixel(session, 'c1', 45, 45),
+      blue,
+      reason: 'a copy leaves the cel as it was — 잘라내기 is the row above',
+    );
+    expect(session.historyManager.canUndo, isFalse, reason: 'and writes none');
   });
 
   // 🗣️I-90 (유저 2026-10-10): 「픽셀 잘라내기 버튼 신설. 복사버튼 위. 내용은
