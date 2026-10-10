@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -166,6 +168,32 @@ void frameNameJsonTests() {
     );
     expect(bare.toJson().containsKey('seName'), isFalse);
     expect(Frame.fromJson(bare.toJson()).seName, isNull);
+  });
+
+  // I-68 「가」 (유저 2026-10-10).
+  test('a reference cel says which picture of its file it is — through a '
+      'file\'s JSON, only when it does — and a copy keeps it unless told', () {
+    final page = Frame(
+      id: const FrameId('page-13'),
+      duration: 1,
+      strokes: const [],
+      filePicture: 12,
+    );
+    final json =
+        jsonDecode(jsonEncode(page.toJson())) as Map<String, dynamic>;
+    expect(json['filePicture'], 12);
+    expect(Frame.fromJson(json), page);
+    expect(page.copyWith(duration: 3).filePicture, 12);
+    expect(page.copyWith(filePicture: null).filePicture, isNull);
+    expect(page.copyWith(filePicture: null), isNot(page));
+
+    final drawn = Frame(
+      id: const FrameId('drawn'),
+      duration: 1,
+      strokes: const [],
+    );
+    expect(drawn.toJson().containsKey('filePicture'), isFalse);
+    expect(Frame.fromJson(drawn.toJson()).filePicture, isNull);
   });
 
   test('old frame JSON without name loads with null name', () {

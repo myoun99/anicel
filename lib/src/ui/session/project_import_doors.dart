@@ -15,6 +15,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -72,6 +73,20 @@ typedef _MoviePlacement = ({
 /// the size the picture IS — what a pose stands on (I-68). A PDF page is
 /// rendered at the size it will stand at, so its image is not its size.
 typedef _BakePicture = ({ui.Image image, bool owned, CanvasSize size});
+
+/// A reference row's pictures made from its file again, by cel, and the
+/// reference that says the size of what it shows ([ProjectImportDoors]).
+typedef _Drawn = ({
+  Map<FrameId, BitmapSurface> pictures,
+  MediaReference reference,
+});
+
+/// The pictures of a file a row asked for, by their place in the file, laid
+/// and measured.
+typedef _MadePictures = ({
+  Map<int, BitmapSurface> surfaces,
+  Map<int, CanvasSize> sizes,
+});
 
 /// [image] as the picture it is: its size is its own.
 _BakePicture _pictureOf(ui.Image image, {required bool owned}) => (
@@ -246,6 +261,7 @@ class ProjectImportDoors {
         identity: identity,
         carried: copyIntoProject,
         sourcePath: sourcePath,
+        picture: kept.first,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -271,6 +287,7 @@ class ProjectImportDoors {
         identity: identity,
         carried: copyIntoProject,
         sourcePath: sourcePath,
+        firstPicture: kept.first,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -641,6 +658,7 @@ class ProjectImportDoors {
           sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
+          picture: firstPage,
         );
         layer = plan.layer;
         bakes = plan.bakes;
@@ -663,6 +681,7 @@ class ProjectImportDoors {
           sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
+          firstPicture: firstPage,
         );
         layer = plan.layer;
         bakes = plan.bakes;
@@ -1077,17 +1096,20 @@ class ProjectImportDoors {
       return false;
     }
     final drawn = switch (redraw) {
-      ReferenceSwap.still => await _stillPicture(next, cut.canvasSize),
+      ReferenceSwap.pictures => await _filePictures(
+        layer,
+        next,
+        cut.canvasSize,
+      ),
       // The movie it shows already said its size; another one is asked.
       ReferenceSwap.movie
           when next.assetPath == layer.mediaReference?.assetPath =>
-        (picture: null, reference: next),
+        (pictures: const <FrameId, BitmapSurface>{}, reference: next),
       ReferenceSwap.movie => await _movieSized(next),
     };
     if (drawn == null || _project.layerById(layer.id) != layer) {
       return false;
     }
-    final picture = drawn.picture;
     _project.historyManager.execute(
       SwapLayerReferenceCommand(
         repository: _project.repository,
@@ -1096,9 +1118,9 @@ class ProjectImportDoors {
         reference: drawn.reference,
         store: _renderCaches.brushFrameStore,
         pictures: {
-          if (picture != null)
-            for (final frame in layer.frames)
-              _project.brushFrameKeyForCut(cut, layer.id, frame.id): picture,
+          for (final MapEntry(key: frameId, value: picture)
+              in drawn.pictures.entries)
+            _project.brushFrameKeyForCut(cut, layer.id, frameId): picture,
         },
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
         description: description,
@@ -1112,46 +1134,139 @@ class ProjectImportDoors {
     return true;
   }
 
-  /// [reference]'s file as a still's picture on a [canvas]-sized cel, at
-  /// the reference's pose — read through the project's copy first
-  /// ([readHeldMediaBytes]), as every door here reads — with the reference
-  /// that says the picture's size as it read. Null when it does not read.
-  Future<({BitmapSurface? picture, MediaReference reference})?> _stillPicture(
+  /// [reference]'s file as the pictures [layer]'s cels show — each cel the
+  /// picture of the file it says it is ([Frame.filePicture]: a still's one,
+  /// a GIF's frame, a PDF's page), laid at the reference's pose on a
+  /// [canvas]-sized cel — and the reference saying the size of its first
+  /// cel's picture as the file reads now. Null when the file does not read,
+  /// or holds no picture a cel asks for.
+  ///
+  /// 🗣️I-68 (유저 2026-10-10 「가」): every row that shows a file is laid
+  /// again by one law — the cel's own picture, at the row's reference fx.
+  /// ↩️Only a still's one cel could be: a GIF's or a PDF's cels said nowhere
+  /// which picture of the file each was.
+  Future<_Drawn?> _filePictures(
+    Layer layer,
     MediaReference reference,
     CanvasSize canvas,
   ) async {
-    final ui.Image? image;
+    final wanted = {for (final frame in layer.frames) frame.filePicture!};
+    final made =
+        mediaAssetKindForPath(reference.assetPath) == MediaAssetKind.pdf
+        ? await _pagesOf(reference, wanted, canvas)
+        : await _framesOf(reference, wanted, canvas);
+    if (made == null) {
+      return null;
+    }
+    return (
+      pictures: {
+        for (final frame in layer.frames)
+          frame.id: made.surfaces[frame.filePicture]!,
+      },
+      reference: reference.copyWith(
+        pictureSize: made.sizes[layer.frames.first.filePicture],
+      ),
+    );
+  }
+
+  /// The [wanted] pictures of [reference]'s image file — a still's one, a
+  /// GIF's frames — each laid at its pose, read through the project's copy
+  /// first ([readHeldMediaBytes]) as every door here reads. Null when the
+  /// file does not read or has no such picture.
+  Future<_MadePictures?> _framesOf(
+    MediaReference reference,
+    Set<int> wanted,
+    CanvasSize canvas,
+  ) async {
+    final List<DecodedImageFrame> frames;
     try {
-      image = await firstPictureOf(
+      frames = await decodeImageFrames(
         await readHeldMediaBytes(_holdBytes, reference.assetPath),
       );
     } on Object {
       return null;
     }
-    if (image == null) {
-      return null;
-    }
     try {
-      final size = CanvasSize(width: image.width, height: image.height);
-      return (
-        picture: await rasterizeImageToSurface(
+      if (wanted.any((index) => index >= frames.length)) {
+        return null;
+      }
+      final made = (
+        surfaces: <int, BitmapSurface>{},
+        sizes: <int, CanvasSize>{},
+      );
+      for (final index in wanted) {
+        final image = frames[index].image;
+        final size = CanvasSize(width: image.width, height: image.height);
+        made.sizes[index] = size;
+        made.surfaces[index] = await rasterizeImageToSurface(
           image: image,
           canvas: canvas,
           placement: picturePlacement(reference.pose, size),
-        ),
-        reference: reference.copyWith(pictureSize: size),
-      );
+        );
+      }
+      return made;
     } finally {
-      image.dispose();
+      for (final frame in frames) {
+        frame.image.dispose();
+      }
+    }
+  }
+
+  /// The [wanted] pages of [reference]'s PDF, each rendered once at the size
+  /// its pose stands it at and laid there ([_renderedPage]). Null when the
+  /// document does not open or has no such page.
+  Future<_MadePictures?> _pagesOf(
+    MediaReference reference,
+    Set<int> wanted,
+    CanvasSize canvas,
+  ) async {
+    final document = await openHeldViewerDocument(
+      _holdBytes,
+      reference.assetPath,
+      PdfRenderService.open,
+    );
+    if (document == null) {
+      return null;
+    }
+    try {
+      if (wanted.any((index) => index >= document.pageCount)) {
+        return null;
+      }
+      final made = (
+        surfaces: <int, BitmapSurface>{},
+        sizes: <int, CanvasSize>{},
+      );
+      for (final index in wanted) {
+        final page = _pageSizeOf(document, index);
+        final picture = await _renderedPage(
+          document,
+          index,
+          page,
+          reference.pose,
+        );
+        try {
+          made.sizes[index] = page;
+          made.surfaces[index] = await rasterizeImageToSurface(
+            image: picture.image,
+            canvas: canvas,
+            placement: _laid(picture, reference.pose),
+          );
+        } finally {
+          picture.image.dispose();
+        }
+      }
+      return made;
+    } on Object {
+      return null;
+    } finally {
+      await document.dispose();
     }
   }
 
   /// [reference] with its movie's frame size as the decoder reads the file
   /// now — a movie's cel holds no pictures, so there is nothing to make.
   /// Null when the movie does not open.
-  Future<({BitmapSurface? picture, MediaReference reference})?> _movieSized(
-    MediaReference reference,
-  ) async {
+  Future<_Drawn?> _movieSized(MediaReference reference) async {
     final opened = await openHeldMovie(
       videoDecodeBackend,
       _holdBytes,
@@ -1163,7 +1278,7 @@ class ProjectImportDoors {
     try {
       final info = opened.info;
       return (
-        picture: null,
+        pictures: const <FrameId, BitmapSurface>{},
         reference: reference.copyWith(
           pictureSize: CanvasSize(width: info.width, height: info.height),
         ),

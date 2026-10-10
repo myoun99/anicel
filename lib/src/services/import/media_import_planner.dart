@@ -141,6 +141,10 @@ ImageLayerImportPlan planStillImageLayer({
   bool carried = false,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
+
+  /// Which picture of the file the still is — a PDF's page; what its cel
+  /// records when the layer shows the file ([Frame.filePicture]).
+  int picture = 0,
 }) {
   final layerId = mint.nextLayerId();
   final frameId = mint.nextFrameId(layerId);
@@ -149,7 +153,14 @@ ImageLayerImportPlan planStillImageLayer({
     id: layerId,
     name: displayName,
     kind: LayerKind.image,
-    frames: [Frame(id: frameId, duration: clampedDuration, strokes: const [])],
+    frames: [
+      Frame(
+        id: frameId,
+        duration: clampedDuration,
+        strokes: const [],
+        filePicture: reference == null ? null : picture,
+      ),
+    ],
     timeline: {0: TimelineExposure.drawing(frameId, length: clampedDuration)},
     mediaReference: reference,
   );
@@ -256,6 +267,11 @@ SequenceLayerImportPlan planSequenceLayer({
   /// ([planCutFolderImport]). A folded run of duplicates takes its first
   /// position's name.
   List<String>? frameNames,
+
+  /// The picture of the file the first position is — a span's IN — so the
+  /// cels a layer that shows the file keeps each record which picture of
+  /// the FILE they are ([Frame.filePicture]).
+  int firstPicture = 0,
 }) {
   assert(sourceFiles.length == frameFingerprints.length);
   assert(
@@ -295,12 +311,14 @@ SequenceLayerImportPlan planSequenceLayer({
     flush();
     final frameId = mint.nextFrameId(layerId);
     celOrdinal += 1;
+    final sourceIndex = sourceFrameIndices?[i] ?? i;
     frames.add(
       Frame(
         id: frameId,
         duration: 1,
         strokes: const [],
         name: frameNames?[i],
+        filePicture: reference == null ? null : firstPicture + sourceIndex,
       ),
     );
     bakes.add(
@@ -312,7 +330,7 @@ SequenceLayerImportPlan planSequenceLayer({
         // A movie shows its frames on the SOUND's clock, so position i is
         // not movie frame i (`MovieClock`); every other source counts one
         // for one.
-        sourceFrameIndex: sourceFrameIndices?[i] ?? i,
+        sourceFrameIndex: sourceIndex,
       ),
     );
     currentCel = frameId;

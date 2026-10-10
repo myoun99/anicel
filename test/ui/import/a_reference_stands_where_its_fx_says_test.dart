@@ -7,7 +7,9 @@
 // The pose a placement starts a file's picture at is the reference's own:
 // the canvas growing afterwards moves it with the drawings, a file swapped
 // in stands at it over ITS pixels, moving it lays the file again — and a
-// movie, decoded as it is shown, stands there too.
+// movie, decoded as it is shown, stands there too. 10-10 「가」: a GIF's
+// frames and a PDF's pages are laid again the same way, each cel from the
+// picture of the file it says it is.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -21,6 +23,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
+import 'package:anicel/src/models/reference_swap.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -30,12 +34,42 @@ import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
+import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 
+import '../../helpers/cel_text_fixture.dart' show pixelOf;
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/three_frame_gif.dart';
+
+/// Cel [index] of [row] as the store holds it baked.
+BitmapSurface? celOf(EditorSessionManager s, Layer row, int index) =>
+    s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+      s.brushFrameKeyForCut(s.requireActiveCut, row.id, row.frames[index].id),
+    );
+
+/// The colour [surface] holds at canvas pixel ([x], [y]), as straight RGBA.
+List<int>? colourAt(BitmapSurface? surface, int x, int y) {
+  if (surface == null) {
+    return null;
+  }
+  final size = surface.tileSize;
+  return pixelOf(
+    surface,
+    TileCoord.fromPixel(pixelX: x, pixelY: y, tileSize: size),
+    x % size,
+    y % size,
+  );
+}
+
+/// [colour] as the straight RGBA a surface reads back.
+List<int> rgbaOf(ui.Color colour) {
+  final argb = colour.toARGB32();
+  return [(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, argb >>> 24];
+}
 
 /// Where [surface]'s ink lies on the canvas, or null when it holds none.
 ui.Rect? inkOf(BitmapSurface? surface) {
@@ -557,6 +591,185 @@ void main() {
       );
       s.playbackRig.prerenderScheduler.cancel();
       await tester.pump();
+    });
+
+    testWidgets('🎯moving the fx renders EACH page again from its own page '
+        'of the file — counted from the span\'s IN, not from the row\'s '
+        'first cel', (tester) async {
+      final pdf = FakePdfDocument(
+        pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(100, 50)],
+      );
+      PdfRenderService.debugOpenerOverride = (_) async => pdf;
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.playbackRig.prerenderScheduler.beginInputHold();
+      await tester.runAsync(() async {
+        s.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 200, height: 100),
+        );
+        final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+        await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        expect(
+          await s.importDoors.importPdfFile(
+            path: path,
+            destination: ImportDestination.activeCutLayer,
+            copyIntoProject: false,
+            inFrame: 1,
+          ),
+          isTrue,
+        );
+      });
+      final row = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.mediaReference != null,
+      );
+      expect([for (final frame in row.frames) frame.filePicture], [1, 2]);
+      pdf.renderRequests.clear();
+
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.reposeReference(
+            layerId: row.id,
+            pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
+          ),
+        ),
+        isTrue,
+      );
+
+      expect(
+        pdf.renderRequests,
+        [(1, 100, 50), (2, 100, 50)],
+        reason: 'each page once, at the size it stands at now',
+      );
+      for (final index in [0, 1]) {
+        final cel = celOf(s, row, index);
+        expect(inkOf(cel), const ui.Rect.fromLTRB(50, 25, 150, 75));
+        expect(
+          colourAt(cel, 100, 50),
+          rgbaOf(FakePdfDocument.pageColor(index + 1)),
+          reason: 'cel $index is page ${index + 1}',
+        );
+      }
+      s.playbackRig.prerenderScheduler.cancel();
+      await tester.pump();
+    });
+  });
+
+  // I-68 「가」 (유저 2026-10-10): a GIF's frames are laid again by the
+  // still's law — each cel from the picture of the file it says it is.
+  group('a GIF\'s frames', () {
+    late Directory tempDir;
+    const white = [255, 255, 255, 255];
+    const black = [0, 0, 0, 255];
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('anicel-i68-gif');
+    });
+
+    tearDown(() => deleteTempQuietly(tempDir));
+
+    /// The black · white · black GIF from its second frame on, contained
+    /// as a reference on a 100×100 canvas: two cels — white, then black —
+    /// each filling it.
+    Future<(EditorSessionManager, Layer)> placed(WidgetTester tester) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.playbackRig.prerenderScheduler.beginInputHold();
+      await tester.runAsync(() async {
+        s.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 100, height: 100),
+        );
+        expect(
+          await s.importDoors.importImageFile(
+            path: await writeThreeFrameGif(tempDir, 'walk.gif'),
+            destination: ImportDestination.activeCutLayer,
+            copyIntoProject: false,
+            inFrame: 1,
+          ),
+          isTrue,
+        );
+      });
+      final row = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.mediaReference != null,
+      );
+      return (s, row);
+    }
+
+    Future<void> stopTheWarmer(
+      WidgetTester tester,
+      EditorSessionManager s,
+    ) async {
+      s.playbackRig.prerenderScheduler.cancel();
+      await tester.pump();
+    }
+
+    testWidgets('🎯each cel says which picture of the FILE it is — from the '
+        'span\'s IN — so the row has the reference fx', (tester) async {
+      final (s, row) = await placed(tester);
+
+      expect([for (final frame in row.frames) frame.filePicture], [1, 2]);
+      for (final (index, colour) in [(0, white), (1, black)]) {
+        final cel = celOf(s, row, index);
+        expect(inkOf(cel), const ui.Rect.fromLTRB(0, 0, 100, 100));
+        expect(colourAt(cel, 50, 50), colour, reason: 'cel $index');
+      }
+      expect(
+        timelineLanesForLayer(
+          layer: row,
+          session: s,
+          expandedGroupKeys: const {},
+        ).first.laneId,
+        referenceGroupLaneId,
+      );
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯moving the reference fx lays EACH cel again from its own '
+        'picture of the file — the white one white, the black one black — '
+        'not every cel from the first', (tester) async {
+      final (s, row) = await placed(tester);
+
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.reposeReference(
+            layerId: row.id,
+            pose: TransformPose.uniform(
+              center: CanvasPoint(x: 50, y: 50),
+              zoom: 50,
+            ),
+          ),
+        ),
+        isTrue,
+      );
+
+      for (final (index, colour) in [(0, white), (1, black)]) {
+        final cel = celOf(s, row, index);
+        expect(inkOf(cel), const ui.Rect.fromLTRB(25, 25, 75, 75));
+        expect(colourAt(cel, 50, 50), colour, reason: 'cel $index');
+      }
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('rasterizing lets go of which picture each cel was, with the '
+        'file — its undo gives both back, its redo takes them again',
+        (tester) async {
+      final (s, row) = await placed(tester);
+      List<int?> pictures() => [
+        for (final frame in s.layerById(row.id)!.frames) frame.filePicture,
+      ];
+
+      s.editingCanvas.rasterizeLayerReferences([row.id]);
+      expect(s.layerById(row.id)!.mediaReference, isNull);
+      expect(pictures(), [null, null]);
+
+      s.undo();
+      expect(s.layerById(row.id)!.mediaReference, isNotNull);
+      expect(pictures(), [1, 2]);
+      expect(referenceRedrawFor(s.layerById(row.id)!), ReferenceSwap.pictures);
+
+      s.redo();
+      expect(pictures(), [null, null]);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
     });
   });
 }

@@ -68,12 +68,14 @@ String projectDisplayName(String path) {
 /// v12 (2026-10-10, I-68 — the reference fx): a media reference says WHERE
 /// its file's picture stands — `pose`, its centre on the canvas with a
 /// scale per axis over the picture's own pixels and a turn about that
-/// centre — and `size`, the picture's own size (`MediaReference.toJson`).
-/// A v11 build reads a reference without them and fits the file to the
-/// canvas as it is each time it lays it — a movie at every decode, a still
-/// when it is swapped — so a canvas grown since puts the picture in its
-/// middle, and its next save writes the reference back without them. The
-/// bump turns that into a refusal ([decodeAnicelProjectDocument]).
+/// centre — and `size`, the picture's own size (`MediaReference.toJson`);
+/// and each cel of a row that shows a still, a GIF or a PDF says which
+/// picture of the file it is (`filePicture`, `Frame.toJson`). A v11 build
+/// reads a reference without them and fits the file to the canvas as it is
+/// each time it lays it — a movie at every decode, a still when it is
+/// swapped — so a canvas grown since puts the picture in its middle, and its
+/// next save writes the reference and the cels back without them. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
 ///
 /// ⛔A reference without them is NOT read (the save law), and with it goes
 /// every file older than this one ([anicelOldestReadFormatVersion]): where
@@ -86,7 +88,10 @@ String projectDisplayName(String path) {
 /// and a PDF's is that too, unless the cut's canvas was resized after the
 /// file was placed: that moved its cels by the resize's offset, so read the
 /// offset off a cel — where its picture lies against the fit's rect — and
-/// move the pose's centre by it.
+/// move the pose's centre by it. Each cel of such a row gets the picture of
+/// the file it shows: a still's `0`, a GIF's frame and a PDF's page found
+/// by matching the cel against the file's pictures. A cel left without one
+/// keeps its row from being laid again, and that is all.
 ///
 /// v11 (2026-10-08, F-301 — 유저 10-05 「타임시트의 메모란은 페이지별로
 /// 다름 … 페이지별로 독립」): a cut's memo is one per page of its timesheet

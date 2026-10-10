@@ -1,4 +1,5 @@
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_reference.dart';
 import '../command.dart';
@@ -6,8 +7,9 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 
 /// RASTERIZE (§6-f/§6-z23): the reference layer's pixels are ALREADY its
-/// cels, so the verb nulls [Layer.mediaReference] — nothing else. One undo
-/// restores it.
+/// cels, so the verb nulls [Layer.mediaReference] — and what each cel said
+/// of the file it came from ([Frame.filePicture], I-68), which is the
+/// reference's — nothing else. One undo restores both.
 ///
 /// ↩️It also unregistered the asset when this was the last layer pointing at
 /// it — 「§3: baked = unregistered」, from the 07-30 import design
@@ -31,6 +33,9 @@ class RasterizeLayerReferenceCommand implements Command {
   final LayerId layerId;
 
   MediaReference? _referenceBefore;
+
+  /// The picture of the file each cel was, while the row showed it.
+  Map<FrameId, int?>? _picturesBefore;
   bool _hasExecuted = false;
 
   @override
@@ -46,9 +51,17 @@ class RasterizeLayerReferenceCommand implements Command {
       return;
     }
     _referenceBefore ??= reference;
+    _picturesBefore ??= {
+      for (final frame in layer.frames) frame.id: frame.filePicture,
+    };
     repository.updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(mediaReference: null),
+      update: (layer) => layer.copyWith(
+        mediaReference: null,
+        frames: [
+          for (final frame in layer.frames) frame.copyWith(filePicture: null),
+        ],
+      ),
     );
     _hasExecuted = true;
   }
@@ -64,7 +77,13 @@ class RasterizeLayerReferenceCommand implements Command {
     }
     repository.updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(mediaReference: reference),
+      update: (layer) => layer.copyWith(
+        mediaReference: reference,
+        frames: [
+          for (final frame in layer.frames)
+            frame.copyWith(filePicture: _picturesBefore?[frame.id]),
+        ],
+      ),
     );
   }
 }

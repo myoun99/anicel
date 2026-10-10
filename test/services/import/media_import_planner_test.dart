@@ -136,6 +136,43 @@ void main() {
     );
   });
 
+  // I-68 「가」 (유저 2026-10-10): a row that shows its file says by cel
+  // which picture of the FILE each is, so each can be laid again from it.
+  test('🎯a row that shows its file says by cel which picture of the FILE '
+      'each is — from the span\'s first, past a folded hold — and a baked '
+      'one says nothing', () {
+    List<int?> sequence({required bool shows}) => [
+      for (final frame in planSequenceLayer(
+        sourceFiles: List<String>.filled(5, 'C:/media/a.gif'),
+        // A, A, B, C, C — from the file's frame 3 on.
+        frameFingerprints: const ['A', 'A', 'B', 'C', 'C'],
+        displayName: 'a.gif',
+        cutId: const CutId('cut-1'),
+        mint: mint(),
+        reference: shows ? referenceTo('C:/media/a.gif') : null,
+        firstPicture: 3,
+      ).layer.frames)
+        frame.filePicture,
+    ];
+    expect(sequence(shows: true), [3, 5, 6]);
+    expect(sequence(shows: false), [null, null, null]);
+
+    int? still({required bool shows}) => planStillImageLayer(
+      sourceFile: 'C:/media/conte.pdf',
+      displayName: 'conte.pdf',
+      cutId: const CutId('cut-1'),
+      duration: 24,
+      fit: MediaFitMode.contain,
+      reference: shows ? referenceTo('C:/media/conte.pdf') : null,
+      mint: mint(),
+      assetKind: MediaAssetKind.pdf,
+      pageCount: 20,
+      picture: 12,
+    ).layer.frames.single.filePicture;
+    expect(still(shows: true), 12, reason: 'page 13 of the conte');
+    expect(still(shows: false), isNull);
+  });
+
   test('a PDF plan (assetKind: pdf) registers pageCount instead of '
       'frameCount, on both the sequence and the still shapes', () {
     final sequence = planSequenceLayer(

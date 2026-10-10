@@ -167,8 +167,9 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
-  test('a row that does not show a file — or shows one whose cels are not '
-      'made from it again — has no group', () {
+  test('a row that does not show a file — or shows one with a cel that does '
+      'not say which picture of it it is, so is not made from it again — '
+      'has no group', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final drawn = s.requireActiveCut.layers.firstWhere(
