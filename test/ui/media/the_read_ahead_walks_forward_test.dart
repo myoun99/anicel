@@ -150,6 +150,56 @@ void main() {
     );
   });
 
+  testWidgets('🚨what a run that plays lets go of first is the frame farthest '
+      'behind it — the frames just played are there to step back to', (
+    tester,
+  ) async {
+    final probe = await openMovie(tester, frames: 2);
+    final first = probe.renderRequests.first;
+    // Sixty-four frames of budget, thirty-two once the OS warns: every frame
+    // of the movie is held, and then over thirty frames behind the playhead
+    // go at once — more than a short list, where any order of equals is the
+    // order they came in.
+    ViewerRasterBudget.debugPageBytesOverride = first.$2 * first.$3 * 4 * 16;
+
+    final fake = await openMovie(tester, frames: 60);
+    // Frames 59 down to 40 read by hand first — they land before the run
+    // plays the frames below them, and 40 to 49 are behind it at 50.
+    Future<void> press(String control) async {
+      await tester.tap(
+        find.byKey(ValueKey<String>('media-viewer-transport-$control')),
+      );
+      await tester.pump();
+    }
+
+    await press('last');
+    for (var step = 0; step < 19; step += 1) {
+      await press('step-back');
+    }
+    expect(slot.position.value, 40, reason: 'fixture: read back to 40');
+    await press('first');
+    await play(tester);
+    for (var ticks = 0; ticks < 400 && slot.position.value < 50; ticks += 1) {
+      await tick(tester);
+    }
+    expect(slot.position.value, 50, reason: 'fixture: the run reached 50');
+
+    session.respondToMemoryPressure();
+    await tester.pump();
+    await play(tester);
+    final before = fake.renderRequests.length;
+    for (var step = 0; step < 20; step += 1) {
+      await press('step-back');
+    }
+    expect(slot.position.value, 30, reason: 'fixture: stepped back to 30');
+    expect(
+      [for (final request in fake.renderRequests.skip(before)) request.$1],
+      isEmpty,
+      reason: 'the frames behind it went farthest first, whenever they '
+          'landed — every one of the last twenty played was still held',
+    );
+  });
+
   testWidgets('🚨a straight play-through asks for every frame ONCE — what '
       'the playhead has passed goes first, never what it is about to '
       'need', (tester) async {

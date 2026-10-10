@@ -12,18 +12,10 @@ import 'viewer_raster_budget.dart';
 /// (stale-while-revalidate — a wrong-scale image still draws while the
 /// right one renders).
 class _RenderedPage {
-  const _RenderedPage({
-    required this.scale,
-    required this.image,
-    required this.landed,
-  });
+  const _RenderedPage({required this.scale, required this.image});
 
   final double scale;
   final ui.Image image;
-
-  /// When it landed, counted: among pages wanted alike, the one that landed
-  /// first goes first ([PageRasters.evictToBudget]).
-  final int landed;
 }
 
 /// What was last asked of the document for one (page, scale).
@@ -91,9 +83,6 @@ class PageRasters {
   final void Function(int bytes) _report;
 
   final Map<int, _RenderedPage> _cache = {};
-
-  /// How many pages have landed — what each is stamped with.
-  int _landings = 0;
 
   /// The pages the view shows now — every one on screen in a book, the
   /// page in a document that turns its own. Set where they are drawn;
@@ -208,12 +197,7 @@ class PageRasters {
       _rebuild(() {
         _renders.remove((pageIndex, at));
         _cache[pageIndex]?.image.dispose();
-        _landings += 1;
-        _cache[pageIndex] = _RenderedPage(
-          scale: at,
-          image: image,
-          landed: _landings,
-        );
+        _cache[pageIndex] = _RenderedPage(scale: at, image: image);
         evictToBudget(keeping: pageIndex);
       });
     }());
@@ -255,7 +239,12 @@ class PageRasters {
       heldBytes: total + extraBytes,
       maxBytes: budget.byteBudget,
       wantedAt: (entry) => _wantedAt(entry.key),
-      lastUsed: (entry) => entry.value.landed,
+      // Pages are wanted alike only behind a run that plays — none is shown
+      // again — and among those the lowest goes first: the farthest behind,
+      // as a run that plays forward left them. ⛔Not who landed first: a
+      // page read by hand before the run would go before the frames the run
+      // had just played (tried 10-10).
+      lastUsed: (entry) => entry.key,
       bytesOf: (entry) => ViewerRasterBudget.costOf(entry.value.image),
       letGo: (entry) {
         _cache.remove(entry.key);
