@@ -1332,6 +1332,13 @@ enum AppStrings {
   String get imCutFolderUnreadable => _s('imCutFolderUnreadable');
   String imUnreadable(String name) =>
       _s('imUnreadableTemplate').replaceAll('{name}', name);
+
+  /// A file let go on a reference row that reads, and holds no picture
+  /// [number] — the one a cel of the row shows, counted from 1 (I-68 「가」).
+  String imLacksPicture(String name, int number) =>
+      _s('imLacksPictureTemplate')
+          .replaceAll('{name}', name)
+          .replaceAll('{number}', '$number');
   String imCorrupt(String name) =>
       _s('imCorruptTemplate').replaceAll('{name}', name);
   String imPagesFailed(String name, int count) => _s(
@@ -2456,6 +2463,7 @@ enum AppStrings {
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
     'imUnreadableTemplate': '{name}: could not read the file.',
+    'imLacksPictureTemplate': '{name}: the file has no picture {number}.',
     'imCorruptTemplate':
         '{name} could not be opened — corrupt or password-locked.',
     'imPagesFailedTemplate':
@@ -3796,6 +3804,7 @@ enum AppStrings {
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
     'imUnreadableTemplate': '{name}: ファイルを読めませんでした。',
+    'imLacksPictureTemplate': '{name}: このファイルには{number}番目の画像がありません。',
     'imCorruptTemplate':
         '{name} を開けませんでした — 破損しているか、パスワードで保護されています。',
     'imPagesFailedTemplate':
@@ -5245,6 +5254,7 @@ enum AppStrings {
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
     'imUnreadableTemplate': '{name}: 파일을 읽지 못했습니다.',
+    'imLacksPictureTemplate': '{name}: 이 파일에는 {number}번째 그림이 없습니다.',
     'imCorruptTemplate': '{name}: 열 수 없습니다 — 손상됐거나 암호로 잠겨 있습니다.',
     'imPagesFailedTemplate': '{name}: {n}쪽을 그리지 못했습니다 — 그 셀은 비어 있습니다.',
     'imFramesFailedTemplate':
@@ -6805,6 +6815,7 @@ enum AppStrings {
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
     'imUnreadableTemplate': '{name} : impossible de lire le fichier.',
+    'imLacksPictureTemplate': '{name} : le fichier n’a pas d’image n° {number}.',
     'imCorruptTemplate':
         '{name} n’a pas pu être ouvert — fichier corrompu ou protégé par mot de passe.',
     'imPagesFailedTemplate':
@@ -8201,6 +8212,7 @@ enum AppStrings {
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',
     'imUnreadableTemplate': '{name}：无法读取文件。',
+    'imLacksPictureTemplate': '{name}：该文件没有第 {number} 张图片。',
     'imCorruptTemplate': '无法打开 {name} — 文件已损坏或受密码保护。',
     'imPagesFailedTemplate': '{name}：{n} 页渲染失败 — 这些页保持空白。',
     'imFramesFailedTemplate': '{name}：{n} 帧解码失败 — 这些格保持空白。',

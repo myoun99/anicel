@@ -25,6 +25,7 @@ import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset, mediaFileName;
+import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
@@ -2120,19 +2121,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// A reference row shows [path] instead of its file (I-47) — no window:
   /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
   /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
-  /// window would have said it.
+  /// window would have said it — and why ([referenceSwapWords]).
   Future<void> _swapReference(LayerId layerId, String path) async {
-    final swapped = await widget.session.importDoors.swapReference(
-      layerId: layerId,
-      path: path,
+    final words = referenceSwapWords(
+      await widget.session.importDoors.swapReference(
+        layerId: layerId,
+        path: path,
+      ),
+      path,
     );
-    if (swapped || !mounted) {
+    if (words == null || !mounted) {
       return;
     }
     await showAppNotice(
       context,
       title: AppText.strings.commonNotice,
-      message: AppText.strings.imUnreadable(mediaFileName(path)),
+      message: words,
     );
   }
 
@@ -3046,3 +3050,23 @@ class _WorkspaceRoom {
 class _CanvasAreaKey extends GlobalObjectKey {
   const _CanvasAreaKey(super.value);
 }
+
+/// What a person reads when a file let go on a reference row did not come
+/// in (I-47): the program language's sentence for why — or null when there
+/// is nothing to say, the file in or the row left as it was.
+///
+/// 🗣️I-68 「가」 ⓐ (유저 2026-10-10 「추천대로가자」): a file that reads, and
+/// only lacks the picture the row's cel shows, says that — 「bg.png에는
+/// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
+/// was a row that changed while its file was read.
+String? referenceSwapWords(ReferenceRedraw answer, String path) =>
+    switch (answer) {
+      ReferenceLaid() || ReferenceLeftAlone() => null,
+      ReferenceUnreadable() => AppText.strings.imUnreadable(
+        mediaFileName(path),
+      ),
+      ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
+        mediaFileName(path),
+        picture + 1,
+      ),
+    };

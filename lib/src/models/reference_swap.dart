@@ -24,6 +24,42 @@ enum ReferenceSwap {
   pictures,
 }
 
+/// What laying a reference row's pictures from a file again came to — the
+/// answer to a swap, and to a move of the reference fx (I-68).
+///
+/// ↩️It was a `bool`, and `false` said every way it did not land: the drop
+/// told a file that read, and only lacked the picture a cel shows, 「could
+/// not read the file」 (I-68 「가」 ⓐ — 유저 2026-10-10 「추천대로가자」:
+/// 「bg.png에는 2번째 그림이 없습니다」).
+sealed class ReferenceRedraw {
+  const ReferenceRedraw();
+}
+
+/// Laid: the row shows the file where its reference fx stands it.
+final class ReferenceLaid extends ReferenceRedraw {
+  const ReferenceLaid();
+}
+
+/// Nothing laid, and nothing to say of it: the row is not one laid again,
+/// it already stands as asked, or it changed while its file was read.
+final class ReferenceLeftAlone extends ReferenceRedraw {
+  const ReferenceLeftAlone();
+}
+
+/// The file did not read — or the movie did not open, or a page did not
+/// render.
+final class ReferenceUnreadable extends ReferenceRedraw {
+  const ReferenceUnreadable();
+}
+
+/// The file read, and holds no [picture] — the picture of it a cel shows
+/// ([Frame.filePicture]), counted from 0.
+final class ReferenceLacksPicture extends ReferenceRedraw {
+  const ReferenceLacksPicture(this.picture);
+
+  final int picture;
+}
+
 /// How [layer] takes the file at [path] in place of the one it shows — or
 /// null when it cannot: a row that points at no file, the file it already
 /// shows, or a file that could not stand where its picture stands (a movie

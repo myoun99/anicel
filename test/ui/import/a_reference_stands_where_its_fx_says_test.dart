@@ -65,6 +65,13 @@ List<int>? colourAt(BitmapSurface? surface, int x, int y) {
   );
 }
 
+/// A redraw the file did not give: it lacks [picture], counted from 0.
+Matcher lacks(int picture) => isA<ReferenceLacksPicture>().having(
+  (answer) => answer.picture,
+  'picture',
+  picture,
+);
+
 /// [colour] as the straight RGBA a surface reads back.
 List<int> rgbaOf(ui.Color colour) {
   final argb = colour.toARGB32();
@@ -230,7 +237,7 @@ void main() {
         await tester.runAsync(
           () => s.importDoors.swapReference(layerId: row.id, path: blue),
         ),
-        isTrue,
+        isA<ReferenceLaid>(),
       );
       expect(
         shown(s, row),
@@ -291,7 +298,7 @@ void main() {
         await tester.runAsync(
           () => s.importDoors.reposeReference(layerId: row.id, pose: moved),
         ),
-        isTrue,
+        isA<ReferenceLaid>(),
       );
       expect(rowOf(s, row).mediaReference!.pose, moved);
       expect(shown(s, row), const ui.Rect.fromLTRB(1110, 767, 1310, 887));
@@ -321,7 +328,7 @@ void main() {
             pose: rowOf(s, row).mediaReference!.pose,
           ),
         ),
-        isFalse,
+        isA<ReferenceLeftAlone>(),
       );
       expect(s.canUndo, canUndo);
     });
@@ -478,7 +485,7 @@ void main() {
         await tester.runAsync(
           () => s.importDoors.swapReference(layerId: row.id, path: otherPath),
         ),
-        isTrue,
+        isA<ReferenceLaid>(),
       );
       final asked = fake.asked.length;
       await shownAt(tester, s, row);
@@ -573,7 +580,7 @@ void main() {
     }
 
     /// [row]'s reference fx moved to 1:1 in the canvas's middle.
-    Future<bool?> moved(
+    Future<ReferenceRedraw?> moved(
       WidgetTester tester,
       EditorSessionManager s,
       Layer row,
@@ -626,7 +633,7 @@ void main() {
       expect([for (final frame in row.frames) frame.filePicture], [1, 2]);
       pdf.renderRequests.clear();
 
-      expect(await moved(tester, s, row), isTrue);
+      expect(await moved(tester, s, row), isA<ReferenceLaid>());
 
       expect(
         pdf.renderRequests,
@@ -698,7 +705,7 @@ void main() {
         pageSizes: const [ui.Size(100, 50), ui.Size(100, 50)],
       );
 
-      expect(await moved(tester, s, row), isFalse);
+      expect(await moved(tester, s, row), lacks(2));
 
       expect(s.canUndo, canUndo);
       for (final index in [0, 1]) {
@@ -794,7 +801,7 @@ void main() {
             ),
           ),
         ),
-        isTrue,
+        isA<ReferenceLaid>(),
       );
 
       for (final (index, colour) in [(0, white), (1, black)]) {
@@ -826,6 +833,54 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    // ⓐ (유저 2026-10-10 「추천대로가자」): a swap keeps the picture's number
+    // as a move does — the file is all that changes.
+    testWidgets('🎯a still that is one frame takes the SAME frame of a file '
+        'swapped in — another GIF\'s 2nd, not its 1st — and a file with no '
+        'such frame is not taken: the answer names the one it lacks',
+        (tester) async {
+      final (s, row) = await placed(tester, outFrame: 1);
+      final files = (await tester.runAsync(
+        () async => (
+          // red · blue · red
+          gif: await writeThreeFrameGif(
+            tempDir,
+            'other.gif',
+            colours: const [0xFF0000, 0x0000FF],
+          ),
+          png: await writeSolidPng(
+            tempDir,
+            'bg.png',
+            width: 1,
+            height: 1,
+            rgba: 0x00FF00FF,
+          ),
+        ),
+      ))!;
+
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.swapReference(layerId: row.id, path: files.png),
+        ),
+        lacks(1),
+      );
+      expect(s.layerById(row.id), row, reason: 'nothing changed');
+
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.swapReference(layerId: row.id, path: files.gif),
+        ),
+        isA<ReferenceLaid>(),
+      );
+      expect(
+        colourAt(celOf(s, row, 0), 50, 50),
+        [0, 0, 255, 255],
+        reason: 'its 2nd frame, blue — not its 1st, red',
+      );
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('a file that has since lost the picture a cel shows is not '
         'laid again — the move lands nothing, and every cel keeps what it '
         'showed', (tester) async {
@@ -852,7 +907,7 @@ void main() {
             ),
           ),
         ),
-        isFalse,
+        lacks(1),
       );
       expect(s.canUndo, canUndo);
       for (final (index, colour) in [(0, white), (1, black)]) {

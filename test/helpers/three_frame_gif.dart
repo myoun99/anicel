@@ -1,13 +1,18 @@
 import 'dart:io';
 
-/// Writes a three-frame GIF, one pixel a frame, black · white · black, into
-/// [directory] and returns its path — no two neighbours alike, because the
-/// import folds a repeated frame into a hold and three equal frames would
-/// land as ONE cel.
+/// Writes a three-frame GIF, one pixel a frame — [colours]' first, second,
+/// first: black · white · black unless told — into [directory] and returns
+/// its path. No two neighbours are alike, because the import folds a
+/// repeated frame into a hold and three equal frames would land as ONE cel.
 ///
 /// ⛔THE ONE GIF FIXTURE: a GIF's frames are hand-written LZW here, which no
 /// test should spell out twice.
-Future<String> writeThreeFrameGif(Directory directory, String name) async {
+Future<String> writeThreeFrameGif(
+  Directory directory,
+  String name, {
+  List<int> colours = const [0x000000, 0xFFFFFF],
+}) async {
+  assert(colours.length == 2, 'the palette holds two colours');
   // [lzw] is the pixel's LZW code: 0x44 for palette 0, 0x4C for 1.
   List<int> frame(int lzw) => [
     0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00, // graphic control
@@ -18,7 +23,11 @@ Future<String> writeThreeFrameGif(Directory directory, String name) async {
   await file.writeAsBytes([
     ...'GIF89a'.codeUnits,
     0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, // 1×1, two colours
-    0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+    for (final colour in colours) ...[
+      (colour >> 16) & 0xFF,
+      (colour >> 8) & 0xFF,
+      colour & 0xFF,
+    ],
     ...frame(0x44), ...frame(0x4C), ...frame(0x44),
     0x3B,
   ]);

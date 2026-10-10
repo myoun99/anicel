@@ -9,6 +9,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/reference_swap.dart' show ReferenceRedraw;
 import '../../models/property_track.dart'
     show PropertyKey, PropertyKeyInterpolation;
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -93,7 +94,10 @@ class LaneVerbs {
     required void Function(TransformTrack track, {required String description})
     updateActiveCutCameraTrack,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
-    required Future<bool> Function(LayerId layerId, TransformPose pose)
+    required Future<ReferenceRedraw> Function(
+      LayerId layerId,
+      TransformPose pose,
+    )
     reposeReference,
   }) : _project = project,
        _selection = selection,
@@ -111,7 +115,7 @@ class LaneVerbs {
   /// `ProjectImportDoors.reposeReference` — a reference fx's one write
   /// (I-68): the file is laid again where the pose stands it, which only
   /// the doors that read files can do.
-  final Future<bool> Function(LayerId layerId, TransformPose pose)
+  final Future<ReferenceRedraw> Function(LayerId layerId, TransformPose pose)
   _reposeReference;
 
   final EffectsAndFx _effectsAndFx;
