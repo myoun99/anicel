@@ -293,14 +293,31 @@ void main() {
             await tester.runAsync(() async {
               final s = twoPictures();
               addTearDown(s.dispose);
+              final rig = playbackRigOf(s);
+              rig.playbackCache.debugSetPlaybackCacheBudgetBytes(16 * picture);
+              // Read as waitedAtEachChange reads, with whether frame 0's
+              // picture is there beside it: the pictures after it are made
+              // beside it (asked for ahead) and land in either order.
+              final seen = <({bool waited, bool there})>[];
+              ({bool waited, bool there}) now() =>
+                  (waited: rig.playback.isWaiting, there: held(s, 0));
+              rig.prerenderScheduler.changes.addListener(() => seen.add(now()));
+              rig.playback.play(scope: scope);
+              seen.insert(0, now());
+              await rested(rig);
 
-              final waited = await waitedAtEachChange(s);
-
+              final made = seen.indexWhere((at) => at.there);
+              expect(made, greaterThan(0), reason: 'at the press, nothing is made');
               expect(
-                waited,
-                [true, false, false, false],
-                reason: 'at the press, nothing is made; one picture later it goes '
-                    '— the second picture is not waited for, nor the rest',
+                [for (final at in seen.take(made)) at.waited],
+                everyElement(isTrue),
+                reason: 'it waits while its first picture is not there',
+              );
+              expect(
+                seen[made].waited,
+                isFalse,
+                reason: 'and goes the moment it is — the second picture is not '
+                    'waited for, nor the rest',
               );
               expect(playbackRigOf(s).playback.isWaiting, isFalse);
               expect(playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)), 0);

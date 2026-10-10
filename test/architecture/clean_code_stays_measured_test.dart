@@ -296,7 +296,15 @@ void main() {
   /// pose's lane, a reference fx's — the pose, which lane, the input and the
   /// two the Scale lane's form reads it with, the transform lanes' own. 389
   /// had been measured under 390 before this round.
-  const wideSignatures = 387;
+  ///
+  /// ⚠️387 → 388 on 2026-10-10 (a-picture-is-made-once), named as the rule
+  /// asks: `LayerFrameImageCache._prepareNow` (six) is the body `prepare`
+  /// had, under the join that makes a picture once now (`_Makings`) — its
+  /// parameters are `prepare`'s own, handed on whole. 🔬`clean_code_diff`
+  /// between the lane's base and the lane names it and no other: the walk's
+  /// ask ahead, which first took its context as nine parameters, lives on an
+  /// object of its own (`_AskedAhead`).
+  const wideSignatures = 388;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

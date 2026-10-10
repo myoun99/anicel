@@ -332,10 +332,6 @@ class PlaybackPrerenderScheduler {
   /// of them.
   static const int _walkBurst = 32;
 
-  /// How many missing pictures past the one it waits for the walk asks for
-  /// before it waits ([_askAhead]).
-  static const int _askedAhead = 2;
-
   Future<void> _run(int generation, FrameDemand demand) async {
     // How many frames, on from where the walk starts, are there.
     var reached = 0;
@@ -344,11 +340,7 @@ class PlaybackPrerenderScheduler {
     var walkedBytes = 0;
     final weighed = <Object>{};
     var startedAhead = 0;
-    // The pictures this walk asked for ahead that are still being made, by
-    // cut and frame, with what each was to weigh and the parts it makes
-    // ([_askAhead]).
-    final askedAhead =
-        <(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>{};
+    final askedAhead = _AskedAhead(this, generation, demand);
     while (true) {
       if (demand.yieldsToEditing) {
         await _idleGate(generation);
@@ -367,6 +359,7 @@ class PlaybackPrerenderScheduler {
       final lead = math.min(demand.leadFor(_composeTime), length - 1);
       List<DemandedPicture>? at(int index) =>
           index < length ? demand.picturesAt((lead + index) % length) : null;
+      final _Pass pass = (at: at, stepAt: (index) => (lead + index) % length);
 
       final moved = demand.advanced();
       if (moved > 0 && reached > 0) {
@@ -422,24 +415,14 @@ class PlaybackPrerenderScheduler {
       // room was made then, and its landing is told where it lands — and
       // keeps asking past it, so as many stay on their way.
       final waitingFor = (missing.cut.id, missing.frameIndex);
-      final asked = askedAhead[waitingFor];
+      final asked = askedAhead.landingOf(waitingFor);
       if (asked != null) {
         _progress.value = PrerenderProgress(
           cached: reached,
           total: _expected(length, reached: reached, walkedBytes: walkedBytes),
         );
-        _askAhead(
-          generation,
-          demand,
-          at,
-          askedAhead,
-          making: (bytes: 0, parts: const {}),
-          waitingFor: waitingFor,
-          from: reached + 1,
-          lead: lead,
-          length: length,
-        );
-        await asked.landing;
+        askedAhead.askPast(pass, from: reached + 1, waitingFor: waitingFor);
+        await asked;
         if (_isStale(generation)) {
           return;
         }
@@ -466,15 +449,10 @@ class PlaybackPrerenderScheduler {
       );
       final making = pictures.partsToMake(missing);
       final landing = _compose(generation, demand, missing);
-      _askAhead(
-        generation,
-        demand,
-        at,
-        askedAhead,
-        making: (bytes: pictureBytes, parts: making),
+      askedAhead.askPast(
+        pass,
         from: reached + 1,
-        lead: lead,
-        length: length,
+        making: (bytes: pictureBytes, parts: making),
       );
       final landed = await landing;
       if (_isStale(generation)) {
@@ -494,81 +472,6 @@ class PlaybackPrerenderScheduler {
       _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
       await _wait(Duration.zero);
-    }
-  }
-
-  /// 🚨WHAT THE WALK WANTS NEXT IS ASKED FOR BEFORE IT WAITS. A picture
-  /// waits for its raster to come back; the next missing pictures' rasters
-  /// queue behind it meanwhile. Measured 10-10 (camera view, profile, two
-  /// rounds): the whole cut made 7–30% sooner.
-  ///
-  /// Each is the walk's own compose ([_compose]) — what a frame reads from
-  /// outside the cel store is filled first, a failure is said once — asked
-  /// for in the walk's order with its room made first, as the walk makes
-  /// room — room for everything still being made as well ([making], the
-  /// walk's own, and what was asked ahead): a picture being made is not in
-  /// the cache yet, and a room that counted only the cache held a third
-  /// picture where two fit. A frame whose parts are all being made already
-  /// comes with them and is not asked for: a held drawing shown on the next
-  /// frames would take every place ahead. Its landing is told when it
-  /// lands, as the walk tells its own: a run waiting for that frame learns
-  /// it then, not when the walk gets there.
-  void _askAhead(
-    int generation,
-    FrameDemand demand,
-    List<DemandedPicture>? Function(int index) at,
-    Map<(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>
-    askedAhead, {
-    required ({int bytes, Set<Object> parts}) making,
-    (CutId, int)? waitingFor,
-    required int from,
-    required int lead,
-    required int length,
-  }) {
-    // The one the walk waits for is its own now, not one ahead of it.
-    int ahead() =>
-        askedAhead.length - (askedAhead.containsKey(waitingFor) ? 1 : 0);
-    var pending = making.bytes;
-    final spoken = {...making.parts};
-    for (final asked in askedAhead.values) {
-      pending += asked.bytes;
-      spoken.addAll(asked.parts);
-    }
-    for (var look = from;
-        ahead() < _askedAhead && look < from + _walkBurst;
-        look += 1) {
-      final shown = at(look);
-      if (shown == null) {
-        return;
-      }
-      final picture = _firstMissing(shown);
-      if (picture == null) {
-        continue;
-      }
-      final key = (picture.cut.id, picture.frameIndex);
-      final parts = pictures.partsToMake(picture);
-      if (askedAhead.containsKey(key) || spoken.containsAll(parts)) {
-        continue;
-      }
-      final step = (lead + look) % length;
-      final bytes = pictures.bytesToMake(picture);
-      if (!(room?.makeRoomFor(bytes: pending + bytes, step: step) ?? true)) {
-        return;
-      }
-      pending += bytes;
-      spoken.addAll(parts);
-      final landing = _compose(generation, demand, picture).then((landed) {
-        askedAhead.remove(key);
-        if (!_isStale(generation)) {
-          if (landed) {
-            afterFrameCached?.call();
-            _landings.value += 1;
-          }
-          _changes.value += 1;
-        }
-        return landed;
-      });
-      askedAhead[key] = (landing: landing, bytes: bytes, parts: parts);
     }
   }
 
@@ -663,6 +566,115 @@ class PlaybackPrerenderScheduler {
             ? remaining
             : const Duration(milliseconds: 50),
       );
+    }
+  }
+}
+
+/// Where one pass of a walk stands: the pictures each index on from its
+/// start shows ([at]), and the step that index is ([stepAt]).
+typedef _Pass = ({
+  List<DemandedPicture>? Function(int index) at,
+  int Function(int index) stepAt,
+});
+
+/// 🚨WHAT THE WALK WANTS NEXT IS ASKED FOR BEFORE IT WAITS. A picture
+/// waits for its raster to come back; the next missing pictures' rasters
+/// queue behind it meanwhile. Measured 10-10 (camera view, profile, two
+/// rounds): the whole cut made 7–30% sooner.
+///
+/// One per walk ([PlaybackPrerenderScheduler]'s): the pictures it asked for
+/// ahead while they are being made, by cut and frame, each with what it was
+/// to weigh and the parts it makes.
+final class _AskedAhead {
+  _AskedAhead(this._scheduler, this._generation, this._demand);
+
+  /// How many missing pictures past the one it waits for a walk asks for
+  /// before it waits.
+  static const int _most = 2;
+
+  final PlaybackPrerenderScheduler _scheduler;
+  final int _generation;
+  final FrameDemand _demand;
+  final _onTheirWay =
+      <(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>{};
+
+  /// The landing of the picture at [picture] — cut and frame — while it is
+  /// on its way.
+  Future<bool>? landingOf((CutId, int) picture) =>
+      _onTheirWay[picture]?.landing;
+
+  /// Asks for the missing pictures past [from], in the pass's order, until
+  /// [_most] are on their way. [making] is what the walk makes itself;
+  /// [waitingFor], one asked ahead that the walk waits for now — its own
+  /// now, not one ahead of it.
+  ///
+  /// Each is the walk's own compose — what a frame reads from outside the
+  /// cel store is filled first, a failure is said once — with its room made
+  /// first, as the walk makes room: room for everything still being made as
+  /// well, since a picture being made is not in the cache yet, and a room
+  /// that counted only the cache held a third picture where two fit. A
+  /// frame whose parts are all being made already comes with them and is
+  /// not asked for: a held drawing shown on the next frames would take every
+  /// place ahead. Its landing is told when it lands, as the walk tells its
+  /// own: a run waiting for that frame learns it then, not when the walk
+  /// gets there.
+  void askPast(
+    _Pass pass, {
+    required int from,
+    ({int bytes, Set<Object> parts}) making = const (
+      bytes: 0,
+      parts: <Object>{},
+    ),
+    (CutId, int)? waitingFor,
+  }) {
+    final scheduler = _scheduler;
+    int ahead() =>
+        _onTheirWay.length - (_onTheirWay.containsKey(waitingFor) ? 1 : 0);
+    var pending = making.bytes;
+    final spoken = {...making.parts};
+    for (final asked in _onTheirWay.values) {
+      pending += asked.bytes;
+      spoken.addAll(asked.parts);
+    }
+    for (var look = from;
+        ahead() < _most &&
+            look < from + PlaybackPrerenderScheduler._walkBurst;
+        look += 1) {
+      final shown = pass.at(look);
+      if (shown == null) {
+        return;
+      }
+      final picture = scheduler._firstMissing(shown);
+      if (picture == null) {
+        continue;
+      }
+      final key = (picture.cut.id, picture.frameIndex);
+      final parts = scheduler.pictures.partsToMake(picture);
+      if (_onTheirWay.containsKey(key) || spoken.containsAll(parts)) {
+        continue;
+      }
+      final bytes = scheduler.pictures.bytesToMake(picture);
+      final step = pass.stepAt(look);
+      if (!(scheduler.room?.makeRoomFor(bytes: pending + bytes, step: step) ??
+          true)) {
+        return;
+      }
+      pending += bytes;
+      spoken.addAll(parts);
+      final landing = scheduler._compose(_generation, _demand, picture).then((
+        landed,
+      ) {
+        _onTheirWay.remove(key);
+        if (!scheduler._isStale(_generation)) {
+          if (landed) {
+            scheduler.afterFrameCached?.call();
+            scheduler._landings.value += 1;
+          }
+          scheduler._changes.value += 1;
+        }
+        return landed;
+      });
+      _onTheirWay[key] = (landing: landing, bytes: bytes, parts: parts);
     }
   }
 }
