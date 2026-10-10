@@ -14,12 +14,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// of its frame axis, the same 379 at every page a running playhead turned.
 ///
 /// ⚠️The panels' own pins read positions off the RENDER tree, and those were
-/// right before and are right now: the move is a LAYER's here, so what is
-/// pinned is what the compositor is handed.
+/// right before and are right now. The move is a LAYER's here, so what is
+/// pinned is what the compositor makes of it: the picture of the panel,
+/// where a layer the scene did not add again would still stand at its old
+/// place.
 void main() {
+  const panel = ValueKey<String>('panel');
   const ruler = ValueKey<String>('follower-ruler');
-  const cells = ValueKey<String>('scrolled-cells');
-  const beside = ValueKey<String>('beside');
 
   void useRatio(WidgetTester tester, double ratio) {
     tester.view.devicePixelRatio = ratio;
@@ -27,14 +28,18 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  /// A ruler following a horizontal scroll of cells [viewportWidth] wide,
-  /// both 2000 long, and a neighbour beside them — all on one layer.
+  /// A ruler [rulerWidth] wide following a horizontal scroll of cells
+  /// [viewportWidth] wide, both 2000 long and each marked at [markAt] — red
+  /// on the ruler, blue on the cells — and a neighbour beside them, all on
+  /// one layer.
   Widget harness(
     ScrollController controller, {
     required double ratio,
     double viewportWidth = 300,
-    CustomPainter? rulerPainter,
-    CustomPainter? besidePainter,
+    double rulerWidth = 300,
+    double markAt = 500,
+    _Mark? rulerPainter,
+    _Mark? besidePainter,
   }) => MediaQuery(
     data: MediaQueryData(devicePixelRatio: ratio),
     child: Directionality(
@@ -43,48 +48,56 @@ void main() {
         child: Align(
           alignment: Alignment.topLeft,
           child: RepaintBoundary(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 300,
-                  height: 20,
-                  child: ClipRect(
-                    child: OverflowBox(
-                      alignment: Alignment.topLeft,
-                      maxWidth: 2000,
-                      child: ScrollFollower(
-                        controller: controller,
-                        axisDirection: AxisDirection.right,
-                        child: CustomPaint(
-                          key: ruler,
-                          painter: rulerPainter,
-                          size: const Size(2000, 20),
+            key: panel,
+            child: SizedBox(
+              width: 800,
+              height: 80,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: rulerWidth,
+                    height: 20,
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.topLeft,
+                        maxWidth: 2000,
+                        child: ScrollFollower(
+                          controller: controller,
+                          axisDirection: AxisDirection.right,
+                          child: CustomPaint(
+                            key: ruler,
+                            painter:
+                                rulerPainter ??
+                                _Mark(const Color(0xFFFF0000), at: markAt),
+                            size: const Size(2000, 20),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                SizedBox(
-                  width: viewportWidth,
-                  height: 40,
-                  child: SingleChildScrollView(
-                    controller: controller,
-                    scrollDirection: Axis.horizontal,
-                    child: DeviceGridScrollBody(
+                  SizedBox(
+                    width: viewportWidth,
+                    height: 40,
+                    child: SingleChildScrollView(
                       controller: controller,
-                      axisDirection: AxisDirection.right,
-                      child: const SizedBox(key: cells, width: 2000, height: 40),
+                      scrollDirection: Axis.horizontal,
+                      child: DeviceGridScrollBody(
+                        controller: controller,
+                        axisDirection: AxisDirection.right,
+                        child: CustomPaint(
+                          painter: _Mark(const Color(0xFF0000FF), at: markAt),
+                          size: const Size(2000, 40),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                CustomPaint(
-                  key: beside,
-                  painter: besidePainter,
-                  size: const Size(300, 20),
-                ),
-              ],
+                  CustomPaint(
+                    painter: besidePainter ?? _Mark(const Color(0xFF00FF00)),
+                    size: const Size(300, 20),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -92,26 +105,48 @@ void main() {
     ),
   );
 
-  /// Where the compositor puts the ruler: the offset of the follower's own
-  /// layer, which sits straight on the boundary's here.
-  double rulerOnScreen(WidgetTester tester) {
-    final follower = tester.renderObject(find.byKey(ruler)).parent!;
-    final layer = follower.debugLayer;
-    expect(layer, isA<OffsetLayer>(), reason: 'the follower has a layer');
-    return (layer! as OffsetLayer).offset.dx;
+  /// The device column each mark comes out of the compositor at, in the
+  /// ruler's band and the cells' — null where none does.
+  Future<({int? ruler, int? cells})> marks(
+    WidgetTester tester,
+    double ratio,
+  ) async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(panel),
+    );
+    final read = await tester.runAsync(() async {
+      final image = await boundary.toImage(pixelRatio: ratio);
+      final bytes = await image.toByteData();
+      final width = image.width;
+      image.dispose();
+      return (bytes: bytes!, width: width);
+    });
+    int? firstColumn(double logicalY, {required bool red}) {
+      final row = (logicalY * ratio).floor();
+      for (var x = 0; x < read!.width; x += 1) {
+        final at = (row * read.width + x) * 4;
+        final r = read.bytes.getUint8(at);
+        final b = read.bytes.getUint8(at + 2);
+        if (red ? r > 128 && b < 64 : b > 128 && r < 64) {
+          return x;
+        }
+      }
+      return null;
+    }
+
+    return (
+      ruler: firstColumn(10, red: true),
+      cells: firstColumn(40, red: false),
+    );
   }
 
-  /// Where the cells landed, on the same boundary.
-  double cellsOnScreen(WidgetTester tester) =>
-      tester.getTopLeft(find.byKey(cells)).dx;
-
   testWidgets('🚨a pixel of scroll repaints neither what follows it nor what '
-      'stands beside it', (tester) async {
+      'stands beside it — and what follows still moves', (tester) async {
     useRatio(tester, 1);
     final controller = ScrollController();
     addTearDown(controller.dispose);
-    final rulerPaints = _Counting();
-    final besidePaints = _Counting();
+    final rulerPaints = _Mark(const Color(0xFFFF0000));
+    final besidePaints = _Mark(const Color(0xFF00FF00));
     await tester.pumpWidget(
       harness(
         controller,
@@ -120,11 +155,13 @@ void main() {
         besidePainter: besidePaints,
       ),
     );
+    controller.jumpTo(300);
+    await tester.pump();
     final before = (ruler: rulerPaints.paints, beside: besidePaints.paints);
     expect(before.ruler, greaterThan(0), reason: 'fixture: it painted once');
 
     for (var step = 1; step <= 5; step += 1) {
-      controller.jumpTo(step.toDouble());
+      controller.jumpTo(300 + step.toDouble());
       await tester.pump();
     }
 
@@ -140,25 +177,25 @@ void main() {
       reason: '🚨and the repaint does not climb to what stands beside it — '
           '↩️it repainted the panel\'s whole layer',
     );
-    expect(rulerOnScreen(tester), cellsOnScreen(tester), reason: 'it moved');
+    final seen = await marks(tester, 1);
+    expect(seen.cells, 195, reason: 'fixture: the cells\' mark, 500 - 305');
+    expect(seen.ruler, seen.cells, reason: 'and the ruler\'s stands over it');
   });
 
   for (final ratio in <double>[1, 1.35]) {
-    testWidgets('🚨what follows lands where the cells land — by its layer, '
-        'on the device grid, ratio $ratio (F-32)', (tester) async {
+    testWidgets('🚨what follows lands where the cells land — on the device '
+        'grid, ratio $ratio (F-32)', (tester) async {
       useRatio(tester, ratio);
       final controller = ScrollController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(harness(controller, ratio: ratio));
 
-      for (final at in <double>[123.37, 0.5, 777.77, 1000]) {
+      for (final at in <double>[250.37, 400.5, 377.77, 300]) {
         controller.jumpTo(at);
         await tester.pump();
-        expect(
-          rulerOnScreen(tester),
-          cellsOnScreen(tester),
-          reason: 'scrolled to $at',
-        );
+        final seen = await marks(tester, ratio);
+        expect(seen.cells, isNotNull, reason: 'fixture: the mark is in view');
+        expect(seen.ruler, seen.cells, reason: 'scrolled to $at');
       }
     });
   }
@@ -168,37 +205,64 @@ void main() {
     useRatio(tester, 1);
     final controller = ScrollController();
     addTearDown(controller.dispose);
-    await tester.pumpWidget(harness(controller, ratio: 1));
+    // The ruler as wide as the cells will be, and the marks at 1800: in
+    // view before the pull and after it.
+    final rulerPaints = _Mark(const Color(0xFFFF0000), at: 1800);
+    Widget panelOf(double viewportWidth) => harness(
+      controller,
+      ratio: 1,
+      viewportWidth: viewportWidth,
+      rulerWidth: 800,
+      markAt: 1800,
+      rulerPainter: rulerPaints,
+    );
+    await tester.pumpWidget(panelOf(300));
     controller.jumpTo(controller.position.maxScrollExtent);
     await tester.pump();
-    final scrolledTo = controller.offset;
-    expect(scrolledTo, 1700, reason: 'fixture: at the end');
+    expect(controller.offset, 1700, reason: 'fixture: at the end');
+    final before = await marks(tester, 1);
+    expect(before.cells, 100, reason: 'fixture: 1800 - 1700');
+    expect(before.ruler, 100, reason: 'fixture: the ruler over it');
 
     var told = 0;
     controller.addListener(() => told += 1);
+    final painted = rulerPaints.paints;
     // The cells' viewport grows past their end; the ruler's box does not
     // change at all, so nothing lays it out or paints it.
-    await tester.pumpWidget(
-      harness(controller, ratio: 1, viewportWidth: 800),
-    );
+    await tester.pumpWidget(panelOf(800));
 
-    expect(controller.offset, lessThan(scrolledTo), reason: 'fixture: pulled');
+    expect(controller.offset, 1200, reason: 'fixture: pulled back');
     expect(told, 0, reason: 'fixture: and nobody was told');
+    expect(rulerPaints.paints, painted, reason: 'fixture: nor was it painted');
+    final after = await marks(tester, 1);
+    expect(after.cells, 600, reason: 'fixture: 1800 - 1200');
     expect(
-      rulerOnScreen(tester),
-      cellsOnScreen(tester),
-      reason: 'the ruler still stands over the cells it numbers',
+      after.ruler,
+      600,
+      reason: 'the ruler still stands over the cells it numbers — its layer '
+          'read the pulled position as the frame was composited',
     );
   });
 }
 
-/// A painter that counts its paints and never asks to repaint.
-class _Counting extends CustomPainter {
+/// A painter that draws one upright line at [at] and counts its paints —
+/// and never asks to repaint.
+class _Mark extends CustomPainter {
+  _Mark(this.color, {this.at = 500});
+
+  final Color color;
+  final double at;
   int paints = 0;
 
   @override
-  void paint(Canvas canvas, Size size) => paints += 1;
+  void paint(Canvas canvas, Size size) {
+    paints += 1;
+    canvas.drawRect(
+      Rect.fromLTWH(at, 0, 1, size.height),
+      Paint()..color = color,
+    );
+  }
 
   @override
-  bool shouldRepaint(_Counting oldDelegate) => false;
+  bool shouldRepaint(_Mark oldDelegate) => false;
 }
