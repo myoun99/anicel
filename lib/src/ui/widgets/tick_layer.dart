@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// Where what a tick moves is laid out and painted — ALONE.
+/// Where what a tick moves is laid out, painted and described — ALONE.
 ///
 /// 🚨I-22 ③: a tick has to be kept in on both halves, and each half leaks
 /// its own way. PAINT: without a boundary the move repaints the region
@@ -17,6 +17,16 @@ import 'package:flutter/widgets.dart';
 /// playhead tint and standing ring, its body. This LayoutBuilder takes the
 /// rebuild's scope for itself.
 ///
+/// 🚨SEMANTICS IS THE THIRD HALF (2026-10-10): a layout ends by marking its
+/// semantics, and that mark climbs to the nearest semantics boundary, whose
+/// whole share of the tree is walked again. With none here a playback step
+/// re-walked four of them for a few moved nodes — the timeline panel's
+/// scroll view, the frame grid's, the canvas panel and the bottom dock,
+/// over a thousand render objects (the real app, accessibility tree on as
+/// this machine's release build runs it). The layer is a boundary of its
+/// own, so a tick re-walks the layer; it reads as one group to a screen
+/// reader, which is what it is — the dock regions' law (2026-09-26).
+///
 /// ⚠️It keeps the layout in only where its size is decided from above —
 /// TIGHT constraints: a `Positioned.fill`, a box sized on both axes. Handed
 /// loose ones it lays its parent out again on every tick, and the boundary
@@ -27,16 +37,19 @@ class TickLayer extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => RepaintBoundary(
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        assert(
-          constraints.isTight,
-          'A TickLayer keeps its layout in only under tight constraints '
-          '(got $constraints).',
-        );
-        return child;
-      },
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    child: RepaintBoundary(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          assert(
+            constraints.isTight,
+            'A TickLayer keeps its layout in only under tight constraints '
+            '(got $constraints).',
+          );
+          return child;
+        },
+      ),
     ),
   );
 }

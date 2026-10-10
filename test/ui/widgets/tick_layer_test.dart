@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,6 +79,73 @@ void main() {
     expect(asked.painted, isTrue);
   });
 
+  /// A host whose one semantics boundary holds a panel — a box that counts
+  /// the semantics walks passing into it — round the tick layer, or round
+  /// the bare [tick], beside a label of its own.
+  Widget describedHost({required bool layered, required List<int> walks}) {
+    final tick = ValueListenableBuilder<int>(
+      valueListenable: ticks,
+      builder: (context, value, _) => Text('$value'),
+    );
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Semantics(
+        container: true,
+        child: _WalkCounter(
+          walks: walks,
+          child: Stack(
+            children: [
+              const Text('beside'),
+              Positioned.fill(child: layered ? TickLayer(child: tick) : tick),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// How many semantics walks the tick sent into the panel round it: a
+  /// tick's frame less a frame with nothing changed — a debug build walks
+  /// the whole tree once a frame to check it, changed or not.
+  Future<int> walksIntoThePanel(WidgetTester tester, List<int> walks) async {
+    expect(walks.single, greaterThan(0), reason: 'premise: the build walked');
+    var before = walks.single;
+    SchedulerBinding.instance.scheduleFrame();
+    await tester.pump();
+    final unchanged = walks.single - before;
+    before = walks.single;
+    ticks.value += 1;
+    await tester.pump();
+    expect(find.text('${ticks.value}'), findsOneWidget, reason: 'premise');
+    return walks.single - before - unchanged;
+  }
+
+  testWidgets('a tick inside re-walks the layer\'s semantics, not the '
+      'panel round it', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final walks = [0];
+    await tester.pumpWidget(describedHost(layered: true, walks: walks));
+
+    expect(await walksIntoThePanel(tester, walks), 0);
+    expect(
+      find.bySemanticsLabel('${ticks.value}'),
+      findsOneWidget,
+      reason: 'the tick reads to a screen reader as it did',
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('CONTROL: the same tick bare re-walks the panel round it', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final walks = [0];
+    await tester.pumpWidget(describedHost(layered: false, walks: walks));
+
+    expect(await walksIntoThePanel(tester, walks), greaterThan(0));
+    semantics.dispose();
+  });
+
   testWidgets('under loose constraints it says so', (tester) async {
     await tester.pumpWidget(
       const Center(
@@ -87,4 +155,28 @@ void main() {
 
     expect(tester.takeException(), isAssertionError);
   });
+}
+
+/// A box that counts the semantics walks passing through it: rebuilding a
+/// boundary's share of the tree visits every node under it this way.
+class _WalkCounter extends SingleChildRenderObjectWidget {
+  const _WalkCounter({required this.walks, super.child});
+
+  final List<int> walks;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderWalkCounter(walks);
+}
+
+class _RenderWalkCounter extends RenderProxyBox {
+  _RenderWalkCounter(this.walks);
+
+  final List<int> walks;
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    walks[0] += 1;
+    super.visitChildrenForSemantics(visitor);
+  }
 }
