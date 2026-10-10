@@ -584,8 +584,16 @@ class _InteractiveCanvasBuild {
           // track stack on the clock's global axis (R3a) — a selected-track
           // gap shows what the OTHER tracks hold there instead of the void.
           : _isPlaybackActive
-          ? (context, viewport) =>
-                _state._buildTrackStackView(session, viewport, ofTheRun: true)
+          ? (context, viewport) {
+              // The film is made at the level its cuts are drawn at — the
+              // canvas's own look, through the camera when it is on.
+              _sayTheLook(session, _look(context, session, viewport));
+              return _state._buildTrackStackView(
+                session,
+                viewport,
+                ofTheRun: true,
+              );
+            }
           // The parked state (no active cut): the multitrack
           // display path — every covered track's composite stacks
           // where the void used to be, in its own CANVAS space (the
@@ -665,9 +673,10 @@ class _InteractiveCanvasBuild {
   });
 
   /// How this canvas shows a cut's frame through the panel's [viewport]
-  /// ([CanvasLook]) — through the camera while a run plays here with the
-  /// camera view on (the camera view is playback's crop alone: a canvas
-  /// that stands or is scrubbed shows the camera's frame OVER it).
+  /// ([CanvasLook]) — through the camera while a run plays here, a cut's or
+  /// the film's, with the camera view on (the camera view is playback's crop
+  /// alone: a canvas that stands or is scrubbed shows the camera's frame
+  /// OVER it).
   CanvasLook _look(
     BuildContext context,
     EditorSessionManager session,
@@ -675,7 +684,7 @@ class _InteractiveCanvasBuild {
   ) => CanvasLook(
     view: viewport,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-    camera: _canvasPlays && _state.widget.cameraViewEnabled.value
+    camera: _isPlaybackActive && _state.widget.cameraViewEnabled.value
         ? (
             poseOf: session.camera.cameraPoseForCut,
             frameSize: session.camera.cameraFrameSize,
@@ -750,7 +759,7 @@ class _InteractiveCanvasBuild {
       imageCache: frame.session.renderCaches.layerFrameImageCache,
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>
-          frame.session.renderCaches.canvasBufferBytes = bytes,
+          frame.session.renderCaches.countStackBuffer('canvas', bytes),
       // A run this canvas plays: its maker makes the rows, and the frame
       // goes up whole.
       run: _canvasPlays

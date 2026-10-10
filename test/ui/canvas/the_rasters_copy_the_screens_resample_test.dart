@@ -15,17 +15,13 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -36,7 +32,6 @@ import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -228,79 +223,6 @@ void main() {
         }
       }
       expect(differing, 0);
-    });
-  });
-
-  testWidgets('the playback composite copies each layer image', (
-    tester,
-  ) async {
-    const canvasSize = CanvasSize(width: 8, height: 8);
-    BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
-        BrushFrameKey(
-          projectId: const ProjectId('project'),
-          trackId: const TrackId('track'),
-          cutId: cut.id,
-          layerId: layerId,
-          frameId: frameId,
-        );
-    final cut = Cut(
-      id: const CutId('cut'),
-      name: 'Cut',
-      duration: 24,
-      canvasSize: canvasSize,
-      layers: [
-        Layer(
-          id: const LayerId('layer'),
-          name: 'A',
-          frames: [
-            Frame(id: const FrameId('frame-a'), duration: 1, strokes: const []),
-          ],
-          timeline: {
-            0: const TimelineExposure.drawing(FrameId('frame-a'), length: 24),
-          },
-        ),
-      ],
-    );
-    final store = BrushFrameStore();
-    BrushFrameEditingCoordinator(
-      initialFrameKey: frameKey(
-        cut,
-        const LayerId('layer'),
-        const FrameId('frame-a'),
-      ),
-      frameStore: store,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 3, y: 3),
-          color: 0xFF000000,
-          size: 3,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: 0,
-        ),
-      ],
-    );
-    await tester.runAsync(() async {
-      final images = LayerFrameImageCache(frameStore: store);
-      final cache = CutFrameCompositeCache(
-        layerImages: images,
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      debugTexelCopies = 0;
-      await cache.prepareComposite(cut: cut, frameIndex: 0);
-      expect(debugTexelCopies, greaterThan(0));
-      cache.dispose();
-      images.dispose();
     });
   });
 

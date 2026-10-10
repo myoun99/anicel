@@ -94,14 +94,7 @@ class CameraShot extends StatelessWidget {
           clipper: shot == null
               ? null
               : OutlineClipper(
-                  convexIntersection(
-                    cameraFrameOnScreen(view, shot.frameSize, ratio),
-                    outlineOnScreen(
-                      canvasSize.canvasRect,
-                      shot.frameView,
-                      ratio,
-                    ),
-                  ),
+                  pictureOutlineOnScreen(view, shot, canvasSize, ratio),
                 ),
           child: child,
         ),
@@ -109,6 +102,24 @@ class CameraShot extends StatelessWidget {
     );
   }
 }
+
+/// Where a cut's picture is cut on a screen of [devicePixelRatio]: its
+/// canvas's own edge where the panel's [view] shows it — and, seen through
+/// a camera ([shot]), inside the camera's frame too, its canvas's edge where
+/// the camera puts it. The film shows no pasteboard
+/// (「페이스트보드는 포함 안 시킴」), and a cut seen whole shows what its
+/// canvas holds.
+List<Offset> pictureOutlineOnScreen(
+  CanvasViewport view,
+  CameraShotAt? shot,
+  CanvasSize canvasSize,
+  double devicePixelRatio,
+) => shot == null
+    ? outlineOnScreen(canvasSize.canvasRect, view, devicePixelRatio)
+    : convexIntersection(
+        cameraFrameOnScreen(view, shot.frameSize, devicePixelRatio),
+        outlineOnScreen(canvasSize.canvasRect, shot.frameView, devicePixelRatio),
+      );
 
 /// The camera's frame where the panel's [view] lays it on a screen of
 /// [devicePixelRatio] — what a run seen through the camera shows, its

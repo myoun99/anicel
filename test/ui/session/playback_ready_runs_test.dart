@@ -70,43 +70,8 @@ void main() {
   PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
       s.playbackRig.playbackCache;
 
-  testWidgets('a stroke turns the hold grey on the SAME cut instance — the '
-      'pixel revision moves the signature, not a new cut', (tester) async {
-    await tester.runAsync(() async {
-      final s = session();
-      addTearDown(s.dispose);
-      final held = s.activeCutOrNull!;
-      final budget = budgetOf(s);
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: held,
-        frameIndex: 0,
-      );
-
-      expect(budget.playbackReadyRunsForCut(held, 0, 30), [
-        (startIndex: 0, endIndexExclusive: 30),
-      ], reason: 'one bake answers the whole hold; past it is nothing');
-
-      s.renderCaches.brushFrameStore.markCelEdited(
-        s.brushFrameKeyForCut(
-          held,
-          const LayerId('layer'),
-          const FrameId('frame-a'),
-        ),
-      );
-
-      expect(identical(s.activeCutOrNull, held), isTrue);
-      expect(
-        budget.playbackReadyRunsForCut(held, 0, 30),
-        [(startIndex: 24, endIndexExclusive: 30)],
-        reason: 'the held image is the picture BEFORE the stroke — a '
-            'signature remembered past the pixel revision would still find '
-            'it and call the hold ready',
-      );
-    });
-  });
-
-  testWidgets('🚨on the canvas too: a stroke turns the timeline\'s hold grey '
-      '— the row\'s image is of the cel before it', (tester) async {
+  testWidgets('🚨a stroke turns the hold grey on the SAME cut instance — '
+      'the row\'s image is of the cel before it', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
@@ -125,11 +90,6 @@ void main() {
       );
       stroke(4, 4);
       final budget = budgetOf(s);
-      expect(
-        s.playbackRig.canvasShown,
-        isNotNull,
-        reason: '⛔premise: a cut played alone plays on the canvas',
-      );
 
       await s.playbackRig.canvasPictures.make((
         cut: held,
@@ -140,10 +100,12 @@ void main() {
       ], reason: 'one image answers the whole hold; past it is nothing');
 
       stroke(2, 2);
+      expect(identical(s.activeCutOrNull, held), isTrue);
       expect(
         budget.playbackReadyRuns(0, 30),
         [(startIndex: 24, endIndexExclusive: 30)],
-        reason: 'the image the row holds is of the cel before the stroke',
+        reason: 'the image the row holds is of the cel before the stroke — '
+            'the cel\'s revision moves the picture, not a new cut',
       );
     });
   });
@@ -154,10 +116,24 @@ void main() {
       addTearDown(s.dispose);
       final held = s.activeCutOrNull!;
       final budget = budgetOf(s);
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
+      inkCel(
+        s,
+        s.brushFrameKeyForCut(
+          held,
+          const LayerId('layer'),
+          const FrameId('frame-a'),
+        ),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 4, y: 4),
+        size: 4,
+      );
+      expect(budget.playbackReadyRuns(3, 30), [
+        (startIndex: 24, endIndexExclusive: 30),
+      ], reason: '⛔premise: the drawn hold waits for its picture');
+      await s.playbackRig.canvasPictures.make((
         cut: held,
         frameIndex: 0,
-      );
+      ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
         (startIndex: 3, endIndexExclusive: 30),

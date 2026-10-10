@@ -94,6 +94,7 @@ void main() {
     List<CompositeNode<CanvasStackRow>> nodes, {
     StackRun? run,
     CanvasViewport? viewport,
+    bool wholeFrames = false,
   }) {
     // One canvas pixel a device pixel at 100%: the middle is the middle.
     tester.view.devicePixelRatio = 1;
@@ -115,6 +116,7 @@ void main() {
                 // composite re-serves.
                 debugDisableBake: true,
                 run: run,
+                wholeFrames: wholeFrames,
               ),
             ),
           ),
@@ -217,6 +219,35 @@ void main() {
       isNot(blue),
       reason: 'no run: the frame asked for is the frame shown',
     );
+  });
+
+  /// F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the
+  /// track stack's cuts make their own rows and change frames whole, so a
+  /// drag that parks one frame after another shows the last whole frame
+  /// instead of a cut's bare paper.
+  testWidgets('🚨changing frames whole is its own question: a view that makes '
+      'its rows itself holds the last whole frame until its own make lands',
+      (tester) async {
+    final cache = images();
+    addTearDown(cache.dispose);
+    await make(tester, cache, 'blue');
+
+    await pumpStack(tester, cache, frameOf('blue'), wholeFrames: true);
+    expect(await middle(tester), blue, reason: '⛔premise: blue is up');
+
+    await pumpStack(tester, cache, frameOf('red'), wholeFrames: true);
+    expect(
+      await middle(tester),
+      blue,
+      reason: 'red is not made yet: the whole frame before it stays',
+    );
+
+    // No run: the view makes red itself.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pump();
+    expect(await middle(tester), red, reason: 'its own make landed: up');
   });
 
   testWidgets('🚨under a run the view makes none of its rows — the run\'s '

@@ -81,19 +81,27 @@ void main() {
     );
   });
 
-  test('the conte\'s live pictures are the canvas\'s painter, so their '
-      'buffers are on the canvas buffer\'s row', () {
+  test('every layer stack view\'s buffer is on the panel rasters\' row — '
+      'the canvas\'s, the conte\'s live pictures\', the track stack\'s cuts\'',
+      () {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
     final before = censusRows(session)['panelRasters']!;
 
-    session.renderCaches.livePictureBufferBytes
-      ..['picture-a'] = 1000
-      ..['picture-b'] = 2000;
+    session.renderCaches
+      ..countStackBuffer('canvas', 1000)
+      ..countStackBuffer(('conte-picture', 'a'), 2000)
+      ..countStackBuffer(('track-stack', 'c'), 4000);
+    expect(censusRows(session)['panelRasters'], before + 7000);
 
-    expect(censusRows(session)['panelRasters'], before + 3000);
+    session.renderCaches.countStackBuffer(('conte-picture', 'a'), 0);
+    expect(
+      censusRows(session)['panelRasters'],
+      before + 5000,
+      reason: 'a view that goes takes its buffer off the row',
+    );
   });
 
   test('🚨cels parked on disk are not RAM — the drawings and sheet-ink '

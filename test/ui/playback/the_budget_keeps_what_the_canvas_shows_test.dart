@@ -14,17 +14,16 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 
 /// playback-plays-the-screen-material (10-09, 「허용치 = 레이어 그림 수요
-/// 순서」): where the screen shows a frame from the canvas's own images,
-/// THEY are what the budget keeps — by when each is wanted, the latest let
-/// go first — and no composite is a picture of the screen's, so the
-/// composites give way before any of them.
+/// 순서」): the canvas's own images are every screen's pictures, and they
+/// are what the budget keeps — by when each is wanted, the latest let go
+/// first. ↩️The composites the film was shown from gave way before any of
+/// them, until they went (2026-10-10).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   // 8×8 RGBA: a cel inked into both corners is stored whole.
@@ -67,7 +66,7 @@ void main() {
   (BrushFrameKey, PlaybackQuality) slot(String name) =>
       (cel(name), PlaybackQuality.full);
 
-  ({LayerFrameImageCache layers, CutFrameCompositeCache composites}) caches() {
+  ({LayerFrameImageCache layers}) caches() {
     final store = BrushFrameStore();
     for (final name in ['a', 'b', 'c']) {
       for (final corner in [CanvasPoint(x: 1, y: 1), CanvasPoint(x: 6, y: 6)]) {
@@ -83,16 +82,8 @@ void main() {
       }
     }
     final layers = LayerFrameImageCache(frameStore: store);
-    final composites = CutFrameCompositeCache(
-      layerImages: layers,
-      frameStore: store,
-      frameKeyOf: keyOf,
-    );
-    addTearDown(() {
-      composites.dispose();
-      layers.dispose();
-    });
-    return (layers: layers, composites: composites);
+    addTearDown(layers.dispose);
+    return (layers: layers);
   }
 
   Future<void> make(LayerFrameImageCache layers, List<String> names) async {
@@ -119,25 +110,6 @@ void main() {
   int? wantedAt((BrushFrameKey, PlaybackQuality) asked) =>
       {slot('b'): 0, slot('a'): 2, slot('c'): 5}[asked];
 
-  testWidgets('🚨the screen showing the canvas\'s pictures, the composites go '
-      'first: no composite is a picture of its', (tester) async {
-    await tester.runAsync(() async {
-      final c = caches();
-      await c.composites.prepareComposite(cut: cut, frameIndex: 0);
-      expect(c.composites.estimatedBytes, image, reason: '⛔premise');
-      expect(c.layers.estimatedBytes, image, reason: '⛔premise: a, at full');
-
-      PlaybackCacheBudgetEnforcer(
-        layerImages: c.layers,
-        composites: c.composites,
-        maxBytes: image,
-      ).enforce(canvasWantedAt: (asked) => asked == slot('a') ? 0 : null);
-
-      expect(c.composites.estimatedBytes, 0);
-      expect(held(c.layers, 'a'), isTrue);
-    });
-  });
-
   testWidgets('the canvas\'s images go latest-wanted first, and the rows under '
       'the playhead stay whatever the cap', (tester) async {
     await tester.runAsync(() async {
@@ -146,21 +118,20 @@ void main() {
       PlaybackCacheBudgetEnforcer budget(int maxBytes) =>
           PlaybackCacheBudgetEnforcer(
             layerImages: c.layers,
-            composites: c.composites,
             maxBytes: maxBytes,
           );
 
-      budget(2 * image).enforce(canvasWantedAt: wantedAt);
+      budget(2 * image).enforce(wantedAt: wantedAt);
       expect([held(c.layers, 'a'), held(c.layers, 'b'), held(c.layers, 'c')], [
         true,
         true,
         false,
       ]);
 
-      budget(image).enforce(canvasWantedAt: wantedAt);
+      budget(image).enforce(wantedAt: wantedAt);
       expect([held(c.layers, 'a'), held(c.layers, 'b')], [false, true]);
 
-      budget(0).enforce(canvasWantedAt: wantedAt);
+      budget(0).enforce(wantedAt: wantedAt);
       expect(held(c.layers, 'b'), isTrue, reason: 'b is the playhead\'s');
     });
   });
@@ -172,12 +143,11 @@ void main() {
       await make(c.layers, ['a', 'b', 'c']);
       final budget = PlaybackCacheBudgetEnforcer(
         layerImages: c.layers,
-        composites: c.composites,
         maxBytes: 2 * image,
       );
 
       expect(
-        budget.makeRoomForCanvas(
+        budget.makeRoomFor(
           bytes: image,
           step: 1,
           within: 2 * image,
@@ -192,7 +162,7 @@ void main() {
       ]);
 
       expect(
-        budget.makeRoomForCanvas(
+        budget.makeRoomFor(
           bytes: image,
           step: 1,
           within: image,
@@ -209,11 +179,10 @@ void main() {
     final c = caches();
     final budget = PlaybackCacheBudgetEnforcer(
       layerImages: c.layers,
-      composites: c.composites,
       maxBytes: 1000,
     );
-    expect(budget.roomForCanvas(), 1000);
-    expect(budget.roomForCanvas(lentBytes: 300), 700);
-    expect(budget.roomForCanvas(lentBytes: 3000), 0);
+    expect(budget.room(), 1000);
+    expect(budget.room(lentBytes: 300), 700);
+    expect(budget.room(lentBytes: 3000), 0);
   });
 }

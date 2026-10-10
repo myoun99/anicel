@@ -911,11 +911,17 @@ void main() {
         reason: 'the canvas the camera does not frame stays off the page',
       );
 
-      final buffers = session.renderCaches.livePictureBufferBytes;
-      expect(buffers.keys, ['picture-39-0'], reason: 'the census counts it');
+      Iterable<Object> pictures() => session.renderCaches.stackBufferBytes
+          .keys
+          .where((view) => view is (String, String) && view.$1 == 'conte-picture');
+      expect(
+        pictures(),
+        [('conte-picture', 'picture-39-0')],
+        reason: 'the census counts it',
+      );
       brushOn.value = false;
       await tester.pumpAndSettle();
-      expect(buffers, isEmpty, reason: 'and stops when it goes');
+      expect(pictures(), isEmpty, reason: 'and stops when it goes');
     });
 
     testWidgets('🗣️F-215: the brush switch moves no pixel — the band\'s '

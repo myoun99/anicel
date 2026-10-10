@@ -118,11 +118,11 @@ void main() {
 
     s.parkGlobalFrame(1);
     await tester.pump();
-    expect(stack().picturesLanded, isNull, reason: 'parked: it makes its own');
+    expect(stack().run, isNull, reason: 'parked: it makes its own');
 
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    expect(stack().picturesLanded, same(landings));
+    expect(stack().run?.landings, same(landings));
     s.playbackRig.playback.stop();
     await tester.pump();
 

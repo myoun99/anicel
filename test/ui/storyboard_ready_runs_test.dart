@@ -25,8 +25,9 @@ import '../helpers/draw_on_current_frame.dart';
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  /// Four frames: a drawn cel at 0..1 (not baked in these tests), then a
-  /// hole at 2..3 that composes to nothing.
+  /// Four frames: a drawn cel at 0..1 (inked by [session], and made by
+  /// none of these tests but the last), then a hole at 2..3 with nothing to
+  /// make.
   final drawn = Cut(
     id: const CutId('drawn'),
     name: '1',
@@ -55,16 +56,32 @@ void main() {
     layers: const [],
   );
 
-  EditorSessionManager session() => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('project'),
-      name: 'P',
-      createdAt: DateTime.utc(2026),
-      tracks: [
-        Track(id: const TrackId('track'), name: 'T', cuts: [drawn, empty]),
-      ],
-    ),
-  );
+  /// The session, its drawn cel inked: a cel with nothing on it has no
+  /// picture to wait for.
+  EditorSessionManager session() {
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'P',
+        createdAt: DateTime.utc(2026),
+        tracks: [
+          Track(id: const TrackId('track'), name: 'T', cuts: [drawn, empty]),
+        ],
+      ),
+    );
+    inkCel(
+      s,
+      s.brushFrameKeyForCut(
+        drawn,
+        const LayerId('layer'),
+        const FrameId('frame-a'),
+      ),
+      canvasSize: canvasSize,
+      at: CanvasPoint(x: 4, y: 4),
+      size: 4,
+    );
+    return s;
+  }
 
   StoryboardTimelineLayoutEntry at(Cut cut, int startFrame) =>
       StoryboardTimelineLayoutEntry(
@@ -133,24 +150,13 @@ void main() {
     ]);
   });
 
-  testWidgets('🚨the storyboard\'s bar counts the FILM\'s pictures: the '
-      'canvas\'s own, which a cut played alone shows, do not make it green — '
-      'the film plays on the composite view', (tester) async {
+  testWidgets('🚨the storyboard\'s bar counts the FILM\'s pictures — the '
+      'canvas\'s own, which a cut played alone shows too: what one made, '
+      'both bars count', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
       final cut = s.activeCutOrNull!;
-      inkCel(
-        s,
-        s.brushFrameKeyForCut(
-          cut,
-          const LayerId('layer'),
-          const FrameId('frame-a'),
-        ),
-        canvasSize: canvasSize,
-        at: CanvasPoint(x: 4, y: 4),
-        size: 4,
-      );
       await s.playbackRig.canvasPictures.make((
         cut: cut,
         frameIndex: 0,
@@ -164,17 +170,11 @@ void main() {
 
       expect(
         storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]),
-        [(startIndex: 2, endIndexExclusive: 4)],
-        reason: 'the film has no composite of the drawn frames yet',
+        [(startIndex: 0, endIndexExclusive: 4)],
+        reason: 'the film shows a frame from those very images. ↩️It played '
+            'on composites, and its bar stayed grey over pictures it never '
+            'showed (until 2026-10-10)',
       );
-
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: cut,
-        frameIndex: 0,
-      );
-      expect(storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]), [
-        (startIndex: 0, endIndexExclusive: 4),
-      ]);
     });
   });
 }

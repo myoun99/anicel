@@ -244,17 +244,31 @@ class CanvasLayerStackView extends StatefulWidget {
     this.onBufferBytes,
     this.alreadyShown = false,
     this.run,
+    this.wholeFrames = false,
   });
 
   /// The RUN this view shows, when it shows one
   /// (playback-plays-the-screen-material): its maker makes the rows' images
   /// ahead of the playhead, so this view makes none — it takes each as it
-  /// [StackRun.landings] — and it changes frames WHOLE: a frame whose rows
-  /// are not all there leaves the last whole one on screen, as a run's
-  /// composite did (유저 2026-10-08: 「재생바는 지나가고있는데 그림이
+  /// [StackRun.landings] — and it changes frames WHOLE whatever
+  /// [wholeFrames] says (유저 2026-10-08: 「재생바는 지나가고있는데 그림이
   /// 없어서 비어있다던가」). Null for every other view, which makes what it
-  /// lacks and shows rows as they come.
+  /// lacks itself.
   final StackRun? run;
+
+  /// Whether this view changes frames WHOLE where it makes its rows itself:
+  /// a frame whose rows are not all there leaves the last whole one on
+  /// screen until it is. The track stack's cuts do — a drag in a gap parks
+  /// one frame after another, faster than a cold cel is made, and a cut
+  /// whose rows came as they came showed only its paper until the drag
+  /// stopped (F-206, 유저 2026-09-28: 「스크럽하던 뭐던 존재하는게
+  /// 보여야함」). False shows rows as they come — the editing canvas, where
+  /// a row being drawn on may not wait for its neighbours.
+  ///
+  /// ↩️One flag, [run], answered both questions — who makes the rows, and
+  /// whether a frame waits to be whole — until the track stack drew its
+  /// cuts on this view (2026-10-10) and asked the second without the first.
+  final bool wholeFrames;
 
   /// Whether what this stack shows is on screen already, painted by
   /// another route this view takes over from — the conte's printed
@@ -796,11 +810,15 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         (held != null && held.revision != revision);
   }
 
+  /// Whether a frame not yet whole leaves the last whole one standing
+  /// ([CanvasLayerStackView.wholeFrames]) — always, under a run.
+  bool get _changesWhole => widget.run != null || widget.wholeFrames;
+
   void _syncSweepBody(Set<BrushFrameKey> shownAlready) {
     _adoptWhatIsThere(shownAlready);
-    // What is shown is the frame asked for — or, under a run, the last
-    // whole frame until this one is whole ([CanvasLayerStackView.run]).
-    if (widget.run == null || _isWhole(widget.layers)) {
+    // What is shown is the frame asked for — or the last whole frame until
+    // this one is whole ([_changesWhole]).
+    if (!_changesWhole || _isWhole(widget.layers)) {
       _shownNodes = widget.nodes;
     }
     final kept = _keptKeys();
@@ -1012,6 +1030,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             return;
           }
           changed = changed || refreshed;
+        }
+        // The frame this pass made whole goes up — a view that changes
+        // frames whole held the last whole one until now.
+        if (!identical(_shownNodes, widget.nodes) &&
+            _isWhole(widget.layers)) {
+          _shownNodes = widget.nodes;
+          changed = true;
         }
         // A run that began during the pass shows a frame of its own: what it
         // still shows is not this pass's to let go of.

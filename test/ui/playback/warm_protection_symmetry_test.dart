@@ -68,9 +68,8 @@ void main() {
   /// each image the whole 8×8 canvas: one [picture]. A cel with nothing in
   /// it asks for no picture at all, so the hole between is there by
   /// definition. ↩️This file pinned the composite view's route, which the
-  /// camera view played on; only the whole film plays on composites now —
-  /// its bar is the one asked here with no canvas, and the composite cache's
-  /// own order is pinned in `cut_frame_composite_cache_test`.
+  /// camera view played on, and then the film's composites — every screen
+  /// shows a frame from the same images now (2026-10-10).
   EditorSessionManager session() {
     final s = EditorSessionManager(
       initialProject: Project(
@@ -122,7 +121,7 @@ void main() {
   /// Whether frame [frameIndex]'s picture is there, as the screen counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
-      .shownPictures
+      .canvasPictures
       .has((cut: s.activeCutOrNull!, frameIndex: frameIndex));
 
   int heldBytes(EditorSessionManager s) =>
@@ -273,18 +272,16 @@ void main() {
             'composes to nothing is one stretch each',
       );
 
-      // The bar asked with no canvas is the film's — the storyboard's, which
-      // plays on composites yet: its frames are ready when THEY are.
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: activeCut,
-        frameIndex: 5,
+      await s.playbackRig.canvasPictures.make(
+        (cut: activeCut, frameIndex: 5),
+        shouldAbort: () => false,
       );
       expect(ready(5), isTrue);
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
         [(startIndex: 2, endIndexExclusive: 12)],
-        reason: 'one bake answers the whole held span — frame 6 shows the '
-            'same picture, so it is the same composite',
+        reason: 'one image answers the whole held span — frame 6 shows the '
+            'same cel, so it is the same picture',
       );
     });
   });

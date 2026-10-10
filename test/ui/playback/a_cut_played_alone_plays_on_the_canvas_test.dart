@@ -452,31 +452,37 @@ void main() {
     await drain(tester);
   });
 
-  testWidgets('the warmer makes the canvas\'s pictures, through the camera or '
-      'not — only the whole film is shown from composites', (tester) async {
+  testWidgets('the warmer makes the canvas\'s pictures for every run — a cut '
+      'through the camera or not, and the whole film; the canvas shows a '
+      'cut, the track stack the film', (tester) async {
     final (s, camera) = await pumpArea(tester);
     final rig = s.playbackRig;
-    expect(rig.canvasShown, same(rig.canvasPictures));
-    expect(rig.shownPictures, same(rig.canvasPictures));
+    expect(rig.prerenderScheduler.pictures, same(rig.canvasPictures));
+    expect(rig.pictures, same(rig.canvasPictures));
 
     camera.value = true;
     await tester.pump();
-    expect(rig.shownPictures, same(rig.canvasPictures));
     rig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     expect(
-      rig.shownPictures,
-      same(rig.canvasPictures),
-      reason: 'a cut played alone through the camera is the canvas\'s too',
+      rig.playsOnTheCanvas,
+      isTrue,
+      reason: 'a cut played alone through the camera plays on the canvas',
     );
     rig.playback.stop();
     await tester.pump();
 
     rig.playback.play(scope: PlaybackScope.allCuts);
     expect(
-      rig.canvasShown,
-      isNull,
-      reason: 'the whole film plays on the track stack yet',
+      rig.playsOnTheCanvas,
+      isFalse,
+      reason: 'the whole film plays on the track stack',
+    );
+    expect(
+      rig.prerenderScheduler.pictures,
+      same(rig.canvasPictures),
+      reason: 'from the same pictures. ↩️It played from composites until '
+          '2026-10-10',
     );
     rig.playback.stop();
     await drain(tester);

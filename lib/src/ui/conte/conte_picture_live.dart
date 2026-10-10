@@ -208,14 +208,8 @@ class ContePictureLive extends StatelessWidget {
 
   /// Picture [id]'s display buffer, on the census — pushed: the census
   /// cannot reach a widget State; the session can.
-  void _count(String id, int bytes) {
-    final buffers = session.renderCaches.livePictureBufferBytes;
-    if (bytes == 0) {
-      buffers.remove(id);
-    } else {
-      buffers[id] = bytes;
-    }
-  }
+  void _count(String id, int bytes) =>
+      session.renderCaches.countStackBuffer(('conte-picture', id), bytes);
 }
 
 /// The camera's work over the live pictures — its frames, the trails of

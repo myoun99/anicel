@@ -17,11 +17,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
@@ -123,15 +121,6 @@ void main() {
   const layerId = LayerId('layer');
   const frameId = FrameId('frame-a');
 
-  BrushFrameKey frameKey(Cut cut, LayerId layer, FrameId frame) =>
-      BrushFrameKey(
-        projectId: projectId,
-        trackId: trackId,
-        cutId: cut.id,
-        layerId: layer,
-        frameId: frame,
-      );
-
   Cut cut() => Cut(
     id: cutId,
     name: 'Cut',
@@ -201,13 +190,8 @@ void main() {
     'no parked track-stack picture refuses the raster cache any more — a '
     'parked gap shows a still stack that would snap on cache engage',
     (tester) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
       final project = Project(
         id: projectId,
         name: 'Project',
@@ -228,7 +212,8 @@ void main() {
                 spansOf: (_) => const [],
                 globalFrameIndex: globalFrame,
               ),
-              compositeCache: composites,
+              stackOf: (_, _) => const [],
+              imageCache: images,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>

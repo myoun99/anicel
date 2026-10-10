@@ -31,7 +31,6 @@ import '../../services/playback/playback_picture_wait.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
 import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
-import '../playback/playback_pictures.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
@@ -113,13 +112,10 @@ class PlaybackRig implements PlaybackRun {
 
   // ── what the screen shows a frame from ──────────────────────────────
 
-  /// A cut's frame as one composite — the track stack's: the whole film.
-  late final CompositePictures compositePictures = CompositePictures(
-    _renderCaches.cutFrameCompositeCache,
-  );
-
-  /// A cut's frame as the canvas draws it — its rows' images at the level
-  /// the canvas draws that frame at.
+  /// A cut's frame as the screen draws it — its rows' images at the level
+  /// that frame is drawn at — the canvas a cut, the track stack the film.
+  /// ↩️The film was shown from a composite per frame, made beside the
+  /// images the canvas holds (playback-plays-the-screen-material).
   late final CanvasPictures canvasPictures = CanvasPictures(
     layerImages: _renderCaches.layerFrameImageCache,
     rowsOf: _canvasRowsOf,
@@ -127,26 +123,17 @@ class PlaybackRig implements PlaybackRun {
         _renderCaches.canvasLook.value.qualityAt(cut, frameIndex),
   );
 
-  /// The pictures the screen shows a frame from now: the canvas's own while
-  /// it shows one cut — standing, scrubbed, or played alone, through the
-  /// camera or not — and a cut's composite where the track stack shows it
-  /// (the whole film).
-  PlaybackPictures get shownPictures => canvasShown ?? compositePictures;
-
-  /// ↩️The camera view played on the composite view, so the canvas said
-  /// whether it looked through the camera (`canvasShowsCuts`) and a cut
-  /// played alone through it was made and counted in composites. It plays
-  /// on the canvas now, through the camera ([CanvasLook.camera]).
   @override
-  CanvasPictures? get canvasShown =>
-      !(playback.isActive && playback.scope == PlaybackScope.allCuts)
-      ? canvasPictures
-      : null;
+  CanvasPictures get pictures => canvasPictures;
+
+  /// Whether the canvas shows the run — a cut played alone, through the
+  /// camera or not — and not the track stack, which shows the whole film.
+  bool get playsOnTheCanvas =>
+      !(playback.isActive && playback.scope == PlaybackScope.allCuts);
 
   /// What was walked over, and what a waiting run waited for, were counted
-  /// in pictures the screen no longer shows from — or at a level it no
-  /// longer draws at.
-  void _shownPicturesChanged() {
+  /// at a level the screen no longer draws at.
+  void _theLookChanged() {
     prerenderScheduler.wake(fromTheStart: true);
     playback.lookAgain();
   }
@@ -164,7 +151,7 @@ class PlaybackRig implements PlaybackRun {
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
-        pictures: ShownPictures(() => shownPictures),
+        pictures: canvasPictures,
         resolveCut: _project.cutById,
         room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
@@ -349,7 +336,7 @@ class PlaybackRig implements PlaybackRun {
     // The canvas shows its frames another way — another zoom, another
     // screen, the camera a run is seen through: what was made for the old
     // look is not what it will ask for.
-    _renderCaches.canvasLook.addListener(_shownPicturesChanged);
+    _renderCaches.canvasLook.addListener(_theLookChanged);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -368,7 +355,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
-    _renderCaches.canvasLook.removeListener(_shownPicturesChanged);
+    _renderCaches.canvasLook.removeListener(_theLookChanged);
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

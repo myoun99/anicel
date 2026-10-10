@@ -27,6 +27,10 @@ import '../../helpers/library_source.dart';
 /// ⚠️Nothing about "they all call the same function" shows up in a pixel
 /// comparison — three identical implementations pass every parity test and
 /// then drift one commit at a time. This reads the source.
+///
+/// ↩️Two walks since 2026-10-10: playback draws its cuts on the editing
+/// stack (playback-plays-the-screen-material), so the playback cache and
+/// its walk are gone, and the editing stack's walk is playback's too.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -47,11 +51,10 @@ void main() {
     );
   }
 
-  /// The three files that walk a composite tree and buffer a sub-tree.
+  /// The files that walk a composite tree and buffer a sub-tree.
   const walks = <String>[
     'lib/src/ui/canvas/canvas_layer_stack_view.dart',
     'lib/src/ui/camera/camera_frame_render_service.dart',
-    'lib/src/ui/playback/cut_frame_composite_cache.dart',
   ];
 
   /// What each walk is still allowed to open a `saveLayer` for, and why.
@@ -96,7 +99,6 @@ void main() {
     // absolute numbers do not.
     'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
     'lib/src/ui/camera/camera_frame_render_service.dart': 0,
-    'lib/src/ui/playback/cut_frame_composite_cache.dart': 0,
   };
 
   List<String> codeLines(String path) {
@@ -111,7 +113,7 @@ void main() {
     ];
   }
 
-  test('all three walks buffer a sub-tree through the one shared function', () {
+  test('every walk buffers a sub-tree through the one shared function', () {
     for (final path in walks) {
       final source = codeLines(path).join('\n');
       expect(
@@ -124,7 +126,7 @@ void main() {
         isFalse,
         reason:
             '$path must not ARGUE about the cap. It is the parameter '
-            'DEFAULT now, which holds tighter than three routes spelling '
+            'DEFAULT now, which holds tighter than every route spelling '
             'one constant correctly: a route that wanted a different cap '
             'would have to write an argument, and none of them may.',
       );

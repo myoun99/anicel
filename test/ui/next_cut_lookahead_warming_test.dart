@@ -109,7 +109,7 @@ void main() {
       // What a run of the cut would show, as the screen counts it — the
       // canvas's own pictures since playback-plays-the-screen-material.
       bool made(Cut cut) =>
-          session.playbackRig.shownPictures.has((cut: cut, frameIndex: 0));
+          session.playbackRig.canvasPictures.has((cut: cut, frameIndex: 0));
       expect(made(first), isTrue, reason: 'the active cut warms first');
       expect(
         made(second),

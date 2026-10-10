@@ -118,26 +118,39 @@ class EditingCanvas {
   get playingStack => _stackAtThePlayhead(null);
 
   /// Every row [cut]'s frame [frameIndex] draws as a cached image while a
-  /// run plays it — [playingStack]'s, at any frame: what the warmer makes
-  /// ahead of the playhead, so the canvas holds it when it gets there.
+  /// run plays it — [playedStackAt]'s leaves: what the warmer makes ahead of
+  /// the playhead, so the screen holds it when it gets there.
+  List<CanvasLayerImageRequest> playedRowsAt(Cut cut, int frameIndex) => [
+    for (final node in preorderNodes(playedStackAt(cut, frameIndex)))
+      if (node case CompositeLeaf(payload: final CanvasLayerImageRequest row))
+        row,
+  ];
+
+  /// [cut]'s frame [frameIndex] as a RUN shows it, wherever it is shown: the
+  /// composite tree under the V row's fx with no row standing live — what
+  /// the track stack draws for a cut it shows (the whole film, a gap's
+  /// parking, an O.L's partner), and every row the warmer makes ahead of
+  /// the playhead ([playedRowsAt]); the canvas's own at the playhead is
+  /// [playingStack], which also follows a drag in flight.
   ///
   /// ⚠️The track's SE rows join the open cut's frames only: their clones are
   /// the open cut's window ([TrackSeDisplay.trackSeWindow]), and another
   /// cut's would stand where they do not.
-  List<CanvasLayerImageRequest> playedRowsAt(Cut cut, int frameIndex) => [
-    for (final node in preorderNodes([
-      ...stackAt(cut: cut, frameIndex: frameIndex, drawingLayerId: null).nodes,
-      if (cut.id == _project.activeCutOrNull?.id)
-        ..._trackSeDisplayNodes(
-          cut,
-          frameIndex: frameIndex,
-          dragPreview: null,
-          preview: null,
+  List<CompositeNode<CanvasStackRow>> playedStackAt(Cut cut, int frameIndex) =>
+      [
+        ..._underTheCutsFx(
+          cut.id,
+          frameIndex,
+          stackAt(cut: cut, frameIndex: frameIndex, drawingLayerId: null).nodes,
         ),
-    ]))
-      if (node case CompositeLeaf(payload: final CanvasLayerImageRequest row))
-        row,
-  ];
+        if (cut.id == _project.activeCutOrNull?.id)
+          ..._trackSeDisplayNodes(
+            cut,
+            frameIndex: frameIndex,
+            dragPreview: null,
+            preview: null,
+          ),
+      ];
 
   ({
     List<CompositeNode<CanvasStackRow>> nodes,

@@ -595,8 +595,7 @@ class LayerFrameImageCache {
   /// letting go of pictures wanted after it.
   ///
   /// Without [wantedAt] every image is wanted equally, and recency alone
-  /// orders them. The order is the budget's one ([letGoWantedLatest]), the
-  /// composites' too ([CutFrameCompositeCache.enforceBudget]).
+  /// orders them. The order is the budget's one ([letGoWantedLatest]).
   bool enforceBudget({
     required int maxBytes,
     LayerImageWantedAt? wantedAt,

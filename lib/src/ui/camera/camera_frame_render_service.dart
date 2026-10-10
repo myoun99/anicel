@@ -192,9 +192,8 @@ class CameraFrameRenderService {
             // threw pasteboard tiles away BEFORE the layer's transform ran —
             // so artwork parked off-canvas and moved INTO frame by a pose
             // was on screen and missing from the file. Playback has always
-            // cropped after (`composePositionedSurfaceImage` +
-            // `cut_frame_composite_cache`), and this is what made the two
-            // disagree about the same frame.
+            // cropped after (`composePositionedSurfaceImage`), and this is
+            // what made the two disagree about the same frame.
             //
             // ⚠️The output is still canvas-sized: this changes WHEN the crop
             // happens, not whether. Off-canvas artwork that the pose does

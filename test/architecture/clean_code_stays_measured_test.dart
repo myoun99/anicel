@@ -604,7 +604,12 @@ void main() {
   /// other class. ⛔Not split to fit: it is one more number through the
   /// walk the class already owns, and a seam cut for it would put the
   /// projection's origin in a different file from the walk that reads it.
-  const longClasses = 61;
+  ///
+  /// ⚠️61 → 60 on 2026-10-10: `CutFrameCompositeCache` left the count — the
+  /// whole film plays on the canvas's own pictures, and the composite cache
+  /// went (playback-plays-the-screen-material). 🔬`clean_code_diff` between
+  /// the lane's base and the lane names that one gone and none added.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {

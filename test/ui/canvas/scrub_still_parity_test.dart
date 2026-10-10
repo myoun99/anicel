@@ -17,9 +17,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -34,7 +32,6 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
@@ -42,32 +39,20 @@ import 'package:anicel/src/models/composite_tree.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///
-/// 「재생도 스크럽도 편집 캔버스」 — a ruler scrub serves the PLAYBACK
-/// composite route ([PlaybackFramePainter] over the cut-frame composite
-/// cache) while rest serves the EDITING stack ([CanvasLayerStackView]'s
-/// buffer blit). The device saw the whole picture disagree by 1px on
-/// axis-aligned edges between the two ("반올림"), at fractional device
-/// phase (DPR 1.25/1.5 — where "100%" is still a fractional resample).
+/// 「재생도 스크럽도 편집 캔버스」 — the device saw a ruler scrub and the
+/// canvas at rest disagree by 1px on axis-aligned edges ("반올림") at
+/// fractional device phase (DPR 1.25/1.5): the scrub served a composite
+/// through its own painter, which hardcoded `low` where the editing buffer
+/// follows the T21 display law (`filterQualityForDisplayScale`).
 ///
-/// The mechanism was the blit filter: the editing buffer follows the T21
-/// display law (`filterQualityForDisplayScale` — magnified/1:1 `none`,
-/// reduced `low`) while the playback painter hardcoded `low`, so the same
-/// canvas-resolution pixels under the same snapped transform landed
-/// bilinear on one route and nearest on the other.
-///
-/// This file is the parity pin: the SAME cel content rendered through both
-/// routes at fractional pan and a fractional DPR must be byte-identical at
-/// device resolution. Plus the wiring pins: the two playback view mounts
-/// must hand the painter the view's real DPR ((#1101's pan-phase snap) — a
-/// route snapping at 1.0 while the other snaps at 1.25 is exactly a
-/// whole-picture 1px disagreement).
-///
-/// ⚠️Scope of the law: it joins at the draw that IS the editing canvas's
-/// one resample — canvas mode, canvas-resolution composite. Reduced-quality
-/// caches (Half/Quarter) keep their bilinear upscale and can never be
-/// byte-equal to the editing canvas — that is the quality setting, not a
-/// parity bug. Camera mode projects through a pose the editing canvas
-/// never renders, so there is nothing there to be byte-equal to.
+/// ↩️This file pinned the two routes byte for byte until 2026-10-10, when
+/// the last screen that showed a composite drew its cuts on the editing
+/// stack too (playback-plays-the-screen-material): one route, so the
+/// same pixels by construction. What stands is the law the editing route
+/// keeps — the DEVICE scale decides its sampling — and the wiring: every
+/// mount around a cut's picture hands its painter the view's real DPR
+/// (#1101's pan-phase snap — a painter snapping at 1.0 while the picture
+/// snaps at 1.25 is exactly a whole-picture 1px disagreement).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const background = ProjectBackground.defaultBackground;
@@ -75,7 +60,6 @@ void main() {
   const trackId = TrackId('track');
   const cutId = CutId('cut');
   const layerId = LayerId('layer');
-  const folderLayerId = LayerId('folder');
   const frameId = FrameId('frame-a');
 
   BrushFrameKey frameKey(Cut cut, LayerId layer, FrameId frame) =>
@@ -87,18 +71,12 @@ void main() {
         frameId: frame,
       );
 
-  /// 🚨[inFolder] puts the drawing inside a BLENDED folder, which is the only
-  /// way a folder becomes a group node at all — and therefore the only way
-  /// this law reaches the sub-tree raster the three routes now share.
-  Cut cut({bool inFolder = false}) => Cut(
+  Cut cut() => Cut(
     id: cutId,
     name: 'Cut',
     duration: 4,
     canvasSize: canvasSize,
     layers: [
-      // ⚠️MEMBERS FIRST, then the folder row. The other order resolves to an
-      // EMPTY tree — measured — and an empty tree would have made this law
-      // pass while composing nothing.
       Layer(
         id: layerId,
         name: 'A',
@@ -106,17 +84,7 @@ void main() {
           Frame(id: frameId, duration: 1, strokes: const []),
         ],
         timeline: {0: const TimelineExposure.drawing(frameId, length: 4)},
-        folderId: inFolder ? folderLayerId : null,
       ),
-      if (inFolder)
-        Layer(
-          id: folderLayerId,
-          name: 'F',
-          kind: LayerKind.folder,
-          frames: const [],
-          timeline: const {},
-          blendMode: LayerBlendMode.multiply,
-        ),
     ],
   );
 
@@ -186,7 +154,7 @@ void main() {
   }
 
   /// Whether any pixel is the dab's opaque black — the "did the code under
-  /// test actually run" oracle for both routes.
+  /// test actually run" oracle.
   bool hasInk(Uint8List rgba) {
     for (var i = 0; i < rgba.length; i += 4) {
       if (rgba[i] == 0 &&
@@ -212,35 +180,18 @@ void main() {
     return blended;
   }
 
-  int diffingPixels(Uint8List a, Uint8List b) {
-    expect(a.length, b.length);
-    var diffs = 0;
-    for (var i = 0; i < a.length; i += 4) {
-      if (a[i] != b[i] ||
-          a[i + 1] != b[i + 1] ||
-          a[i + 2] != b[i + 2] ||
-          a[i + 3] != b[i + 3]) {
-        diffs += 1;
-      }
-    }
-    return diffs;
-  }
-
   /// The EDITING route: the layer stack view's painter, pumped so the
   /// MediaQuery DPR reaches it exactly as the panel wires it.
   ///
   /// 🚨The layer image must be warmed under [WidgetTester.runAsync] BEFORE
   /// the pump: its build crosses real async (tile decode), which never
-  /// lands under the fake clock — the first draft of this test compared a
-  /// paper-only editing render and counted the whole ink block as "diff".
-  /// The ink guard in [expectRouteParity] is what keeps that lie
-  /// impossible.
+  /// lands under the fake clock — a paper-only render would pass any law
+  /// about how the ink is sampled, which is why each use asks [hasInk].
   Future<CustomPainter> editingPainter(
     WidgetTester tester, {
     required BrushFrameStore store,
     required CanvasViewport viewport,
     required Size logicalSize,
-    bool inFolder = false,
   }) async {
     final images = LayerFrameImageCache(frameStore: store);
     await tester.runAsync(
@@ -260,26 +211,12 @@ void main() {
               height: logicalSize.height,
               child: CanvasLayerStackView(
                 nodes: [
-                  if (inFolder)
-                    CompositeGroup<CanvasStackRow>(
-                      children: [
-                        CompositeLeaf<CanvasStackRow>(
-                          CanvasLayerImageRequest(
-                            frameKey: frameKey(cut(), layerId, frameId),
-                            opacity: 1,
-                          ),
-                        ),
-                      ],
+                  CompositeLeaf<CanvasStackRow>(
+                    CanvasLayerImageRequest(
+                      frameKey: frameKey(cut(), layerId, frameId),
                       opacity: 1,
-                      blendMode: LayerBlendMode.multiply,
-                    )
-                  else
-                    CompositeLeaf<CanvasStackRow>(
-                      CanvasLayerImageRequest(
-                        frameKey: frameKey(cut(), layerId, frameId),
-                        opacity: 1,
-                      ),
                     ),
+                  ),
                 ],
                 imageCache: images,
                 canvasSize: canvasSize,
@@ -308,147 +245,9 @@ void main() {
     return painted.first.painter!;
   }
 
-  Future<void> expectRouteParity(
-    WidgetTester tester, {
-    required double zoom,
-    required double dpr,
-    required Offset pan,
-    bool inFolder = false,
-  }) async {
-    tester.view.devicePixelRatio = dpr;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    // Canvas edges land integral on the device grid (canvas · zoom · dpr
-    // is whole) so the paper's own edge cannot confound the count; the
-    // INK edges land fractional, which is where the two samplings answer
-    // differently.
-    const logicalSize = Size(16, 16);
-    final viewport = CanvasViewport(zoom: zoom, panX: pan.dx, panY: pan.dy);
-
-    final store = storeWithInk();
-    final editing = await editingPainter(
-      tester,
-      store: store,
-      viewport: viewport,
-      logicalSize: logicalSize,
-      inFolder: inFolder,
-    );
-    final editingBytes = await rasterize(
-      tester,
-      editing,
-      logicalSize: logicalSize,
-      dpr: dpr,
-    );
-    // 계측기를 먼저 의심하라: with no ink on either side the comparison
-    // passes without the code under test ever running.
-    expect(
-      hasInk(editingBytes),
-      isTrue,
-      reason: 'the editing render must contain the drawn ink — a paper-only '
-          'render means the layer image never resolved and the parity below '
-          'would be vacuous.',
-    );
-
-    // The PLAYBACK route's picture: the real composite cache image (what
-    // a scrub's parked track stack serves), through the real painter, at
-    // the same viewport and DPR the views wire.
-    final composites = CutFrameCompositeCache(
-      layerImages: LayerFrameImageCache(frameStore: store),
-      frameStore: store,
-      frameKeyOf: frameKey,
-    );
-    addTearDown(composites.dispose);
-    final composite = (await tester.runAsync(
-      () => composites.prepareComposite(
-        cut: cut(inFolder: inFolder),
-        frameIndex: 0,
-      ),
-    ))!;
-    final playback = PlaybackFramePainter(
-      image: composite,
-      canvasSize: canvasSize,
-      viewport: viewport,
-      devicePixelRatio: dpr,
-      paperBackground: background,
-    );
-    final playbackBytes = await rasterize(
-      tester,
-      playback,
-      logicalSize: logicalSize,
-      dpr: dpr,
-    );
-    expect(hasInk(playbackBytes), isTrue);
-
-    expect(
-      diffingPixels(editingBytes, playbackBytes),
-      0,
-      reason:
-          'zoom $zoom · dpr $dpr · pan $pan: the scrub/playback route and '
-          'the editing stack must be the same pixels — a nonzero count is '
-          'the device report\'s "반올림" (one route resampling bilinear '
-          'while the other snaps nearest, or one snapping at the wrong '
-          'DPR).',
-    );
-  }
-
-  group('scrub ↔ still parity: both routes are the same pixels', () {
-    testWidgets('at 100% zoom on a 1.25 DPR monitor, fractional pan', (
-      tester,
-    ) async {
-      await expectRouteParity(
-        tester,
-        zoom: 1,
-        dpr: 1.25,
-        pan: const Offset(3.3, 2.7),
-      );
-    });
-
-    testWidgets('at 150% zoom on a 1.5 DPR monitor, fractional pan', (
-      tester,
-    ) async {
-      await expectRouteParity(
-        tester,
-        zoom: 1.5,
-        dpr: 1.5,
-        pan: const Offset(1.7, 0.6),
-      );
-    });
-
-    testWidgets(
-      'at 150% on screen on a ratio-2 tablet (render zoom 0.75), fractional '
-      'pan',
-      (tester) async {
-        // The tablet's case: the render zoom is below 1 while the view is
-        // magnified. Both routes must read the same device scale.
-        await expectRouteParity(
-          tester,
-          zoom: 0.75,
-          dpr: 2,
-          pan: const Offset(1.3, 0.9),
-        );
-      },
-    );
-
-    testWidgets('🚨inside a BLENDED FOLDER — the sub-tree raster itself', (
-      tester,
-    ) async {
-      // ⛔The case the flat fixture could never reach. A folder only becomes
-      // a group node when it NEEDS the buffer, and that buffer is the thing
-      // this round replaced with an image in all three routes. Without a
-      // folder here, the editing stack and the playback cache agreed about
-      // a picture that never asked either of them the question.
-      await expectRouteParity(
-        tester,
-        zoom: 1,
-        dpr: 1.25,
-        pan: const Offset(3.3, 2.7),
-        inFolder: true,
-      );
-    });
-  });
-
   testWidgets(
     'the scale is the DEVICE scale: 140% on a ratio-2 tablet samples '
-    'nearest on both routes (유저 09-16 표시배율 100%부터는 필터가 걸리면안되)',
+    'nearest (유저 09-16 표시배율 100%부터는 필터가 걸리면안되)',
     (tester) async {
       // Render zoom 0.7 on a ratio-2 screen is 140% on screen. The
       // zoom-alone law read 0.7, called it a reduction and filtered: the
@@ -482,61 +281,22 @@ void main() {
         reason: 'the editing route filtered a magnified view: the law read '
             'the render zoom (0.7) instead of the device scale (1.4).',
       );
-
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
-      final composite = (await tester.runAsync(
-        () => composites.prepareComposite(
-          cut: cut(),
-          frameIndex: 0,
-        ),
-      ))!;
-      final playback = PlaybackFramePainter(
-        image: composite,
-        canvasSize: canvasSize,
-        viewport: viewport,
-        devicePixelRatio: dpr,
-        paperBackground: background,
-      );
-      final playbackBytes = await rasterize(
-        tester,
-        playback,
-        logicalSize: logicalSize,
-        dpr: dpr,
-      );
-      expect(hasInk(playbackBytes), isTrue);
-      expect(
-        blendedPixels(playbackBytes),
-        0,
-        reason: 'the playback route filtered a magnified view: the law read '
-            'the render zoom (0.7) instead of the device scale (1.4).',
-      );
-      expect(diffingPixels(editingBytes, playbackBytes), 0);
     },
   );
 
   group('the playback mounts wire the view\'s real DPR', () {
-    // A route that snaps its pan at DPR 1.0 while the editing stack snaps
-    // at 1.25/1.5 is a whole-picture 1px disagreement at fractional pans
-    // — the #1101 report's exact shape. MediaQuery is the source both
-    // routes must read.
+    // A painter that snaps its pan at DPR 1.0 while the picture it frames
+    // snaps at 1.25/1.5 is a whole-picture 1px disagreement at fractional
+    // pans — the #1101 report's exact shape. MediaQuery is the source every
+    // one of them must read.
     testWidgets('the parked track stack (what a ruler scrub serves)', (
       tester,
     ) async {
       tester.view.devicePixelRatio = 1.5;
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
       final project = Project(
         id: projectId,
         name: 'Project',
@@ -557,7 +317,8 @@ void main() {
                 spansOf: (_) => const [],
                 globalFrameIndex: globalFrame,
               ),
-              compositeCache: composites,
+              stackOf: (_, _) => const [],
+              imageCache: images,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>
@@ -577,7 +338,9 @@ void main() {
             matching: find.byType(CustomPaint),
           ),
         ))
-          paint.painter! as PlaybackFramePainter,
+          // The cut's own stack paints its rows itself, at the ratio it
+          // reads from the view; these are its stage and what lies over it.
+          if (paint.painter case final PlaybackFramePainter painter) painter,
       ];
       expect(painters, isNotEmpty);
       for (final painter in painters) {

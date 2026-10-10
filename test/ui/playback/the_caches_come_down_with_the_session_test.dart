@@ -4,6 +4,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
+
 /// WHAT THE SESSION'S TEARDOWN OWES THE RENDER CACHES.
 ///
 /// The session used to spell this out itself; it is [RenderCaches.dispose]
@@ -35,20 +37,25 @@ void main() {
     // waiting to be pumped.
   });
 
-  testWidgets('the composites the session was holding are released', (
+  testWidgets('the pictures the session was holding are released', (
     tester,
   ) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    inkTheCurrentCel(session);
     final cut = session.activeCutOrNull!;
 
-    await session.renderCaches.cutFrameCompositeCache.prepareComposite(
-      cut: cut,
-      frameIndex: 0,
+    await tester.runAsync(
+      () => session.playbackRig.canvasPictures.make((
+        cut: cut,
+        frameIndex: 0,
+      ), shouldAbort: () => false),
     );
     expect(
-      session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+      session.renderCaches.layerFrameImageCache.estimatedBytes,
       greaterThan(0),
       reason: 'the premise: there is something in the cache to release',
     );
@@ -56,10 +63,10 @@ void main() {
     session.dispose();
 
     expect(
-      session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+      session.renderCaches.layerFrameImageCache.estimatedBytes,
       0,
       reason:
-          'a composite is a GPU image — a cache the session forgot to '
+          'a picture is a GPU image — a cache the session forgot to '
           'dispose holds every frame it ever warmed for the life of the app',
     );
   });

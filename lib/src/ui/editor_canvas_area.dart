@@ -103,7 +103,7 @@ typedef _TrackStackMount = ({
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
   bool paintsFloor,
   bool cameraView,
-  Listenable? picturesLanded,
+  StackRun? run,
   Key key,
 });
 
@@ -450,14 +450,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// alone, through the camera or not: the clock moves the playhead
   /// ([_followTheRun]) and the canvas draws the frame it stands on, from the
   /// images it draws standing still (playback-plays-the-screen-material).
-  /// The whole film plays on the track stack yet.
+  /// The whole film plays on the track stack, from the same images.
   ///
-  /// The rig's answer, not a copy of it: the canvas shows a frame from its
-  /// own pictures exactly when the warmer makes them
-  /// ([PlaybackRig.canvasShown]).
+  /// The rig's answer, not a copy of it ([PlaybackRig.playsOnTheCanvas]).
   bool get _playsOnTheCanvas {
     final rig = widget.session.playbackRig;
-    return rig.playback.isActive && rig.canvasShown != null;
+    return rig.playback.isActive && rig.playsOnTheCanvas;
   }
 
   /// A run this canvas plays moves the playhead, as a scrub does
@@ -689,8 +687,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
     cameraView: ofTheRun && widget.cameraViewEnabled.value,
-    picturesLanded: ofTheRun
-        ? session.playbackRig.prerenderScheduler.landings
+    run: ofTheRun
+        ? (
+            landings: session.playbackRig.prerenderScheduler.landings,
+            gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
+          )
         : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
@@ -707,7 +708,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: (_) => partners,
     paintsFloor: false,
     cameraView: throughCamera,
-    picturesLanded: null,
+    run: null,
     key: const ValueKey<String>('canvas-ol-partner'),
   );
 
@@ -731,22 +732,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         globalFrame: mount.globalFrame,
         positionsOf: mount.positionsOf,
         paintsFloor: mount.paintsFloor,
-        compositeCache: session.renderCaches.cutFrameCompositeCache,
+        stackOf: session.editingCanvas.playedStackAt,
+        imageCache: session.renderCaches.layerFrameImageCache,
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-        cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-        onFrameCached:
-            session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
-        picturesLanded: mount.picturesLanded,
+        run: mount.run,
+        onBufferBytes: (cut, bytes) => session.renderCaches.countStackBuffer(
+          (mount.key, cut),
+          bytes,
+        ),
         viewport: viewport,
         background: session.projectSettings.projectBackground,
         backdropArgb: project.backdropArgb,
         backdropNone: project.backdropNone,
         pasteboardArgb: project.pasteboardArgb,
         pasteboardNone: project.pasteboardNone,
-        trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
       ),
     );
   }

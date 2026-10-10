@@ -15,6 +15,8 @@ import '../../helpers/dart_sources.dart';
 /// `drawSubtreeAsImage`. It did NOT unify the PAINT that walk composites
 /// with, and three hand-written copies promptly disagreed — the editing
 /// stack clamped the opacity, the camera and the playback cache did not.
+/// ↩️The playback cache left on 2026-10-10 — playback draws on the editing
+/// stack — and two routes remain.
 ///
 /// ⛔`Color.fromRGBO` DOES NOT CLAMP. Its constructor is `a = opacity`,
 /// stored raw: 1.5 stays 1.5 and −0.2 stays −0.2, and what a backend does
@@ -112,10 +114,9 @@ void main() {
     );
   });
 
-  test('the three group routes build their paint with the one function', () {
+  test('every group route builds its paint with the one function', () {
     const routes = [
       'lib/src/ui/canvas/canvas_layer_stack_view.dart',
-      'lib/src/ui/playback/cut_frame_composite_cache.dart',
       'lib/src/ui/camera/camera_frame_render_service.dart',
     ];
     for (final route in routes) {

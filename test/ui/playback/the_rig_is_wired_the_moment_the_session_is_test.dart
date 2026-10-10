@@ -132,7 +132,7 @@ void main() {
   /// shown on counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
-      .shownPictures
+      .canvasPictures
       .has((cut: s.activeCutOrNull!, frameIndex: frameIndex));
 
   test('the transport is ATTACHED: the controller holds an audio clock to '
@@ -448,15 +448,14 @@ void main() {
   /// The screen changing what it shows a frame from — the whole film
   /// stopped, the canvas drawing at another level.
   group('when the screen changes', () {
-    testWidgets('🚨back on the canvas, the composites made for the whole film '
-        'are the first the budget lets go of when the line tightens', (
+    testWidgets('🚨the whole film plays from the canvas\'s own pictures — '
+        'nothing is made for it that the canvas does not hold', (
       tester,
     ) async {
       await tester.runAsync(() async {
         final s = twoPictures();
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
-        // Room for both composites AND the layer images they were made of.
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
         rig.playback.play(scope: PlaybackScope.allCuts);
         await rested(rig);
@@ -467,27 +466,22 @@ void main() {
         expect(
           [held(s, 0), held(s, 2)],
           [true, true],
-          reason: '⛔premise: the canvas\'s pictures are the images the '
-              'composites were made of',
+          reason: 'the canvas shows a frame from what the film made',
         );
         expect(
-          s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+          s.renderCaches.layerFrameImageCache.estimatedBytes,
           2 * picture,
-          reason: '⛔premise: nothing asked the line to shrink yet',
+          reason: 'the two cels\' images, and nothing beside them. ↩️The '
+              'film made a composite of each of its frames too, until '
+              '2026-10-10',
         );
 
         // An export run borrows half the line.
         rig.playbackCache.lend(2 * picture);
-
-        expect(
-          s.renderCaches.cutFrameCompositeCache.estimatedBytes,
-          0,
-          reason: 'no composite is a picture the screen shows',
-        );
         expect(
           [held(s, 0), held(s, 2)],
           [true, true],
-          reason: 'what is left of the line holds the canvas\'s pictures',
+          reason: 'what is left of the line holds them',
         );
         rig.playbackCache.lend(0);
       });
@@ -572,9 +566,8 @@ void main() {
       });
     });
 
-    testWidgets('on the canvas a screen\'s pins are inside the line — the '
-        'room is the line less what is lent; for composites they come off '
-        'it', (tester) async {
+    testWidgets('a screen\'s pins are inside the line — the room is the line '
+        'less what is lent, whatever plays', (tester) async {
       await tester.runAsync(() async {
         final s = twoPictures();
         addTearDown(s.dispose);
@@ -599,9 +592,14 @@ void main() {
         );
 
         expect(rig.playbackCache.bytes, 4 * picture);
-        // The whole film plays on the track stack, from composites.
         rig.playback.play(scope: PlaybackScope.allCuts);
-        expect(rig.playbackCache.bytes, 3 * picture);
+        expect(
+          rig.playbackCache.bytes,
+          4 * picture,
+          reason: 'the whole film plays from the same pictures: nothing '
+              'comes off the line for it. ↩️It played from composites, and '
+              'the canvas\'s pins came off their room (until 2026-10-10)',
+        );
         rig.playback.stop();
       });
     });

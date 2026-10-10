@@ -576,7 +576,6 @@ enum AppStrings {
   String get memoryItemDrawings => _s('memoryItemDrawings');
   String get memoryItemSheetInk => _s('memoryItemSheetInk');
   String get memoryItemUndo => _s('memoryItemUndo');
-  String get memoryItemPlaybackFrames => _s('memoryItemPlaybackFrames');
   String get memoryItemLayerImages => _s('memoryItemLayerImages');
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
@@ -2035,7 +2034,6 @@ enum AppStrings {
     'memoryItemDrawings': 'Drawings',
     'memoryItemSheetInk': 'Sheet handwriting',
     'memoryItemUndo': 'Undo history',
-    'memoryItemPlaybackFrames': 'Playback frames',
     'memoryItemLayerImages': 'Layer images',
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
@@ -3198,7 +3196,6 @@ enum AppStrings {
     'memoryItemDrawings': '作画',
     'memoryItemSheetInk': '用紙の手書き',
     'memoryItemUndo': '取り消し履歴',
-    'memoryItemPlaybackFrames': '再生フレーム',
     'memoryItemLayerImages': 'レイヤー画像',
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
@@ -4648,7 +4645,6 @@ enum AppStrings {
     'memoryItemDrawings': '그림',
     'memoryItemSheetInk': '용지 손글씨',
     'memoryItemUndo': '실행취소 기록',
-    'memoryItemPlaybackFrames': '재생 프레임',
     'memoryItemLayerImages': '레이어 이미지',
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
@@ -6108,7 +6104,6 @@ enum AppStrings {
     'memoryItemDrawings': 'Dessins',
     'memoryItemSheetInk': 'Écriture sur feuille',
     'memoryItemUndo': "Historique d'annulation",
-    'memoryItemPlaybackFrames': 'Images de lecture',
     'memoryItemLayerImages': 'Images de calque',
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
@@ -7625,7 +7620,6 @@ enum AppStrings {
     'memoryItemDrawings': '画稿',
     'memoryItemSheetInk': '纸面手写',
     'memoryItemUndo': '撤销记录',
-    'memoryItemPlaybackFrames': '播放帧',
     'memoryItemLayerImages': '图层图像',
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',

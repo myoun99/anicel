@@ -98,7 +98,6 @@ void main() {
       'drawings',
       'sheetInk',
       'undo',
-      'playbackFrames',
       'layerImages',
       'brushTips',
       'panelRasters',
