@@ -370,8 +370,14 @@ class TimelineBarMenus {
     ];
   }
 
-  /// The 색 편집 popover's four verbs, in the order the artist reaches for
-  /// them: the two that keep the drawing, then the two that take it away.
+  /// The 색 편집 popover: the verbs that work with the colour, then — past
+  /// the divider — the ones that work with the pixels, 픽셀 비우기 first and
+  /// the clipboard rows under it.
+  ///
+  /// 🗣️I-90 (유저 2026-10-10): 「픽셀비우기 버튼 위치가 색관련 버튼이랑
+  /// 같이있는게 신경쓰임. 아래 픽셀쪽으로 이동. 위치는 해당항목 제일위」 — the
+  /// groups are the verbs' own answer ([CelPixelVerb.usesTheColour]), not a
+  /// list of rows kept here.
   ///
   /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
   /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
@@ -385,42 +391,26 @@ class TimelineBarMenus {
   ///
   /// 🗣️I-55 (유저 2026-10-01): 「색편집버튼에 새 기능으로서 … 픽셀복사/픽셀
   /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
+  /// ↩️I-90 opened that group with 픽셀 비우기, and put 픽셀 잘라내기 over
+  /// 픽셀 복사 (「복사버튼 위」).
   List<PanelFlyoutEntry> colourEdit() => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
-      PanelFlyoutItem(
-        keyValue: switch (verb) {
-          // The retired buttons' own key strings, kept.
-          CelPixelVerb.replaceColour => 'shared-replace-colour-button',
-          CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
-          CelPixelVerb.deleteColour => 'shared-delete-colour-button',
-          CelPixelVerb.keepColour => 'shared-keep-colour-button',
-        },
-        // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그
-        // 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의
-        // 규칙이야」 — every verb here is an action, so every row wears its
-        // action's name and prints its key.
-        label: editorActionLabel(pixelVerbActionIdFor(verb)),
-        icon: switch (verb) {
-          CelPixelVerb.replaceColour => Icons.format_color_fill,
-          CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
-          CelPixelVerb.deleteColour => Icons.format_color_reset,
-          CelPixelVerb.keepColour => Icons.colorize_outlined,
-        },
-        shortcuts: [pixelVerbActionIdFor(verb)],
-        enabled: session.pixelVerbs.canRunPixelVerb,
-        onSelected: () => session.pixelVerbs.runPixelVerb(verb),
-      ),
+      if (verb.usesTheColour) _pixelVerbRow(verb),
     const PanelFlyoutDivider(),
+    for (final verb in CelPixelVerb.values)
+      if (!verb.usesTheColour) _pixelVerbRow(verb),
     for (final verb in PixelClipboardVerb.values)
       PanelFlyoutItem(
         keyValue: switch (verb) {
+          PixelClipboardVerb.cut => 'shared-cut-pixels-button',
           PixelClipboardVerb.copy => 'shared-copy-pixels-button',
           PixelClipboardVerb.pasteAbove => 'shared-paste-pixels-above-button',
           PixelClipboardVerb.pasteBelow => 'shared-paste-pixels-below-button',
         },
         label: editorActionLabel(pixelClipboardActionIdFor(verb)),
         icon: switch (verb) {
+          PixelClipboardVerb.cut => Icons.content_cut,
           PixelClipboardVerb.copy => Icons.content_copy,
           PixelClipboardVerb.pasteAbove => Icons.flip_to_front,
           PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
@@ -430,4 +420,29 @@ class TimelineBarMenus {
         onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
       ),
   ];
+
+  /// One of the four overwrite verbs' rows.
+  PanelFlyoutItem _pixelVerbRow(CelPixelVerb verb) => PanelFlyoutItem(
+    keyValue: switch (verb) {
+      // The retired buttons' own key strings, kept.
+      CelPixelVerb.replaceColour => 'shared-replace-colour-button',
+      CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
+      CelPixelVerb.deleteColour => 'shared-delete-colour-button',
+      CelPixelVerb.keepColour => 'shared-keep-colour-button',
+    },
+    // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그
+    // 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의
+    // 규칙이야」 — every verb here is an action, so every row wears its
+    // action's name and prints its key.
+    label: editorActionLabel(pixelVerbActionIdFor(verb)),
+    icon: switch (verb) {
+      CelPixelVerb.replaceColour => Icons.format_color_fill,
+      CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
+      CelPixelVerb.deleteColour => Icons.format_color_reset,
+      CelPixelVerb.keepColour => Icons.colorize_outlined,
+    },
+    shortcuts: [pixelVerbActionIdFor(verb)],
+    enabled: session.pixelVerbs.canRunPixelVerb,
+    onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+  );
 }

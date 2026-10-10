@@ -284,12 +284,11 @@ class ToolSettingsPanel extends StatelessWidget {
       canvasSize: canvasSize,
       language: language,
     ),
-    // The CUT grab: nothing to set whatever shape it is wearing (the
-    // grab is hard-edged by law — 2치 보존 — and it makes no selection,
-    // so there is no combine mode either) — except the polygon's
-    // confirm, which every drag-out verb needs while a trace is open.
+    // The CUT grab: 「원본 삭제」 and the polygon's confirm, whatever shape
+    // it is wearing — and nothing of a selection's (see the class).
     CanvasTool.cut => _CutGrabSettings(
-      shapeKind: state.activeShapeKind,
+      state: state,
+      onChanged: onChanged,
       selectionCommands: selectionCommands,
     ),
     CanvasTool.cutStamp => _CutStampSettings(
@@ -320,12 +319,6 @@ class ToolSettingsPanel extends StatelessWidget {
   };
 }
 
-/// The two GRAB tiles have nothing to set.
-///
-/// Not an oversight: the grab makes no selection, so there is no combine
-/// mode to offer, and its mask is hard-edged by law (2치 보존) rather than
-/// by a default someone could nudge. The soft-edge knobs that would
-/// otherwise belong here already live on the Select tool.
 /// The SHAPE FILL tile's knobs.
 ///
 /// Short on purpose. A drawn outline is filled whatever is inside it (유저
@@ -494,13 +487,27 @@ class _ShapeToolSettings extends StatelessWidget {
   );
 }
 
+/// The CUT grab's knobs: 「원본 삭제」, and the polygon's confirm, which
+/// every drag-out verb needs while a trace is open.
+///
+/// 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+/// 도구설정으로서 원본 삭제 불리언버튼 추가」 — one switch for every outline
+/// the grab drags, and for 전체 잘라내기 ([BrushToolState.cutDeletesSource]).
+///
+/// ↩️「The two GRAB tiles have nothing to set」 stood here until then, and
+/// its reasons still hold for everything else: the grab makes no selection,
+/// so there is no combine mode to offer, and its mask is hard-edged by law
+/// (2치 보존) rather than by a default someone could nudge. The soft-edge
+/// knobs that would otherwise belong here already live on the Select tool.
 class _CutGrabSettings extends StatelessWidget {
   const _CutGrabSettings({
-    required this.shapeKind,
+    required this.state,
+    required this.onChanged,
     required this.selectionCommands,
   });
 
-  final CanvasShapeKind? shapeKind;
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
   final CanvasSelectionCommands? selectionCommands;
 
   @override
@@ -509,11 +516,18 @@ class _CutGrabSettings extends StatelessWidget {
       tool: 'cut-grab',
       scrolls: false,
       children: [
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('cut-deletes-source-switch'),
+          label: AppText.strings.toolCutDeletesSource,
+          value: state.cutDeletesSource,
+          onChanged: (value) =>
+              onChanged(state.copyWith(cutDeletesSource: value)),
+        ),
         ToolSettingActions(
           lines: [
             [
               _ClosePolygonButton(
-                shapeKind: shapeKind,
+                shapeKind: state.activeShapeKind,
                 selectionCommands: selectionCommands,
               ),
             ],

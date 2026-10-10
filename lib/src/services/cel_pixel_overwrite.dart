@@ -37,6 +37,16 @@ enum CelPixelVerb {
   bool get selectsByColour =>
       this == CelPixelVerb.deleteColour || this == CelPixelVerb.keepColour;
 
+  /// Whether this verb works with the current colour — writes it (색 변환)
+  /// or picks its pixels by it ([selectsByColour]). 픽셀 비우기 does
+  /// neither: it empties whatever the region covers.
+  ///
+  /// 🗣️I-90 (유저 2026-10-10): 「픽셀비우기 버튼 위치가 색관련 버튼이랑
+  /// 같이있는게 신경쓰임. 아래 픽셀쪽으로 이동. 위치는 해당항목 제일위」 — the
+  /// 색 편집 list stands these with the colour, the rest with the pixels.
+  bool get usesTheColour =>
+      this == CelPixelVerb.replaceColour || selectsByColour;
+
   /// The selector for [argb], or null for the verbs that take everything.
   ///
   /// ★THE SAME [CelColorKey] THE FX USES, on purpose. 유저 I-8 asked for one

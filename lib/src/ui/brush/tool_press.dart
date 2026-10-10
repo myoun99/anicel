@@ -124,16 +124,17 @@ final class TransformModePress extends SubToolPress {
 ///
 /// [cutWhole] is what a [CutWholePress] runs — the session's
 /// (`PixelVerbs.cutWhole`), handed in by whoever holds the session, so the
-/// tile and its key are one press here too.
+/// tile and its key are one press here too. Whether it takes what it cuts
+/// is the cut tool's 「원본 삭제」 (I-90), read here at the press.
 void pressTool(
   ToolPress press, {
   required PaintToolStateNotifier tool,
   required ValueNotifier<TransformToolOptions> transform,
-  required VoidCallback cutWhole,
+  required void Function({required bool takeWhatItCuts}) cutWhole,
 }) {
   switch (press) {
     case CutWholePress():
-      cutWhole();
+      cutWhole(takeWhatItCuts: tool.value.cutDeletesSource);
     case RailToolPress(:final group):
       tool.value = tool.value.copyWith(tool: tool.railEntry(group));
     case ToolTilePress(tool: final armed):

@@ -294,7 +294,12 @@ void main() {
   /// 130 (I-88, the turn key, 2026-10-10): the English row of one new
   /// registry action, 「Rotate (hold)」 — answered in the other four
   /// languages by id. The ceiling stood at the count (129) when it came.
-  const untranslatedElsewhere = 130;
+  ///
+  /// 131 (I-90, 2026-10-10): the English row of one new registry action,
+  /// 「Cut Pixels」 — 색 편집's 픽셀 잘라내기, answered in the other four
+  /// languages by id (`shortcutAction.edit-cut-pixels`). The cut tool's
+  /// 「원본 삭제」 is worded through the table and adds none.
+  const untranslatedElsewhere = 131;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

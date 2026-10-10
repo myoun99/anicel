@@ -1460,6 +1460,7 @@ enum AppStrings {
   String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
   String get toolCutFlipVertical => _s('toolCutFlipVertical');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
+  String get toolCutDeletesSource => _s('toolCutDeletesSource');
   String get toolReadSource => _s('toolReadSource');
   String get toolReadReferences => _s('toolReadReferences');
   String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
@@ -2563,6 +2564,7 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Flip horizontal',
     'toolCutFlipVertical': 'Flip vertical',
     'toolCutRegisterTip': 'Register as Tip…',
+    'toolCutDeletesSource': 'Delete original',
     'toolReadSource': 'Reference',
     'toolReadReferences': 'References',
     'toolReadsEveryVisibleLayer': 'Every visible layer',
@@ -3439,6 +3441,7 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-delete-colour': '色削除',
     'shortcutAction.edit-keep-colour': '色残し',
+    'shortcutAction.edit-cut-pixels': 'ピクセル切り取り',
     'shortcutAction.edit-copy-pixels': 'ピクセルコピー',
     'shortcutAction.edit-paste-pixels-above': 'ピクセルを上に貼り付け',
     'shortcutAction.edit-paste-pixels-below': 'ピクセルを下に貼り付け',
@@ -3915,6 +3918,7 @@ enum AppStrings {
     'toolCutFlipHorizontal': '左右反転',
     'toolCutFlipVertical': '上下反転',
     'toolCutRegisterTip': '先端として登録…',
+    'toolCutDeletesSource': '元画像を削除',
     'toolReadSource': '参照',
     'toolReadReferences': '塗り参照',
     'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
@@ -4902,6 +4906,7 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-delete-colour': '색 삭제',
     'shortcutAction.edit-keep-colour': '색 남기기',
+    'shortcutAction.edit-cut-pixels': '픽셀 잘라내기',
     'shortcutAction.edit-copy-pixels': '픽셀 복사',
     'shortcutAction.edit-paste-pixels-above': '픽셀 위 붙여넣기',
     'shortcutAction.edit-paste-pixels-below': '픽셀 아래 붙여넣기',
@@ -5372,6 +5377,7 @@ enum AppStrings {
     'toolCutFlipHorizontal': '좌우 반전',
     'toolCutFlipVertical': '상하 반전',
     'toolCutRegisterTip': '팁으로 등록…',
+    'toolCutDeletesSource': '원본 삭제',
     'toolReadSource': '참조',
     'toolReadReferences': '채색 참조',
     'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
@@ -6399,6 +6405,7 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-delete-colour': 'Supprimer la couleur',
     'shortcutAction.edit-keep-colour': 'Conserver la couleur',
+    'shortcutAction.edit-cut-pixels': 'Couper les pixels',
     'shortcutAction.edit-copy-pixels': 'Copier les pixels',
     'shortcutAction.edit-paste-pixels-above': 'Coller les pixels dessus',
     'shortcutAction.edit-paste-pixels-below': 'Coller les pixels dessous',
@@ -6955,6 +6962,7 @@ enum AppStrings {
     'toolCutFlipHorizontal': 'Miroir horizontal',
     'toolCutFlipVertical': 'Miroir vertical',
     'toolCutRegisterTip': 'Enregistrer comme pointe…',
+    'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
     'toolReadReferences': 'Références',
     'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
@@ -7899,6 +7907,7 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-delete-colour': '删除颜色',
     'shortcutAction.edit-keep-colour': '保留颜色',
+    'shortcutAction.edit-cut-pixels': '剪切像素',
     'shortcutAction.edit-copy-pixels': '复制像素',
     'shortcutAction.edit-paste-pixels-above': '粘贴像素到上方',
     'shortcutAction.edit-paste-pixels-below': '粘贴像素到下方',
@@ -8354,6 +8363,7 @@ enum AppStrings {
     'toolCutFlipHorizontal': '水平翻转',
     'toolCutFlipVertical': '垂直翻转',
     'toolCutRegisterTip': '注册为笔尖…',
+    'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',
     'toolReadReferences': '填充参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',

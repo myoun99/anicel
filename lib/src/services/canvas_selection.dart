@@ -1187,39 +1187,8 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   if (lifted == null) {
     return null;
   }
-  final (:mask, :box, :rgba, :takeWholePixels) = lifted;
+  final (mask: _, :box, :rgba, takeWholePixels: _) = lifted;
   final (:left, :top, :width, :height) = box;
-
-  // The erase rides the STAMP path too (R15-④): destination-out from the
-  // exact mask bytes — tip-mask erases resample bilinearly and left a
-  // half-alpha ring at the silhouette (the fringe + origin remnant).
-  final eraseAlpha = Uint8List(width * height * 4);
-  for (var index = 0; index < mask.length; index += 1) {
-    // FULL removal wherever the mask touches at all — the twin of the
-    // gather above. The stamp took the whole pixel, so leaving any part of
-    // it here would be the ink appearing twice.
-    eraseAlpha[index * 4 + 3] = takeWholePixels
-        ? (mask[index] == 0 ? 0 : 255)
-        : mask[index];
-  }
-  final eraseDab = BrushDab(
-    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
-    color: 0xFF000000,
-    size: math.max(width, height).toDouble(),
-    opacity: 1,
-    flow: 1,
-    hardness: 1,
-    tipShape: BrushTipShape.square,
-    pressure: 1,
-    sequence: 0,
-    stamp: BrushStampImage(
-      id: 'lift-erase-$liftId',
-      width: width,
-      height: height,
-      rgba: eraseAlpha,
-    ),
-    erase: true,
-  );
   final stampDab = BrushDab(
     center: CanvasPoint(x: left + width / 2, y: top + height / 2),
     color: 0xFF000000,
@@ -1237,5 +1206,49 @@ SelectionLiftDabs? buildSelectionLiftDabs({
       rgba: rgba,
     ),
   );
-  return SelectionLiftDabs(eraseDab: eraseDab, stampDab: stampDab);
+  return SelectionLiftDabs(
+    eraseDab: selectionEraseDab(lifted, id: 'lift-erase-$liftId'),
+    stampDab: stampDab,
+  );
+}
+
+/// The erase that takes [lifted] off the cel it was read from.
+///
+/// ⛔ONE ERASE. The move's lift leaves its spot through it, and a cut that
+/// takes what it cuts (I-90) takes it through it — so what a piece took is
+/// what leaves the cel, to the pixel.
+BrushDab selectionEraseDab(SelectionPixels lifted, {required String id}) {
+  final (:mask, :box, rgba: _, :takeWholePixels) = lifted;
+  final (:left, :top, :width, :height) = box;
+
+  // The erase rides the STAMP path too (R15-④): destination-out from the
+  // exact mask bytes — tip-mask erases resample bilinearly and left a
+  // half-alpha ring at the silhouette (the fringe + origin remnant).
+  final eraseAlpha = Uint8List(width * height * 4);
+  for (var index = 0; index < mask.length; index += 1) {
+    // FULL removal wherever the mask touches at all — the twin of the
+    // gather ([liftSelectionPixels]). The piece took the whole pixel, so
+    // leaving any part of it here would be the ink appearing twice.
+    eraseAlpha[index * 4 + 3] = takeWholePixels
+        ? (mask[index] == 0 ? 0 : 255)
+        : mask[index];
+  }
+  return BrushDab(
+    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
+    color: 0xFF000000,
+    size: math.max(width, height).toDouble(),
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: 0,
+    stamp: BrushStampImage(
+      id: id,
+      width: width,
+      height: height,
+      rgba: eraseAlpha,
+    ),
+    erase: true,
+  );
 }

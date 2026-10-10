@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -182,6 +183,89 @@ void main() {
           'covers both',
     );
     expect(piece.image.rgba.sublist(0, 4), blue);
+  });
+
+  // 🗣️I-90 (유저 2026-10-10): 「픽셀 잘라내기 버튼 신설. 복사버튼 위. 내용은
+  // 동일하게 원본대상 삭제하고 복사한단느낌. 진짜 단어 그대로 잘라내기라는
+  // 느낌」.
+  testWidgets('cut puts on the board what copy would, and takes it off the '
+      'cel — whole pixels, as one undo; the board keeps it', (tester) async {
+    final session = await pump(tester);
+    paint(session, 'c0', left: 10, top: 10, right: 30, bottom: 30, rgba: red);
+    // Through an ANTI-ALIASED marquee whose right edge splits a column: its
+    // edge covers pixels in part, and what the board takes there it takes
+    // whole — so nothing of those pixels may stay on the cel.
+    final region = CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 10, top: 10, right: 19.3, bottom: 30),
+    );
+    const soft = SelectionMaskOptions(antiAlias: true);
+    final surface = session.pixelEditing.coordinator!.currentSurfaceOf(
+      keyOf(session, 'c0'),
+    );
+    final reading = selectionMaskOnPasteboard(
+      region,
+      canvasSize: surface.canvasSize,
+      options: soft,
+    )!;
+    expect(
+      reading.mask.any((coverage) => coverage > 0 && coverage < 255),
+      isTrue,
+      reason: '⛔premise: the marquee covers some pixel in part',
+    );
+    session.pixelVerbs.pixelVerbCanvas = () => (
+      region: region,
+      argb: 0xFF000000,
+      mask: soft,
+    );
+    final heard = <BrushFrameKey>[];
+    void hear(BrushFrameCacheInvalidation change) => heard.add(change.frameKey);
+    final hub = session.renderCaches.cacheInvalidationHub;
+    hub.addBrushFrameListener(hear);
+    addTearDown(() => hub.removeBrushFrameListener(hear));
+
+    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.cut);
+    await tester.pump();
+
+    final piece = session.appClipboard.pixels.piece!;
+    int onTheBoard(int x, int y) {
+      final (column, line) = (x - piece.originLeft, y - piece.originTop);
+      if (column < 0 ||
+          line < 0 ||
+          column >= piece.image.width ||
+          line >= piece.image.height) {
+        return 0;
+      }
+      return piece.image.rgba[(line * piece.image.width + column) * 4 + 3];
+    }
+
+    expect(onTheBoard(15, 20), 255, reason: 'inside the marquee: cut');
+    expect(pixel(session, 'c0', 25, 20), red, reason: 'outside it: stays');
+    for (var y = 8; y < 32; y += 1) {
+      for (var x = 8; x < 32; x += 1) {
+        final painted = x >= 10 && x < 30 && y >= 10 && y < 30;
+        expect(
+          (onTheBoard(x, y), pixel(session, 'c0', x, y)[3]),
+          painted ? anyOf((255, 0), (0, 255)) : (0, 0),
+          reason: '($x, $y): a pixel is on the board or on the cel, whole — '
+              'never both, never in part',
+        );
+      }
+    }
+    expect(
+      heard,
+      contains(keyOf(session, 'c0')),
+      reason: 'the canvas hears it at once — 「이런 캔버스 조작은 바로바로 '
+          '반영되야지」',
+    );
+
+    session.historyManager.undo();
+    await tester.pump();
+    expect(pixel(session, 'c0', 15, 20), red, reason: 'one undo puts it back');
+    expect(
+      session.appClipboard.pixels.piece,
+      same(piece),
+      reason: 'and the board keeps it — the board is not history',
+    );
   });
 
   testWidgets('paste above lays the board on every cel of the range, at the '
@@ -384,6 +468,11 @@ void main() {
 
     expect(pixels.canRunPixelVerb, isFalse, reason: 'c1 holds no drawing');
     expect(
+      pixels.canRunPixelClipboardVerb(PixelClipboardVerb.cut),
+      isFalse,
+      reason: 'nor anything to cut, whatever the board holds',
+    );
+    expect(
       pixels.canRunPixelClipboardVerb(PixelClipboardVerb.pasteBelow),
       isTrue,
       reason: 'a blank cel is exactly where a paste goes',
@@ -395,8 +484,8 @@ void main() {
     );
   });
 
-  testWidgets('the 색 편집 list shows the three rows after the four',
-      (tester) async {
+  testWidgets('the 색 편집 list shows the clipboard rows under the colour '
+      'rows', (tester) async {
     final session = await pump(tester);
     paint(session, 'c0', left: 10, top: 10, right: 20, bottom: 20, rgba: red);
     await tester.pump();
@@ -410,24 +499,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(head);
     await tester.pumpAndSettle();
-    for (final key in [
+    // Top to bottom — the order itself is pinned on the menu's entries
+    // (timeline_bar_rows_are_actions_test); this is that it SHOWS.
+    final keys = [
       'shared-keep-colour-button',
+      'shared-clear-pixels-button',
+      'shared-cut-pixels-button',
       'shared-copy-pixels-button',
       'shared-paste-pixels-above-button',
       'shared-paste-pixels-below-button',
-    ]) {
-      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+    ];
+    final tops = [
+      for (final key in keys)
+        tester.getTopLeft(find.byKey(ValueKey<String>(key))).dy,
+    ];
+    for (var i = 1; i < tops.length; i += 1) {
+      expect(tops[i], greaterThan(tops[i - 1]), reason: keys[i]);
     }
-    expect(
-      tester.getTopLeft(
-        find.byKey(const ValueKey<String>('shared-copy-pixels-button')),
-      ).dy,
-      greaterThan(
-        tester.getTopLeft(
-          find.byKey(const ValueKey<String>('shared-keep-colour-button')),
-        ).dy,
-      ),
-    );
     expect(session.appClipboard.pixels.piece, isNull);
   });
 }

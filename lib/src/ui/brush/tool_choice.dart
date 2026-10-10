@@ -7,8 +7,8 @@ import 'paint_tool_state_notifier.dart';
 
 /// What a person's tools were holding when the project was saved (F-123):
 /// the tool in hand, the brush each paint tool held, the tile each rail
-/// group was left on, the outline each tracing verb drags, and the fill's
-/// and the stamp's blend and opacity.
+/// group was left on, the outline each tracing verb drags, the fill's and
+/// the stamp's blend and opacity, and whether a cut takes what it cuts.
 ///
 /// 유저 2026-09-13: 「저장시 마지막으로 고른 툴 상태(무슨 브러시인지, 무슨
 /// 지우개인지, 채우기툴에서 뭐 골라져있는지 등) … 존재안하는게 있으면 해당
@@ -37,6 +37,7 @@ class ToolChoice {
     this.shapeOptions,
     this.fillOpacity,
     this.cutStampOpacity,
+    this.cutDeletesSource,
   });
 
   final CanvasTool? tool;
@@ -57,6 +58,7 @@ class ToolChoice {
   final ShapeToolOptions? shapeOptions;
   final double? fillOpacity;
   final double? cutStampOpacity;
+  final bool? cutDeletesSource;
 
   Map<String, Object?> toJson() => {
     if (tool != null) 'tool': tool!.name,
@@ -81,6 +83,7 @@ class ToolChoice {
     if (shapeOptions != null) 'shapeOptions': shapeOptions!.toJson(),
     if (fillOpacity != null) 'fillOpacity': fillOpacity,
     if (cutStampOpacity != null) 'cutStampOpacity': cutStampOpacity,
+    if (cutDeletesSource != null) 'cutDeletesSource': cutDeletesSource,
   };
 
   /// The choice [json] holds; any part it does not hold readably is absent.
@@ -108,6 +111,10 @@ class ToolChoice {
     shapeOptions: ShapeToolOptions.fromJson(json['shapeOptions']),
     fillOpacity: _opacity(json['fillOpacity']),
     cutStampOpacity: _opacity(json['cutStampOpacity']),
+    cutDeletesSource: switch (json['cutDeletesSource']) {
+      final bool deletes => deletes,
+      _ => null,
+    },
   );
 }
 
@@ -163,6 +170,7 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
     shapeOptions: live.shapeOptions,
     fillOpacity: live.fillOpacity,
     cutStampOpacity: live.cutStampOpacity,
+    cutDeletesSource: live.cutDeletesSource,
   );
 }
 
@@ -199,6 +207,7 @@ void resumeToolChoice(
     shapeOptions: choice.shapeOptions,
     fillOpacity: choice.fillOpacity,
     cutStampOpacity: choice.cutStampOpacity,
+    cutDeletesSource: choice.cutDeletesSource,
   );
   for (final tile in choice.railTiles.values) {
     tools.value = tools.value.copyWith(tool: tile);

@@ -9,13 +9,18 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_lift.dart';
 
-/// The CUT verb: it takes a copy and leaves the cel alone.
+import '../helpers/brush_canvas_fixture.dart';
+
+/// The CUT verb: it takes a copy and leaves the cel alone — and, asked by
+/// name, the step that takes what it cut (I-90).
 void main() {
   const canvasSize = CanvasSize(width: 16, height: 16);
 
@@ -95,13 +100,19 @@ void main() {
     );
   }
 
+  /// [readCutPiece]'s piece — what a cut puts in the hand.
+  CutPiece? pieceOf({
+    required CanvasSelectionRegion region,
+    required BitmapSurface surface,
+  }) => readCutPiece(region: region, surface: surface)?.piece;
+
   test('cutting leaves the source surface byte-identical', () {
     // The whole verb, in one assertion. 유저 확정: "잘라내기는 원본 남기는
     // 복사" — if this ever goes red, the cut has been wired into the
     // selection MOVE lift, which erases as it takes.
     final surface = paintedSurface();
     final before = snapshot(surface);
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
     );
@@ -111,7 +122,7 @@ void main() {
 
   test('the piece carries the pixels it covered, at their cel coordinates', () {
     final surface = paintedSurface();
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: rect(left: 2, top: 2, right: 6, bottom: 6),
       surface: surface,
     )!;
@@ -132,7 +143,7 @@ void main() {
     // The slot survives frames, cuts and projects, so a stray drag over
     // blank cel must not be able to overwrite it with nothing.
     final surface = paintedSurface();
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: rect(left: 10, top: 10, right: 14, bottom: 14),
       surface: surface,
     );
@@ -141,7 +152,7 @@ void main() {
 
   test('a fully off-pasteboard outline yields no piece', () {
     final surface = paintedSurface();
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       // Far outside the 3×3 pasteboard footprint on the negative side.
       region: rect(left: -400, top: -400, right: -390, bottom: -390),
       surface: surface,
@@ -154,7 +165,7 @@ void main() {
     // and break the fill pass downstream, and this app has no two-value
     // layer flag to switch such a thing off with.
     final surface = paintedSurface();
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
     )!;
@@ -172,7 +183,7 @@ void main() {
   test('a lasso outline takes only what it encloses', () {
     final surface = paintedSurface();
     // A triangle over the block's top-left corner.
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: CanvasSelectionRegion.shape(
         CanvasSelectionShape([
           CanvasPoint(x: 2, y: 2),
@@ -199,7 +210,7 @@ void main() {
     // The clip is the pasteboard, not the canvas: an animator draws limbs
     // off-frame every day, and those pixels are real artwork.
     final surface = paintedSurface(left: -6, top: 2);
-    final piece = buildCutPiece(
+    final piece = pieceOf(
       region: rect(left: -7, top: 1, right: -1, bottom: 7),
       surface: surface,
     );
@@ -211,11 +222,11 @@ void main() {
     // Each cut replaces the held piece, so the second must not be a view
     // onto the first's buffer.
     final surface = paintedSurface();
-    final first = buildCutPiece(
+    final first = pieceOf(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
     )!;
-    final second = buildCutPiece(
+    final second = pieceOf(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
     )!;
@@ -350,5 +361,92 @@ void main() {
       expect(piece, isNull);
       expect(asked, isEmpty);
     });
+  });
+
+  // 🗣️I-90 (유저 2026-10-10): 「잘라내기시 해당 그림 없애는것」 · 「원본대상
+  // 삭제하고 복사한단느낌」.
+  test('the cut that takes what it cuts takes exactly the piece\'s pixels, '
+      'whole — and one undo puts them back', () {
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: BrushCanvasFixture.createFrameKeys(),
+    );
+    final key = coordinator.activeFrameKey;
+    coordinator.commitSourceStroke(
+      sourceDabs: [
+        for (var x = 20; x <= 60; x += 2)
+          BrushDab(
+            center: CanvasPoint(x: x.toDouble(), y: 40),
+            color: 0xFF3060C0,
+            size: 16,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.square,
+            pressure: 1,
+            sequence: 0,
+          ),
+      ],
+    );
+    final before = coordinator.currentSurfaceOf(key);
+    // A slanted, ANTI-ALIASED outline: its edge covers pixels in part, and
+    // the piece takes each of those whole.
+    final read = readCutPiece(
+      region: CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          CanvasPoint(x: 15, y: 25),
+          CanvasPoint(x: 55, y: 30),
+          CanvasPoint(x: 25, y: 55),
+        ]),
+      ),
+      surface: before,
+      options: const SelectionMaskOptions(antiAlias: true),
+    )!;
+    expect(
+      read.lifted.mask.any((coverage) => coverage > 0 && coverage < 255),
+      isTrue,
+      reason: '⛔premise: the outline covers some pixel in part',
+    );
+    int alphaOf(BitmapSurface surface, int x, int y) =>
+        (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF;
+    int onThePiece(int x, int y) {
+      final piece = read.piece;
+      final (column, line) = (x - piece.originLeft, y - piece.originTop);
+      if (column < 0 ||
+          line < 0 ||
+          column >= piece.image.width ||
+          line >= piece.image.height) {
+        return 0;
+      }
+      return piece.image.rgba[(line * piece.image.width + column) * 4 + 3];
+    }
+
+    final take = cutPixelsTaken(coordinator: coordinator, key: key, read: read);
+    take.execute();
+    final after = coordinator.currentSurfaceOf(key);
+    var taken = 0;
+    for (var y = 20; y < 60; y += 1) {
+      for (var x = 8; x < 72; x += 1) {
+        final took = onThePiece(x, y) > 0;
+        taken += took ? 1 : 0;
+        expect(
+          alphaOf(after, x, y),
+          took ? 0 : alphaOf(before, x, y),
+          reason: '($x, $y): what the piece took leaves whole, the rest stays',
+        );
+      }
+    }
+    expect(taken, greaterThan(0), reason: '⛔premise: the cut took something');
+
+    take.undo();
+    final undone = coordinator.currentSurfaceOf(key);
+    for (var y = 20; y < 60; y += 1) {
+      for (var x = 8; x < 72; x += 1) {
+        expect(
+          surfacePixelRgba(undone, x, y),
+          surfacePixelRgba(before, x, y),
+          reason: '($x, $y)',
+        );
+      }
+    }
   });
 }

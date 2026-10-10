@@ -15,7 +15,8 @@ import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
-import '../../services/cut_piece_lift.dart' show buildCutPiece;
+import '../../services/cut_piece_lift.dart'
+    show CutRead, cutPixelsTaken, readCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/piece_landing.dart';
@@ -49,8 +50,8 @@ typedef PixelVerbCanvas = ({
 });
 
 /// The PIXEL VERBS — what the 색 편집 list does to the pixels of the cels
-/// (색 변환, 픽셀 비우기, 픽셀 복사, 위 · 아래 붙여넣기) and 전체 잘라내기 —
-/// with the cels they act on, as their own object.
+/// (색 변환, 픽셀 비우기, 픽셀 잘라내기 · 복사, 위 · 아래 붙여넣기) and 전체
+/// 잘라내기 — with the cels they act on, as their own object.
 ///
 /// 🚨Carved out of `CellVerbs` (2026-10-01) when I-55 doubled the family
 /// and pushed that class past the long-class line. The cell verbs delete
@@ -398,10 +399,10 @@ class PixelVerbs {
     return regionInArtworkSpace(region: region, placement: placementOf(key));
   }
 
-  // --- 픽셀 복사 · 붙여넣기 (I-55) · 전체 잘라내기 (I-28) ---------------------
+  // --- 픽셀 잘라내기 (I-90) · 복사 · 붙여넣기 (I-55) · 전체 잘라내기 (I-28) ------
 
-  /// The cel 픽셀 복사 and 전체 잘라내기 read — the one you stand on, with a
-  /// drawing in it — or null.
+  /// The cel 픽셀 잘라내기 · 복사 and 전체 잘라내기 read — the one you stand
+  /// on, with a drawing in it — or null.
   BrushFrameKey? _standingDrawing() {
     final cut = _project.activeCutOrNull;
     if (cut == null || _pixelEditing.coordinator == null) {
@@ -412,7 +413,8 @@ class PixelVerbs {
   }
 
   /// The standing cel's pixels as a piece — what 픽셀 복사 (I-55) puts on the
-  /// pixel board and 전체 잘라내기 (I-28) puts in the cut tool's hand.
+  /// pixel board and 전체 잘라내기 (I-28) puts in the cut tool's hand — and
+  /// the cel it was read off, for a cut that takes what it read (I-90).
   ///
   /// 🗣️유저 2026-10-01: 「픽셀복사는 화면 전체(현재 셀의 그림 존재하는것들.
   /// 잘라내기도구의 전체 잘라내기랑 정확히 동일 …), 다만 선택도구로 선택한게
@@ -429,8 +431,8 @@ class PixelVerbs {
   /// 그림만 복사임」.
   ///
   /// Null when there is nothing to read, and a holder then keeps what it
-  /// held (the cut's law — `buildCutPiece`).
-  CutPiece? standingPiece({
+  /// held (the cut's law — `readCutPiece`).
+  ({BrushFrameKey key, CutRead read})? _standingCut({
     CanvasSelectionRegion? selection,
     SelectionMaskOptions options = SelectionMaskOptions.none,
   }) {
@@ -451,11 +453,31 @@ class PixelVerbs {
     if (region == null) {
       return null;
     }
-    return buildCutPiece(
+    final read = readCutPiece(
       region: region,
       surface: surface,
       // The softness is the SELECTION's: a whole picture has none.
       options: selection == null ? SelectionMaskOptions.none : options,
+    );
+    return read == null ? null : (key: key, read: read);
+  }
+
+  /// Takes what [cut] read off its cel, as one undo — the cut that takes
+  /// what it cuts (I-90, [cutPixelsTaken]).
+  void _takeOffTheCel(({BrushFrameKey key, CutRead read}) cut) {
+    final coordinator = _pixelEditing.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    _project.historyManager.execute(
+      cutPixelsTaken(
+        coordinator: coordinator,
+        key: cut.key,
+        read: cut.read,
+        // Without the hub the canvas keeps the old composite until you
+        // leave the frame (see [runPixelVerb]).
+        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+      ),
     );
   }
 
@@ -475,17 +497,26 @@ class PixelVerbs {
   /// 곳에선 아무메시지 안뜨는데 뜨도록. 내용은 잘라낼 대상이 존재하지
   /// 않습니다.」 — a press that found no picture says so where the user is
   /// looking, as every cut does ([cutIntoTheHand]).
-  void cutWhole() {
+  ///
+  /// [takeWhatItCuts] is the cut tool's 「원본 삭제」 (I-90,
+  /// `BrushToolState.cutDeletesSource`): the picture leaves the cel, as one
+  /// undo, once it is in the hand.
+  void cutWhole({required bool takeWhatItCuts}) {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
-    cutIntoTheHand(standingPiece(), hand);
+    final cut = _standingCut();
+    cutIntoTheHand(cut?.read.piece, hand);
+    if (cut != null && takeWhatItCuts) {
+      _takeOffTheCel(cut);
+    }
   }
 
   /// Whether the 색 편집 list's clipboard row [verb] has anything to do —
   /// its gate, and the question its press asks (T25: one answer behind both).
   bool canRunPixelClipboardVerb(PixelClipboardVerb verb) => switch (verb) {
+    PixelClipboardVerb.cut ||
     PixelClipboardVerb.copy => _standingDrawing() != null,
     PixelClipboardVerb.pasteAbove ||
     PixelClipboardVerb.pasteBelow => _canPastePixels,
@@ -501,6 +532,8 @@ class PixelVerbs {
   /// The 색 편집 list's clipboard row [verb], pressed.
   void runPixelClipboardVerb(PixelClipboardVerb verb) {
     switch (verb) {
+      case PixelClipboardVerb.cut:
+        _copyPixels(takeWhatItCopies: true);
       case PixelClipboardVerb.copy:
         _copyPixels();
       case PixelClipboardVerb.pasteAbove:
@@ -515,14 +548,22 @@ class PixelVerbs {
   ///
   /// ⛔Not the cursor: 「이렇게 복사한건 커서 프리뷰로 등록하는게아니야」 — the
   /// board holds it and nothing shows it.
-  void _copyPixels() {
+  ///
+  /// [takeWhatItCopies] is 픽셀 잘라내기 (I-90): what the board took leaves
+  /// the cel, as one undo — 「원본대상 삭제하고 복사한단느낌. 진짜 단어 그대로
+  /// 잘라내기」.
+  void _copyPixels({bool takeWhatItCopies = false}) {
     final canvas = pixelVerbCanvas?.call();
-    final piece = standingPiece(
+    final cut = _standingCut(
       selection: canvas?.region,
       options: canvas?.mask ?? SelectionMaskOptions.none,
     );
-    if (piece != null) {
-      _pixelBoard.hold(piece);
+    if (cut == null) {
+      return;
+    }
+    _pixelBoard.hold(cut.read.piece);
+    if (takeWhatItCopies) {
+      _takeOffTheCel(cut);
     }
   }
 

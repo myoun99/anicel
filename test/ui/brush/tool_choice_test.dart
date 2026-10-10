@@ -22,6 +22,7 @@ void main() {
     cutStampBlendMode: BrushBlendMode.color,
     fillOpacity: 0.5,
     cutStampOpacity: 1.0,
+    cutDeletesSource: true,
   );
 
   test('a choice round-trips through its JSON, part by part', () {
@@ -39,6 +40,7 @@ void main() {
     expect(back.cutStampBlendMode, BrushBlendMode.color);
     expect(back.fillOpacity, 0.5);
     expect(back.cutStampOpacity, 1.0);
+    expect(back.cutDeletesSource, isTrue, reason: 'I-90 「원본 삭제」');
   });
 
   test('nothing chosen writes nothing', () {
@@ -55,6 +57,7 @@ void main() {
       'fillBlendMode': 'glow',
       'fillOpacity': 1.5,
       'cutStampOpacity': 0.25,
+      'cutDeletesSource': 'yes',
     });
     expect(back.tool, isNull, reason: 'a tool this build does not have');
     expect(
@@ -72,5 +75,6 @@ void main() {
     expect(back.fillBlendMode, isNull);
     expect(back.fillOpacity, isNull, reason: 'past 1 is not an opacity');
     expect(back.cutStampOpacity, 0.25);
+    expect(back.cutDeletesSource, isNull, reason: 'a word is not a switch');
   });
 }

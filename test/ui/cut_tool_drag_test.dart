@@ -63,6 +63,8 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       CanvasSelectionCommands commands,
       CutPieceSlot slot,
+      BrushEditCacheInvalidationSink sink,
+      HistoryManager history,
       Future<void> Function(
         CanvasTool tool, {
         CanvasShapeKind? shape,
@@ -70,6 +72,7 @@ void main() {
         double? stampOpacity,
         bool rowTakesStrokes,
         bool celUnderThePlayhead,
+        bool cutDeletesSource,
       })
       setTool,
     })
@@ -96,6 +99,7 @@ void main() {
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
+    final sink = BrushEditCacheInvalidationSink();
 
     Future<void> pumpWith(
       CanvasTool next, {
@@ -106,6 +110,8 @@ void main() {
       bool rowTakesStrokes = true,
       // False = standing on a frame with no cel.
       bool celUnderThePlayhead = true,
+      // The cut tool's 「원본 삭제」 (I-90).
+      bool cutDeletesSource = false,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -116,7 +122,7 @@ void main() {
             body: BrushCanvasPanel(
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              cacheInvalidationSink: sink,
               historyManager: history,
               brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
                 tool: next,
@@ -124,6 +130,7 @@ void main() {
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
+                cutDeletesSource: cutDeletesSource,
               )),
               selectionCommands: commands,
               selectionMaskOptions: softness,
@@ -156,6 +163,8 @@ void main() {
       coordinator: coordinator,
       commands: commands,
       slot: slot,
+      sink: sink,
+      history: history,
       setTool: pumpWith,
     );
   }
@@ -297,6 +306,74 @@ void main() {
     await env.setTool(CanvasTool.brush);
     await env.setTool(CanvasTool.cutStamp);
     expect(env.slot.piece, same(piece));
+  });
+
+  // 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+  // 도구설정으로서 원본 삭제 불리언버튼 추가. 잘라내기시 해당 그림 없애는것」.
+  testWidgets('with 「원본 삭제」 a cut takes what it cut off the cel — the '
+      'rest stays, the canvas hears it, and one undo puts it back', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    int inkAt(int x) =>
+        surfacePixelRgba(
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+          x,
+          40,
+        ) ??
+        0;
+    List<BrushFrameKey> heard() => [
+      for (final change in env.sink.brushFrames) change.frameKey,
+    ];
+
+    // CONTROL: off, a cut copies and the cel keeps every pixel.
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+    expect(env.slot.isNotEmpty, isTrue);
+    expect(inkAt(20), isNot(0), reason: 'off, a cut copies');
+    expect(env.history.undoCount, 0, reason: 'and writes nothing');
+    expect(heard(), isEmpty, reason: 'so no cache has anything to hear');
+
+    await env.setTool(CanvasTool.cut, cutDeletesSource: true);
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+    final piece = env.slot.piece;
+    expect(piece, isNotNull);
+    expect(inkAt(20), 0, reason: 'inside the outline, the cut took it');
+    expect(inkAt(80), isNot(0), reason: 'outside it, the bar stays');
+    expect(env.history.undoCount, 1, reason: 'one undo');
+    expect(
+      heard(),
+      contains(env.coordinator.activeFrameKey),
+      reason: 'the caches hear it, or the canvas shows the old picture',
+    );
+
+    env.history.undo();
+    await tester.pump();
+    expect(inkAt(20), isNot(0), reason: 'the undo puts it back');
+    expect(env.slot.piece, same(piece), reason: 'the hand is not history');
+  });
+
+  testWidgets('on a row that takes no strokes, 「원본 삭제」 takes nothing — '
+      'the copy still lands in the hand (H19)', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(
+      CanvasTool.cut,
+      cutDeletesSource: true,
+      rowTakesStrokes: false,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+
+    expect(env.slot.isNotEmpty, isTrue, reason: 'the cut reads the cel');
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            20,
+            40,
+          ) ??
+          0,
+      isNot(0),
+      reason: 'taking pixels off is a write, and the lane refuses it',
+    );
+    expect(env.history.undoCount, 0);
   });
 
   testWidgets('clicking with the stamp tile drops the piece, at once', (

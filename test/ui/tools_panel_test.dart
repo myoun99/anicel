@@ -42,7 +42,7 @@ Future<PaintToolStateNotifier> _pumpRail(
               press,
               tool: tool,
               transform: transform,
-              cutWhole: () {},
+              cutWhole: ({required takeWhatItCuts}) {},
             ),
           ),
         ),

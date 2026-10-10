@@ -818,11 +818,13 @@ abstract final class EditorActionIds {
   /// The colour edit list's four verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
-  static const editClearPixels = 'edit-clear-pixels';
   static const editDeleteColour = 'edit-delete-colour';
   static const editKeepColour = 'edit-keep-colour';
+  static const editClearPixels = 'edit-clear-pixels';
 
-  /// Its clipboard rows (I-55) — 픽셀 복사 and the two pastes.
+  /// Its clipboard rows — 픽셀 잘라내기 (I-90), 픽셀 복사 and the two pastes
+  /// (I-55).
+  static const editCutPixels = 'edit-cut-pixels';
   static const editCopyPixels = 'edit-copy-pixels';
   static const editPastePixelsAbove = 'edit-paste-pixels-above';
   static const editPastePixelsBelow = 'edit-paste-pixels-below';
@@ -1175,14 +1177,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     menuRow: true,
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.editClearPixels,
-    label: 'Clear Pixels',
-    shelf: ShortcutShelf.colourEdit,
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
-    pixelVerb: CelPixelVerb.clearPixels,
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
     id: EditorActionIds.editDeleteColour,
     label: 'Delete Color',
     shelf: ShortcutShelf.colourEdit,
@@ -1198,8 +1192,25 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     pixelVerb: CelPixelVerb.keepColour,
     menuRow: true,
   ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editClearPixels,
+    label: 'Clear Pixels',
+    shelf: ShortcutShelf.colourEdit,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
+    pixelVerb: CelPixelVerb.clearPixels,
+    menuRow: true,
+  ),
   // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
   // — actions, in the list's order. No key ships with them: none was named.
+  // I-90 (10-10) added 픽셀 잘라내기 above 픽셀 복사, and named no key either.
+  const EditorActionDefinition(
+    id: EditorActionIds.editCutPixels,
+    label: 'Cut Pixels',
+    shelf: ShortcutShelf.colourEdit,
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.cut,
+    menuRow: true,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.editCopyPixels,
     label: 'Copy Pixels',

@@ -750,7 +750,7 @@ void main() {
               press,
               tool: tool,
               transform: options,
-              cutWhole: () {},
+              cutWhole: ({required takeWhatItCuts}) {},
             ),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,

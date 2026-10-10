@@ -2372,7 +2372,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// plain cel coordinates: the read and the eventual write are in the same
   /// space, so a posed layer cannot make them disagree.
   ///
-  /// The surface is never written here. Cutting copies.
+  /// The surface is never written by the read. Cutting copies — and then,
+  /// with the tool's 「원본 삭제」 on, takes what it copied ([_takeOffTheCel]).
   void _cutPieceFrom(CanvasSelectionRegion outline) {
     final slot = widget.cutPieceSlot;
     // ★THE CEL QUESTION, NOT THE ROW'S (H19): a cut COPIES — it reads the
@@ -2388,17 +2389,40 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (slot == null) {
       return;
     }
+    final read = coordinator == null || onTheRow == null
+        ? null
+        : readCutPiece(
+            region: onTheRow,
+            surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+          );
     // Null = no cel under the outline, or no paint inside it: the slot is
     // left alone and the cut says it found nothing, as every cut does
     // (F-254: 「잘라내기도구로 빈 곳에 그렸을때도 동일하게」).
-    cutIntoTheHand(
-      coordinator == null || onTheRow == null
-          ? null
-          : buildCutPiece(
-              region: onTheRow,
-              surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-            ),
-      slot.hold,
+    cutIntoTheHand(read?.piece, slot.hold);
+    if (read != null && _brush.cutDeletesSource) {
+      _takeOffTheCel(read);
+    }
+  }
+
+  /// The cut tool's 「원본 삭제」 (I-90): what [read] cut leaves the cel you
+  /// stand on, as one undo ([cutPixelsTaken]).
+  ///
+  /// ★THE ROW'S QUESTION this time ([_editableCoordinator], H19): taking
+  /// pixels off is a write, and a row that refuses the stroke refuses it —
+  /// the copy above still lands in the hand.
+  void _takeOffTheCel(CutRead read) {
+    final coordinator = widget._editableCoordinator;
+    final historyManager = widget.historyManager;
+    if (coordinator == null || historyManager == null) {
+      return;
+    }
+    historyManager.execute(
+      cutPixelsTaken(
+        coordinator: coordinator,
+        key: coordinator.activeFrameKey,
+        read: read,
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      ),
     );
   }
 

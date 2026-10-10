@@ -16,7 +16,7 @@ import '../widgets/cursor_notice.dart';
 ///
 /// ⛔The hand is never emptied by a cut that found nothing: it survives
 /// frames, cuts and projects, so one stray scrape must not be able to throw
-/// away what is in it (`buildCutPiece`).
+/// away what is in it (`readCutPiece`).
 void cutIntoTheHand(CutPiece? piece, void Function(CutPiece piece) hand) {
   if (piece == null) {
     cursorNotices.show(AppText.strings.noticeNothingToCut);

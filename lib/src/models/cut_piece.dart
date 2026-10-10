@@ -24,6 +24,9 @@ import 'brush_stamp_image.dart';
 /// even the PROJECT ("다른 프로젝트에 붙여넣고 싶을 수 있으니"). Only quitting
 /// the app loses it. That is why nothing here points at project-owned state:
 /// it is a raw pixel copy and a few numbers.
+/// ↩️I-90 (유저 2026-10-10): with the tool's 「원본 삭제」 on, the cut also
+/// takes the source pixels off the cel — a step of its own after the piece
+/// is made (`cutPixelsTaken`). The piece is the same raw copy either way.
 class CutPiece {
   CutPiece({
     required this.image,
