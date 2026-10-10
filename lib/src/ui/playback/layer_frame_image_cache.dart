@@ -340,7 +340,6 @@ class LayerFrameImageCache {
     if (first.halved) {
       firstImage = await composeHalvedSurfaceImage(
         preview,
-        reuse: BitmapTileImageCache.instance,
         shouldAbort: shouldAbort,
         over: first.over,
         deferred: !firstIsKept,
@@ -705,7 +704,6 @@ _composedNow(
   if (first.halved) {
     composed = composeHalvedSurfaceImageSync(
       preview,
-      reuse: BitmapTileImageCache.instance,
       makePictures: makePictures,
       snapshot: firstIsKept,
       over: first.over,

@@ -277,7 +277,11 @@ void main() {
 /// export/export_frame_renderer — a canvas-size video frame drew its baked
 /// cut in one place and each cut of a mixed frame in another, the same
 /// draw written twice; it is one function now (`_paintCutInFrame`).
-const int _knownRawDraws = 30;
+/// **29** on 2026-10-10 (board `playback-plays-the-screen-material`, a level
+/// made from its tiles): −1 in canvas/tiled_surface_compose — the async and
+/// the sync compose each drew a tile at its place; one tile laying does now,
+/// whole or halved (`_TileLaying`).
+const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

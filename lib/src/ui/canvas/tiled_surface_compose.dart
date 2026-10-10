@@ -501,18 +501,21 @@ composePositionedSurfaceImageSync(
 /// and keeps only the chain's last step, a plain snapshot. ⛔Never an image
 /// to keep: a deferred image pins every tile picture it drew for as long as
 /// it lives (`raster_picture.dart`).
+///
+/// The tiles' pictures are the shared ones the canvas keeps
+/// ([BitmapTileImageCache.instance]); one a tile lacks is made in turn
+/// ([MissingTilePictures.madeInTurn]) — a level is made off the frame, by
+/// the warm or for a row the canvas fills in.
 Future<ui.Image?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
-  BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
-  MissingTilePictures missing = MissingTilePictures.madeInTurn,
   required ui.Rect over,
   bool deferred = false,
 }) => _composeAsync(
   surface,
-  reuse: reuse,
+  reuse: BitmapTileImageCache.instance,
   shouldAbort: shouldAbort,
-  missing: missing,
+  missing: MissingTilePictures.madeInTurn,
   over: _composedOver(surface, over),
   deferred: deferred,
   halved: true,
@@ -522,13 +525,12 @@ Future<ui.Image?> composeHalvedSurfaceImage(
 /// [makePictures] and [snapshot] mean.
 ({ui.Image deferred, Future<ui.Image>? real})? composeHalvedSurfaceImageSync(
   BitmapSurface surface, {
-  required BitmapTileImageCache reuse,
   required bool makePictures,
   required bool snapshot,
   required ui.Rect over,
 }) => _composeSync(
   surface,
-  reuse: reuse,
+  reuse: BitmapTileImageCache.instance,
   makePictures: makePictures,
   snapshot: snapshot,
   over: _composedOver(surface, over),
