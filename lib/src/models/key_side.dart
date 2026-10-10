@@ -143,29 +143,113 @@ final class EaseSide extends KeySide {
   String toString() => 'EaseSide($influence, $speed)';
 }
 
-/// A write to a key's sides: the side given replaces the key's own and the
-/// side left out stays — AE's Easy Ease In touches the in side alone, its
-/// Easy Ease both.
+/// What a side IS — what its half of the key's mark draws, what a union
+/// compares and what the key window offers (I-89 ②). An ease at 33% and
+/// one at 50% are one kind.
+enum KeySideKind {
+  /// AE's Linear — half a diamond.
+  linear,
+
+  /// AE's Bezier, 「천천히」 — half an hourglass.
+  ease,
+
+  /// AE's Auto Bezier, 「부드럽게 지나감」 — half a disc.
+  auto,
+
+  /// AE's Hold — half a square. Only ever a leaving side ([KeyExit]).
+  hold,
+}
+
+/// [side]'s kind.
+KeySideKind keySideKindOf(KeyExit side) => switch (side) {
+  LinearSide() => KeySideKind.linear,
+  EaseSide() => KeySideKind.ease,
+  AutoSide() => KeySideKind.auto,
+  KeyHold() => KeySideKind.hold,
+};
+
+/// A write to ONE side of a key, as the key window gives it (I-89 ②): the
+/// KIND the side becomes and the INFLUENCE its ease takes, either or both —
+/// each only what the user picked.
+///
+/// A side already of [side]'s kind keeps its own — an ease its influence
+/// and its speed — so picking the kind a key has changes nothing, which is
+/// what lights a choice: by kind, as the key's mark draws it, not by its
+/// numbers.
+final class KeySideEdit<S extends KeyExit> {
+  const KeySideEdit({this.side, this.influence})
+    : assert(influence == null || (influence > 0 && influence <= 1));
+
+  /// What a side of another kind becomes — the kind picked, at its
+  /// defaults (an ease is AE's Easy Ease). Null leaves the kind as it is.
+  final S? side;
+
+  /// The influence an ease takes, its speed kept — AE's influence % alone.
+  /// Null leaves it as it is; a side that is no ease has none to take.
+  final double? influence;
+
+  /// [current] with this edit on it.
+  S applyTo(S current) {
+    final side = this.side;
+    final kept = side == null || keySideKindOf(side) == keySideKindOf(current)
+        ? current
+        : side;
+    final influence = this.influence;
+    return influence != null && kept is EaseSide
+        // An ease is a KeySide, so it is an S whichever side this edits.
+        ? kept.copyWith(influence: influence) as S
+        : kept;
+  }
+}
+
+/// A write to a key's sides: each side edited as its [KeySideEdit] says,
+/// the side left out as it was — AE's Easy Ease In touches the in side
+/// alone, its Easy Ease both.
 class KeySidesEdit {
   const KeySidesEdit({this.incoming, this.outgoing});
 
   /// Both sides straight — AE's Linear.
   static const KeySidesEdit linear = KeySidesEdit(
-    incoming: KeySide.linear,
-    outgoing: KeySide.linear,
+    incoming: KeySideEdit(side: KeySide.linear),
+    outgoing: KeySideEdit(side: KeySide.linear),
   );
 
   /// The value held from the key on — AE's Toggle Hold Keyframe.
-  static const KeySidesEdit hold = KeySidesEdit(outgoing: KeyExit.hold);
+  static const KeySidesEdit hold = KeySidesEdit(
+    outgoing: KeySideEdit(side: KeyExit.hold),
+  );
 
-  final KeySide? incoming;
-  final KeyExit? outgoing;
+  final KeySideEdit<KeySide>? incoming;
+  final KeySideEdit<KeyExit>? outgoing;
 
-  /// Whether a key with these sides already says what this edit would —
-  /// the key window lights a choice that would change nothing.
-  bool isTrueOf({required KeySide incoming, required KeyExit outgoing}) =>
-      (this.incoming == null || this.incoming == incoming) &&
-      (this.outgoing == null || this.outgoing == outgoing);
+  /// A key's sides with this edit on them.
+  ({KeySide incoming, KeyExit outgoing}) applyTo({
+    required KeySide incoming,
+    required KeyExit outgoing,
+  }) => (
+    incoming: this.incoming?.applyTo(incoming) ?? incoming,
+    outgoing: this.outgoing?.applyTo(outgoing) ?? outgoing,
+  );
+}
+
+/// What [sides] say TOGETHER — a row of the key window, over every key it
+/// covers (I-89 ②): the kind they all are, null where they differ; and
+/// where they are all eases, the influence they all take, null where those
+/// differ. The rule the window's name follows (「다르면 …」): it shows what
+/// the keys agree on.
+({KeySideKind? kind, double? influence}) keySidesTogether(
+  Iterable<KeyExit> sides,
+) {
+  final kind = {for (final side in sides) keySideKindOf(side)}.singleOrNull;
+  return (
+    kind: kind,
+    influence: kind == KeySideKind.ease
+        ? {
+            for (final side in sides)
+              if (side is EaseSide) side.influence,
+          }.singleOrNull
+        : null,
+  );
 }
 
 /// Where a side's Bézier handle sits in a segment's unit square:

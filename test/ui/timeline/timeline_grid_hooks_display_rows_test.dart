@@ -26,7 +26,7 @@ void main() {
   const lane = PropertyLaneRow(
     laneId: 'transform',
     label: 'Transform',
-    keyedFrames: {},
+    keyMarks: {},
   );
 
   List<PropertyLaneRow> lanesFor(Layer layer) => [lane];

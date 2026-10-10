@@ -256,7 +256,7 @@ void main() {
     await doubleTapBand(tester, 'transform-group', 8.5);
     expect(find.text('Rename key'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -285,7 +285,7 @@ void main() {
       'A',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     await tester.tap(

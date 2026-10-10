@@ -7,12 +7,9 @@ import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_camera.dart' show CutCamera;
+import '../../models/key_mark.dart';
 import '../../models/key_range_move.dart'
-    show
-        transformKeyFrameUnion,
-        transformKeyHoldUnion,
-        transformKeyMixedUnion,
-        transformKeyNameUnion;
+    show transformKeyMarkUnion, transformKeyNameUnion;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
@@ -39,7 +36,7 @@ import 'timeline_span_name.dart' show timelineInstructionInk;
 PropertyLaneRow get transformGroupHeaderLane => PropertyLaneRow(
   laneId: 'transform-group',
   label: AppText.strings.tlTransformGroup,
-  keyedFrames: const {},
+  keyMarks: const {},
   showsKeyNavigator: false,
   isGroupHeader: true,
 );
@@ -47,16 +44,14 @@ PropertyLaneRow get transformGroupHeaderLane => PropertyLaneRow(
 /// [transformGroupHeaderLane] carrying the collapse state (the header's
 /// chevron; tapping the header toggles it — AE group collapse).
 ///
-/// [keyedFrames] is the member lanes' KEY UNION (UI-R20 #13, the camera
-/// row's summary pattern): the header band shows every keyed frame at a
-/// glance — display-only markers (a union diamond has no single lane to
-/// edit); the range move shifts the keys through the LAYER row's
-/// selection.
+/// [keyMarks] is the member lanes' KEY UNION (UI-R20 #13, the camera row's
+/// summary pattern) — see [transformKeyMarkUnion]: the header band shows
+/// every keyed frame at a glance — display-only markers (a union mark has
+/// no single lane to edit); the range move shifts the keys through the
+/// LAYER row's selection.
 PropertyLaneRow transformGroupHeader({
   required bool expanded,
-  Set<int> keyedFrames = const {},
-  Set<int> holdOutFrames = const {},
-  Set<int> mixedFrames = const {},
+  Map<int, KeyMark> keyMarks = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
   List<LaneStretchWord> stretchWords = const [],
@@ -64,13 +59,7 @@ PropertyLaneRow transformGroupHeader({
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
     label: transformGroupHeaderLane.label,
-    keyedFrames: keyedFrames,
-    // The all-hold frames — see [transformKeyHoldUnion] (the ■ law).
-    holdOutFrames: holdOutFrames,
-    // F-17: and the frames whose members DISAGREE (the ○ law) — see
-    // [transformKeyMixedUnion]. The two come out of one walk, so a frame
-    // can never claim both.
-    mixedFrames: mixedFrames,
+    keyMarks: keyMarks,
     // ㉚: the members' name where they agree, `...` where they do not —
     // see [transformKeyNameUnion].
     keyNames: keyNames,
@@ -86,14 +75,14 @@ PropertyLaneRow transformGroupHeader({
   );
 }
 
-/// THE union summary of [track] as a lane row — keyed union, all-hold
-/// union, name union — the ONE derivation behind every union mark
-/// (2026-08-17 B4: 「한 로직으로 통일이 요구의 본체」).
+/// THE union summary of [track] as a lane row — mark union, name union —
+/// the ONE derivation behind every union mark (2026-08-17 B4: 「한 로직으로
+/// 통일이 요구의 본체」).
 ///
 /// Two rows draw it: the fx TRANSFORM GROUP HEADER (its collapsed summary,
 /// UI-R20 #13) and the CAMERA row, which since ㉙ *is* its own transform
 /// group header. Both build their union through this function, so the mark
-/// they draw — which frames key, which read as hold squares, what they are
+/// they draw — which frames key, which mark each wears, what they are
 /// called — can never drift apart again. The camera's used to be a text
 /// glyph channel with its own ◆/■/○ table, and the ○ is exactly what a
 /// second derivation grows when nobody is looking.
@@ -105,10 +94,7 @@ PropertyLaneRow transformUnionHeader({
 }) {
   return transformGroupHeader(
     expanded: expanded,
-    keyedFrames: transformKeyFrameUnion(track),
-    holdOutFrames: transformKeyHoldUnion(track),
-    // F-17: the third answer the ■/◆ pair could not give.
-    mixedFrames: transformKeyMixedUnion(track),
+    keyMarks: transformKeyMarkUnion(track),
     keyNames: transformKeyNameUnion(track),
     enabled: enabled,
     stretchWords: stretchWords,
@@ -411,11 +397,7 @@ PropertyLaneRow _lane<T>(
   return PropertyLaneRow(
     laneId: id,
     label: label,
-    keyedFrames: track.keys.keys.toSet(),
-    holdOutFrames: {
-      for (final entry in track.keys.entries)
-        if (entry.value.outgoing is KeyHold) entry.key,
-    },
+    keyMarks: keyMarksOf(track),
     keyNames: track.namedKeysByFrame,
     valueLabel: valueLabel,
     scrubValue: scrubValue,

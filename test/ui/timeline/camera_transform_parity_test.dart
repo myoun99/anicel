@@ -7,8 +7,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/key_range_move.dart'
-    show transformKeyHoldUnion;
+    show transformKeyMarkUnion;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -55,6 +56,12 @@ import 'timeline_cell_probe.dart';
 /// ④ a selection anchored on an fx header/member extends OUTSIDE the group
 ///   freely, like every other anchor (유저, 다섯 번째: 「선택범위는 어떤
 ///   레이어를 건너든 자유롭게, 규칙 두지 말 것」).
+/// A straight key that holds from there on — AE's Toggle Hold Keyframe.
+const _heldOut = SidesKeyMark(
+  incoming: KeySideKind.linear,
+  outgoing: KeySideKind.hold,
+);
+
 const _drawId = LayerId('parity-draw');
 const _camId = LayerId('parity-cam');
 
@@ -251,12 +258,12 @@ void main() {
           frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
         ),
       );
-      expect(cameraMark.shape, PropertyLaneKeyShape.smooth);
-      expect(headerMark.shape, PropertyLaneKeyShape.smooth);
+      expect(cameraMark.mark, KeyMark.linear);
+      expect(headerMark.mark, KeyMark.linear);
     });
 
-    testWidgets('the all-hold ■ law is ONE law: both union marks read '
-        'transformKeyHoldUnion', (tester) async {
+    testWidgets('the union law is ONE law: both union marks read '
+        'transformKeyMarkUnion', (tester) async {
       final holdTrack = TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>().withKey(
           4,
@@ -273,22 +280,22 @@ void main() {
       );
       await _toggleLanes(tester, _drawId);
 
-      expect(transformKeyHoldUnion(holdTrack), {4});
+      expect(transformKeyMarkUnion(holdTrack), {4: _heldOut});
       expect(
         tester
             .widget<TimelineLaneKeyMarker>(
               _marker(_camId, transformGroupHeaderLane.laneId, 4),
             )
-            .shape,
-        PropertyLaneKeyShape.hold,
+            .mark,
+        _heldOut,
       );
       expect(
         tester
             .widget<TimelineLaneKeyMarker>(
               _marker(_drawId, transformGroupHeaderLane.laneId, 4),
             )
-            .shape,
-        PropertyLaneKeyShape.hold,
+            .mark,
+        _heldOut,
       );
     });
   });
@@ -390,8 +397,8 @@ void main() {
             .widget<TimelineLaneKeyMarker>(
               _marker(_camId, transformGroupHeaderLane.laneId, 10),
             )
-            .shape,
-        PropertyLaneKeyShape.smooth,
+            .mark,
+        KeyMark.linear,
         reason: 'a linear key reads as a diamond mid-drag',
       );
       for (var frame = 0; frame < 12; frame += 1) {
@@ -458,8 +465,8 @@ void main() {
       expect(
         tester
             .widget<TimelineLaneKeyMarker>(_marker(_drawId, 'position', 10))
-            .shape,
-        PropertyLaneKeyShape.smooth,
+            .mark,
+        KeyMark.linear,
       );
 
       await gesture.up();
@@ -551,7 +558,7 @@ void main() {
                     PropertyLaneRow(
                       laneId: laneId,
                       label: laneId,
-                      keyedFrames: const {},
+                      keyMarks: const {},
                     ),
                 ]
               : const [],

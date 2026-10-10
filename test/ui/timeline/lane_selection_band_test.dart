@@ -27,17 +27,21 @@ void main() {
     TimelineDisplayRow.layer(layer, layerIndex: 0),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'position', label: 'Position', keyedFrames: {}),
+      const PropertyLaneRow(
+        laneId: 'position',
+        label: 'Position',
+        keyMarks: {},
+      ),
       layerIndex: 0,
     ),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'scale', label: 'Scale', keyedFrames: {}),
+      const PropertyLaneRow(laneId: 'scale', label: 'Scale', keyMarks: {}),
       layerIndex: 0,
     ),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'opacity', label: 'Opacity', keyedFrames: {}),
+      const PropertyLaneRow(laneId: 'opacity', label: 'Opacity', keyMarks: {}),
       layerIndex: 0,
     ),
   ];

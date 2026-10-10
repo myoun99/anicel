@@ -49,6 +49,18 @@ void main() {
     );
   }
 
+  /// The kinds the key window's two rows open lit with — what the covered
+  /// keys' sides all are, null where they differ (I-89 ②).
+  ({KeySideKind? incoming, KeySideKind? outgoing}) agreedKinds() {
+    final sides = laneVerbs.laneKeySidesForSelection;
+    return (
+      incoming: keySidesTogether([for (final side in sides) side.incoming])
+          .kind,
+      outgoing: keySidesTogether([for (final side in sides) side.outgoing])
+          .kind,
+    );
+  }
+
   void selectRotationRange(int startIndex, int endIndexExclusive) {
     session.laneRangeSelection.value = TimelineLaneSelection(
       layerId: session.activeLayer!.id,
@@ -179,8 +191,8 @@ void main() {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(0, 5);
     expect(
-      laneVerbs.laneKeysHaveSides(KeySidesEdit.linear),
-      isTrue,
+      agreedKinds(),
+      (incoming: KeySideKind.linear, outgoing: KeySideKind.linear),
       reason: 'the window opens on the type the keys agree on',
     );
 
@@ -222,8 +234,11 @@ void main() {
     );
 
     selectRotationRange(0, 5);
-    expect(laneVerbs.laneKeysHaveSides(KeySidesEdit.linear), isFalse);
-    expect(laneVerbs.laneKeysHaveSides(KeySidesEdit.hold), isFalse);
+    expect(
+      agreedKinds(),
+      (incoming: KeySideKind.linear, outgoing: null),
+      reason: 'the leaving sides disagree; the arriving ones do not',
+    );
   });
 
   // ── F-17/F-84: the camera row IS its transform header ──
@@ -324,10 +339,7 @@ void main() {
         reason: 'the type alone leaves the name',
       );
     }
-    expect(
-      laneVerbs.laneKeysHaveSides(KeySidesEdit.hold),
-      isTrue,
-    );
+    expect(agreedKinds().outgoing, KeySideKind.hold);
   });
 
   test("an EFFECT lane's taken name stops the range write — nothing is "

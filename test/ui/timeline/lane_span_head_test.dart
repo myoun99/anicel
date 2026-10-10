@@ -23,7 +23,7 @@ void main() {
       PropertyLaneRow(
         laneId: id,
         label: id,
-        keyedFrames: const {},
+        keyMarks: const {},
         isGroupHeader: isGroupHeader,
       );
 

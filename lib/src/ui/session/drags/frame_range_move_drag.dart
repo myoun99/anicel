@@ -285,7 +285,7 @@ KeySources _castKeySources(
     }
     if (layer.kind == LayerKind.camera) {
       final track = project.activeCutOrNull?.camera.track;
-      if (track != null && anyKeyIn(transformKeyFrameUnion(track))) {
+      if (track != null && anyKeyIn(track.keyedFrames)) {
         camera = (before: track, layerId: id);
       }
       continue;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -28,7 +29,7 @@ void main() {
     final lane = PropertyLaneRow(
       laneId: id,
       label: id,
-      keyedFrames: const {0},
+      keyMarks: const {0: KeyMark.linear},
       valueLabel: (_) => value,
       scrubValue: (label, delta) => scrubTransformLaneValue(id, label, delta),
     );
@@ -187,7 +188,7 @@ void main() {
         PropertyLaneRow(
           laneId: id,
           label: id,
-          keyedFrames: const {0},
+          keyMarks: const {0: KeyMark.linear},
           valueLabel: (_) => value,
         ),
     ];

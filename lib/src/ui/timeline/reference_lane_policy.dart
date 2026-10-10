@@ -68,7 +68,7 @@ List<PropertyLaneRow> referencePropertyLanes(
     PropertyLaneRow(
       laneId: referenceGroupLaneId,
       label: AppText.strings.tlReferenceGroup,
-      keyedFrames: const {},
+      keyMarks: const {},
       showsKeyNavigator: false,
       isGroupHeader: true,
       groupExpanded: expanded,
@@ -78,7 +78,7 @@ List<PropertyLaneRow> referencePropertyLanes(
       PropertyLaneRow(
         laneId: referencePositionLaneId,
         label: AppText.strings.tlLanePosition,
-        keyedFrames: const {},
+        keyMarks: const {},
         showsKeyNavigator: false,
         valueLabel: (_) => formatTransformLaneValue('position', pose),
         scrubValue: (label, delta) =>
@@ -87,7 +87,7 @@ List<PropertyLaneRow> referencePropertyLanes(
       PropertyLaneRow(
         laneId: referenceScaleLaneId,
         label: AppText.strings.tlLaneScale,
-        keyedFrames: const {},
+        keyMarks: const {},
         showsKeyNavigator: false,
         valueLabel: (_) => referenceScaleForm.label(pose.scale),
         scrubValue: referenceScaleForm.scrubbed,
@@ -96,7 +96,7 @@ List<PropertyLaneRow> referencePropertyLanes(
       PropertyLaneRow(
         laneId: referenceRotationLaneId,
         label: AppText.strings.tlLaneRotation,
-        keyedFrames: const {},
+        keyMarks: const {},
         showsKeyNavigator: false,
         valueLabel: (_) => formatTransformLaneValue('rotation', pose),
         scrubValue: (label, delta) =>

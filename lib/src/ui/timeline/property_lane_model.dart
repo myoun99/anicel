@@ -2,6 +2,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 
 import 'package:flutter/foundation.dart' show Listenable;
 
+import '../../models/key_mark.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -41,23 +42,6 @@ enum PropertyLaneValueKind {
   color,
 }
 
-/// What a key mark on a lane LOOKS like — the AE vocabulary, plus the third
-/// answer a UNION needs (F-17).
-///
-/// An enum rather than the pair of booleans the drawing used to take: with
-/// two flags "hold and mixed at once" is a state something can be handed,
-/// and a mark cannot be both.
-enum PropertyLaneKeyShape {
-  /// AE's diamond — this key interpolates (and on a union, they all do).
-  smooth,
-
-  /// AE's square — this key holds (and on a union, they all do).
-  hold,
-
-  /// A UNION whose members disagree. Never reachable on a member lane.
-  mixed,
-}
-
 /// A lane colour written the way its own parser reads it back —
 /// `#RRGGBB`, or `none` where the lane allows absence.
 ///
@@ -74,9 +58,7 @@ class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
     required this.label,
-    required this.keyedFrames,
-    this.holdOutFrames = const {},
-    this.mixedFrames = const {},
+    required this.keyMarks,
     this.keyNames = const {},
     this.valueLabel,
     this.valueKind = PropertyLaneValueKind.number,
@@ -129,36 +111,21 @@ class PropertyLaneRow {
   /// Display name (AE naming for transform lanes).
   final String label;
 
+  /// The lane's keys by frame, each with the mark it wears (I-89 ②): a
+  /// member lane's own ([keyMarksOf]), a group header's the union of its
+  /// members' ([unionKeyMarks]).
+  ///
+  /// ↩️It was the keyed frames beside a set of the holding ones (and, on a
+  /// union, a set of the disagreeing ones), and a lane built without the
+  /// second set drew every key it held as a diamond — the name tag's flag
+  /// lanes did. One map cannot carry a key without its mark.
+  final Map<int, KeyMark> keyMarks;
+
   /// Frames carrying a key on this property.
-  final Set<int> keyedFrames;
+  Set<int> get keyedFrames => keyMarks.keys.toSet();
 
-  /// Keys whose OUT interpolation is HOLD (drawn as squares, AE-style).
-  final Set<int> holdOutFrames;
-
-  /// 🚨F-17: UNION headers only — frames whose keyed members DISAGREE about
-  /// their interpolation, drawn as a circle (「멤버 타입이 서로 다르면 헤더에
-  /// 동그라미」).
-  ///
-  /// ⛔Always empty on a member lane, and it has to be: a single key holds
-  /// or it does not, and there is nothing for it to disagree with. Only a
-  /// summary can be mixed.
-  ///
-  /// ⚠️Never overlaps [holdOutFrames] — [transformKeyMixedUnion] and
-  /// [transformKeyHoldUnion] come out of one walk for exactly that reason.
-  /// The shape a mark takes is resolved ONCE, by
-  /// [PropertyLaneRow.keyShapeAt], so no drawing site can reach a state
-  /// where a key is both.
-  final Set<int> mixedFrames;
-
-  /// Which mark [frame] draws on this lane.
-  ///
-  /// ★The one place the three sets become a shape. A widget that took two
-  /// booleans could be handed "hold AND mixed"; this cannot be.
-  PropertyLaneKeyShape keyShapeAt(int frame) => mixedFrames.contains(frame)
-      ? PropertyLaneKeyShape.mixed
-      : holdOutFrames.contains(frame)
-      ? PropertyLaneKeyShape.hold
-      : PropertyLaneKeyShape.smooth;
+  /// The mark [frame]'s key wears — asked only of a frame this lane keys.
+  KeyMark keyMarkAt(int frame) => keyMarks[frame]!;
 
   /// Names on this lane's keys, by frame — "same name, same value" made
   /// visible where the link lives. Frames absent here are unnamed, which

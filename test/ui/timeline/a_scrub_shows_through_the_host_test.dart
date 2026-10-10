@@ -23,7 +23,7 @@ void main() {
   PropertyLaneRow lane(String value) => PropertyLaneRow(
     laneId: 'rotation',
     label: 'Rotation',
-    keyedFrames: const {},
+    keyMarks: const {},
     valueLabel: (_) => value,
     scrubValue: (label, delta) =>
         scrubTransformLaneValue('rotation', label, delta),

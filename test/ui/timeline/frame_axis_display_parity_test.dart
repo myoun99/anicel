@@ -28,11 +28,11 @@ void main() {
     );
 
     List<PropertyLaneRow> lanes(Layer layer) => const [
-      PropertyLaneRow(laneId: 'fx-blur', label: 'Blur', keyedFrames: {}),
+      PropertyLaneRow(laneId: 'fx-blur', label: 'Blur', keyMarks: {}),
       PropertyLaneRow(
         laneId: 'transform-position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       ),
     ];
 

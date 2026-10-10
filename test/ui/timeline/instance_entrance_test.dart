@@ -324,7 +324,7 @@ void main() {
       reason: 'the common window — the camera no longer keeps one of its own',
     );
     Pill pill(String kind) => tester.widget<Pill>(
-      find.byKey(ValueKey<String>('rename-key-interpolation-$kind')),
+      find.byKey(ValueKey<String>('rename-key-out-$kind')),
     );
     expect(
       pill('linear').selected,
@@ -338,7 +338,7 @@ void main() {
       'Wall',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     expect(pill('hold').selected, isTrue, reason: 'the pick shows at once');

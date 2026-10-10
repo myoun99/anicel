@@ -40,7 +40,7 @@ void main() {
         PropertyLaneRow(
           laneId: laneId,
           label: laneId,
-          keyedFrames: const {},
+          keyMarks: const {},
           isGroupHeader: groupHeader,
         ),
         layerIndex: 0,

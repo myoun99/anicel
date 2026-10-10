@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -75,7 +76,7 @@ void main() {
         const PropertyLaneRow(
           laneId: 'position',
           label: 'Position',
-          keyedFrames: {1},
+          keyMarks: {1: KeyMark.linear},
         ),
       ],
       laneRange: laneRange,

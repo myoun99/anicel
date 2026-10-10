@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -186,7 +187,7 @@ void main() {
     const lane = PropertyLaneRow(
       laneId: 'transform-group',
       label: 'Transform',
-      keyedFrames: {2},
+      keyMarks: {2: KeyMark.linear},
       isGroupHeader: true,
     );
     final layers = [drawingLayer('a')];

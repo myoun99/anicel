@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsConfiguration;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -554,7 +555,7 @@ void main() {
                 lane: const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {2},
+                  keyMarks: {2: KeyMark.linear},
                   keyNames: {2: 'Walk'},
                 ),
                 frameStartIndex: 0,

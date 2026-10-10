@@ -341,9 +341,17 @@ enum AppStrings {
   String get seLinkedAudioNone => _s('seLinkedAudioNone');
   String get seUnlinkAudio => _s('seUnlinkAudio');
 
-  /// '{frame}' is replaced with the 1-based frame number.
+  /// The key window's two sides (I-89 ②): a row each, and the kinds a side
+  /// can be.
+  String get keySideIncoming => _s('keySideIncoming');
+  String get keySideOutgoing => _s('keySideOutgoing');
   String get keyInterpolationLinear => _s('keyInterpolationLinear');
+  String get keyInterpolationEase => _s('keyInterpolationEase');
+  String get keyInterpolationAuto => _s('keyInterpolationAuto');
   String get keyInterpolationHold => _s('keyInterpolationHold');
+
+  /// An eased side's influence, AE's — 33% is its Easy Ease.
+  String get keyEaseInfluence => _s('keyEaseInfluence');
 
   // --- Convert to linked cut ---
   String get convertLinkedCutTitle => _s('convertLinkedCutTitle');
@@ -1858,8 +1866,13 @@ enum AppStrings {
     'seLinkedAudioLabel': 'Linked audio',
     'seLinkedAudioNone': 'None',
     'seUnlinkAudio': 'Unlink',
+    'keySideIncoming': 'In',
+    'keySideOutgoing': 'Out',
     'keyInterpolationLinear': 'Linear',
+    'keyInterpolationEase': 'Ease',
+    'keyInterpolationAuto': 'Smooth',
     'keyInterpolationHold': 'Hold',
+    'keyEaseInfluence': 'Influence',
     'convertLinkedCutTitle': 'Convert to linked cut',
     'convertLinkedCutBodyTemplate':
         'Link "{cut}" (origin) with another cut. Layers with the SAME NAME '
@@ -2987,8 +3000,13 @@ enum AppStrings {
     'seLinkedAudioLabel': 'リンクされた音声',
     'seLinkedAudioNone': 'なし',
     'seUnlinkAudio': 'リンクを解除',
+    'keySideIncoming': 'イン',
+    'keySideOutgoing': 'アウト',
     'keyInterpolationLinear': 'リニア',
+    'keyInterpolationEase': 'イーズ',
+    'keyInterpolationAuto': 'スムーズ',
     'keyInterpolationHold': 'ホールド',
+    'keyEaseInfluence': '影響',
     'convertLinkedCutTitle': '兼用カットに変換',
     'convertLinkedCutBodyTemplate':
         '「{cut}」（原本）を別のカットとリンクします。同じ名前のレイヤーが'
@@ -4447,8 +4465,13 @@ enum AppStrings {
     'seLinkedAudioLabel': '링크된 오디오',
     'seLinkedAudioNone': '없음',
     'seUnlinkAudio': '링크 해제',
+    'keySideIncoming': '도착',
+    'keySideOutgoing': '출발',
     'keyInterpolationLinear': '리니어',
+    'keyInterpolationEase': '천천히',
+    'keyInterpolationAuto': '부드럽게',
     'keyInterpolationHold': '홀드',
+    'keyEaseInfluence': '세기',
     'convertLinkedCutTitle': '겸용컷으로 변환',
     'convertLinkedCutBodyTemplate':
         '"{cut}"(원본)을 다른 컷과 링크합니다. 이름이 같은 레이어끼리 '
@@ -5906,8 +5929,13 @@ enum AppStrings {
     'seLinkedAudioLabel': 'Audio lié',
     'seLinkedAudioNone': 'Aucun',
     'seUnlinkAudio': 'Dissocier',
+    'keySideIncoming': 'Entrée',
+    'keySideOutgoing': 'Sortie',
     'keyInterpolationLinear': 'Linéaire',
+    'keyInterpolationEase': 'Lissage',
+    'keyInterpolationAuto': 'Fluide',
     'keyInterpolationHold': 'Maintien',
+    'keyEaseInfluence': 'Influence',
     'convertLinkedCutTitle': 'Convertir en plan lié',
     'convertLinkedCutBodyTemplate':
         'Lier « {cut} » (origine) à un autre plan. Les calques de MÊME NOM '
@@ -7463,8 +7491,13 @@ enum AppStrings {
     'seLinkedAudioLabel': '已链接音频',
     'seLinkedAudioNone': '无',
     'seUnlinkAudio': '解除链接',
+    'keySideIncoming': '进入',
+    'keySideOutgoing': '离开',
     'keyInterpolationLinear': '线性',
+    'keyInterpolationEase': '缓动',
+    'keyInterpolationAuto': '平滑',
     'keyInterpolationHold': '保持',
+    'keyEaseInfluence': '影响',
     'convertLinkedCutTitle': '转换为链接镜头',
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',

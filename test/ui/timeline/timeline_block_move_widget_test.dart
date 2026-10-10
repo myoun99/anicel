@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -414,7 +415,7 @@ lanesForLayer: (_) => [
               const PropertyLaneRow(
                 laneId: 'position',
                 label: 'Position',
-                keyedFrames: {2},
+                keyMarks: {2: KeyMark.linear},
               ),
             ],
 laneRange: TimelineLaneRangeHooks(
@@ -1631,7 +1632,7 @@ lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {2, 5},
+                  keyMarks: {2: KeyMark.linear, 5: KeyMark.linear},
                 ),
               ],
 laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
@@ -1806,7 +1807,7 @@ lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {2},
+                  keyMarks: {2: KeyMark.linear},
                 ),
               ],
 laneRange: TimelineLaneRangeHooks(

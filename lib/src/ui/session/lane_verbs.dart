@@ -11,7 +11,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show ReferenceRedraw;
 import '../../models/property_track.dart'
-    show KeySidesEdit, PropertyKey;
+    show KeyExit, KeySide, KeySidesEdit, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -1234,19 +1234,15 @@ class LaneVerbs {
     return names.length == 1 ? names.first : null;
   }
 
-  /// Whether every key the range covers already has [edit]'s sides — what
-  /// the key window's type opens with: a type is lit when picking it would
-  /// change nothing, so nothing is lit where the keys disagree, by the rule
-  /// the name above follows (and the ○ the group header draws where its
-  /// members disagree).
-  bool laneKeysHaveSides(KeySidesEdit edit) {
-    final keys = _laneRangeKeys();
-    return keys.isNotEmpty &&
-        keys.every(
-          (key) =>
-              edit.isTrueOf(incoming: key.incoming, outgoing: key.outgoing),
-        );
-  }
+  /// The sides of every key the range covers — what the key window's two
+  /// rows open with (I-89 ②): a choice is lit where the keys all are that
+  /// kind ([keySidesTogether]), so nothing is lit where they disagree, by
+  /// the rule the name above follows (and the ○ the group header draws
+  /// where its members disagree).
+  List<({KeySide incoming, KeyExit outgoing})> get laneKeySidesForSelection => [
+    for (final key in _laneRangeKeys())
+      (incoming: key.incoming, outgoing: key.outgoing),
+  ];
 
   /// Names every key the LANE RANGE covers, on every lane it spans — the
   /// range form of [setLaneKeyName], committed as ONE undo step.

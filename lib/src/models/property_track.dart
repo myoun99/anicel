@@ -316,13 +316,19 @@ class PropertyTrack<T> {
     Map<int, PropertyKey<T>>? next;
     for (final frame in frames) {
       final key = keys[frame];
-      if (key == null ||
-          edit.isTrueOf(incoming: key.incoming, outgoing: key.outgoing)) {
+      if (key == null) {
+        continue;
+      }
+      final sides = edit.applyTo(
+        incoming: key.incoming,
+        outgoing: key.outgoing,
+      );
+      if (sides.incoming == key.incoming && sides.outgoing == key.outgoing) {
         continue;
       }
       (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = key.copyWith(
-        incoming: edit.incoming,
-        outgoing: edit.outgoing,
+        incoming: sides.incoming,
+        outgoing: sides.outgoing,
       );
     }
     return next == null ? null : PropertyTrack(keys: next);

@@ -356,6 +356,8 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
       layer: layer,
       lane: lane,
       frame: key.frame,
+      // The storyboard lays its track across, as its rows' spans do.
+      axis: Axis.horizontal,
       at: at,
       crossExtent: line == CameraRowLine.middle
           ? height

@@ -16,6 +16,9 @@ const _sharePadding = EdgeInsets.symmetric(horizontal: 3);
 /// A glyph pill's glyph — a settings box's own size of mark.
 const double _glyphSize = 16;
 
+/// What stands between a pill's [Pill.leading] mark and its word.
+const double _leadingGap = 5;
+
 /// One segment of a [PillStrip].
 class PillItem {
   const PillItem({
@@ -27,7 +30,13 @@ class PillItem {
     this.otherLabel,
     this.tone,
     this.icon,
+    this.leading,
   });
+
+  /// A mark set before the word — the key window's sides each wear the
+  /// half of the key's mark that kind draws (I-89 ②). Null, on every other
+  /// pill, sets the word alone.
+  final Widget? leading;
 
   /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
   /// the row's contract.
@@ -148,6 +157,7 @@ class PillStrip extends StatelessWidget {
       tone: item.tone,
       icon: item.icon,
       fills: _even,
+      leading: item.leading,
     );
     final tooltip = item.tooltip ?? (item.icon == null ? null : item.label);
     return tooltip == null ? pill : AppTooltip(message: tooltip, child: pill);
@@ -328,7 +338,11 @@ class Pill extends StatelessWidget {
     this.tone,
     this.icon,
     this.fills = false,
+    this.leading,
   });
+
+  /// [PillItem.leading].
+  final Widget? leading;
 
   final String label;
   final bool selected;
@@ -387,7 +401,7 @@ class Pill extends StatelessWidget {
   }
 
   /// What the pill shows: its glyph, or its word — with its other word held
-  /// under it for the width.
+  /// under it for the width, and its [leading] mark before it.
   Widget _face(ThemeData theme, Color accent) {
     // A selected pill reads selected even when it takes no tap —
     // 「커스텀」 is a state the delta puts the row in, not a button.
@@ -412,20 +426,32 @@ class Pill extends StatelessWidget {
         child: Icon(glyph, size: _glyphSize, color: inkFor()),
       );
     }
-    if (other == null) {
-      return word(label);
-    }
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Held for its width only: set in no colour and never read out.
-        // ⛔Not an `Opacity` or a `Visibility`: the one is a compositing
-        // boundary a panel cannot bake across, the other takes the slot
-        // away.
-        ExcludeSemantics(child: word(other, shown: false)),
-        word(label),
-      ],
-    );
+    final words = other == null
+        ? word(label)
+        : Stack(
+            alignment: Alignment.center,
+            children: [
+              // Held for its width only: set in no colour and never read
+              // out. ⛔Not an `Opacity` or a `Visibility`: the one is a
+              // compositing boundary a panel cannot bake across, the other
+              // takes the slot away.
+              ExcludeSemantics(child: word(other, shown: false)),
+              word(label),
+            ],
+          );
+    final mark = leading;
+    return mark == null
+        ? words
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              mark,
+              const SizedBox(width: _leadingGap),
+              // The word gives width up, as a pill's word alone does
+              // ([_PillRow]); the mark keeps its own.
+              Flexible(child: words),
+            ],
+          );
   }
 }
 

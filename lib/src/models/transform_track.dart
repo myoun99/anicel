@@ -81,21 +81,23 @@ class TransformTrack {
     );
   }
 
-  bool get isEmpty =>
-      anchorPoint.isEmpty &&
-      position.isEmpty &&
-      scale.isEmpty &&
-      rotation.isEmpty &&
-      opacity.isEmpty;
+  /// Every property, in AE's order — what a reading of the whole track walks
+  /// (its keys, the group header's marks and names) rather than naming the
+  /// five again.
+  List<PropertyTrack<Object?>> get lanes => [
+    anchorPoint,
+    position,
+    scale,
+    rotation,
+    opacity,
+  ];
+
+  bool get isEmpty => lanes.every((lane) => lane.isEmpty);
   bool get isNotEmpty => !isEmpty;
 
   /// The union of every property's keyed frames.
   Set<int> get keyedFrames => SplayTreeSet<int>()
-    ..addAll(anchorPoint.keys.keys)
-    ..addAll(position.keys.keys)
-    ..addAll(scale.keys.keys)
-    ..addAll(rotation.keys.keys)
-    ..addAll(opacity.keys.keys);
+    ..addAll([for (final lane in lanes) ...lane.keys.keys]);
 
   /// POSE FACADE: resolved poses at the union of keyed frames. While keys
   /// stay pose-synchronized (the camera panel writes whole poses) this is

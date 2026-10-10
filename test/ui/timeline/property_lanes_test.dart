@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_pose.dart';
@@ -41,6 +42,12 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
+
+/// A straight key that holds from there on — AE's Toggle Hold Keyframe.
+const _heldOut = SidesKeyMark(
+  incoming: KeySideKind.linear,
+  outgoing: KeySideKind.hold,
+);
 
 const _cameraLayerId = LayerId('lane-cam-layer');
 const _laneToggleKey = ValueKey<String>('timeline-lane-toggle-lane-cam-layer');
@@ -177,7 +184,7 @@ void main() {
       const lane = PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {1},
+        keyMarks: {1: KeyMark.linear},
       );
 
       final collapsed = buildTimelineDisplayRows(
@@ -226,7 +233,7 @@ void main() {
       const lane = PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       );
       List<String> orderOf(List<Layer> layers, Set<LayerId> expanded) =>
           buildTimelineDisplayRows(
@@ -297,8 +304,7 @@ void main() {
       ]);
       expect(lanes.first.isGroupHeader, isTrue);
       expect(lanes.first.showsKeyNavigator, isFalse);
-      expect(lanes[1].keyedFrames, {0, 6});
-      expect(lanes[1].holdOutFrames, {6});
+      expect(lanes[1].keyMarks, {0: KeyMark.linear, 6: _heldOut});
       expect(lanes[2].keyedFrames, isEmpty);
       expect(lanes[3].keyedFrames, {3});
     });
@@ -874,8 +880,8 @@ void main() {
 
       // The union marks are the SHARED widget at the SHARED union size —
       // not a text glyph of their own any more.
-      expect(cameraUnionMarker(tester, 0).shape, PropertyLaneKeyShape.smooth);
-      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
+      expect(cameraUnionMarker(tester, 0).mark, KeyMark.linear);
+      expect(cameraUnionMarker(tester, 8).mark, KeyMark.linear);
       expect(
         cameraUnionMarker(tester, 0).markerSize,
         timelineLaneUnionKeyMarkerSize(
@@ -927,13 +933,13 @@ void main() {
         ),
       );
 
-      expect(cameraUnionMarker(tester, 4).shape, PropertyLaneKeyShape.hold);
+      expect(cameraUnionMarker(tester, 4).mark, _heldOut);
       // A LINEAR key reads as a diamond even when another lane would hold
-      // elsewhere — [transformKeyHoldUnion], the one ■ law. ⚠️This fixture
+      // elsewhere — [transformKeyMarkUnion], the one union law. ⚠️This fixture
       // used to MAKE that key by overwriting a hold one, back when a value
       // edit reset the type; it keeps the type now (유저 2026-09-12), so the
       // linear key is written as one.
-      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
+      expect(cameraUnionMarker(tester, 8).mark, KeyMark.linear);
     });
   });
 

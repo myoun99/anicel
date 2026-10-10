@@ -24,7 +24,7 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
-import '../widgets/pill_strip.dart' show PillItem, PillStrip;
+import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 import 'toolbar_panel_context.dart'
@@ -739,16 +739,15 @@ Future<void> _editInstructionSet(
 );
 
 /// The rename prompt a frame and a lane key ask their name with. Its
-/// `fieldTrailing` is content confirmed alongside the name — the key
-/// window's TYPE — built with the window's own setState so it can show its
-/// pick.
+/// `extra` is content confirmed with the name — the key window's SIDES —
+/// built with the window's own setState so it can show its picks.
 Future<String?> _askName(
   BuildContext context,
   ({
     String initialName,
     String? title,
     String? fieldLabel,
-    Widget Function(StateSetter setLocal)? fieldTrailing,
+    Widget Function(StateSetter setLocal)? extra,
   })
   prompt,
 ) => showDialogVerb<String>(
@@ -758,7 +757,7 @@ Future<String?> _askName(
       initialName: prompt.initialName,
       title: prompt.title,
       fieldLabel: prompt.fieldLabel,
-      fieldTrailing: prompt.fieldTrailing?.call(setLocal),
+      extra: prompt.extra?.call(setLocal),
     ),
   ),
 );
@@ -792,6 +791,8 @@ Future<void> _renameLaneKey(
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
   KeySidesEdit? picked;
+  // The keys stand still while the window is up: read them once.
+  final sides = session.laneVerbs.laneKeySidesForSelection;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -800,10 +801,9 @@ Future<void> _renameLaneKey(
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
-      fieldTrailing: (setLocal) => _keyInterpolationPills(
-        lit: (edit) => picked == null
-            ? session.laneVerbs.laneKeysHaveSides(edit)
-            : picked == edit,
+      extra: (setLocal) => KeySidesRows(
+        sides: sides,
+        picked: picked ?? const KeySidesEdit(),
         onPicked: (edit) => setLocal(() => picked = edit),
       ),
     )),
@@ -842,35 +842,6 @@ Future<void> _renameLaneKey(
   );
 }
 
-/// The key window's TYPE — the grouped-choice control (유저 2026-09-09:
-/// 「여러개중 하나 선택한다거나 … 그룹으로 묶여있는 선택은 이 ui 사용하도록
-/// 공용화」). [lit] says which choice shows as picked — nothing while the
-/// covered keys disagree.
-///
-/// I-89 keeps the two choices this window had while the key's two sides
-/// came in; the window's own type controls are redrawn with the lane glyphs
-/// (I-89 ②, 「키 창의 종류 칸은 본 라운드에서 새 모델에 맞출 때 다시 본다」).
-Widget _keyInterpolationPills({
-  required bool Function(KeySidesEdit edit) lit,
-  required ValueChanged<KeySidesEdit> onPicked,
-}) {
-  final strings = AppText.strings;
-  return PillStrip(
-    items: [
-      for (final (id, edit, label) in [
-        ('linear', KeySidesEdit.linear, strings.keyInterpolationLinear),
-        ('hold', KeySidesEdit.hold, strings.keyInterpolationHold),
-      ])
-        PillItem(
-          keyValue: 'rename-key-interpolation-$id',
-          label: label,
-          selected: lit(edit),
-          onTap: () => onPicked(edit),
-        ),
-    ],
-  );
-}
-
 Future<void> _renameSelectedFrame(
   BuildContext context,
   EditorSessionManager session,
@@ -888,7 +859,7 @@ Future<void> _renameSelectedFrame(
       initialName: session.selectedFrameName ?? '',
       title: null,
       fieldLabel: null,
-      fieldTrailing: null,
+      extra: null,
     )),
     name: session.frameVerbs.renameSelectedFrame,
     onConflict: (

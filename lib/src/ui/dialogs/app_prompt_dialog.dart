@@ -31,6 +31,7 @@ class AppPromptDialog extends StatefulWidget {
     this.confirmKey,
     this.extra,
     this.fieldTrailing,
+    this.width,
   });
 
   /// The same window with its four keys derived from ONE name:
@@ -63,6 +64,7 @@ class AppPromptDialog extends StatefulWidget {
     this.numeric = false,
     this.extra,
     this.fieldTrailing,
+    this.width,
   }) : windowKey = ValueKey<String>('$keyPrefix-dialog'),
        fieldKey = ValueKey<String>('$keyPrefix-text-field'),
        cancelKey = ValueKey<String>('$keyPrefix-cancel-button'),
@@ -77,6 +79,10 @@ class AppPromptDialog extends StatefulWidget {
   /// TYPE (F-17: 「이름변경이랑 오른쪽에 유니언 타입 변경」). Confirmed with
   /// the name like [extra]; it takes its own width and the field the rest.
   final Widget? fieldTrailing;
+
+  /// The window's width where its [extra] wants more room than the name
+  /// does; null takes the prompt's own.
+  final double? width;
 
   final String title;
   final IconData? titleIcon;
@@ -157,11 +163,13 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
       title: widget.title,
       titleIcon: widget.titleIcon,
       onClose: () => Navigator.of(context).pop(),
-      width: widget.multiline
-          ? 420
-          : widget.fieldTrailing == null
-          ? 300
-          : 400,
+      width:
+          widget.width ??
+          (widget.multiline
+              ? 420
+              : widget.fieldTrailing == null
+              ? 300
+              : 400),
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

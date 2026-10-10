@@ -7,22 +7,27 @@ import 'app_prompt_dialog.dart';
 /// cancel. SE rows reuse it with sheet wording ([title]/[fieldLabel]
 /// overrides) — the frame name IS the sheet's name/dialogue text there,
 /// which is also why an empty value is allowed here: clearing a sheet cell
-/// is a real edit. Lane KEYS wear it too, with their type beside the name
-/// ([fieldTrailing]).
+/// is a real edit. Lane KEYS wear it too, with their two sides under the
+/// name ([extra]).
 class RenameFrameDialog extends StatelessWidget {
   const RenameFrameDialog({
     super.key,
     required this.initialName,
     this.title,
     this.fieldLabel,
-    this.fieldTrailing,
+    this.extra,
   });
 
   final String initialName;
 
-  /// The key window's TYPE, beside the name (F-17) — see
-  /// [AppPromptDialog.fieldTrailing]. Null for a frame.
-  final Widget? fieldTrailing;
+  /// The key window's SIDES, under the name (I-89 ②) — see
+  /// [AppPromptDialog.extra]. Null for a frame.
+  ///
+  /// ↩️Its type stood BESIDE the name (F-17: 「이름변경이랑 오른쪽에 유니언
+  /// 타입 변경」) while it was two choices; two rows of them do not fit
+  /// there, and the drawing the user chose has them under it (유저 10-10
+  /// 「B' 두줄 줄마다 세기로 가자」).
+  final Widget? extra;
 
   /// Null takes the tabled frame wording in the program language.
   final String? title;
@@ -38,7 +43,10 @@ class RenameFrameDialog extends StatelessWidget {
       fieldLabel: fieldLabel ?? strings.renameFrameField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
-      fieldTrailing: fieldTrailing,
+      extra: extra,
+      // The width the key window took while its type stood beside the
+      // name; its rows of choices want the room.
+      width: extra == null ? null : 400,
     );
   }
 }

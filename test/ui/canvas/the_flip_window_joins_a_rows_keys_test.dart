@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart' show KeyMark;
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
@@ -15,7 +16,7 @@ void main() {
   final scheme = ColorScheme.fromSeed(seedColor: Colors.blue);
 
   FlipHudRun key(int frame) =>
-      FlipHudRun(startIndex: frame, length: 1, isKey: true);
+      FlipHudRun(startIndex: frame, length: 1, keyMark: KeyMark.linear);
 
   /// The joining lines the frame window paints for one row of [runs] —
   /// each from its start to its end, as thick as the panels' line.

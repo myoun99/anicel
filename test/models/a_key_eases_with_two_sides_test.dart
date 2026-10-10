@@ -294,34 +294,87 @@ void main() {
           .withKey(4, 1, outgoing: KeyExit.hold)
           .withKeySides(
             frames: {4},
-            edit: const KeySidesEdit(incoming: EaseSide()),
+            edit: const KeySidesEdit(
+              incoming: KeySideEdit(side: EaseSide()),
+            ),
           )!;
       expect(track.keyAt(4)!.incoming, const EaseSide());
       expect(track.keyAt(4)!.outgoing, KeyExit.hold);
     });
 
-    test('a choice is lit when it would change nothing', () {
+    test('a hold says nothing about the side arriving', () {
       expect(
-        KeySidesEdit.linear.isTrueOf(
-          incoming: KeySide.linear,
-          outgoing: KeySide.linear,
-        ),
-        isTrue,
-      );
-      expect(
-        KeySidesEdit.linear.isTrueOf(
+        KeySidesEdit.hold.applyTo(
           incoming: const EaseSide(),
           outgoing: KeySide.linear,
         ),
-        isFalse,
+        (incoming: const EaseSide(), outgoing: KeyExit.hold),
       );
+    });
+
+    // I-89 ②: the key window picks a side's KIND and its ease's INFLUENCE,
+    // each alone — what it did not pick, it does not touch.
+    test('picking the kind a side is keeps the side — its numbers too', () {
+      const edit = KeySideEdit<KeySide>(side: EaseSide());
+      expect(edit.applyTo(ownEase), ownEase);
+      expect(edit.applyTo(KeySide.linear), const EaseSide());
       expect(
-        KeySidesEdit.hold.isTrueOf(
-          incoming: const EaseSide(),
-          outgoing: KeyExit.hold,
+        const KeySideEdit<KeySide>(side: KeySide.auto).applyTo(ownEase),
+        KeySide.auto,
+      );
+    });
+
+    test('an influence keeps the speed, and is nothing to a side that does '
+        'not ease', () {
+      const edit = KeySideEdit<KeySide>(influence: 0.25);
+      expect(
+        edit.applyTo(ownEase),
+        const EaseSide(influence: 0.25, speed: 0.2),
+      );
+      expect(edit.applyTo(KeySide.linear), KeySide.linear);
+      expect(
+        const KeySideEdit<KeyExit>(influence: 0.25).applyTo(KeyExit.hold),
+        KeyExit.hold,
+      );
+    });
+
+    test('a kind and an influence picked together: a side of another kind '
+        'eases at that influence from a standstill', () {
+      const edit = KeySideEdit<KeySide>(side: EaseSide(), influence: 0.6);
+      expect(edit.applyTo(KeySide.linear), const EaseSide(influence: 0.6));
+      expect(
+        edit.applyTo(ownEase),
+        const EaseSide(influence: 0.6, speed: 0.2),
+      );
+    });
+
+    test('a range of keys is written key by key, each keeping what the '
+        'pick does not say', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 1, incoming: ownEase)
+          .withKey(4, 2)
+          .withKeySides(
+            frames: {0, 4},
+            edit: const KeySidesEdit(
+              incoming: KeySideEdit(side: EaseSide(), influence: 0.4),
+            ),
+          )!;
+      expect(
+        track.keyAt(0)!.incoming,
+        const EaseSide(influence: 0.4, speed: 0.2),
+      );
+      expect(track.keyAt(4)!.incoming, const EaseSide(influence: 0.4));
+      expect(track.keyAt(4)!.outgoing, KeySide.linear);
+    });
+
+    test('an edit that changes no key is no write', () {
+      final track = PropertyTrack<double>().withKey(0, 1, incoming: ownEase);
+      expect(
+        track.withKeySides(
+          frames: {0},
+          edit: const KeySidesEdit(incoming: KeySideEdit(side: EaseSide())),
         ),
-        isTrue,
-        reason: 'a hold says nothing about the side arriving',
+        isNull,
       );
     });
 
@@ -343,4 +396,32 @@ void main() {
       }
     });
   });
+
+  group('what a row of the key window says together (I-89 ②)', () {
+    test('the kind every side is, or none where they differ', () {
+      expect(
+        keySidesTogether([KeySide.linear, KeySide.linear]).kind,
+        KeySideKind.linear,
+      );
+      expect(
+        keySidesTogether([const EaseSide(), ownEase]).kind,
+        KeySideKind.ease,
+        reason: 'an ease at 33% and one at 50% are one kind',
+      );
+      expect(keySidesTogether([KeySide.linear, KeyExit.hold]).kind, isNull);
+    });
+
+    test('the influence every ease takes, or none where they differ', () {
+      expect(keySidesTogether([ownEase, ownEase]).influence, 0.5);
+      expect(keySidesTogether([const EaseSide(), ownEase]).influence, isNull);
+      expect(
+        keySidesTogether([KeySide.linear, KeySide.linear]).influence,
+        isNull,
+        reason: 'a straight side has no influence to agree on',
+      );
+    });
+  });
 }
+
+/// An ease of its own numbers — not AE's Easy Ease.
+const ownEase = EaseSide(influence: 0.5, speed: 0.2);

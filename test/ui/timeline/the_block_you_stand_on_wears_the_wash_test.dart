@@ -60,7 +60,7 @@ void main() {
       const PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       ),
       layerIndex: 0,
     ),

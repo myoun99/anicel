@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -99,7 +100,13 @@ void main() {
       final lane = rows.singleWhere(
         (row) => row.laneId == effectLaneId(const EffectId('e1'), 'blurX'),
       );
-      expect(lane.holdOutFrames, {3});
+      expect(lane.keyMarks, {
+        3: const SidesKeyMark(
+          incoming: KeySideKind.linear,
+          outgoing: KeySideKind.hold,
+        ),
+        7: KeyMark.linear,
+      });
     });
 
     test('an expanded effect adds one lane per parameter, in spec order', () {

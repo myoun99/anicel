@@ -36,20 +36,20 @@ void main() {
   PropertyLaneRow header(EffectId effectId) => PropertyLaneRow(
     laneId: effectGroupLaneId(effectId),
     label: effectId.value,
-    keyedFrames: const {},
+    keyMarks: const {},
     isGroupHeader: true,
   );
 
   PropertyLaneRow member(EffectId effectId) => PropertyLaneRow(
     laneId: effectLaneId(effectId, 'amount'),
     label: 'amount',
-    keyedFrames: const {},
+    keyMarks: const {},
   );
 
   PropertyLaneRow plainGroup() => const PropertyLaneRow(
     laneId: 'transform',
     label: 'Transform',
-    keyedFrames: {},
+    keyMarks: {},
     isGroupHeader: true,
   );
 

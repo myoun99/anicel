@@ -193,7 +193,7 @@ void main() {
                   PropertyLaneRow(
                     laneId: laneId,
                     label: laneId,
-                    keyedFrames: const {},
+                    keyMarks: const {},
                   ),
               ]
             : const [],

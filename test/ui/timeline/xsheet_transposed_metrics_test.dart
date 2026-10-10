@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -555,7 +556,7 @@ void main() {
                 lane: PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: const {0},
+                  keyMarks: const {0: KeyMark.linear},
                   valueLabel: (_) => '0.0, 0.0',
                 ),
                 metrics: XSheetTimelineGrid.defaultMetrics,

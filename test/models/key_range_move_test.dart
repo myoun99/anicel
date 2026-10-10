@@ -28,7 +28,7 @@ void main() {
     );
 
     test('the union covers every lane\'s keyed frames', () {
-      expect(transformKeyFrameUnion(track()), {2, 4, 9});
+      expect(track().keyedFrames, {2, 4, 9});
     });
   });
 

@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -52,7 +53,7 @@ void main() {
       PropertyLaneRow(
         laneId: header ? 'transform-group' : 'position',
         label: header ? 'Transform' : 'Position',
-        keyedFrames: keys,
+        keyMarks: {for (final frame in keys) frame: KeyMark.linear},
         isGroupHeader: header,
       );
 

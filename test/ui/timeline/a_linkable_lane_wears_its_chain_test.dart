@@ -28,7 +28,7 @@ void main() {
       PropertyLaneRow(
         laneId: 'scale',
         label: 'Scale',
-        keyedFrames: const {},
+        keyMarks: const {},
         valueLabel: (_) => '150, 80%',
         linkable: linkable,
         showsKeyNavigator: navigator,

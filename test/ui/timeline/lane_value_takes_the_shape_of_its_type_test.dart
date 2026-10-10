@@ -102,7 +102,7 @@ void main() {
     const lane = PropertyLaneRow(
       laneId: seNameTagBoldLaneId,
       label: 'Bold',
-      keyedFrames: {},
+      keyMarks: {},
       valueKind: PropertyLaneValueKind.boolean,
       valueLabel: _off,
     );
@@ -204,7 +204,7 @@ void main() {
     const boxLane = PropertyLaneRow(
       laneId: seNameTagBoxColorLaneId,
       label: 'Box Colour',
-      keyedFrames: {},
+      keyMarks: {},
       valueKind: PropertyLaneValueKind.color,
       colorCanBeNone: true,
       valueLabel: _boxColor,
@@ -243,7 +243,7 @@ void main() {
     const inkLane = PropertyLaneRow(
       laneId: seNameTagNameInkLaneId,
       label: 'Name Ink',
-      keyedFrames: {},
+      keyMarks: {},
       valueKind: PropertyLaneValueKind.color,
       valueLabel: _boxColor,
     );

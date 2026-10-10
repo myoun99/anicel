@@ -499,7 +499,7 @@ class FrameVerbs {
       // frame-name channel as a private ◆/■ text table. It is a
       // [transformUnionHeader] lane drawn by the shared lane key markers
       // ([timelineCameraUnionLane]) — the same code as the fx transform
-      // header's union, which is what keeps its glyph a diamond mid-drag
+      // header's union, which is what keeps its glyph the lanes' mark mid-drag
       // and its size the one union constant. A camera layer has no cel
       // names, so the channel answers nothing here.
       return null;

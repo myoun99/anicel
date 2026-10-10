@@ -1,7 +1,7 @@
 import 'dart:ui' show Offset;
 
+import '../../models/key_mark.dart';
 import '../../models/layer_effect.dart';
-import '../../models/property_track.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
@@ -87,11 +87,13 @@ List<PropertyLaneRow> effectPropertyLanes(
         // parameter.
         groupEnabled: effect.enabled,
         // The header carries its members' key union (UI-R20 #13), so one
-        // glance finds the effect's keys while it stays collapsed.
-        keyedFrames: {
+        // glance finds the effect's keys while it stays collapsed — and
+        // with the marks they wear, the same union the Transform header
+        // draws ([unionKeyMarks]).
+        keyMarks: unionKeyMarks([
           for (final parameter in effect.parameters.values)
-            ...parameter.track.keys.keys,
-        },
+            keyMarksOf(parameter.track),
+        ]),
         showsKeyNavigator: false,
         isGroupHeader: true,
         groupExpanded: expanded,
@@ -106,11 +108,7 @@ List<PropertyLaneRow> effectPropertyLanes(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
           label: spec.labelFor(AppText.language),
-          keyedFrames: parameter.track.keys.keys.toSet(),
-          holdOutFrames: {
-            for (final entry in parameter.track.keys.entries)
-              if (entry.value.outgoing is KeyHold) entry.key,
-          },
+          keyMarks: keyMarksOf(parameter.track),
           keyNames: parameter.track.namedKeysByFrame,
           valueLabel: valueAt == null
               ? null

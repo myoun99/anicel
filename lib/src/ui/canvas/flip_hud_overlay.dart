@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/frame.dart' show drawingHeadOf;
 import '../timeline/inbetween_mark_painter.dart';
+import '../timeline/key_mark_glyph.dart' show paintKeyMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
@@ -738,8 +739,18 @@ class FlipHudPainter extends CustomPainter
       }
       return;
     }
-    if (run.isKey) {
-      _paintKey(canvas, rect, hold: run.holdKey);
+    if (run.keyMark case final mark?) {
+      // The lane's own drawing of the key ([paintKeyMark]), in the box the
+      // diamond and the square both stood in before the halves.
+      paintKeyMark(
+        canvas,
+        mark,
+        center: rect.center,
+        size: _keyMarkSize,
+        // In the timeline's layout: a standing window turns all of it.
+        standing: false,
+        color: timelineDrawingHeldColor,
+      );
       return;
     }
     if (!isRunHead) {
@@ -829,27 +840,8 @@ class FlipHudPainter extends CustomPainter
     );
   }
 
-  void _paintKey(Canvas canvas, Rect rect, {required bool hold}) {
-    const half = 4.5;
-    final center = rect.center;
-    final paint = Paint()..color = timelineDrawingHeldColor;
-    if (hold) {
-      canvas.drawRect(
-        Rect.fromCenter(center: center, width: half * 2, height: half * 2),
-        paint,
-      );
-      return;
-    }
-    canvas.drawPath(
-      Path()
-        ..moveTo(center.dx, center.dy - half)
-        ..lineTo(center.dx + half, center.dy)
-        ..lineTo(center.dx, center.dy + half)
-        ..lineTo(center.dx - half, center.dy)
-        ..close(),
-      paint,
-    );
-  }
+  /// A key's box in its slot.
+  static const double _keyMarkSize = 9;
 
   /// The type a block's head word is set in — its cel number, or the mark's
   /// size when it has none.

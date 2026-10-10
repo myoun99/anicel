@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
@@ -32,6 +33,7 @@ import '../text/readout_text.dart'
     show ReadoutPart, joinReadoutParts, readoutParts;
 import 'layer_rail_columns.dart'
     show LayerFoldTwirl, layerRailTrailingCells;
+import 'key_mark_glyph.dart' show paintKeyMark;
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
@@ -1036,9 +1038,9 @@ class _NavigatorButton extends StatelessWidget {
 }
 
 /// The frame-axis band of one property lane: a quiet strip with key markers
-/// at keyed frames (AE-style: linear keys are diamonds, HOLD keys squares).
-/// Markers drag along the frame axis to move their key (snapping per frame)
-/// and open the hold/delete menu on right-click or long-press.
+/// at keyed frames (AE-style: a half for each side of the key —
+/// [paintKeyMark]). The markers are drawings; the band under them takes the
+/// press ([TimelineLaneKeyMarker]).
 ///
 /// Horizontal = a row under the layer's frame cells (the timeline);
 /// vertical = a column beside the layer's frame cells (the X-sheet).
@@ -1233,7 +1235,8 @@ class TimelineLaneFrameRow extends StatelessWidget {
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
         ),
-        shape: lane.keyShapeAt(frame),
+        mark: lane.keyMarkAt(frame),
+        axis: axis,
         markerSize: _markerSize,
         color: layerMarkColor(layer.mark),
         selected:
@@ -1423,11 +1426,12 @@ double timelineLaneKeyMarkerSizeOf(
 /// > 「1-일반상태, 2-**다이아몬드가 종횡비가 이상해지기 시작**, 3-이상해짐.
 /// > 크기가 종횡비 유지한채로 작아지는게아니라 **한 변만 작아지는** 느낌」
 ///
-/// [TimelineLaneKeyMarker] draws one `Container` with an explicit width AND
-/// height and rotates it 45°. Ask for more than the cell is wide and the
-/// parent's constraint squeezes the WIDTH while the height holds — a
-/// rectangle, and a rotated rectangle is a lozenge, not a diamond. That is
-/// exactly the degradation the three screenshots step through.
+/// [TimelineLaneKeyMarker] asks for a box of an explicit width AND height.
+/// ↩️It was one `Container` rotated 45° (the halves came with I-89 ②): ask
+/// for more than the cell is wide and the parent's constraint squeezed the
+/// WIDTH while the height held — a rectangle, and a rotated rectangle is a
+/// lozenge, not a diamond. That is exactly the degradation the three
+/// screenshots step through.
 ///
 /// The member size already ran through [timelineFittedGlyphFontSize], which
 /// takes whichever axis is tighter — but two things escaped it: the fit's
@@ -1503,6 +1507,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
         lane: lane,
         frame: frame,
         crossExtent: crossExtent,
+        axis: axis,
       ),
   ];
 }
@@ -1532,6 +1537,7 @@ TimelineFrameSpan timelineLaneKeySpan({
   required PropertyLaneRow lane,
   required int frame,
   required double crossExtent,
+  required Axis axis,
   int? at,
   double? crossInset,
   bool named = true,
@@ -1570,7 +1576,8 @@ TimelineFrameSpan timelineLaneKeySpan({
           key: ValueKey<String>(
             '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
           ),
-          shape: lane.keyShapeAt(frame),
+          mark: lane.keyMarkAt(frame),
+          axis: axis,
           markerSize: markerSize,
           color: layerMarkColor(layer.mark),
           selected: selected,
@@ -1832,29 +1839,33 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
 /// The camera row kept the old drag for one round, because its lanes had no
 /// band to defer to. They do now.
 ///
-/// [IgnorePointer] is load-bearing, not tidiness: `RenderDecoratedBox`
-/// answers hit tests TRUE anywhere inside its decoration, so a drawn
-/// diamond is a hit target in its own right and the Stack would stop at it
-/// with the band never seeing the pointer.
+/// [IgnorePointer] is load-bearing, not tidiness: a painted mark answers hit
+/// tests anywhere inside its box, so a drawn key is a hit target in its own
+/// right and the Stack would stop at it with the band never seeing the
+/// pointer.
 ///
 /// PUBLIC since B4 (2026-08-17): the camera row's union summary mounts this
-/// same drawing — one shape law (linear = diamond, hold = square, the frame
-/// block's own paper) for every key mark on the frame axis.
+/// same drawing — one mark law ([paintKeyMark]) for every key mark on the
+/// frame axis.
 class TimelineLaneKeyMarker extends StatelessWidget {
   const TimelineLaneKeyMarker({
     super.key,
-    required this.shape,
+    required this.mark,
+    required this.axis,
     required this.markerSize,
     required this.color,
     this.selected = false,
   });
 
-  /// 🚨F-17: a SHAPE, not a `hold` flag. The union needs a third answer —
-  /// 「멤버 타입이 서로 다르면 헤더에 동그라미」 — and a second boolean
-  /// beside `hold` would have made "hold and mixed at once" something a
-  /// caller could hand this widget. [PropertyLaneRow.keyShapeAt] resolves
-  /// it once, from sets that cannot overlap.
-  final PropertyLaneKeyShape shape;
+  /// 🚨F-17: what the key IS — its two sides' kinds, or a union's
+  /// disagreement — resolved once ([PropertyLaneRow.keyMarkAt]), never flags
+  /// a caller could combine into a key no lane has.
+  final KeyMark mark;
+
+  /// The frame axis the mark stands on — the X-sheet's stands it up, the
+  /// half arriving at the key toward the frames before it ([paintKeyMark]).
+  final Axis axis;
+
   final double markerSize;
 
   /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
@@ -1870,42 +1881,61 @@ class TimelineLaneKeyMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // EVERY key mark fills like the frame blocks (UI-R24 #9 — union
-    // headers, member lanes, camera lanes alike), which since 2026-09-12
-    // means the row's COLOUR LABEL: 「유니언 키 색은 프레임블록이랑
-    // 마찬가지로 색라벨 그대로. 로직 그대로 재사용해서」.
-    final plate = Container(
-      width: markerSize,
-      height: markerSize,
-      decoration: BoxDecoration(
-        color: color,
-        // The MIXED mark is the same plate, round — one drawing with one
-        // border rule, so a union's third shape cannot drift in colour or
-        // in ring weight from the two that were already here.
-        shape: shape == PropertyLaneKeyShape.mixed
-            ? BoxShape.circle
-            : BoxShape.rectangle,
-        // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
-        // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
-        // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
-        // colour alone, the selection rule.
-        border: selected
-            ? Border.all(
-                color: AppColors.accent,
-                width: _selectedLaneKeyBorderWidth,
-              )
-            : null,
-      ),
-    );
-    // AE convention: linear keys read as diamonds, hold keys as squares —
-    // and a union whose members disagree reads as a circle, which is
-    // neither of the two answers it would otherwise have to pick between.
     return IgnorePointer(
       child: Center(
-        child: shape == PropertyLaneKeyShape.smooth
-            ? Transform.rotate(angle: 0.785398, child: plate)
-            : plate,
+        child: CustomPaint(
+          size: Size.square(markerSize),
+          painter: _KeyMarkPainter(
+            mark: mark,
+            standing: axis == Axis.vertical,
+            // EVERY key mark fills like the frame blocks (UI-R24 #9 — union
+            // headers, member lanes, camera lanes alike), which since
+            // 2026-09-12 means the row's COLOUR LABEL: 「유니언 키 색은
+            // 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로
+            // 재사용해서」.
+            color: color,
+            // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
+            // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
+            // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
+            // colour alone, the selection rule.
+            ring: selected
+                ? (color: AppColors.accent, width: _selectedLaneKeyBorderWidth)
+                : null,
+          ),
+        ),
       ),
     );
   }
+}
+
+class _KeyMarkPainter extends CustomPainter {
+  const _KeyMarkPainter({
+    required this.mark,
+    required this.standing,
+    required this.color,
+    required this.ring,
+  });
+
+  final KeyMark mark;
+  final bool standing;
+  final Color color;
+  final ({Color color, double width})? ring;
+
+  @override
+  void paint(Canvas canvas, Size size) => paintKeyMark(
+    canvas,
+    mark,
+    center: size.center(Offset.zero),
+    size: size.shortestSide,
+    standing: standing,
+    color: color,
+    ring: ring,
+  );
+
+  @override
+  bool shouldRepaint(_KeyMarkPainter oldDelegate) =>
+      oldDelegate.mark != mark ||
+      oldDelegate.standing != standing ||
+      oldDelegate.color != color ||
+      oldDelegate.ring != ring;
 }

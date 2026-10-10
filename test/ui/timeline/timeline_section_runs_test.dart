@@ -34,7 +34,7 @@ void main() {
                 PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {},
+                  keyMarks: {},
                 ),
               ]
             : const [],
