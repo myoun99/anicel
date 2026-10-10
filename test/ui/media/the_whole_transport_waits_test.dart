@@ -355,6 +355,42 @@ void main() {
     );
   });
 
+  testWidgets('🚨a held sound picks up where it was HANDED to — not where it '
+      'was heard, a latency back, which would play it again (④-b)', (
+    tester,
+  ) async {
+    final fake = await openMovie(tester, holdFrom: 1);
+    // What is heard trails what the device was handed by a tenth of a
+    // second, as a device's latency does.
+    sound.lag = 0.1;
+    await pressPlay(tester);
+    await settleAsync(
+      tester,
+      () => sound.holds > 0,
+      attempts: 150,
+      step: tick,
+      everyFrame: () => sound.playOn(tick),
+    );
+    expect(sound.holds, greaterThan(0), reason: 'fixture: it parked');
+    final handed = sound.at;
+
+    fake.held.clear();
+    await settleAsync(
+      tester,
+      () => sound.resumes > 0,
+      attempts: 150,
+      step: tick,
+    );
+
+    expect(
+      sound.resumedFrom.last,
+      handed,
+      reason: 'where the device had been handed to — what it played before '
+          'the hold, the listener heard',
+    );
+    await pressPlay(tester);
+  });
+
   testWidgets('stopping the run stops the sound', (tester) async {
     await openMovie(tester);
     await pressPlay(tester);

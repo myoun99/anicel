@@ -72,9 +72,13 @@ class RecordingViewerSound extends ViewerSound {
     _held = true;
   }
 
+  /// Each second a held sound was picked back up from.
+  final List<double> resumedFrom = [];
+
   @override
   void resume(double fromSeconds) {
     resumes += 1;
+    resumedFrom.add(fromSeconds);
     _held = false;
     at = fromSeconds;
   }
@@ -91,12 +95,14 @@ class RecordingViewerSound extends ViewerSound {
   /// The frame time each reading of the clock was asked for.
   final List<Duration?> askedAt = [];
 
-  /// What is heard is where the device has got to: this device holds
-  /// nothing back and carries no correction.
+  /// How far what is heard trails where the device has got to — the
+  /// latency a real device holds back. None unless a test says.
+  double lag = 0;
+
   @override
   ({double seconds, bool ended})? heardAt({Duration? frameTime}) {
     askedAt.add(frameTime);
-    return _carrying ? (seconds: at, ended: hasEnded) : null;
+    return _carrying ? (seconds: at - lag, ended: hasEnded) : null;
   }
 
   @override

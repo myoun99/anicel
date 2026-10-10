@@ -43,15 +43,15 @@ void main() {
   const tone = 'C:/work/tone.wav';
   const rate = 48000;
 
-  /// Two seconds of a steady tone.
-  AudioConformStore twoSeconds() => AudioConformStore(
+  /// [frames] samples of a steady tone.
+  AudioConformStore toneOf(int frames) => AudioConformStore(
     resolveConformPath: (_) => null,
     runner: (request) async => ConformResult(
       outcome: ConformOutcome.built,
-      samples: Float32List(2 * rate)..fillRange(0, 2 * rate, 0.5),
+      samples: Float32List(frames)..fillRange(0, frames, 0.5),
       channels: 1,
       sampleRate: rate,
-      frames: 2 * rate,
+      frames: frames,
     ),
     log: (_) {},
   );
@@ -70,11 +70,16 @@ void main() {
   Future<(QaAudioDevice, ViewerSound)> playing({
     int correction = 0,
     double fromSeconds = 0,
+    int frames = 2 * rate,
   }) async {
-    final store = twoSeconds();
+    final store = toneOf(frames);
     store.resultFor(tone);
     await pumpEventQueue();
-    expect(store.durationSecondsFor(tone), 2, reason: 'fixture: conformed');
+    expect(
+      store.durationSecondsFor(tone),
+      frames / rate,
+      reason: 'fixture: conformed',
+    );
     final device = QaAudioDevice.instance!;
     expect(
       device.open(sampleRate: rate, channels: 2, useNullBackend: true),
@@ -118,6 +123,30 @@ void main() {
       reason: 'handed $before..$after, latency ${device.latencySamples}, '
           'correction $correction — without the correction it would be a '
           'tenth of a second back',
+    );
+    sound.stop();
+  }, skip: skip);
+
+  test('🚨the end is told by what is HEARD — once the last sample has been '
+      'played out, and not before it has been handed', () async {
+    // A fifth of a second, so it runs out well inside the wait.
+    const frames = rate ~/ 5;
+    final (device, sound) = await playing(frames: frames);
+
+    expect(
+      await waitFor(() => sound.heardAt()?.ended ?? false),
+      isTrue,
+      reason: 'a sound played to its end is over',
+    );
+    expect(
+      device.positionSamples,
+      greaterThanOrEqualTo(frames),
+      reason: 'and by then the device had been handed all of it',
+    );
+    expect(
+      sound.heardAt()!.seconds,
+      greaterThanOrEqualTo(frames / rate),
+      reason: 'what is heard stands at the end',
     );
     sound.stop();
   }, skip: skip);
