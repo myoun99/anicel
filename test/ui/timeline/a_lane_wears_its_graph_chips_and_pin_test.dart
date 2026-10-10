@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
+import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -35,6 +36,28 @@ import '../../helpers/app_icon_button_probe.dart';
 /// slots are kept on every lane, so nothing moves when they fill.
 void main() {
   tearDown(debugClearValueControlPointers);
+
+  test('a lane wears a pin when it draws a curve, and no other row does', () {
+    final layer = Layer(id: _drawId, name: 'Drawing', frames: const []);
+    PropertyLaneRow lane(String laneId, {required bool curve}) =>
+        PropertyLaneRow(
+          laneId: laneId,
+          label: laneId,
+          keyMarks: const {},
+          curve: curve
+              ? (
+                  parts: const [LaneCurvePalette.across],
+                  at: (_) => const [0.0],
+                )
+              : null,
+        );
+    expect(
+      lanePinOf(layer, lane('rotation', curve: true)),
+      laneGroupKey(_drawId, 'rotation'),
+    );
+    expect(lanePinOf(layer, lane('blend', curve: false)), isNull);
+    expect(lanePinOf(layer, null), isNull, reason: 'the layer\'s own row');
+  });
 
   testWidgets('the pin stands in one column whether a chain stands before '
       'it or not', (tester) async {
@@ -128,6 +151,36 @@ void main() {
     });
   });
 
+  testWidgets('the pin\'s sweep band is its own slot, edge to edge', (
+    tester,
+  ) async {
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    final pin = tester.getRect(
+      find.byKey(ValueKey(_pin('timeline', 'position'))),
+    );
+    final rowHeight = tester.getRect(_cell('timeline', 'position')).height;
+
+    Future<void> sweepFrom(double x) async {
+      final gesture = await tester.startGesture(
+        Offset(x, pin.center.dy),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(Offset(0, rowHeight));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await sweepFrom(pin.left + 1);
+    expect(_pinned(s), {
+      laneGroupKey(_drawId, 'position'),
+      laneGroupKey(_drawId, 'scale'),
+    }, reason: 'from the edge the name stands at');
+    await sweepFrom(pin.right - 1);
+    expect(_pinned(s), isEmpty, reason: 'from the edge the value stands at');
+  });
+
   testWidgets('the sheet\'s lane columns wear the pin, swept across them as '
       'down the rail', (tester) async {
     final s = await _pump(tester);
@@ -159,34 +212,88 @@ void main() {
     });
   });
 
+  testWidgets('the sheet\'s lane columns wear their chips as the rail\'s '
+      'rows do, and the pin\'s band is its slot there too', (tester) async {
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    final position = find.byKey(ValueKey(_pin('xsheet', 'position')));
+    await tester.ensureVisible(position);
+    await tester.pumpAndSettle();
+
+    expect(_chips(tester, 'position', grid: 'xsheet'), 2);
+    expect(_chips(tester, 'scale', grid: 'xsheet'), 0);
+
+    final pin = tester.getRect(position);
+    final step =
+        tester.getCenter(find.byKey(ValueKey(_pin('xsheet', 'scale')))).dx -
+        pin.center.dx;
+    Future<void> sweepFrom(double y) async {
+      final gesture = await tester.startGesture(
+        Offset(pin.center.dx, y),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(Offset(step, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await sweepFrom(pin.top + 1);
+    expect(_pinned(s), {
+      laneGroupKey(_drawId, 'position'),
+      laneGroupKey(_drawId, 'scale'),
+    });
+    await sweepFrom(pin.bottom - 1);
+    expect(_pinned(s), isEmpty);
+  });
+
   testWidgets('a stood-up column pays its pin and chips LAST — carrying them '
       'sheds nothing it showed before they came', (tester) async {
     await tester.binding.setSurfaceSize(const Size(400, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final layer = Layer(id: _drawId, name: 'Drawing', frames: const []);
+    // Scale: a value, a navigator and a chain — every control the column
+    // paid before the graph's came.
     final lane = PropertyLaneRow(
-      laneId: 'position',
-      label: 'Position',
+      laneId: 'scale',
+      label: 'Scale',
       keyMarks: const {0: KeyMark.linear},
-      valueLabel: (_) => '0.0, 0.0',
+      valueLabel: (_) => '100.0, 100.0',
+      linkable: true,
       curve: (
         parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
-        at: (_) => const [0.0, 0.0],
+        at: (_) => const [100.0, 100.0],
       ),
+    );
+    final changes = ValueNotifier<int>(0);
+    addTearDown(changes.dispose);
+    final edit = PropertyLaneEditCallbacks(
+      onToggleKeyAt: (_, _, _) {},
+      valueLink: (changes: changes, isOn: () => true, toggle: () {}),
     );
     final seat = TimelineGraphSeat(
       groupKey: laneGroupKey(_drawId, _transform),
       graph: const LaneGraph(),
-      lanes: const ['position'],
+      lanes: const ['scale'],
       picked: const [],
       pinned: const [],
     );
 
+    const value = 'xsheet-lane-value-draw-scale';
+    const navigator = 'xsheet-lane-key-toggle-draw-scale';
+    const link = 'xsheet-lane-value-link-draw-scale';
+    const pin = 'xsheet-lane-pin-draw-scale';
+    const chip = 'xsheet-lane-chip-draw-scale-0';
+    const keys = [value, navigator, link, pin, chip];
+
     /// The shortest column, from 60 up, that shows each of [keys].
-    Future<Map<String, double?>> firstShown(
-      List<String> keys, {
-      required bool graphs,
-    }) async {
+    Future<Map<String, double?>> firstShown({required bool graphs}) async {
       final first = <String, double?>{for (final key in keys) key: null};
       for (var height = 60.0; height <= 480; height += 1) {
         await tester.pumpWidget(
@@ -198,6 +305,7 @@ void main() {
                   keyPrefix: 'xsheet',
                   layer: layer,
                   lane: lane,
+                  laneEdit: edit,
                   metrics: XSheetTimelineGrid.defaultMetrics,
                   width: XSheetTimelineGrid.defaultMetrics.layerRowHeight,
                   height: height,
@@ -219,28 +327,16 @@ void main() {
       return first;
     }
 
-    const value = 'xsheet-lane-value-draw-position';
-    const navigator = 'xsheet-lane-key-toggle-draw-position';
-    const pin = 'xsheet-lane-pin-draw-position';
-    const chip = 'xsheet-lane-chip-draw-position-0';
-    final without = await firstShown([
-      value,
-      navigator,
-      pin,
-      chip,
-    ], graphs: false);
-    final carried = await firstShown([
-      value,
-      navigator,
-      pin,
-      chip,
-    ], graphs: true);
+    final without = await firstShown(graphs: false);
+    final carried = await firstShown(graphs: true);
 
     expect(without[pin], isNull);
     expect(without[chip], isNull);
-    expect(carried[value], without[value]);
-    expect(carried[navigator], without[navigator]);
-    expect(carried[pin], greaterThan(carried[navigator]!));
+    for (final key in [value, navigator, link]) {
+      expect(carried[key], without[key], reason: key);
+    }
+    expect(carried[link], greaterThan(carried[navigator]!));
+    expect(carried[pin], greaterThan(carried[link]!));
     expect(carried[chip], greaterThan(carried[pin]!));
   });
 }
@@ -266,10 +362,14 @@ Finder _name(WidgetTester tester, String laneId) {
 double _alpha(WidgetTester tester, String laneId) =>
     tester.widget<Text>(_name(tester, laneId)).style!.color!.a;
 
-int _chips(WidgetTester tester, String laneId) => [
+int _chips(
+  WidgetTester tester,
+  String laneId, {
+  String grid = 'timeline',
+}) => [
   for (var part = 0; part < 2; part += 1)
     ...find
-        .byKey(ValueKey<String>('timeline-lane-chip-draw-$laneId-$part'))
+        .byKey(ValueKey<String>('$grid-lane-chip-draw-$laneId-$part'))
         .evaluate(),
 ].length;
 
