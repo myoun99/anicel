@@ -80,6 +80,28 @@ void main() {
       expect(rows.single.showsKeyNavigator, isFalse);
     });
 
+    test('a parameter lane marks the keys that hold out of them', () {
+      final held = LayerEffect(
+        id: const EffectId('e1'),
+        kind: EffectKind.blur,
+        parameters: {
+          'blurX': EffectParameter(
+            track: PropertyTrack<double>(
+              keys: {
+                3: const PropertyKey<double>(4, outgoing: KeyExit.hold),
+                7: const PropertyKey<double>(2),
+              },
+            ),
+          ),
+        },
+      );
+      final rows = effectPropertyLanes([held], isExpanded: (_) => true);
+      final lane = rows.singleWhere(
+        (row) => row.laneId == effectLaneId(const EffectId('e1'), 'blurX'),
+      );
+      expect(lane.holdOutFrames, {3});
+    });
+
     test('an expanded effect adds one lane per parameter, in spec order', () {
       final rows = effectPropertyLanes([hue()], isExpanded: (_) => true);
       expect(rows.map((row) => row.label), [
@@ -291,7 +313,7 @@ void main() {
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
     });
 
-    test('remove and hold behave like the transform lanes', () {
+    test('toggle and remove behave like the transform lanes', () {
       // The single-key MOVE left with the key marker's private drag
       // (2026-08-08). Re-timing is `effectsWithLaneSpanKeysShifted` now —
       // select the span, move the span.

@@ -147,6 +147,20 @@ void main() {
       }
     });
 
+    test('a value space puts every value at 0 between two equal ones — '
+        'there is no line to fall on', () {
+      expect(doubleKeySpace.inverseLerp(5, 5, 9), 0);
+      expect(
+        pointKeySpace.inverseLerp(
+          CanvasPoint(x: 3, y: 4),
+          CanvasPoint(x: 3, y: 4),
+          CanvasPoint(x: 9, y: 1),
+        ),
+        0,
+      );
+      expect(argbKeySpace.inverseLerp(0xFF102030, 0xFF102030, 0xFFFFFFFF), 0);
+    });
+
     test('an auto point on an even run moves like the ramp through it', () {
       final track = PropertyTrack<CanvasPoint>()
           .withKey(0, CanvasPoint(x: 0, y: 0))

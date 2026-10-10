@@ -111,6 +111,20 @@ void main() {
       }
     });
 
+    test('members that differ only in the side ARRIVING disagree too — a '
+        'key\'s type is both of its sides', () {
+      final track = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          4,
+          CanvasPoint(x: 1, y: 1),
+          incoming: const EaseSide(),
+        ),
+        scale: PropertyTrack<CanvasPoint>().withKey(4, uniformScale(2)),
+      );
+      expect(transformKeyMixedUnion(track), {4});
+      expect(transformKeyHoldUnion(track), isEmpty);
+    });
+
     test('a lone keyed member agrees with itself', () {
       expect(transformKeyMixedUnion(trackWith(position: hold)), isEmpty);
       expect(transformKeyHoldUnion(trackWith(position: hold)), {4});

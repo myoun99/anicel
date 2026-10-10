@@ -212,6 +212,31 @@ void main() {
       expect(radius.keyAt(8)!.value, 3);
     });
 
+    test('a key whose SIDES alone moved carries them to the sibling', () {
+      // 유저 2026-09-12: 「싹다링크해야하는데」 — the sides are half the link,
+      // so a hold set without touching the number travels as surely as a
+      // number does.
+      final before = [blur('e1', track({0: (1, 'A')}))];
+      final after = [
+        blur(
+          'e1',
+          PropertyTrack<double>(
+            keys: {0: const PropertyKey(1, outgoing: KeyExit.hold, name: 'A')},
+          ),
+        ),
+      ];
+      final sibling = [blur('e1', track({0: (1, 'A'), 6: (3, null)}))];
+
+      final result = effectsWithNamedValues(
+        sibling,
+        namedEffectKeyChanges(before, after),
+      );
+
+      final radius = result.single.parameters[radiusId]!.track;
+      expect(radius.keyAt(0)!.outgoing, KeyExit.hold);
+      expect(radius.keyAt(0)!.value, 1);
+    });
+
     test('a change for an effect the sibling lacks is ignored', () {
       final sibling = [blur('e1', track({0: (1, 'A')}))];
 
