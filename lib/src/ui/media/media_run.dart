@@ -96,14 +96,9 @@ class MediaRun {
 
   bool get playing => _clock.isRunning;
 
-  /// Where the clock's span began: the film's time then, in seconds, and
-  /// the clock's own time then — a run put on a page, or a parked run going
-  /// on ([_filmSeconds]).
-  double _spanFrom = 0;
-  Duration _spanAt = Duration.zero;
-
-  /// The clock's own time at its latest look.
-  Duration _elapsed = Duration.zero;
+  /// Where the film has got to — what its pages turn by
+  /// ([_filmSecondsAtThisLook]).
+  final _FilmClock _film = _FilmClock();
 
   /// When a refused page was last asked for again ([_onTick]).
   Duration? _retriedAt;
@@ -440,29 +435,12 @@ class MediaRun {
 
   /// Where the film has got to at this look, in seconds: the sound while it
   /// is heard — the picture follows the sound, never a counter
-  /// ([_followTheSound]) — and the clock's span otherwise.
-  ///
-  /// 🚨The span is put where the sound is at every look that hears it, so a
-  /// sound that ends before the pictures hands the film on to the span from
-  /// where it ended: a movie whose track is shorter than its pictures plays
-  /// on to its last page. ↩️Read without that, its picture stood at the
-  /// sound's end, playing for good.
-  double _filmSecondsAtThisLook() {
-    final heard = _surface.soundPath != null && !sound.ended
+  /// ([_followTheSound]) — and the run's own span otherwise ([_FilmClock]).
+  double _filmSecondsAtThisLook() => _film.secondsAt(
+    heard: _surface.soundPath != null && !sound.ended
         ? sound.positionSeconds
-        : null;
-    if (heard != null) {
-      _spanFromNow(heard);
-      return heard;
-    }
-    return _spanFrom + (_elapsed - _spanAt).inMicroseconds / 1e6;
-  }
-
-  /// The clock's span begins again at [seconds] of the film, now.
-  void _spanFromNow(double seconds) {
-    _spanFrom = seconds;
-    _spanAt = _elapsed;
-  }
+        : null,
+  );
 
   /// The play button: starts a run, or stops the one going.
   void toggle() {
@@ -517,11 +495,10 @@ class MediaRun {
       if (!turnsItsOwnPages && !sound.isCarrying) {
         return;
       }
-      _elapsed = Duration.zero;
       _retriedAt = null;
-      if (turnsItsOwnPages) {
-        _spanFromNow(_page / _surface.document!.framesPerSecond!);
-      }
+      _film.startAt(
+        turnsItsOwnPages ? _page / _surface.document!.framesPerSecond! : 0,
+      );
       _runs(true);
     });
   }
@@ -543,7 +520,7 @@ class MediaRun {
     if (!_surface.mounted) {
       return;
     }
-    _elapsed = elapsed;
+    _film.look(elapsed);
     final retried = _retriedAt;
     final period = _framePeriod;
     if (retried == null || period == null || elapsed - retried >= period) {
@@ -634,7 +611,7 @@ class MediaRun {
     sound.resume(soundSeconds);
     // Goes on from here: the page it turns to has a whole frame's time, as
     // if the clock had been stopped and started.
-    _spanFromNow((_page + 1) / fps);
+    _film.spanFrom((_page + 1) / fps);
     _surface.setState(() => buffering = false);
     return true;
   }
@@ -661,5 +638,49 @@ class MediaRun {
   void dispose() {
     stop();
     playingFlips.dispose();
+  }
+}
+
+/// Where a run's film has got to, in seconds: the sound's place while it is
+/// heard, and the run's own span otherwise — begun where the run was put
+/// on a page, or where a parked run goes on.
+///
+/// 🚨The span is put where the sound is at every look that hears it, so a
+/// sound that ends before the pictures hands the film on to the span from
+/// where it ended: a movie whose track is shorter than its pictures plays
+/// on to its last page. ↩️Read without that, its picture stood at the
+/// sound's end, playing for good.
+final class _FilmClock {
+  /// Where the span began: the film's time then, in seconds, and the
+  /// clock's own time then.
+  double _spanFrom = 0;
+  Duration _spanAt = Duration.zero;
+
+  /// The clock's own time at its latest look.
+  Duration _elapsed = Duration.zero;
+
+  /// A run starts at [seconds] of the film: its looks count from nothing.
+  void startAt(double seconds) {
+    _elapsed = Duration.zero;
+    spanFrom(seconds);
+  }
+
+  /// The clock looks, [elapsed] into the run.
+  void look(Duration elapsed) => _elapsed = elapsed;
+
+  /// The span begins again at [seconds] of the film, now.
+  void spanFrom(double seconds) {
+    _spanFrom = seconds;
+    _spanAt = _elapsed;
+  }
+
+  /// Where the film has got to at this look — [heard], where the sound is
+  /// when it is heard.
+  double secondsAt({required double? heard}) {
+    if (heard != null) {
+      spanFrom(heard);
+      return heard;
+    }
+    return _spanFrom + (_elapsed - _spanAt).inMicroseconds / 1e6;
   }
 }
