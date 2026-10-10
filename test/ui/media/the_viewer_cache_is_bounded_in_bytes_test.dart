@@ -282,6 +282,35 @@ void main() {
     );
   });
 
+  testWidgets('🚨paging by hand, the page behind is kept as surely as the '
+      'page ahead — the order of a run that stands, not of one that plays', (
+    tester,
+  ) async {
+    // Six pages a budget, three once the OS warns: the page on screen and
+    // the two the run wants next.
+    ViewerRasterBudget.debugPageBytesOverride =
+        await measureOnePage(tester) * 3 ~/ 2;
+    final fake = await openConte(tester, pages: 7);
+    for (final page in [6, 3]) {
+      await turnTo(tester, page);
+    }
+    expect(reRendered(fake), isEmpty, reason: 'fixture: 1 to 6 are held');
+
+    session.respondToMemoryPressure();
+    await tester.pumpAndSettle();
+
+    await turnTo(tester, 2);
+    expect(
+      reRendered(fake),
+      isEmpty,
+      reason: 'standing on 3, the page behind is as near as the page ahead '
+          '— a run that PLAYS lets go of what is behind it first, and paging '
+          'by hand goes back as often as forward',
+    );
+    await turnTo(tester, 5);
+    expect(reRendered(fake), [5], reason: 'two away was let go');
+  });
+
   /// 🚨**A CACHE THIS BIG MUST APPEAR IN THE PANEL THAT SAYS WHERE MEMORY
   /// GOES** (유저 요청: 「이 앱이 쓰는 메모리의 총합 … 어떤항목이 얼만큼」).
   ///
