@@ -1210,8 +1210,8 @@ class ProjectImportDoors {
 
   /// The [wanted] pages of [reference]'s PDF, each rendered once at the size
   /// its pose stands it at ([_renderedPage]) and laid there
-  /// ([_picturesMade]). Null when the document does not open or has no such
-  /// page.
+  /// ([_picturesMade]). Null when the document does not open, or does not
+  /// render a page a cel asks for — one it no longer has among them.
   Future<_MadePictures?> _pagesOf(
     MediaReference reference,
     Set<int> wanted,
@@ -1228,14 +1228,12 @@ class ProjectImportDoors {
     try {
       return await _picturesMade(
         wanted,
-        (index) async => index < document.pageCount
-            ? await _renderedPage(
-                document,
-                index,
-                _pageSizeOf(document, index),
-                reference.pose,
-              )
-            : null,
+        (index) => _renderedPage(
+          document,
+          index,
+          _pageSizeOf(document, index),
+          reference.pose,
+        ),
         pose: reference.pose,
         canvas: canvas,
       );

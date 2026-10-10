@@ -92,11 +92,17 @@ class FakePdfDocument implements ViewerDocument {
     );
     final picture = recorder.endRecording();
     try {
-      return picture.toImageSync(width, height);
+      final image = picture.toImageSync(width, height);
+      renders.add(image);
+      return image;
     } finally {
       picture.dispose();
     }
   }
+
+  /// Every page image a render handed out — so a test can ask whether
+  /// whoever took one let it go (`debugDisposed`).
+  final List<ui.Image> renders = [];
 
   /// Every region read as (pageIndex, left, top, width, height).
   final List<(int, int, int, int, int)> regionReads = [];

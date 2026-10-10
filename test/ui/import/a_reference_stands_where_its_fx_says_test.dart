@@ -71,6 +71,12 @@ List<int> rgbaOf(ui.Color colour) {
   return [(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, argb >>> 24];
 }
 
+/// The warmer the session woke, stopped — or it waits on past the test.
+Future<void> stopTheWarmer(WidgetTester tester, EditorSessionManager s) async {
+  s.playbackRig.prerenderScheduler.cancel();
+  await tester.pump();
+}
+
 /// Where [surface]'s ink lies on the canvas, or null when it holds none.
 ui.Rect? inkOf(BitmapSurface? surface) {
   if (surface == null) {
@@ -297,11 +303,9 @@ void main() {
       );
       expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       // The undo's own settling timers, run out on the test's clock — and
-      // the warmer they woke stopped after them, or it waits on past the
-      // body.
+      // the warmer they woke stopped after them.
       await tester.pump(const Duration(minutes: 1));
-      s.playbackRig.prerenderScheduler.cancel();
-      await tester.pump();
+      await stopTheWarmer(tester, s);
     });
 
     testWidgets('the pose it already stands at changes nothing', (
@@ -532,19 +536,20 @@ void main() {
       deleteTempQuietly(tempDir);
     });
 
-    testWidgets('🎯every page of a reference stands at ITS pose over the '
-        'page\'s own size — a bigger page stands bigger, not fitted again — '
-        'and each is rendered once at the size it stands at', (tester) async {
-      final pdf = FakePdfDocument(
-        pageSizes: const [ui.Size(100, 50), ui.Size(200, 100)],
-      );
+    /// [pdf]'s pages from [inFrame] to [outFrame] placed as a reference on
+    /// a 200×100 canvas, contained: a 100×50 first page stands at twice its
+    /// size.
+    Future<(EditorSessionManager, Layer)> placed(
+      WidgetTester tester,
+      FakePdfDocument pdf, {
+      int inFrame = 0,
+      int? outFrame,
+    }) async {
       PdfRenderService.debugOpenerOverride = (_) async => pdf;
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       s.playbackRig.prerenderScheduler.beginInputHold();
-
       await tester.runAsync(() async {
-        // A 200×100 canvas: the first page fits it at twice its size.
         s.cutVerbs.resizeActiveCutCanvas(
           const CanvasSize(width: 200, height: 100),
         );
@@ -555,15 +560,38 @@ void main() {
             path: path,
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
+            inFrame: inFrame,
+            outFrame: outFrame,
           ),
           isTrue,
         );
       });
-
-      final cut = s.requireActiveCut;
-      final row = cut.layers.firstWhere(
+      final row = s.requireActiveCut.layers.firstWhere(
         (layer) => layer.mediaReference != null,
       );
+      return (s, row);
+    }
+
+    /// [row]'s reference fx moved to 1:1 in the canvas's middle.
+    Future<bool?> moved(
+      WidgetTester tester,
+      EditorSessionManager s,
+      Layer row,
+    ) => tester.runAsync(
+      () => s.importDoors.reposeReference(
+        layerId: row.id,
+        pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
+      ),
+    );
+
+    testWidgets('🎯every page of a reference stands at ITS pose over the '
+        'page\'s own size — a bigger page stands bigger, not fitted again — '
+        'and each is rendered once at the size it stands at', (tester) async {
+      final pdf = FakePdfDocument(
+        pageSizes: const [ui.Size(100, 50), ui.Size(200, 100)],
+      );
+      final (s, row) = await placed(tester, pdf);
+
       expect(
         row.mediaReference!.pose,
         TransformPose.uniform(center: CanvasPoint(x: 100, y: 50), zoom: 2),
@@ -572,14 +600,9 @@ void main() {
         row.mediaReference!.pictureSize,
         const CanvasSize(width: 100, height: 50),
       );
-      ui.Rect? page(int index) => inkOf(
-        s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
-          s.brushFrameKeyForCut(cut, row.id, row.frames[index].id),
-        ),
-      );
-      expect(page(0), const ui.Rect.fromLTRB(0, 0, 200, 100));
+      expect(inkOf(celOf(s, row, 0)), const ui.Rect.fromLTRB(0, 0, 200, 100));
       expect(
-        page(1),
+        inkOf(celOf(s, row, 1)),
         const ui.Rect.fromLTRB(-100, -50, 300, 150),
         reason: 'the reference\'s pose over a 200×100 page — twice its own '
             'size, not fitted to the canvas again',
@@ -589,51 +612,21 @@ void main() {
         [(200, 100), (400, 200)],
         reason: 'the vector source rasters once, at the size it stands at',
       );
-      s.playbackRig.prerenderScheduler.cancel();
-      await tester.pump();
+      await stopTheWarmer(tester, s);
     });
 
     testWidgets('🎯moving the fx renders EACH page again from its own page '
         'of the file — counted from the span\'s IN, not from the row\'s '
-        'first cel — each at its own size', (tester) async {
+        'first cel — each at its own size, and lets each render go once '
+        'laid', (tester) async {
       final pdf = FakePdfDocument(
         pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(60, 30)],
       );
-      PdfRenderService.debugOpenerOverride = (_) async => pdf;
-      final s = EditorSessionManager(initialProject: createDefaultProject());
-      addTearDown(s.dispose);
-      s.playbackRig.prerenderScheduler.beginInputHold();
-      await tester.runAsync(() async {
-        s.cutVerbs.resizeActiveCutCanvas(
-          const CanvasSize(width: 200, height: 100),
-        );
-        final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
-        await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-        expect(
-          await s.importDoors.importPdfFile(
-            path: path,
-            destination: ImportDestination.activeCutLayer,
-            copyIntoProject: false,
-            inFrame: 1,
-          ),
-          isTrue,
-        );
-      });
-      final row = s.requireActiveCut.layers.firstWhere(
-        (layer) => layer.mediaReference != null,
-      );
+      final (s, row) = await placed(tester, pdf, inFrame: 1);
       expect([for (final frame in row.frames) frame.filePicture], [1, 2]);
       pdf.renderRequests.clear();
 
-      expect(
-        await tester.runAsync(
-          () => s.importDoors.reposeReference(
-            layerId: row.id,
-            pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
-          ),
-        ),
-        isTrue,
-      );
+      expect(await moved(tester, s, row), isTrue);
 
       expect(
         pdf.renderRequests,
@@ -657,8 +650,13 @@ void main() {
         const CanvasSize(width: 100, height: 50),
         reason: 'the size the row says is its first cel\'s page, as placed',
       );
-      s.playbackRig.prerenderScheduler.cancel();
-      await tester.pump();
+      expect(
+        pdf.renders.where((image) => !image.debugDisposed),
+        isEmpty,
+        reason: 'a page rendered for the laying is let go of once laid — the '
+            'placing\'s and the move\'s alike',
+      );
+      await stopTheWarmer(tester, s);
     });
 
     testWidgets('one page kept from the middle is a still that says WHICH '
@@ -666,47 +664,53 @@ void main() {
       final pdf = FakePdfDocument(
         pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(100, 50)],
       );
-      PdfRenderService.debugOpenerOverride = (_) async => pdf;
-      final s = EditorSessionManager(initialProject: createDefaultProject());
-      addTearDown(s.dispose);
-      s.playbackRig.prerenderScheduler.beginInputHold();
-      await tester.runAsync(() async {
-        s.cutVerbs.resizeActiveCutCanvas(
-          const CanvasSize(width: 200, height: 100),
-        );
-        final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
-        await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
-        expect(
-          await s.importDoors.importPdfFile(
-            path: path,
-            destination: ImportDestination.activeCutLayer,
-            copyIntoProject: false,
-            inFrame: 2,
-            outFrame: 2,
-          ),
-          isTrue,
-        );
-      });
-      final row = s.requireActiveCut.layers.firstWhere(
-        (layer) => layer.mediaReference != null,
-      );
+      final (s, row) = await placed(tester, pdf, inFrame: 2, outFrame: 2);
       expect(row.frames.single.filePicture, 2);
       pdf.renderRequests.clear();
 
-      await tester.runAsync(
-        () => s.importDoors.reposeReference(
-          layerId: row.id,
-          pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
-        ),
-      );
+      await moved(tester, s, row);
 
       expect(pdf.renderRequests, [(2, 100, 50)]);
       expect(
         colourAt(celOf(s, row, 0), 100, 50),
         rgbaOf(FakePdfDocument.pageColor(2)),
       );
-      s.playbackRig.prerenderScheduler.cancel();
-      await tester.pump();
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a document that has since lost the page a cel shows is not '
+        'laid again — the move lands nothing, and every cel keeps what it '
+        'showed', (tester) async {
+      final (s, row) = await placed(
+        tester,
+        FakePdfDocument(
+          pageSizes: const [
+            ui.Size(100, 50),
+            ui.Size(100, 50),
+            ui.Size(100, 50),
+          ],
+        ),
+        inFrame: 1,
+      );
+      final canUndo = s.canUndo;
+      // The same file, two pages now: the conte exported again, shorter.
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: const [ui.Size(100, 50), ui.Size(100, 50)],
+      );
+
+      expect(await moved(tester, s, row), isFalse);
+
+      expect(s.canUndo, canUndo);
+      for (final index in [0, 1]) {
+        final cel = celOf(s, row, index);
+        expect(inkOf(cel), const ui.Rect.fromLTRB(0, 0, 200, 100));
+        expect(
+          colourAt(cel, 100, 50),
+          rgbaOf(FakePdfDocument.pageColor(index + 1)),
+          reason: 'cel $index',
+        );
+      }
+      await stopTheWarmer(tester, s);
     });
   });
 
@@ -723,10 +727,13 @@ void main() {
 
     tearDown(() => deleteTempQuietly(tempDir));
 
-    /// The black · white · black GIF from its second frame on, contained
-    /// as a reference on a 100×100 canvas: two cels — white, then black —
-    /// each filling it.
-    Future<(EditorSessionManager, Layer)> placed(WidgetTester tester) async {
+    /// The black · white · black GIF from its second frame to [outFrame],
+    /// contained as a reference on a 100×100 canvas: to its end, two cels
+    /// — white, then black — each filling it.
+    Future<(EditorSessionManager, Layer)> placed(
+      WidgetTester tester, {
+      int? outFrame,
+    }) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       s.playbackRig.prerenderScheduler.beginInputHold();
@@ -740,6 +747,7 @@ void main() {
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
             inFrame: 1,
+            outFrame: outFrame,
           ),
           isTrue,
         );
@@ -748,14 +756,6 @@ void main() {
         (layer) => layer.mediaReference != null,
       );
       return (s, row);
-    }
-
-    Future<void> stopTheWarmer(
-      WidgetTester tester,
-      EditorSessionManager s,
-    ) async {
-      s.playbackRig.prerenderScheduler.cancel();
-      await tester.pump();
     }
 
     testWidgets('🎯each cel says which picture of the FILE it is — from the '
@@ -807,24 +807,7 @@ void main() {
 
     testWidgets('one frame kept is a still that says WHICH frame it is — '
         'the white one, laid again white', (tester) async {
-      final s = EditorSessionManager(initialProject: createDefaultProject());
-      addTearDown(s.dispose);
-      s.playbackRig.prerenderScheduler.beginInputHold();
-      await tester.runAsync(() async {
-        s.cutVerbs.resizeActiveCutCanvas(
-          const CanvasSize(width: 100, height: 100),
-        );
-        await s.importDoors.importImageFile(
-          path: await writeThreeFrameGif(tempDir, 'walk.gif'),
-          destination: ImportDestination.activeCutLayer,
-          copyIntoProject: false,
-          inFrame: 1,
-          outFrame: 1,
-        );
-      });
-      final row = s.requireActiveCut.layers.firstWhere(
-        (layer) => layer.mediaReference != null,
-      );
+      final (s, row) = await placed(tester, outFrame: 1);
       expect(row.frames.single.filePicture, 1);
 
       await tester.runAsync(
