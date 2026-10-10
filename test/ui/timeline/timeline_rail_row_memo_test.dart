@@ -8,7 +8,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -18,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/reference_to.dart';
 
 /// The rail row memo's gate (frame-axis round): the row is ~200 Material
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
@@ -63,7 +63,7 @@ void main() {
       // F-308: the reference button stands on a row that stands on a file.
       'mediaReference': (layer) => layer.copyWith(
         mediaReference: layer.mediaReference == null
-            ? MediaReference(assetPath: '/clips/a.mp4')
+            ? referenceTo('/clips/a.mp4')
             : null,
       ),
     };
@@ -96,14 +96,14 @@ void main() {
     test('which file a reference row stands on is not shown — moving its '
         'start keeps the row', () {
       final reference = base.copyWith(
-        mediaReference: MediaReference(assetPath: '/clips/a.mp4'),
+        mediaReference: referenceTo('/clips/a.mp4'),
       );
       expect(
         ControlsRowFace(reference) ==
             ControlsRowFace(
               reference.copyWith(
-                mediaReference: MediaReference(
-                  assetPath: '/clips/a.mp4',
+                mediaReference: referenceTo(
+                  '/clips/a.mp4',
                   frameOffset: 12,
                 ),
               ),

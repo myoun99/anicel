@@ -28,8 +28,8 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
+import '../helpers/reference_to.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -550,9 +550,7 @@ void main() {
                         // Hidden, so the canvas never goes looking for it.
                         layer.copyWith(
                           isVisible: false,
-                          mediaReference: MediaReference(
-                            assetPath: still,
-                          ),
+                          mediaReference: referenceTo(still),
                         )
                       else
                         layer,

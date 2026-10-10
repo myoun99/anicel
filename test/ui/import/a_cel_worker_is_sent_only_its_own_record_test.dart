@@ -8,7 +8,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_import_planner.dart';
 import 'package:anicel/src/services/import/tvpp_raster_decoder.dart';
@@ -144,7 +143,6 @@ class _BakeHoldingAPort extends PlannedCelBake {
         layerId: const LayerId('l'),
         frameId: const FrameId('f'),
         sourceFile: 's',
-        fit: MediaFitMode.none,
       );
 
   final ReceivePort port;

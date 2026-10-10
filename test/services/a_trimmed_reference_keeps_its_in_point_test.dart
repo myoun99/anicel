@@ -18,6 +18,7 @@ import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
 import 'package:anicel/src/services/commands/relink_media_asset_command.dart';
 import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../helpers/reference_to.dart';
 
 /// 🚨A TRIMMED REFERENCE KEEPS ITS IN POINT WHEREVER THE ROW GOES (미디어
 /// 배치 라운드 ⑤, 자른 참조 허용).
@@ -52,7 +53,7 @@ void main() {
     frames: const [],
     timeline: const {},
     kind: LayerKind.animation,
-    mediaReference: MediaReference(assetPath: path, frameOffset: offset),
+    mediaReference: referenceTo(path, frameOffset: offset),
   );
 
   Cut cutWith(List<Layer> layers) => Cut(

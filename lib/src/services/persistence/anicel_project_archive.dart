@@ -65,6 +65,29 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v12 (2026-10-10, I-68 — the reference fx): a media reference says WHERE
+/// its file's picture stands — `pose`, its centre on the canvas with a
+/// scale per axis over the picture's own pixels and a turn about that
+/// centre — and `size`, the picture's own size (`MediaReference.toJson`).
+/// A v11 build reads a reference without them and fits the file to the
+/// canvas as it is each time it lays it — a movie at every decode, a still
+/// when it is swapped — so a canvas grown since puts the picture in its
+/// middle, and its next save writes the reference back without them. The
+/// bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔A reference without them is NOT read (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]): where
+/// such a reference's picture stands is written nowhere in it. What to
+/// carry when one is asked for: each layer's `mediaReference` gets `size` —
+/// its file's picture (a movie's frame, a PDF's first page at 1:1) — and
+/// the `pose` its picture stands at NOW. A movie's is its pool entry's fit
+/// (the entry's `fit`, `contain` when it says none) on the cut's canvas,
+/// every frame having been fitted so (`fitPose`). A still's, a sequence's
+/// and a PDF's is that too, unless the cut's canvas was resized after the
+/// file was placed: that moved its cels by the resize's offset, so read the
+/// offset off a cel — where its picture lies against the fit's rect — and
+/// move the pose's centre by it.
+///
 /// v11 (2026-10-08, F-301 — 유저 10-05 「타임시트의 메모란은 페이지별로
 /// 다름 … 페이지별로 독립」): a cut's memo is one per page of its timesheet
 /// (`CutMetadata.pageNotes`, a list written only when a page has one)
@@ -178,7 +201,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 11;
+const int anicelFormatVersion = 12;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -198,7 +221,9 @@ const int anicelFormatVersion = 11;
 /// 6: a scale's one number is no longer read (v6 above).
 /// 10: a timesheet's strip ink is no longer read (v10 above).
 /// 11: a cut's one note is no longer read (v11 above).
-const int anicelOldestReadFormatVersion = 11;
+/// 12: a reference that does not say where it stands is no longer read
+/// (v12 above).
+const int anicelOldestReadFormatVersion = 12;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

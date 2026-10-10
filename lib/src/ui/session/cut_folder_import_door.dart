@@ -104,7 +104,6 @@ class CutFolderImportDoor {
       parsed: parsed,
       resolveFile: (relativePath) => '$folderPath/$relativePath',
       canvasSize: canvasSize,
-      fit: fit,
       mint: _landing.idMint(),
     );
     if (plan.bakes.isEmpty && plan.assets.isEmpty) {
@@ -174,7 +173,11 @@ class CutFolderImportDoor {
           final surface = await rasterizeImageToSurface(
             image: frames.first.image,
             canvas: bakedCut.canvasSize,
-            fit: bake.fit,
+            placement: fitPlacement(
+              frames.first.image,
+              bakedCut.canvasSize,
+              fit,
+            ),
           );
           bakeCelSurface(
             _renderCaches.brushFrameStore,

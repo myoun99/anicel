@@ -34,6 +34,10 @@ import '../undo_surface_snapshot.dart';
 /// all a project has. An editing session follows the store
 /// (`BrushFrameEditingCoordinator._storeMovedPast`), so the canvas shows
 /// what is written here either way.
+///
+/// I-68: the same step lays the row's OWN file again at another pose — its
+/// reference fx moved — so [reference] may name the file it named, and a
+/// still's picture is baked anew where the pose now stands it.
 class SwapLayerReferenceCommand
     implements
         Command,
@@ -48,6 +52,7 @@ class SwapLayerReferenceCommand
     required this.store,
     Map<BrushFrameKey, BitmapSurface> pictures = const {},
     this.cacheInvalidationSink,
+    this.description = 'Swap layer reference',
   }) : _pictures = pictures;
 
   final ProjectRepository repository;
@@ -72,7 +77,7 @@ class SwapLayerReferenceCommand
   MediaReference? _before;
 
   @override
-  String get description => 'Swap layer reference';
+  final String description;
 
   @override
   void execute() {

@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_splice.dart';
@@ -19,6 +18,7 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/independent_clip_mint.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🗣️I-71 (유저 2026-10-05):
 ///
@@ -429,7 +429,7 @@ void main() {
       s.repository.updateLayer(
         layerId: other,
         update: (layer) => layer.copyWith(
-          mediaReference: MediaReference(assetPath: 'media/a.png'),
+          mediaReference: referenceTo('media/a.png'),
         ),
       );
 

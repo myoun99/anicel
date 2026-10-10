@@ -338,6 +338,27 @@ void main() {
       expect(rect.height, closeTo(40 * 2, 0.001));
     });
 
+    // I-68: the fit is a pose with a scale per axis. ↩️Every layer took the
+    // document's WIDTH ratio down the page too, so a stretch to another
+    // aspect stood the layers off the composite.
+    test('a stretch scales each axis by its own ratio — a layer stays on '
+        'the composite down the page as well as across it', () {
+      final result = plan(
+        document(
+          [raster('a', left: 10, top: 20, right: 30, bottom: 60)],
+          width: 100,
+          height: 100,
+        ),
+        canvas: const CanvasSize(width: 400, height: 200),
+        fit: MediaFitMode.stretch,
+      );
+      final rect = result.placements.single.rect;
+      expect(rect.left, closeTo(10 * 4, 0.001));
+      expect(rect.top, closeTo(20 * 2, 0.001));
+      expect(rect.width, closeTo(20 * 4, 0.001));
+      expect(rect.height, closeTo(40 * 2, 0.001));
+    });
+
     test('1:1 centres the document and keeps every layer beside its '
         'neighbours', () {
       final result = plan(

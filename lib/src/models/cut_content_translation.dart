@@ -132,10 +132,16 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
 ///    the render identical at every zoom.
 ///  * A NULL anchor re-reads as the canvas centre, so the position keys
 ///    move by Δcentre instead (see the file doc).
+///  * The file a REFERENCE row shows stands where its reference fx puts its
+///    centre on the canvas (I-68), and that moves by the content offset
+///    like a camera's centre: the picture keeps its place among the
+///    drawings, and a file swapped in or laid again afterwards stands there
+///    too (유저 2026-10-10 「캔버스 크기 변경 … 가」 — 기준점대로).
 ///
-/// 🪦A third bullet moved a TEXT cel's canvas-coordinate anchor with its
-/// picture. The TEXT row went with F-154 and its payload with the save
-/// format's floor (`anicelOldestReadFormatVersion`): nothing holds one.
+/// 🪦A bullet before the reference's moved a TEXT cel's canvas-coordinate
+/// anchor with its picture. The TEXT row went with F-154 and its payload
+/// with the save format's floor (`anicelOldestReadFormatVersion`): nothing
+/// holds one.
 Layer translateLayerForResize(
   Layer layer, {
   required double dx,
@@ -147,13 +153,21 @@ Layer translateLayerForResize(
   final hasExplicitAnchor = track.anchorPoint.isNotEmpty;
   final positionDx = hasExplicitAnchor ? dx : centreDx;
   final positionDy = hasExplicitAnchor ? dy : centreDy;
-  if (track.position.isEmpty && track.anchorPoint.isEmpty) {
+  final reference = layer.mediaReference;
+  if (track.position.isEmpty &&
+      track.anchorPoint.isEmpty &&
+      reference == null) {
     return layer;
   }
   return layer.copyWith(
     transformTrack: track.copyWith(
       position: _translatedPointTrack(track.position, positionDx, positionDy),
       anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
+    ),
+    mediaReference: reference?.copyWith(
+      pose: reference.pose.copyWith(
+        center: _translated(reference.pose.center, dx, dy),
+      ),
     ),
   );
 }

@@ -8,13 +8,13 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/relink_media_asset_command.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨A RELINK REACHES EVERY REFERENCE, OR IT LEAVES SOME OFFLINE.
 ///
@@ -43,7 +43,7 @@ void main() {
     frames: const [],
     timeline: const {},
     kind: LayerKind.image,
-    mediaReference: MediaReference(assetPath: path),
+    mediaReference: referenceTo(path),
   );
 
   Project projectWith({

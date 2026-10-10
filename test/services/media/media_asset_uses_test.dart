@@ -8,7 +8,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
@@ -16,6 +15,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨★★★WHERE A POOL FILE IS USED IS ONE ANSWER (F-118).
 ///
@@ -37,7 +37,7 @@ void main() {
     timeline: {0: TimelineExposure.drawing(FrameId('$id-cel'), length: 4)},
     mediaReference: reference == null
         ? null
-        : MediaReference(assetPath: reference),
+        : referenceTo(reference),
   );
 
   Cut cut(String id, String name, List<Layer> layers) => Cut(

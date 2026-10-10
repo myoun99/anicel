@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/reference_to.dart';
 
 void main() {
   Layer layerNamed(String id, {String? file}) {
@@ -28,7 +28,7 @@ void main() {
     );
     return file == null
         ? layer
-        : layer.copyWith(mediaReference: MediaReference(assetPath: file));
+        : layer.copyWith(mediaReference: referenceTo(file));
   }
 
   Widget row(

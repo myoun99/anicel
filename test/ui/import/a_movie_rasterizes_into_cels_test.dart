@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
@@ -174,7 +173,7 @@ void main() {
     // one that spoke.
     final png = await writeSolidPng(tempDir, 'bg.png');
     final still = layer.copyWith(
-      mediaReference: MediaReference(assetPath: png),
+      mediaReference: layer.mediaReference!.copyWith(assetPath: png),
     );
     s.repository.replaceLayer(layer: still);
 

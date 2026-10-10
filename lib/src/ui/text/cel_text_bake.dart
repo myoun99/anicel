@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
-import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -93,8 +92,7 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
     cut = await rasterizeImageToSurface(
       image: set,
       canvas: canvasSize,
-      fit: MediaFitMode.none,
-      placement: window,
+      placement: rectPlacement(window, width: set.width, height: set.height),
       tileSize: tileSize,
     );
   } finally {

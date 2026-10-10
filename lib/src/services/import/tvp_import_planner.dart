@@ -36,7 +36,6 @@ import '../../models/import/tvp_import_model.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
-import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart';
 import 'camera_track.dart';
@@ -61,15 +60,13 @@ class TvpImportPlan {
 /// into something the session can read — for the .tvpp reader that is a
 /// synthetic slot key resolved against the file bytes at bake time.
 ///
-/// [fit] defaults to [MediaFitMode.none]: a clip's cels are already
-/// the clip's exact size and the cut is created at that size, so 1:1 is
-/// both correct and the only mode that copies bytes instead of resampling
-/// them.
+/// 🪦A `fit` (default 1:1) rode on every planned bake here, and the door
+/// never read it: a clip's cels are decoded tile for tile at the clip's
+/// own size (`bakeCelTiles`), on a cut made at that size.
 TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
-  MediaFitMode fit = MediaFitMode.none,
   String? cutName,
 }) {
   final warnings = [...parsed.warnings];
@@ -144,7 +141,6 @@ TvpImportPlan planTvpImport({
               layerId: layerId,
               frameId: frameId,
               sourceFile: resolveFile(block.file),
-              fit: fit,
             ),
           );
         }

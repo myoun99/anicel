@@ -66,15 +66,18 @@ class ImportIdMint {
 }
 
 /// One cel whose PIXELS must be baked after the structural command runs:
-/// decode [sourceFile], rasterize at the cut's canvas with [fit], store
-/// under (cutId, layerId, frameId).
+/// decode [sourceFile], rasterize it on the cut's canvas, store under
+/// (cutId, layerId, frameId).
+///
+/// ↩️It carried the FIT it stood at. Where a picture stands is one rule for
+/// a whole placement — the fit of an import that bakes, or the pose of the
+/// reference a row shows (I-68) — and the door that places it says which.
 class PlannedCelBake {
   const PlannedCelBake({
     required this.cutId,
     required this.layerId,
     required this.frameId,
     required this.sourceFile,
-    required this.fit,
     this.sourceFrameIndex = 0,
   });
 
@@ -82,7 +85,6 @@ class PlannedCelBake {
   final LayerId layerId;
   final FrameId frameId;
   final String sourceFile;
-  final MediaFitMode fit;
 
   /// Which SOURCE frame of [sourceFile] this cel bakes (multi-frame
   /// sources): duplicate folding compresses the bake list, so the bake
@@ -122,16 +124,16 @@ bool placementRegisters({required bool baked, bool soundReadsIt = false}) =>
 
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
-/// Reference mode stamps [Layer.mediaReference] and REGISTERS the asset;
-/// rasterize mode bakes and stamps nothing, and registers nothing
-/// ([placementRegisters]).
+/// With a [reference] the layer SHOWS the file — it is stamped as
+/// [Layer.mediaReference] and the asset REGISTERS; without one the picture
+/// is baked, and nothing is stamped or registered ([placementRegisters]).
 ImageLayerImportPlan planStillImageLayer({
   required String sourceFile,
   required String displayName,
   required CutId cutId,
   required int duration,
   required MediaFitMode fit,
-  required bool rasterize,
+  required MediaReference? reference,
   required ImportIdMint mint,
   String? sourcePath,
   String? sourceStamp,
@@ -149,7 +151,7 @@ ImageLayerImportPlan planStillImageLayer({
     kind: LayerKind.image,
     frames: [Frame(id: frameId, duration: clampedDuration, strokes: const [])],
     timeline: {0: TimelineExposure.drawing(frameId, length: clampedDuration)},
-    mediaReference: rasterize ? null : MediaReference(assetPath: sourceFile),
+    mediaReference: reference,
   );
   return ImageLayerImportPlan(
     layer: layer,
@@ -159,11 +161,10 @@ ImageLayerImportPlan planStillImageLayer({
         layerId: layerId,
         frameId: frameId,
         sourceFile: sourceFile,
-        fit: fit,
       ),
     ],
     assets: [
-      if (placementRegisters(baked: rasterize))
+      if (placementRegisters(baked: reference == null))
         importedMediaAsset(
           path: sourceFile,
           kind: assetKind,
@@ -233,10 +234,14 @@ SequenceLayerImportPlan planSequenceLayer({
   required List<Object?> frameFingerprints,
   required String displayName,
   required CutId cutId,
-  required MediaFitMode fit,
-  required bool rasterize,
   required ImportIdMint mint,
-  String? referencePath,
+
+  /// The file the layer SHOWS, when it shows one: stamped as
+  /// [Layer.mediaReference], and its asset registers — with [fit] as the
+  /// pool entry's placement default. Null bakes the pictures, and nothing
+  /// is stamped or registered ([placementRegisters]).
+  MediaReference? reference,
+  MediaFitMode fit = MediaFitMode.contain,
   String? sourcePath,
   String? sourceStamp,
   MediaIdentity? identity,
@@ -304,7 +309,6 @@ SequenceLayerImportPlan planSequenceLayer({
         layerId: layerId,
         frameId: frameId,
         sourceFile: sourceFiles[i],
-        fit: fit,
         // A movie shows its frames on the SOUND's clock, so position i is
         // not movie frame i (`MovieClock`); every other source counts one
         // for one.
@@ -325,20 +329,18 @@ SequenceLayerImportPlan planSequenceLayer({
     name: displayName,
     frames: frames,
     timeline: timeline,
-    mediaReference: rasterize || referencePath == null
-        ? null
-        : MediaReference(assetPath: referencePath),
+    mediaReference: reference,
   );
   return SequenceLayerImportPlan(
     layer: layer,
     bakes: bakes,
     // A layer that draws from the file registers it; a baked one does not
     // ([placementRegisters]).
-    assets: referencePath == null || !placementRegisters(baked: rasterize)
+    assets: reference == null
         ? const []
         : [
             importedMediaAsset(
-              path: referencePath,
+              path: reference.assetPath,
               kind: assetKind,
               fit: fit,
               sourcePath: sourcePath,
@@ -358,8 +360,9 @@ SequenceLayerImportPlan planSequenceLayer({
 }
 
 /// A MOVIE kept as a reference (미디어 배치 라운드 6: 「배치 창의 굽기 열이
-/// 끔이면 참조」): ONE cel exposed over the whole [span], pointing at the
-/// file from the span's first frame.
+/// 끔이면 참조」): ONE cel exposed for [length] frames, pointing at the file
+/// from the span's first frame — [reference]'s
+/// [MediaReference.frameOffset].
 ///
 /// ⚠️The cel has no pixels, and that is the design, not a gap: a movie is
 /// decoded when it is shown (08-31 「굽지 않고 재생할 때 디코드」), so the
@@ -367,11 +370,11 @@ SequenceLayerImportPlan planSequenceLayer({
 /// exposure, trimming its head moves [MediaReference.frameOffset] (the SE
 /// block's sound shift, 「앞을 자르면 파일 안의 시작점이 움직인다」), and
 /// timing a frame at a time waits for the rasterize that makes it cels.
-/// [span] counts PROJECT frames on the sound's clock, like a sound's.
+/// The span counts PROJECT frames on the sound's clock, like a sound's.
 Layer planMovieReferenceLayer({
-  required String referencePath,
+  required MediaReference reference,
   required String displayName,
-  required ({int first, int count}) span,
+  required int length,
   required ImportIdMint mint,
 }) {
   final layerId = mint.nextLayerId();
@@ -381,11 +384,8 @@ Layer planMovieReferenceLayer({
     name: displayName,
     frames: [Frame(id: frameId, duration: 1, strokes: const [])],
     timeline: SplayTreeMap<int, TimelineExposure>()
-      ..[0] = TimelineExposure.drawing(frameId, length: span.count),
-    mediaReference: MediaReference(
-      assetPath: referencePath,
-      frameOffset: span.first,
-    ),
+      ..[0] = TimelineExposure.drawing(frameId, length: length),
+    mediaReference: reference,
   );
 }
 
@@ -413,7 +413,6 @@ CutFolderImportPlan planCutFolderImport({
   required CutFolderParseResult parsed,
   required String Function(String relativePath) resolveFile,
   required CanvasSize canvasSize,
-  required MediaFitMode fit,
   required ImportIdMint mint,
 }) {
   final warnings = [...parsed.warnings];
@@ -450,7 +449,6 @@ CutFolderImportPlan planCutFolderImport({
         layerId: layerId,
         frameId: frameId,
         sourceFile: resolveFile(picture.file),
-        fit: fit,
       ),
     );
   }
@@ -483,7 +481,6 @@ CutFolderImportPlan planCutFolderImport({
             layerId: attachId,
             frameId: frameId,
             sourceFile: resolveFile(attachCels[i].file),
-            fit: fit,
           ),
         );
       }
@@ -527,7 +524,6 @@ CutFolderImportPlan planCutFolderImport({
           layerId: baseId,
           frameId: frameId,
           sourceFile: resolveFile(cell.file),
-          fit: fit,
         ),
       );
     }

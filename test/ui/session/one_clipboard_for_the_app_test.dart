@@ -8,7 +8,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -23,6 +22,7 @@ import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨I-7 (유저 2026-09-26): 「탭사이에 복사나 붙여넣기 뭐든 가능. 앱 전체에
 /// 하나. 레이어 id가 다른거?라던가 id늘리게한다던가 알아서 조심하고.」
@@ -212,7 +212,7 @@ void main() {
         frames: const [],
         timeline: const {},
         kind: LayerKind.image,
-        mediaReference: MediaReference(assetPath: path),
+        mediaReference: referenceTo(path),
       );
       return base.copyWith(
         tracks: [

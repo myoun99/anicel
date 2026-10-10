@@ -12,7 +12,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_folder.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -28,6 +27,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -291,7 +291,7 @@ void main() {
     );
     s.repository.insertLayer(cutId: cut.id, layer: image);
     final reference = drawing.copyWith(
-      mediaReference: MediaReference(assetPath: 'take.png'),
+      mediaReference: referenceTo('take.png'),
     );
 
     expect(s.acceptsPlacedFrames(drawing.id), isTrue);

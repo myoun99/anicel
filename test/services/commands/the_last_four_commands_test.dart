@@ -22,6 +22,7 @@ import 'package:anicel/src/services/commands/set_layer_attachment_command.dart';
 import 'package:anicel/src/services/commands/set_layer_placement_command.dart';
 import 'package:anicel/src/services/commands/update_cut_camera_command.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../../helpers/reference_to.dart';
 
 /// The last four commands on the undo stack with nothing naming them.
 void main() {
@@ -280,7 +281,7 @@ void main() {
           cut('c', [
             layer(
               'l',
-              mediaReference: MediaReference(assetPath: '/still.png'),
+              mediaReference: referenceTo('/still.png'),
             ),
           ]),
         ],

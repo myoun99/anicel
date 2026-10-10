@@ -35,7 +35,7 @@ void main() {
       final surface = await rasterizeImageToSurface(
         image: image,
         canvas: canvas,
-        fit: MediaFitMode.stretch,
+        placement: fitPlacement(image, canvas, MediaFitMode.stretch),
         tileSize: 64,
       );
       image.dispose();

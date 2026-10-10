@@ -230,6 +230,17 @@ void main() {
     );
   });
 
+  // I-68 (format 12): a v11 file's references say nothing of where their
+  // pictures stand — refused by its number rather than opened with a stand
+  // made up for each, which the next save would write as the truth.
+  test('🚨a v11 file is refused by its number — where its references stand '
+      'is written nowhere in it', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(11)),
+      refusesNaming('format 11,'),
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
@@ -337,6 +348,18 @@ void main() {
           'a v8 build sets a text in columns in lines, over a plate that '
           'shows columns, and its first edit writes the lines back — it '
           'must refuse the file (R9-rest, 10-07)',
+    );
+  });
+
+  test('🚨a build that reads version 11 refuses what this one writes — a '
+      'reference says where its picture stands now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(11),
+      reason:
+          'a v11 build fits a reference\'s file to the canvas as it is each '
+          'time it lays it — on a canvas grown since, in its middle — and '
+          'saves it back without its pose (I-68)',
     );
   });
 }

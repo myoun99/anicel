@@ -33,12 +33,31 @@ ReferenceSwap? referenceSwapFor(Layer layer, String path) {
   if (reference == null || normalizedMediaPath(path) == reference.assetPath) {
     return null;
   }
-  final kind = mediaAssetKindForPath(path);
+  final redraw = referenceRedrawFor(layer);
+  // A movie row takes a movie, a still row a still.
+  final takes = switch (redraw) {
+    ReferenceSwap.movie => MediaAssetKind.video,
+    ReferenceSwap.still => MediaAssetKind.image,
+    null => null,
+  };
+  return takes != null && mediaAssetKindForPath(path) == takes ? redraw : null;
+}
+
+/// How [layer]'s pictures are made from its file AGAIN — a still's baked
+/// anew, a movie's decoded anew as it is shown — or null when the row
+/// points at no file or is of another shape ([referenceSwapFor] says why
+/// such a row is not drawn again). Swapping the file and moving its
+/// reference fx (I-68) both draw it again.
+ReferenceSwap? referenceRedrawFor(Layer layer) {
+  final reference = layer.mediaReference;
+  if (reference == null) {
+    return null;
+  }
   if (isMovieReference(layer)) {
-    return kind == MediaAssetKind.video ? ReferenceSwap.movie : null;
+    return ReferenceSwap.movie;
   }
   final stillRow =
       layer.kind == LayerKind.image &&
       mediaAssetKindForPath(reference.assetPath) == MediaAssetKind.image;
-  return stillRow && kind == MediaAssetKind.image ? ReferenceSwap.still : null;
+  return stillRow ? ReferenceSwap.still : null;
 }

@@ -6,11 +6,11 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import '../helpers/reference_to.dart';
 
 /// A movie kept as a reference is one held cel; every position of it is a
 /// MOVIE CEL, named by the held cel and how far into the movie it is.
@@ -45,7 +45,7 @@ void main() {
       );
       return path == null
           ? plain
-          : plain.copyWith(mediaReference: MediaReference(assetPath: path));
+          : plain.copyWith(mediaReference: referenceTo(path));
     }
 
     expect(isMovieReference(layer('/takes/a.mov')), isTrue);
@@ -61,9 +61,9 @@ void main() {
       'point — wherever the block stands', () {
     var ids = 0;
     final planned = planMovieReferenceLayer(
-      referencePath: '/takes/a.mov',
+      reference: referenceTo('/takes/a.mov', frameOffset: 3),
       displayName: 'a',
-      span: (first: 3, count: 4),
+      length: 4,
       mint: ImportIdMint(
         nextLayerId: () => LayerId('movie-${++ids}'),
         nextFrameId: (layerId) => FrameId('${layerId.value}-held'),

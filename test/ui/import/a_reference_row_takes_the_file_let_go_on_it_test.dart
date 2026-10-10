@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -11,8 +13,11 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart'
+    show debugVideoDecodeBackend;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -20,6 +25,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
+import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -242,8 +248,8 @@ void main() {
     expect(centre(session, row), [255, 0, 0, 255]);
   });
 
-  testWidgets('the new picture stands where the old one stood — at the fit '
-      'the row was placed with', (tester) async {
+  testWidgets('the new picture stands where the old one stood — at the row\'s '
+      'reference fx, over its own pixels (I-68)', (tester) async {
     final (:session, :row, :next) = await open(
       tester,
       size: (width: 16, height: 8),
@@ -355,6 +361,20 @@ void main() {
   group('a movie reference row', () {
     const takeRow = LayerId('take-row');
 
+    /// [path] from its 4th frame on, standing where its reference fx says —
+    /// a pose of its own, which no fit of the canvas would give.
+    MediaReference shows(String path) => MediaReference(
+      assetPath: path,
+      frameOffset: 3,
+      pose: TransformPose(
+        center: CanvasPoint(x: 700, y: 500),
+        scaleX: 1.5,
+        scaleY: 1.5,
+        rotationDegrees: 10,
+      ),
+      pictureSize: const CanvasSize(width: 640, height: 360),
+    );
+
     Layer movieRow(String path) => Layer(
       id: takeRow,
       name: 'take',
@@ -364,12 +384,14 @@ void main() {
       timeline: {
         0: const TimelineExposure.drawing(FrameId('take-cel'), length: 6),
       },
-      mediaReference: MediaReference(assetPath: path, frameOffset: 3),
+      mediaReference: shows(path),
     );
 
     testWidgets('takes a movie let go on it — the reference is all that '
-        'moves, where in the file it starts included — and nothing else',
-        (tester) async {
+        'moves, where in the file it starts and where it stands included — '
+        'and nothing else', (tester) async {
+      debugVideoDecodeBackend = FakeVideoBackend(width: 1280, height: 720);
+      addTearDown(() => debugVideoDecodeBackend = null);
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -393,20 +415,27 @@ void main() {
         reason: 'the door asks the same question the drop does',
       );
 
-      final swapped = await session.importDoors.swapReference(
-        layerId: takeRow,
-        path: '/work/take2.mp4',
+      final swapped = await tester.runAsync(
+        () => session.importDoors.swapReference(
+          layerId: takeRow,
+          path: '/work/take2.mp4',
+        ),
       );
 
       expect(swapped, isTrue);
       expect(
         session.layerById(takeRow)!.mediaReference,
-        MediaReference(assetPath: '/work/take2.mp4', frameOffset: 3),
+        shows('/work/take2.mp4').copyWith(
+          pictureSize: const CanvasSize(width: 1280, height: 720),
+        ),
+        reason:
+            'the same pose over the new movie\'s own frame — I-68: '
+            '「해상도가 달라도 같은크기로 겹치지않게」',
       );
       session.historyManager.undo();
       expect(
         session.layerById(takeRow)!.mediaReference,
-        MediaReference(assetPath: '/work/take1.mp4', frameOffset: 3),
+        shows('/work/take1.mp4'),
       );
       // The edit's own settling timers, run out on the test's clock.
       await tester.pump(const Duration(minutes: 1));

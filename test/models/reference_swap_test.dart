@@ -3,10 +3,10 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/reference_to.dart';
 
 /// I-47: which reference rows take which files in place of the one they
 /// show — a movie row a movie, an image row's still a still, and nothing
@@ -19,7 +19,7 @@ void main() {
     kind: kind,
     frames: [Frame(id: const FrameId('cel'), duration: 1, strokes: const [])],
     timeline: {0: const TimelineExposure.drawing(FrameId('cel'), length: 4)},
-    mediaReference: shows == null ? null : MediaReference(assetPath: shows),
+    mediaReference: shows == null ? null : referenceTo(shows),
   );
 
   test('🎯an image row showing a still takes another still — as a still', () {
