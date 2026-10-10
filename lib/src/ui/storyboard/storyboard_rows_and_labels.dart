@@ -297,8 +297,9 @@ class _StoryboardRowsAndLabels {
   }
 
   /// A CONTE row's rail label, at [seat] of the track's conte group — THE
-  /// TIMELINE'S OWN ROW ([TimelineLayerControlsRow]), wearing the seat's
-  /// head ([conteHeadAt]).
+  /// TIMELINE'S OWN ROW ([TimelineLayerControlsRow]), wearing its row in
+  /// hand ([projectionRowInHandOn]): the cut stood in's row at the seat,
+  /// else the seat's head.
   ///
   /// 🗣️I-73 (유저 2026-10-08): 「콘티행도 동일하게 하고싶으니까 어태치
   /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어
@@ -306,9 +307,9 @@ class _StoryboardRowsAndLabels {
   /// · 「이거만 눈이랑 불투명도조차 링크하도록. 그거마저 머리로서
   /// 하나로되도록 통일」. The row is the widget the timeline's rail builds
   /// for the same layer, not a second listing of its cells, so what that
-  /// row grows this one has; and every control on it writes the row's head,
-  /// which the commands carry to the row at this seat of every cut
-  /// (`headMirrorTargets`).
+  /// row grows this one has; and every control on it writes the row in
+  /// hand, whose head the commands carry to the row at this seat of every
+  /// cut (`headMirrorTargets`).
   ///
   /// The head's contents are the drawn proposal's: 「이름 옆의 접기(∨)로
   /// 어태치 행을 접고, 라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인 펼침이
@@ -389,8 +390,12 @@ class _StoryboardRowsAndLabels {
 
   Widget _conteLabel(Track track, int seat, {bool chromeless = false}) {
     final rowId = trackConteRowId(track.id, seat: seat);
-    final head = conteHeadAt(track.cuts, seat);
-    final verbs = _timelineHeadVerbs();
+    final head = projectionRowInHandOn(
+      track.cuts,
+      LayerRowAddress(rowId),
+      standingIn: _state.widget.activeCutId,
+    );
+    final verbs = _timelineHeadVerbs(rowId);
     if (head == null || verbs == null) {
       return _headlessLabel(
         track,
@@ -453,7 +458,7 @@ class _StoryboardRowsAndLabels {
     final rowId = trackCameraRowId(track.id);
     final active = _state.widget.selectedRow == LayerRowAddress(rowId);
     final head = _state._railRows._cameraHeadOf(track);
-    final verbs = _timelineHeadVerbs();
+    final verbs = _timelineHeadVerbs(rowId);
     if (head == null || verbs == null) {
       return _headlessLabel(
         track,
@@ -495,7 +500,7 @@ class _StoryboardRowsAndLabels {
         labelDoubleClick: _renameOn(rowId),
         onToggleLayerVisibility: verbs.toggleEye,
         onLayerOpacityChanged: verbs.setOpacity,
-        onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
+        onLayerOpacityChangeEnd: verbs.endOpacity,
         opacityOverride: _state.widget.cameraDimOpacity,
         onLayerMarkSelected: verbs.pickMark,
         // This rail has the blend column, as the conte heads say: a camera
@@ -503,7 +508,7 @@ class _StoryboardRowsAndLabels {
         onLayerBlendModeSelected: verbs.pickBlend,
         fxState:
             _state.widget.layerFxStateOf?.call(head.id) ?? LayerFxState.on,
-        onToggleLayerFx: _state.widget.onToggleLayerFx,
+        onToggleLayerFx: verbs.toggleFx,
       ),
     );
   }
@@ -537,23 +542,43 @@ class _StoryboardRowsAndLabels {
 
   /// The verbs a head that is the timeline's own row cannot stand without —
   /// its eye, its opacity, its label and its blend, which that row takes as
-  /// given — or null while the host has not wired them all.
-  _TimelineHeadVerbs? _timelineHeadVerbs() {
-    final toggleEye = _state.widget.onToggleLayerVisibility;
-    final setOpacity = _state.widget.onLayerOpacityChanged;
-    final pickMark = _state.widget.onLayerMarkSelected;
-    final pickBlend = _state.widget.onLayerBlendModeSelected;
-    return toggleEye == null ||
-            setOpacity == null ||
-            pickMark == null ||
-            pickBlend == null
-        ? null
-        : (
-            toggleEye: toggleEye,
-            setOpacity: setOpacity,
-            pickMark: pickMark,
-            pickBlend: pickBlend,
-          );
+  /// given — pressed on the projection ROW [rowId], or null while the host
+  /// has not wired them all.
+  ///
+  /// The row is what the selection holds and a stand names, so a press made
+  /// there is a press inside the selection when the row is in it
+  /// (row-buttons-act-on-the-selection); the session lands it on the row in
+  /// hand (`RowSelection.layerActedOn`). ↩️They pressed the layer the label
+  /// wears — one cut's, which no selection on this rail holds — so a press
+  /// on a selected conte row changed that row alone (the 10-10 audit).
+  _TimelineHeadVerbs? _timelineHeadVerbs(LayerId rowId) {
+    final widget = _state.widget;
+    final toggleEye = widget.onToggleLayerVisibility;
+    final setOpacity = widget.onLayerOpacityChanged;
+    final pickMark = widget.onLayerMarkSelected;
+    final pickBlend = widget.onLayerBlendModeSelected;
+    if (toggleEye == null ||
+        setOpacity == null ||
+        pickMark == null ||
+        pickBlend == null) {
+      return null;
+    }
+    final endOpacity = widget.onLayerOpacityChangeEnd;
+    final toggleFx = widget.onToggleLayerFx;
+    final toggleGroupFold = widget.onToggleAttachGroup;
+    return (
+      toggleEye: (_) => toggleEye(rowId),
+      setOpacity: (_, opacity) => setOpacity(rowId, opacity),
+      endOpacity: endOpacity == null
+          ? null
+          : (_, opacity) => endOpacity(rowId, opacity),
+      pickMark: (_, edit) => pickMark(rowId, edit),
+      pickBlend: (_, mode) => pickBlend(rowId, mode),
+      toggleFx: toggleFx == null ? null : (_) => toggleFx(rowId),
+      toggleGroupFold: toggleGroupFold == null
+          ? null
+          : (_) => toggleGroupFold(rowId),
+    );
   }
 
   /// [head]'s row as the timeline's rail builds it, at this rail's width
@@ -565,9 +590,9 @@ class _StoryboardRowsAndLabels {
     ({Cut cut, Layer row}) head, {
     bool chromeless = false,
   }) {
-    // Its caller stood down without them ([_conteLabel]).
-    final verbs = _timelineHeadVerbs()!;
     final rowId = trackConteRowId(track.id, seat: seat);
+    // Its caller stood down without them ([_conteLabel]).
+    final verbs = _timelineHeadVerbs(rowId)!;
     final select = _state.widget.onSelectLayer;
     return TimelineLayerControlsRow(
       chromeless: chromeless,
@@ -591,12 +616,12 @@ class _StoryboardRowsAndLabels {
       labelDoubleClick: _renameOn(rowId),
       onToggleLayerVisibility: verbs.toggleEye,
       onLayerOpacityChanged: verbs.setOpacity,
-      onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
+      onLayerOpacityChangeEnd: verbs.endOpacity,
       opacityDragPreview: _state.widget.opacityDragPreview,
       onLayerMarkSelected: verbs.pickMark,
       fxState:
           _state.widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
-      onToggleLayerFx: _state.widget.onToggleLayerFx,
+      onToggleLayerFx: verbs.toggleFx,
       onLayerBlendModeSelected: verbs.pickBlend,
       // An attach row says which side of its base it rides, and wears the
       // base's composite — the timeline row's own two answers, asked of the
@@ -611,7 +636,7 @@ class _StoryboardRowsAndLabels {
       groupFoldExpanded: !_state.widget.collapsedAttachBaseIds.contains(
         head.row.id,
       ),
-      onToggleGroupFold: _state.widget.onToggleAttachGroup,
+      onToggleGroupFold: verbs.toggleGroupFold,
     );
   }
 

@@ -10,8 +10,6 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
-import '../../models/timeline_row_address.dart';
-import '../../models/track_projection_row.dart' show projectionRowHeadOf;
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/project_lookup.dart'
@@ -20,6 +18,7 @@ import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
 import 'render_caches.dart';
+import 'row_selection.dart';
 import 'session_roles.dart';
 import '../text/place_lines.dart' show linkPartnerLines;
 
@@ -39,14 +38,20 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required RenderCaches renderCaches,
+    required RowSelection rowSelection,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _renderCaches = renderCaches;
+       _renderCaches = renderCaches,
+       _rowSelection = rowSelection;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
+
+  /// The rows a verb on the selection acts on
+  /// ([RowSelection.selectedLayerIds]).
+  final RowSelection _rowSelection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
 
@@ -123,24 +128,20 @@ class LayerVerbs {
   List<LayerId> renameableSelectedLayerIds() =>
       selectedLayerIdsWhere(_nameIsEditable);
 
-  /// Of [ids] — the rows a press acted on — the ones whose NAME may be
-  /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
-  /// Wherever [renameRows] can write it ([_cutWriting]), a storyboard
-  /// projection row as its head (F-322: 「더블클릭으로 레이어 이름바꾸는거 …
+  /// Of [ids] — the layers a press acted on
+  /// ([RowSelection.layersActedOnBy]) — the ones whose NAME may be edited,
+  /// by [renameableSelectedLayerIds]'s rule (I-48's double click), wherever
+  /// [renameRows] can write it ([_cutWriting]): a storyboard projection
+  /// row's lands in any cut (F-322: 「더블클릭으로 레이어 이름바꾸는거 …
   /// 통일」). ↩️Only the active cut's rows were looked at.
-  List<LayerId> renameableOf(Iterable<LayerId> ids) {
-    final project = _project.repository.requireProject();
-    return _layerIdsWhere(
-      [
-        for (final id in ids)
-          if (projectionRowHeadOf(project, id)?.id ?? id case final named
-              when _cutWriting(named) != null)
-            named,
-      ],
-      _nameIsEditable,
-      among: projectLayersAnywhere(project),
-    );
-  }
+  List<LayerId> renameableOf(Iterable<LayerId> ids) => _layerIdsWhere(
+    [
+      for (final id in ids)
+        if (_cutWriting(id) != null) id,
+    ],
+    _nameIsEditable,
+    among: projectLayersAnywhere(_project.repository.requireProject()),
+  );
 
   static bool _nameIsEditable(Layer layer) => !layer.kind.isTrackFixture;
 
@@ -152,10 +153,7 @@ class LayerVerbs {
   /// rung (I-18, `BlockNaming`), which names its own predicate rather than
   /// walking the selection a second time.
   List<LayerId> selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
-      _layerIdsWhere([
-        for (final row in _selection.rowSelection.value)
-          if (row is LayerRowAddress) row.layerId,
-      ], keep);
+      _layerIdsWhere(_rowSelection.selectedLayerIds, keep);
 
   /// Of [ids], the layers of the cut — or [among] — that pass [keep], in
   /// order, once each.

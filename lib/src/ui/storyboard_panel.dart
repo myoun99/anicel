@@ -37,7 +37,8 @@ import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';
-import '../models/track_projection_row.dart' show projectionRowIdOf;
+import '../models/track_projection_row.dart'
+    show projectionRowIdOf, projectionRowInHandOn;
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart' show TransformTrack;
 import '../models/track_transitions.dart' show transitionRowSpans;
@@ -245,15 +246,18 @@ typedef StoryboardRailRow = ({
   int? conteSeat,
 });
 
-/// The four verbs a head that is the timeline's own row takes as given —
-/// a conte row's and the camera row's
-/// ([_StoryboardRowsAndLabels.conteLabelRow],
-/// [_StoryboardRowsAndLabels.cameraLabelRow]).
+/// The verbs of a head that is the timeline's own row — a conte row's and
+/// the camera row's ([_StoryboardRowsAndLabels.conteLabelRow],
+/// [_StoryboardRowsAndLabels.cameraLabelRow]): the four it takes as given,
+/// and the three a host may leave unwired.
 typedef _TimelineHeadVerbs = ({
   ValueChanged<LayerId> toggleEye,
   void Function(LayerId layerId, double opacity) setOpacity,
+  void Function(LayerId layerId, double opacity)? endOpacity,
   void Function(LayerId layerId, LayerMarkEdit edit) pickMark,
   void Function(LayerId layerId, LayerBlendMode mode) pickBlend,
+  ValueChanged<LayerId>? toggleFx,
+  ValueChanged<LayerId>? toggleGroupFold,
 });
 
 /// One row of a track group's rail, as the strip column lays it out.

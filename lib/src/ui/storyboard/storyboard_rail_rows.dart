@@ -261,20 +261,43 @@ class _StoryboardRailRows {
   /// and on every other track.
   Layer? _cameraHeadOf(Track track) => _cameraHeadAt(track)?.layer;
 
-  /// [_cameraHeadOf] with the cut it is the camera of.
-  ({Cut cut, Layer layer})? _cameraHeadAt(Track track) {
+  /// [_cameraHeadOf] with the cut it is the camera of: the camera row's
+  /// row in hand while it is the stood cut's own ([_stoodInHand]).
+  ({Cut cut, Layer layer})? _cameraHeadAt(Track track) =>
+      _stoodInHand(track, LayerRowAddress(trackCameraRowId(track.id)));
+
+  /// [track]'s projection row [row] IN HAND ([projectionRowInHandOn]) — the
+  /// layer the rail wears for it and its lanes are drawn from — and whether
+  /// it is the row of the cut the session stands in ([stood]): only there
+  /// are its lanes valued, edited and followed. Null while no cut holds a
+  /// row there.
+  ({Cut cut, Layer layer, bool stood})? _inHand(
+    Track track,
+    TimelineRowAddress row,
+  ) {
     final activeCutId = _state.widget.activeCutId;
-    if (activeCutId == null) {
-      return null;
-    }
-    for (final cut in track.cuts) {
-      if (cut.id == activeCutId) {
-        final camera = cut.layers.cameraLayer;
-        return camera == null ? null : (cut: cut, layer: camera);
-      }
-    }
-    return null;
+    final inHand = projectionRowInHandOn(
+      track.cuts,
+      row,
+      standingIn: activeCutId,
+    );
+    return inHand == null
+        ? null
+        : (
+            cut: inHand.cut,
+            layer: inHand.row,
+            stood: inHand.cut.id == activeCutId,
+          );
   }
+
+  /// [_inHand] while it is the stood cut's own row; null otherwise.
+  ({Cut cut, Layer layer})? _stoodInHand(
+    Track track,
+    TimelineRowAddress row,
+  ) => switch (_inHand(track, row)) {
+    (:final cut, :final layer, stood: true) => (cut: cut, layer: layer),
+    _ => null,
+  };
 
   /// Whether [track]'s camera row has its lanes twirled down (I-73 ④ⓔ):
   /// whether a camera of its cuts has — a track's cameras twirl as one,
@@ -299,25 +322,18 @@ class _StoryboardRailRows {
   }
 
   /// The lanes [track]'s camera row twirls down: the timeline's camera
-  /// lanes ([cameraPropertyLanes]) of the camera of the cut the session
-  /// stands in, valued there — or, in a gap, the same lanes of the track's
-  /// first camera, with nothing to read their values in.
-  List<PropertyLaneRow> _cameraLanes(Track track) {
-    final head = _cameraHeadAt(track);
-    if (head != null) {
-      return cameraPropertyLanes(
-        head.layer,
-        head.cut.camera.track,
-        canvasSize: head.cut.canvasSize,
-      );
-    }
-    for (final cut in track.cuts) {
-      if (cut.layers.cameraLayer case final camera?) {
-        return cameraPropertyLanes(camera, cut.camera.track, canvasSize: null);
-      }
-    }
-    return const [];
-  }
+  /// lanes ([cameraPropertyLanes]) of its camera in hand ([_inHand]),
+  /// valued in the cut the session stands in — or, in a gap, the same lanes
+  /// of the track's first camera, with nothing to read their values in.
+  List<PropertyLaneRow> _cameraLanes(Track track) =>
+      switch (_inHand(track, LayerRowAddress(trackCameraRowId(track.id)))) {
+        (:final cut, :final layer, :final stood) => cameraPropertyLanes(
+          layer,
+          cut.camera.track,
+          canvasSize: stood ? cut.canvasSize : null,
+        ),
+        null => const [],
+      };
 
   /// Whether [track]'s conte row at [seat] has its lanes twirled down
   /// (I-73 ④ⓔ): whether a row at its seat has — the rows that wear one head
@@ -337,20 +353,6 @@ class _StoryboardRailRows {
     return rows.where(open.contains).firstOrNull ?? rows.firstOrNull;
   }
 
-  /// The cut the session stands in on [track], with its row at [seat] of
-  /// its conte group — null in a gap, on another track, or where the cut
-  /// holds no row there.
-  ({Cut cut, Layer layer})? _conteStoodAt(Track track, int seat) {
-    final activeCutId = _state.widget.activeCutId;
-    for (final cut in track.cuts) {
-      if (cut.id == activeCutId) {
-        final row = conteRowAtSeat(cut, seat);
-        return row == null ? null : (cut: cut, layer: row);
-      }
-    }
-    return null;
-  }
-
   /// [row]'s lanes in [cut] — THE list its timeline row twirls down
   /// ([propertyLanesForRow]), with its groups twirled as the timeline's
   /// are; [valued] reads them at a frame of the cut's own.
@@ -367,19 +369,21 @@ class _StoryboardRailRows {
   );
 
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
-  /// in the cut the session stands in, valued there — or, where there is
-  /// none, the head's, with nothing to read their values in. A row riding
-  /// the conte has none, as on the timeline.
-  List<PropertyLaneRow> _conteLanes(Track track, int seat) {
-    final stood = _conteStoodAt(track, seat);
-    if (stood != null) {
-      return _conteRowLanes(stood.cut, stood.layer, valued: true);
-    }
-    final head = conteHeadAt(track.cuts, seat);
-    return head == null
-        ? const []
-        : _conteRowLanes(head.cut, head.row, valued: false);
-  }
+  /// in hand ([_inHand]) — valued in the cut the session stands in, or,
+  /// where that cut holds none, the head's, with nothing to read their
+  /// values in. A row riding the conte has none, as on the timeline.
+  List<PropertyLaneRow> _conteLanes(Track track, int seat) =>
+      switch (_inHand(track, _conteRow(track, seat))) {
+        (:final cut, :final layer, :final stood) => _conteRowLanes(
+          cut,
+          layer,
+          valued: stood,
+        ),
+        null => const [],
+      };
+
+  static LayerRowAddress _conteRow(Track track, int seat) =>
+      LayerRowAddress(trackConteRowId(track.id, seat: seat));
 
   /// [track]'s conte row at [seat] as its lanes are drawn from (I-73 ④ⓔ):
   /// each cut's row at that seat, and every lane of it — each groups'
@@ -923,9 +927,10 @@ class _StoryboardRailRows {
   /// head.
   List<Widget> _cameraLaneLabels(Track track) {
     final head = _cameraHeadAt(track);
-    final shown =
-        head?.layer ??
-        track.cuts.map((cut) => cut.layers.cameraLayer).nonNulls.firstOrNull;
+    final shown = _inHand(
+      track,
+      LayerRowAddress(trackCameraRowId(track.id)),
+    )?.layer;
     if (shown == null) {
       return const [];
     }
@@ -958,8 +963,8 @@ class _StoryboardRailRows {
   /// of the cut the session stands in ([_projectionLaneLabels]) — or, where
   /// that cut holds none, the row's head.
   List<Widget> _conteLaneLabels(Track track, int seat) {
-    final stood = _conteStoodAt(track, seat);
-    final shown = stood?.layer ?? conteHeadRowAt(track.cuts, seat);
+    final stood = _stoodInHand(track, _conteRow(track, seat));
+    final shown = _inHand(track, _conteRow(track, seat))?.layer;
     if (shown == null) {
       return const [];
     }
@@ -2005,7 +2010,7 @@ class _StoryboardRailRows {
     // it — and carries the columns its head does, once a cut holds a layer
     // at its seat to be that head.
     for (final seat in _shownConteSeats(track)) {
-      final head = conteHeadRowAt(track.cuts, seat);
+      final head = _inHand(track, _conteRow(track, seat))?.layer;
       slots.add((
         row: null,
         laneRow: null,

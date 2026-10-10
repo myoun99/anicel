@@ -123,7 +123,7 @@ VoidCallback renameOnLabelDoubleClick(
   LayerId pressed,
 ) {
   final rows = session.layerVerbs.renameableOf(
-    session.rowSelectionVerbs.rowsActedOnBy(pressed),
+    session.rowSelectionVerbs.layersActedOnBy(pressed),
   );
   return () => unawaited(
     _askRowsName(

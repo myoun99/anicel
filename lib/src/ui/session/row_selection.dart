@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart' show Project;
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_projection_row.dart' show projectionRowInHand;
 import '../../services/editing/layer_standing_after_change.dart'
     show conteRowAfterChange;
 import '../../services/history_manager.dart';
@@ -37,11 +39,17 @@ class RowSelection {
     required RangeSelections rangeSelections,
     required HistoryManager history,
     required ProjectRepository repository,
+    required CutId? Function() standingIn,
   }) : _rangeSelections = rangeSelections,
        _history = history,
-       _repository = repository {
+       _repository = repository,
+       _standingIn = standingIn {
     rowSelection.addListener(_noteSelectedIn);
   }
+
+  /// The cut the session stands in — where a projection row's verbs land
+  /// ([layerActedOn]).
+  final CutId? Function() _standingIn;
 
   final RangeSelections _rangeSelections;
 
@@ -213,6 +221,34 @@ class RowSelection {
     return carried.isEmpty ? {pressedId} : carried;
   }
 
+  /// The layer a verb on the row [rowId] acts on: a storyboard projection
+  /// row's row in hand ([projectionRowInHand]) — the row the selection and
+  /// the press name it by is ONE row over every cut, and the verb lands in
+  /// one of them — and every other row's own layer.
+  LayerId layerActedOn(LayerId rowId) {
+    final project = _repository.currentProject;
+    return project == null
+        ? rowId
+        : projectionRowInHand(
+                project,
+                rowId,
+                standingIn: _standingIn(),
+              )?.row.id ??
+              rowId;
+  }
+
+  /// [rowsActedOnBy] as the layers its verbs act on ([layerActedOn]).
+  Set<LayerId> layersActedOnBy(LayerId pressedId) => {
+    for (final id in rowsActedOnBy(pressedId)) layerActedOn(id),
+  };
+
+  /// The selected rows as the layers a verb on the selection acts on, in
+  /// selection order ([layerActedOn]); only layer rows count.
+  List<LayerId> get selectedLayerIds => [
+    for (final row in rowSelection.value)
+      if (row is LayerRowAddress) layerActedOn(row.layerId),
+  ];
+
   /// 🚨A PRESS INSIDE THE SELECTION IS A PRESS ON EVERY SELECTED ROW
   /// (row-buttons-act-on-the-selection, 유저 2026-09-25, answering
   /// clear-all-marks-meaning-Q1: 「선택범위 내부 레이어 조절하면 선택범위
@@ -234,12 +270,13 @@ class RowSelection {
     required void Function(LayerId id) flip,
     required String description,
   }) {
-    final shown = valueOf(pressedId);
+    final pressed = layerActedOn(pressedId);
+    final shown = valueOf(pressed);
     if (shown == null) {
-      flip(pressedId);
+      flip(pressed);
       return;
     }
-    final rows = rowsActedOnBy(pressedId);
+    final rows = layersActedOnBy(pressedId);
     _history.runAsOneStep(description, () {
       // Read live, row by row — the pressed row too: a flip that mirrored
       // into a row later in the list has already set it.
@@ -259,7 +296,7 @@ class RowSelection {
     void Function(LayerId id) pick, {
     required String description,
   }) {
-    final rows = rowsActedOnBy(pressedId);
+    final rows = layersActedOnBy(pressedId);
     _history.runAsOneStep(description, () {
       for (final id in rows) {
         pick(id);

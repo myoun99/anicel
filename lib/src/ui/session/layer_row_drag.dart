@@ -1,8 +1,6 @@
 import '../../services/commands/reorder_track_command.dart';
-import '../../services/editing/active_cut_helpers.dart' show trackIdOfCut;
 import 'drags/row_order_drag.dart';
-import '../../models/conte_group.dart'
-    show conteHeadAt, conteRowAtSeat;
+import '../../models/conte_group.dart' show conteRowAtSeat;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -11,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_conte_row.dart' show trackConteRowOf;
 import '../../models/track_id.dart';
+import '../../models/track_projection_row.dart' show projectionRowInHand;
 import '../../models/track_transform_lane_carrier.dart';
 import 'package:flutter/foundation.dart';
 
@@ -254,34 +253,27 @@ class LayerRowDrag {
   }
 
   /// The cut a storyboard conte row's drag is made in, and its row at the
-  /// seat: the cut the session stands in, where it holds one — the
-  /// timeline's own row, so the move shows there as it would have — else
-  /// the first cut of the row's track that does (the row's head,
-  /// [conteHeadAt]). Null while no cut holds a row at the seat.
+  /// seat: the conte row's row in hand ([projectionRowInHand]) — the cut the
+  /// session stands in's, so the move shows there as the timeline's would.
+  /// Null while no cut holds a row at the seat.
   ({CutId cutId, TrackId trackId, LayerId layerId})? _seatMovedIn(
     LayerId rowId,
   ) {
     final address = trackConteRowOf(rowId);
-    if (address == null) {
-      return null;
-    }
-    final project = _project.repository.requireProject();
-    final active = _project.activeCutOrNull;
-    if (active != null &&
-        trackIdOfCut(project, active.id) == address.trackId) {
-      if (conteRowAtSeat(active, address.seat) case final row?) {
-        return (cutId: active.id, trackId: address.trackId, layerId: row.id);
-      }
-    }
-    for (final track in project.tracks) {
-      if (track.id == address.trackId) {
-        final head = conteHeadAt(track.cuts, address.seat);
-        return head == null
-            ? null
-            : (cutId: head.cut.id, trackId: track.id, layerId: head.row.id);
-      }
-    }
-    return null;
+    final inHand = address == null
+        ? null
+        : projectionRowInHand(
+            _project.repository.requireProject(),
+            rowId,
+            standingIn: _project.activeCutId,
+          );
+    return inHand == null
+        ? null
+        : (
+            cutId: inHand.cut.id,
+            trackId: address!.trackId,
+            layerId: inHand.row.id,
+          );
   }
 
   /// [cut]'s row at the seat the conte row [rowId] names, or null.

@@ -16,7 +16,8 @@ import 'track_minted_row_id.dart';
 /// is one. This is that address, minted from the track the way the V track's
 /// lane carrier is ([trackTransformLaneCarrierId]): a row the rail stands on
 /// and lights, which the verbs then resolve to the conte layer of the cut
-/// under the playhead — or to nothing, where there is none.
+/// under the playhead — or, where there is none, to the row that speaks for
+/// it (`projectionRowInHand`); a verb of the cut's own cells, to nothing.
 ///
 /// A cut's conte is a GROUP — its base and the attach rows riding it — and
 /// the rail draws one row for each SEAT of it (`models/conte_group.dart`:

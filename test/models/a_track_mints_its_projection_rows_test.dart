@@ -105,4 +105,66 @@ void main() {
       isNull,
     );
   });
+
+  group('🗣️the 10-10 audit: a projection row\'s ROW IN HAND — one answer '
+      'for its verbs, its label and its lanes', () {
+    Cut cutOf(String id, {bool over = true}) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      layers: [
+        Layer(
+          id: LayerId('$id-conte'),
+          name: 'Conte',
+          kind: LayerKind.storyboard,
+          frames: const [],
+        ),
+        if (over)
+          Layer(
+            id: LayerId('$id-over'),
+            name: 'Over',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: LayerId('$id-conte'),
+            frames: const [],
+          ),
+        Layer(
+          id: LayerId('$id-cam'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+      ],
+    );
+    final cuts = [cutOf('a'), cutOf('b', over: false), cutOf('c')];
+    final over = LayerRowAddress(trackConteRowId(t, seat: 1));
+    final camera = LayerRowAddress(trackCameraRowId(t));
+
+    String? inHand(TimelineRowAddress row, String? standingIn) =>
+        projectionRowInHandOn(
+          cuts,
+          row,
+          standingIn: standingIn == null ? null : CutId(standingIn),
+        )?.row.id.value;
+
+    test('the cut stood in\'s row there — not the first cut\'s', () {
+      expect(inHand(over, 'c'), 'c-over');
+      expect(inHand(camera, 'c'), 'c-cam');
+    });
+
+    test('where that cut holds none, the row that speaks for it: the first '
+        'cut\'s that does', () {
+      expect(inHand(over, 'b'), 'a-over');
+    });
+
+    test('in a gap — or standing on another track — the same', () {
+      expect(inHand(over, null), 'a-over');
+      expect(inHand(over, 'elsewhere'), 'a-over');
+      expect(inHand(camera, null), 'a-cam');
+    });
+
+    test('a seat no cut holds has none', () {
+      expect(inHand(LayerRowAddress(trackConteRowId(t, seat: 2)), 'a'), isNull);
+    });
+  });
 }

@@ -3,7 +3,6 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/timeline_row_address.dart';
 import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
@@ -11,6 +10,7 @@ import '../../services/persistence/media_staging_store.dart';
 import 'independent_clip_mint.dart';
 import 'layer_stack.dart';
 import 'render_caches.dart';
+import 'row_selection.dart';
 import 'session_roles.dart';
 import 'what_a_copy_brings.dart';
 
@@ -40,6 +40,7 @@ class LayerClipboard implements BringsMedia {
     required RenderCaches renderCaches,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
+    required RowSelection rowSelection,
   }) : _board = board,
        _project = project,
        _selection = selection,
@@ -47,7 +48,12 @@ class LayerClipboard implements BringsMedia {
        _layerStack = layerStack,
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
-       _staging = staging;
+       _staging = staging,
+       _rowSelection = rowSelection;
+
+  /// The rows a copy of the selection takes
+  /// ([RowSelection.selectedLayerIds]).
+  final RowSelection _rowSelection;
 
   /// The app's layer board ([LayerBoard]) — every open project's clipboard
   /// reads and writes the same one (I-7).
@@ -77,10 +83,7 @@ class LayerClipboard implements BringsMedia {
   /// track-owned SE row, an attach row. A row's kind decides what the edit
   /// DOES, never whether the row could be selected (뿌리 A).
   List<Layer> get _rowsToCopy {
-    final selected = {
-      for (final row in _selection.rowSelection.value)
-        if (row is LayerRowAddress) row.layerId,
-    };
+    final selected = _rowSelection.selectedLayerIds.toSet();
     return [
       for (final layer in _project.activeCutOrNull?.layers ?? const <Layer>[])
         if (selected.contains(layer.id) && layerTakesACopy(layer)) layer,

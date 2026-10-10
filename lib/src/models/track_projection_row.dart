@@ -1,10 +1,10 @@
 import 'conte_group.dart';
 import 'cut.dart';
+import 'cut_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
 import 'project.dart';
 import 'timeline_row_address.dart';
-import 'track_camera_head.dart' show cameraHeadOf;
 import 'track_camera_row.dart';
 import 'track_conte_row.dart';
 import 'track_id.dart';
@@ -56,22 +56,60 @@ LayerRowAddress? projectionRowUnder(TimelineRowAddress? row) => switch (row) {
   _ => null,
 };
 
-/// The row whose NAME the projection row [rowId] shows — its HEAD, which
-/// every row it stands for wears (I-73, `headMirrorTargets`): the first row
-/// of its track's cuts at its seat ([conteHeadRowAt]), or the track's first
-/// camera ([cameraHeadOf]). Null for any other id, and while no cut holds a
-/// row there.
-Layer? projectionRowHeadOf(Project project, LayerId rowId) {
+/// The ROW IN HAND of the projection row [rowId], and the cut it is in:
+/// the layer every verb on the row acts on, and the one its rail label
+/// wears ([projectionRowInHandOn]). Null for every other id, and while no
+/// cut holds a row there.
+({Cut cut, Layer row})? projectionRowInHand(
+  Project project,
+  LayerId rowId, {
+  required CutId? standingIn,
+}) {
   final trackId = trackIdOfProjectionRow(rowId);
   for (final track in project.tracks) {
     if (track.id == trackId) {
-      return switch (trackConteRowOf(rowId)) {
-        final conte? => conteHeadRowAt(track.cuts, conte.seat),
-        null => cameraHeadOf(track.cuts),
-      };
+      return projectionRowInHandOn(
+        track.cuts,
+        LayerRowAddress(rowId),
+        standingIn: standingIn,
+      );
     }
   }
   return null;
+}
+
+/// [projectionRowInHand] over [row]'s own track's [cuts]: the row [row]
+/// shows in the cut the session stands in ([standingIn]), where that cut
+/// holds one — the timeline's own row, so what is done to it shows there as
+/// it would have — else the row that speaks for it, the first of [cuts]
+/// that holds one: every head field is one for all of them (I-73,
+/// `headMirrorTargets`). Null while none does.
+///
+/// ★ONE answer for every door that asks which layer a projection row is —
+/// a press on its buttons, a verb on a selection holding it, a drag of it,
+/// a rename, the label and the lanes it draws. ↩️Each asked its own (the
+/// drag and the lanes the cut stood in else the head, the rename and the
+/// label the head alone), and a selection holding the row reached no verb
+/// at all — its buttons pressed the one row, and Delete took the block
+/// under the playhead instead of the rows (the conte panel's audit,
+/// 2026-10-10).
+({Cut cut, Layer row})? projectionRowInHandOn(
+  Iterable<Cut> cuts,
+  TimelineRowAddress row, {
+  required CutId? standingIn,
+}) {
+  ({Cut cut, Layer row})? head;
+  for (final cut in cuts) {
+    final shown = projectedRowOf(cut, row);
+    if (shown == null) {
+      continue;
+    }
+    if (cut.id == standingIn) {
+      return (cut: cut, row: shown);
+    }
+    head ??= (cut: cut, row: shown);
+  }
+  return head;
 }
 
 /// [projectedRowOf] read backwards: the projection row of [trackId] that

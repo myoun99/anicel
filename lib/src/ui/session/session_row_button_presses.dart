@@ -117,7 +117,7 @@ class SessionRowButtonPresses {
 
   void pickBlendMode(LayerId pressed, LayerBlendMode mode) =>
       session.layerSwitches.setBlendModeForLayers(
-        session.rowSelectionVerbs.rowsActedOnBy(pressed),
+        session.rowSelectionVerbs.layersActedOnBy(pressed),
         mode,
       );
 
@@ -269,7 +269,7 @@ class SessionRowButtonPresses {
   }
 
   void previewOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(pressed) && cameraDim != null) {
+    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
       cameraDim!.value = opacity;
       return;
     }
@@ -277,7 +277,7 @@ class SessionRowButtonPresses {
   }
 
   void commitOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(pressed) && cameraDim != null) {
+    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
       cameraDim!.value = opacity;
       return;
     }
@@ -334,7 +334,7 @@ class SessionRowButtonPresses {
   /// The rows a slider press moves: what the slider of each row it acts on
   /// moves ([_sliderRowsOf]).
   Set<LayerId> _opacityRows(LayerId pressed) => {
-    for (final id in session.rowSelectionVerbs.rowsActedOnBy(pressed))
+    for (final id in session.rowSelectionVerbs.layersActedOnBy(pressed))
       ..._sliderRowsOf(id),
   };
 
@@ -402,6 +402,11 @@ class SessionRowButtonPresses {
   }
 
   bool _isCamera(LayerId id) => _row(id)?.kind == LayerKind.camera;
+
+  /// The layer a press on [pressed] lands on — a storyboard projection
+  /// row's row in hand ([RowSelection.layerActedOn]).
+  LayerId _actedOn(LayerId pressed) =>
+      session.rowSelectionVerbs.layerActedOn(pressed);
 
   Layer? _row(LayerId id) =>
       layerAnywhereOrNull(session.repository.requireProject(), id);
