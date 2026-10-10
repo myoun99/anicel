@@ -2,12 +2,15 @@ import 'dart:ui' show Color;
 
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/text/readout_text.dart';
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
@@ -102,6 +105,85 @@ void main() {
         );
         expect(numbers, hasLength(lane.curve!.parts.length));
       }
+    }
+  });
+
+  test('🚨on every frame, the canvas places the row by the numbers its '
+      'lanes draw — it reads a frame where they read a time', () {
+    final lanes = lanesOf(layer);
+    for (var frame = 0; frame <= 10; frame += 1) {
+      final pose = resolveLayerPoseAt(
+        layer: layer,
+        canvasSize: canvas,
+        frameIndex: frame,
+      )!;
+      final anchor = resolveLayerAnchorPointAt(
+        layer: layer,
+        frameIndex: frame,
+      )!;
+      final opacity = resolveLayerEffectiveOpacityAt(
+        layer: layer,
+        frameIndex: frame,
+      );
+      final placed = {
+        'anchor-point': [anchor.x, anchor.y],
+        'position': [pose.center.x, pose.center.y],
+        'scale': [pose.scale.x * 100, pose.scale.y * 100],
+        'rotation': [pose.rotationDegrees],
+        'opacity': [opacity * 100],
+        effectLaneId(blur.id, 'blurX'): [
+          effectParameterValueAt(layer.effects, blur.id, 'blurX', frame),
+        ],
+      };
+      expect(
+        {
+          for (final laneId in placed.keys)
+            laneId: laneOf(lanes, laneId).curve!.at(frame.toDouble()),
+        },
+        placed,
+        reason: 'frame $frame',
+      );
+    }
+
+    final camera = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>()
+          .withKey(0, CanvasPoint(x: 200, y: 150))
+          .withKey(8, CanvasPoint(x: 260, y: 90)),
+      scale: PropertyTrack<CanvasPoint>()
+          .withKey(0, CanvasPoint(x: 1, y: 1))
+          .withKey(8, CanvasPoint(x: 1.5, y: 1.5)),
+      rotation: PropertyTrack<double>().withKey(0, 0).withKey(8, 20),
+    );
+    final cameraLanes = cameraPropertyLanes(
+      Layer(
+        id: const LayerId('camera'),
+        name: 'Camera',
+        frames: const [],
+        kind: LayerKind.camera,
+      ),
+      camera,
+      canvasSize: canvas,
+    );
+    for (var frame = 0; frame <= 10; frame += 1) {
+      final shown = TransformPose.ofCamera(
+        resolveCameraPoseAt(
+          camera: CutCamera.fromTrack(camera),
+          canvasSize: canvas,
+          frameIndex: frame,
+        ),
+      );
+      expect(
+        {
+          for (final laneId in ['position', 'scale', 'rotation'])
+            laneId: laneOf(cameraLanes, laneId).curve!.at(frame.toDouble()),
+        },
+        {
+          'position': [shown.center.x, shown.center.y],
+          'scale': [shown.scale.x * 100],
+          'rotation': [shown.rotationDegrees],
+        },
+        reason: 'the camera at $frame',
+      );
     }
   });
 
