@@ -111,6 +111,51 @@ void main() {
     });
   });
 
+  /// The standing order is read both ways round by two functions — a cut's
+  /// frames and a document's pages share them — so the two are pinned to
+  /// the order's own definition, every centre of every short run.
+  test('the standing order: every frame once, from the centre outwards, '
+      'the frame after first at each distance — and read back', () {
+    for (var count = 1; count <= 9; count += 1) {
+      for (var center = 0; center < count; center += 1) {
+        final at = '$count frames round $center';
+        final order = [
+          for (var step = 0; step < count; step += 1)
+            standingFrameAt(step, center: center, count: count)!,
+        ];
+        expect(order.toSet(), {
+          for (var frame = 0; frame < count; frame += 1) frame,
+        }, reason: at);
+        expect(order.first, center, reason: at);
+        for (var step = 1; step < count; step += 1) {
+          final before = (order[step - 1] - center).abs();
+          final here = (order[step] - center).abs();
+          expect(
+            here,
+            greaterThanOrEqualTo(before),
+            reason: '$at, step $step',
+          );
+          if (here == before) {
+            expect(
+              order[step - 1],
+              greaterThan(center),
+              reason: '$at: the frame after first',
+            );
+          }
+          expect(
+            standingStepOf(order[step], center: center, count: count),
+            step,
+            reason: '$at: read back',
+          );
+        }
+        expect(standingFrameAt(count, center: center, count: count), isNull);
+        expect(standingFrameAt(-1, center: center, count: count), isNull);
+        expect(standingStepOf(count, center: center, count: count), isNull);
+        expect(standingStepOf(-1, center: center, count: count), isNull);
+      }
+    }
+  });
+
   group('while a run plays', () {
     var playhead = 0;
     var loops = true;

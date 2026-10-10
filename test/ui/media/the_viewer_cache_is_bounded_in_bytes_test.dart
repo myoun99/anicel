@@ -251,8 +251,8 @@ void main() {
   testWidgets('🚨the page let go is the one FARTHEST from the page on screen '
       '— not the one read first', (tester) async {
     // Read 0, 1, 2 and stand on 0 again: the oldest page beside it is 1,
-    // the farthest is 2. Only the run's distance tells the two apart (the
-    // one wiring's `distance:`, ViewerPagesAndRun) — a cache that let go of
+    // the farthest is 2. Only the run's order tells the two apart (the
+    // one wiring's `wantedAt:`, ViewerPagesAndRun) — a cache that let go of
     // what it read first would keep the far page and drop the near one.
     ViewerRasterBudget.debugPageBytesOverride = await measureOnePage(tester);
     final fake = await openConte(tester, pages: 3);

@@ -8,11 +8,10 @@ import 'viewer_sound.dart';
 ///
 /// 🚨The media viewer, the export window's preview and the import window's
 /// each built this pair for themselves, line for line; the third made it a
-/// copy (F-282 ④, 2026-10-09). The line the playback law's next round
-/// changes is in it — the cache asking the run how far a page stands from
-/// the playhead (`distance:`; the board's
-/// `viewer-plays-by-the-one-playback-law`, ②) — so that round changes it
-/// here, once.
+/// copy (F-282 ④, 2026-10-09). The cache asks the run here, once, when a
+/// page is next wanted (`wantedAt:` — the canvas's order since the board's
+/// `viewer-plays-by-the-one-playback-law` ②, which changed it in this one
+/// place).
 ///
 /// What stays each surface's own: the census key its pages are counted
 /// under ([report]), the memory warnings it listens to, and what it lets go
@@ -42,7 +41,7 @@ final class ViewerPagesAndRun {
       physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
     ),
     document: () => _surface.document,
-    distance: (page) => run.distanceTo(page),
+    wantedAt: (page) => run.wantedAt(page),
     rebuild: _surface.setState,
     mounted: () => _surface.mounted,
     report: _report,

@@ -8,6 +8,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
+import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_picture_wait.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
@@ -134,23 +135,32 @@ class MediaRun {
     return path == null ? null : sound.conformStore.durationSecondsFor(path);
   }
 
-  /// How far a cached page is from being wanted again — the measure the
-  /// page cache lets pages go by ([PageRasters]).
+  /// How many steps on [page] is next wanted, or null where it is not — the
+  /// order the page cache lets pages go by, latest first ([PageRasters]).
+  ///
+  /// 🚨THE CANVAS'S ORDERS, IN THEIR CODE (viewer-plays-by-the-one-playback-
+  /// law, ②): a run that plays once ([playingStepOf]), and a run that
+  /// stands, from the page on screen outwards ([standingStepOf]). ↩️This
+  /// measured both itself (`distanceTo`), the same two orders spelled
+  /// again.
   ///
   /// 🚨**PLAYBACK ONLY MOVES FORWARD**, so a page already shown is never
-  /// wanted again and is farther than any page ahead. Measuring both with
-  /// `abs()` — which is what stood here — made the read-ahead buffer evict
-  /// ITSELF to keep frames that had just been displayed: a page five ahead
-  /// and a page five behind tied, and the tie went to whichever the map
-  /// listed first.
+  /// wanted again and goes before any page ahead. Measuring both with
+  /// `abs()` — which is what once stood here — made the read-ahead buffer
+  /// evict ITSELF to keep frames that had just been displayed: a page five
+  /// ahead and a page five behind tied, and the tie went to whichever the
+  /// map listed first.
   ///
-  /// ⚠️Paging by hand is a different question and keeps `abs()`: someone
-  /// stepping through a PDF is as likely to go back as forward.
-  int distanceTo(int page) {
-    if (!playing) {
-      return (page - _page).abs();
+  /// ⚠️Paging by hand is a different question and goes outwards both ways:
+  /// someone stepping through a PDF is as likely to go back as forward.
+  int? wantedAt(int page) {
+    if (_pageCount == 0) {
+      return null;
     }
-    return page >= _page ? page - _page : _pageCount + (_page - page);
+    final at = _page.clamp(0, _pageCount - 1);
+    return playing
+        ? playingStepOf(page, playhead: at, total: _pageCount, loops: false)
+        : standingStepOf(page, center: at, count: _pageCount);
   }
 
   /// Whether this document turns its own pages — 유저 2026-08-29:

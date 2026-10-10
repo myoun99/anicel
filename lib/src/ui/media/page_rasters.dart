@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show VoidCallback;
 
 import '../../services/media/viewer_document.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/straight_rgba_image.dart' show decodedImageStillWanted;
 import 'viewer_raster_budget.dart';
 
@@ -11,10 +12,18 @@ import 'viewer_raster_budget.dart';
 /// (stale-while-revalidate — a wrong-scale image still draws while the
 /// right one renders).
 class _RenderedPage {
-  const _RenderedPage({required this.scale, required this.image});
+  const _RenderedPage({
+    required this.scale,
+    required this.image,
+    required this.landed,
+  });
 
   final double scale;
   final ui.Image image;
+
+  /// When it landed, counted: among pages wanted alike, the one that landed
+  /// first goes first ([PageRasters.evictToBudget]).
+  final int landed;
 }
 
 /// What was last asked of the document for one (page, scale).
@@ -49,12 +58,12 @@ class PageRasters {
   PageRasters({
     required this.budget,
     required ViewerDocument? Function() document,
-    required int Function(int page) distance,
+    required int? Function(int page) wantedAt,
     required void Function(VoidCallback fn) rebuild,
     required bool Function() mounted,
     required void Function(int bytes) report,
   }) : _document = document,
-       _distance = distance,
+       _wantedAt = wantedAt,
        _rebuild = rebuild,
        _mounted = mounted,
        _report = report;
@@ -70,10 +79,10 @@ class PageRasters {
   /// The document shown — the surface's, asked when a page goes out.
   final ViewerDocument? Function() _document;
 
-  /// How far a cached page is from being wanted again — the surface's
-  /// measure, since only it knows where the playhead stands and whether it
-  /// is running.
-  final int Function(int page) _distance;
+  /// How many steps on a cached page is next wanted, null where it is not —
+  /// the surface's answer, since only it knows where the playhead stands
+  /// and whether it is running.
+  final int? Function(int page) _wantedAt;
   final void Function(VoidCallback fn) _rebuild;
   final bool Function() _mounted;
 
@@ -82,6 +91,9 @@ class PageRasters {
   final void Function(int bytes) _report;
 
   final Map<int, _RenderedPage> _cache = {};
+
+  /// How many pages have landed — what each is stamped with.
+  int _landings = 0;
 
   /// The pages the view shows now — every one on screen in a book, the
   /// page in a document that turns its own. Set where they are drawn;
@@ -196,14 +208,24 @@ class PageRasters {
       _rebuild(() {
         _renders.remove((pageIndex, at));
         _cache[pageIndex]?.image.dispose();
-        _cache[pageIndex] = _RenderedPage(scale: at, image: image);
+        _landings += 1;
+        _cache[pageIndex] = _RenderedPage(
+          scale: at,
+          image: image,
+          landed: _landings,
+        );
         evictToBudget(keeping: pageIndex);
       });
     }());
   }
 
-  /// Drops cached pages, farthest from the one on screen first, until the
-  /// cache fits [ViewerRasterBudget.byteBudget] — and answers what it holds.
+  /// Drops cached pages, the one wanted latest first, until the cache fits
+  /// [ViewerRasterBudget.byteBudget] — and answers what it holds.
+  ///
+  /// 🚨THE ORDER PLAYBACK'S CACHES LET GO BY, IN THEIR CODE
+  /// ([letGoWantedLatest]; viewer-plays-by-the-one-playback-law, ②).
+  /// ↩️This drain spelled it again: the farthest page from the one on
+  /// screen, by a measure of its own.
   ///
   /// 🚨[keeping] is never evicted. A raster that has just LANDED for a
   /// page already paged away from is itself the farthest entry, and an
@@ -220,23 +242,27 @@ class PageRasters {
       total += ViewerRasterBudget.costOf(page.image);
     }
     // ⛔Never a page on screen: in a book several are (F-201), and one let
-    // go would only be rendered again for the next frame. So the loop
+    // go would only be rendered again for the next frame. So the drain
     // ends when only those are left — over the budget by what the
     // screen shows, which no eviction could give back.
     final kept = {keeping, ...shown};
-    // A cut's read is billed beside the pages (I-14), so they make room.
-    while (total + extraBytes > budget.byteBudget) {
-      final candidates = _cache.keys.where((page) => !kept.contains(page));
-      if (candidates.isEmpty) {
-        break;
-      }
-      final farthest = candidates.reduce(
-        (a, b) => _distance(a) >= _distance(b) ? a : b,
-      );
-      final dropped = _cache.remove(farthest)!;
-      total -= ViewerRasterBudget.costOf(dropped.image);
-      dropped.image.dispose();
-    }
+    letGoWantedLatest(
+      entries: [
+        for (final entry in _cache.entries)
+          if (!kept.contains(entry.key)) entry,
+      ],
+      // A cut's read is billed beside the pages (I-14), so they make room.
+      heldBytes: total + extraBytes,
+      maxBytes: budget.byteBudget,
+      wantedAt: (entry) => _wantedAt(entry.key),
+      lastUsed: (entry) => entry.value.landed,
+      bytesOf: (entry) => ViewerRasterBudget.costOf(entry.value.image),
+      letGo: (entry) {
+        _cache.remove(entry.key);
+        total -= ViewerRasterBudget.costOf(entry.value.image);
+        entry.value.image.dispose();
+      },
+    );
     // Every path that changes the cache ends here or in [clear].
     _report(total + extraBytes);
     return total;
