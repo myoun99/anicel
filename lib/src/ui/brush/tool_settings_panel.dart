@@ -1145,15 +1145,17 @@ class _MoveSettingsState extends State<_MoveSettings> {
     // allowed now; it is the EDIT that is refused, and it is refused
     // quietly — flat controls rather than a notice per press (유저 08-13).
     final canEdit = widget.selectionCommands?.canEditTransform ?? false;
+    final options = widget.options;
+    final onOptions = canEdit ? widget.onOptionsChanged : null;
     final commands = widget.selectionCommands;
+    final strings = AppText.strings;
     // The mesh's density, shown as numbers because that is what it is
     // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). It takes a hand in
     // 메쉬 alone — a grid size means nothing to the other two modes.
     // ↩️It was only THERE in 메쉬, which is 「없다가 생기는 UI」: the row
     // keeps its place and dims.
-    final meshLive =
-        widget.options.mode == TransformMode.mesh &&
-        widget.onOptionsChanged != null;
+    final meshHandler = widget.onOptionsChanged;
+    final meshLive = options.mode == TransformMode.mesh && meshHandler != null;
     final flipHorizontal = canEdit
         ? () => commands?.flipTransform(horizontal: true)
         : null;
@@ -1161,38 +1163,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         ? () => commands?.flipTransform(horizontal: false)
         : null;
     final reset = canEdit ? () => commands?.resetTransform() : null;
-    // A key presses the flips and 초기화 as the Transform tool's settings
-    // (I-40); 적용 is 확정's, whose key reaches it anywhere.
-    return PanelKeysBinding(
-      tool: CanvasTool.move,
-      buttons: {
-        EditorActionIds.transformFlipHorizontal: flipHorizontal,
-        EditorActionIds.transformFlipVertical: flipVertical,
-        EditorActionIds.transformReset: reset,
-      },
-      child: _section(
-        canEdit: canEdit,
-        meshLive: meshLive,
-        flipHorizontal: flipHorizontal,
-        flipVertical: flipVertical,
-        reset: reset,
-      ),
-    );
-  }
-
-  Widget _section({
-    required bool canEdit,
-    required bool meshLive,
-    required VoidCallback? flipHorizontal,
-    required VoidCallback? flipVertical,
-    required VoidCallback? reset,
-  }) {
-    final options = widget.options;
-    final onOptions = canEdit ? widget.onOptionsChanged : null;
-    final commands = widget.selectionCommands;
-    final strings = AppText.strings;
-    final meshHandler = widget.onOptionsChanged;
-    return ToolSettingsSection(
+    final section = ToolSettingsSection(
       tool: 'move',
       title: strings.toolTransform,
       children: [
@@ -1414,6 +1385,17 @@ class _MoveSettingsState extends State<_MoveSettings> {
           ],
         ),
       ],
+    );
+    // A key presses the flips and 초기화 as the Transform tool's settings
+    // (I-40); 적용 is 확정's, whose key reaches it anywhere.
+    return PanelKeysBinding(
+      tool: CanvasTool.move,
+      buttons: {
+        EditorActionIds.transformFlipHorizontal: flipHorizontal,
+        EditorActionIds.transformFlipVertical: flipVertical,
+        EditorActionIds.transformReset: reset,
+      },
+      child: section,
     );
   }
 }
