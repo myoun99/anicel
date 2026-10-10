@@ -169,13 +169,7 @@ class _PanelBuild {
   /// sheets, which pass no underlay or overlay), and crossing it re-created
   /// the whole content — a sheet's every stratum re-recorded when its brush
   /// switch was touched.
-  ///
-  /// Where every pill a tool raises may stand is given here, once, for
-  /// them all ([CanvasPillRoom]).
-  Widget _toolDeck(BuildContext context) =>
-      CanvasPillRoom(cover: _state._pillCover, child: _toolStack(context));
-
-  Widget _toolStack(BuildContext context) {
+  Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final controlsBuilder = _controlsBuilder;
     final underlayBuilder = _underlayBuilder;

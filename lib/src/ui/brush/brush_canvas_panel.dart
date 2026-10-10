@@ -104,7 +104,6 @@ import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
-import '../canvas/canvas_target_pill.dart' show CanvasPillRoom;
 import '../widgets/drag_value_label.dart';
 import '../text/readout_text.dart' show readoutText;
 import '../widgets/panel_flyout.dart';
@@ -2202,26 +2201,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ),
       );
 
-  /// What the canvas's pills keep out from under (`CanvasPillRoom`):
-  /// all that framing keeps out from under, and on the floor the
-  /// horizontal bar's capsule as well — framing looks past a capsule
-  /// floating on the artwork, and a pill under one could not be pressed.
-  EdgeInsets get _pillCover {
-    final framing = _framingInsets;
-    if (!_onFloor) {
-      return framing;
-    }
-    final overTheBar =
-        _CanvasEditorPanelShell.floorBarBottom(
-          cover: widget.floorCover,
-          bottomOverlaySpan: widget.floorBottomOverlaySpan,
-          transport: widget.transport,
-        ) +
-        AppScrollbarLane.medium +
-        _CanvasEditorPanelShell._capsuleMargin;
-    return framing.copyWith(bottom: math.max(framing.bottom, overTheBar));
-  }
-
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
   late double _pillBand;
@@ -3243,21 +3222,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// How far up the floor's bottom edge the horizontal bar's capsule
   /// stands: over what covers that edge, and over the transport when there
   /// is one.
-  static double floorBarBottom({
-    required EdgeInsets cover,
-    required double bottomOverlaySpan,
-    required CanvasTransportBand? transport,
-  }) =>
+  double get _floorBarBottom =>
       cover.bottom +
       bottomOverlaySpan +
       _capsuleMargin +
-      (transport == null ? 0 : transport.height + _capsuleMargin);
-
-  double get _floorBarBottom => floorBarBottom(
-    cover: cover,
-    bottomOverlaySpan: bottomOverlaySpan,
-    transport: transport,
-  );
+      (transport == null ? 0 : transport!.height + _capsuleMargin);
 
   /// The floor's transport, in a capsule under the horizontal bar — as wide
   /// as what the side panels leave.
