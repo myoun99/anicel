@@ -3,10 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
+import '../../services/playback/playback_picture_wait.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
 import 'page_rasters.dart';
@@ -81,9 +83,34 @@ class MediaRun {
 
   bool get playing => _timer != null;
 
-  /// True while the playhead is parked waiting for its cushion to refill.
+  /// True while the playhead is parked — the clock standing ([_wait]) and
+  /// the sound held with it.
   /// ⛔Reset with the cache: it is a fact about a document that is gone.
   bool buffering = false;
+
+  /// Whether the clock stands before the page ahead: the canvas's law
+  /// ([PlaybackPictureWait]) at the setting this run plays by — render
+  /// first, with the cushion as what lies ahead ([bufferAheadPages]). A
+  /// page that is not there parks the playhead before it, and a parked
+  /// playhead goes on once the cushion has filled; a run put on a page
+  /// fills it before it goes.
+  ///
+  /// 🚨ONE LAW, ONE CODE (viewer-plays-by-the-one-playback-law, 유저
+  /// 2026-10-08: 「쓸수있는 로직 뷰어패널에서도 법 통일된거 재사용하게」,
+  /// 「옵션은 안둬도 되니까」). ↩️This run spelled the law's steps itself in
+  /// [_turnThePage], beside the canvas's spelling of the same steps, and
+  /// went at once from a page it was put on whenever the page after it
+  /// happened to be there: one frame played, then a park to fill — the
+  /// stutter the cushion exists to replace.
+  late final PlaybackPictureWait _wait = PlaybackPictureWait(
+    mode: () => PlaybackMode.renderFirst,
+    pictureIsThere: (page) {
+      final at = _rasters.scale;
+      return at != null && _rasters.readyAt(page, at);
+    },
+    aheadIsFilled: () =>
+        _rasters.readyFrom(_page + 1, _pageCount) >= _resumeAfterFrames(),
+  );
 
   /// Where the sound has got to, in seconds — the playhead's position on
   /// the waveform.
@@ -280,12 +307,19 @@ class MediaRun {
   /// the same order and the same time while holding a hundred futures. Each
   /// landing rebuilds, which issues the next — the queue walks forward on
   /// its own.
+  ///
+  /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE CUSHION HOLDS.
+  /// The playhead parks BEFORE a page that is not there ([_turnThePage]),
+  /// so nothing else asks for that page: a page bigger than half the budget
+  /// leaves no cushion at all, and a run that asked for nothing ahead would
+  /// stand for good. ↩️Such a run turned onto pages that had not landed —
+  /// the blank frames the wait exists to refuse.
   void fillBuffer() {
     final scale = _rasters.scale;
     if (scale == null || _rasters.rendering) {
       return;
     }
-    final ahead = bufferAheadPages();
+    final ahead = playing ? math.max(1, bufferAheadPages()) : 0;
     for (var offset = 1; offset <= ahead; offset += 1) {
       final page = _page + offset;
       if (page >= _pageCount) {
@@ -437,6 +471,14 @@ class MediaRun {
         return;
       }
       _timer = Timer.periodic(period, (_) => _onTick());
+      // The run is PUT on its page — play pressed there, the playhead moved
+      // there by hand — and a run put somewhere fills before it goes on
+      // ([_wait]). It stands, if it does, where it would first move: the
+      // page on screen has its time and its sound like any other, so the
+      // two pick up together from the end of it ([_turnThePage]).
+      if (turnsItsOwnPages) {
+        _wait.holds(_page, placed: true);
+      }
     });
   }
 
@@ -502,21 +544,21 @@ class MediaRun {
       _surface.setState(stop);
       return;
     }
-    final ready = _rasters.readyFrom(_page + 1, _pageCount);
-    if (buffering) {
-      // ⛔Not「one frame is ready, go」: that plays a frame, runs dry
-      // and parks again, which is a stutter rather than playback.
-      if (ready < _resumeAfterFrames()) {
-        return;
+    // ⛔Not「one frame is ready, go」once parked: that plays a frame, runs
+    // dry and parks again, which is a stutter rather than playback — the
+    // wait goes on when the cushion has filled ([_resumeAfterFrames]).
+    if (_wait.holds(_page + 1, placed: false)) {
+      if (!buffering) {
+        // Remember where the sound was, because that is where BOTH pick up.
+        soundSeconds = sound.positionSeconds ?? soundSeconds;
+        sound.hold();
+        _surface.setState(() => buffering = true);
       }
+      return;
+    }
+    if (buffering) {
       sound.resume(soundSeconds);
       _surface.setState(() => buffering = false);
-    } else if (ready < 1) {
-      // Remember where the sound was, because that is where BOTH pick up.
-      soundSeconds = sound.positionSeconds ?? soundSeconds;
-      sound.hold();
-      _surface.setState(() => buffering = true);
-      return;
     }
     _surface.turnToPage(_page + 1);
   }

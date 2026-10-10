@@ -5,8 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 
@@ -46,6 +48,8 @@ void main() {
 
   tearDown(() {
     PdfRenderService.debugResetForTests();
+    ViewerRasterBudget.debugPageBytesOverride = null;
+    AppMemory.settings.value = const AppMemorySettings();
     slot.dispose();
     session.dispose();
   });
@@ -199,8 +203,7 @@ void main() {
       find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
-    // Parked first: a frame that is ready before the first tick is simply
-    // played, with no cushion to wait for.
+    // Parked first, at the end of the page it was put on.
     for (var frame = 0; frame < 3; frame += 1) {
       await tester.pump(const Duration(milliseconds: 42));
     }
@@ -222,6 +225,83 @@ void main() {
           '🚨「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」 — moving '
           'on ONE ready frame plays it, runs dry and parks again: a '
           'stutter, not playback',
+    );
+  });
+
+  /// The canvas's render-first law, which the viewer plays by: a run PUT on
+  /// a page fills before it goes on (viewer-plays-by-the-one-playback-law).
+  testWidgets('🚨a run put on a page fills its cushion before it goes — '
+      'even when the page after it is there', (tester) async {
+    final fake = await open(tester, pages: 12, framesPerSecond: 24);
+    for (var page = 2; page < 12; page += 1) {
+      fake.holdRender(page);
+    }
+    // Page 1 drawn — stepped onto and back from — and nothing past it will
+    // land.
+    for (final step in ['step-forward', 'step-back']) {
+      await tester.tap(
+        find.byKey(ValueKey<String>('media-viewer-transport-$step')),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(slot.position.value, 0, reason: 'fixture: back on the first page');
+    expect(
+      fake.renderRequests.map((request) => request.$1),
+      contains(1),
+      reason: 'fixture: the page after it is there',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
+    );
+    await tester.pump();
+    for (var frame = 0; frame < 10; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+    expect(
+      slot.position.value,
+      0,
+      reason:
+          '🚨going on to the one page that was there plays a frame and '
+          'parks on the next: the stutter the cushion replaces',
+    );
+  });
+
+  testWidgets('🚨a page that fills the budget alone still plays — a page at '
+      'a time, and never onto a page it has not got', (tester) async {
+    // Budgets count in pages at factor 1.
+    AppMemory.settings.value = AppMemorySettings(
+      allowanceBytes: session.deviceCacheBudgets.total,
+    );
+    final probe = await open(tester, pages: 1, framesPerSecond: 24);
+    final (_, width, height) = probe.renderRequests.first;
+    // The budget is four of these: one page, the one on screen — no cushion
+    // at all (a page at the render cap on a device at the floor).
+    ViewerRasterBudget.debugPageBytesOverride = width * height;
+
+    await open(tester, pages: 6, framesPerSecond: 24);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
+    );
+    await tester.pump();
+    var blank = 0;
+    for (var tick = 0; tick < 40 && slot.position.value < 5; tick += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+      if (drawnImage(tester) == null) {
+        blank += 1;
+      }
+    }
+    expect(
+      slot.position.value,
+      5,
+      reason:
+          'it plays: a run that asked for nothing ahead would stand on its '
+          'first page for good',
+    );
+    expect(
+      blank,
+      0,
+      reason: '🚨and it never turns onto a page that has not landed',
     );
   });
 }
