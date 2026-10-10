@@ -983,7 +983,7 @@ class EditorSessionManager extends ChangeNotifier
   // sits on the GLOBAL axis.
   late final RowSpans rowSpans = RowSpans(project: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
-  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
+  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager, repository: repository);
 
   /// ⚠️A ROLE member, not a forwarder: [SelectionAccess.clearRowSelection]
   /// is asked of the SESSION by collaborators that must not name this one
@@ -2088,7 +2088,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
-  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm, standing: standing);
+  late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, attachFxConfirm: attachFxConfirm);
 
   // ── a file held over the timeline: its own object, in its own file ──
   //
@@ -2853,8 +2853,12 @@ class EditorSessionManager extends ChangeNotifier
   /// Every announcement first lets the verbs' row follow an active layer the
   /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
   /// every door that moves it passes, collaborators' and this class's own.
+  /// The conte rows the selection and the rail's stand hold follow their
+  /// rows' seats there too, first ([Standing.followConteSeats], F-322).
   @override
   void notifyListeners() {
+    rowSelectionVerbs.followConteSeats();
+    standing.followConteSeats();
     standing.followActiveLayer();
     super.notifyListeners();
   }

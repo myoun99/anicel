@@ -1,9 +1,13 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/layer_id.dart';
+import '../../models/project.dart' show Project;
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_row_address.dart';
+import '../../services/editing/layer_standing_after_change.dart'
+    show conteRowAfterChange;
 import '../../services/history_manager.dart';
+import '../../services/project_repository.dart';
 import '../timeline/property_lane_model.dart' show TimelineDisplayRow;
 import '../timeline/timeline_row_span_resolver.dart'
     show resolveSelectionSpanOverAddresses;
@@ -32,10 +36,24 @@ class RowSelection {
   RowSelection({
     required RangeSelections rangeSelections,
     required HistoryManager history,
+    required ProjectRepository repository,
   }) : _rangeSelections = rangeSelections,
-       _history = history;
+       _history = history,
+       _repository = repository {
+    rowSelection.addListener(_noteSelectedIn);
+  }
 
   final RangeSelections _rangeSelections;
+
+  /// The project the selection is counted in ([followConteSeats]).
+  final ProjectRepository _repository;
+
+  /// The project [rowSelection] was written in — the one whose seats its
+  /// conte rows' addresses count. Noted by the notifier's own listener, so
+  /// every write notes it, whoever makes it.
+  Project? _selectedIn;
+
+  void _noteSelectedIn() => _selectedIn = _repository.currentProject;
 
   /// Where a press spread over the selection lands as one step
   /// ([pressAcross], [pickAcross]).
@@ -100,12 +118,21 @@ class RowSelection {
     _rowSelectionAnchor = null;
   }
 
-  /// The selected rows a move re-addressed ([rowAddressAfterMove]) stay
-  /// selected on their new addresses.
-  void followMovedRows(Map<LayerId, LayerId> moved) {
+  /// 🗣️F-322: the selected conte rows follow their rows to the seats an
+  /// edit moved them to — a drag, a delete, an undo — and a row the edit
+  /// took leaves the selection ([conteRowAfterChange]): what disappears
+  /// never keeps it. The session asks it with every change it announces.
+  void followConteSeats() {
+    final before = _selectedIn;
+    final after = _repository.currentProject;
+    if (before == null || after == null || identical(before, after)) {
+      return;
+    }
+    _selectedIn = after;
     final selection = rowSelection.value;
     final next = [
-      for (final row in selection) rowAddressAfterMove(row, moved),
+      for (final row in selection)
+        ?conteRowAfterChange(row, before: before, after: after),
     ];
     if (!listEquals(next, selection)) {
       rowSelection.value = next;

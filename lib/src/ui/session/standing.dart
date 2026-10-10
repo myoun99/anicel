@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 
 import '../../services/editing/active_cut_helpers.dart';
+import '../../services/editing/layer_standing_after_change.dart'
+    show conteRowAfterChange, conteRowHandedOff;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project.dart' show Project;
 import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
@@ -188,21 +191,31 @@ class Standing {
     return projection == null ? null : LayerRowAddress(projection);
   }
 
-  /// The rows a move re-addressed ([rowAddressAfterMove]): the selection
-  /// and the storyboard's stand that were on them follow them — a conte
-  /// row's address is its seat, and a re-order changes seats (F-322).
-  void followMovedRows(Map<LayerId, LayerId> moved) {
-    if (moved.isEmpty) {
+  /// 🗣️F-322: the rail's stand on a conte row follows its rows to the seat
+  /// an edit moved them to — a drag, a delete, an undo — and goes where the
+  /// timeline's delete hands off once the edit took them all
+  /// ([conteRowAfterChange], [conteRowHandedOff]). The session asks it with
+  /// every change it announces, before [followActiveLayer]: the row an edit
+  /// seats is still the row you stand on.
+  ///
+  /// Counted from the project the stand was written in ([_railStand]), not
+  /// the last one announced: a door that stands before it announces wrote
+  /// that seat in the project its edit made.
+  void followConteSeats() {
+    final stand = _railStand;
+    final before = stand?.stoodIn;
+    final after = _project.repository.currentProject;
+    if (stand == null ||
+        before == null ||
+        after == null ||
+        identical(before, after)) {
       return;
     }
-    _rowSelectionVerbs.followMovedRows(moved);
-    final stood = _storyboardRow;
-    if (stood == null) {
-      return;
-    }
-    final now = rowAddressAfterMove(stood, moved);
-    if (now != stood) {
-      _storyboardRow = now;
+    final row =
+        conteRowAfterChange(stand.row, before: before, after: after) ??
+        conteRowHandedOff(stand.row, before: before, after: after);
+    _storyboardRow = row;
+    if (row != stand.row) {
       publishCurrentRow();
     }
   }
@@ -326,7 +339,16 @@ class Standing {
 
   /// The storyboard rail's own selected row, as picked. Null = never
   /// picked, which reads as the selected track's V row.
-  TimelineRowAddress? _storyboardRow;
+  TimelineRowAddress? get _storyboardRow => _railStand?.row;
+
+  set _storyboardRow(TimelineRowAddress? row) => _railStand = row == null
+      ? null
+      : (row: row, stoodIn: _project.repository.currentProject);
+
+  /// [_storyboardRow] and the project it was written in — the one whose
+  /// seats a conte row's address counts ([followConteSeats]). ONE field, so
+  /// no write can leave the seat counted in another project.
+  ({TimelineRowAddress row, Project? stoodIn})? _railStand;
 
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
   /// was picked, the way the timeline has exactly one selected layer row.

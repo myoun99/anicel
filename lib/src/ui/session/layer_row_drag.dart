@@ -2,15 +2,14 @@ import '../../services/commands/reorder_track_command.dart';
 import '../../services/editing/active_cut_helpers.dart' show trackIdOfCut;
 import 'drags/row_order_drag.dart';
 import '../../models/conte_group.dart'
-    show conteGroupOf, conteHeadAt, conteRowAtSeat, conteSeatOf;
+    show conteHeadAt, conteRowAtSeat;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/track_conte_row.dart'
-    show trackConteRowId, trackConteRowOf;
+import '../../models/track_conte_row.dart' show trackConteRowOf;
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import 'package:flutter/foundation.dart';
@@ -29,7 +28,6 @@ import 'attach_fx_confirm.dart';
 import 'session_roles.dart';
 import 'row_selection.dart';
 import 'effects_and_fx.dart';
-import 'standing.dart';
 import 'track_se_display.dart';
 
 /// The LAYER ROW DRAG — picking a row up in the rail and dropping it on
@@ -48,14 +46,12 @@ class LayerRowDrag {
     required EffectsAndFx effectsAndFx,
     required RowSelection rowSelectionVerbs,
     required TrackSeDisplay trackSe,
-    required Standing standing,
   }) : _project = project,
        _changes = changes,
        _attachFxConfirm = attachFxConfirm,
        _effectsAndFx = effectsAndFx,
        _rowSelectionVerbs = rowSelectionVerbs,
-       _trackSe = trackSe,
-       _standing = standing;
+       _trackSe = trackSe;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -63,10 +59,6 @@ class LayerRowDrag {
   final EffectsAndFx _effectsAndFx;
   final RowSelection _rowSelectionVerbs;
   final TrackSeDisplay _trackSe;
-
-  /// Where the rows a conte row's drag re-addressed are followed to
-  /// ([Standing.followMovedRows]).
-  final Standing _standing;
 
   /// A storyboard CONTE row's drag in flight (🗣️F-322, 유저 2026-10-09:
   /// 「선택범위 드래그로 어태치 조정」 · 「드래그로 어태치 순서이동」): the cut it
@@ -230,23 +222,14 @@ class LayerRowDrag {
     if (drag == null) {
       return;
     }
-    final seat = _conteSeatDrag;
     _conteSeatDrag = null;
-    void land() {
-      final before = seat == null ? null : _seatsOf(seat.cutId);
-      drag.commit();
-      if (seat != null && before != null) {
-        _standing.followMovedRows(_seatsMoved(seat, before));
-      }
-    }
-
     // ⚠️Asked BEFORE the commit, because committing is what destroys the fx
     // — and asked off the PLAN, so a drop that mounts nothing never opens a
     // dialog no matter what the dragged rows carry.
     final losing = drag.fxLostByThisDrop();
     if (losing.isEmpty) {
       _rowOrderDrag = null;
-      land();
+      drag.commit();
       return;
     }
     // The drag stays held until the answer arrives: nothing is committed and
@@ -256,7 +239,7 @@ class LayerRowDrag {
       answer: (proceed) {
         _rowOrderDrag = null;
         if (proceed) {
-          land();
+          drag.commit();
         } else {
           drag.cancel();
         }
@@ -339,33 +322,6 @@ class LayerRowDrag {
             if (_seatRowIn(cut, rowId) case final layer?) layer.id,
     };
     return carried.contains(movingId) ? carried : const {};
-  }
-
-  /// [cutId]'s conte group as each row's seat.
-  Map<LayerId, int>? _seatsOf(CutId cutId) {
-    final cut = _project.cutById(cutId);
-    return cut == null
-        ? null
-        : {for (final entry in conteGroupOf(cut)) entry.row.id: entry.seat};
-  }
-
-  /// The conte rows a landed drag re-addressed: each row of the group whose
-  /// seat changed, from its old seat's row to its new one's.
-  Map<LayerId, LayerId> _seatsMoved(
-    ({CutId cutId, TrackId trackId}) drag,
-    Map<LayerId, int> before,
-  ) {
-    final cut = _project.cutById(drag.cutId);
-    if (cut == null) {
-      return const {};
-    }
-    return {
-      for (final entry in before.entries)
-        if (conteSeatOf(cut, entry.key) case final seat?)
-          if (seat != entry.value)
-            trackConteRowId(drag.trackId, seat: entry.value):
-                trackConteRowId(drag.trackId, seat: seat),
-    };
   }
 
   /// A file from the pool standing over the layer area at the gap [slot] of

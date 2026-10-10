@@ -44,25 +44,6 @@ sealed class TimelineRowAddress {
   LayerId? get owningLayerId;
 }
 
-/// [row] once a move has given rows new addresses ([moved], old to new):
-/// a moved row, or a lane of one, on its new address; every other row as
-/// it was.
-///
-/// A storyboard conte row is addressed by its SEAT, and a re-order changes
-/// seats (F-322) — so what stood on it, or held it selected, follows it
-/// there, as a timeline row is followed by its id.
-TimelineRowAddress rowAddressAfterMove(
-  TimelineRowAddress row,
-  Map<LayerId, LayerId> moved,
-) => switch (row) {
-  LayerRowAddress(:final layerId) when moved.containsKey(layerId) =>
-    LayerRowAddress(moved[layerId]!),
-  LaneRowAddress(:final layerId, :final laneId)
-      when moved.containsKey(layerId) =>
-    LaneRowAddress(moved[layerId]!, laneId),
-  _ => row,
-};
-
 /// A LAYER's cells row (the timeline and X-sheet grids, the storyboard's SE
 /// strips).
 final class LayerRowAddress extends TimelineRowAddress {
