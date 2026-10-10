@@ -1,5 +1,6 @@
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 import 'package:anicel/src/ui/layout/device_grid_scroll_controller.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -199,6 +200,77 @@ void main() {
       }
     });
   }
+
+  testWidgets('🚨a scroll redraws its bar and nothing beside it — though a '
+      'LayoutBuilder stands around both', (tester) async {
+    useRatio(tester, 1);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    const thumb = ValueKey<String>('bar-thumb');
+    final besidePaints = _Mark(const Color(0xFF00FF00));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            child: SizedBox(
+              width: 300,
+              height: 80,
+              // As the timeline's grid lays its bar out: under a
+              // LayoutBuilder, whose layout runs the rebuilds below it.
+              child: LayoutBuilder(
+                builder: (context, constraints) => Column(
+                  children: [
+                    SizedBox(
+                      height: 40,
+                      child: SingleChildScrollView(
+                        controller: controller,
+                        scrollDirection: Axis.horizontal,
+                        child: const SizedBox(width: 2000, height: 40),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 16,
+                      child: AppControllerScrollbar(
+                        controller: controller,
+                        axis: Axis.horizontal,
+                        thumbKey: thumb,
+                      ),
+                    ),
+                    CustomPaint(
+                      painter: besidePaints,
+                      size: const Size(300, 20),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final painted = besidePaints.paints;
+    final thumbAt = tester.getTopLeft(find.byKey(thumb)).dx;
+
+    for (var step = 1; step <= 5; step += 1) {
+      controller.jumpTo(step * 100.0);
+      await tester.pump();
+    }
+
+    expect(
+      tester.getTopLeft(find.byKey(thumb)).dx,
+      greaterThan(thumbAt),
+      reason: 'fixture: the bar follows the scroll',
+    );
+    expect(
+      besidePaints.paints,
+      painted,
+      reason: '🚨and what stands beside it is not painted again — ↩️the bar\'s '
+          'rebuild was laid out by the LayoutBuilder around it, and its '
+          'relayout repainted the layer they share',
+    );
+  });
 
   testWidgets('🚨a viewport that pulls its position back during layout takes '
       'what follows it along — with no listener told (F-95)', (tester) async {
