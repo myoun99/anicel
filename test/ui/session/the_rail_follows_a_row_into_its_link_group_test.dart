@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show Listenable;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/session/rail_view.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 
@@ -105,12 +107,20 @@ void main() {
   });
 
   test('sets that already agree are left as they are — nothing is told', () {
-    final view = rail()..expandedLaneLayerIds.value = {origin, twin};
+    final view = rail()
+      ..expandedLaneLayerIds.value = {origin, twin}
+      ..laneGraphs.value = LaneGraphsView(
+        open: {
+          for (final row in [origin, twin])
+            laneGroupKey(row, 'transform-group'): const LaneGraph(),
+        },
+      );
     var told = 0;
-    for (final set in [
+    for (final set in <Listenable>[
       view.expandedLaneLayerIds,
       view.collapsedAttachBaseIds,
       view.expandedLaneGroupKeys,
+      view.laneGraphs,
     ]) {
       set.addListener(() => told += 1);
     }
@@ -118,5 +128,115 @@ void main() {
     view.followLinks(links([origin, twin]));
 
     expect(told, 0);
+  });
+
+  // I-89 ③: a graph and a pin are keyed by a row's lane, as an open group
+  // is — so they follow a link group by the one rule.
+  test('an open GRAPH and a PIN follow the canonical row lane by lane, as '
+      'its groups do', () {
+    const graph = LaneGraph(extent: 140, mode: LaneGraphMode.speed);
+    final view = rail()
+      ..laneGraphs.value = LaneGraphsView(
+        open: {
+          laneGroupKey(origin, 'transform-group'): graph,
+          // Open on the joiner alone: the canonical row keeps it shut.
+          laneGroupKey(twin, 'fx-group:blur'): const LaneGraph(),
+          laneGroupKey(loner, 'fx-group:blur'): const LaneGraph(),
+        },
+        pinned: {
+          laneGroupKey(origin, 'position'),
+          laneGroupKey(twin, 'rotation'),
+          laneGroupKey(loner, 'rotation'),
+        },
+      );
+
+    view.followLinks(links([origin, twin]));
+
+    expect(view.laneGraphs.value.open, {
+      laneGroupKey(origin, 'transform-group'): graph,
+      laneGroupKey(twin, 'transform-group'): graph,
+      laneGroupKey(loner, 'fx-group:blur'): const LaneGraph(),
+    });
+    expect(view.laneGraphs.value.pinned, {
+      laneGroupKey(origin, 'position'),
+      laneGroupKey(twin, 'position'),
+      laneGroupKey(loner, 'rotation'),
+    });
+  });
+
+  group('rows that wear one head (followHeads)', () {
+    test('a group or a graph open on ANY row of a family is open on every '
+        'row of it — a row keeps its own; a row of no family is left alone',
+        () {
+      const tall = LaneGraph(extent: 300);
+      final view = rail()
+        ..expandedLaneGroupKeys.value = {
+          laneGroupKey(twin, 'transform-group'),
+        }
+        ..laneGraphs.value = LaneGraphsView(
+          open: {
+            laneGroupKey(twin, 'transform-group'): tall,
+            laneGroupKey(third, 'transform-group'): const LaneGraph(),
+            laneGroupKey(loner, 'fx-group:blur'): const LaneGraph(),
+          },
+          pinned: {laneGroupKey(origin, 'scale')},
+        );
+
+      view.followHeads([
+        [origin, twin, third],
+      ]);
+
+      expect(view.expandedLaneGroupKeys.value, {
+        for (final row in [origin, twin, third])
+          laneGroupKey(row, 'transform-group'),
+      });
+      expect(view.laneGraphs.value.open, {
+        laneGroupKey(origin, 'transform-group'): tall,
+        laneGroupKey(twin, 'transform-group'): tall,
+        laneGroupKey(third, 'transform-group'): const LaneGraph(),
+        laneGroupKey(loner, 'fx-group:blur'): const LaneGraph(),
+      });
+      expect(view.laneGraphs.value.pinned, {
+        for (final row in [origin, twin, third]) laneGroupKey(row, 'scale'),
+      });
+    });
+
+    // 🚨Asked after EVERY history change, a stroke's included.
+    test('nothing folded or open: the families are never read', () {
+      final view = rail();
+      var read = 0;
+      Iterable<List<LayerId>> families() sync* {
+        read += 1;
+        yield [origin, twin];
+      }
+
+      view.followHeads(families());
+
+      expect(read, 0);
+    });
+
+    test('however much is open, the families are read once', () {
+      final view = rail()
+        ..expandedLaneLayerIds.value = {origin}
+        ..collapsedAttachBaseIds.value = {origin}
+        ..expandedLaneGroupKeys.value = {laneGroupKey(origin, 'fx-group:a')}
+        ..laneGraphs.value = LaneGraphsView(
+          open: {laneGroupKey(origin, 'fx-group:a'): const LaneGraph()},
+          pinned: {laneGroupKey(origin, 'fx:a:radius')},
+        );
+      var read = 0;
+      Iterable<List<LayerId>> families() sync* {
+        read += 1;
+        yield [origin, twin];
+      }
+
+      view.followHeads(families());
+
+      expect(read, 1);
+      expect(view.laneGraphs.value.pinned, {
+        laneGroupKey(origin, 'fx:a:radius'),
+        laneGroupKey(twin, 'fx:a:radius'),
+      });
+    });
   });
 }

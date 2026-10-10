@@ -15,15 +15,24 @@ List<TimelineDisplayRow> seatLaneGraphs(
   if (open.isEmpty) {
     return rows;
   }
+  final lanes = <String, List<String>>{};
+  for (final row in rows) {
+    if (_graphKeyOf(row) case final key? when open.containsKey(key)) {
+      (lanes[key] ??= []).add(row.lane!.laneId);
+    }
+  }
+  final seats = {
+    for (final MapEntry(:key, :value) in lanes.entries)
+      key: TimelineGraphSeat(
+        groupKey: key,
+        graph: open[key]!,
+        lanes: List.unmodifiable(value),
+      ),
+  };
   return List.unmodifiable([
     for (final row in rows)
-      switch (_graphKeyOf(row)) {
-        final key? => switch (open[key]) {
-          final graph? => row.seatedIn(
-            TimelineGraphSeat(groupKey: key, graph: graph),
-          ),
-          null => row,
-        },
+      switch (seats[_graphKeyOf(row)]) {
+        final seat? => row.seatedIn(seat),
         null => row,
       },
   ]);

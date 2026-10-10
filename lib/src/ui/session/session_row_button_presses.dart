@@ -11,6 +11,7 @@ import '../../services/project_lookup.dart'
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
+import '../timeline/lane_graph.dart' show LaneGraph, LaneGraphVerbs;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
@@ -196,12 +197,7 @@ class SessionRowButtonPresses {
     final expanded = session.railView.expandedLaneGroupKeys;
     final next = Set<String>.of(expanded.value);
     final row = parseLaneGroupKey(groupKey);
-    final everyUse = [
-      groupKey,
-      if (row != null)
-        for (final use in session.rowsFoldingWith(row.layerId))
-          laneGroupKey(use, row.laneId),
-    ];
+    final everyUse = _everyUseOf(groupKey);
     if (next.contains(groupKey)) {
       next.removeAll(everyUse);
       // Closing: only this group's MEMBERS go, so the header is what
@@ -213,6 +209,88 @@ class SessionRowButtonPresses {
       next.addAll(everyUse);
     }
     expanded.value = next;
+  }
+
+  /// The header graphs' buttons as a grid is handed them (I-89 ③).
+  LaneGraphVerbs get laneGraphVerbs =>
+      (toggle: toggleLaneGraph, togglePin: toggleLanePin);
+
+  /// A group's HEADER GRAPH on or off, by the group's key — on every use of
+  /// its row (F-302, as the group's twirl beside it), and on no other
+  /// group: 「그래프를 누른 레일만 상태변경」 (유저 2026-10-10).
+  ///
+  /// A graph stands in its lanes' place, so one turned on over a shut group
+  /// opens the group with it — through the group's own twirl, the camera
+  /// row's being the row's (㉙). Shutting the group keeps the graph for
+  /// when it opens again. ⚠️View state, as the group's twirl: no undo.
+  ///
+  /// The graph is written BEFORE the group opens: the camera row's twirl
+  /// is a command, and what follows a command reads the graphs as they
+  /// stand.
+  void toggleLaneGraph(String groupKey) {
+    final graphs = session.railView.laneGraphs;
+    final open = Map<String, LaneGraph>.of(graphs.value.open);
+    final everyUse = _everyUseOf(groupKey);
+    final opening = !open.containsKey(groupKey);
+    if (opening) {
+      for (final key in everyUse) {
+        open[key] = const LaneGraph();
+      }
+    } else {
+      open.removeWhere((key, _) => everyUse.contains(key));
+    }
+    graphs.value = graphs.value.copyWith(open: open);
+    if (opening) {
+      _openGroupOf(groupKey);
+    }
+  }
+
+  /// A lane PINNED to every open graph, or let go, by the lane's own key —
+  /// on every use of its row. AE's graph editor set (유저 2026-10-10:
+  /// 「ae의 그래프세트? … 남겨도 될거같긴한데」). View state, no undo.
+  void toggleLanePin(String laneKey) {
+    final graphs = session.railView.laneGraphs;
+    final pinned = Set<String>.of(graphs.value.pinned);
+    final everyUse = _everyUseOf(laneKey);
+    if (pinned.contains(laneKey)) {
+      pinned.removeAll(everyUse);
+    } else {
+      pinned.addAll(everyUse);
+    }
+    graphs.value = graphs.value.copyWith(pinned: pinned);
+  }
+
+  /// [groupKey]'s group twirled open where it is shut: the camera row's
+  /// lanes — its group is the row — or the header's members.
+  void _openGroupOf(String groupKey) {
+    final row = parseLaneGroupKey(groupKey);
+    if (row == null) {
+      return;
+    }
+    if (_isCamera(row.layerId)) {
+      if (!session.railView.expandedLaneLayerIds.value.contains(
+        row.layerId,
+      )) {
+        _toggleLanesOf(row.layerId);
+      }
+      return;
+    }
+    if (!session.railView.expandedLaneGroupKeys.value.contains(groupKey)) {
+      toggleLaneGroup(groupKey);
+    }
+  }
+
+  /// The keys a press on one row's lane reaches: [key] itself, and the
+  /// same lane on every use of its row (F-302) — what a group's twirl, its
+  /// graph and a lane's pin are written to.
+  List<String> _everyUseOf(String key) {
+    final row = parseLaneGroupKey(key);
+    return [
+      key,
+      if (row != null)
+        for (final use in session.rowsFoldingWith(row.layerId))
+          laneGroupKey(use, row.laneId),
+    ];
   }
 
   bool? _groupOpen(LayerId id) {

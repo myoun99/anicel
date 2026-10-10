@@ -1,4 +1,13 @@
-import 'package:flutter/foundation.dart' show immutable, mapEquals, setEquals;
+import 'package:flutter/foundation.dart'
+    show ValueChanged, immutable, listEquals, mapEquals, setEquals;
+
+/// What a grid's header graphs are told (I-89 ③), each by the key of the
+/// group or the lane it was pressed on (`laneGroupKey`): a group's graph
+/// on or off, and a lane pinned to every graph or let go.
+typedef LaneGraphVerbs = ({
+  ValueChanged<String> toggle,
+  ValueChanged<String> togglePin,
+});
 
 /// What a header graph plots: the values, or how fast they change.
 enum LaneGraphMode { value, speed }
@@ -91,7 +100,7 @@ class LaneGraphsView {
 }
 
 /// Where a member lane sits in its group's open HEADER GRAPH (I-89 ③): the
-/// group whose graph it is drawn in, and that graph.
+/// group whose graph it is drawn in, that graph, and the lanes drawn in it.
 ///
 /// 🗣️유저 2026-10-10: 「그래프누르면 해당 fx에서만 작동하도록」 — the graph
 /// takes the place of the group it was pressed on, and only that group's.
@@ -100,7 +109,11 @@ class LaneGraphsView {
 /// fact about where the row is DRAWN, not a row of another kind.
 @immutable
 class TimelineGraphSeat {
-  const TimelineGraphSeat({required this.groupKey, required this.graph});
+  const TimelineGraphSeat({
+    required this.groupKey,
+    required this.graph,
+    required this.lanes,
+  });
 
   /// The group's view-state key (`laneGroupKey`): a header's — or, on the
   /// camera row, its own Transform group's, the row being that header (㉙).
@@ -108,12 +121,17 @@ class TimelineGraphSeat {
 
   final LaneGraph graph;
 
+  /// The ids of the group's lanes seated in the graph, as the rail draws
+  /// them — what its rows and its picture each read the drawn lanes off.
+  final List<String> lanes;
+
   @override
   bool operator ==(Object other) =>
       other is TimelineGraphSeat &&
       other.groupKey == groupKey &&
-      other.graph == graph;
+      other.graph == graph &&
+      listEquals(other.lanes, lanes);
 
   @override
-  int get hashCode => Object.hash(groupKey, graph);
+  int get hashCode => Object.hash(groupKey, graph, Object.hashAll(lanes));
 }

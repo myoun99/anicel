@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
+import '../timeline/lane_graph.dart' show LaneGraphsView;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
 import '../timeline/timeline_row_filter.dart';
@@ -14,7 +15,8 @@ typedef StandingLaw = void Function({bool reveal, bool filterSparesStanding});
 /// THE RAIL'S VIEW — which layer rows the rail leaves off the screen by a
 /// choice of the user's that is not the document's: the hidden sections,
 /// the row filter and the folded attach groups — and which it opens up: the
-/// property-lane twirls. View state: session-only, never saved, and it
+/// property-lane twirls, and the graphs standing in a group's lanes' place.
+/// View state: session-only, never saved, and it
 /// outlives the panels that draw it (a tab switch keeps it). A FOLDER's fold
 /// is not here — it is `Layer.collapsed`, the file's.
 ///
@@ -64,7 +66,15 @@ class RailView {
     const <String>{},
   );
 
-  /// The link table the three sets below were last made to agree with.
+  /// The HEADER GRAPHS (I-89 ③): which lane groups stand open as a graph,
+  /// and the lanes pinned to every graph. View state as the twirls beside
+  /// it are, and followed as they are ([followLinks], [followHeads]): a
+  /// graph and a pin are keyed by a row's lane, as an open group is.
+  final ValueNotifier<LaneGraphsView> laneGraphs = ValueNotifier(
+    LaneGraphsView.none,
+  );
+
+  /// The link table the view state below was last made to agree with.
   LayerLinkRegistry? _followed;
 
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
@@ -98,26 +108,9 @@ class RailView {
         rows.value = next;
       }
     }
-    final keys = Set<String>.of(expandedLaneGroupKeys.value);
-    for (final group in links.groups) {
-      final uses = {for (final member in group.members) member.layerId};
-      final open = [
-        for (final key in expandedLaneGroupKeys.value)
-          if (parseLaneGroupKey(key) case final row?
-              when row.layerId == group.canonical.layerId)
-            row.laneId,
-      ];
-      keys.removeWhere(
-        (key) => uses.contains(parseLaneGroupKey(key)?.layerId),
-      );
-      keys.addAll([
-        for (final use in uses)
-          for (final laneId in open) laneGroupKey(use, laneId),
-      ]);
-    }
-    if (!setEquals(keys, expandedLaneGroupKeys.value)) {
-      expandedLaneGroupKeys.value = keys;
-    }
+    Map<String, V> likeCanonical<V>(Map<String, V> worn) =>
+        _wornLikeCanonical(worn, links);
+    _followLanes(likeCanonical);
   }
 
   /// Rows that wear ONE head though no link holds them — a track's conte
@@ -131,13 +124,18 @@ class RailView {
   /// what the others wear. ⚠️No row of a family is its canonical one (the
   /// head is whichever cut comes first, and a cut can be put before it), so
   /// the rule asks the family: where ANY row is in a set, every row is.
+  ///
+  /// [families] is read once, and only while something is folded or open:
+  /// it is asked after every history change, a stroke's included.
   void followHeads(Iterable<List<LayerId>> families) {
+    List<List<LayerId>>? read;
+    List<List<LayerId>> every() => read ??= families.toList();
     for (final rows in [collapsedAttachBaseIds, expandedLaneLayerIds]) {
       if (rows.value.isEmpty) {
         continue;
       }
       final next = Set<LayerId>.of(rows.value);
-      for (final family in families) {
+      for (final family in every()) {
         if (family.any(next.contains)) {
           next.addAll(family);
         }
@@ -146,37 +144,27 @@ class RailView {
         rows.value = next;
       }
     }
-    _followHeadGroups(families);
+    Map<String, V> acrossFamilies<V>(Map<String, V> worn) =>
+        worn.isEmpty ? worn : _wornAcrossFamilies(worn, every());
+    _followLanes(acrossFamilies);
   }
 
-  /// [followHeads]' rule for the GROUPS open inside the rows' lanes — a
-  /// conte's Transform and effect groups, twirled on the storyboard's conte
-  /// row as on the timeline's (I-73 ④ⓔ): where a group is open in any row
-  /// of a family, it is open in every row, by lane. A row a command just
-  /// made takes on what the others show, so the rows a projection row draws
-  /// do not come and go with the cut it stands in.
-  void _followHeadGroups(Iterable<List<LayerId>> families) {
-    final keys = expandedLaneGroupKeys.value;
-    if (keys.isEmpty) {
-      return;
+  /// What the rail keeps by a row's LANE — the groups open inside its
+  /// lanes, its open graphs and its pins — made to wear what [wear] says,
+  /// each told only where that changed. ONE rule for the three, so a group
+  /// and the graph standing in its lanes cannot follow a row two ways.
+  void _followLanes(Map<String, V> Function<V>(Map<String, V> worn) wear) {
+    final groups = wear(_worn(expandedLaneGroupKeys.value)).keys.toSet();
+    if (!setEquals(groups, expandedLaneGroupKeys.value)) {
+      expandedLaneGroupKeys.value = groups;
     }
-    final next = Set<String>.of(keys);
-    for (final family in families) {
-      final members = family.toSet();
-      final open = {
-        for (final key in keys)
-          if (parseLaneGroupKey(key) case final row?
-              when members.contains(row.layerId))
-            row.laneId,
-      };
-      for (final member in family) {
-        for (final laneId in open) {
-          next.add(laneGroupKey(member, laneId));
-        }
-      }
-    }
-    if (!setEquals(next, keys)) {
-      expandedLaneGroupKeys.value = next;
+    final graphs = laneGraphs.value;
+    final followed = graphs.copyWith(
+      open: wear(graphs.open),
+      pinned: wear(_worn(graphs.pinned)).keys.toSet(),
+    );
+    if (followed != graphs) {
+      laneGraphs.value = followed;
     }
   }
 
@@ -186,5 +174,68 @@ class RailView {
     collapsedAttachBaseIds.dispose();
     expandedLaneLayerIds.dispose();
     expandedLaneGroupKeys.dispose();
+    laneGraphs.dispose();
   }
+}
+
+/// A set of keys as what its rows wear: each key, worn.
+Map<String, bool> _worn(Set<String> keys) => {
+  for (final key in keys) key: true,
+};
+
+/// [worn] — what rows wear, by `laneGroupKey` — with every use of a link
+/// group's row wearing what its CANONICAL row wears, lane by lane, and
+/// nothing of its own ([RailView.followLinks]).
+Map<String, V> _wornLikeCanonical<V>(
+  Map<String, V> worn,
+  LayerLinkRegistry links,
+) {
+  final next = Map<String, V>.of(worn);
+  for (final group in links.groups) {
+    final uses = {for (final member in group.members) member.layerId};
+    final canonical = {
+      for (final MapEntry(:key, :value) in worn.entries)
+        if (parseLaneGroupKey(key) case final row?
+            when row.layerId == group.canonical.layerId)
+          row.laneId: value,
+    };
+    next.removeWhere(
+      (key, _) => uses.contains(parseLaneGroupKey(key)?.layerId),
+    );
+    for (final use in uses) {
+      for (final MapEntry(key: laneId, :value) in canonical.entries) {
+        next[laneGroupKey(use, laneId)] = value;
+      }
+    }
+  }
+  return next;
+}
+
+/// [worn] with every row of a family wearing, lane by lane, what any row of
+/// it wears — a row keeps its own where it has one ([RailView.followHeads]):
+/// a conte's Transform and effect groups, twirled on the storyboard's conte
+/// row as on the timeline's (I-73 ④ⓔ), and the graphs in their place. A row
+/// a command just made takes on what the others show, so the rows a
+/// projection row draws do not come and go with the cut it stands in.
+Map<String, V> _wornAcrossFamilies<V>(
+  Map<String, V> worn,
+  List<List<LayerId>> families,
+) {
+  final next = Map<String, V>.of(worn);
+  for (final family in families) {
+    final members = family.toSet();
+    final across = <String, V>{};
+    for (final MapEntry(:key, :value) in worn.entries) {
+      if (parseLaneGroupKey(key) case final row?
+          when members.contains(row.layerId)) {
+        across.putIfAbsent(row.laneId, () => value);
+      }
+    }
+    for (final member in family) {
+      for (final MapEntry(key: laneId, :value) in across.entries) {
+        next.putIfAbsent(laneGroupKey(member, laneId), () => value);
+      }
+    }
+  }
+  return next;
 }

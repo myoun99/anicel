@@ -216,6 +216,107 @@ void main() {
     expect(r.row(r.folder).isVisible, eyeBefore);
     expect(r.collapsed(r.folder), isTrue);
   });
+
+  // 🗣️I-89 ③ (유저 2026-10-10): 「그래프를 누른 레일만 상태변경」 — and
+  // F-302's law for every use of the row.
+  group('the header GRAPH and the PIN', () {
+    test('🚨a group\'s graph turned on in one 겸용 cut is on in the other — '
+        'that group alone — and off with it', () {
+      final r = _Rig()..linkACut();
+      final graphs = r.s.railView.laneGraphs;
+      final group = transformGroupHeaderLane.laneId;
+      r.presses.toggleLaneGroup(laneGroupKey(r.twinOf(r.plain), group));
+
+      r.presses.toggleLaneGraph(laneGroupKey(r.twinOf(r.plain), group));
+      expect(graphs.value.open.keys.toSet(), {
+        laneGroupKey(r.plain, group),
+        laneGroupKey(r.twinOf(r.plain), group),
+      });
+
+      r.s.selectCut(r.origin);
+      r.presses.toggleLaneGraph(laneGroupKey(r.plain, group));
+      expect(graphs.value.open, isEmpty);
+    });
+
+    test('a graph turned on over a SHUT group opens the group — the graph '
+        'stands in its lanes\' place', () {
+      final r = _Rig();
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      expect(r.s.railView.expandedLaneGroupKeys.value, isEmpty, reason: '⛔전제');
+
+      r.presses.toggleLaneGraph(key);
+
+      expect(r.s.railView.expandedLaneGroupKeys.value, {key});
+      expect(r.s.railView.laneGraphs.value.open.keys, [key]);
+    });
+
+    test('a group shut under its graph keeps the graph for when it opens', () {
+      final r = _Rig();
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      r.presses.toggleLaneGraph(key);
+
+      r.presses.toggleLaneGroup(key);
+
+      expect(r.s.railView.expandedLaneGroupKeys.value, isEmpty);
+      expect(r.s.railView.laneGraphs.value.open.keys, [key]);
+    });
+
+    test('the CAMERA row\'s graph twirls the row\'s lanes open — its group '
+        'is the row (㉙) — and that twirl is the undo step it always was', () {
+      final r = _Rig();
+      final camera = r.s.layers
+          .firstWhere((layer) => layer.kind == LayerKind.camera)
+          .id;
+      final key = laneGroupKey(camera, transformGroupHeaderLane.laneId);
+      final depth = r.s.historyManager.undoCount;
+
+      r.presses.toggleLaneGraph(key);
+
+      expect(r.s.railView.expandedLaneLayerIds.value, {camera});
+      expect(
+        r.s.railView.expandedLaneGroupKeys.value,
+        isEmpty,
+        reason: 'the row is its header: no header of its own to twirl',
+      );
+      expect(r.s.railView.laneGraphs.value.open.keys, [key]);
+      expect(r.s.historyManager.undoCount, depth + 1);
+
+      r.s.undo();
+      expect(r.s.railView.expandedLaneLayerIds.value, isEmpty);
+      expect(
+        r.s.railView.laneGraphs.value.open.keys,
+        [key],
+        reason: 'the graph is view state: the undo shuts the twirl alone',
+      );
+    });
+
+    test('🚨a PIN is on every use of its row, and off with it', () {
+      final r = _Rig()..linkACut();
+      final pinned = r.s.railView.laneGraphs;
+
+      r.presses.toggleLanePin(laneGroupKey(r.twinOf(r.plain), 'position'));
+      expect(pinned.value.pinned, {
+        laneGroupKey(r.plain, 'position'),
+        laneGroupKey(r.twinOf(r.plain), 'position'),
+      });
+
+      r.presses.toggleLanePin(laneGroupKey(r.plain, 'position'));
+      expect(pinned.value.pinned, isEmpty);
+    });
+
+    test('a graph or a pin is view state — no undo step', () {
+      final r = _Rig();
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      r.presses.toggleLaneGroup(key);
+      final depth = r.s.historyManager.undoCount;
+
+      r.presses.toggleLaneGraph(key);
+      r.presses.toggleLanePin(laneGroupKey(r.plain, 'position'));
+
+      expect(r.s.historyManager.undoCount, depth);
+      expect(r.s.railView.laneGraphs.value.open.keys, [key], reason: '⛔전제');
+    });
+  });
 }
 
 /// A base carrying an attach row, a folder holding a cel, and a plain cel —
