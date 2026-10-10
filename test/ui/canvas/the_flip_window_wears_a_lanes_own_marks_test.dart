@@ -1,3 +1,5 @@
+import 'dart:ui' show ClipOp;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/key_mark.dart';
@@ -27,6 +29,81 @@ void main() {
       [for (final run in row.runs) (run.startIndex, run.keyMark)],
       [(2, _heldOut), (5, KeyMark.linear)],
     );
+  });
+
+  /// What the window paints of a lane row keyed at 2, 5 and 8, the key at
+  /// 5 wearing [middle].
+  List<Invocation> paintedWith(KeyMark middle) {
+    final canvas = TestRecordingCanvas();
+    FlipHudPainter(
+      snapshot: FlipHudSnapshot(
+        rows: [
+          FlipHudRow(
+            name: 'Transform',
+            kind: LayerKind.camera,
+            isLane: true,
+            holdsDrawings: false,
+            runs: [
+              const FlipHudRun(
+                startIndex: 2,
+                length: 1,
+                keyMark: KeyMark.linear,
+              ),
+              FlipHudRun(startIndex: 5, length: 1, keyMark: middle),
+              const FlipHudRun(
+                startIndex: 8,
+                length: 1,
+                keyMark: KeyMark.linear,
+              ),
+            ],
+          ),
+        ],
+        rowIndex: 0,
+        frameIndex: 5,
+        frameCount: 12,
+      ),
+      axis: FlipHudAxis.frame,
+      frameStep: true,
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+      baseTextStyle: const TextStyle(fontSize: 11),
+    ).paint(canvas, FlipHudMetrics.sizeFor(FlipHudAxis.frame));
+    return [for (final call in canvas.invocations) call.invocation];
+  }
+
+  bool clearing(Invocation call) =>
+      call.memberName == #clipRect &&
+      call.namedArguments[#clipOp] == ClipOp.difference;
+
+  test('the line stops at a hollow mark\'s box and goes on past it, as the '
+      'panels\' does (I-89 ②)', () {
+    final calls = paintedWith(KeyMark.mixed);
+    // The ring is the one key's path with nothing in its middle.
+    final ring = [
+      for (final call in calls)
+        if (call.memberName == #drawPath)
+          call.positionalArguments[0] as Path,
+    ].singleWhere((path) {
+      final box = path.getBounds();
+      return (box.width - 9).abs() < 1e-6 && !path.contains(box.center);
+    });
+    final clip = calls.indexWhere(clearing);
+    expect(clip, isNot(-1), reason: 'the line is kept out of the ring');
+    expect(
+      calls[clip].positionalArguments[0],
+      rectMoreOrLessEquals(ring.getBounds()),
+    );
+    expect(calls.where(clearing), hasLength(1), reason: 'only the ring');
+    final line = calls.indexWhere((call) => call.memberName == #drawLine, clip);
+    final restore = calls.indexWhere(
+      (call) => call.memberName == #restore,
+      clip,
+    );
+    expect(line, isNot(-1));
+    expect(line, lessThan(restore), reason: 'stroked while it is kept out');
+  });
+
+  test('⛔every other mark has the line run under it', () {
+    expect(paintedWith(_heldOut).where(clearing), isEmpty);
   });
 
   test('the window paints a key\'s mark, not a diamond of its own', () {

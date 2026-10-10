@@ -45,6 +45,11 @@ Path keyMarkPath(KeyMark mark, double size) {
 /// of its box.
 const double _mixedHole = 0.32;
 
+/// Whether [mark] is drawn HOLLOW — the union's ○ (F-17), the one mark
+/// with nothing in its middle — so the line between a row's keys stops at
+/// its edge rather than run through it (`strokeKeysLineClearOf`).
+bool keyMarkIsHollow(KeyMark mark) => mark is MixedKeyMark;
+
 /// A quarter turn clockwise of the [size]-square box about its middle —
 /// (x, y) to (size − y, x), its left edge onto its top.
 Float64List _quarterTurn(double size) =>

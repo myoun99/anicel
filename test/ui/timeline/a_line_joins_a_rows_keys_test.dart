@@ -1,3 +1,5 @@
+import 'dart:ui' show ClipOp;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -8,6 +10,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/key_mark.dart';
+import 'package:anicel/src/models/key_side.dart' show KeySideKind;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -49,13 +52,20 @@ void main() {
   const cell = 20.0;
   const metrics = TimelineGridMetrics(frameCellWidth: cell);
 
-  PropertyLaneRow laneOf(Set<int> keys, {bool header = false}) =>
-      PropertyLaneRow(
-        laneId: header ? 'transform-group' : 'position',
-        label: header ? 'Transform' : 'Position',
-        keyMarks: {for (final frame in keys) frame: KeyMark.linear},
-        isGroupHeader: header,
-      );
+  /// A lane keyed at [keys], each key straight but where [marks] gives it
+  /// another mark.
+  PropertyLaneRow laneOf(
+    Set<int> keys, {
+    bool header = false,
+    Map<int, KeyMark> marks = const {},
+  }) => PropertyLaneRow(
+    laneId: header ? 'transform-group' : 'position',
+    label: header ? 'Transform' : 'Position',
+    keyMarks: {
+      for (final frame in keys) frame: marks[frame] ?? KeyMark.linear,
+    },
+    isGroupHeader: header,
+  );
 
   Future<void> pumpBand(
     WidgetTester tester,
@@ -92,10 +102,9 @@ void main() {
 
   final line = find.byType(TimelineLaneKeysLine);
 
-  /// What the one line on screen strokes, in the screen's coordinates.
-  ({Offset from, Offset to, double width, Color color}) strokeOf(
-    WidgetTester tester,
-  ) {
+  /// What the one line on screen strokes, in the screen's coordinates —
+  /// and the boxes it is kept out of while it does.
+  _Stroke strokeOf(WidgetTester tester) {
     final paint = find.descendant(of: line, matching: find.byType(CustomPaint));
     final spy = _StrokeSpy();
     tester
@@ -109,8 +118,20 @@ void main() {
       to: stroke.to + origin,
       width: stroke.width,
       color: stroke.color,
+      clearOf: [for (final box in stroke.clearOf) box.shift(origin)],
     );
   }
+
+  /// The box [laneId]'s mark of its key at [frame] is drawn in.
+  Rect markBox(WidgetTester tester, String laneId, int frame) =>
+      tester.getRect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey<String>('timeline-lane-key-layer-a-$laneId-$frame'),
+          ),
+          matching: find.byType(CustomPaint),
+        ),
+      );
 
   /// Where the mark of [laneId]'s key at [frame] stands — its middle.
   Matcher atMark(WidgetTester tester, String laneId, int frame) =>
@@ -254,6 +275,27 @@ void main() {
       expect((stroke.from.dx, stroke.to.dx), (0, 6 * cell));
     });
 
+    testWidgets('a window keeps the line out of the ring it holds, where the '
+        'ring stands — and of none it does not hold', (tester) async {
+      await pumpBand(
+        tester,
+        laneOf(
+          {0, 8, 30},
+          header: true,
+          marks: {0: KeyMark.mixed, 8: KeyMark.mixed, 30: KeyMark.mixed},
+        ),
+        frameStartIndex: 6,
+        frameEndIndexExclusive: 12,
+      );
+      final box = tester.getRect(line);
+      final ring = markBox(tester, 'transform-group', 8);
+      expect(strokeOf(tester).clearOf, [
+        rectMoreOrLessEquals(
+          Rect.fromLTRB(ring.left, box.top, ring.right, box.bottom),
+        ),
+      ]);
+    });
+
     testWidgets('a window the line does not reach has none of it', (
       tester,
     ) async {
@@ -308,46 +350,152 @@ void main() {
       expect(spans.single.child, isNot(isA<TimelineLaneKeysLine>()));
     });
 
-    for (final axis in Axis.values) {
-      testWidgets('laid on the row it runs from the first mark to the last '
-          '($axis)', (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Material(
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: SizedBox(
-                  width: axis == Axis.horizontal ? 20 * cell : rowExtent,
-                  height: axis == Axis.horizontal ? rowExtent : 20 * cell,
-                  child: TimelineFixedFrameSpanLayer(
-                    geometry: const TimelineFrameGeometry(
-                      frameCellExtent: cell,
-                      frameStartIndex: 0,
-                      frameEndIndexExclusive: 20,
-                      leadingFrameSpacerWidth: 0,
-                      trailingFrameSpacerWidth: 0,
-                    ),
-                    crossAxisExtent: rowExtent,
+    /// [lane]'s summary laid on a row of its own, along [axis].
+    Future<void> pumpSummary(
+      WidgetTester tester,
+      PropertyLaneRow lane, {
+      Axis axis = Axis.horizontal,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Material(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: axis == Axis.horizontal ? 20 * cell : rowExtent,
+                height: axis == Axis.horizontal ? rowExtent : 20 * cell,
+                child: TimelineFixedFrameSpanLayer(
+                  geometry: const TimelineFrameGeometry(
+                    frameCellExtent: cell,
+                    frameStartIndex: 0,
+                    frameEndIndexExclusive: 20,
+                    leadingFrameSpacerWidth: 0,
+                    trailingFrameSpacerWidth: 0,
+                  ),
+                  crossAxisExtent: rowExtent,
+                  axis: axis,
+                  children: timelineUnionKeyMarkerSpans(
+                    keyPrefix: 'timeline',
+                    layer: layer,
+                    lane: lane,
+                    crossExtent: rowExtent,
                     axis: axis,
-                    children: timelineUnionKeyMarkerSpans(
-                      keyPrefix: 'timeline',
-                      layer: layer,
-                      lane: union,
-                      crossExtent: rowExtent,
-                      axis: axis,
-                    ),
                   ),
                 ),
               ),
             ),
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
+    }
+
+    for (final axis in Axis.values) {
+      testWidgets('laid on the row it runs from the first mark to the last '
+          '($axis)', (tester) async {
+        await pumpSummary(tester, union, axis: axis);
         final stroke = strokeOf(tester);
         expect(stroke.from, atMark(tester, 'transform-group', 4));
         expect(stroke.to, atMark(tester, 'transform-group', 12));
       });
     }
+
+    testWidgets('a ring on it keeps the line out of its box', (tester) async {
+      await pumpSummary(
+        tester,
+        laneOf({10, 4, 12}, header: true, marks: {10: KeyMark.mixed}),
+      );
+      final box = tester.getRect(line);
+      final ring = markBox(tester, 'transform-group', 10);
+      expect(strokeOf(tester).clearOf, [
+        rectMoreOrLessEquals(
+          Rect.fromLTRB(ring.left, box.top, ring.right, box.bottom),
+        ),
+      ]);
+    });
+  });
+
+  // I-89 ②: a union's ○ where its members disagree is HOLLOW — the drawing
+  // the user picked (option 나, 유저 2026-10-10 「2. 추천대로」) has the line
+  // stop at its edge.
+  group('a hollow mark is not run through', () {
+    testWidgets('the line stops at a ring\'s box and goes on past it — one '
+        'line still, from the first mark to the last', (tester) async {
+      await pumpBand(
+        tester,
+        laneOf({2, 8, 14}, header: true, marks: {8: KeyMark.mixed}),
+      );
+      final box = tester.getRect(line);
+      final ring = markBox(tester, 'transform-group', 8);
+      final stroke = strokeOf(tester);
+      expect(stroke.from, atMark(tester, 'transform-group', 2));
+      expect(stroke.to, atMark(tester, 'transform-group', 14));
+      expect(stroke.clearOf, [
+        rectMoreOrLessEquals(
+          Rect.fromLTRB(ring.left, box.top, ring.right, box.bottom),
+        ),
+      ]);
+    });
+
+    testWidgets('⛔every other mark stands ON the line, whatever its sides — '
+        'it is kept out of none', (tester) async {
+      await pumpBand(
+        tester,
+        laneOf(
+          {2, 8, 14},
+          marks: const {
+            2: SidesKeyMark(
+              incoming: KeySideKind.ease,
+              outgoing: KeySideKind.ease,
+            ),
+            8: SidesKeyMark(
+              incoming: KeySideKind.linear,
+              outgoing: KeySideKind.hold,
+            ),
+            14: SidesKeyMark(
+              incoming: KeySideKind.auto,
+              outgoing: KeySideKind.auto,
+            ),
+          },
+        ),
+      );
+      expect(strokeOf(tester).clearOf, isEmpty);
+    });
+
+    testWidgets('down the sheet it is kept out of the ring down the sheet', (
+      tester,
+    ) async {
+      await pumpBand(
+        tester,
+        laneOf({2, 8, 14}, header: true, marks: {8: KeyMark.mixed}),
+        axis: Axis.vertical,
+      );
+      final box = tester.getRect(line);
+      final ring = markBox(tester, 'transform-group', 8);
+      expect(strokeOf(tester).clearOf, [
+        rectMoreOrLessEquals(
+          Rect.fromLTRB(box.left, ring.top, box.right, ring.bottom),
+        ),
+      ]);
+    });
+
+    testWidgets('a line handed another ring is painted again', (tester) async {
+      CustomPainter painter() => tester
+          .widget<CustomPaint>(
+            find.descendant(of: line, matching: find.byType(CustomPaint)),
+          )
+          .painter!;
+      await pumpBand(
+        tester,
+        laneOf({2, 8, 14}, header: true, marks: {8: KeyMark.mixed}),
+      );
+      final ringed = painter();
+      await pumpBand(tester, laneOf({2, 8, 14}, header: true));
+      final plain = painter();
+      expect(plain.shouldRepaint(ringed), isTrue);
+      await pumpBand(tester, laneOf({2, 8, 14}, header: true));
+      expect(painter().shouldRepaint(plain), isFalse, reason: 'the same line');
+    });
   });
 
   // 「그 선」 is one kind of line: what names a camera's move will ride the
@@ -505,9 +653,38 @@ void main() {
   });
 }
 
-/// Records what a painter strokes as lines.
+/// One line a painter strokes, and the boxes it is kept out of then.
+typedef _Stroke =
+    ({Offset from, Offset to, double width, Color color, List<Rect> clearOf});
+
+/// Records what a painter strokes as lines — and the boxes each is kept
+/// out of while it is.
 class _StrokeSpy implements Canvas {
-  final strokes = <({Offset from, Offset to, double width, Color color})>[];
+  final strokes = <_Stroke>[];
+
+  /// The boxes kept out of, at each depth of save.
+  final _clearOf = [<Rect>[]];
+
+  @override
+  void save() => _clearOf.add([..._clearOf.last]);
+
+  @override
+  void restore() {
+    if (_clearOf.length > 1) {
+      _clearOf.removeLast();
+    }
+  }
+
+  @override
+  void clipRect(
+    Rect rect, {
+    ClipOp clipOp = ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) {
+    if (clipOp == ClipOp.difference) {
+      _clearOf.last.add(rect);
+    }
+  }
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) {
@@ -516,6 +693,7 @@ class _StrokeSpy implements Canvas {
       to: p2,
       width: paint.strokeWidth,
       color: paint.color,
+      clearOf: [..._clearOf.last],
     ));
   }
 

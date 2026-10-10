@@ -7,6 +7,7 @@ import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ import '../text/readout_text.dart'
     show ReadoutPart, joinReadoutParts, readoutParts;
 import 'layer_rail_columns.dart'
     show LayerFoldTwirl, layerRailTrailingCells;
-import 'key_mark_glyph.dart' show paintKeyMark;
+import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
@@ -1157,6 +1158,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
         color: layerMarkColor(layer.mark),
         startsAtKey: from == span.first,
         endsAtKey: past == span.last + 1,
+        // The marks the band draws ([_keyMarkers]).
+        rings: [
+          for (final frame in timelineHollowKeyFrames(lane))
+            if (_inWindow(frame)) (cell: frame - from, band: 1),
+        ],
       ),
     );
   }
@@ -1646,6 +1652,10 @@ TimelineFrameSpan? _unionKeysLineSpan({
       axis: axis,
       cells: span.last - span.first + 1,
       color: layerMarkColor(layer.mark),
+      rings: [
+        for (final frame in timelineHollowKeyFrames(lane))
+          (cell: frame - span.first, band: 1),
+      ],
     ),
   );
 }
@@ -1667,6 +1677,13 @@ TimelineFrameSpan? _unionKeysLineSpan({
       ? null
       : (first: first, last: last);
 }
+
+/// The frames of [lane]'s keys whose marks are hollow ([keyMarkIsHollow]) —
+/// where the line between its keys stops ([TimelineLaneKeysLine.rings]).
+Iterable<int> timelineHollowKeyFrames(PropertyLaneRow lane) => [
+  for (final MapEntry(key: frame, value: mark) in lane.keyMarks.entries)
+    if (keyMarkIsHollow(mark)) frame,
+];
 
 /// THE LINE BETWEEN A ROW'S KEYS (I-73, 유저 2026-10-08). A DRAWING, and
 /// nothing else — the band beneath it owns every pointer.
@@ -1697,6 +1714,15 @@ TimelineFrameSpan? _unionKeysLineSpan({
 /// 해서 직선 잇는다던가?」. A step is a slope across its cell edge, as wide
 /// as half a cell and never wider than [timelineKeysLineBendReach] on
 /// either side, so the line stays one line.
+///
+/// A HOLLOW mark — a union's ○, where its members disagree
+/// ([keyMarkIsHollow]) — is not run through: the line stops at the edge of
+/// its box and goes on past it ([rings]), so the ring stays empty, as the
+/// drawing the user picked has it (I-89 ②, option 나 — 유저 2026-10-10
+/// 「2. 추천대로」); a ring with the line through it is another mark.
+/// ⛔Every other mark stands ON the line, which shows wherever the mark
+/// leaves it room — an hourglass's sides, a chevron's notch — as that
+/// drawing has it too.
 class TimelineLaneKeysLine extends StatelessWidget {
   const TimelineLaneKeysLine({
     super.key,
@@ -1707,6 +1733,7 @@ class TimelineLaneKeysLine extends StatelessWidget {
     this.endsAtKey = true,
     this.crossFraction = 0.5,
     this.steps = const [],
+    this.rings = const [],
   });
 
   final Axis axis;
@@ -1730,6 +1757,11 @@ class TimelineLaneKeysLine extends StatelessWidget {
   /// [TimelineKeysLineStep.to].
   final List<TimelineKeysLineStep> steps;
 
+  /// The hollow marks standing on the line, where it stops and goes on
+  /// past. A ring is a union's — only a union's members can disagree — so
+  /// its box is a union mark's ([timelineLaneUnionKeyMarkerSize]).
+  final List<TimelineKeysLineRing> rings;
+
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(child: CustomPaint(painter: _KeysLinePainter(this)));
@@ -1740,6 +1772,12 @@ class TimelineLaneKeysLine extends StatelessWidget {
 /// cell [edge] — counted from the box's first cell — the line moves across
 /// to [to] (0 the leading side, 1 the trailing).
 typedef TimelineKeysLineStep = ({int edge, double to});
+
+/// A hollow mark on a [TimelineLaneKeysLine]: the box's [cell] it stands
+/// in, counted from the box's first, and how much of the box across the
+/// [band] it stands in takes — all of it, but on the camera row's two
+/// lines over an O.L. The two a mark's size reads.
+typedef TimelineKeysLineRing = ({int cell, double band});
 
 /// How far along the line a step's slope may reach on either side of its
 /// edge, at most — half a cell when a cell is narrower than twice this.
@@ -1759,7 +1797,7 @@ List<({double along, double across})> timelineKeysLineCourse(
   required double along,
   required double across,
 }) {
-  final cell = line.cells < 1 ? 0.0 : along / line.cells;
+  final cell = _cellAlong(line, along);
   final from = line.startsAtKey ? cell / 2 : 0.0;
   final to = line.endsAtKey ? along - cell / 2 : along;
   if (to <= from) {
@@ -1781,6 +1819,56 @@ List<({double along, double across})> timelineKeysLineCourse(
   return course;
 }
 
+/// How long one of [line]'s cells is, in a box [along] long.
+double _cellAlong(TimelineLaneKeysLine line, double along) =>
+    line.cells < 1 ? 0.0 : along / line.cells;
+
+/// Where [line] stops for its [TimelineLaneKeysLine.rings], in a box
+/// [along] long and [across] wide: each ring's box along the line —
+/// centred in its cell, as every mark is, and as long as a union mark in
+/// its band is wide.
+///
+/// ★What the painter keeps the line out of and what a pin reads are this
+/// one answer.
+List<({double from, double to})> timelineKeysLineGaps(
+  TimelineLaneKeysLine line, {
+  required double along,
+  required double across,
+}) {
+  final cell = _cellAlong(line, along);
+  ({double from, double to}) gapAt(TimelineKeysLineRing ring) {
+    final middle = (ring.cell + 0.5) * cell;
+    final size = timelineLaneUnionKeyMarkerSize(
+      across * ring.band,
+      frameCellExtent: cell,
+    );
+    return (from: middle - size / 2, to: middle + size / 2);
+  }
+
+  return [for (final ring in line.rings) gapAt(ring)];
+}
+
+/// [stroke]s the line between a row's keys kept out of [hollows] — the
+/// boxes of the hollow marks standing on it ([keyMarkIsHollow]) — so each
+/// ring stays empty ([TimelineLaneKeysLine]). Every painter of the line
+/// strokes through here: the panels' and the flip window's.
+void strokeKeysLineClearOf(
+  Canvas canvas,
+  List<Rect> hollows,
+  void Function() stroke,
+) {
+  if (hollows.isEmpty) {
+    stroke();
+    return;
+  }
+  canvas.save();
+  for (final box in hollows) {
+    canvas.clipRect(box, clipOp: ClipOp.difference);
+  }
+  stroke();
+  canvas.restore();
+}
+
 class _KeysLinePainter extends CustomPainter with RepaintOnProps {
   _KeysLinePainter(this.line);
 
@@ -1789,11 +1877,9 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final axis = line.axis;
-    final course = timelineKeysLineCourse(
-      line,
-      along: extentAlong(axis, size),
-      across: extentAcross(axis, size),
-    );
+    final along = extentAlong(axis, size);
+    final across = extentAcross(axis, size);
+    final course = timelineKeysLineCourse(line, along: along, across: across);
     if (course.length < 2) {
       return;
     }
@@ -1804,6 +1890,28 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
     final paint = Paint()
       ..color = line.color
       ..strokeWidth = timelineJoiningLineWidth;
+    strokeKeysLineClearOf(
+      canvas,
+      [
+        // The whole box across: a ring on the camera row's upper line or
+        // its lower one is kept clear of where the line steps to it.
+        for (final gap in timelineKeysLineGaps(
+          line,
+          along: along,
+          across: across,
+        ))
+          Rect.fromPoints(
+            offsetAlong(axis, along: gap.from, across: 0),
+            offsetAlong(axis, along: gap.to, across: across),
+          ),
+      ],
+      () => _stroke(canvas, points, paint),
+    );
+  }
+
+  /// [points] stroked as one line: a straight one where there are two, a
+  /// path where it steps.
+  static void _stroke(Canvas canvas, List<Offset> points, Paint paint) {
     if (points.length == 2) {
       canvas.drawLine(points.first, points.last, paint);
       return;
@@ -1824,6 +1932,7 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
     line.endsAtKey,
     line.crossFraction,
     ByList(line.steps),
+    ByList(line.rings),
   );
 }
 

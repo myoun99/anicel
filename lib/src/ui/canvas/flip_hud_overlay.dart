@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/frame.dart' show drawingHeadOf;
 import '../timeline/inbetween_mark_painter.dart';
-import '../timeline/key_mark_glyph.dart' show paintKeyMark;
+import '../timeline/key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
-import '../timeline/timeline_lane_rows.dart' show timelineKeysLineSpan;
+import '../timeline/timeline_lane_rows.dart'
+    show strokeKeysLineClearOf, timelineKeysLineSpan;
 import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
@@ -813,9 +814,10 @@ class FlipHudPainter extends CustomPainter
   /// 유저 2026-10-09: 「플립 창에도 긋는다」): the panels' own — from the
   /// middle of the first key's slot to the middle of the last's
   /// ([timelineKeysLineSpan]), none beside a key alone — under the marks,
-  /// as thick as the panels draw it, in its keys' colour. [strip] is where
-  /// the slots stand: the first one's leading edge, how wide each is, and
-  /// the middle of the strip across.
+  /// as thick as the panels draw it, in its keys' colour, and kept out of a
+  /// hollow mark's box as theirs is ([strokeKeysLineClearOf]). [strip] is
+  /// where the slots stand: the first one's leading edge, how wide each is,
+  /// and the middle of the strip across.
   void _paintKeysLine(
     Canvas canvas,
     FlipHudRow row,
@@ -831,12 +833,24 @@ class FlipHudPainter extends CustomPainter
     }
     double centreOf(int frame) =>
         strip.origin + (flipHudSlotIndexAt(slots, frame) + 0.5) * strip.step;
-    canvas.drawLine(
-      Offset(centreOf(span.first), strip.centre),
-      Offset(centreOf(span.last), strip.centre),
-      Paint()
-        ..color = timelineDrawingHeldColor
-        ..strokeWidth = timelineJoiningLineWidth,
+    strokeKeysLineClearOf(
+      canvas,
+      [
+        for (final run in row.runs)
+          if (run.keyMark case final mark? when keyMarkIsHollow(mark))
+            Rect.fromCenter(
+              center: Offset(centreOf(run.startIndex), strip.centre),
+              width: _keyMarkSize,
+              height: _keyMarkSize,
+            ),
+      ],
+      () => canvas.drawLine(
+        Offset(centreOf(span.first), strip.centre),
+        Offset(centreOf(span.last), strip.centre),
+        Paint()
+          ..color = timelineDrawingHeldColor
+          ..strokeWidth = timelineJoiningLineWidth,
+      ),
     );
   }
 

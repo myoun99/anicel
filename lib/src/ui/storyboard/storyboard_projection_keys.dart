@@ -359,9 +359,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
       // The storyboard lays its track across, as its rows' spans do.
       axis: Axis.horizontal,
       at: at,
-      crossExtent: line == CameraRowLine.middle
-          ? height
-          : height * _cameraRowLineBand,
+      crossExtent: height * _markBand(line),
       crossInset: switch (line) {
         CameraRowLine.middle => null,
         CameraRowLine.upper => 0,
@@ -372,6 +370,12 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
       selected: key.selected,
     );
   }
+
+  /// How much of the row across the band a key mark stands in on [line]
+  /// takes: all of it on the one line in the middle, the line's own band
+  /// on either of the two.
+  double _markBand(CameraRowLine line) =>
+      line == CameraRowLine.middle ? 1 : _cameraRowLineBand;
 
   /// The line between [reach]'s cut's first key and its last, clamped to
   /// the end of its own frames, stepping where its cut changes lines — or
@@ -415,6 +419,14 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
           for (final edge in {reach.arrivingUntil, reach.leavingFrom})
             if (edge > from && edge <= to)
               (edge: edge - from, to: _cameraRowLineAt(reach.lineAt(edge))),
+        ],
+        // The cut's marks on it — none past the cut's own end, where no
+        // mark is drawn — each in the band of the line the cut is drawn on
+        // there.
+        rings: [
+          for (final key in timelineHollowKeyFrames(lane))
+            if (reach.trackFrameOf(key) case final at when at <= to)
+              (cell: at - from, band: _markBand(reach.lineAt(at))),
         ],
       ),
     );

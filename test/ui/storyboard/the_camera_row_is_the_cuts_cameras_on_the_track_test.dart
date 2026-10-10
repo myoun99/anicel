@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/key_side.dart' show KeySidesEdit;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -34,13 +35,13 @@ import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
     show TimelineBlockText;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
-    show TimelineLaneKeysLine;
+    show TimelineLaneKeysLine, timelineKeysLineGaps;
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show TimelineSection;
 import 'package:anicel/src/ui/timeline/timeline_span_name.dart'
     show TimelineSpanName;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
-    show transformTrackWithLaneRangeNamed;
+    show transformTrackWithLaneKeySides, transformTrackWithLaneRangeNamed;
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 · 「카메라 행 범위는 키표시/이동/레인 등 모든거
@@ -63,8 +64,14 @@ void main() {
   final cameraRow = LayerRowAddress(trackCameraRowId(trackId));
 
   /// A camera keyed at [frames], the keys at [names]' frames named so on
-  /// every lane they hold — the name the camera row's union prints.
-  CutCamera keyed(List<int> frames, {Map<int, String> names = const {}}) {
+  /// every lane they hold — the name the camera row's union prints — and
+  /// at [held]'s its position held where its other lanes are not: the
+  /// union's members disagree there.
+  CutCamera keyed(
+    List<int> frames, {
+    Map<int, String> names = const {},
+    Set<int> held = const {},
+  }) {
     var track = CutCamera(
       keyframes: {
         for (final frame in frames)
@@ -89,6 +96,14 @@ void main() {
             track;
       }
     }
+    track =
+        transformTrackWithLaneKeySides(
+          track,
+          laneId: 'position',
+          frames: held,
+          edit: KeySidesEdit.hold,
+        ) ??
+        track;
     return CutCamera.fromTrack(track);
   }
 
@@ -98,13 +113,14 @@ void main() {
     List<int> keys, {
     int gap = 0,
     Map<int, String> names = const {},
+    Set<int> held = const {},
   }) => Cut(
     id: CutId(id),
     name: id,
     duration: duration,
     leadingGapFrames: gap,
     canvasSize: const CanvasSize(width: 640, height: 360),
-    camera: keyed(keys, names: names),
+    camera: keyed(keys, names: names, held: held),
     layers: [
       Layer(id: LayerId('$id-cel'), name: 'A', frames: const []),
       Layer(
@@ -116,7 +132,11 @@ void main() {
     ],
   );
 
-  Project film({List<int> cKeys = const []}) => Project(
+  /// The film, each cut's camera held at [held]'s frames for its name.
+  Project film({
+    List<int> cKeys = const [],
+    Map<String, Set<int>> held = const {},
+  }) => Project(
     id: const ProjectId('camera-row'),
     name: 'Camera row',
     createdAt: DateTime.utc(2026, 10, 9),
@@ -125,8 +145,20 @@ void main() {
         id: trackId,
         name: 'V1',
         cuts: [
-          cutOf('a', 24, [0, 12, 20, 30], names: {12: 'IN'}),
-          cutOf('b', 24, [2, 6, 12], names: {2: 'OUT'}),
+          cutOf(
+            'a',
+            24,
+            [0, 12, 20, 30],
+            names: {12: 'IN'},
+            held: held['a'] ?? const {},
+          ),
+          cutOf(
+            'b',
+            24,
+            [2, 6, 12],
+            names: {2: 'OUT'},
+            held: held['b'] ?? const {},
+          ),
           cutOf('c', 12, cKeys, gap: 4),
         ],
       ),
@@ -141,11 +173,12 @@ void main() {
     Set<TimelineSection> hiddenSections = const {},
     Map<int, InstructionEvent> transitions = const {},
     List<int> cKeys = const [],
+    Map<String, Set<int>> held = const {},
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
-      initialProject: film(cKeys: cKeys),
+      initialProject: film(cKeys: cKeys, held: held),
     );
     addTearDown(session.dispose);
     if (transitions.isNotEmpty) {
@@ -392,6 +425,56 @@ void main() {
         Rect.fromLTRB(50 * px, 0, 52 * px, row.height),
       ]);
       expect(sharedFrames(tester), isEmpty);
+    });
+
+    testWidgets('🎯a ring stands between two pieces of its cut\'s line, as big '
+        'as it is drawn on the line its cut is on there (I-89 ②)', (
+      tester,
+    ) async {
+      // a's 12 in the middle, a's 20 on the upper line, b's 6 (at 24) on
+      // the lower — the O.L's — and a's 30, past a's own end, drawn nowhere.
+      await pumpPanel(
+        tester,
+        transitions: ol,
+        held: {
+          'a': {12, 20, 30},
+          'b': {6},
+        },
+      );
+      for (final (camera, frames) in [
+        ('a-cam', [12, 20]),
+        ('b-cam', [6]),
+      ]) {
+        final box = tester.getRect(key('storyboard-camera-line-$camera'));
+        final gaps = [
+          for (final gap in timelineKeysLineGaps(
+            lineOf(tester, camera),
+            along: box.width,
+            across: box.height,
+          ))
+            (from: box.left + gap.from, to: box.left + gap.to),
+        ]..sort((x, y) => x.from.compareTo(y.from));
+        expect(gaps, hasLength(frames.length), reason: camera);
+        for (final (index, frame) in frames.indexed) {
+          final ring = tester.getRect(
+            find.descendant(
+              of: key(
+                'storyboard-camera-lane-key-span-$camera-transform-group-'
+                '$frame',
+              ),
+              matching: find.byType(CustomPaint),
+            ),
+          );
+          expect(
+            [gaps[index].from, gaps[index].to],
+            [
+              moreOrLessEquals(ring.left, epsilon: 1e-6),
+              moreOrLessEquals(ring.right, epsilon: 1e-6),
+            ],
+            reason: '$camera at $frame',
+          );
+        }
+      }
     });
 
     testWidgets('🚨an O.L splits the row — the leaving cut above, the arriving '
