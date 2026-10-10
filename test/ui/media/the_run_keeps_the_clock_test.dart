@@ -15,7 +15,8 @@ import '../../helpers/fake_pdf_document.dart';
 /// 로직 뷰어패널에서도 법 통일된거 재사용하게」).
 ///
 /// The viewer's run looks at every vsync, as the canvas's does, and a page
-/// turns on the first look its time has come on. ↩️A `Timer.periodic` of a
+/// turns on the first look its time has come on — a clock that got ahead
+/// is followed the canvas's way (`playheadWay`). ↩️A `Timer.periodic` of a
 /// frame's length turned a page each time it fired, and Dart's timers count
 /// whole milliseconds: a 24fps run asked for 41,667µs, got 41ms and played
 /// 24.374 frames a second — a ten-second movie over in 9.846s, with its
@@ -119,27 +120,43 @@ void main() {
     );
   });
 
-  testWidgets('🚨a clock that got ahead is caught up a page a look — no page '
-      'is passed unseen', (tester) async {
+  testWidgets('🚨a clock that got ahead is followed to its page — the pages '
+      'on the way drop, as the canvas\'s do: time never stretches', (
+    tester,
+  ) async {
     await open(tester);
     await press(tester);
     await readAhead(tester);
 
-    // A busy frame: the first look is half a second late, and twelve
-    // pages are due.
+    // A busy frame: the first look is half a second late.
     await tester.pump(const Duration(milliseconds: 500));
-    expect(slot.position.value, 1, reason: 'one is shown');
 
-    final shown = <int>[slot.position.value];
-    for (var i = 0; i < 11; i += 1) {
-      await tester.pump();
-      shown.add(slot.position.value);
-    }
     expect(
-      shown,
-      [for (var page = 1; page <= 12; page += 1) page],
-      reason: 'and each look after shows the next — never two at once',
+      slot.position.value,
+      12,
+      reason: 'half a second in, at 24 — ↩️the run turned a page a look and '
+          'showed page 1 here, its picture a page a look behind its clock',
     );
+  });
+
+  testWidgets('🚨a clock that got ahead past a page that is not there stands '
+      'BEFORE that page — never on a page it has not got', (tester) async {
+    final fake = await open(tester);
+    fake.holdRender(5);
+    await press(tester);
+    await readAhead(tester);
+
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(
+      slot.position.value,
+      4,
+      reason: 'the way stops at the first page that is not there, on the way '
+          'to the twelfth the clock says — the pages before it drop as any '
+          'do',
+    );
+    await looks(tester, 10);
+    expect(slot.position.value, 4, reason: 'and it stays parked there');
   });
 
   testWidgets('🚨a run pressed again plays at once — its clock starts with '
@@ -188,7 +205,7 @@ void main() {
       slot.position.value,
       6,
       reason: 'a frame and a half after going on is a page on — a clock that '
-          'kept the second it stood would turn a page a look to catch it up',
+          'kept the second it stood would jump to where that second ends',
     );
   });
 }

@@ -8,6 +8,7 @@ import '../../models/track_id.dart';
 import '../../models/track_transitions.dart'
     show cutDrawnFrameCount, cutMediaStartFrame, cutTransitionHandlesIn;
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/playback/playhead_way.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
 import 'looking_ticker.dart';
@@ -512,9 +513,8 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   /// The clock says [frame]. The run goes there — unless a frame on the way
-  /// has no picture yet, and then it stands on THAT frame ([waitsOn]): a
-  /// tick that came late does not carry the playhead over a picture that
-  /// was never shown.
+  /// has no picture yet, and then it stands on THAT frame ([waitsOn],
+  /// [playheadWay]).
   ///
   /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT: the
   /// frames it passed without standing on them. A move that wraps starts
@@ -526,24 +526,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// from a wait had to remember to forget.
   void _goTo(int frame, int total) {
     final from = _currentGlobalFrame;
-    // The frames on the way, in the order the run plays them, the clock's
-    // own last. Either clock only ever moves on — a step back is the lap
-    // wrapping — so the way from here to there is forwards, round the end.
-    //
-    // 🚨COUNTED, not walked 「until it gets there」: a frame outside the run
-    // is never got to, and that walk never ended — found by a mutant that
-    // took the clamp off the device's reading and hung its test, which in
-    // the app is a frozen window. However far the frame is, it is fewer
-    // steps ahead than the run has frames.
-    final ahead = (frame - from) % total;
-    var landing = from;
-    var passed = -1;
-    var waits = false;
-    for (var step = 0; step < ahead && !waits; step += 1) {
-      landing = (landing + 1) % total;
-      passed += 1;
-      waits = waitsOn?.call(landing, placed: false) ?? false;
-    }
+    final (:landing, :passed, :waits) = playheadWay(
+      from: from,
+      to: frame,
+      total: total,
+      waitsOn: (next) => waitsOn?.call(next, placed: false) ?? false,
+    );
     if (landing < from) {
       _droppedFrames = 0;
     } else if (passed > 0) {

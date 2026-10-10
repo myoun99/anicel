@@ -9,6 +9,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_picture_wait.dart';
+import '../../services/playback/playhead_way.dart';
 import '../playback/looking_ticker.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
@@ -576,59 +577,79 @@ class MediaRun {
   /// 「유지하지말고 로드할때까지 멈춰있어야지」, and 「그림을 유지한다는게
   /// 아니라 그 곳에 멈춘다는거야」.
   ///
-  /// ⚠️The CANVAS does the opposite and that is also right: it judges
-  /// TIMING against sound, so it holds real time and drops frames —
-  /// `AudioPlaybackSync` says so in one line, 「frames drop, time never
-  /// stretches」.
+  /// As of 2026-09-08 the movie's own soundtrack rides beside the pictures,
+  /// and the law reached it: a buffer that runs dry holds the SOUND at the
+  /// same instant, so the two stutter together and come back in step.
   ///
-  /// 🪦That last paragraph used to end 「This is a player looking at
-  /// reference, where nothing is riding on the clock, so it buffers」, and
-  /// as of 2026-09-08 something IS riding on it: the movie's own
-  /// soundtrack. The law did not change — it reached further. A buffer
-  /// that runs dry now holds the SOUND at the same instant, so the two
-  /// stutter together and come back in step; letting the sound run on
-  /// would leave the picture to catch up by dropping frames, which is the
-  /// behaviour this surface was given its law to refuse.
-  ///
-  /// 🚨A PAGE TURNS WHEN THE CLOCK REACHES ITS TIME, ONE AT A TIME. The
-  /// clock is the sound while it is heard, the clock's span otherwise
-  /// ([_filmSecondsAtThisLook]) — so the picture keeps the sound's time. A
-  /// clock that got ahead (a busy frame) is caught up a page a look, at the
-  /// screen's rate: no page is passed unseen, which is this surface's own
-  /// law above.
+  /// 🚨THE CLOCK SAYS WHICH PAGE, AND THE PLAYHEAD GOES THE CANVAS'S WAY
+  /// ([playheadWay], viewer-plays-by-the-one-playback-law ④). The clock is
+  /// the sound while it is heard, the run's own span otherwise
+  /// ([_filmSecondsAtThisLook]). A clock that got ahead — a busy frame — is
+  /// followed to its page, and the pages on the way that are there drop:
+  /// time never stretches, as the canvas's never does. The way stops at a
+  /// page that is not there, and the run parks on the page before it.
+  /// ↩️This said the CANVAS did the opposite, holding real time and
+  /// dropping frames while this buffered. The canvas waits for a picture
+  /// that is not made too now ([PlaybackPictureWait]); the two part only on
+  /// where a waiting run stands — the canvas on the frame, this panel
+  /// before it, on a page it has.
   void _turnThePage() {
     final fps = _surface.document!.framesPerSecond!;
-    // Its time not come: the page on screen stays — and a parked run's
-    // clock stands, so it is asked only of a run that goes.
-    if (!buffering && _filmSecondsAtThisLook() * fps < _page + 1 - _sliver) {
+    if (buffering && !_goesOn(fps)) {
+      return;
+    }
+    final due = (_filmSecondsAtThisLook() * fps + _sliver).floor();
+    // Its time not come: the page on screen stays.
+    if (due <= _page) {
       return;
     }
     if (_page >= _pageCount - 1) {
       _surface.setState(stop);
       return;
     }
-    // ⛔Not「one frame is ready, go」once parked: that plays a frame, runs
-    // dry and parks again, which is a stutter rather than playback — the
-    // wait goes on when the cushion has filled (유저 2026-08-31: 「로드가
-    // 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」), the read-ahead at rest
-    // ([fillBuffer]).
+    final (:landing, passed: _, :waits) = playheadWay(
+      from: _page,
+      to: math.min(due, _pageCount - 1),
+      total: _pageCount,
+      waitsOn: (page) => _wait.holds(page, placed: false),
+    );
+    if (waits) {
+      _parkBefore(landing);
+    } else {
+      _surface.turnToPage(landing);
+    }
+  }
+
+  /// Whether a parked run goes on at this look — and when it does, the
+  /// sound picks up where it was held, and the clock from the page ahead.
+  ///
+  /// ⛔Not「one frame is ready, go」: that plays a frame, runs dry and parks
+  /// again, which is a stutter rather than playback — the wait goes on when
+  /// the cushion has filled (유저 2026-08-31: 「로드가 안되고있으면 5초분만큼?
+  /// 로드될떄까지 멈추는?」), the read-ahead at rest ([fillBuffer]).
+  bool _goesOn(double fps) {
     if (_wait.holds(_page + 1, placed: false)) {
-      if (!buffering) {
-        // Remember where the sound was, because that is where BOTH pick up.
-        soundSeconds = sound.positionSeconds ?? soundSeconds;
-        sound.hold();
-        _surface.setState(() => buffering = true);
-      }
-      return;
+      return false;
     }
-    if (buffering) {
-      sound.resume(soundSeconds);
-      // Goes on from here: the page it turns to has a whole frame's time,
-      // as if the clock had been stopped and started.
-      _spanFromNow((_page + 1) / fps);
-      _surface.setState(() => buffering = false);
+    sound.resume(soundSeconds);
+    // Goes on from here: the page it turns to has a whole frame's time, as
+    // if the clock had been stopped and started.
+    _spanFromNow((_page + 1) / fps);
+    _surface.setState(() => buffering = false);
+    return true;
+  }
+
+  /// The way stopped at [page], which is not there: the playhead parks on
+  /// the page before it — the last on the way that is — and the sound is
+  /// held with it.
+  void _parkBefore(int page) {
+    if (page - 1 > _page) {
+      _surface.turnToPage(page - 1);
     }
-    _surface.turnToPage(_page + 1);
+    // Remember where the sound was, because that is where BOTH pick up.
+    soundSeconds = sound.positionSeconds ?? soundSeconds;
+    sound.hold();
+    _surface.setState(() => buffering = true);
   }
 
   /// What a page's time is read short by — a millionth of a frame, so a

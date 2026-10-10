@@ -351,7 +351,7 @@ void main() {
       greaterThanOrEqualTo(14),
       reason: 'and at its rate: the six frames after the sound ended are a '
           'quarter second, fifteen looks — a clock that kept the time the '
-          'device was late would turn them a page a look',
+          'device was late would jump to the end',
     );
   });
 
