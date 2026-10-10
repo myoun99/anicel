@@ -1406,14 +1406,22 @@ class LaneVerbs {
       _commitLaneEffects(layer, effects, description: 'Reset group');
       return true;
     }
-    if (headerLaneId != transformGroupHeaderLane.laneId) {
-      return false;
-    }
-    // The reset goes to the middle of the space the row is posed in
-    // ([LayerKind.poseSpace]). A cut's row in a gap has no canvas, so there
-    // is nothing to reset TO; an S row is posed in the shot (I-67-Q1), which
-    // a gap has too — the storyboard's S rows reach this with no cut open
-    // since F-101. An effect's reset above needs no space and runs anywhere.
+    // An effect's reset above needs no space and runs anywhere; the
+    // transform's goes to the middle of the space the row is posed in.
+    return headerLaneId == transformGroupHeaderLane.laneId &&
+        _resetTransformGroup(layer, frames, scoped: scoped);
+  }
+
+  /// [layer]'s transform group back to its defaults at [frames]: the middle
+  /// of the space the row is posed in ([LayerKind.poseSpace]). A cut's row
+  /// in a gap has no canvas, so there is nothing to reset TO; an S row is
+  /// posed in the shot (I-67-Q1), which a gap has too — the storyboard's S
+  /// rows reach this with no cut open since F-101.
+  bool _resetTransformGroup(
+    Layer layer,
+    List<int> frames, {
+    required bool scoped,
+  }) {
     final space = layer.kind.poseSpace(
       shot: _project.repository.requireProject().cameraSize,
       canvas: _project.activeCutOrNull?.canvasSize,

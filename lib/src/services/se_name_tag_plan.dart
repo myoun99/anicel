@@ -84,7 +84,6 @@ class ResolvedSeNameTag {
 List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required List<Layer> trackSeLayers,
   required int globalFrame,
-  required CanvasSize canvas,
   required CanvasSize cameraFrame,
 
   /// Where the shot lies on the canvas at this frame
@@ -94,7 +93,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
   if (globalFrame < 0) {
     return const [];
   }
-  final budget = seNameTagWidthBudget(canvas: canvas, cameraFrame: cameraFrame);
+  final budget = seNameTagWidthBudget(cameraFrame);
   final tags = <ResolvedSeNameTag>[];
   for (var rowIndex = 0; rowIndex < trackSeLayers.length; rowIndex += 1) {
     final layer = trackSeLayers[rowIndex];
@@ -127,7 +126,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
     final pose = layer.transformTrack.resolveAt(
       frameIndex: globalFrame,
       orElse: () => layerIdentityPose(
-        layer.kind.poseSpace(shot: cameraFrame, canvas: canvas)!,
+        layer.kind.poseSpace(shot: cameraFrame)!,
       ),
     );
     final anchor = Offset(pose.center.x, pose.center.y);

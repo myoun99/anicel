@@ -1116,32 +1116,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.currentFrameIndex,
     );
     final fromCanvas = canvasToArtwork(shot);
-    final bounds = canvasSize.canvasRect;
-    var corners = [
-      CanvasPoint(x: bounds.left, y: bounds.top),
-      CanvasPoint(x: bounds.right, y: bounds.top),
-      CanvasPoint(x: bounds.right, y: bounds.bottom),
-      CanvasPoint(x: bounds.left, y: bounds.bottom),
-    ];
-    for (final tag in tags) {
-      if (tag.layerId != activeLayer.id.value) {
-        continue;
-      }
-      final tagBox = seNameTagBoxBounds(tag, canvasSize: canvasSize);
-      if (!tagBox.isEmpty) {
-        corners = [
-          for (final corner in [
-            tagBox.topLeft,
-            tagBox.topRight,
-            tagBox.bottomRight,
-            tagBox.bottomLeft,
-          ])
-            shot.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
-        ];
-      }
-    }
     return RowTransformBox(
-      corners: corners,
+      corners: _seBoxCorners(activeLayer, tags, shot, canvasSize),
       pose: TransformPose(
         center: shot.apply(
           session.layerPoseAtFrame(at.layer, at.frame).center,
@@ -1165,6 +1141,42 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             )
           : null,
     );
+  }
+
+  /// [row]'s name tag box among [tags], laid on the canvas through [shot] —
+  /// or the canvas, with no tag of the row under the playhead.
+  static List<CanvasPoint> _seBoxCorners(
+    Layer row,
+    List<ResolvedSeNameTag> tags,
+    LayerPlacement shot,
+    CanvasSize canvasSize,
+  ) {
+    final bounds = canvasSize.canvasRect;
+    var box = [
+      bounds.topLeft,
+      bounds.topRight,
+      bounds.bottomRight,
+      bounds.bottomLeft,
+    ];
+    var through = (CanvasPoint point) => point;
+    for (final tag in tags) {
+      final tagBox = tag.layerId == row.id.value
+          ? seNameTagBoxBounds(tag, canvasSize: canvasSize)
+          : Rect.zero;
+      if (!tagBox.isEmpty) {
+        box = [
+          tagBox.topLeft,
+          tagBox.topRight,
+          tagBox.bottomRight,
+          tagBox.bottomLeft,
+        ];
+        through = shot.apply;
+      }
+    }
+    return [
+      for (final corner in box)
+        through(CanvasPoint(x: corner.dx, y: corner.dy)),
+    ];
   }
 
   /// The camera row's box ([CameraFrameBox], F-222 ③).

@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'canvas_size.dart';
 import 'property_track.dart';
@@ -323,25 +322,11 @@ class SeNameTag {
   int get hashCode => Object.hash(style, lineStyle, showLine, track);
 }
 
-/// The camera's rect in CANVAS coordinates at the resting pose (centered,
-/// zoom 1) — the SHOT, which is what every framed surface shows. The
-/// canvas is bigger than the frame by default (2340×1654 paper against a
-/// 1920×1080 camera), so anything placed relative to the canvas can sit
-/// perfectly visible while editing and be clipped away in playback's
-/// camera view and in the delivered video.
-({double left, double top, double width, double height}) shotRectIn({
-  required CanvasSize canvas,
-  required CanvasSize cameraFrame,
-}) {
-  final width = math.min(cameraFrame.width, canvas.width).toDouble();
-  final height = math.min(cameraFrame.height, canvas.height).toDouble();
-  return (
-    left: (canvas.width - width) / 2,
-    top: (canvas.height - height) / 2,
-    width: width,
-    height: height,
-  );
-}
+// ↩️`shotRectIn` — the camera's rect on the canvas at the resting pose —
+// went with I-67-Q1: a tag stands in the shot itself now, so nothing has to
+// find where the shot lies on the canvas to keep a tag inside it (the
+// canvas is bigger than the frame by default, 2340×1654 paper against a
+// 1920×1080 camera, which is why that was ever asked).
 
 // `defaultSeNameTagPosition` stacked unconfigured rows up from the shot's
 // bottom-left so S1·S2·S3 would not pile on one spot. It is gone with the
@@ -357,10 +342,5 @@ class SeNameTag {
 /// The width a tag may occupy before it shrinks to fit: the shot's width
 /// minus the same 6% margin on both sides. Without a budget a long line
 /// runs off the picture and is silently cropped.
-double seNameTagWidthBudget({
-  required CanvasSize canvas,
-  required CanvasSize cameraFrame,
-}) {
-  final shot = shotRectIn(canvas: canvas, cameraFrame: cameraFrame);
-  return shot.width * 0.88;
-}
+double seNameTagWidthBudget(CanvasSize cameraFrame) =>
+    cameraFrame.width * 0.88;

@@ -116,7 +116,6 @@ class SeEntries {
     return resolveSeNameTagsAt(
       trackSeLayers: globalLayersShowingDragPreview(track.seLayers, preview),
       globalFrame: shown,
-      canvas: cut.canvasSize,
       cameraFrame: _camera.cameraFrameSize,
       shot: shotForCutFrame(cut, localFrameIndex),
     );

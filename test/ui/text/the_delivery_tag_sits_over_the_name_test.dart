@@ -39,7 +39,6 @@ void main() {
     return resolveSeNameTagsAt(
       trackSeLayers: [row],
       globalFrame: 3,
-      canvas: canvas,
       cameraFrame: camera,
       shot: const LayerPlacement.identity(),
     ).single;

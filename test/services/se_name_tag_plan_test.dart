@@ -70,7 +70,6 @@ void main() {
       resolveSeNameTagsAt(
         trackSeLayers: rows,
         globalFrame: globalFrame,
-        canvas: canvas,
         cameraFrame: camera,
         shot: atRest,
       );
@@ -90,24 +89,18 @@ void main() {
     expect(tags.map((tag) => tag.line?.text), ['おはよう', 'うん']);
     expect(tags.first.layerId, 's1');
 
-    // The camera's rect on the canvas at the resting pose.
-    final shot = shotRectIn(canvas: canvas, cameraFrame: camera);
+    // A tag's position is the shot's own (I-67-Q1): inside the frame by
+    // what it is, wherever the shot lies on the canvas.
     for (final tag in tags) {
-      final at = tag.shot.apply(
-        CanvasPoint(
-          x: tag.content.position!.dx,
-          y: tag.content.position!.dy,
-        ),
-      );
-      final position = Offset(at.x, at.y);
+      final position = tag.content.position!;
       expect(
         position.dx,
-        inInclusiveRange(shot.left, shot.left + shot.width),
+        inInclusiveRange(0, camera.width),
         reason: 'inside the shot horizontally',
       );
       expect(
         position.dy,
-        inInclusiveRange(shot.top, shot.top + shot.height),
+        inInclusiveRange(0, camera.height),
         reason:
             'inside the shot vertically — the defect that shipped tags '
             'to an editing canvas and an empty MP4',
@@ -122,7 +115,7 @@ void main() {
     );
     expect(
       tags.first.widthBudget,
-      lessThanOrEqualTo(shot.width),
+      lessThanOrEqualTo(camera.width),
       reason: 'a long line shrinks to the shot, never runs off it',
     );
   });
