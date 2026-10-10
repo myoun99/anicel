@@ -8,64 +8,59 @@ import 'package:anicel/src/ui/ui_scale_binding.dart';
 /// 「디버그에서는 받지 않는다」) — the per-frame walk that request buys a
 /// debug build was two thirds of the UI thread while drawing. Profile,
 /// release and every other platform keep answering it, and one environment
-/// variable opens the gate again.
+/// variable takes it again.
 void main() {
-  testWidgets('the gate closes on a Windows debug build only, and one '
-      'variable opens it', (tester) async {
-    final dispatcher = tester.binding.platformDispatcher;
-    final original = dispatcher.onSemanticsEnabledChanged;
-    addTearDown(() => dispatcher.onSemanticsEnabledChanged = original);
-    void heard() {}
-
-    void close({
+  test('a Windows debug build refuses, and one variable takes it again', () {
+    bool refuses({
       required bool debugBuild,
       required bool onWindows,
       Map<String, String> environment = const {},
-    }) {
-      dispatcher.onSemanticsEnabledChanged = heard;
-      AnicelBinding.closePlatformSemanticsGate(
-        dispatcher,
-        debugBuild: debugBuild,
-        onWindows: onWindows,
-        environment: environment,
-      );
-    }
-
-    close(debugBuild: true, onWindows: true);
-    expect(dispatcher.onSemanticsEnabledChanged, isNull);
-
-    close(
-      debugBuild: true,
-      onWindows: true,
-      environment: const {'ANICEL_DEBUG_SEMANTICS': '1'},
+    }) => AnicelBinding.refusesPlatformSemantics(
+      debugBuild: debugBuild,
+      onWindows: onWindows,
+      environment: environment,
     );
-    expect(dispatcher.onSemanticsEnabledChanged, same(heard));
 
-    close(debugBuild: false, onWindows: true);
+    expect(refuses(debugBuild: true, onWindows: true), isTrue);
     expect(
-      dispatcher.onSemanticsEnabledChanged,
-      same(heard),
+      refuses(
+        debugBuild: true,
+        onWindows: true,
+        environment: const {'ANICEL_DEBUG_SEMANTICS': '1'},
+      ),
+      isFalse,
+    );
+    expect(
+      refuses(debugBuild: false, onWindows: true),
+      isFalse,
       reason: 'profile and release answer the platform as always',
     );
-
-    close(debugBuild: true, onWindows: false);
     expect(
-      dispatcher.onSemanticsEnabledChanged,
-      same(heard),
+      refuses(debugBuild: true, onWindows: false),
+      isFalse,
       reason: 'the request that was measured is Windows\'',
     );
   });
 
-  test('the app binding closes the gate as it starts', () {
+  test('the refusal is the question the framework asks, so a request that '
+      'stood before the binding was made is refused too', () {
+    // ↩️The platform's callback emptied in `initInstances` was the gate
+    // until 2026-10-10 — the Surface Pro 11 asks before `main` runs, and
+    // the framework takes that request as the binding is made.
     final source = File('lib/src/ui/ui_scale_binding.dart').readAsStringSync();
-    // Inside AnicelBinding's own initInstances: the body runs to the first
-    // two-space closing brace, and the call must come before it.
     expect(
       RegExp(
-        r'class AnicelBinding [\s\S]*?void initInstances\(\) \{'
-        r'(?:(?!\r?\n  \}\r?\n)[\s\S])*?closePlatformSemanticsGate\(\s*'
-        r'platformDispatcher,\s*debugBuild: kDebugMode,\s*'
-        r'onWindows: Platform\.isWindows,\s*'
+        r'class AnicelBinding [\s\S]*?'
+        r'bool get semanticsEnabled =>\s*'
+        r'!_refusesPlatformSemantics && super\.semanticsEnabled;',
+      ).hasMatch(source),
+      isTrue,
+    );
+    // Decided as the binding is made, from the build it is.
+    expect(
+      RegExp(
+        r'final bool _refusesPlatformSemantics = refusesPlatformSemantics\(\s*'
+        r'debugBuild: kDebugMode,\s*onWindows: Platform\.isWindows,\s*'
         r'environment: Platform\.environment,',
       ).hasMatch(source),
       isTrue,
