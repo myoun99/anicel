@@ -262,51 +262,23 @@ class _ScrollPositionTranslate extends SingleChildRenderObjectWidget {
 class _RenderScrollPositionTranslate extends RenderProxyBox
     with RenderShiftedChildHitTest {
   _RenderScrollPositionTranslate({
-    required ScrollController controller,
-    required Axis axis,
-    required DeviceGrid grid,
-  }) : _controller = controller,
-       _axis = axis,
-       _grid = grid;
+    required this.controller,
+    required this.axis,
+    required this.grid,
+  });
 
-  ScrollController get controller => _controller;
-  ScrollController _controller;
-  set controller(ScrollController value) {
-    if (identical(value, _controller)) {
-      return;
-    }
-    if (attached) {
-      _controller.removeListener(markNeedsCompositedLayerUpdate);
-      value.addListener(markNeedsCompositedLayerUpdate);
-    }
-    _controller = value;
-    markNeedsCompositedLayerUpdate();
-  }
-
-  Axis get axis => _axis;
-  Axis _axis;
-  set axis(Axis value) {
-    if (value == _axis) {
-      return;
-    }
-    _axis = value;
-    markNeedsCompositedLayerUpdate();
-  }
-
-  DeviceGrid get grid => _grid;
-  DeviceGrid _grid;
-  set grid(DeviceGrid value) {
-    if (value == _grid) {
-      return;
-    }
-    _grid = value;
-    markNeedsCompositedLayerUpdate();
-  }
+  /// What it follows, along which axis, landed on which grid — read as each
+  /// frame is composited, so a change needs no marking, and a scroll no
+  /// listener: every scroll asks for a frame through the viewport it moves.
+  /// ↩️It listened, and the mutant that took the listener away lived.
+  ScrollController controller;
+  Axis axis;
+  DeviceGrid grid;
 
   Offset get _translation {
-    final pixels = singleScrollPixelsOf(_controller) ?? 0.0;
-    final moved = deviceGridScrollCorrection(pixels, _grid) - pixels;
-    return _axis == Axis.horizontal ? Offset(moved, 0) : Offset(0, moved);
+    final pixels = singleScrollPixelsOf(controller) ?? 0.0;
+    final moved = deviceGridScrollCorrection(pixels, grid) - pixels;
+    return axis == Axis.horizontal ? Offset(moved, 0) : Offset(0, moved);
   }
 
   @override
@@ -316,18 +288,6 @@ class _RenderScrollPositionTranslate extends RenderProxyBox
   OffsetLayer updateCompositedLayer({
     required covariant _FollowingLayer? oldLayer,
   }) => oldLayer ?? _FollowingLayer(() => _translation);
-
-  @override
-  void attach(PipelineOwner owner) {
-    super.attach(owner);
-    _controller.addListener(markNeedsCompositedLayerUpdate);
-  }
-
-  @override
-  void detach() {
-    _controller.removeListener(markNeedsCompositedLayerUpdate);
-    super.detach();
-  }
 
   @override
   Offset get childPaintOffset => _translation;
