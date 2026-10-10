@@ -15,18 +15,21 @@ import '../../models/key_side.dart' show KeySideKind;
 /// 좋으니 찬성」), so a diamond's points touch the box's edges — the halves
 /// of two shapes could not meet down the middle otherwise.
 ///
-/// ONE path for both halves, so the fill has no seam down the middle where
-/// two antialiased edges would meet.
+/// ONE outline round both halves — down the left from the top of the
+/// middle, back up the right — so there is no edge down the middle where
+/// the halves meet: the fill has no seam, and the selection's ring is a
+/// thin stroke of the SILHOUETTE (UI-R23 #4), not a bar between the halves.
 Path keyMarkPath(KeyMark mark, double size) {
   final unit = size / 12;
-  return switch (mark) {
-    SidesKeyMark(:final incoming, :final outgoing) =>
-      Path()
-        ..addPath(_half(incoming, right: false, unit: unit), Offset.zero)
-        ..addPath(_half(outgoing, right: true, unit: unit), Offset.zero),
+  switch (mark) {
+    case SidesKeyMark(:final incoming, :final outgoing):
+      final path = Path()..moveTo(6 * unit, 0);
+      _walkHalf(path, incoming, right: false, unit: unit);
+      _walkHalf(path, outgoing, right: true, unit: unit);
+      return path..close();
     // The union's ○ (F-17): the disc of 「부드럽게 지나감」 left hollow.
-    MixedKeyMark() =>
-      Path()
+    case MixedKeyMark():
+      return Path()
         ..fillType = PathFillType.evenOdd
         ..addOval(Rect.fromLTWH(0, 0, size, size))
         ..addOval(
@@ -34,8 +37,8 @@ Path keyMarkPath(KeyMark mark, double size) {
             center: Offset(size / 2, size / 2),
             radius: size * _mixedHole,
           ),
-        ),
-  };
+        );
+  }
 }
 
 /// How much of a mixed mark is hole: the radius of its inside, as a share
@@ -86,26 +89,39 @@ void paintKeyMark(
     ..restore();
 }
 
-/// One half on the 12-unit grid the mark is drawn on, [right] mirrored
-/// about the middle.
-Path _half(KeySideKind kind, {required bool right, required double unit}) {
+/// [path] carried round one half's edge on the 12-unit grid the mark is
+/// drawn on, from one end of the middle line to the other: the left half
+/// top to bottom, the right half — its mirror — bottom to top.
+void _walkHalf(
+  Path path,
+  KeySideKind kind, {
+  required bool right,
+  required double unit,
+}) {
   Offset at(double x, double y) =>
       Offset((right ? 12 - x : x) * unit, y * unit);
-  Path polygon(List<Offset> points) => Path()..addPolygon(points, true);
-  return switch (kind) {
-    KeySideKind.linear => polygon([at(6, 0), at(0, 6), at(6, 12)]),
-    KeySideKind.ease =>
-      polygon([at(0, 0), at(6, 0), at(6, 6)])
-        ..addPolygon([at(0, 12), at(6, 12), at(6, 6)], true),
-    KeySideKind.auto =>
-      Path()
-        ..moveTo(6 * unit, 0)
-        ..arcToPoint(
-          Offset(6 * unit, 12 * unit),
-          radius: Radius.circular(6 * unit),
-          clockwise: right,
-        )
-        ..close(),
-    KeySideKind.hold => polygon([at(0, 0), at(6, 0), at(6, 12), at(0, 12)]),
-  };
+  final end = at(6, right ? 0 : 12);
+  void through(List<Offset> corners) {
+    for (final corner in right ? corners.reversed : corners) {
+      path.lineTo(corner.dx, corner.dy);
+    }
+    path.lineTo(end.dx, end.dy);
+  }
+
+  switch (kind) {
+    case KeySideKind.linear:
+      through([at(0, 6)]);
+    case KeySideKind.ease:
+      // An hourglass's halves meet at its waist, in the middle.
+      through([at(0, 0), at(6, 6), at(0, 12)]);
+    case KeySideKind.auto:
+      // Round the outside, whichever way the half walks.
+      path.arcToPoint(
+        end,
+        radius: Radius.circular(6 * unit),
+        clockwise: false,
+      );
+    case KeySideKind.hold:
+      through([at(0, 0), at(0, 12)]);
+  }
 }

@@ -106,9 +106,10 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
       _ => null,
     };
 
-/// The member lane's keyed frames — the ONE per-lane key reader (the lane
-/// builder, the move machine's keyed gate and the keyframe navigator all
-/// read this; the name-tag twin of `transformLaneKeyFrames`).
+/// The member lane's keyed frames — what the move machine's keyed gate
+/// reads (the name-tag twin of `transformLaneKeyFrames`). The lane rows
+/// read the keys with the marks they wear ([seNameTagLaneKeyMarks]),
+/// through the same table.
 Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
     seNameTagLaneLens(laneId)?.keyFrames(keys) ?? const {};
 

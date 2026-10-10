@@ -388,6 +388,17 @@ void main() {
         findsOneWidget,
         reason: 'the line between its keys',
       );
+      expect(
+        {
+          for (final marker in tester.widgetList<TimelineLaneKeyMarker>(
+            find.byType(TimelineLaneKeyMarker),
+          ))
+            marker.axis,
+        },
+        {Axis.horizontal},
+        reason: 'the storyboard lays its track across: its marks lie, as the '
+            'timeline\'s do',
+      );
     });
 
     testWidgets('🚨an O.L splits each lane as it splits the row — the leaving '

@@ -101,7 +101,7 @@ void main() {
     // The painted shape inside the hit box — the hit box is deliberately
     // bigger than the mark and identical on both rows.
     return tester.getSize(
-      find.descendant(of: marker, matching: find.byType(Container)).first,
+      find.descendant(of: marker, matching: find.byType(CustomPaint)),
     );
   }
 

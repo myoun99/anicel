@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/the_classic_rail.dart';
 
@@ -232,6 +233,14 @@ void main() {
 
     await doubleTapBand(tester, 'position', 8.5);
     expect(find.text('Rename key'), findsOneWidget, reason: 'a key: its window');
+    for (final side in ['in', 'out']) {
+      final pill = find.byKey(ValueKey<String>('rename-key-$side-linear'));
+      expect(
+        tester.widget<Pill>(pill).selected,
+        isTrue,
+        reason: 'the window opens on the kind its key is, each side',
+      );
+    }
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );

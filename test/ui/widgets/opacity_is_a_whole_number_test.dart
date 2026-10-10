@@ -107,9 +107,11 @@ void main() {
             .sublist(i, (i + 14).clamp(0, lines.length))
             .join(' ');
         // An opacity bar is recognisable by what it does with the number:
-        // a 0..1 model value shown as a percentage.
-        if (RegExp(r'min:\s*0\b').hasMatch(window) &&
-            RegExp(r'max:\s*1\b').hasMatch(window) &&
+        // a 0..1 model value shown as a percentage. ↩️`min:\s*0\b` read
+        // `0.01` as a zero — the key window's 세기 starts at 1% (an ease
+        // cannot have no influence; I-89 ②) and is no opacity bar.
+        if (RegExp(r'min:\s*0(\.0*)?(?![.\d])').hasMatch(window) &&
+            RegExp(r'max:\s*1(\.0*)?(?![.\d])').hasMatch(window) &&
             window.contains("unit: '%'")) {
           offenders.add('$relative:${i + 1}');
         }

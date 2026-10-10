@@ -1908,7 +1908,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   }
 }
 
-class _KeyMarkPainter extends CustomPainter {
+class _KeyMarkPainter extends CustomPainter with RepaintOnProps {
   const _KeyMarkPainter({
     required this.mark,
     required this.standing,
@@ -1933,9 +1933,5 @@ class _KeyMarkPainter extends CustomPainter {
   );
 
   @override
-  bool shouldRepaint(_KeyMarkPainter oldDelegate) =>
-      oldDelegate.mark != mark ||
-      oldDelegate.standing != standing ||
-      oldDelegate.color != color ||
-      oldDelegate.ring != ring;
+  Object get props => (mark, standing, color, ring);
 }

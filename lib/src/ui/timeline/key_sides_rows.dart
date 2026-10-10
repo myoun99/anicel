@@ -7,6 +7,7 @@ import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show KeySideKindWords;
 import '../widgets/app_window.dart' show AppWindowField;
 import '../widgets/field_slider.dart';
+import '../repaint_props.dart';
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'key_mark_glyph.dart' show paintKeyMark;
 import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
@@ -180,7 +181,7 @@ const double _glyphSize = 9;
 
 /// A choice's glyph: the mark of a key both of whose sides are that kind,
 /// cut down the middle — the half its row's side draws on the frame axis.
-class _KeySidePainter extends CustomPainter {
+class _KeySidePainter extends CustomPainter with RepaintOnProps {
   const _KeySidePainter(this.kind, {required this.leaving});
 
   final KeySideKind kind;
@@ -209,6 +210,5 @@ class _KeySidePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_KeySidePainter oldDelegate) =>
-      oldDelegate.kind != kind || oldDelegate.leaving != leaving;
+  Object get props => (kind, leaving);
 }

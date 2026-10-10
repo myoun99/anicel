@@ -374,17 +374,18 @@ void main() {
         expect(_laneKey(laneId, 8), findsOneWidget);
       }
 
-      // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9)
-      // — union headers and member lanes alike; selection speaks through
-      // the accent silhouette alone.
-      Color markerFill(Finder marker) {
-        final container = tester.widget<Container>(
-          find.descendant(of: marker, matching: find.byType(Container)).first,
-        );
-        return (container.decoration! as BoxDecoration).color!;
-      }
-
-      expect(markerFill(_laneKey('position', 0)), timelineDrawingStartColor);
+      // EVERY key mark fills like the frame blocks (UI-R24 #9) — union
+      // headers and member lanes alike; selection speaks through the
+      // accent silhouette alone.
+      expect(
+        tester.renderObject(
+          find.descendant(
+            of: _laneKey('position', 0),
+            matching: find.byType(CustomPaint),
+          ),
+        ),
+        paints..path(color: timelineDrawingStartColor),
+      );
 
       // ㉙: no header to collapse here, so the ROW's twirl is the only fold —
       // and it takes every lane with it.

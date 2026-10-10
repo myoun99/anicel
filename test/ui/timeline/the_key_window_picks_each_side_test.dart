@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/key_range_move.dart' show unionMixedKeyName;
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/key_sides_rows.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
@@ -177,6 +179,18 @@ void main() {
       );
     });
   }
+
+  testWidgets('the rows speak the program language — in Korean the words of '
+      'the drawing the user picked', (tester) async {
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+    );
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    await pumpRows(tester, [straight]);
+    for (final word in ['도착', '출발', '리니어', '천천히', '부드럽게', '홀드']) {
+      expect(find.text(word), findsWidgets, reason: word);
+    }
+  });
 
   testWidgets('each choice wears its half of the mark — the left for the '
       'side arriving, the right for the side leaving', (tester) async {

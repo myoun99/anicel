@@ -18,13 +18,14 @@ import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformPropertyLanes;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -468,25 +469,21 @@ metrics: const TimelineGridMetrics(
 
     // Selected key markers ring in ACCENT 1 (UI-R23 #4): the LANE
     // selection covering the key at frame 2 gives the mark its ONLY
-    // border — an unselected mark has none at all since 2026-09-12
-    // (유저: 「외곽선 회색 … 삭제. 그냥 심플하게 바탕색만 남겨서」).
-    Border? markerBorder() {
-      final container = tester.widget<Container>(
-        find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-lane-key-layer-a-position-2'),
-              ),
-              matching: find.byType(Container),
-            )
-            .first,
-      );
-      return (container.decoration! as BoxDecoration).border as Border?;
-    }
+    // ring — an unselected mark has none at all since 2026-09-12
+    // (유저: 「외곽선 회색 … 삭제. 그냥 심플하게 바탕색만 남겨서」). What a
+    // ring looks like is the marker's own pin
+    // (`union_mark_says_when_members_disagree_test`).
+    bool ringed() => tester
+        .widget<TimelineLaneKeyMarker>(
+          find.byKey(
+            const ValueKey<String>('timeline-lane-key-layer-a-position-2'),
+          ),
+        )
+        .selected;
 
     laneSelection.value = null;
     await tester.pump();
-    expect(markerBorder(), isNull, reason: 'no outline of its own');
+    expect(ringed(), isFalse, reason: 'no outline of its own');
     laneSelection.value = const TimelineLaneSelection(
       layerId: LayerId('layer-a'),
       laneId: 'position',
@@ -494,8 +491,7 @@ metrics: const TimelineGridMetrics(
       endIndexExclusive: 4,
     );
     await tester.pump();
-    expect(markerBorder()!.top.color, AppColors.accent);
-    expect(markerBorder()!.top.width, moreOrLessEquals(4 / 3));
+    expect(ringed(), isTrue);
     // R27 #14: the span BAND no longer lives inside the lane row — it is
     // the cell selection's band, drawn by the cursor overlay. This
     // harness mounts lane bands alone, so only the key ring is visible
@@ -1683,14 +1679,9 @@ metrics: const TimelineGridMetrics(
 
       // The ring proves the marker agrees it is inside the span — the same
       // predicate the stand-down reads.
-      final ringed = tester.widget<Container>(
-        find
-            .descendant(of: keyMarker(2), matching: find.byType(Container))
-            .first,
-      );
       expect(
-        ((ringed.decoration! as BoxDecoration).border! as Border).top.color,
-        AppColors.accent,
+        tester.widget<TimelineLaneKeyMarker>(keyMarker(2)).selected,
+        isTrue,
       );
 
       final laneGesture = find.byKey(

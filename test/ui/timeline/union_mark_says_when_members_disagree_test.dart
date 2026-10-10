@@ -282,6 +282,93 @@ void main() {
       );
     });
 
+    testWidgets('the selection rings the OUTLINE, as thin as UI-R23 #4 set it '
+        '— never a bar down the middle where the halves meet', (tester) async {
+      for (final mark in [
+        KeyMark.linear,
+        _heldOut,
+        sides(KeySideKind.ease, KeySideKind.ease),
+        sides(KeySideKind.auto, KeySideKind.linear),
+      ]) {
+        final ringed = await pumpMarker(tester, mark, selected: true);
+        late Path ring;
+        late Paint ink;
+        expect(
+          ringed,
+          paints
+            ..path(color: labelColor)
+            ..clipPath()
+            ..something((method, arguments) {
+              if (method != #drawPath) {
+                return false;
+              }
+              ring = arguments.first as Path;
+              ink = arguments.last as Paint;
+              return true;
+            }),
+        );
+        expect(ink.style, PaintingStyle.stroke, reason: '$mark');
+        // Twice the ring's 4/3, half of it clipped away — in the 32 bits a
+        // paint keeps its width in.
+        expect(
+          ink.strokeWidth,
+          moreOrLessEquals(8 / 3, epsilon: 1e-6),
+          reason: '$mark',
+        );
+        expect(
+          [
+            for (final metric in ring.computeMetrics())
+              for (var at = 0.0; at < metric.length; at += 0.1)
+                if (metric.getTangentForOffset(at) case final tangent?
+                    when (tangent.position.dx - 6).abs() < 1e-3 &&
+                        tangent.vector.dx.abs() < 1e-3 &&
+                        tangent.position.dy > 0.5 &&
+                        tangent.position.dy < 11.5)
+                  tangent.position,
+          ],
+          isEmpty,
+          reason: '$mark: the ring runs down the middle there',
+        );
+      }
+    });
+
+    testWidgets('a key drawn again with another kind, ring or axis is '
+        'painted again — the old mark never stays on screen', (tester) async {
+      CustomPainter painter() => tester
+          .widget<CustomPaint>(
+            find.descendant(
+              of: find.byType(TimelineLaneKeyMarker),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .painter!;
+      await pumpMarker(tester, KeyMark.linear);
+      var before = painter();
+      for (final (what, pump) in [
+        ('its kind', () => pumpMarker(tester, _heldOut)),
+        ('its ring', () => pumpMarker(tester, _heldOut, selected: true)),
+        (
+          'its axis',
+          () => pumpMarker(
+            tester,
+            _heldOut,
+            selected: true,
+            axis: Axis.vertical,
+          ),
+        ),
+      ]) {
+        await pump();
+        expect(painter().shouldRepaint(before), isTrue, reason: what);
+        before = painter();
+      }
+      await pumpMarker(tester, _heldOut, selected: true, axis: Axis.vertical);
+      expect(
+        painter().shouldRepaint(before),
+        isFalse,
+        reason: 'the same key is the same painting',
+      );
+    });
+
     testWidgets('on the X-sheet the mark STANDS: the half arriving faces the '
         'frames before the key, up the sheet — as the flip window\'s '
         'standing view turns the timeline', (tester) async {
@@ -382,6 +469,19 @@ void main() {
           ..path(
             includes: const [Offset(1, 6), Offset(5.5, 11)],
             excludes: const [Offset(6, 6), Offset(0.5, 0.5)],
+          ),
+      );
+    });
+
+    testWidgets('the hollow ring weighs what the drawing the user picked did '
+        '— its hole about two thirds of the box across', (tester) async {
+      // The 12px box's middle is (6, 6); the ring's outside is 6 from it.
+      expect(
+        await pumpMarker(tester, KeyMark.mixed),
+        paints
+          ..path(
+            includes: const [Offset(6 - 4.4, 6), Offset(6, 6 + 4.4)],
+            excludes: const [Offset(6 - 3.2, 6), Offset(6, 6 + 3.2)],
           ),
       );
     });
