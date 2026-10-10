@@ -80,8 +80,22 @@ class TextToolOptions {
   /// These with [color] the letters' colour, the tool's OWN — a colour
   /// picked in the tool settings, the brush's own colour picked through
   /// 「현재 색 반영」 too.
-  TextToolOptions withColour(int color) => TextToolOptions(
-    letters: _letters.copyWith(color: color),
+  TextToolOptions withColour(int color) =>
+      _with(_letters.copyWith(color: color), takesTheBrushColour: false);
+
+  /// These with [change] made on the letters. ⚠️Not on their colour: a
+  /// colour in them is the next text's only once the tool has its own, and
+  /// [withColour] is what gives it one.
+  TextToolOptions withLetters(
+    TextLetterStyle Function(TextLetterStyle letters) change,
+  ) => _with(change(_letters), takesTheBrushColour: takesTheBrushColour);
+
+  TextToolOptions _with(
+    TextLetterStyle letters, {
+    required bool takesTheBrushColour,
+  }) => TextToolOptions(
+    letters: letters,
+    takesTheBrushColour: takesTheBrushColour,
     align: align,
     lineHeight: lineHeight,
     backgroundColor: backgroundColor,
@@ -101,17 +115,14 @@ class TextToolOptions {
         vertical: vertical,
       );
 
-  /// ⚠️[letters] gives the letters, not whose colour they wear: a colour in
-  /// them is the next text's only once the tool has its own — [withColour]
-  /// is what gives it one.
+  /// These with the box's values given — the letters are [withLetters]'.
   TextToolOptions copyWith({
-    TextLetterStyle? letters,
     TextCelAlign? align,
     double? lineHeight,
     Object? backgroundColor = _sentinel,
     bool? vertical,
   }) => TextToolOptions(
-    letters: letters ?? _letters,
+    letters: _letters,
     takesTheBrushColour: takesTheBrushColour,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,

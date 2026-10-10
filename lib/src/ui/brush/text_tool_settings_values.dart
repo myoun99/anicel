@@ -82,11 +82,7 @@ class TextToolSettingsValues {
     bool settled = true,
   }) {
     tool?.changeLetters(change, settled: settled);
-    _setNext(
-      (next) => next.copyWith(
-        letters: change(next.letters(brushColour: brushColour)),
-      ),
-    );
+    _setNext((next) => next.withLetters(change));
   }
 
   /// Sets the letters' colour as [setLetters] sets a letter setting — and
