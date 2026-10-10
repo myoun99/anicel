@@ -299,7 +299,15 @@ void main() {
   /// 「Cut Pixels」 — 색 편집's 픽셀 잘라내기, answered in the other four
   /// languages by id (`shortcutAction.edit-cut-pixels`). The cut tool's
   /// 「원본 삭제」 is worded through the table and adds none.
-  const untranslatedElsewhere = 131;
+  ///
+  /// 135 (I-40, the tool settings' buttons, 2026-10-11): the English rows
+  /// of four new registry actions — the transform's two flips and its
+  /// reset, and the stamp's reset — each answered in the other four
+  /// languages by id (`shortcutAction.transform-reset` …). The round's
+  /// other five (Invert Selection, Paste at original position, Register as
+  /// Tip…, Add vanishing point, Rasterize) are composed from the table and
+  /// add none. The ceiling stood at the count (131) when it came.
+  const untranslatedElsewhere = 135;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
