@@ -53,7 +53,9 @@ class DragValueLabel extends StatefulWidget {
     this.textAlign = TextAlign.center,
     this.enabled = true,
     this.onOperationStart,
+    this.onOperationEnd,
     this.digitsOnly = false,
+    this.shrinkToFit = false,
   }) : name = null,
        _boxed = false;
 
@@ -79,10 +81,12 @@ class DragValueLabel extends StatefulWidget {
     this.inputKeyValue,
     this.enabled = true,
     this.onOperationStart,
+    this.onOperationEnd,
     this.digitsOnly = false,
   }) : width = double.infinity,
        textStyle = null,
        textAlign = TextAlign.right,
+       shrinkToFit = false,
        _boxed = true;
 
   /// What a box says it holds, inside at the left — `X`, a mesh's columns.
@@ -105,6 +109,18 @@ class DragValueLabel extends StatefulWidget {
   /// this widget knows where it began. Null for every readout that does
   /// not care, which is most of them.
   final VoidCallback? onOperationStart;
+
+  /// Called ONCE when a scrub this readout made is over — the press
+  /// that moved the value let go, or was taken away — for a host that
+  /// SHOWS a scrub while it runs and writes it once at the end (a
+  /// timeline lane: one drag, one undo). Null for every readout that
+  /// writes as it goes, which is the rest of them.
+  final VoidCallback? onOperationEnd;
+
+  /// Whether the resting readout SHRINKS into [width] rather than
+  /// running past it — the x-sheet's stood-up numbers, where a
+  /// coordinate cut short would be a wrong one.
+  final bool shrinkToFit;
 
   /// Stable widget key base (`keyValue` label / `keyValue`-input).
   final String keyValue;
@@ -226,6 +242,14 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
   }
 
+  /// The press is over: a scrub it made is done ([DragValueLabel
+  /// .onOperationEnd]).
+  void _scrubOver() {
+    if (_scrubbedThisPress) {
+      widget.onOperationEnd?.call();
+    }
+  }
+
   /// A press edits the number unless it moved the value.
   ///
   /// ⛔Not the arena: the drag takes it on the first movement, so the arena
@@ -262,19 +286,24 @@ class _DragValueLabelState extends State<DragValueLabel> {
         child: _field(style, TextAlign.center),
       );
     }
+    final readout = Text(
+      widget.text,
+      textAlign: widget.textAlign,
+      maxLines: widget.shrinkToFit ? 1 : null,
+      softWrap: !widget.shrinkToFit,
+      style: widget.enabled
+          ? style
+          : style.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.38),
+            ),
+    );
     return SizedBox(
       width: widget.width,
-      child: Text(
-        widget.text,
-        textAlign: widget.textAlign,
-        style: widget.enabled
-            ? style
-            : style.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.38),
-              ),
-      ),
+      child: widget.shrinkToFit
+          ? FittedBox(fit: BoxFit.scaleDown, child: readout)
+          : readout,
     );
   }
 
@@ -332,45 +361,56 @@ class _DragValueLabelState extends State<DragValueLabel> {
     if (_editing) {
       return face;
     }
+    // ⚠️The order is what makes the tap right. Pointer-up runs deepest
+    // first, so [DragVerbClaim] has let its claim go by the time
+    // [ControlPressClaim] asks whether a drag verb owns the pointer — the
+    // claim then fires, and [_editUnlessScrubbed] is what refuses a press
+    // that scrubbed.
+    final pressed = ControlPressClaim(
+      onPressed: widget.enabled ? _editUnlessScrubbed : null,
+      child: Listener(
+        onPointerDown: _pressStarted,
+        child: DragVerbClaim(
+          behavior: HitTestBehavior.opaque,
+          child: RawGestureDetector(
+            key: ValueKey<String>(widget.keyValue),
+            behavior: HitTestBehavior.opaque,
+            gestures: widget.enabled
+                ? <Type, GestureRecognizerFactory>{
+                    OwningHorizontalDragGestureRecognizer:
+                        GestureRecognizerFactoryWithHandlers<
+                          OwningHorizontalDragGestureRecognizer
+                        >(
+                          () => OwningHorizontalDragGestureRecognizer(
+                            debugOwner: this,
+                          ),
+                          (recognizer) {
+                            recognizer.onStart = _dragStarted;
+                            recognizer.onUpdate = _dragUpdated;
+                            recognizer.onEnd = (_) => _scrubOver();
+                            recognizer.onCancel = _scrubOver;
+                          },
+                        ),
+                  }
+                : const <Type, GestureRecognizerFactory>{},
+            child: face,
+          ),
+        ),
+      ),
+    );
     final label = MouseRegion(
       cursor: widget.enabled
           ? SystemMouseCursors.resizeLeftRight
           : MouseCursor.defer,
-      // ⚠️The order is what makes the tap right. Pointer-up runs deepest
-      // first, so [DragVerbClaim] has let its claim go by the time
-      // [ControlPressClaim] asks whether a drag verb owns the pointer — the
-      // claim then fires, and [_editUnlessScrubbed] is what refuses a press
-      // that scrubbed.
-      child: ControlPressClaim(
-        onPressed: widget.enabled ? _editUnlessScrubbed : null,
-        child: Listener(
-          onPointerDown: _pressStarted,
-          child: DragVerbClaim(
-            behavior: HitTestBehavior.opaque,
-            child: RawGestureDetector(
-              key: ValueKey<String>(widget.keyValue),
-              behavior: HitTestBehavior.opaque,
-              gestures: widget.enabled
-                  ? <Type, GestureRecognizerFactory>{
-                      OwningHorizontalDragGestureRecognizer:
-                          GestureRecognizerFactoryWithHandlers<
-                            OwningHorizontalDragGestureRecognizer
-                          >(
-                            () => OwningHorizontalDragGestureRecognizer(
-                              debugOwner: this,
-                            ),
-                            (recognizer) {
-                              recognizer.onStart = _dragStarted;
-                              recognizer.onUpdate = _dragUpdated;
-                            },
-                          ),
-                    }
-                  : const <Type, GestureRecognizerFactory>{},
-              child: face,
-            ),
-          ),
-        ),
-      ),
+      // 🚨A NUMBER ANSWERS ITS TAP ON THE RELEASE, wherever it stands. Its
+      // press is a scrub or a tap, and which one is known only once the hand
+      // lets go ([_editUnlessScrubbed]) — so a row whose buttons act on the
+      // press (a timeline lane: 「레이어 쪽 버튼은 탭다운」, 유저 2026-08-30)
+      // cannot set its moment: the field opening on the press took the drag
+      // away before it began (tool-settings-panel-tidy, 2026-10-10, when the
+      // lanes' values became these). ↩️A lane's value was an `InkWell` of its
+      // own, which answered on the release too.
+      child: PressFireScope(fireOn: PressFire.upInside, child: pressed),
     );
     final tooltip = widget.tooltip;
     return tooltip == null ? label : AppTooltip(message: tooltip, child: label);

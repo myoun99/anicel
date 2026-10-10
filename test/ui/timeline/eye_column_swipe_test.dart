@@ -180,7 +180,11 @@ void main() {
   // sit a column's growth off the eye.
   testWidgets('and on GROWN columns — the bands follow the widths the '
       'rail lays out', (tester) async {
-    const grown = (opacity: 60.0, blend: 80.0);
+    final grown = (
+      opacity: 60.0,
+      blend: 80.0,
+      laneValue: TimelineGridMetrics.defaults.railColumns.laneValue,
+    );
     final toggled = await _swipeDownTheEyeColumn(
       tester,
       withBlendColumn: true,

@@ -158,6 +158,7 @@ void main() {
         railColumns: (
           opacity: TimelineGridMetrics.defaults.railColumns.opacity + 10,
           blend: TimelineGridMetrics.defaults.railColumns.blend - 10,
+          laneValue: TimelineGridMetrics.defaults.railColumns.laneValue,
         ),
       ),
     ),

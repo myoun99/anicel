@@ -495,6 +495,9 @@ void main() {
         tester.getCenter(key('storyboard-lane-value-$rowId-scale')),
         kind: PointerDeviceKind.mouse,
       );
+      // Past the slop the box waits out before its number moves.
+      await gesture.moveBy(const Offset(2, 0));
+      await tester.pump();
       for (var step = 0; step < 6; step += 1) {
         await gesture.moveBy(const Offset(10, 0));
         await tester.pump();

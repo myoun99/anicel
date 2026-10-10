@@ -284,13 +284,19 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      double valueRight(String laneId) => tester
-          .getRect(
-            find.byKey(
-              ValueKey<String>('timeline-lane-value-$_drawId-$laneId'),
-            ),
-          )
-          .right;
+      // Where a value ENDS — its last box's edge (a pair is two boxes,
+      // tool-settings-panel-tidy 2026-10-10).
+      double valueRight(String laneId) {
+        final first = 'timeline-lane-value-$_drawId-$laneId';
+        final second = find.byKey(ValueKey<String>('$first-1'));
+        return tester
+            .getRect(
+              second.evaluate().isNotEmpty
+                  ? second
+                  : find.byKey(ValueKey<String>(first)),
+            )
+            .right;
+      }
       double cellRight(String laneId) => tester
           .getRect(
             find.byKey(

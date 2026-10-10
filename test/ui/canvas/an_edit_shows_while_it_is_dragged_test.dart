@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/placement_reading.dart';
 
@@ -193,19 +194,23 @@ void main() {
   CanvasPoint shownCentre(EditorSessionManager session) =>
       activeRowIn(session).placement?.centreOf(canvasSize) ?? centre;
 
-  String valueLabel(WidgetTester tester, LayerId layer, String laneId) =>
-      tester
-          .widget<Text>(
-            find.descendant(
-              of: find.byKey(
-                ValueKey<String>(
-                  'timeline-lane-value-${layer.value}-$laneId',
+  /// What a lane's value reads now — its numbers, box by box (a pair is two
+  /// boxes, tool-settings-panel-tidy 2026-10-10).
+  String valueLabel(WidgetTester tester, LayerId layer, String laneId) {
+    final first = 'timeline-lane-value-${layer.value}-$laneId';
+    return [
+      for (final key in [first, '$first-1'])
+        if (find.byKey(ValueKey<String>(key)).evaluate().isNotEmpty)
+          tester
+              .widget<DragValueLabel>(
+                find.ancestor(
+                  of: find.byKey(ValueKey<String>(key)),
+                  matching: find.byType(DragValueLabel),
                 ),
-              ),
-              matching: find.byType(Text),
-            ),
-          )
-          .data!;
+              )
+              .text,
+    ].join(', ');
+  }
 
   /// The standing row's box (F-222) — the layer's, or the camera frame's.
   RowTransformBox boxOf(WidgetTester tester) =>
@@ -311,6 +316,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -395,6 +403,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     for (var step = 0; step < 4; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -527,6 +538,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -632,6 +646,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -709,6 +726,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     await gesture.moveBy(const Offset(10, 0));
     await tester.pump();
 
@@ -753,6 +773,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     try {
       for (var step = 0; step < 3; step += 1) {
         await gesture.moveBy(const Offset(10, 0));
@@ -784,6 +807,9 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     try {
       for (var step = 0; step < 3; step += 1) {
         await gesture.moveBy(const Offset(-10, 0));

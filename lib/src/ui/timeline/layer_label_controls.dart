@@ -274,21 +274,27 @@ const double layerOpacitySlotWidth = 51;
 /// slot, immediately right of the opacity bar, per the user's placement.
 const double layerBlendSlotWidth = 58;
 
-/// The rail's two columns that hold WORDS — the opacity bar's digits (and
-/// the legend's resting OPAC) and the blend chip's mode — as wide as they
-/// are where the rail is shown. Every other column holds an icon, and icons
-/// do not follow the OS text size.
+/// The rail's columns that hold WORDS — the opacity bar's digits (and the
+/// legend's resting OPAC), the blend chip's mode and a lane's value
+/// boxes ([layerLaneValueSlotWidth]) — as wide as they are where the
+/// rail is shown. Every other column holds an icon, and icons do not
+/// follow the OS text size.
 ///
 /// 🚨text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라 넓어진다」):
 /// a column's 1× slot plus as much as its widest word grew — 0 at 1×, so
 /// nothing drawn at 1× moves — and the rail pays for it, as it paid for the
 /// blend column (R27 #6). 🔬At 1.5× 「100」 wanted 35.5 in the bar's 26.
-typedef LayerRailColumnWidths = ({double opacity, double blend});
+typedef LayerRailColumnWidths = ({
+  double opacity,
+  double blend,
+  double laneValue,
+});
 
 /// The columns at 1× — what a surface that never asks draws.
 const LayerRailColumnWidths layerRailColumnWidthsAtOne = (
   opacity: layerOpacitySlotWidth,
   blend: layerBlendSlotWidth,
+  laneValue: layerLaneValueSlotWidth,
 );
 
 /// [LayerRailColumnWidths] where [context] lays its text out.
@@ -313,6 +319,10 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
         layerOpacitySlotWidth +
         FieldSlider.widthGrowthIn(context, const ['100', 'OPAC']),
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
+    // Two boxes, each as much wider as its name and its widest number.
+    laneValue:
+        layerLaneValueSlotWidth +
+        2 * FieldSlider.widthGrowthIn(context, const [_laneValueWidest]),
   );
   _railColumnsMemo = (key: key, columns: columns);
   return columns;
@@ -330,7 +340,18 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
 /// `Position` therefore parked their numbers at different x on adjacent
 /// rows. The alignment was never the problem; there was nothing to align
 /// to.
-const double layerLaneValueSlotWidth = 80;
+///
+/// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 안 A): the value is the
+/// tool settings' NUMBER BOXES — one for each number, a pair side by
+/// side — and the column is two boxes holding a four-digit coordinate
+/// with room to spare: 「A로하란거, 지금 너무 공간 빡빡하거든? 공간
+/// 많으니까 다 쓰란건아닌데 좀 더 여유롭게 크게하자」. ↩️80px, the value
+/// written in blue and shrunk to fit it.
+const double layerLaneValueSlotWidth = 188;
+
+/// What one of the column's boxes says at its widest: its name and a
+/// four-digit coordinate with its sign.
+const String _laneValueWidest = 'X -0000.00';
 
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;

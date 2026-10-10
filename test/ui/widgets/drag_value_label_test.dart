@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
@@ -81,6 +82,113 @@ void main() {
     expect(seen.edits, ['250']);
     expect(find.byType(InlineNumericField), findsNothing);
     expect(seen.deltas, isEmpty);
+  });
+
+  /// The readout as a timeline lane holds it (tool-settings-panel-tidy,
+  /// 2026-10-10): told when a scrub is over, and on a row whose buttons act
+  /// on the press ([PressFire.down], 「레이어 쪽 버튼은 탭다운」).
+  Future<({List<double> deltas, int Function() ends})> pumpOnARow(
+    WidgetTester tester,
+  ) async {
+    final deltas = <double>[];
+    var ends = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: PressFireScope(
+              fireOn: PressFire.down,
+              child: DragValueLabel(
+                keyValue: 'value',
+                text: '100%',
+                onDragDelta: deltas.add,
+                onEditSubmit: (_) {},
+                onOperationEnd: () => ends += 1,
+                unitsPerPixel: 1,
+                width: 64,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return (deltas: deltas, ends: () => ends);
+  }
+
+  testWidgets('🚨on a row whose buttons act on the PRESS it still scrubs — '
+      'its tap is known only on the release, so the field does not open on '
+      'the press and take the drag away', (tester) async {
+    final seen = await pumpOnARow(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('100%')),
+    );
+    await tester.pump();
+    expect(
+      find.byType(InlineNumericField),
+      findsNothing,
+      reason: 'not on the press',
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+    expect(seen.deltas, isNotEmpty, reason: 'it scrubbed');
+    expect(find.byType(InlineNumericField), findsNothing);
+
+    await tester.tap(find.text('100%'));
+    await tester.pump();
+    expect(
+      find.byType(InlineNumericField),
+      findsOneWidget,
+      reason: 'a press that moved nothing opens the field — on the release',
+    );
+  });
+
+  testWidgets('a scrub says ONCE that it is over, at the release — and a tap '
+      'that moved nothing says nothing', (tester) async {
+    final seen = await pumpOnARow(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('100%')),
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    expect(seen.ends(), 0, reason: 'not while it runs');
+    await gesture.up();
+    await tester.pump();
+    expect(seen.ends(), 1);
+
+    await tester.tap(find.text('100%'));
+    await tester.pump();
+    expect(seen.ends(), 1, reason: 'a tap scrubbed nothing');
+  });
+
+  testWidgets('a stood-up readout SHRINKS into its width — a coordinate cut '
+      'short would be a wrong one', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: DragValueLabel(
+              keyValue: 'line',
+              text: '-1218.00',
+              onDragDelta: (_) {},
+              onEditSubmit: (_) {},
+              width: 20,
+              shrinkToFit: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.getRect(find.text('-1218.00')).width,
+      lessThanOrEqualTo(20.01),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('disabled, it keeps its place: a drag reports nothing, a tap '

@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -130,6 +131,28 @@ Future<void> _expandTransformGroup(
   await tester.pumpAndSettle();
   await tester.tap(toggle);
   await tester.pumpAndSettle();
+}
+
+/// A scrub of [cell] by [dx] as a hand makes one: past the slop a
+/// number box waits out before its number moves (`DragValueLabel`),
+/// then the travel.
+Future<void> _scrubBy(
+  WidgetTester tester,
+  Finder cell,
+  double dx, {
+  PointerDeviceKind kind = PointerDeviceKind.touch,
+}) async {
+  final gesture = await tester.startGesture(
+    tester.getCenter(cell),
+    kind: kind,
+  );
+  await gesture.moveBy(
+    Offset(kind == PointerDeviceKind.touch ? 20 : 2, 0),
+  );
+  await tester.pump();
+  await gesture.moveBy(Offset(dx, 0));
+  await tester.pump();
+  await gesture.up();
 }
 
 Finder _laneKey(String laneId, int frame) => find.byKey(
@@ -525,11 +548,11 @@ void main() {
         expect(
           find.byKey(
             const ValueKey<String>(
-              'timeline-lane-value-field-lane-draw-layer-scale-1',
+              'timeline-lane-value-lane-draw-layer-scale-1',
             ),
           ),
           findsOneWidget,
-          reason: 'two boxes: across, and down',
+          reason: 'two boxes: across, and down — the second as shown',
         );
         await tester.enterText(draw('value-field'), across);
         await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -1395,44 +1418,43 @@ void main() {
         'timeline-lane-value-field-lane-cam-layer-position-1',
       );
 
-      final readout = tester
-          .widget<Text>(
-            find.descendant(of: find.byKey(valueKey), matching: find.byType(Text)),
+      const secondKey = ValueKey<String>(
+        'timeline-lane-value-lane-cam-layer-position-1',
+      );
+      String shown(ValueKey<String> box) => tester
+          .widget<DragValueLabel>(
+            find.ancestor(
+              of: find.byKey(box),
+              matching: find.byType(DragValueLabel),
+            ),
           )
-          .data!;
-      expect(readout, contains(','), reason: 'premise: the READOUT is a pair');
-
-      await tester.tap(find.byKey(valueKey));
-      await tester.pumpAndSettle();
+          .text;
+      final x = shown(valueKey);
+      final y = shown(secondKey);
 
       // 🚨Two boxes, each holding one bare number. One box holding
       // `120, 45` is what this replaced — nudging y meant retyping x, the
       // comma and the space around the one number that changed.
-      expect(find.byKey(xKey), findsOneWidget);
-      expect(find.byKey(yKey), findsOneWidget);
-      final x = tester.widget<TextField>(find.byKey(xKey)).controller!.text;
-      final y = tester.widget<TextField>(find.byKey(yKey)).controller!.text;
       expect(x, isNot(contains(',')));
       expect(y, isNot(contains(',')));
-      expect('$x, $y', readout, reason: 'together they ARE the readout');
+
+      // A tap opens the box it lands on, and that one alone.
+      await tester.tap(find.byKey(secondKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(yKey), findsOneWidget);
+      expect(find.byKey(xKey), findsNothing, reason: 'x stands as shown');
+      expect(
+        tester.widget<TextField>(find.byKey(yKey)).controller!.text,
+        y,
+      );
 
       // Type into the SECOND box alone; the first stands.
       await tester.enterText(find.byKey(yKey), '77');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<Text>(
-              find.descendant(
-                of: find.byKey(valueKey),
-                matching: find.byType(Text),
-              ),
-            )
-            .data,
-        '$x, 77.00',
-        reason: 'the untouched element survived the commit',
-      );
+      expect(shown(valueKey), x, reason: 'the untouched element survived');
+      expect(shown(secondKey), '77.00');
       expect(_laneKey('position', 0), findsOneWidget);
     });
 
@@ -1474,11 +1496,12 @@ void main() {
       await expand(tester);
 
       // +40px horizontally = +20% at the scale lane's 0.5%/px rate.
-      await tester.drag(
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
+        40,
       );
       await tester.pumpAndSettle();
 
@@ -1516,12 +1539,12 @@ void main() {
       );
       await expand(tester);
 
-      await tester.drag(
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
-        kind: PointerDeviceKind.touch,
+        40,
       );
       await tester.pumpAndSettle();
 
@@ -1792,11 +1815,12 @@ void main() {
 
       // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
       // drag-axis mapping is the LANE's, identical in both orientations.
-      await tester.drag(
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
+        40,
       );
       await tester.pumpAndSettle();
       expect(valueLines(), ['220.00%']);
@@ -1816,22 +1840,39 @@ void main() {
       // three READABLE tokens down the column, not seven glyph cells —
       // a four-digit run is past the 縦中横 limit and the vertical writer
       // used to fall back to one digit per cell.
-      expect(
-        tester
-            .widgetList<Text>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>(
-                    'xsheet-lane-value-lane-cam-layer-position',
-                  ),
-                ),
-                matching: find.byType(Text),
-              ),
-            )
-            .map((text) => text.data ?? '')
-            .toList(),
-        hasLength(3),
+      final cell = find.byKey(
+        const ValueKey<String>('xsheet-lane-label-lane-cam-layer-position'),
       );
+      final lines = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: cell,
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Text &&
+                    (widget.data == ',' ||
+                        RegExp(r'^-?\d').hasMatch(widget.data ?? '')),
+              ),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .toList();
+      expect(lines, hasLength(3));
+      expect(lines[1], ',');
+      // Each number its own readout, dragged and typed alone.
+      for (final key in const [
+        'xsheet-lane-value-lane-cam-layer-position',
+        'xsheet-lane-value-lane-cam-layer-position-1',
+      ]) {
+        expect(
+          find.ancestor(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(DragValueLabel),
+          ),
+          findsOneWidget,
+          reason: key,
+        );
+      }
     });
 
     testWidgets('prev/next navigator jumps the playhead between keys', (

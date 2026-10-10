@@ -74,6 +74,9 @@ void main() {
       tester.getCenter(cell),
       kind: PointerDeviceKind.mouse,
     );
+    // Past the slop the box waits out before its number moves.
+    await gesture.moveBy(const Offset(2, 0));
+    await tester.pump();
     for (var step = 0; step < steps; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();

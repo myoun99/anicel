@@ -90,8 +90,10 @@ enum PressFire {
 /// flag is how the two families stop being two families — the rails would
 /// grow buttons that disagree with the column they sit in. The scope is
 /// mounted by [RailSwipeColumnPointer] for [PressFire.down] and by the
-/// sheets' cell layers for [PressFire.upInsideOrPan], and nowhere else;
-/// everything outside one is 「그 외 버튼」 by default.
+/// sheets' cell layers for [PressFire.upInsideOrPan] — and by a number
+/// readout (`DragValueLabel`) back to [PressFire.upInside] around its own
+/// tap, which is a tap or a scrub only once the hand lets go — and nowhere
+/// else; everything outside one is 「그 외 버튼」 by default.
 class PressFireScope extends InheritedWidget {
   const PressFireScope({super.key, required this.fireOn, required super.child});
 
