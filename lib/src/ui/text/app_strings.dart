@@ -1670,6 +1670,7 @@ enum AppStrings {
   String get tlColFx => _s('tlColFx');
   String get tlColMark => _s('tlColMark');
   String get tlColFillReference => _s('tlColFillReference');
+  String get tlColGraph => _s('tlColGraph');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlShowXSheet => _s('tlShowXSheet');
   String get tlShowTimeline => _s('tlShowTimeline');
@@ -1704,6 +1705,10 @@ enum AppStrings {
   String get railExpandLanes => _s('railExpandLanes');
   String get railOnionSkinOn => _s('railOnionSkinOn');
   String get railOnionSkin => _s('railOnionSkin');
+  String get railLaneGraphOn => _s('railLaneGraphOn');
+  String get railLaneGraph => _s('railLaneGraph');
+  String get railLanePinOn => _s('railLanePinOn');
+  String get railLanePin => _s('railLanePin');
   String get railFillReferenceOn => _s('railFillReferenceOn');
   String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
@@ -2738,6 +2743,7 @@ enum AppStrings {
     'tlColFx': 'FX column',
     'tlColMark': 'Mark column',
     'tlColFillReference': 'Fill reference column',
+    'tlColGraph': 'Graph column',
     'tlColTimesheet': 'Timesheet column',
     'tlShowXSheet': 'Show X-sheet',
     'tlShowTimeline': 'Show timeline',
@@ -2766,6 +2772,10 @@ enum AppStrings {
     'railExpandLanes': 'Expand lanes',
     'railOnionSkinOn': 'Onion skin (on)',
     'railOnionSkin': 'Onion skin',
+    'railLaneGraphOn': 'Graph (on)',
+    'railLaneGraph': 'Graph',
+    'railLanePinOn': 'Pinned to every graph',
+    'railLanePin': 'Pin to every graph',
     'railFillReferenceOn': 'Fill reference layer (on)',
     'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
@@ -4169,6 +4179,7 @@ enum AppStrings {
     'tlColFx': 'FX列',
     'tlColMark': 'マーク列',
     'tlColFillReference': '塗り参照列',
+    'tlColGraph': 'グラフ列',
     'tlColTimesheet': 'タイムシート列',
     'tlShowXSheet': 'Xシートで表示',
     'tlShowTimeline': 'タイムラインで表示',
@@ -4197,6 +4208,10 @@ enum AppStrings {
     'railExpandLanes': 'レーンを展開',
     'railOnionSkinOn': 'オニオンスキン（オン）',
     'railOnionSkin': 'オニオンスキン',
+    'railLaneGraphOn': 'グラフ（オン）',
+    'railLaneGraph': 'グラフ',
+    'railLanePinOn': 'すべてのグラフに表示中',
+    'railLanePin': 'すべてのグラフに表示',
     'railFillReferenceOn': '塗り参照レイヤー（オン）',
     'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
@@ -5631,6 +5646,7 @@ enum AppStrings {
     'tlColFx': 'FX 열',
     'tlColMark': '마크 열',
     'tlColFillReference': '채색 참조 열',
+    'tlColGraph': '그래프 열',
     'tlColTimesheet': '타임시트 열',
     'tlShowXSheet': 'X시트로 보기',
     'tlShowTimeline': '타임라인으로 보기',
@@ -5659,6 +5675,10 @@ enum AppStrings {
     'railExpandLanes': '레인 펼치기',
     'railOnionSkinOn': '어니언 스킨 (켜짐)',
     'railOnionSkin': '어니언 스킨',
+    'railLaneGraphOn': '그래프 (켜짐)',
+    'railLaneGraph': '그래프',
+    'railLanePinOn': '모든 그래프에 고정됨',
+    'railLanePin': '모든 그래프에 고정',
     'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
     'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
@@ -7224,6 +7244,7 @@ enum AppStrings {
     'tlColFx': 'Colonne FX',
     'tlColMark': 'Colonne repère',
     'tlColFillReference': 'Colonne référence de remplissage',
+    'tlColGraph': 'Colonne graphique',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlShowXSheet': "Afficher en feuille d'exposition",
     'tlShowTimeline': 'Afficher en timeline',
@@ -7253,6 +7274,10 @@ enum AppStrings {
     'railExpandLanes': 'Déplier les pistes',
     'railOnionSkinOn': "Pelure d'oignon (activée)",
     'railOnionSkin': "Pelure d'oignon",
+    'railLaneGraphOn': 'Graphique (activé)',
+    'railLaneGraph': 'Graphique',
+    'railLanePinOn': 'Épinglé à tous les graphiques',
+    'railLanePin': 'Épingler à tous les graphiques',
     'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
     'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
@@ -8623,6 +8648,7 @@ enum AppStrings {
     'tlColFx': 'FX 列',
     'tlColMark': '标记列',
     'tlColFillReference': '填充参考列',
+    'tlColGraph': '图表列',
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',
     'tlShowTimeline': '以时间轴显示',
@@ -8651,6 +8677,10 @@ enum AppStrings {
     'railExpandLanes': '展开轨道',
     'railOnionSkinOn': '洋葱皮（开）',
     'railOnionSkin': '洋葱皮',
+    'railLaneGraphOn': '图表（开）',
+    'railLaneGraph': '图表',
+    'railLanePinOn': '已固定到所有图表',
+    'railLanePin': '固定到所有图表',
     'railFillReferenceOn': '填充参考图层（开）',
     'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',

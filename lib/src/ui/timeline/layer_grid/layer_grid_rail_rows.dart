@@ -223,6 +223,8 @@ class _LayerGridRailRows {
         // The SAME answer the layer row reads, so a group
         // header's fx lands in the layer rows' fx column (R5 #7).
         optionalColumns: _state.widget.hooks.optionalRailColumns,
+        laneGraphs: _state.widget.hooks.laneGraphs,
+        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
       ),
     );
   }

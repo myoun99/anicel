@@ -11,6 +11,7 @@ import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
         layerFxSlotWidth,
+        layerGraphSlotWidth,
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
@@ -607,6 +608,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
+  RailToggle<TRow>? graph,
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
@@ -671,6 +673,11 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
       ),
     if (fx != null)
       column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
+    if (graph != null)
+      column(
+        trailingBand(LayerRailTrailingSlot.fillReference, layerGraphSlotWidth),
+        graph,
+      ),
     if (timesheet != null)
       column(leadingBand(LayerRailLeadingSlot.timesheet), timesheet),
     if (laneToggle != null)

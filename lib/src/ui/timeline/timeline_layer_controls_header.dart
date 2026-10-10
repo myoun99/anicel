@@ -49,7 +49,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
     this.showRowSolos = true,
-  });
+  }) : assert(
+         axis == Axis.horizontal || railExtent != null,
+         'a stood-up legend is told its extent',
+       );
 
   final TimelineGridMetrics metrics;
 
@@ -57,10 +60,14 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// rail, vertical in the x-sheet's corner.
   final Axis axis;
 
-  /// Overrides how far the legend runs along [axis]. The x-sheet's corner
-  /// passes the header block's resolved height, which is the natural
-  /// stood-up rail only when the panel is tall enough to hold it; null
-  /// takes the natural extent.
+  /// How far the legend runs along [axis]; null takes the rail's width,
+  /// which is an answer only lying down. Stood up it is the x-sheet's
+  /// corner, told the header block's extent
+  /// ([XSheetTimelineGrid.naturalHeaderBlockExtent]) — the value the block
+  /// and its window read. ↩️A stood-up legend used to sum one up for itself
+  /// when it was told none, by a sum the block's had stopped matching (it
+  /// never took the lane values' hands off); nothing ever stood it up
+  /// without telling it.
   final double? railExtent;
 
   /// The optional columns the ROWS beside this legend carry — the host's
@@ -286,6 +293,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
+  /// The header graph's column (I-89 ③), named over it. A heading and no
+  /// flyout: nothing was asked of it that would act on every row.
+  Widget? _buildGraph(bool hasGraph, Color restColor) => !hasGraph
+      ? null
+      : _cell(
+          keyValue: 'legend-graph',
+          tooltip: AppText.strings.tlColGraph,
+          child: _legendIcon(Icons.show_chart, restColor: restColor),
+        );
+
   Widget? _buildOnion(
     TimelineLegendMenus menus,
     bool hasOnion,
@@ -415,16 +432,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     final optional = optionalColumns;
 
     // The legend spans the rail: the rail's extent along its own axis, one
-    // row across it. Stood up, the two swap — and the rail's extent is the
-    // TIMELINE'S, because the x-sheet's own `layerControlsWidth` means its
-    // frame-number rail, a different thing entirely.
-    final railExtent =
-        this.railExtent ??
-        (isVertical
-            ? timelineLayerControlsWidthFor(metrics.railColumns) -
-                  (optional.onion ? 0 : layerOnionSlotWidth) -
-                  (optional.blend ? 0 : metrics.railColumns.blend)
-            : metrics.layerControlsWidth);
+    // row across it. Stood up, the two swap — and across it is the sheet's
+    // `layerControlsWidth`, which there means its frame-number rail.
+    final railExtent = this.railExtent ?? metrics.layerControlsWidth;
     final crossExtent = isVertical
         ? metrics.layerControlsWidth
         : metrics.layerRowHeight;
@@ -514,6 +524,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     axis: axis,
                     columns: metrics.railColumns,
                     optionalColumns: optional,
+                    graph: _buildGraph(optional.graph, restColor),
                     fillReference: _buildFillReference(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the

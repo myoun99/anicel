@@ -903,6 +903,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             laneGraphs: widget.laneGraphs,
             laneGraphVerbs: widget.laneGraphVerbs,
+            // Live, for the reason the twirls' read below is.
+            laneGraphsNow: () => _session.railView.laneGraphs.value,
             // LIVE, as the hook asks: the widget's set is the one this build
             // was handed, and a twirl replaces the session's set with a new
             // one — so a sweep that toggles row after row inside one frame

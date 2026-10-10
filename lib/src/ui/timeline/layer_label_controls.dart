@@ -375,6 +375,23 @@ const String _laneValueWidest = 'X -0000.00';
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
 
+/// The HEADER GRAPH's column (I-89 ③) — first of the trailing run, before
+/// the fill reference: a Transform or effect header's graph button, the
+/// camera row's (the row being its own Transform group, ㉙), reserved on
+/// every other row (유저 2026-10-10 시안: [twirl][name][graph][reset][fx]).
+const double layerGraphSlotWidth = 22;
+
+/// A member lane's COLOUR CHIPS (I-89 ③): one 9×9 swatch per number its
+/// line draws, while its group's graph draws it — reserved on every member
+/// row of a rail that draws graphs, so a name never moves when its chips
+/// come (⛔없다가 생기는 UI 금지).
+const double layerLaneChipsSlotWidth = 22;
+
+/// A member lane's PIN (I-89 ③, AE's graph editor set): the lane drawn in
+/// every open graph. Right before the value, so it stands in one column
+/// whichever lanes carry a chain before it.
+const double layerLanePinSlotWidth = 22;
+
 /// Whether [kind] carries a blend mode at all. Only the ACTION-section
 /// kinds composite artwork — plus FOLDERS, which blend their whole group
 /// (R27 #29); SE/CAM/instruction rows reserve the slot so the control

@@ -86,6 +86,8 @@ class _XSheetGridHeaders {
         // The SAME answer the layer's own column header reads, so a
         // group header's fx lands in the sheet's fx row (R5 #7).
         optionalColumns: _state.widget.hooks.optionalRailColumns,
+        laneGraphs: _state.widget.hooks.laneGraphs,
+        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
       ),
     );
   }

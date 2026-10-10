@@ -123,6 +123,7 @@ class TimelineGridHooks {
     this.expandedLaneLayerIds = const {},
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
+    this.laneGraphsNow,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -418,6 +419,11 @@ class TimelineGridHooks {
   /// lane pinned or let go. Null draws no graph column.
   final LaneGraphVerbs? laneGraphVerbs;
 
+  /// A LIVE read of the header graphs, when the host can give one — what
+  /// [laneOpenOf] is to the twirls: [laneGraphs] reaches here a build late,
+  /// and a sweep begun on a graph button spreads what the down just set.
+  final LaneGraphsView Function()? laneGraphsNow;
+
   /// A LIVE read of the twirl state, when the host can give one.
   ///
   /// 🚨[expandedLaneLayerIds] is a widget property: the host mutates its set
@@ -541,6 +547,7 @@ class TimelineGridHooks {
   /// host handed over its verb. Read here once for the rows, the legend,
   /// the swipe and the sheet's header block alike.
   LayerRailOptionalColumns get optionalRailColumns => (
+    graph: laneGraphVerbs != null,
     onion: onToggleLayerOnionSkin != null,
     blend: onLayerBlendModeSelected != null,
   );

@@ -39,6 +39,9 @@ import 'layer_rail_columns.dart'
         layerRailTrailingCells,
         noOptionalRailColumns;
 import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
+import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy;
+import 'lane_graph_toggle.dart';
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
@@ -108,6 +111,8 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.leadingInset = 0,
     this.currentRowHooks,
     this.optionalColumns = noOptionalRailColumns,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
   });
 
   final Layer layer;
@@ -151,6 +156,13 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// above it uses: matching the answer is what keeps the two in ONE column,
   /// and hand-placing it is exactly how it drifted before.
   final LayerRailOptionalColumns optionalColumns;
+
+  /// The rail's header graphs (I-89 ③): which stand open, which lanes are
+  /// pinned — what a header's graph button and a member's pin show.
+  final LaneGraphsView laneGraphs;
+
+  /// What those buttons tell; null mounts none.
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -718,11 +730,27 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
+        graph: _groupGraph(),
         fillReference: _groupReset(colorScheme),
         fx: _groupFx(context),
         optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
       );
+
+  /// I-89 ③: the group's graph button — its lanes as one graph, in their
+  /// own place, and back.
+  Widget? _groupGraph() {
+    final verbs = widget.laneGraphVerbs;
+    final key = laneGraphHeadedBy(layer, lane);
+    if (verbs == null || key == null) return null;
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.graph,
+      keyValue: '$_keyPrefix-lane-group-graph-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      on: widget.laneGraphs.open.containsKey(key),
+      onToggle: () => verbs.toggle(key),
+    );
+  }
 
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
   /// fill-reference toggle owns on layer rows, and the two never appear on

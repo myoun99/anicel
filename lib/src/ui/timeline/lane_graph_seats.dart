@@ -1,6 +1,23 @@
+import '../../models/layer.dart';
+import '../../models/layer_kind.dart';
 import 'lane_graph.dart';
 import 'property_lane_model.dart';
 import 'timeline_current_row.dart' show laneGroupOf;
+import 'transform_lane_policy.dart' show transformGroupHeaderLane;
+
+/// The key of the header graph a row HEADS (I-89 ③) — a Transform or
+/// effect header's own ([PropertyLaneRow.headsAGraph]), or the camera
+/// row's, the row being its own Transform group (㉙) — or null for a row
+/// that heads none. [lane] is the row's lane; null asks of [layer]'s own
+/// row. What a graph button turns, pressed or swept.
+String? laneGraphHeadedBy(Layer layer, PropertyLaneRow? lane) {
+  if (lane != null) {
+    return lane.headsAGraph ? laneGroupKey(layer.id, lane.laneId) : null;
+  }
+  return layer.kind == LayerKind.camera
+      ? laneGroupKey(layer.id, transformGroupHeaderLane.laneId)
+      : null;
+}
 
 /// [rows] with every member lane of an OPEN graph seated in it — the graph
 /// [open] holds for the lane's group ([laneGroupOf]).

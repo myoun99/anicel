@@ -129,6 +129,7 @@ class TimelinePanel extends StatefulWidget {
     this.expandedLaneLayerIds = const {},
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
+    this.laneGraphsNow,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -494,10 +495,12 @@ class TimelinePanel extends StatefulWidget {
   /// state, toggle and the generic lane provider.
   final Set<LayerId> expandedLaneLayerIds;
 
-  /// Forwarded to the grids — see [TimelineGridHooks.laneGraphs] and
+  /// Forwarded to the grids — see [TimelineGridHooks.laneGraphs] and its
+  /// live read [TimelineGridHooks.laneGraphsNow], and
   /// [TimelineGridHooks.laneGraphVerbs].
   final LaneGraphsView laneGraphs;
   final LaneGraphVerbs? laneGraphVerbs;
+  final LaneGraphsView Function()? laneGraphsNow;
 
   /// Forwarded to the grids — a LIVE read of the twirl state. See
   /// [LayerTimelineGrid.laneOpenOf].
@@ -679,6 +682,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       expandedLaneLayerIds: widget.expandedLaneLayerIds,
       laneGraphs: widget.laneGraphs,
       laneGraphVerbs: widget.laneGraphVerbs,
+      laneGraphsNow: widget.laneGraphsNow,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,
       onToggleLayerLanes: widget.onToggleLayerLanes,

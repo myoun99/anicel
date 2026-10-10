@@ -9,6 +9,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import '../text/app_strings.dart' show AppText;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy;
 import 'layer_label_controls.dart' show LayerRailColumnWidths;
 import 'layer_row_drag.dart' show LayerRowDragInputs;
 import 'memo_token.dart';
@@ -76,6 +77,11 @@ typedef LayerControlsRowFacts = ({
   AttachedPlacement? attachArrow,
   bool isReferenceSourceShort,
   bool wearsBaseComposite,
+  // I-89 ③: the header graph the row heads, by its key — the camera row's,
+  // the row being its own Transform group (㉙); null heads none — and
+  // whether it stands open: view state, which the Layer cannot see.
+  String? graphKey,
+  bool graphOpen,
   // The camera row's dim — the workspace's own notifier, one object for
   // the row's whole life, so its identity is the fact.
   ByIdentity<ValueListenable<double>?> opacityOverride,
@@ -127,6 +133,7 @@ LayerControlsRowFacts layerControlsRowFacts(
 }) {
   final hooks = grid.hooks;
   final id = row.layer.id;
+  final graphKey = laneGraphHeadedBy(row.layer, null);
   return (
     layer: ControlsRowFace(row.layer),
     active: id == hooks.activeLayerId,
@@ -144,6 +151,9 @@ LayerControlsRowFacts layerControlsRowFacts(
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
     wearsBaseComposite: attachRowWearsBaseComposite(row.layer, grid.layers),
+    graphKey: graphKey,
+    graphOpen:
+        graphKey != null && hooks.laneGraphs.open.containsKey(graphKey),
     opacityOverride: ByIdentity(hooks.layerOpacityOverrideOf?.call(id)),
     opacityDragPreview: ByIdentity(hooks.opacityDragPreview),
     layerRowHeight: grid.metrics.layerRowHeight,
@@ -207,6 +217,9 @@ Widget layerControlsRowFrom(
     linkPartners: facts.linkPartners.value,
     onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
     opacityOverride: facts.opacityOverride.value,
+    laneGraphVerbs: hooks.laneGraphVerbs,
+    graphKey: facts.graphKey,
+    graphOpen: facts.graphOpen,
   );
 }
 

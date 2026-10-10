@@ -135,25 +135,38 @@ void main() {
       // 있는거 싹다 넣어. 뭐 빼지말고." — every control. The room the rail
       // pays a lane's value hands is a need ALONG it: on the sheet a lane's
       // value row, turned (유저 2026-10-11), fits in the lane's own column
-      // under its name — paid, the block outgrew the tallest dock.
+      // under its name — paid, the block outgrew the tallest dock. So is
+      // what it pays a lane for its graph, its chips and its pin (I-89 ③).
+      // The graph column is a header's control, carried like any column:
+      // the block pays it, and its name keeps the room it had.
+      const carried = timelineLayerControlsWidth -
+          layerLaneValueHandsWidth -
+          layerLaneChipsSlotWidth -
+          layerLanePinSlotWidth +
+          layerGraphSlotWidth +
+          2;
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          optionalColumns: (onion: true, blend: true),
+          optionalColumns: (graph: true, onion: true, blend: true),
         ),
-        timelineLayerControlsWidth - layerLaneValueHandsWidth + 2,
+        carried,
       );
-      // A host that declines the two optional columns costs exactly them
-      // less — the legend beside the headers sizes from the same call, so
-      // the two cannot part.
+      expect(
+        carried,
+        443 + 22 + 2,
+        reason: 'the block before the graph, and the graph column',
+      );
+      // A host that declines the optional columns costs exactly them less
+      // — the legend beside the headers sizes from the same call, so the
+      // two cannot part.
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
           optionalColumns: noOptionalRailColumns,
         ),
-        timelineLayerControlsWidth -
-            layerLaneValueHandsWidth +
-            2 -
+        carried -
+            layerGraphSlotWidth -
             layerOnionSlotWidth -
             layerBlendSlotWidth,
       );
@@ -173,10 +186,14 @@ void main() {
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: grown,
-          hasOnionColumn: true,
-          hasBlendColumn: true,
+          optionalColumns: (graph: true, onion: true, blend: true),
         ),
-        timelineLayerControlsWidthFor(grown) - layerLaneValueHandsWidth + 2,
+        timelineLayerControlsWidthFor(grown) -
+            layerLaneValueHandsWidth -
+            layerLaneChipsSlotWidth -
+            layerLanePinSlotWidth +
+            layerGraphSlotWidth +
+            2,
       );
     });
 
@@ -647,7 +664,7 @@ void main() {
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
-          optionalColumns: (onion: false, blend: true),
+          optionalColumns: (graph: false, onion: false, blend: true),
         ),
         layerMuteSlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
       );
@@ -658,7 +675,7 @@ void main() {
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
-              optionalColumns: (onion: false, blend: true),
+              optionalColumns: (graph: false, onion: false, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
@@ -670,20 +687,20 @@ void main() {
     });
 
     test('the optional columns are the only ones a host may decline', () {
-      // Onion and blend are the two the SKELETON makes optional, and the
-      // sheet now carries both. Nothing else can be dropped: every rail
-      // surface draws every other slot, which is what makes the legend's
-      // icons line up over them.
+      // Onion, blend and the header graph's (I-89 ③) are the three the
+      // SKELETON makes optional, and the sheet carries all three. Nothing
+      // else can be dropped: every rail surface draws every other slot,
+      // which is what makes the legend's icons line up over them.
       expect(
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              optionalColumns: (onion: true, blend: true),
+              optionalColumns: (graph: true, onion: true, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               optionalColumns: noOptionalRailColumns,
             ),
-        layerOnionSlotWidth + layerBlendSlotWidth,
+        layerGraphSlotWidth + layerOnionSlotWidth + layerBlendSlotWidth,
       );
 
       // A panel too short for even the rail's floor never produces a

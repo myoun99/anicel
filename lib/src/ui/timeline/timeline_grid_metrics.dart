@@ -30,6 +30,8 @@ import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
         layerBlendSlotWidth,
+        layerLaneChipsSlotWidth,
+        layerLanePinSlotWidth,
         layerLaneValueHandsWidth,
         layerLaneValueSlotWidth,
         layerOpacitySlotWidth,
@@ -99,7 +101,17 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// boxes took their ± and pencil, and the rail pays them
 /// ([layerLaneValueHandsWidth], 76) — 「레일도 그만큼 넓어집니다」, asked and
 /// answered 「문제없는데」 — so a lane's name keeps the room it had.
-const double timelineLayerControlsWidth = 443 + layerLaneValueHandsWidth;
+/// 519 → 563 (I-89 ③, 2026-10-11): the header graph's — a member lane's
+/// colour chips and pin ([layerLaneChipsSlotWidth],
+/// [layerLanePinSlotWidth]) and a header's graph button. The rail pays the
+/// lanes' 44 and the header's 22 comes out of it, so no row's name gets
+/// narrower: the user's own rule for the hands, put to them again as I-89
+/// Q1 (A, this; B, +22 and the lanes' names 22 narrower).
+const double timelineLayerControlsWidth =
+    443 +
+    layerLaneValueHandsWidth +
+    layerLaneChipsSlotWidth +
+    layerLanePinSlotWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth

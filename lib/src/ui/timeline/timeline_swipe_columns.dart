@@ -1,5 +1,7 @@
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import 'lane_graph.dart' show LaneGraphsView;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
@@ -40,12 +42,35 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   leadingOrigin: leadingOrigin,
   columns: columns,
   optionalColumns: hooks.optionalRailColumns,
+  graph: _graph(hooks),
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
 );
+
+/// I-89 ③: a header graph's button, on each row that heads one — a
+/// Transform or effect header, the camera row ([laneGraphHeadedBy]) —
+/// swept as it is pressed, and read LIVE where the host gives the read.
+RailToggle<TimelineDisplayRow>? _graph(TimelineGridHooks hooks) {
+  final verbs = hooks.laneGraphVerbs;
+  if (verbs == null) return null;
+  return (
+    valueOf: (row) => switch (laneGraphHeadedBy(row.layer, row.lane)) {
+      final key? => _laneGraphsOf(hooks).open.containsKey(key),
+      null => null,
+    },
+    toggle: (row) {
+      if (laneGraphHeadedBy(row.layer, row.lane) case final key?) {
+        verbs.toggle(key);
+      }
+    },
+  );
+}
+
+LaneGraphsView _laneGraphsOf(TimelineGridHooks hooks) =>
+    hooks.laneGraphsNow?.call() ?? hooks.laneGraphs;
 
 RailToggle<TimelineDisplayRow> _visibility(TimelineGridHooks hooks) => (
   valueOf: (row) =>

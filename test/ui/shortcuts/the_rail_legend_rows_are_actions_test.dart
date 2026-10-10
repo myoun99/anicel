@@ -321,7 +321,7 @@ void main() {
             width: 900,
             child: TimelineLayerControlsHeader(
               metrics: TimelineGridMetrics.defaults,
-              optionalColumns: (onion: true, blend: false),
+              optionalColumns: (graph: false, onion: true, blend: false),
               legend: everyVerb(),
               onExpandAllLanes: () {},
               onCollapseAllLanes: () {},

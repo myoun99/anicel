@@ -13,6 +13,8 @@ import '../../models/layer_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
+import 'lane_graph.dart' show LaneGraphVerbs;
+import 'lane_graph_toggle.dart';
 import 'layer_label_controls.dart';
 import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
@@ -177,6 +179,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerBlendModeSelected,
     this.opacityOverride,
     this.chromeless = false,
+    this.laneGraphVerbs,
+    this.graphKey,
+    this.graphOpen = false,
   });
 
   /// The strip's MAIN axis: along a rail row (horizontal) or down an x-sheet
@@ -348,6 +353,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// state — reading it here lets the drag repaint just this slider
   /// instead of rebuilding the whole timeline host per move.
   final ValueListenable<double>? opacityOverride;
+
+  /// The header graphs' verbs (I-89 ③) — the HOST's, the same on every
+  /// row: null carries no graph column at all.
+  final LaneGraphVerbs? laneGraphVerbs;
+
+  /// The header graph this row heads, by its key — the camera row's, the
+  /// row being its own Transform group (㉙) — and whether it stands open.
+  /// Null heads none, and the row's graph slot stays empty.
+  final String? graphKey;
+  final bool graphOpen;
 
   bool get _horizontal => axis == Axis.horizontal;
 
@@ -766,9 +781,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
         axis: axis,
         columns: metrics.railColumns,
         optionalColumns: (
+          graph: laneGraphVerbs != null,
           onion: onToggleLayerOnionSkin != null,
           blend: onLayerBlendModeSelected != null,
         ),
+        graph: _graphToggle(),
         fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         onion: _onionToggle(colorScheme),
@@ -777,6 +794,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
         opacity: _opacitySlot(),
         blend: _blendChip(),
       );
+
+  /// The camera row's graph button (I-89 ③) — the row being its own
+  /// Transform group (㉙), the button its header's.
+  Widget? _graphToggle() {
+    final verbs = laneGraphVerbs;
+    final key = graphKey;
+    if (verbs == null || key == null) return null;
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.graph,
+      keyValue: '$keyPrefix-layer-graph-${layer.id}',
+      axis: axis,
+      on: graphOpen,
+      onToggle: () => verbs.toggle(key),
+    );
+  }
 
   /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
   /// reserves the slot so the legend header's column icons line up over one
