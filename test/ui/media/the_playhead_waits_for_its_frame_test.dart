@@ -203,7 +203,8 @@ void main() {
       find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
-    // Parked first, at the end of the page it was put on.
+    // Parked first: a frame that is ready before the first tick is simply
+    // played, with no cushion to wait for.
     for (var frame = 0; frame < 3; frame += 1) {
       await tester.pump(const Duration(milliseconds: 42));
     }
@@ -225,45 +226,6 @@ void main() {
           '🚨「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」 — moving '
           'on ONE ready frame plays it, runs dry and parks again: a '
           'stutter, not playback',
-    );
-  });
-
-  /// The canvas's render-first law, which the viewer plays by: a run PUT on
-  /// a page fills before it goes on (viewer-plays-by-the-one-playback-law).
-  testWidgets('🚨a run put on a page fills its cushion before it goes — '
-      'even when the page after it is there', (tester) async {
-    final fake = await open(tester, pages: 12, framesPerSecond: 24);
-    for (var page = 2; page < 12; page += 1) {
-      fake.holdRender(page);
-    }
-    // Page 1 drawn — stepped onto and back from — and nothing past it will
-    // land.
-    for (final step in ['step-forward', 'step-back']) {
-      await tester.tap(
-        find.byKey(ValueKey<String>('media-viewer-transport-$step')),
-      );
-      await tester.pumpAndSettle();
-    }
-    expect(slot.position.value, 0, reason: 'fixture: back on the first page');
-    expect(
-      fake.renderRequests.map((request) => request.$1),
-      contains(1),
-      reason: 'fixture: the page after it is there',
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
-    );
-    await tester.pump();
-    for (var frame = 0; frame < 10; frame += 1) {
-      await tester.pump(const Duration(milliseconds: 42));
-    }
-    expect(
-      slot.position.value,
-      0,
-      reason:
-          '🚨going on to the one page that was there plays a frame and '
-          'parks on the next: the stutter the cushion replaces',
     );
   });
 

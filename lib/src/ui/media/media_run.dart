@@ -93,16 +93,20 @@ class MediaRun {
   /// ([PlaybackPictureWait]) at the setting this run plays by — render
   /// first, with the cushion as what lies ahead ([bufferAheadPages]). A
   /// page that is not there parks the playhead before it, and a parked
-  /// playhead goes on once the cushion has filled; a run put on a page
-  /// fills it before it goes.
+  /// playhead goes on once the cushion has filled.
   ///
   /// 🚨ONE LAW, ONE CODE (viewer-plays-by-the-one-playback-law, 유저
   /// 2026-10-08: 「쓸수있는 로직 뷰어패널에서도 법 통일된거 재사용하게」,
   /// 「옵션은 안둬도 되니까」). ↩️This run spelled the law's steps itself in
-  /// [_turnThePage], beside the canvas's spelling of the same steps, and
-  /// went at once from a page it was put on whenever the page after it
-  /// happened to be there: one frame played, then a park to fill — the
-  /// stutter the cushion exists to replace.
+  /// [_turnThePage], beside the canvas's spelling of the same steps.
+  ///
+  /// ⛔Asked with `placed: false` always — a press is not where this run
+  /// fills. The viewer's law (유저 2026-08-31: 「로드가 안되고있으면 5초분
+  /// 만큼? 로드될떄까지 멈추는?」) stands where a page is NOT there; a press
+  /// on pages that come as fast as they are shown just plays. Filling at a
+  /// press — what render-first does for a canvas run put somewhere — held
+  /// every press for the whole cushion, up to five seconds of pages, however
+  /// fast they came (tried 10-10; the transport pins said so).
   late final PlaybackPictureWait _wait = PlaybackPictureWait(
     mode: () => PlaybackMode.renderFirst,
     pictureIsThere: (page) {
@@ -481,14 +485,6 @@ class MediaRun {
         return;
       }
       _timer = Timer.periodic(period, (_) => _onTick());
-      // The run is PUT on its page — play pressed there, the playhead moved
-      // there by hand — and a run put somewhere fills before it goes on
-      // ([_wait]). It stands, if it does, where it would first move: the
-      // page on screen has its time and its sound like any other, so the
-      // two pick up together from the end of it ([_turnThePage]).
-      if (turnsItsOwnPages) {
-        _wait.holds(_page, placed: true);
-      }
     });
   }
 
