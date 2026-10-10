@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -211,6 +214,61 @@ void main() {
         isNull,
       );
       cache.dispose();
+    });
+  });
+
+  /// ↩️The cache asked for the cel's drawing state beside its content, and
+  /// a cel donated without one — a layer's cels forked by an unlink, an
+  /// independent clip's copies — had its pixels and no picture (found
+  /// 2026-10-10, when the whole film came to be drawn from this cache).
+  testWidgets('🚨a cel donated without a drawing state is drawn — the '
+      'content alone says whether a cel has a picture, on either road', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final store = BrushFrameStore();
+      for (final cel in ['donated-async', 'donated-sync']) {
+        store.storeBakedSurface(
+          key(cel),
+          BitmapSurface(
+            canvasSize: canvasSize,
+            tileSize: 4,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(
+                size: 4,
+                pixels: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 0xFF),
+              ),
+            },
+          ),
+        );
+        expect(
+          store.frameOrNull(key(cel)),
+          isNull,
+          reason: '⛔premise: the donation alone, no drawing state',
+        );
+      }
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+
+      expect(
+        await cache.prepare(
+          key: key('donated-async'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        ),
+        isNotNull,
+      );
+      expect(
+        cache.prepareSyncOrNull(
+          key: key('donated-sync'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+          makePictures: true,
+        ),
+        isNotNull,
+      );
     });
   });
 

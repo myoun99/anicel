@@ -264,12 +264,16 @@ class LayerFrameImageCache {
     // Content oracle, not a command check (R19 P3a): an OPENED cel's
     // picture is its baked raster and carries no commands at all — the
     // old command-emptiness guard blanked every loaded cel in playback.
-    final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
+    // ↩️It asked for the cel's drawing state too, the commands' old holder:
+    // a cel donated without one — a layer's cels forked by an unlink, an
+    // independent clip's copies — had its pixels and no picture (found
+    // 2026-10-10, when the whole film came to be drawn here). A cel no
+    // edit has touched is at revision 0.
+    if (!frameStore.celHasRenderableContent(key)) {
       _dropEntry((key, quality));
       return null;
     }
-    final revision = drawing.sourceRevision;
+    final revision = _currentRevision(key);
 
     // The cel's thaw is the one slice on this path nothing can stand down:
     // a cel still cold, or still in the file, is read and inflated inside
@@ -485,14 +489,14 @@ class LayerFrameImageCache {
       return null;
     }
 
-    final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
+    // The content oracle alone — see the async twin.
+    if (!frameStore.celHasRenderableContent(key)) {
       return null;
     }
-    final revision = drawing.sourceRevision;
+    final revision = _currentRevision(key);
 
     final previewCache = labProbe(
-      'prepareFramePreview(${key.frameId.value} rev${drawing.sourceRevision})',
+      'prepareFramePreview(${key.frameId.value} rev$revision)',
       () => BrushFrameDisplayCacheService(
         frameStore: frameStore,
         canvasSize: canvasSize,
