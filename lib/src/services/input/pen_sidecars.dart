@@ -2,7 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
-    show kPrimaryButton, kPrimaryStylusButton, kSecondaryStylusButton;
+    show
+        PointerDeviceKind,
+        kPrimaryButton,
+        kPrimaryStylusButton,
+        kSecondaryStylusButton;
 
 import '../../native/qa_pen_ledger.dart';
 import 'pen_lean.dart';
@@ -78,6 +82,34 @@ abstract final class PenSidecars {
     double pressure, {
     required bool tip,
   }) => (pressure: pressure.clamp(0.0, 1.0), touching: tip || pressure > 0);
+
+  /// Whether a driver-side stream says the PEN is touching right now — its
+  /// tip switch ([freshButtons]) or a reading that touches ([freshReading])
+  /// — whatever kind the pointer event calls itself.
+  ///
+  /// 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): 「필압이
+  /// 있다도 하나의 판단기준일거같은데 … 윈탭골라도 필압은 먹히니까
+  /// 감지가능하단거아냐」 → 「우선 1번 제일 확실한방법 좋아. 앞으로의 펜 작동
+  /// 기준으로 삼으면 좋을거같고」. A pen the OS hands over as a MOUSE (Wintab
+  /// chosen, Windows Ink off) is still the pen while its driver says it is
+  /// down. ⛔Not the pointer event's own pressure: a pen handed over as a
+  /// mouse carries none.
+  static bool penTouching() {
+    final buttons = freshButtons();
+    if (buttons != null && buttons & kPrimaryButton != 0) {
+      return true;
+    }
+    return freshReading()?.touching ?? false;
+  }
+
+  /// [kind] as the pen law reads it ([penTouching]): a MOUSE while its
+  /// driver says the pen is down is the pen. Every answer the app gives by
+  /// the kind of a pointer — how far a press may wobble and stay a press
+  /// (`computeHitSlop`), whether a pen is near — asks it through this.
+  static PointerDeviceKind kindOf(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.mouse && penTouching()
+      ? PointerDeviceKind.stylus
+      : kind;
 
   /// How the pen leans as the freshest driver-side stream says — null when
   /// none speaks for this moment or the one that does reports no lean (a

@@ -1,13 +1,15 @@
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 
-import 'package:flutter/gestures.dart' show PointerDownEvent, computeHitSlop;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerDownEvent, computeHitSlop;
 import 'package:flutter/services.dart' show TextSelection;
 
 import '../../../models/bitmap_surface.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/cel_text_box_edits.dart';
+import '../../../services/input/pen_sidecars.dart';
 import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
 import '../../timeline/axis_turn.dart' show extentAlong;
@@ -249,14 +251,21 @@ sealed class CelTextPress {
   CelTextPress(PointerDownEvent event)
     : pointer = event.pointer,
       down = event.localPosition,
-      _slop = computeHitSlop(event.kind, null);
+      _kind = event.kind;
 
   final int pointer;
   final Offset down;
 
+  final PointerDeviceKind _kind;
+
   /// How far a press may wander and still be a click — the device's own
   /// (`computeHitSlop`): a pen never comes up exactly where it went down.
-  final double _slop;
+  /// Asked as the hand moves, of the kind the pen law reads
+  /// ([PenSidecars.kindOf]): a pen the OS calls a mouse is the pen while
+  /// its driver says it is down. ↩️Asked once at the press, of the
+  /// event's own kind — one pixel for that pen, and at the press the
+  /// driver's newest word can still be the hover's (H43).
+  double get _slop => computeHitSlop(PenSidecars.kindOf(_kind), null);
 
   /// Whether the press has left where it went down. It does not go back: a
   /// drag that returns is still a drag.

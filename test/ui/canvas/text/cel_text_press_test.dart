@@ -6,8 +6,10 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
@@ -214,6 +216,42 @@ void main() {
       up(back.scene, drag, 14, 10);
 
       expect(back.begun.single.wrapWidth, 4);
+    });
+
+    // 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): a pen the
+    // OS hands over as a MOUSE is the pen while its driver says it is down
+    // (`PenSidecars.kindOf`) — and a pen may wobble a pen's slop.
+    test('🚨a MOUSE press while the driver says the pen is down wobbles as '
+        'the pen may: ten screen pixels and it is still a click', () {
+      final wintab = WintabPenService.instance;
+      addTearDown(wintab.debugReset);
+      WintabPenService.debugClockOverride = () => DateTime(2024);
+      wintab.debugPollOverride = () => const [];
+      wintab.start();
+      CelTextScene sceneAtOne() => table(
+        stage: CelTextStage(
+          viewport: CanvasViewport(),
+          canvasSize: celTextTestCanvas,
+          placement: null,
+        ),
+      ).scene;
+
+      // ⛔Fixture: hovering, the same wobble is a mouse's drag.
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0, timeMs: 1, buttons: 0),
+      );
+      final hovering = sceneAtOne();
+      final mouse = press(hovering, 10, 10)!;
+      move(hovering, mouse, 20, 10);
+      expect(mouse.dragged, isTrue, reason: '⛔fixture: one pixel is a drag');
+
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0.4, timeMs: 2, buttons: 1),
+      );
+      final touching = sceneAtOne();
+      final pen = press(touching, 10, 10)!;
+      move(touching, pen, 20, 10);
+      expect(pen.dragged, isFalse, reason: 'the pen\'s slop');
     });
 
     test('a drag too small to have meant a box — under two canvas pixels '

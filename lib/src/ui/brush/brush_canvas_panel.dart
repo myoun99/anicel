@@ -11,6 +11,7 @@ import '../canvas/shown_cels.dart';
 import '../timeline/memo_token.dart' show ByList;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
+import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/bitmap_surface_geometry.dart'
@@ -1587,9 +1588,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         CanvasViewHold.held.value != null) {
       return;
     }
-    // 🚨D34: and a MOUSE that a finger produced does not aim either.
+    // 🚨D34: and a MOUSE that a finger produced does not aim either — a
+    // pen the OS calls a mouse is the pen while its driver says it is
+    // down ([PenSidecars.kindOf]), and writes under a resting palm.
     if (aimIsPromotedTouch(
-      kind: kind,
+      kind: PenSidecars.kindOf(kind),
       touchContacts: CanvasTouchContacts.appWideCount,
       touchDraws: AppInput.touchDraws,
     )) {

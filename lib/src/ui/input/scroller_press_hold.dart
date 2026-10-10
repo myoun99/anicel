@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../services/input/pen_sidecars.dart';
 import '../timeline/axis_turn.dart';
 
 /// 🚨★★★**A PRESS THAT LANDS IN A SCROLLER IS THAT SCROLLER'S** — the
@@ -234,7 +235,12 @@ class _HeldAcross extends PanGestureRecognizer {
   bool hasSufficientGlobalDistanceToAccept(
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
-  ) => _moved.abs() > computeHitSlop(pointerDeviceKind, gestureSettings);
+  ) =>
+      _moved.abs() >
+      computeHitSlop(
+        PenSidecars.kindOf(pointerDeviceKind),
+        gestureSettings,
+      );
 
   @override
   void didStopTrackingLastPointer(int pointer) {
