@@ -480,7 +480,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         for (final (index, part) in parts.indexed) ...[
           if (index > 0) gap,
           Flexible(
-            fit: stood ? FlexFit.loose : FlexFit.tight,
             child: DragValueLabel.box(
               keyValue: _valueKey(index),
               inputKeyValue: _valueFieldKey(index),

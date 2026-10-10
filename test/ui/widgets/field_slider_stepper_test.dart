@@ -221,6 +221,30 @@ void main() {
     expect(seen.ends.length, 2);
   });
 
+  testWidgets('an EXPONENTIAL bar typed below its range holds to its bottom '
+      '— a negative is not its top', (tester) async {
+    // A log scale has no place for a number under zero: unheld, it read as
+    // the far end of the bar.
+    final changes = <double>[];
+    await pump(
+      tester,
+      FieldSlider(
+        value: 1,
+        min: 0.25,
+        max: 4,
+        scale: FieldSliderScale.exponential,
+        label: 'Gamma',
+        onChanged: changes.add,
+      ),
+    );
+    await tester.tap(pencil);
+    await tester.pump();
+    await tester.enterText(field, '-2');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(changes, [0.25]);
+  });
+
   testWidgets('Escape abandons the typing and changes nothing', (
     tester,
   ) async {
