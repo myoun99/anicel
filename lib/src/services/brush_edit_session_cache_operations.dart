@@ -54,9 +54,5 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
 }
 
 CacheInvalidationExecutionResult _zeroCacheInvalidationResult() {
-  return CacheInvalidationExecutionResult(
-    layerTileCount: 0,
-    frameCompositeCount: 0,
-    playbackPreviewCount: 0,
-  );
+  return CacheInvalidationExecutionResult(layerTileCount: 0);
 }

@@ -8,14 +8,12 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/media_reference.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -285,11 +283,5 @@ class _RecordingSink implements CacheInvalidationSink {
       brushFrames.add(invalidation);
 
   @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) {}
-
-  @override
   void invalidateLayerTile(LayerTileCacheKey key) {}
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {}
 }

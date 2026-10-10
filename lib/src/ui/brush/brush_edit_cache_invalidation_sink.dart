@@ -1,8 +1,6 @@
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/cache_invalidation_execution_result.dart';
-import '../../models/frame_composite_cache_key.dart';
 import '../../models/layer_tile_cache_key.dart';
-import '../../models/playback_preview_cache_key.dart';
 import '../../services/cache_invalidation_executor.dart';
 
 /// Debug/manual cache invalidation recorder for standalone Brush hosts
@@ -18,16 +16,10 @@ class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
   static const int maxRecordedKeys = 4096;
 
   final layerTiles = <LayerTileCacheKey>[];
-  final frameComposites = <FrameCompositeCacheKey>[];
-  final playbackPreviews = <PlaybackPreviewCacheKey>[];
   final brushFrames = <BrushFrameCacheInvalidation>[];
 
   CacheInvalidationExecutionResult get latestResult =>
-      CacheInvalidationExecutionResult(
-        layerTileCount: layerTiles.length,
-        frameCompositeCount: frameComposites.length,
-        playbackPreviewCount: playbackPreviews.length,
-      );
+      CacheInvalidationExecutionResult(layerTileCount: layerTiles.length);
 
   void _record<T>(List<T> list, T value) {
     list.add(value);
@@ -49,13 +41,5 @@ class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) =>
-      _record(frameComposites, key);
-
-  @override
   void invalidateLayerTile(LayerTileCacheKey key) => _record(layerTiles, key);
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) =>
-      _record(playbackPreviews, key);
 }

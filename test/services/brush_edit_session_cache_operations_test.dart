@@ -11,22 +11,17 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/services/brush_edit_session_cache_operations.dart';
 import 'package:anicel/src/services/brush_edit_session_state_operations.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
 
 class FakeCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
-  final frameComposites = <FrameCompositeCacheKey>[];
-  final playbackPreviews = <PlaybackPreviewCacheKey>[];
 
-  int get totalCalls =>
-      layerTiles.length + frameComposites.length + playbackPreviews.length;
+  int get totalCalls => layerTiles.length;
 
   @override
   void invalidateLayerTile(LayerTileCacheKey key) {
@@ -35,16 +30,6 @@ class FakeCacheInvalidationSink implements CacheInvalidationSink {
 
   @override
   void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
-
-  @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) {
-    frameComposites.add(key);
-  }
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {
-    playbackPreviews.add(key);
-  }
 }
 
 void main() {
@@ -185,14 +170,6 @@ void main() {
       expect(
         result.cacheInvalidationResult.layerTileCount,
         plan.layerTiles.length,
-      );
-      expect(
-        result.cacheInvalidationResult.frameCompositeCount,
-        plan.frameComposites.length,
-      );
-      expect(
-        result.cacheInvalidationResult.playbackPreviewCount,
-        plan.playbackPreviews.length,
       );
       expect(result.cacheInvalidationResult.totalCount, plan.totalKeyCount);
     });
