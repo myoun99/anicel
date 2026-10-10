@@ -45,7 +45,7 @@ void main() {
       resolveActiveCutId: () => const CutId('cut-a'),
       resolveActiveTrackId: () => const TrackId('track'),
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
-    )..resolveAudioClock = () => clock;
+    )..resolveAudioClock = ({frameTime}) => clock;
   });
 
   tearDown(() => controller.dispose());
@@ -70,6 +70,34 @@ void main() {
     clock = const ClockReading(globalFrame: 97);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.globalFrameIndexListenable.value, 9);
+    controller.stop();
+  });
+
+  /// The-clock-is-read-when-the-tick-runs: a tick hands the clock the time
+  /// of the frame it runs in, so the clock can be read at that time and not
+  /// at the moment the tick happened to run.
+  testWidgets('🚨every tick hands the clock its frame\'s own time', (
+    tester,
+  ) async {
+    final handed = <({Duration? frameTime, Duration frameOfTheTick})>[];
+    controller.resolveAudioClock = ({frameTime}) {
+      handed.add((
+        frameTime: frameTime,
+        frameOfTheTick:
+            tester.binding.currentSystemFrameTimeStamp,
+      ));
+      return const ClockReading(globalFrame: 0);
+    };
+    controller.attachTicker(const TestVSync());
+    controller.play(scope: PlaybackScope.activeCut);
+    for (var vsync = 0; vsync < 3; vsync += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(handed, isNotEmpty, reason: '⛔premise: the run ticked');
+    expect(
+      [for (final at in handed) at.frameTime],
+      [for (final at in handed) at.frameOfTheTick],
+    );
     controller.stop();
   });
 

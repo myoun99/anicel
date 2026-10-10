@@ -169,7 +169,7 @@ void main() {
       addTearDown(c.dispose);
       var heard = 0;
       var asked = 0;
-      c.resolveAudioClock = () {
+      c.resolveAudioClock = ({frameTime}) {
         asked += 1;
         return ClockReading(globalFrame: heard);
       };
@@ -203,7 +203,7 @@ void main() {
       final c = controller()..attachTicker(vsync);
       addTearDown(c.dispose);
       ClockReading? status = const ClockReading(globalFrame: 0);
-      c.resolveAudioClock = () => status;
+      c.resolveAudioClock = ({frameTime}) => status;
 
       c.play(scope: PlaybackScope.activeCut);
       await tester.pump();

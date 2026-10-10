@@ -158,10 +158,17 @@ void main() {
       );
     });
 
-    // The time is read after the point, so this does not happen — and
-    // needs no guard of its own: the count is never behind its point.
-    test('a point stamped after now runs on by nothing', () {
-      expect(read(stair: step, at: point(step, t), now: t - ms(5)), step);
+    // ↩️Read when the tick ran, a time before the point did not happen (the
+    // clock was read after it), and this read the stair. Read at a frame's
+    // own time it does: a tick runs after a callback that came after its
+    // frame began (the-clock-is-read-when-the-tick-runs).
+    test('🚨a time before the latest point is read on the line — what had '
+        'been handed then, not the stair read after it', () {
+      expect(
+        read(stair: step, at: point(step, t), now: t - ms(5)),
+        step - 240,
+        reason: '5ms before the callback, at 48k',
+      );
     });
 
     test('🚨a new arm is another run: the furthest count and the points of '

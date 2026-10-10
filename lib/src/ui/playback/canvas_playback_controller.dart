@@ -90,7 +90,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// follows the sound"); null falls back to the wall-clock derivation.
   /// The ticker keeps running either way — it is the polling cadence, the
   /// clock is whose TIME gets shown.
-  ClockReading? Function()? resolveAudioClock;
+  ///
+  /// [frameTime] is the time of the frame the tick runs in (the engine's,
+  /// [SchedulerBinding.currentSystemFrameTimeStamp]): the clock is read at
+  /// THAT time, not at the moment the tick happens to run
+  /// (`FrameTimeOnDevice`). Null reads it now.
+  ClockReading? Function({Duration? frameTime})? resolveAudioClock;
 
   /// Asked of every frame the run would stand on: whether its clock must
   /// WAIT there — the frame's picture is not made yet, or (rendering first)
@@ -485,7 +490,11 @@ class CanvasPlaybackController extends ChangeNotifier
     // the sound is not made to wait for them. It waits only where the
     // picture itself is not made ([waitsOn]), and then the device is
     // stopped with the clock ([isWaiting]).
-    final says = resolveAudioClock?.call() ?? _wallClock(elapsed, total);
+    final says =
+        resolveAudioClock?.call(
+          frameTime: SchedulerBinding.instance.currentSystemFrameTimeStamp,
+        ) ??
+        _wallClock(elapsed, total);
     if (says.ended && _loopMode == PlaybackLoopMode.once) {
       _endAt(total);
       return;

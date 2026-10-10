@@ -613,6 +613,48 @@ void main() {
     // A frame is 4800 samples here: 10 a second at 48k.
     const frameSamples = 4800;
 
+    test('🚨read at a frame\'s own time, a tick that runs late reads where '
+        'one on time reads (the-clock-is-read-when-the-tick-runs)', () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final transport = buildTransport(store);
+
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(await _waitFor(() => device.clockPoint != null), isTrue);
+
+      // Ticks that each read the time of the frame they run in: the gap
+      // between that time and the device's clock is followed.
+      Duration frameNow() => Duration(microseconds: device.clockNowMicros);
+      for (var tick = 0; tick < 24; tick += 1) {
+        transport.clockStatus(frameTime: frameNow());
+        await Future<void>.delayed(const Duration(milliseconds: 4));
+      }
+      final frame = frameNow();
+      final onTime = transport.clockStatus(frameTime: frame)!.globalFrame;
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      final late = transport.clockStatus(frameTime: frame)!.globalFrame;
+      // Read after it: what the clock says NOW is never stepped back from.
+      final now = transport.clockStatus()!.globalFrame;
+
+      expect(
+        now - onTime,
+        greaterThanOrEqualTo(3),
+        reason: '⛔premise: read when it ran, the late tick is frames on',
+      );
+      expect(
+        late - onTime,
+        lessThanOrEqualTo(1),
+        reason: 'the same frame\'s time reads where it read — the gap moves '
+            'a sixteenth of a lateness, not all of it',
+      );
+
+      controller.stop();
+      transport.dispose();
+      store.dispose();
+    }, skip: skip);
+
     test('🚨the user\'s own correction moves what is heard: three frames\' '
         'worth of it is three frames', () async {
       final device = openNullDevice();

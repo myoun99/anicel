@@ -3,7 +3,8 @@ import 'dart:math' as math;
 /// One reading of the device's clock, taken in the order that makes sense
 /// of it (`QaAudioDevice.readClock`): the latest callback's word — what had
 /// been handed, and when it was asked — or null when none has spoken since
-/// the arm; the device's own count as it stands, the stair; the time now.
+/// the arm; the device's own count as it stands, the stair; the time it is
+/// read at — now, or the time of the frame that reads it.
 typedef DeviceClockReading = ({
   ({int positionSamples, int atMicros})? point,
   int stairSamples,
@@ -43,7 +44,8 @@ typedef DeviceClockReading = ({
 ///
 /// - 🚨NEVER BEHIND THE STAIR. What the stair says has been handed HAS
 ///   been handed: a frame changes no later than it did when the stair
-///   alone was read.
+///   alone was read. ⚠️By the time the stair was read: a time before the
+///   latest point (a frame's own time) is read on the line alone.
 /// - 🚨NEVER AHEAD OF THE SOUND. The count runs on from the latest point
 ///   only as far as the device has something to play ([arm]'s
 ///   `carriesFor` — what its buffer holds). A device whose callbacks have
@@ -138,10 +140,12 @@ class DeviceClockLine {
       if (-stairAhead > _lapSamples ~/ 2) {
         stairAhead += _lapSamples;
       }
-      read = math.max(
-        handed + stairAhead,
-        math.min(handed + _carriesFor, onTheLine),
-      );
+      final onIt = math.min(handed + _carriesFor, onTheLine);
+      // The stair is what has been handed by the time it was READ. A time
+      // before its point — a frame's own time, read by a tick that ran
+      // after a callback (the-clock-is-read-when-the-tick-runs) — is held to
+      // what had been handed then, and that is the line.
+      read = now < at ? onIt : math.max(handed + stairAhead, onIt);
     }
     return _furthest = math.max(_furthest, read);
   }
