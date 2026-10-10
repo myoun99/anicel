@@ -13,6 +13,7 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
+import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'layer_timeline_display_adapter.dart';
 import 'layer_rail_window.dart'
     show
@@ -126,6 +127,8 @@ class TimelinePanel extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.expandedLaneLayerIds = const {},
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -491,6 +494,11 @@ class TimelinePanel extends StatefulWidget {
   /// state, toggle and the generic lane provider.
   final Set<LayerId> expandedLaneLayerIds;
 
+  /// Forwarded to the grids — see [TimelineGridHooks.laneGraphs] and
+  /// [TimelineGridHooks.laneGraphVerbs].
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
+
   /// Forwarded to the grids — a LIVE read of the twirl state. See
   /// [LayerTimelineGrid.laneOpenOf].
   final bool Function(LayerId layerId)? laneOpenOf;
@@ -669,6 +677,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
       runEdit: widget.runEdit,
       readyRunsIn: widget.readyRunsIn,
       expandedLaneLayerIds: widget.expandedLaneLayerIds,
+      laneGraphs: widget.laneGraphs,
+      laneGraphVerbs: widget.laneGraphVerbs,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,
       onToggleLayerLanes: widget.onToggleLayerLanes,

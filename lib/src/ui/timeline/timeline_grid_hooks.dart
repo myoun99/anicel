@@ -19,7 +19,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'lane_graph.dart' show LaneGraphsView;
+import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show seatLaneGraphs;
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -121,6 +121,7 @@ class TimelineGridHooks {
     this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
     this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -411,6 +412,10 @@ class TimelineGridHooks {
   /// The rail's header graphs (I-89 ③): which groups' lanes are drawn as
   /// one graph, and how. View state, like the twirls beside it.
   final LaneGraphsView laneGraphs;
+
+  /// What the header graphs' buttons tell — a group's graph on or off, a
+  /// lane pinned or let go. Null draws no graph column.
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// A LIVE read of the twirl state, when the host can give one.
   ///

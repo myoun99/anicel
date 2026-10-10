@@ -24,6 +24,7 @@ import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
+import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
@@ -73,6 +74,8 @@ class TimelineTabHost extends StatefulWidget {
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
@@ -138,6 +141,12 @@ class TimelineTabHost extends StatefulWidget {
   /// R6 effect, so the key has to name the group, not just the row.
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// The HEADER GRAPHS standing in a group's lanes' place, and their
+  /// buttons (I-89 ③) — view state as the twirls are, kept by the session's
+  /// rail view. Null [laneGraphVerbs] draws no graph column.
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// SE/camera section visibility (host-owned, survives tab switches):
   /// hidden sections render no rows; the toolbar buttons toggle them.
@@ -892,6 +901,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             xsheetLayerAxisOffset: widget.xsheetLayerAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
+            laneGraphs: widget.laneGraphs,
+            laneGraphVerbs: widget.laneGraphVerbs,
             // LIVE, as the hook asks: the widget's set is the one this build
             // was handed, and a twirl replaces the session's set with a new
             // one — so a sweep that toggles row after row inside one frame

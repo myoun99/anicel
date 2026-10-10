@@ -844,6 +844,7 @@ class _WorkspaceTabs {
               _state._showSecondsDisplay,
               _state.widget.session.railView.expandedLaneLayerIds,
               _state.widget.session.railView.expandedLaneGroupKeys,
+              _state.widget.session.railView.laneGraphs,
               _state.widget.session.railView.hiddenSections,
               _state.widget.session.railView.collapsedAttachBaseIds,
               _state.widget.session.railView.rowFilter,
@@ -934,6 +935,10 @@ class _WorkspaceTabs {
               expandedLaneGroupKeys:
                   _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
+              laneGraphs: _state.widget.session.railView.laneGraphs.value,
+              laneGraphVerbs: SessionRowButtonPresses(
+                _state.widget.session,
+              ).laneGraphVerbs,
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
