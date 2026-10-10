@@ -138,6 +138,12 @@ class MovieCelHydrator {
   /// it would fill goes with the session.
   bool _disposed = false;
 
+  /// Where [key]'s installed movie picture was laid — the pose it was
+  /// decoded at — or null while none has been. A row whose reference fx
+  /// moved shows that picture moved to its new pose until the new one is
+  /// decoded (`EditingStackMap`).
+  TransformPose? laidAt(BrushFrameKey key) => _shown[key]?.$2;
+
   /// What the DECODER said [path] is, or null while nothing has opened it.
   ///
   /// 🚨★★★THE FILE'S OWN TRUTH, ASKED SYNCHRONOUSLY — the shape

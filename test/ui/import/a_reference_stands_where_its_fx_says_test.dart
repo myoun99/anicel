@@ -75,9 +75,18 @@ void main() {
 
     test('contain letterboxes, stretch fills, none is 1:1 — each centred',
         () {
-      expect(laid(MediaFitMode.contain), const ui.Rect.fromLTRB(0, 100, 400, 300));
-      expect(laid(MediaFitMode.stretch), const ui.Rect.fromLTRB(0, 0, 400, 400));
-      expect(laid(MediaFitMode.none), const ui.Rect.fromLTRB(100, 150, 300, 250));
+      expect(
+        laid(MediaFitMode.contain),
+        const ui.Rect.fromLTRB(0, 100, 400, 300),
+      );
+      expect(
+        laid(MediaFitMode.stretch),
+        const ui.Rect.fromLTRB(0, 0, 400, 400),
+      );
+      expect(
+        laid(MediaFitMode.none),
+        const ui.Rect.fromLTRB(100, 150, 300, 250),
+      );
     });
 
     test('a picture with no pixels stands 1:1 — it has no size to fit', () {

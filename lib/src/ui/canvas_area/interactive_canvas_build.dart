@@ -290,6 +290,7 @@ class _InteractiveCanvasBuild {
       boxGrabbable: boxGrabbable,
       inkBounds: inkBounds,
       crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
+      referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
     );
     return MainCanvasBrushHost(
@@ -933,9 +934,41 @@ class _InteractiveCanvasBuild {
     };
   }
 
+  /// Whether [layer]'s REFERENCE FX box stands on the canvas (I-68): on a
+  /// row that shows a file whose pictures are made from it again, standing
+  /// on that group's lanes — or holding the move tool on the row anywhere
+  /// but its transform lanes, which declare the layer's own box (유저
+  /// 2026-10-10 「참조 행에서 이동(변형) 도구로 끌면 참조 fx 의 값이 바뀐다
+  /// … 레이어 트랜스폼은 따로 남는다」).
+  ///
+  /// ⛔Not the transform switch's: the reference fx has none, and stands
+  /// with it off (I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」).
+  bool _referenceBoxShown(
+    Layer? layer,
+    TimelineRowAddress? standing,
+    CanvasTool tool,
+  ) {
+    if (_isPlaybackActive ||
+        layer == null ||
+        referenceRedrawFor(layer) == null) {
+      return false;
+    }
+    final lane = standing is LaneRowAddress && standing.layerId == layer.id
+        ? standing.laneId
+        : null;
+    if (laneIsReference(lane)) {
+      return true;
+    }
+    return tool == CanvasTool.move &&
+        canvasManipulatorsForLane(lane).isEmpty;
+  }
+
   Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
     if (frame.isCameraLayerActive && _cameraOverlayVisible) {
       return _state._cameraBox(frame, viewport, _canvasSize);
+    }
+    if (frame.referenceBox) {
+      return _state._referenceBox(frame, viewport, _canvasSize);
     }
     final layer = frame.activeLayer;
     if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
@@ -1017,6 +1050,7 @@ class _HostFrame {
     required this.boxGrabbable,
     required this.inkBounds,
     required this.crossGrabbable,
+    required this.referenceBox,
     required this.isCameraLayerActive,
   });
 
@@ -1035,6 +1069,10 @@ class _HostFrame {
   /// cross (the anchor point) — R5 #10, what is selected is what you grab.
   final bool boxGrabbable;
   final bool crossGrabbable;
+
+  /// The active row's reference fx box stands on the canvas (I-68) — the
+  /// file it shows, where its reference says (`_referenceBoxShown`).
+  final bool referenceBox;
 
   /// The active layer's ink at the playhead, while [boxGrabbable].
   final ({int left, int top, int rightExclusive, int bottomExclusive})?

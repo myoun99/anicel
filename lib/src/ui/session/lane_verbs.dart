@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
 import '../../models/cut_camera.dart'
@@ -31,8 +33,11 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithRemoved;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
+import '../timeline/reference_lane_policy.dart'
+    show laneIsReference, referenceMemberTransformLane, referenceScaleForm;
 import '../timeline/transform_lane_editing.dart'
     show
+        poseWithLaneValueEdited,
         transformLaneKeyFrames,
         transformTrackWithGroupReset,
         transformTrackWithLaneKeyRemoved,
@@ -88,6 +93,8 @@ class LaneVerbs {
     required void Function(TransformTrack track, {required String description})
     updateActiveCutCameraTrack,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
+    required Future<bool> Function(LayerId layerId, TransformPose pose)
+    reposeReference,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
@@ -98,7 +105,14 @@ class LaneVerbs {
        _effectsAndFx = effectsAndFx,
        _changes = changes,
        _updateActiveCutCameraTrack = updateActiveCutCameraTrack,
-       _previewFormsOf = previewFormsOf;
+       _previewFormsOf = previewFormsOf,
+       _reposeReference = reposeReference;
+
+  /// `ProjectImportDoors.reposeReference` — a reference fx's one write
+  /// (I-68): the file is laid again where the pose stands it, which only
+  /// the doors that read files can do.
+  final Future<bool> Function(LayerId layerId, TransformPose pose)
+  _reposeReference;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -486,6 +500,8 @@ class LaneVerbs {
         ),
         transform: (layer, track, frame) =>
             _transformTrackWithKeyToggled(layer, track, laneId, frame),
+        // A reference fx holds no keys (I-68 「키 없는 값 하나」).
+        reference: (_) => null,
       ),
     ),
     description: description,
@@ -585,6 +601,13 @@ class LaneVerbs {
       scaleForm: scaleLaneFormOf(layer),
       scaleLinked: scaleLinked,
     ),
+    reference: (pose) => poseWithLaneValueEdited(
+      pose,
+      laneId: referenceMemberTransformLane(laneId) ?? laneId,
+      input: input,
+      scaleForm: referenceScaleForm,
+      scaleLinked: scaleLinked,
+    ),
   );
 
   /// The ONE dispatch behind every lane verb at a frame: which of a row's
@@ -608,11 +631,18 @@ class LaneVerbs {
       frameIsGlobal: frameIsGlobal,
     );
     // R5 #7: the name tag is a fixed FIELD on the row, so it lands through
-    // its own funnel — not the transform track, not the chain.
+    // its own funnel — not the transform track, not the chain. I-68: so
+    // does a reference's fx, the file's own pose.
     final _LaneEdit? edit;
+    final reference = layer.mediaReference;
     if (laneIsSeNameTag(laneId)) {
       final next = edits.nameTag(layer.seNameTag ?? const SeNameTag(), frame);
       edit = next == null ? null : _NameTagEdit(next);
+    } else if (laneIsReference(laneId)) {
+      final next = reference == null ? null : edits.reference(reference.pose);
+      edit = next == null || next == reference?.pose
+          ? null
+          : _ReferenceEdit(next);
     } else if (parseEffectLaneId(laneId) != null) {
       final next = edits.effects(layer.effects, frame);
       edit = next == null ? null : _EffectsEdit(next);
@@ -629,7 +659,9 @@ class LaneVerbs {
     ({Layer layer, _LaneEdit edit})? target, {
     required String description,
   }) {
-    endLaneEditPreview();
+    if (target?.edit is! _ReferenceEdit) {
+      endLaneEditPreview();
+    }
     if (target == null) {
       return;
     }
@@ -641,8 +673,37 @@ class LaneVerbs {
         _commitLaneEffects(layer, next, description: description);
       case _TransformEdit(:final next):
         _commitTransformTrack(layer, next, description: description);
+      case _ReferenceEdit(:final next):
+        _commitReferencePose(layer, next);
     }
   }
+
+  /// The lane path's REFERENCE FX commit (I-68) — the fourth funnel. The
+  /// file is laid again where [pose] stands it, which takes a read (a
+  /// still's picture is made anew from its file), so the value stays on the
+  /// preview channel until it has landed: dropped first, the picture would
+  /// stand back where it was for the length of the read, the frame
+  /// 「한 프레임 보이는 건 무조건 걸린다」 is about.
+  void _commitReferencePose(Layer layer, TransformPose pose) {
+    final shown = _referencePreview(layer, pose);
+    _dragPreview.value = shown;
+    unawaited(
+      _reposeReference(layer.id, pose).whenComplete(() {
+        // Another edit's preview is not this one's to drop.
+        if (!_sessionDisposed() && identical(_dragPreview.value, shown)) {
+          _dragPreview.value = null;
+        }
+      }),
+    );
+  }
+
+  /// [layer] with its reference fx at [pose], as an edit in flight shows it.
+  TimelineDragPreview _referencePreview(Layer layer, TransformPose pose) =>
+      _rowPreview(
+        layer.copyWith(
+          mediaReference: layer.mediaReference?.copyWith(pose: pose),
+        ),
+      );
 
   /// Shows [target] on the preview channel — the committed row when it is
   /// null.
@@ -656,6 +717,7 @@ class LaneVerbs {
       _NameTagEdit(:final next) => _rowPreview(layer.copyWith(seNameTag: next)),
       _EffectsEdit(:final next) => _laneEffectsPreview(layer, next),
       _TransformEdit(:final next) => _laneTransformPreview(layer, next),
+      _ReferenceEdit(:final next) => _referencePreview(layer, next),
     };
   }
 
@@ -700,6 +762,28 @@ class LaneVerbs {
       layer,
       edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
     );
+  }
+
+  /// A canvas box's drag landing on [layerId]'s reference fx (I-68): the
+  /// file laid again where [pose] stands it, one undo — and the box's
+  /// preview held until it has landed ([_commitReferencePose]).
+  void editReferencePose(LayerId layerId, TransformPose pose) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer?.mediaReference == null || layer!.mediaReference!.pose == pose) {
+      endLaneEditPreview();
+      return;
+    }
+    _commitReferencePose(layer, pose);
+  }
+
+  /// A canvas box mid-drag on [layerId]'s reference fx: the pose
+  /// [editReferencePose] would lay the file at, shown on the preview channel.
+  void previewReferencePose(LayerId layerId, TransformPose pose) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer?.mediaReference == null) {
+      return;
+    }
+    _dragPreview.value = _referencePreview(layer!, pose);
   }
 
   /// WHAT a lane edit on [layer] edits — the homes its three families land
@@ -1608,6 +1692,7 @@ typedef _LaneEdits = ({
   List<LayerEffect>? Function(List<LayerEffect> effects, int frame) effects,
   TransformTrack? Function(Layer layer, TransformTrack track, int frame)
   transform,
+  TransformPose? Function(TransformPose pose) reference,
 });
 
 /// One lane edit's result: the family it lands in and what it leaves there
@@ -1629,6 +1714,11 @@ class _EffectsEdit extends _LaneEdit {
 class _TransformEdit extends _LaneEdit {
   const _TransformEdit(this.next);
   final TransformTrack next;
+}
+
+class _ReferenceEdit extends _LaneEdit {
+  const _ReferenceEdit(this.next);
+  final TransformPose next;
 }
 
 /// Where a row's TRANSFORM lanes live ([LaneVerbs._transformHomeOf]).

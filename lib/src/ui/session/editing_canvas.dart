@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../core/tree_nodes.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -9,6 +10,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/transform_pose.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
@@ -49,6 +51,7 @@ class EditingCanvas {
     required TrackSeDisplay trackSe,
     required List<ResolvedLayerEffect> Function(CutId cutId, int frameIndex)
     cutEffectsAt,
+    required TransformPose? Function(BrushFrameKey key) movieLaidAt,
   }) : _cutEffectsAt = cutEffectsAt,
        _project = project,
        _selection = selection,
@@ -57,7 +60,13 @@ class EditingCanvas {
        _dragPreview = dragPreview,
        _controllers = controllers,
        _opacityVerbs = opacityVerbs,
-       _trackSe = trackSe;
+       _trackSe = trackSe,
+       _movieLaidAt = movieLaidAt;
+
+  /// Where a movie cel's installed picture was laid
+  /// (`MovieCelHydrator.laidAt`) — the stack moves it to where its row's
+  /// reference fx stands now ([EditingStackMap]).
+  final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -218,6 +227,7 @@ class EditingCanvas {
       stackCut: shown,
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
+      movieLaidAt: _movieLaidAt,
     );
     final drawing = drawingLayerId == null
         ? null

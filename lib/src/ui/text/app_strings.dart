@@ -729,6 +729,7 @@ enum AppStrings {
 
   String get tlAudioLane => _s('tlAudioLane');
   String get tlNameTagGroup => _s('tlNameTagGroup');
+  String get tlReferenceGroup => _s('tlReferenceGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
   String get tlLaneScale => _s('tlLaneScale');
   String get tlLaneRotation => _s('tlLaneRotation');
@@ -2747,6 +2748,7 @@ enum AppStrings {
     'tlSelectedLayers': 'Selected layers',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Name Tag',
+    'tlReferenceGroup': 'Reference',
     'tlTransformGroup': 'Transform',
     'tlLaneScale': 'Scale',
     'tlLaneRotation': 'Rotation',
@@ -4190,6 +4192,7 @@ enum AppStrings {
     'tlSelectedLayers': '選択したレイヤー',
     'tlAudioLane': '音声',
     'tlNameTagGroup': 'ネームタグ',
+    'tlReferenceGroup': '参照',
     'tlTransformGroup': 'トランスフォーム',
     'tlLaneScale': 'スケール',
     'tlLaneRotation': '回転',
@@ -5632,6 +5635,7 @@ enum AppStrings {
     'tlSelectedLayers': '선택한 레이어',
     'tlAudioLane': '오디오',
     'tlNameTagGroup': '이름표',
+    'tlReferenceGroup': '참조',
     'tlTransformGroup': '변형',
     'tlLaneScale': '비율',
     'tlLaneRotation': '회전',
@@ -7188,6 +7192,7 @@ enum AppStrings {
     'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Étiquette',
+    'tlReferenceGroup': 'Référence',
     'tlTransformGroup': 'Transformation',
     'tlLaneScale': 'Échelle',
     'tlLaneRotation': 'Rotation',
@@ -8546,6 +8551,7 @@ enum AppStrings {
     'tlSelectedLayers': '所选图层',
     'tlAudioLane': '音频',
     'tlNameTagGroup': '名字条',
+    'tlReferenceGroup': '参照',
     'tlTransformGroup': '变换',
     'tlLaneScale': '缩放',
     'tlLaneRotation': '旋转',

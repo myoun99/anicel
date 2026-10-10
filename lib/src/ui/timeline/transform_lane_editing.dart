@@ -231,7 +231,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       }
       return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
     case 'rotation':
-      final degrees = double.tryParse(input.replaceAll('°', '').trim());
+      final degrees = _parseDegrees(input);
       if (degrees == null) {
         return null;
       }
@@ -315,6 +315,38 @@ TransformTrack transformTrackWithAnchorDragged(
   );
 }
 
+/// A value typed into one lane of a lone POSE — a reference fx's (I-68),
+/// one value with no keys. [laneId] is the transform lane it is
+/// (`position`, `scale` or `rotation`), read the way
+/// [transformTrackWithLaneValueEdited] reads that lane. Null on parse
+/// failure.
+TransformPose? poseWithLaneValueEdited(
+  TransformPose pose, {
+  required String laneId,
+  required String input,
+  required ScaleLaneForm scaleForm,
+  required bool scaleLinked,
+}) {
+  switch (laneId) {
+    case 'position':
+      final point = _parsePoint(input);
+      return point == null ? null : pose.copyWith(center: point);
+    case 'scale':
+      final scale = scaleForm.typed(
+        input,
+        current: pose.scale,
+        linked: scaleLinked,
+      );
+      return scale == null
+          ? null
+          : pose.copyWith(scaleX: scale.x, scaleY: scale.y);
+    case 'rotation':
+      final degrees = _parseDegrees(input);
+      return degrees == null ? null : pose.copyWith(rotationDegrees: degrees);
+  }
+  return null;
+}
+
 CanvasPoint? _parsePoint(String input) {
   final parts = input.split(',');
   if (parts.length != 2) {
@@ -327,6 +359,9 @@ CanvasPoint? _parsePoint(String input) {
   }
   return CanvasPoint(x: x, y: y);
 }
+
+double? _parseDegrees(String input) =>
+    double.tryParse(input.replaceAll('°', '').trim());
 
 
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).

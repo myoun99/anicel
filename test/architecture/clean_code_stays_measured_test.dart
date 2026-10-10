@@ -287,7 +287,16 @@ void main() {
   /// is held and the line, the three things it asks of an entry (when it is
   /// next wanted, when it was last used, its bytes), the letting go, and the
   /// floor no picture wanted that soon goes under.
-  const wideSignatures = 390;
+  ///
+  /// ⚠️390 → 387 on 2026-10-10, following them down (I-68 — the fit is a
+  /// pose): `rasterizeImageToSurface`, `planCutFolderImport` and
+  /// `planTvpImport` lost the fit a planned bake no longer carries — one
+  /// placement says where the picture goes. One came, named as the rule
+  /// asks: `poseWithLaneValueEdited` (five) is a value typed into a lone
+  /// pose's lane, a reference fx's — the pose, which lane, the input and the
+  /// two the Scale lane's form reads it with, the transform lanes' own. 389
+  /// had been measured under 390 before this round.
+  const wideSignatures = 387;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

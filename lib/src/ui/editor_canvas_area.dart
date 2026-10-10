@@ -72,6 +72,8 @@ import 'timeline/timeline_drag_preview.dart'
         timelineDragPreviewLayerFor;
 import '../models/layer.dart' show Layer;
 import '../models/layer_kind.dart';
+import '../models/reference_swap.dart' show referenceRedrawFor;
+import '../services/import/raster_cel_import.dart' show picturePlacement;
 import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
@@ -86,6 +88,7 @@ import 'timeline/transform_lane_editing.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
+import 'timeline/reference_lane_policy.dart' show laneIsReference;
 import 'repaint_props.dart';
 import 'session/editing_canvas.dart' show StrokeRefusal;
 
@@ -1088,6 +1091,64 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
             )
           : null,
+    );
+  }
+
+  /// A REFERENCE row's box (I-68): where the file it shows stands. The
+  /// inside moves it, a corner or an edge's middle scales it, outside on
+  /// stage turns it — the layer's box's grabs — and what each writes is the
+  /// row's reference fx, one value with no keys (유저 2026-10-10 「참조
+  /// 행에서 이동(변형) 도구로 끌면 참조 fx 의 값이 바뀐다」). It frames the
+  /// PICTURE — its own corners where its pose lays them, under the row's
+  /// transform and its folders, where the canvas shows it.
+  Widget _referenceBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) {
+    final session = frame.session;
+    final row = _shownRow(session, frame.activeLayer!);
+    final reference = row.mediaReference!;
+    final pose = reference.pose;
+    final parent = session.frameVerbs.layerCanvasPoseSample(row.id);
+    final back = parent == null ? null : canvasToArtwork(parent);
+    CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
+    CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
+    final verbs = session.laneVerbs;
+    RowBoxLanding<T> landing<T>(TransformPose Function(T value) poseOf) => (
+      changed: (value) => verbs.previewReferencePose(row.id, poseOf(value)),
+      committed: (value) => verbs.editReferencePose(row.id, poseOf(value)),
+    );
+    final laid = picturePlacement(pose, reference.pictureSize);
+    final width = reference.pictureSize.width.toDouble();
+    final height = reference.pictureSize.height.toDouble();
+    return RowTransformBox(
+      corners: [
+        for (final (x, y) in [
+          (0.0, 0.0),
+          (width, 0.0),
+          (width, height),
+          (0.0, height),
+        ])
+          toCanvas(laid.apply(CanvasPoint(x: x, y: y))),
+      ],
+      pose: pose.copyWith(center: toCanvas(pose.center)),
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: frame.boxClaimsCanvas,
+      onCancelled: verbs.endLaneEditPreview,
+      move: landing<CanvasPoint>(
+        (dropped) => pose.copyWith(center: fromCanvas(dropped)),
+      ),
+      scale: RowBoxTwoScales(
+        landing<CanvasPoint>(
+          (scale) => pose.copyWith(scaleX: scale.x, scaleY: scale.y),
+        ),
+      ),
+      turnSpace: fromCanvas,
+      turn: landing<double>(
+        (degrees) => pose.copyWith(rotationDegrees: degrees),
+      ),
     );
   }
 

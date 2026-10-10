@@ -214,13 +214,7 @@ PsdExpandPlan planPsdExpansion({
               sourceIndex: index,
               layerId: layerId,
               frameId: frameId,
-              rect: _onTheCanvas(
-                onCanvas,
-                left: source.left + crop.left,
-                top: source.top + crop.top,
-                width: crop.width,
-                height: crop.height,
-              ),
+              rect: _onTheCanvas(onCanvas, source, crop),
               crop: crop,
             ),
           );
@@ -298,21 +292,19 @@ PsdLayerCrop? _insideTheDocument(PsdLayer source, PsdDocument document) {
   return (left: left, top: top, width: right - left, height: bottom - top);
 }
 
-/// The canvas rect [onCanvas] lays the document's pixels from ([left],
-/// [top]), [width] × [height], over. A fit never turns a picture, so its two
-/// corners say where the rest went.
+/// The canvas rect [onCanvas] lays [source]'s [crop] over — the document's
+/// own pixels from the layer's offset. A fit never turns a picture, so its
+/// two corners say where the rest went.
 ui.Rect _onTheCanvas(
-  LayerPlacement onCanvas, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) {
-  final topLeft = onCanvas.apply(
-    CanvasPoint(x: left.toDouble(), y: top.toDouble()),
-  );
+  LayerPlacement onCanvas,
+  PsdLayer source,
+  PsdLayerCrop crop,
+) {
+  final left = (source.left + crop.left).toDouble();
+  final top = (source.top + crop.top).toDouble();
+  final topLeft = onCanvas.apply(CanvasPoint(x: left, y: top));
   final bottomRight = onCanvas.apply(
-    CanvasPoint(x: (left + width).toDouble(), y: (top + height).toDouble()),
+    CanvasPoint(x: left + crop.width, y: top + crop.height),
   );
   return ui.Rect.fromLTRB(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y);
 }

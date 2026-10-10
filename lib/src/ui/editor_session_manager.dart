@@ -1729,6 +1729,7 @@ class EditorSessionManager extends ChangeNotifier
       rowSpans.trackGlobalFrameOf(cutId, frameIndex),
       enabled: effectsAndFx.isCutFxEnabled(cutId),
     ),
+    movieLaidAt: (key) => movieCels.laidAt(key),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
@@ -1821,6 +1822,10 @@ class EditorSessionManager extends ChangeNotifier
     updateActiveCutCameraTrack: (track, {required description}) =>
         camera.updateActiveCutCameraTrack(track, description: description),
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
+    // The door's one write of a reference fx (I-68) — it lays the file
+    // again, which the doors own.
+    reposeReference: (layerId, pose) =>
+        importDoors.reposeReference(layerId: layerId, pose: pose),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,

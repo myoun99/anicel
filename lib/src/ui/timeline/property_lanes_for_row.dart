@@ -3,11 +3,14 @@ import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show effectParameterValueAt;
 import '../../models/layer_kind.dart';
+import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
+import 'reference_lane_policy.dart'
+    show referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
 import 'se_audio_lane.dart' show seAudioLanesFor;
 import 'se_name_tag_lane_policy.dart'
@@ -217,7 +220,19 @@ List<PropertyLaneRow> propertyLanesForRow({
       // app already DOES: the pose wraps the draw while the effect filters
       // sit inside it, so the transform is genuinely last. Only the reading
       // order was upside down.
+      //
+      // I-68: a row that SHOWS a file has its reference fx before them all
+      // — where the file stands is laid when its pixels are made, before
+      // any effect or transform reads them.
+      final reference = layer.mediaReference;
       return [
+        if (reference != null && referenceRedrawFor(layer) != null)
+          ...referencePropertyLanes(
+            reference,
+            expanded: expandedGroupKeys.contains(
+              laneGroupKey(layer.id, referenceGroupLaneId),
+            ),
+          ),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];
