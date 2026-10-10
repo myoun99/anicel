@@ -142,6 +142,11 @@ class CanvasPictures implements PlaybackPictures {
   /// its siblings are made past it, and the throw is handed on once they
   /// are — the frame's other rows are no reason for a cel that cannot be
   /// read to be read again, nor its failure a reason for them to be missing.
+  ///
+  /// 🚨THE ROWS ARE ASKED FOR AT ONCE: each waits for its raster to come
+  /// back, and asked one after another a frame of thirteen rows waited
+  /// thirteen round trips (a-picture-is-made-once, 2026-10-10). A cel two
+  /// rows show is asked for once.
   @override
   Future<bool> make(
     DemandedPicture picture, {
@@ -150,10 +155,8 @@ class CanvasPictures implements PlaybackPictures {
     final level = qualityAt(picture.cut, picture.frameIndex);
     final cut = picture.cut;
     (Object, StackTrace)? thrown;
-    for (final row in rowsOf(cut, picture.frameIndex)) {
-      if (_rowIsThere(row, cut, level) || gaveUpOn(row)) {
-        continue;
-      }
+    var stoodDown = false;
+    Future<void> makeRow(CanvasLayerImageRequest row) async {
       final LayerFrameImage? image;
       try {
         image = await layerImages.prepare(
@@ -167,17 +170,30 @@ class CanvasPictures implements PlaybackPictures {
       } on Object catch (error, stack) {
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);
         thrown ??= (error, stack);
-        continue;
+        return;
       }
       if (image == null) {
         if (shouldAbort()) {
-          return false;
+          stoodDown = true;
+          return;
         }
         // A cel with pixels that cannot be drawn at this canvas size — the
         // canvas's own miss of the same name, which it leaves to the next
         // pass. A maker that left it would make it again on every walk.
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);
       }
+    }
+
+    final asked = <BrushFrameKey>{};
+    await Future.wait([
+      for (final row in rowsOf(cut, picture.frameIndex))
+        if (!_rowIsThere(row, cut, level) &&
+            !gaveUpOn(row) &&
+            asked.add(row.frameKey))
+          makeRow(row),
+    ]);
+    if (stoodDown) {
+      return false;
     }
     if (thrown case (final error, final stack)) {
       Error.throwWithStackTrace(error, stack);

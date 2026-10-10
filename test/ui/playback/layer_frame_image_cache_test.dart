@@ -272,6 +272,55 @@ void main() {
     });
   });
 
+  /// The canvas and the warm both make rows, and a frame asks for its rows
+  /// at once: the same cel was made twice side by side.
+  testWidgets('🚨a picture asked for while it is being made is made once — '
+      'the second ask waits for the first making', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      var snapshots = 0;
+      debugOnWaitedSnapshot = (_, _) => snapshots += 1;
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      Future<LayerFrameImage?> ask() => cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+
+      final made = await Future.wait([ask(), ask()]);
+      expect(made, everyElement(isNotNull));
+      expect(snapshots, 1, reason: 'one making answered both asks');
+    });
+  });
+
+  testWidgets('a making stands down only for the ask that started it — an '
+      'ask that did not want to stand down is made again', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      final standingDown = cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+        shouldAbort: () => true,
+      );
+      final staying = cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+
+      expect(await standingDown, isNull, reason: '⛔premise: it stood down');
+      expect(await staying, isNotNull);
+    });
+  });
+
   testWidgets('invalidateFrame drops all qualities', (tester) async {
     await tester.runAsync(() async {
       final (store, _) = storeWithStroke();

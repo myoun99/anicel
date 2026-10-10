@@ -117,6 +117,41 @@ class _LayerFrameImageEntry {
   ui.Image get image => positioned.image;
 }
 
+/// A picture being made for a slot, and what it is being made of: the ask
+/// that started it ([LayerFrameImageCache.prepare]).
+final class _Making {
+  _Making({
+    required this.revision,
+    required this.canvasSize,
+    required this.sourceEffectSignature,
+    required this.inkSuffices,
+    required this.done,
+  });
+
+  final int revision;
+  final CanvasSize canvasSize;
+  final List<double> sourceEffectSignature;
+  final bool inkSuffices;
+  final Future<LayerFrameImage?> done;
+
+  /// Whether this making answers an ask for the same slot — the same
+  /// picture of the same content, kept the same way. An ask the making does
+  /// not answer makes its own.
+  bool answers({
+    required int revision,
+    required CanvasSize canvasSize,
+    required List<double> sourceEffectSignature,
+    required bool inkSuffices,
+  }) =>
+      revision == this.revision &&
+      canvasSize == this.canvasSize &&
+      sameCelSourceEffectSignature(
+        sourceEffectSignature,
+        this.sourceEffectSignature,
+      ) &&
+      inkSuffices == this.inkSuffices;
+}
+
 /// How many steps on a cached slot's image is next shown — null where no
 /// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
 typedef LayerImageWantedAt =
@@ -220,7 +255,67 @@ class LayerFrameImageCache {
   /// not the lazy one — the whole image draws right on every route, and all
   /// the default costs a caller that forgets is the memory the ink would
   /// have saved.
+  ///
+  /// 🚨A PICTURE IS MADE ONCE: asked for while the same picture is being
+  /// made, this waits for that making instead of making it again beside it
+  /// — the canvas and the warm both make rows, and a frame asks for its rows
+  /// at once, so two makings of one cel side by side were the ordinary case
+  /// (a-picture-is-made-once, 2026-10-10). A making stands down only for the
+  /// ask that started it: an ask that did not want to stand down and got
+  /// nothing from it is made again.
   Future<LayerFrameImage?> prepare({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    bool Function()? shouldAbort,
+    bool inkSuffices = false,
+  }) async {
+    final at = (key, quality);
+    final signature = celSourceEffectSignature(sourceEffects);
+    final revision = _currentRevision(key);
+    final making = _making[at];
+    if (making != null &&
+        making.answers(
+          revision: revision,
+          canvasSize: canvasSize,
+          sourceEffectSignature: signature,
+          inkSuffices: inkSuffices,
+        )) {
+      final made = await making.done;
+      if (made != null || (shouldAbort?.call() ?? false)) {
+        return made;
+      }
+    }
+    final made = _prepareNow(
+      key: key,
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: sourceEffects,
+      shouldAbort: shouldAbort,
+      inkSuffices: inkSuffices,
+    );
+    final now = _Making(
+      revision: revision,
+      canvasSize: canvasSize,
+      sourceEffectSignature: signature,
+      inkSuffices: inkSuffices,
+      done: made,
+    );
+    _making[at] = now;
+    try {
+      return await made;
+    } finally {
+      if (identical(_making[at], now)) {
+        _making.remove(at);
+      }
+    }
+  }
+
+  /// The pictures being made, by slot ([prepare]).
+  final Map<(BrushFrameKey, PlaybackQuality), _Making> _making = {};
+
+  Future<LayerFrameImage?> _prepareNow({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
