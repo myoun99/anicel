@@ -264,9 +264,7 @@ void main() {
     test('the CAMERA row\'s graph twirls the row\'s lanes open — its group '
         'is the row (㉙) — and that twirl is the undo step it always was', () {
       final r = _Rig();
-      final camera = r.s.layers
-          .firstWhere((layer) => layer.kind == LayerKind.camera)
-          .id;
+      final camera = r.camera;
       final key = laneGroupKey(camera, transformGroupHeaderLane.laneId);
       final depth = r.s.historyManager.undoCount;
 
@@ -288,6 +286,22 @@ void main() {
         [key],
         reason: 'the graph is view state: the undo shuts the twirl alone',
       );
+    });
+
+    test('a graph turned on over an OPEN group — a camera row twirled open '
+        '— leaves it open', () {
+      final r = _Rig();
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      final camera = laneGroupKey(r.camera, transformGroupHeaderLane.laneId);
+      r.presses.toggleLaneGroup(key);
+      r.presses.toggleLanes(r.camera);
+
+      r.presses.toggleLaneGraph(key);
+      r.presses.toggleLaneGraph(camera);
+
+      expect(r.s.railView.expandedLaneGroupKeys.value, {key});
+      expect(r.s.railView.expandedLaneLayerIds.value, {r.camera});
+      expect(r.s.railView.laneGraphs.value.open.keys.toSet(), {key, camera});
     });
 
     test('🚨a PIN is on every use of its row, and off with it', () {
@@ -354,6 +368,9 @@ class _Rig {
   }
 
   SessionRowButtonPresses get presses => SessionRowButtonPresses(s);
+
+  LayerId get camera =>
+      s.layers.firstWhere((layer) => layer.kind == LayerKind.camera).id;
 
   /// Makes the 겸용 cut and stands in it.
   void linkACut() {

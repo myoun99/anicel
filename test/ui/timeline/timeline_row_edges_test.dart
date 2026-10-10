@@ -252,6 +252,11 @@ void main() {
       ]);
       expect(seated[2].graph!.graph, graph);
       expect(
+        seated[2].graph!.lanes,
+        ['position', 'scale'],
+        reason: 'a seat names the lanes drawn in it, as the rail draws them',
+      );
+      expect(
         [for (final row in seated) row.address],
         [for (final row in rows) row.address],
         reason: 'the rows are the same rows — 「서는곳 법 그대로」',
@@ -269,6 +274,7 @@ void main() {
         (2, 2, transformKey),
         (5, 1, blurKey),
       ]);
+      expect(blocks.last.seat.lanes, [effectLaneId(blur, 'radius')]);
     });
 
     test('a graph stands its own extent: its lanes and the room after the '
