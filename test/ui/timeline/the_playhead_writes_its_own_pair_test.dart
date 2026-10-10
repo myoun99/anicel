@@ -471,7 +471,12 @@ void main() {
       boundary,
       same(
         tester.renderObject(
-          find.ancestor(of: writing, matching: find.byType(TickLayer)),
+          find
+              .descendant(
+                of: find.ancestor(of: writing, matching: find.byType(TickLayer)),
+                matching: find.byType(RepaintBoundary),
+              )
+              .first,
         ),
       ),
       reason: 'its repaints never re-record the strip',
