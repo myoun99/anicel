@@ -494,32 +494,3 @@ bool openAudioOutput(
   }
   return opened > 0;
 }
-
-/// Reads the played position as a frame index, pulled forward by the
-/// device's own reported latency so the picture matches what is being
-/// HEARD rather than what has merely been queued.
-///
-/// [extraOffsetSamples] is the user's A/V offset: the residual no device
-/// report can account for (screen pipeline, Bluetooth, an AV receiver).
-/// Every professional tool exposes this for the same reason — the part
-/// that is measurable gets corrected automatically, and the rest is a
-/// slider.
-int audioClockFrame({
-  required int positionSamples,
-  required int latencySamples,
-  required int extraOffsetSamples,
-  required int sampleRate,
-  required int frameRateNumerator,
-  required int frameRateDenominator,
-}) {
-  if (sampleRate <= 0 || frameRateNumerator <= 0 || frameRateDenominator <= 0) {
-    return 0;
-  }
-  final heard = positionSamples - latencySamples + extraOffsetSamples;
-  if (heard <= 0) {
-    return 0;
-  }
-  // Integer throughout, like every other frame/sample conversion in this
-  // program: a double here would drift over a long timeline.
-  return heard * frameRateNumerator ~/ (sampleRate * frameRateDenominator);
-}

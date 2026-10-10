@@ -23,8 +23,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
-import '../../services/playback/device_clock_line.dart';
-import '../../services/playback/frame_time_on_device.dart';
+import '../../services/playback/heard_on_the_device.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
@@ -108,14 +107,12 @@ class AudioDeviceTransport {
   /// wrap.
   bool _needsLoopRearm = false;
 
-  /// The device's count as the picture reads it: a line through the stair,
-  /// counted on through every lap ([DeviceClockLine], where the reasons
-  /// are).
-  final DeviceClockLine _line = DeviceClockLine();
-
-  /// Where a frame's time stands on the device's clock — what the line is
-  /// read at ([clockStatus]).
-  final FrameTimeOnDevice _frameTime = FrameTimeOnDevice();
+  /// Where a listener is on the run, as the picture reads it: the line
+  /// through the device's count at the frame's own time, less what the
+  /// device still holds, counted on through every lap ([HeardOnTheDevice],
+  /// where the reasons are) — the one reading the media viewer's sound
+  /// takes too.
+  final HeardOnTheDevice _heard = HeardOnTheDevice();
 
   bool get carryingPlayback => _carrying;
 
@@ -348,7 +345,7 @@ class AudioDeviceTransport {
       stopSample: _stopSample,
       looping: looping,
     );
-    _line.arm(
+    _heard.arm(
       deviceRate: _deviceRate,
       carriesFor: device.latencySamples,
       // A device loops from the top or not at all ([_needsLoopRearm]).
@@ -375,7 +372,7 @@ class AudioDeviceTransport {
 
   /// What the controller shows instead of its wall clock; null while the
   /// device does not carry this run. Read at [frameTime] — the frame the
-  /// tick runs in — when one is given ([FrameTimeOnDevice]).
+  /// tick runs in — when one is given ([HeardOnTheDevice]).
   ClockReading? clockStatus({Duration? frameTime}) {
     final device = _device;
     if (!_carrying || device == null) {
@@ -414,21 +411,11 @@ class AudioDeviceTransport {
     // 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로 어떻게 안되나」).
     // The device's own count climbs one callback at a time; the line
     // through it is where that count has got to — at the frame's own time.
-    final count = _line.read((
-      point: clock.point,
-      stairSamples: clock.stairSamples,
-      nowMicros: frameTime == null
-          ? clock.nowMicros
-          : _frameTime.onDevice(
-              deviceNowMicros: clock.nowMicros,
-              frameMicros: frameTime.inMicroseconds,
-            ),
-    ));
-    // What is HEARD trails the count by the device's latency (the user's
-    // own correction on top) — taken off BEFORE the count is folded into
-    // the loop: the lap that is heard is not the lap that is handed.
-    final heard = _line.foldedIntoTheLap(
-      count - device.latencySamples + _resolveUserOffsetSamples(_deviceRate),
+    final heard = _heard.heard(
+      clock,
+      frameTime: frameTime,
+      latencySamples: device.latencySamples,
+      userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
     );
     var frame = _rate.sampleToFrame(math.max(0, heard), _deviceRate);
     if (frame < _armFrame) {

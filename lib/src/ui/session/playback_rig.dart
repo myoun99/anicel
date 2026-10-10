@@ -254,6 +254,17 @@ class PlaybackRig implements PlaybackRun {
   late final PlaybackTransports transports = PlaybackTransports()
     ..add(playback);
 
+  /// The user's own A/V correction in samples at [sampleRate] — the residual
+  /// no device report accounts for (screen pipeline, Bluetooth, an AV
+  /// receiver), added by every clock that reads what the device has played:
+  /// the canvas's transport, and the media viewer's sound.
+  int userOffsetSamples(int sampleRate) =>
+      _appSettings.audioSyncSettings.value.offsetSamples(
+        sampleRate: sampleRate,
+        frameRateNumerator: _settings.projectFrameRate.numerator,
+        frameRateDenominator: _settings.projectFrameRate.denominator,
+      );
+
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
   /// samples handed to the device, and cumulative drift is structurally
@@ -266,12 +277,7 @@ class PlaybackRig implements PlaybackRun {
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
     resolveDevice: audioOutputUnlessTesting,
-    resolveUserOffsetSamples: (sampleRate) =>
-        _appSettings.audioSyncSettings.value.offsetSamples(
-          sampleRate: sampleRate,
-          frameRateNumerator: _settings.projectFrameRate.numerator,
-          frameRateDenominator: _settings.projectFrameRate.denominator,
-        ),
+    resolveUserOffsetSamples: userOffsetSamples,
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,

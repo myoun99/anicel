@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../models/project_frame_rate.dart';
 import '../../services/media/viewer_document.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../canvas/viewport_pages_painter.dart';
@@ -162,6 +163,10 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
 
   @override
   TickerProvider get vsync => this;
+
+  @override
+  ProjectFrameRate get frameRate =>
+      widget.session.projectSettings.projectFrameRate;
 
   /// The document as the page cache and the run ask it — each render asked
   /// of it remembered until it answers ([debugSettle]).

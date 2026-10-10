@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
@@ -564,80 +563,6 @@ void main() {
       expect(await waitFor(() => device.positionSamples > 0), isTrue,
           reason: 'the clock must run even with nothing to play');
     }, skip: skip);
-  });
-
-  group('position to frame', () {
-    test('the picture is pulled forward by the reported latency', () {
-      // The position counts what has been HANDED to the device; what is
-      // being heard is that minus the buffer still in flight.
-      const rate = ProjectFrameRate.fps24;
-      final frame = audioClockFrame(
-        positionSamples: 48000, // one second queued
-        latencySamples: 2000,
-        extraOffsetSamples: 0,
-        sampleRate: 48000,
-        frameRateNumerator: rate.numerator,
-        frameRateDenominator: rate.denominator,
-      );
-      expect(frame, (48000 - 2000) * 24 ~/ 48000);
-    });
-
-    test('the user offset moves it either way', () {
-      int at(int offset) => audioClockFrame(
-        positionSamples: 48000,
-        latencySamples: 0,
-        extraOffsetSamples: offset,
-        sampleRate: 48000,
-        frameRateNumerator: 24,
-        frameRateDenominator: 1,
-      );
-      expect(at(0), 24);
-      expect(at(48000), 48);
-      expect(at(-24000), 12);
-    });
-
-    test('23.976 converts through the exact fraction', () {
-      const rate = ProjectFrameRate.ntsc(24);
-      final frame = audioClockFrame(
-        positionSamples: 48000,
-        latencySamples: 0,
-        extraOffsetSamples: 0,
-        sampleRate: 48000,
-        frameRateNumerator: rate.numerator,
-        frameRateDenominator: rate.denominator,
-      );
-      // One second at 23.976 is frame 23, not 24 — the pulldown rate is
-      // genuinely slower and the clock must not round that away.
-      expect(frame, 23);
-    });
-
-    test('a position before anything is heard clamps at zero', () {
-      expect(
-        audioClockFrame(
-          positionSamples: 100,
-          latencySamples: 2000,
-          extraOffsetSamples: 0,
-          sampleRate: 48000,
-          frameRateNumerator: 24,
-          frameRateDenominator: 1,
-        ),
-        0,
-      );
-    });
-
-    test('nonsense geometry returns zero rather than dividing by it', () {
-      expect(
-        audioClockFrame(
-          positionSamples: 48000,
-          latencySamples: 0,
-          extraOffsetSamples: 0,
-          sampleRate: 0,
-          frameRateNumerator: 24,
-          frameRateDenominator: 1,
-        ),
-        0,
-      );
-    });
   });
 
   group('capture (AUDIO-PRO R5)', () {

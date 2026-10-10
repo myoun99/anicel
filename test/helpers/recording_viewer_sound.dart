@@ -88,9 +88,17 @@ class RecordingViewerSound extends ViewerSound {
     _carrying = false;
   }
 
+  /// The frame time each reading of the clock was asked for.
+  final List<Duration?> askedAt = [];
+
+  /// What is heard is where the device has got to: this device holds
+  /// nothing back and carries no correction.
   @override
-  double? get positionSeconds => _carrying ? at : null;
+  ({double seconds, bool ended})? heardAt({Duration? frameTime}) {
+    askedAt.add(frameTime);
+    return _carrying ? (seconds: at, ended: hasEnded) : null;
+  }
 
   @override
-  bool get ended => _carrying && hasEnded;
+  double? get handedSeconds => _carrying ? at : null;
 }

@@ -11,6 +11,7 @@ import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_piece.dart' show CutPiece;
+import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
@@ -823,6 +824,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   @override
   TickerProvider get vsync => this;
+
+  @override
+  ProjectFrameRate get frameRate =>
+      widget.session.projectSettings.projectFrameRate;
 
   @override
   ViewerDocument? get document => _document;

@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart' show TickerProvider;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, TickerProvider;
 
 import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
@@ -42,6 +42,9 @@ abstract interface class MediaRunSurface {
   /// Where the run's clock looks from — the surface's own vsync, so a
   /// surface not shown silences it ([LookingTicker]).
   TickerProvider get vsync;
+
+  /// The rate the surface's transport counts this run's frames in.
+  ProjectFrameRate get frameRate;
 }
 
 /// A RUN of a document: the clock that turns its pages, the sound beside
@@ -132,7 +135,7 @@ class MediaRun {
       final at = _rasters.scale;
       return at != null && _rasters.readyAt(page, at);
     },
-    aheadIsFilled: () => _restingAt == _page,
+    aheadIsFilled: () => _readAhead.restingAt == _page,
   );
 
   /// Where the sound has got to, in seconds — the playhead's position on
@@ -286,72 +289,16 @@ class MediaRun {
 
   // --- The playback buffer (a player, not a slideshow) --------------------
 
-  /// How much movie the read-ahead tries to keep ready, in SECONDS.
-  ///
-  /// 유저 2026-08-31: 「10초? 5초? **메모리 제한에 맞춰서 알아서** 로드하고」
-  /// — so this is a ceiling, not the number that usually decides. On any
-  /// document big enough to matter the room runs out first ([fillBuffer]),
-  /// and the budget is the one that knows the device.
-  static const double bufferAheadSeconds = 5;
+  /// The read-ahead — the walk the canvas's warmer walks ([_ReadAhead]).
+  late final _ReadAhead _readAhead = _ReadAhead(_rasters);
 
-  /// The page the playhead stood on when the read-ahead last came to rest —
-  /// every page of the window ahead there, or no room for the next one —
-  /// and null while it is still asking ([fillBuffer]). A parked playhead
-  /// goes on when it rests where the playhead stands ([_wait]).
-  int? _restingAt;
-
-  /// Issues the NEXT missing raster the playhead will need, one at a time —
-  /// the walk the canvas's warmer walks (viewer-plays-by-the-one-playback-
-  /// law, ③): in the order a run that plays wants its pages, within the
-  /// time window, each asked for only when room is made for it by letting
-  /// go of pages wanted later ([PageRasters.makeRoomFor]). A page with no
-  /// room rests the walk, and what is held is the cushion.
-  ///
-  /// ↩️It counted the room up front — the budget over the page on screen,
-  /// less that page (`bufferAheadPages`) — which held while every page
-  /// weighed what the one on screen did; a document's pages need not.
-  ///
-  /// ⛔Not all of them at once: both decoders behind [ViewerDocument] are
-  /// serial (PDFium runs one worker, and the video decoder's fast path is
-  /// sequential reads), so a hundred outstanding requests would finish in
-  /// the same order and the same time while holding a hundred futures. Each
-  /// landing rebuilds, which issues the next — the queue walks forward on
-  /// its own.
-  ///
-  /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE ROOM — as the
-  /// canvas's warmer makes the picture under its playhead. The playhead
-  /// parks BEFORE a page that is not there ([_turnThePage]), so nothing
-  /// else asks for that page: a page bigger than half the budget leaves no
-  /// room beside the one on screen, and a run that asked for nothing ahead
-  /// would stand for good. ↩️Such a run turned onto pages that had not
-  /// landed — the blank frames the wait exists to refuse.
-  void fillBuffer() {
-    _restingAt = null;
-    final document = _surface.document;
-    final scale = _rasters.scale;
-    if (document == null || scale == null || !playing || _rasters.rendering) {
-      return;
-    }
-    final window = math.max(
-      1,
-      ((document.framesPerSecond ?? 0) * bufferAheadSeconds).round(),
-    );
-    for (var step = 1; step <= window; step += 1) {
-      final page = _page + step;
-      if (page >= _pageCount) {
-        break;
-      }
-      if (_rasters.readyAt(page, scale)) {
-        continue;
-      }
-      if (step > 1 && !_rasters.makeRoomFor(page, scale, step: step)) {
-        break;
-      }
-      _rasters.ensureRendered(page, scale);
-      return;
-    }
-    _restingAt = _page;
-  }
+  /// Issues the next missing raster the playhead will need, one at a time
+  /// ([_ReadAhead.walk]).
+  void fillBuffer() => _readAhead.walk(
+    document: _surface.document,
+    page: _page,
+    playing: playing,
+  );
 
   /// Stops the run — silently, for the surface to rebuild around.
   void stop() {
@@ -378,34 +325,51 @@ class MediaRun {
     soundSeconds = 0;
   }
 
-  /// One tick of a run that has SOUND and no pages: move the playhead to
-  /// wherever the device has got to.
+  /// One look of a run that has SOUND and no pages: move the playhead to
+  /// wherever the sound is heard.
   ///
   /// 🚨★★★**THE PICTURE FOLLOWS THE SOUND, NEVER A COUNTER.** The device
   /// counts samples handed to the hardware, so a playhead read from it
   /// cannot drift from what is being heard however late this tick runs.
   /// Counting up here instead would be a second clock, which is the exact
   /// thing the timeline's device transport exists to avoid.
+  ///
+  /// 🚨THE SCREEN IS REDRAWN AS OFTEN AS THE FRAME CHANGES (유저 2026-10-08:
+  /// 「화면을 프레임만큼만 다시그리도록」 — the canvas's law): the clock looks
+  /// at every vsync, and the playhead is drawn again when the frame its
+  /// transport counts has moved. ↩️It was drawn again at every look, and
+  /// once every 16ms before that.
   void _followTheSound() {
     if (!_surface.mounted) {
       return;
     }
-    final at = sound.positionSeconds;
-    if (at == null || sound.ended) {
+    final heard = _heard();
+    if (heard == null || heard.ended) {
       // Ran out: a viewer that kept ticking on a silent device would say
       // 「재생 중」 to the actuation gate forever. A sound that reached its
       // end leaves the playhead ON the end — the last tick read it a tick
       // short, and a press from there would play one tick and stop.
       _surface.setState(() {
-        if (sound.ended) {
+        if (heard != null) {
           soundSeconds = soundLengthSeconds ?? soundSeconds;
         }
         stop();
       });
       return;
     }
-    _surface.setState(() => soundSeconds = at);
+    final rate = _surface.frameRate;
+    final was = frameAt(rate);
+    soundSeconds = heard.seconds;
+    if (frameAt(rate) != was) {
+      _surface.setState(() {});
+    }
   }
+
+  /// The sound beside the pages as it is heard in the frame this look draws
+  /// ([ViewerSound.heardAt]), or null while none is coming out.
+  ({double seconds, bool ended})? _heard() => sound.heardAt(
+    frameTime: SchedulerBinding.instance.currentSystemFrameTimeStamp,
+  );
 
   /// Where a press picks the sound up: where the playhead STANDS — the
   /// instant of the page in a document that turns its own, the waveform's
@@ -436,11 +400,12 @@ class MediaRun {
   /// Where the film has got to at this look, in seconds: the sound while it
   /// is heard — the picture follows the sound, never a counter
   /// ([_followTheSound]) — and the run's own span otherwise ([_FilmClock]).
-  double _filmSecondsAtThisLook() => _film.secondsAt(
-    heard: _surface.soundPath != null && !sound.ended
-        ? sound.positionSeconds
-        : null,
-  );
+  double _filmSecondsAtThisLook() {
+    final heard = _surface.soundPath == null ? null : _heard();
+    return _film.secondsAt(
+      heard: heard == null || heard.ended ? null : heard.seconds,
+    );
+  }
 
   /// The play button: starts a run, or stops the one going.
   void toggle() {
@@ -623,8 +588,9 @@ class MediaRun {
     if (page - 1 > _page) {
       _surface.turnToPage(page - 1);
     }
-    // Remember where the sound was, because that is where BOTH pick up.
-    soundSeconds = sound.positionSeconds ?? soundSeconds;
+    // Remember where the sound was HANDED to: that is where it picks up,
+    // so nothing it played before the hold is played again.
+    soundSeconds = sound.handedSeconds ?? soundSeconds;
     sound.hold();
     _surface.setState(() => buffering = true);
   }
@@ -682,5 +648,83 @@ final class _FilmClock {
       return heard;
     }
     return _spanFrom + (_elapsed - _spanAt).inMicroseconds / 1e6;
+  }
+}
+
+/// The read-ahead of a run: where it walks, and where it last came to
+/// rest ([MediaRun.fillBuffer]).
+final class _ReadAhead {
+  _ReadAhead(this._rasters);
+
+  final PageRasters _rasters;
+
+  /// How much movie the read-ahead tries to keep ready, in SECONDS.
+  ///
+  /// 유저 2026-08-31: 「10초? 5초? **메모리 제한에 맞춰서 알아서** 로드하고」
+  /// — so this is a ceiling, not the number that usually decides. On any
+  /// document big enough to matter the room runs out first ([walk]),
+  /// and the budget is the one that knows the device.
+  static const double _aheadSeconds = 5;
+
+  /// The page the playhead stood on when the read-ahead last came to rest —
+  /// every page of the window ahead there, or no room for the next one —
+  /// and null while it is still asking ([walk]). A parked playhead
+  /// goes on when it rests where the playhead stands (`MediaRun._wait`).
+  int? restingAt;
+
+  /// Issues the NEXT missing raster the playhead will need, one at a time —
+  /// the walk the canvas's warmer walks (viewer-plays-by-the-one-playback-
+  /// law, ③): in the order a run that plays wants its pages, within the
+  /// time window, each asked for only when room is made for it by letting
+  /// go of pages wanted later ([PageRasters.makeRoomFor]). A page with no
+  /// room rests the walk, and what is held is the cushion.
+  ///
+  /// ↩️It counted the room up front — the budget over the page on screen,
+  /// less that page (`bufferAheadPages`) — which held while every page
+  /// weighed what the one on screen did; a document's pages need not.
+  ///
+  /// ⛔Not all of them at once: both decoders behind [ViewerDocument] are
+  /// serial (PDFium runs one worker, and the video decoder's fast path is
+  /// sequential reads), so a hundred outstanding requests would finish in
+  /// the same order and the same time while holding a hundred futures. Each
+  /// landing rebuilds, which issues the next — the queue walks forward on
+  /// its own.
+  ///
+  /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE ROOM — as the
+  /// canvas's warmer makes the picture under its playhead. The playhead
+  /// parks BEFORE a page that is not there (`MediaRun._turnThePage`), so
+  /// nothing else asks for that page: a page bigger than half the budget
+  /// leaves no room beside the one on screen, and a run that asked for
+  /// nothing ahead would stand for good. ↩️Such a run turned onto pages that
+  /// had not landed — the blank frames the wait exists to refuse.
+  void walk({
+    required ViewerDocument? document,
+    required int page,
+    required bool playing,
+  }) {
+    restingAt = null;
+    final scale = _rasters.scale;
+    if (document == null || scale == null || !playing || _rasters.rendering) {
+      return;
+    }
+    final window = math.max(
+      1,
+      ((document.framesPerSecond ?? 0) * _aheadSeconds).round(),
+    );
+    for (var step = 1; step <= window; step += 1) {
+      final ahead = page + step;
+      if (ahead >= document.pageCount) {
+        break;
+      }
+      if (_rasters.readyAt(ahead, scale)) {
+        continue;
+      }
+      if (step > 1 && !_rasters.makeRoomFor(ahead, scale, step: step)) {
+        break;
+      }
+      _rasters.ensureRendered(ahead, scale);
+      return;
+    }
+    restingAt = page;
   }
 }

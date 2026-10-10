@@ -273,6 +273,9 @@ class _ImportPreviewState extends State<ImportPreview>
   TickerProvider get vsync => this;
 
   @override
+  ProjectFrameRate get frameRate => widget.frameRate;
+
+  @override
   ViewerDocument? get document => _document;
 
   @override

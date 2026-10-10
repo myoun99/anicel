@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/heard_on_the_device.dart';
 import '../audio/audio_conform_store.dart';
 import '../editor_session_manager.dart';
 import '../playback/audio_playback_schedule.dart';
@@ -55,22 +58,29 @@ class ViewerSound {
     required this.conformStore,
     QaAudioDevice? Function()? resolveDevice,
     this.resolveOutputDeviceName,
-  }) : _resolveDevice = resolveDevice ?? audioOutputUnlessTesting;
+    int Function(int sampleRate)? resolveUserOffsetSamples,
+  }) : _resolveDevice = resolveDevice ?? audioOutputUnlessTesting,
+       _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
 
   /// [session]'s sound — every surface that plays a file's sound in it:
   /// the media viewer, and the import window's preview.
   ///
   /// ⚠️The SAME conform store the timeline plays out of, so a file conformed
-  /// for one is conformed for the other and nothing is decoded twice; and
-  /// the output the settings chose.
+  /// for one is conformed for the other and nothing is decoded twice; the
+  /// output the settings chose; and the user's A/V correction the canvas
+  /// reads ([PlaybackRig.userOffsetSamples]).
   factory ViewerSound.ofSession(EditorSessionManager session) => ViewerSound(
     conformStore: session.audioConformStore,
     resolveOutputDeviceName: () =>
         session.appSettings.audioSyncSettings.value.outputDeviceName,
+    resolveUserOffsetSamples: session.playbackRig.userOffsetSamples,
   );
 
   final AudioConformStore conformStore;
   final QaAudioDevice? Function() _resolveDevice;
+
+  /// The user's own A/V correction, in samples at a device's rate.
+  final int Function(int sampleRate) _resolveUserOffsetSamples;
 
   /// The chosen output (AUDIO-PRO R4). ⚠️Only consulted when the device is
   /// not already open — the playback transport owns reopen-on-change, and
@@ -87,6 +97,15 @@ class ViewerSound {
   /// Where the uploaded file ENDS, in device samples — kept so [resume] can
   /// hand the transport the same span [play] gave it.
   int _endSample = 0;
+
+  /// Where a listener is on the run ([heardAt]) — the canvas's own reading
+  /// of the same device.
+  final HeardOnTheDevice _heard = HeardOnTheDevice();
+
+  /// The sample the latest start put the device on: what is heard stands
+  /// there while the device's latency drains, so a playhead never steps
+  /// back at a press.
+  int _startSample = 0;
 
   /// Whether sound is actually coming out for the current file.
   bool get isCarrying => _device != null;
@@ -166,10 +185,15 @@ class ViewerSound {
   /// Starts (or picks back up) at [fromSeconds] on the schedule already
   /// uploaded. ⛔Not a seek: the streaming window is where [play] centred
   /// it, and a jump far from there would read past its edge.
-  void resume(double fromSeconds) => _device?.play(
-    startSample: (fromSeconds * _deviceRate).round(),
-    stopSample: _endSample,
-  );
+  void resume(double fromSeconds) {
+    final device = _device;
+    if (device == null) {
+      return;
+    }
+    _startSample = (fromSeconds * _deviceRate).round();
+    device.play(startSample: _startSample, stopSample: _endSample);
+    _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
+  }
 
   /// Moves the streaming window along with the sound — asked every tick of
   /// a run. A file past two minutes streams from disk, and a window left
@@ -193,29 +217,53 @@ class ViewerSound {
     );
   }
 
-  /// Where the device has got to, or null while nothing is carrying.
+  /// Where the sound is HEARD at [frameTime] — the frame the reading is
+  /// for — in seconds, and whether the last of the file has been heard; null
+  /// while nothing is carrying.
   ///
-  /// 🚨★★★**THIS IS THE CLOCK.** The device counts samples handed to the
-  /// hardware, so a picture that follows this cannot drift from the sound
-  /// — the same promise the timeline's device transport is built on.
-  double? get positionSeconds {
+  /// 🚨★★★**THIS IS THE CLOCK — the canvas's, in its code**
+  /// ([HeardOnTheDevice], viewer-plays-by-the-one-playback-law ④-b): the
+  /// line through what the device was handed, at the frame's own time, less
+  /// what the device still holds to play, with the user's own correction
+  /// on top. A picture that follows it cannot drift from the sound, and
+  /// stands where the canvas's would. ↩️It read what had been HANDED, the
+  /// stair, as the tick ran: a picture ahead of what was heard by the
+  /// device's latency, and a correction set in the settings that never
+  /// reached it.
+  ///
+  /// ⛔The end is told by POSITION rather than by asking `isPlaying`: a
+  /// sound being [hold]d is not playing either, and a viewer that read that
+  /// as 「끝났다」 would stop the whole run every time a buffer ran dry.
+  ({double seconds, bool ended})? heardAt({Duration? frameTime}) {
+    final device = _device;
+    if (device == null || _deviceRate <= 0) {
+      return null;
+    }
+    final heard = math.max(
+      _startSample,
+      _heard.heard(
+        device.readClock(),
+        frameTime: frameTime,
+        latencySamples: device.latencySamples,
+        userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
+      ),
+    );
+    return (
+      seconds: heard / _deviceRate,
+      ended: _endSample > 0 && heard >= _endSample,
+    );
+  }
+
+  /// How far the device has been handed the file, in seconds — where a
+  /// held sound picks up ([hold], [resume]), so what it played before the
+  /// hold is not played again; null while nothing is carrying. ⛔Not the
+  /// clock: what is heard trails it by the device's latency ([heardAt]).
+  double? get handedSeconds {
     final device = _device;
     if (device == null || _deviceRate <= 0) {
       return null;
     }
     return device.positionSamples / _deviceRate;
-  }
-
-  /// Whether the device reached the end of the file it was given.
-  ///
-  /// ⛔It compares POSITIONS rather than asking `isPlaying`. A sound being
-  /// [hold]d is also not playing, and a viewer that read that as 「끝났다」
-  /// would stop the whole run every time a buffer ran dry.
-  bool get ended {
-    final device = _device;
-    return device != null &&
-        _endSample > 0 &&
-        device.positionSamples >= _endSample;
   }
 
   /// Silence, and nothing held. ⚠️Idempotent — the viewer stops on every
