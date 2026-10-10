@@ -674,6 +674,7 @@ void main() {
     'toolCutFlipHorizontal': (s) => s.toolCutFlipHorizontal,
     'toolCutFlipVertical': (s) => s.toolCutFlipVertical,
     'toolCutRegisterTip': (s) => s.toolCutRegisterTip,
+    'toolCutDeletesSource': (s) => s.toolCutDeletesSource,
     'toolReadSource': (s) => s.toolReadSource,
     'toolReadReferences': (s) => s.toolReadReferences,
     'toolReadsEveryVisibleLayer': (s) => s.toolReadsEveryVisibleLayer,
