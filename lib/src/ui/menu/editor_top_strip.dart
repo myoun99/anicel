@@ -2415,7 +2415,11 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
 /// canvas ([writeFrameImage]): the layers as they show, none of the editing
 /// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
 /// settings are that tab's defaults, not the ones last used there: this is
-/// Save As, not the export window.
+/// Save As, not the export window — all but its ground: RGB on white, PNG
+/// as JPG, where the tab's PNG keeps its alpha.
+///
+/// 🗣️F-335 (유저 10-10): 「다른이름저장의 png, 형식 기본값 RGB의
+/// 배경흰색으로」.
 Future<void> saveFrameAsImage(
   BuildContext context,
   EditorSessionManager session,
@@ -2429,6 +2433,11 @@ Future<void> saveFrameAsImage(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,
       stillFormat: format,
+      channels: ExportChannels.rgb,
+      // ⚠️White because F-335 says white — not the window's default ground
+      // ([defaultExportBackgroundArgb]), which answers what the export
+      // window starts on and may change on its own.
+      backgroundArgb: 0xFFFFFFFF,
     ),
     sizeMode: ExportSizeMode.canvas,
   );
