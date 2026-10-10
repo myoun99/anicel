@@ -13,6 +13,8 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/transform_box_law.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
@@ -549,6 +551,11 @@ class _CutGrabSettings extends StatelessWidget {
 /// a permanent dead row」 — which is 「없다가 생기는 UI」: tool-settings-
 /// panel-tidy (유저 2026-10-10, 「다 추천대로」 — 「자리를 늘 두고 아닐 때는
 /// 흐리게」). It keeps its place and dims.
+///
+/// It is 확정's polygon half (`ConfirmVerb` closes an open outline before
+/// anything else it might confirm — 유저 확정 「폴리곤 확정은 확정 버튼으로」),
+/// so it names 확정 rather than an action of its own (I-40): Enter is its
+/// key.
 class _ClosePolygonButton extends StatelessWidget {
   const _ClosePolygonButton({
     required this.shapeKind,
@@ -561,6 +568,7 @@ class _ClosePolygonButton extends StatelessWidget {
   Widget _button(VoidCallback? close) => ToolSettingAction(
     keyValue: 'selection-close-polygon-button',
     label: AppText.strings.selectionClosePolygon,
+    shortcuts: const [EditorActionIds.confirm],
     onPressed: close,
   );
 
@@ -628,7 +636,8 @@ class _CutStampSettings extends StatelessWidget {
             ],
           );
         }
-        return ToolSettingsSection(
+        final reset = piece.isPosed ? holder.resetPose : null;
+        final section = ToolSettingsSection(
           tool: 'cut-stamp',
           children: [
             Padding(
@@ -697,6 +706,7 @@ class _CutStampSettings extends StatelessWidget {
                   ToolSettingAction(
                     keyValue: 'cut-paste-at-origin-button',
                     label: AppText.strings.toolCutPasteAtOrigin,
+                    shortcuts: const [EditorActionIds.cutStampPasteAtOrigin],
                     onPressed: onPasteAtOrigin,
                   ),
                 ],
@@ -707,17 +717,31 @@ class _CutStampSettings extends StatelessWidget {
                   ToolSettingAction(
                     keyValue: 'cut-reset-button',
                     label: AppText.strings.commonReset,
-                    onPressed: piece.isPosed ? holder.resetPose : null,
+                    shortcuts: const [EditorActionIds.cutStampReset],
+                    onPressed: reset,
                   ),
                   ToolSettingAction(
                     keyValue: 'cut-register-tip-button',
                     label: AppText.strings.toolCutRegisterTip,
+                    shortcuts: const [EditorActionIds.cutStampRegisterTip],
                     onPressed: onRegisterAsTip,
                   ),
                 ],
               ],
             ),
           ],
+        );
+        // A key presses the three as the stamp's settings (I-40) while a
+        // piece is held: with none they are not here, and a key has
+        // nothing to press.
+        return PanelKeysBinding(
+          tool: CanvasTool.cutStamp,
+          buttons: {
+            EditorActionIds.cutStampPasteAtOrigin: onPasteAtOrigin,
+            EditorActionIds.cutStampReset: reset,
+            EditorActionIds.cutStampRegisterTip: onRegisterAsTip,
+          },
+          child: section,
         );
       },
     );
@@ -757,7 +781,7 @@ class _SelectionSettings extends StatelessWidget {
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
-    return ToolSettingsSection(
+    final section = ToolSettingsSection(
       tool: 'selection',
       title: AppText.strings.toolSelect,
       children: [
@@ -831,12 +855,19 @@ class _SelectionSettings extends StatelessWidget {
                 ToolSettingAction(
                   keyValue: 'selection-invert-button',
                   label: AppText.strings.selectionInvert,
+                  shortcuts: const [EditorActionIds.selectionInvert],
                   onPressed: invert,
                 ),
             ],
           ],
         ),
       ],
+    );
+    // A key presses 선택 반전 as the Select tool's settings (I-40).
+    return PanelKeysBinding(
+      tool: CanvasTool.select,
+      buttons: {EditorActionIds.selectionInvert: invert},
+      child: section,
     );
   }
 }
@@ -1114,17 +1145,53 @@ class _MoveSettingsState extends State<_MoveSettings> {
     // allowed now; it is the EDIT that is refused, and it is refused
     // quietly — flat controls rather than a notice per press (유저 08-13).
     final canEdit = widget.selectionCommands?.canEditTransform ?? false;
-    final options = widget.options;
-    final onOptions = canEdit ? widget.onOptionsChanged : null;
     final commands = widget.selectionCommands;
-    final strings = AppText.strings;
     // The mesh's density, shown as numbers because that is what it is
     // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). It takes a hand in
     // 메쉬 alone — a grid size means nothing to the other two modes.
     // ↩️It was only THERE in 메쉬, which is 「없다가 생기는 UI」: the row
     // keeps its place and dims.
+    final meshLive =
+        widget.options.mode == TransformMode.mesh &&
+        widget.onOptionsChanged != null;
+    final flipHorizontal = canEdit
+        ? () => commands?.flipTransform(horizontal: true)
+        : null;
+    final flipVertical = canEdit
+        ? () => commands?.flipTransform(horizontal: false)
+        : null;
+    final reset = canEdit ? () => commands?.resetTransform() : null;
+    // A key presses the flips and 초기화 as the Transform tool's settings
+    // (I-40); 적용 is 확정's, whose key reaches it anywhere.
+    return PanelKeysBinding(
+      tool: CanvasTool.move,
+      buttons: {
+        EditorActionIds.transformFlipHorizontal: flipHorizontal,
+        EditorActionIds.transformFlipVertical: flipVertical,
+        EditorActionIds.transformReset: reset,
+      },
+      child: _section(
+        canEdit: canEdit,
+        meshLive: meshLive,
+        flipHorizontal: flipHorizontal,
+        flipVertical: flipVertical,
+        reset: reset,
+      ),
+    );
+  }
+
+  Widget _section({
+    required bool canEdit,
+    required bool meshLive,
+    required VoidCallback? flipHorizontal,
+    required VoidCallback? flipVertical,
+    required VoidCallback? reset,
+  }) {
+    final options = widget.options;
+    final onOptions = canEdit ? widget.onOptionsChanged : null;
+    final commands = widget.selectionCommands;
+    final strings = AppText.strings;
     final meshHandler = widget.onOptionsChanged;
-    final meshLive = options.mode == TransformMode.mesh && meshHandler != null;
     return ToolSettingsSection(
       tool: 'move',
       title: strings.toolTransform,
@@ -1230,17 +1297,15 @@ class _MoveSettingsState extends State<_MoveSettings> {
             keyValue: 'move-flip-horizontal-button',
             label: strings.trFlipHorizontal,
             glyph: const Icon(Icons.flip),
-            onPressed: canEdit
-                ? () => commands?.flipTransform(horizontal: true)
-                : null,
+            shortcuts: const [EditorActionIds.transformFlipHorizontal],
+            onPressed: flipHorizontal,
           ),
           second: ToolSettingAction.glyph(
             keyValue: 'move-flip-vertical-button',
             label: strings.trFlipVertical,
             glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
-            onPressed: canEdit
-                ? () => commands?.flipTransform(horizontal: false)
-                : null,
+            shortcuts: const [EditorActionIds.transformFlipVertical],
+            onPressed: flipVertical,
           ),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
@@ -1329,15 +1394,18 @@ class _MoveSettingsState extends State<_MoveSettings> {
               ToolSettingAction(
                 keyValue: 'move-reset-button',
                 label: strings.commonReset,
-                onPressed: canEdit ? () => commands?.resetTransform() : null,
+                shortcuts: const [EditorActionIds.transformReset],
+                onPressed: reset,
               ),
               // 적용 is 확정's transform half (confirm-button) — grey when it
               // has nothing to do, like the rail's ↵ and the box's ✓,
-              // because all three ask the one verb.
+              // because all three ask the one verb — so it names 확정, as
+              // they do (I-40).
               ToolSettingAction(
                 keyValue: 'move-apply-button',
                 label: strings.commonApply,
                 decides: true,
+                shortcuts: const [EditorActionIds.confirm],
                 onPressed: commands?.canApplyTransform ?? false
                     ? () => commands?.applyTransform()
                     : null,

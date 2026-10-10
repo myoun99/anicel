@@ -188,6 +188,12 @@ final Map<String, List<SingleActivator>> _clipStudioKeys = {
   EditorActionIds.selectionDeselect: const [
     SingleActivator(LogicalKeyboardKey.keyD, control: true),
   ],
+  // Invert selected area — the Select tool's 선택 반전, an action since
+  // I-40's tool settings round (2026-10-11).
+  EditorActionIds.selectionInvert: const [
+    SingleActivator(LogicalKeyboardKey.keyI, control: true, shift: true),
+    SingleActivator(LogicalKeyboardKey.f7, shift: true),
+  ],
   EditorActionIds.fileNew: const [
     SingleActivator(LogicalKeyboardKey.keyN, control: true),
   ],

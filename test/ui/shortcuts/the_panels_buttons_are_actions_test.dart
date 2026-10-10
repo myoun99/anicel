@@ -4,16 +4,30 @@
 //
 // A PANEL'S OWN BUTTONS ARE ACTIONS, AND A KEY PRESSES THE BUTTON — the
 // callback it holds, on a panel a key reaches: the panels of the tool in
-// hand (the guide list, the text tool's settings) and the panels of no tool
-// (the media pool, the timesheet). A dead button is dead by key too.
+// hand (the guide list, the tool settings) and the panels of no tool (the
+// media pool, the timesheet). A dead button is dead by key too.
+//
+// The tool settings' own buttons came into the button scan's sight when
+// they became one kind of button (tool-settings-panel-tidy, 2026-10-10),
+// and were owed until the round of 2026-10-11. Their 다각형 닫기 and 적용 are
+// 확정's own halves: they name it, and wear its Enter.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
+import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -22,9 +36,11 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/cel_text_tool_harness.dart';
+import '../../helpers/tool_setting_action_probe.dart';
 
 const k = LogicalKeyboardKey.keyK;
 
@@ -35,6 +51,20 @@ const panelButtons = [
   EditorActionIds.mediaPoolImport,
   EditorActionIds.timesheetFormat,
   EditorActionIds.timesheetDataMode,
+  ...toolSettingsButtons,
+];
+
+/// The tool settings' own buttons, by the tool whose settings hold them.
+const toolSettingsButtons = [
+  EditorActionIds.selectionInvert,
+  EditorActionIds.transformFlipHorizontal,
+  EditorActionIds.transformFlipVertical,
+  EditorActionIds.transformReset,
+  EditorActionIds.cutStampPasteAtOrigin,
+  EditorActionIds.cutStampReset,
+  EditorActionIds.cutStampRegisterTip,
+  EditorActionIds.guideAddVanishingPoint,
+  EditorActionIds.textIntoDrawing,
 ];
 
 EditorShortcutBindings bindings(WidgetTester tester) =>
@@ -85,6 +115,119 @@ Future<void> openRailGroup(
   );
   await tester.pumpAndSettle();
 }
+
+/// The tool settings for [tool] where a key reaches them — inside the
+/// [PanelKeys] the shell presses — in a panel [height] tall, reading the
+/// keys of [shortcuts] where given.
+Future<PanelKeys> pumpToolSettings(
+  WidgetTester tester, {
+  required CanvasTool tool,
+  double height = 960,
+  CanvasSelectionCommands? selectionCommands,
+  CanvasSize? canvasSize,
+  CutPieceSlot? cutPieceSlot,
+  VoidCallback? onCutPasteAtOrigin,
+  VoidCallback? onRegisterCutPieceAsTip,
+  CutGuides? guides,
+  GuideId? selectedGuideId,
+  ValueChanged<CutGuides>? onGuidesCommitted,
+  EditorShortcutBindings? shortcuts,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(400, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final keys = PanelKeys();
+  Widget panel = PanelKeysScope(
+    keys: keys,
+    child: ToolSettingsPanel(
+      state: BrushToolState.defaults.copyWith(tool: tool),
+      onChanged: (_) {},
+      fillOptions: const FloodFillOptions(),
+      onFillOptionsChanged: (_) {},
+      selectionCommands: selectionCommands,
+      canvasSize: canvasSize,
+      cutPieceSlot: cutPieceSlot,
+      onCutPasteAtOrigin: onCutPasteAtOrigin,
+      onRegisterCutPieceAsTip: onRegisterCutPieceAsTip,
+      guides: guides,
+      selectedGuideId: selectedGuideId,
+      onGuidesCommitted: onGuidesCommitted,
+      onGuidesPreview: (_) {},
+    ),
+  );
+  if (shortcuts != null) {
+    panel = EditorShortcutScope(bindings: shortcuts, child: panel);
+  }
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Material(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(width: 320, height: height, child: panel),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  return keys;
+}
+
+/// A channel with no box open, which takes [flipped] and [reset] presses
+/// while [canEdit] says the layer may be edited.
+CanvasSelectionCommands selectionChannel({
+  void Function(bool horizontal)? flipped,
+  VoidCallback? reset,
+  bool Function()? canEdit,
+}) {
+  final commands = CanvasSelectionCommands();
+  commands.bind(
+    Object(),
+    hasSelection: () => commands.region != null,
+    deselect: () {},
+    canEditTransform: canEdit ?? () => true,
+    flipTransform: ({required horizontal}) => flipped?.call(horizontal),
+    resetTransform: reset,
+  );
+  return commands;
+}
+
+/// The message of the tooltip the button [key] wears.
+String tooltipOf(WidgetTester tester, String key) => tester
+    .widget<AppTooltip>(
+      find
+          .ancestor(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(AppTooltip),
+          )
+          .first,
+    )
+    .message!;
+
+CutPiece stampPiece() => CutPiece(
+  image: BrushStampImage(
+    id: 'p',
+    width: 40,
+    height: 24,
+    rgba: Uint8List(40 * 24 * 4),
+  ),
+  originLeft: 5,
+  originTop: 6,
+);
+
+DrawingGuide perspectiveGuide(String id, {required int points}) =>
+    DrawingGuide(
+      id: GuideId(id),
+      name: id,
+      shape: PerspectiveShape(
+        vanishingPoints: [
+          for (var index = 0; index < points; index += 1)
+            VanishingPointAt(CanvasPoint(x: index * 400.0 - 100, y: 50)),
+        ],
+        eyeLevel: GuideAxis(
+          origin: CanvasPoint(x: 50, y: 50),
+          angleDegrees: 0,
+        ),
+      ),
+    );
 
 void main() {
   setUp(() => _held = null);
@@ -155,6 +298,23 @@ void main() {
         '표기 시트 / 데이터 시트',
       );
       expect(editorActionLabel(EditorActionIds.textDeleteText), '텍스트 삭제');
+      // The button's own words — or, where the button's alone would say
+      // less in a list of every key (초기화 · 반전), its tool's name with
+      // them.
+      expect(
+        [for (final id in toolSettingsButtons) editorActionLabel(id)],
+        [
+          '선택 반전',
+          '변형 좌우 반전',
+          '변형 상하 반전',
+          '변형 초기화',
+          '원래 위치에 붙여넣기',
+          '스탬프 초기화',
+          '팁으로 등록…',
+          '소실점 추가',
+          '래스터라이즈',
+        ],
+      );
     });
   });
 
@@ -254,6 +414,235 @@ void main() {
       await tester.sendKeyEvent(k);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the text tool\'s 래스터라이즈 makes the text in hand its '
+        'cel\'s drawing — not the 🗑\'s way: its pixels stay', (
+      tester,
+    ) async {
+      await pumpTextToolApp(tester);
+      await openRailGroup(tester, right: false, slot: 2);
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      expect(textToolOf(tester).contentInHand, isNotNull, reason: '⛔premise');
+      expect(celOf(tester).tiles, isEmpty, reason: '⛔premise: bare paper');
+
+      await pressKeyOf(tester, EditorActionIds.textIntoDrawing);
+      expect(celOf(tester).texts, isEmpty);
+      expect(celOf(tester).tiles, isNotEmpty);
+      expect(textToolOf(tester).session, isNull);
+    });
+  });
+
+  // The tool settings' own buttons. A key presses them as the settings of
+  // the tool in hand — and only then: with another tool in hand they are
+  // not the panel on screen.
+  group('a key presses the tool settings\' button', () {
+    testWidgets('선택 반전 inverts — twice, back to nothing — and with no '
+        'canvas to take the wall from, the dead button presses nothing', (
+      tester,
+    ) async {
+      final commands = selectionChannel();
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.select,
+        selectionCommands: commands,
+        canvasSize: const CanvasSize(width: 64, height: 48),
+      );
+
+      keys.press(EditorActionIds.selectionInvert, CanvasTool.brush);
+      expect(commands.region, isNull, reason: 'another tool in hand');
+      keys.press(EditorActionIds.selectionInvert, CanvasTool.select);
+      expect(commands.region, isNotNull);
+      keys.press(EditorActionIds.selectionInvert, CanvasTool.select);
+      expect(commands.region, isNull);
+
+      final none = selectionChannel();
+      final dead = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.select,
+        selectionCommands: none,
+      );
+      expect(
+        tester.toolSettingAction(
+          find.byKey(const ValueKey<String>('selection-invert-button')),
+        ).onPressed,
+        isNull,
+        reason: '⛔premise',
+      );
+      dead.press(EditorActionIds.selectionInvert, CanvasTool.select);
+      expect(none.region, isNull);
+    });
+
+    testWidgets('🚨the transform\'s flips and 초기화 — at the foot of a list '
+        'that has not built them: a key presses the SECTION\'s buttons, '
+        'wherever the list stands — and dead while the layer may not be '
+        'edited', (tester) async {
+      final flips = <bool>[];
+      var resets = 0;
+      var canEdit = true;
+      final commands = selectionChannel(
+        flipped: flips.add,
+        reset: () => resets += 1,
+        canEdit: () => canEdit,
+      );
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.move,
+        height: 40,
+        selectionCommands: commands,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('move-reset-button'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+        reason: '⛔premise: the row is past what the list builds',
+      );
+
+      keys.press(EditorActionIds.transformFlipHorizontal, CanvasTool.move);
+      keys.press(EditorActionIds.transformFlipVertical, CanvasTool.move);
+      keys.press(EditorActionIds.transformReset, CanvasTool.move);
+      expect(flips, [true, false]);
+      expect(resets, 1);
+
+      keys.press(EditorActionIds.transformReset, CanvasTool.select);
+      expect(resets, 1, reason: 'another tool in hand');
+
+      canEdit = false;
+      commands.notifySessionChanged();
+      await tester.pumpAndSettle();
+      keys.press(EditorActionIds.transformFlipHorizontal, CanvasTool.move);
+      keys.press(EditorActionIds.transformReset, CanvasTool.move);
+      expect(flips, [true, false]);
+      expect(resets, 1);
+    });
+
+    testWidgets('the stamp\'s three, while a piece is held — 초기화 dead '
+        'until the piece is posed', (tester) async {
+      final slot = CutPieceSlot()..hold(stampPiece());
+      var pastes = 0;
+      var tips = 0;
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.cutStamp,
+        cutPieceSlot: slot,
+        onCutPasteAtOrigin: () => pastes += 1,
+        onRegisterCutPieceAsTip: () => tips += 1,
+      );
+
+      keys.press(EditorActionIds.cutStampPasteAtOrigin, CanvasTool.cutStamp);
+      keys.press(EditorActionIds.cutStampRegisterTip, CanvasTool.cutStamp);
+      expect((pastes, tips), (1, 1));
+      keys.press(EditorActionIds.cutStampPasteAtOrigin, CanvasTool.cut);
+      expect(pastes, 1, reason: 'the grab is another tool');
+
+      keys.press(EditorActionIds.cutStampReset, CanvasTool.cutStamp);
+      expect(slot.piece!.isPosed, isFalse, reason: '⛔premise');
+      slot.updatePose(scalePercent: 50);
+      await tester.pump();
+      keys.press(EditorActionIds.cutStampReset, CanvasTool.cutStamp);
+      expect(slot.piece!.scalePercent, 100);
+
+      slot.clear();
+      await tester.pump();
+      keys.press(EditorActionIds.cutStampPasteAtOrigin, CanvasTool.cutStamp);
+      keys.press(EditorActionIds.cutStampRegisterTip, CanvasTool.cutStamp);
+      expect((pastes, tips), (1, 1), reason: 'nothing held: no buttons');
+    });
+
+    testWidgets('the perspective\'s ＋ adds a vanishing point — none at '
+        'three, and none for a symmetry guide', (tester) async {
+      CutGuides? committed;
+      final perspective = perspectiveGuide('p1', points: 2);
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [perspective]),
+        selectedGuideId: perspective.id,
+        onGuidesCommitted: (next) => committed = next,
+      );
+
+      keys.press(EditorActionIds.guideAddVanishingPoint, CanvasTool.brush);
+      expect(committed, isNull, reason: 'another tool in hand');
+      keys.press(EditorActionIds.guideAddVanishingPoint, CanvasTool.guide);
+      final points =
+          (committed!.guideFor(perspective.id)!.shape as PerspectiveShape)
+              .vanishingPoints;
+      expect(points, hasLength(3));
+      expect(points.last, VanishingPointTowards(dx: 0, dy: 1));
+
+      committed = null;
+      final full = perspectiveGuide('p1', points: 3);
+      final atThree = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [full]),
+        selectedGuideId: full.id,
+        onGuidesCommitted: (next) => committed = next,
+      );
+      atThree.press(EditorActionIds.guideAddVanishingPoint, CanvasTool.guide);
+      expect(committed, isNull);
+
+      final symmetry = DrawingGuide(
+        id: const GuideId('s1'),
+        name: 's1',
+        shape: SymmetryShape(
+          axis: GuideAxis(
+            origin: CanvasPoint(x: 50, y: 50),
+            angleDegrees: 90,
+          ),
+        ),
+      );
+      final onSymmetry = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [symmetry]),
+        selectedGuideId: symmetry.id,
+        onGuidesCommitted: (next) => committed = next,
+      );
+      onSymmetry.press(
+        EditorActionIds.guideAddVanishingPoint,
+        CanvasTool.guide,
+      );
+      expect(committed, isNull);
+    });
+
+    testWidgets('다각형 닫기 and 적용 are 확정\'s own halves: they wear its '
+        'Enter — and a key recorded for a worded button joins its name', (
+      tester,
+    ) async {
+      final shortcuts = EditorShortcutBindings();
+      final commands = selectionChannel();
+      await pumpToolSettings(
+        tester,
+        tool: CanvasTool.move,
+        selectionCommands: commands,
+        shortcuts: shortcuts,
+      );
+      expect(tooltipOf(tester, 'move-apply-button'), 'Apply (Enter)');
+      expect(tooltipOf(tester, 'move-reset-button'), 'Reset');
+      shortcuts.setActivators(EditorActionIds.transformReset, const [
+        SingleActivator(k),
+      ]);
+      await tester.pump();
+      expect(tooltipOf(tester, 'move-reset-button'), 'Reset (K)');
+
+      await pumpToolSettings(
+        tester,
+        tool: CanvasTool.select,
+        selectionCommands: commands,
+        shortcuts: shortcuts,
+      );
+      expect(
+        tooltipOf(tester, 'selection-close-polygon-button'),
+        'Close shape (Enter)',
+      );
     });
   });
 }

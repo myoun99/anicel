@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart' show ControlPressClaim;
+import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
 import '../theme/app_theme.dart' show AppColors;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
-import '../widgets/app_tooltip.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/pill_strip.dart';
 import 'tool_settings_section.dart' show ToolSettingsSection;
@@ -339,6 +339,7 @@ class ToolSettingAction extends StatefulWidget {
     required this.keyValue,
     required this.label,
     required this.onPressed,
+    this.shortcuts = const [],
     this.decides = false,
   }) : glyph = null;
 
@@ -350,6 +351,7 @@ class ToolSettingAction extends StatefulWidget {
     required this.label,
     required Widget this.glyph,
     required this.onPressed,
+    this.shortcuts = const [],
   }) : decides = false;
 
   final String keyValue;
@@ -357,6 +359,12 @@ class ToolSettingAction extends StatefulWidget {
   final Widget? glyph;
   final VoidCallback? onPressed;
   final bool decides;
+
+  /// The actions it is the button of (I-40) — its panel binds them to the
+  /// same press (`PanelKeysBinding`), and their live keys join its tooltip
+  /// ([ShortcutTooltip]). A worded button wears a tooltip only for them:
+  /// its name is on its face.
+  final List<String> shortcuts;
 
   @override
   State<ToolSettingAction> createState() => _ToolSettingActionState();
@@ -419,9 +427,13 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
         ),
       ),
     );
-    return glyph == null
+    return glyph == null && widget.shortcuts.isEmpty
         ? button
-        : AppTooltip(message: widget.label, child: button);
+        : ShortcutTooltip(
+            label: widget.label,
+            shortcuts: widget.shortcuts,
+            child: button,
+          );
   }
 
   /// A glyph button's glyph — a settings box's own size of mark.

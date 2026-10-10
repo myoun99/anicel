@@ -78,7 +78,7 @@ class TextToolSettings extends StatelessWidget {
         brushColour: currentColorOf?.call(),
       );
       final strings = AppText.strings;
-      return ToolSettingsSection(
+      final section = ToolSettingsSection(
         tool: 'text',
         title: strings.toolText,
         children: [
@@ -93,6 +93,18 @@ class TextToolSettings extends StatelessWidget {
           _BoxRows(values: values, currentColorOf: currentColorOf),
           _IntoDrawingButton(commands: commands),
         ],
+      );
+      // A key presses the 🗑 and 래스터라이즈 as the text tool's settings
+      // (I-40).
+      return PanelKeysBinding(
+        tool: CanvasTool.text,
+        buttons: {
+          EditorActionIds.textDeleteText: _TextInHandRow.deleteOf(commands),
+          EditorActionIds.textIntoDrawing: _IntoDrawingButton.turnOf(
+            commands,
+          ),
+        },
+        child: section,
       );
     },
   );
@@ -116,44 +128,43 @@ class _TextInHandRow extends StatelessWidget {
   /// name's.
   static String _nameOf(String text) => text.replaceAll('\n', ' ');
 
+  /// What the 🗑 presses: the text in hand off its cel — nothing while
+  /// none is in hand.
+  static VoidCallback? deleteOf(CelTextCommands? commands) =>
+      commands?.tool?.contentInHand == null ? null : commands?.deleteText;
+
   @override
   Widget build(BuildContext context) {
     final tool = commands?.tool;
     final inHand = tool?.contentInHand;
-    final delete = inHand == null ? null : commands?.deleteText;
-    // A key presses the 🗑 — as the text tool's settings (I-40).
-    return PanelKeysBinding(
-      tool: CanvasTool.text,
-      buttons: {EditorActionIds.textDeleteText: delete},
-      // Named in the grid's name column like every row under it
-      // (tool-settings-panel-tidy, 유저 2026-10-10: 「정돈된 행/열」).
-      child: ToolSettingRow(
-        label: AppText.strings.textToolSelectedText,
-        child: Row(
-          children: [
-            Expanded(
-              child: PanelFlyoutButton(
-                key: const ValueKey<String>('text-tool-selected-text'),
-                label: inHand == null ? '' : _nameOf(inHand.text),
-                expand: true,
-                // With no text on the cel there is none to pick.
-                enabled: tool != null && tool.list.texts.isNotEmpty,
-                entriesBuilder: () => _listOf(tool),
-              ),
+    // Named in the grid's name column like every row under it
+    // (tool-settings-panel-tidy, 유저 2026-10-10: 「정돈된 행/열」).
+    return ToolSettingRow(
+      label: AppText.strings.textToolSelectedText,
+      child: Row(
+        children: [
+          Expanded(
+            child: PanelFlyoutButton(
+              key: const ValueKey<String>('text-tool-selected-text'),
+              label: inHand == null ? '' : _nameOf(inHand.text),
+              expand: true,
+              // With no text on the cel there is none to pick.
+              enabled: tool != null && tool.list.texts.isNotEmpty,
+              entriesBuilder: () => _listOf(tool),
             ),
-            const SizedBox(width: ToolSettingColumns.gap),
-            AppIconButton(
-              keyValue: 'text-tool-delete-text',
-              tooltip: AppText.strings.textToolDeleteText,
-              shortcuts: const [EditorActionIds.textDeleteText],
-              icon: Icon(
-                Icons.delete_outline,
-                color: AppColors.deleteGlyph(enabled: inHand != null),
-              ),
-              onPressed: delete,
+          ),
+          const SizedBox(width: ToolSettingColumns.gap),
+          AppIconButton(
+            keyValue: 'text-tool-delete-text',
+            tooltip: AppText.strings.textToolDeleteText,
+            shortcuts: const [EditorActionIds.textDeleteText],
+            icon: Icon(
+              Icons.delete_outline,
+              color: AppColors.deleteGlyph(enabled: inHand != null),
             ),
-          ],
-        ),
+            onPressed: deleteOf(commands),
+          ),
+        ],
       ),
     );
   }
@@ -200,9 +211,13 @@ class _IntoDrawingButton extends StatelessWidget {
 
   final CelTextCommands? commands;
 
+  /// What it presses: the text in hand turned — nothing while none is in
+  /// hand.
+  static VoidCallback? turnOf(CelTextCommands? commands) =>
+      commands != null && commands.holdsText ? commands.turnIntoDrawing : null;
+
   @override
   Widget build(BuildContext context) {
-    final commands = this.commands;
     return ToolSettingActions(
       lines: [
         [
@@ -210,9 +225,8 @@ class _IntoDrawingButton extends StatelessWidget {
             keyValue: 'text-tool-into-drawing',
             label: AppText.strings.textToolIntoDrawing,
             decides: true,
-            onPressed: commands != null && commands.holdsText
-                ? commands.turnIntoDrawing
-                : null,
+            shortcuts: const [EditorActionIds.textIntoDrawing],
+            onPressed: turnOf(commands),
           ),
         ],
       ],

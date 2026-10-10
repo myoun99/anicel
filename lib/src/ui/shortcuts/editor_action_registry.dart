@@ -760,6 +760,18 @@ abstract final class EditorActionIds {
   static const timesheetFormat = 'timesheet-format';
   static const timesheetDataMode = 'timesheet-data-mode';
 
+  /// The tool settings' own buttons (I-40), pressed the same way, as the
+  /// settings of the tool in hand.
+  static const selectionInvert = 'selection-invert';
+  static const transformFlipHorizontal = 'transform-flip-horizontal';
+  static const transformFlipVertical = 'transform-flip-vertical';
+  static const transformReset = 'transform-reset';
+  static const cutStampPasteAtOrigin = 'cut-stamp-paste-at-origin';
+  static const cutStampReset = 'cut-stamp-reset';
+  static const cutStampRegisterTip = 'cut-stamp-register-tip';
+  static const guideAddVanishingPoint = 'guide-add-vanishing-point';
+  static const textIntoDrawing = 'text-into-drawing';
+
   /// The conte sheet's settings rows (I-40) — its front's two switches.
   static const conteCover = 'conte-cover';
   static const conteBlankPage = 'conte-blank-page';
@@ -1082,6 +1094,29 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
     ],
   ),
+  // I-40: the stamp's three buttons — under Edit, where a paste in place
+  // and a picture made a brush stand in the programs people come from.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.cutStampPasteAtOrigin,
+    name: (language) => AppStrings.of(language).toolCutPasteAtOrigin,
+    shelf: ShortcutShelf.edit,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutStampReset,
+    label: 'Reset Stamp',
+    shelf: ShortcutShelf.edit,
+    defaultActivators: [],
+    panelButton: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.cutStampRegisterTip,
+    name: (language) => AppStrings.of(language).toolCutRegisterTip,
+    shelf: ShortcutShelf.edit,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
   // 🗣️I-19 (유저 2026-09-12): keys for buttons that already exist — the
   // shared pill's clipboard, its delete and the colour edit's clear. Each
   // label is the BUTTON's own name, so its tooltip and this list cannot
@@ -1355,10 +1390,18 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.text),
   ),
-  // I-40: the text tool's settings' 🗑 — the text in hand goes.
+  // I-40: the text tool's settings' 🗑 — the text in hand goes — and its
+  // 래스터라이즈, the text in hand made drawing.
   EditorActionDefinition.composed(
     id: EditorActionIds.textDeleteText,
     name: (language) => AppStrings.of(language).textToolDeleteText,
+    shelf: ShortcutShelf.texts,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.textIntoDrawing,
+    name: (language) => AppStrings.of(language).textToolIntoDrawing,
     shelf: ShortcutShelf.texts,
     defaultActivators: const [],
     panelButton: true,
@@ -1394,6 +1437,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Add perspective guide',
     shelf: ShortcutShelf.guides,
     defaultActivators: [],
+    panelButton: true,
+  ),
+  // And the settings' ＋ of the perspective guide picked in that list.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.guideAddVanishingPoint,
+    name: (language) => AppStrings.of(language).guideAddVanishingPoint,
+    shelf: ShortcutShelf.guides,
+    defaultActivators: const [],
     panelButton: true,
   ),
   const EditorActionDefinition(
@@ -1496,6 +1547,36 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Cancel Transform',
     shelf: ShortcutShelf.selection,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.escape)],
+  ),
+  // I-40: the Select and Transform tools' settings buttons. Their 다각형
+  // 닫기 and 적용 are 확정's own halves and name it ([confirm]).
+  EditorActionDefinition.composed(
+    id: EditorActionIds.selectionInvert,
+    name: (language) => AppStrings.of(language).selectionInvert,
+    shelf: ShortcutShelf.selection,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.transformFlipHorizontal,
+    label: 'Flip Transform Horizontal',
+    shelf: ShortcutShelf.selection,
+    defaultActivators: [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.transformFlipVertical,
+    label: 'Flip Transform Vertical',
+    shelf: ShortcutShelf.selection,
+    defaultActivators: [],
+    panelButton: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.transformReset,
+    label: 'Reset Transform',
+    shelf: ShortcutShelf.selection,
+    defaultActivators: [],
+    panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.onionSkinToggle,

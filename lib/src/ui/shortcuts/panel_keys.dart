@@ -88,6 +88,12 @@ class PanelKeysScope extends InheritedWidget {
 ///
 /// [buttons] are handed again on every build, so a key presses what the
 /// buttons hold NOW.
+///
+/// ⚠️It wraps the PANEL — a tool's settings section, a library, a pool —
+/// never the row a button stands on: a settings list builds its rows only
+/// near the screen, and a binding on a row far down would not be there to
+/// press until the list was scrolled to it (the tool settings' round of
+/// I-40, 2026-10-11).
 class PanelKeysBinding extends StatefulWidget {
   const PanelKeysBinding({
     super.key,

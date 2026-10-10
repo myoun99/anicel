@@ -39,24 +39,6 @@ enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
   // ── OWED ────────────────────────────────────────────────────────────
-  // The tool settings' actions, read since they became one kind of button
-  // (`ToolSettingAction`, tool-settings-panel-tidy 2026-10-10) — owed all
-  // along, unseen while they were Material's.
-  "brush/guide_panels.dart | 'guide-add-vanishing-point'": Why.owed,
-  "brush/text_tool_settings.dart | 'text-tool-into-drawing'": Why.owed,
-  "brush/tool_settings_panel.dart | 'cut-paste-at-origin-button'":
-      Why.owed,
-  "brush/tool_settings_panel.dart | 'cut-register-tip-button'": Why.owed,
-  "brush/tool_settings_panel.dart | 'cut-reset-button'": Why.owed,
-  "brush/tool_settings_panel.dart | 'move-apply-button'": Why.owed,
-  "brush/tool_settings_panel.dart | 'move-flip-horizontal-button'":
-      Why.owed,
-  "brush/tool_settings_panel.dart | 'move-flip-vertical-button'":
-      Why.owed,
-  "brush/tool_settings_panel.dart | 'move-reset-button'": Why.owed,
-  "brush/tool_settings_panel.dart | 'selection-close-polygon-button'":
-      Why.owed,
-  "brush/tool_settings_panel.dart | 'selection-invert-button'": Why.owed,
 
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,

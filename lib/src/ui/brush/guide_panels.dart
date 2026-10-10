@@ -444,13 +444,25 @@ class GuideSettings extends StatelessWidget {
     // 느낌 나도록」). ↩️It was a list of its own: its rows flush to the
     // panel's edge, each vanishing point a two-line list tile, and the add
     // button gone once there were three.
-    return ToolSettingsSection(
+    final section = ToolSettingsSection(
       tool: 'guide-${guide.id.value}',
       title: guide.name,
       children: switch (shape) {
         SymmetryShape() => _symmetryFields(guide, shape),
         PerspectiveShape() => _perspectiveFields(guide, shape),
       },
+    );
+    // A key presses the perspective's ＋ as the guide tool's settings
+    // (I-40), while a perspective guide is the one picked.
+    return PanelKeysBinding(
+      tool: CanvasTool.guide,
+      buttons: {
+        EditorActionIds.guideAddVanishingPoint: switch (shape) {
+          SymmetryShape() => null,
+          PerspectiveShape() => _vanishingPointAdded(guide, shape),
+        },
+      },
+      child: section,
     );
   }
 
@@ -550,25 +562,36 @@ class GuideSettings extends StatelessWidget {
             ToolSettingAction(
               keyValue: 'guide-add-vanishing-point',
               label: strings.guideAddVanishingPoint,
-              onPressed: points.length < 3
-                  ? () => _replaceShape(
-                      guide,
-                      shape.copyWith(
-                        vanishingPoints: [
-                          ...points,
-                          // The third point is the vertical family far more
-                          // often than not, so that is what a new one starts
-                          // as.
-                          VanishingPointTowards(dx: 0, dy: 1),
-                        ],
-                      ),
-                    )
-                  : null,
+              shortcuts: const [EditorActionIds.guideAddVanishingPoint],
+              onPressed: _vanishingPointAdded(guide, shape),
             ),
           ],
         ],
       ),
     ];
+  }
+
+  /// What the perspective's ＋ presses: one more vanishing point while there
+  /// is room for one — nothing at three.
+  VoidCallback? _vanishingPointAdded(
+    DrawingGuide guide,
+    PerspectiveShape shape,
+  ) {
+    final points = shape.vanishingPoints;
+    if (points.length >= 3) {
+      return null;
+    }
+    return () => _replaceShape(
+      guide,
+      shape.copyWith(
+        vanishingPoints: [
+          ...points,
+          // The third point is the vertical family far more often than not,
+          // so that is what a new one starts as.
+          VanishingPointTowards(dx: 0, dy: 1),
+        ],
+      ),
+    );
   }
 }
 

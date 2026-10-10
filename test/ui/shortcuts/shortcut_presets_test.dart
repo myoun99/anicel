@@ -141,6 +141,12 @@ void main() {
       expect(keysOf(clipStudio, addLayerKindActionId(LayerKind.folder)), [
         'Ctrl+G',
       ]);
+      // ➕10-11: the Select tool's 선택 반전, an action since I-40's round
+      // of the tool settings.
+      expect(keysOf(clipStudio, EditorActionIds.selectionInvert), [
+        'Ctrl+Shift+I',
+        'Shift+F7',
+      ]);
     });
 
     test('an action the program does not name keeps the registry\'s keys — '
