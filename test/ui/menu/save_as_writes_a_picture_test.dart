@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재 보이는대로
@@ -226,6 +227,11 @@ void main() {
     ]);
     final bytes = File(target).readAsBytesSync();
     expect(bytes.sublist(1, 4), 'PNG'.codeUnits, reason: 'a PNG file');
+    expect(
+      pngColourTypeOf(bytes),
+      2,
+      reason: 'F-335: 「알파채널 아예없는걸」 — RGB, no alpha channel at all',
+    );
     final picture = await pixelsOf(tester, bytes, [
       (10, 10),
       (canvas.width - 1, canvas.height - 1),

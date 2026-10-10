@@ -118,7 +118,8 @@ enum ExportStillFormat {
   };
 }
 
-/// PNG·PSD = RGBA(투명)/RGB 선택 — RGB면 배경색이 깔린다. JPG = RGB 고정.
+/// PNG·PSD = RGBA(투명)/RGB 선택 — RGB면 배경색이 깔리고 PNG 파일에 알파
+/// 채널이 없다(색 형식 2, F-335). JPG = RGB 고정.
 enum ExportChannels {
   rgba,
   rgb;

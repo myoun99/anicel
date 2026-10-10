@@ -18,11 +18,11 @@ class PngSequenceExportService {
   const PngSequenceExportService();
 
   /// [encoderFor] names the encoder of each file whose bytes are not the
-  /// default's — the engine PNG + the sRGB tag — (the JPG path, later
-  /// PSD). It is asked a FILE: one run writes files of more than one format
-  /// (the Cels tab's cels beside its sheets and envelopes). A null encoder
-  /// is the default; a null encode RESULT skips the file like a null render
-  /// does.
+  /// default's — the engine PNG + the sRGB tag — (JPG, a PNG without alpha,
+  /// later PSD). It is asked a FILE: one run writes files of more than one
+  /// format (the Cels tab's cels beside its sheets and envelopes). A null
+  /// encoder is the default; a null encode RESULT skips the file like a null
+  /// render does.
   Future<ExportWriteSummary> exportImages({
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
