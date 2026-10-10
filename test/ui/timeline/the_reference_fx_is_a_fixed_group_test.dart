@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/session/editing_stack_map.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
@@ -167,6 +168,45 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
+  /// A GIF row whose cels do not say which picture of the file each is, so
+  /// none of them can be made from it again.
+  Layer unsaidGif() => Layer(
+    id: const LayerId('gif'),
+    name: 'gif',
+    frames: [
+      Frame(id: const FrameId('g1'), duration: 1, strokes: const []),
+      Frame(id: const FrameId('g2'), duration: 1, strokes: const []),
+    ],
+    timeline: const {
+      0: TimelineExposure.drawing(FrameId('g1'), length: 1),
+      1: TimelineExposure.drawing(FrameId('g2'), length: 1),
+    },
+    mediaReference: MediaReference(
+      assetPath: '/clips/a.gif',
+      pose: TransformPose(center: CanvasPoint(x: 0, y: 0)),
+      pictureSize: const CanvasSize(width: 10, height: 10),
+    ),
+  );
+
+  test('moving the fx of a row that is not made from its file again is left '
+      'alone — nothing read, nothing landed, nothing said', () async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final gif = unsaidGif();
+    s.repository.insertLayer(cutId: s.requireActiveCut.id, layer: gif);
+    final canUndo = s.canUndo;
+
+    expect(
+      await s.importDoors.reposeReference(
+        layerId: gif.id,
+        pose: TransformPose(center: CanvasPoint(x: 5, y: 5)),
+      ),
+      isA<ReferenceLeftAlone>(),
+    );
+    expect(s.canUndo, canUndo);
+    expect(s.layerById(gif.id), gif);
+  });
+
   test('a row that does not show a file — or shows one with a cel that does '
       'not say which picture of it it is, so is not made from it again — '
       'has no group', () {
@@ -175,23 +215,7 @@ void main() {
     final drawn = s.requireActiveCut.layers.firstWhere(
       (layer) => layer.kind == LayerKind.animation,
     );
-    final gif = Layer(
-      id: const LayerId('gif'),
-      name: 'gif',
-      frames: [
-        Frame(id: const FrameId('g1'), duration: 1, strokes: const []),
-        Frame(id: const FrameId('g2'), duration: 1, strokes: const []),
-      ],
-      timeline: const {
-        0: TimelineExposure.drawing(FrameId('g1'), length: 1),
-        1: TimelineExposure.drawing(FrameId('g2'), length: 1),
-      },
-      mediaReference: MediaReference(
-        assetPath: '/clips/a.gif',
-        pose: TransformPose(center: CanvasPoint(x: 0, y: 0)),
-        pictureSize: const CanvasSize(width: 10, height: 10),
-      ),
-    );
+    final gif = unsaidGif();
     s.repository.insertLayer(cutId: s.requireActiveCut.id, layer: gif);
 
     for (final row in [drawn, gif]) {
