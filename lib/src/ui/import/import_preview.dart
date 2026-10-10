@@ -141,6 +141,7 @@ class ImportPreview extends StatefulWidget {
 }
 
 class _ImportPreviewState extends State<ImportPreview>
+    with TickerProviderStateMixin
     implements MediaRunSurface {
   /// The file shown, as the viewer would open it — or null while nothing
   /// is, or nothing here reads it.
@@ -267,6 +268,9 @@ class _ImportPreviewState extends State<ImportPreview>
   }
 
   // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  TickerProvider get vsync => this;
 
   @override
   ViewerDocument? get document => _document;

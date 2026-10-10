@@ -350,6 +350,7 @@ final class _LetGoOf implements ViewerDocument {
 }
 
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
+    with TickerProviderStateMixin
     implements PlaybackTransport, MediaRunSurface {
   /// Commit sink required by the panel API; the viewer never invalidates
   /// playback caches.
@@ -528,7 +529,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     widget.request.removeListener(_onRequestChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
     widget.position.removeListener(_onPosition);
-    // ⚠️Before [_disposeContent]: it stops the timer, and a transport that
+    // ⚠️Before [_disposeContent]: it stops the clock, and a transport that
     // is still registered would report the flip to a gate that is about to
     // lose the object anyway. Leaving it registered is the real hazard —
     // a closed tab would answer 「재생 중」 forever.
@@ -547,7 +548,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void _onRequestChanged() => _load(widget.request.value);
 
   void _disposeContent() {
-    // A timer outliving its document would page a viewer that has none.
+    // A clock outliving its document would page a viewer that has none.
     _run.letGo();
     _rasters.clear();
     final document = _document;
@@ -821,6 +822,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   // --- The run's surface ([MediaRunSurface]) -------------------------------
 
   @override
+  TickerProvider get vsync => this;
+
+  @override
   ViewerDocument? get document => _document;
 
   @override
@@ -850,7 +854,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
   /// can be playing, so the actuation gate stops it with the same law it
   /// stops the canvas with (유저 09-07 `exclusive`, both directions).
-  /// ⛔It answers from the run's timer and stops through [MediaRun.stop]; a
+  /// ⛔It answers from the run's clock and stops through [MediaRun.stop]; a
   /// separate "am I playing" for the gate would be the per-surface check
   /// the gate exists to avoid.
   @override

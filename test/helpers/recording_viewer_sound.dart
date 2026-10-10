@@ -6,8 +6,10 @@ import 'package:anicel/src/ui/media/viewer_sound.dart';
 /// media viewer and the import window's preview ask the same things of the
 /// same sound ([MediaRun]).
 ///
-/// ⚠️The clock stands still until a test moves [at]: a position that ran
-/// on its own would decide when a run of pictures ends.
+/// ⚠️The clock stands still until a test moves it ([at], [playOn]): a
+/// position that ran on its own would decide when a run of pictures ends —
+/// and since a movie's pictures follow its sound (`MediaRun`), so it does.
+/// It starts where a play or a resume asks, as a device does.
 class RecordingViewerSound extends ViewerSound {
   RecordingViewerSound(AudioConformStore store) : super(conformStore: store);
 
@@ -28,7 +30,26 @@ class RecordingViewerSound extends ViewerSound {
   /// Whether the device has reached the end of the file it was given.
   bool hasEnded = false;
 
+  /// How long the file is, when a test says: [playOn] stops there and the
+  /// device has ended, as one does at the end of what it was handed.
+  double? length;
+
   bool _carrying = false;
+  bool _held = false;
+
+  /// The device plays on by [time] — while it carries a sound and is not
+  /// held.
+  void playOn(Duration time) {
+    if (!_carrying || _held) {
+      return;
+    }
+    at += time.inMicroseconds / Duration.microsecondsPerSecond;
+    final end = length;
+    if (end != null && at >= end) {
+      at = end;
+      hasEnded = true;
+    }
+  }
 
   @override
   bool get isCarrying => _carrying;
@@ -39,15 +60,24 @@ class RecordingViewerSound extends ViewerSound {
     from.add(fromSeconds);
     gains.add(gain);
     _carrying = true;
+    _held = false;
+    at = fromSeconds;
     hasEnded = false;
     return true;
   }
 
   @override
-  void hold() => holds += 1;
+  void hold() {
+    holds += 1;
+    _held = true;
+  }
 
   @override
-  void resume(double fromSeconds) => resumes += 1;
+  void resume(double fromSeconds) {
+    resumes += 1;
+    _held = false;
+    at = fromSeconds;
+  }
 
   @override
   void keepStreaming() => keeps += 1;

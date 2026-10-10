@@ -134,9 +134,12 @@ void main() {
           () => bar(tester).currentFrame > 0,
           attempts: 150,
           step: tick,
+          // A movie's pictures follow its sound (`MediaRun`): the device
+          // plays on as time passes, or the picture stands with it.
+          everyFrame: () => sound.playOn(tick),
         ),
         isTrue,
-        reason: 'the playhead walks as the frames land',
+        reason: 'the playhead walks with the sound as the frames land',
       );
 
       await press(tester);

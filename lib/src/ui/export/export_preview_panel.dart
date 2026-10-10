@@ -88,6 +88,7 @@ class ExportPreviewPanel extends StatefulWidget {
 }
 
 class ExportPreviewPanelState extends State<ExportPreviewPanel>
+    with TickerProviderStateMixin
     implements MediaRunSurface {
   /// Where this panel's pages are counted in the memory census
   /// (`RenderCaches.viewerRasterBytesByViewer`).
@@ -158,6 +159,9 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       : page.clamp(0, document.pageCount - 1);
 
   // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  TickerProvider get vsync => this;
 
   /// The document as the page cache and the run ask it — each render asked
   /// of it remembered until it answers ([debugSettle]).

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 
 
@@ -117,6 +118,9 @@ void main() {
   /// the run moves on while the decoder works ([settleAsync]).
   const tick = Duration(milliseconds: 42);
 
+  bool playing(WidgetTester tester) =>
+      tester.widget<TransportBar>(find.byType(TransportBar)).playing;
+
   Future<void> pressPlay(WidgetTester tester) async {
     await tester.tap(
       find.byKey(const ValueKey<String>('media-viewer-transport-play')),
@@ -166,11 +170,17 @@ void main() {
     // never have delivered anyway. Pumping alone would park this viewer
     // whatever the backend did, and the assertion below would be measuring
     // the bench instead of the law.
+    //
+    // 🚨And the DEVICE plays on as that time passes ([playOn]): a movie's
+    // pictures follow its sound, so a sound standing still would hold the
+    // playhead short of the page it parks before — no park, and nothing to
+    // measure.
     await settleAsync(
       tester,
       () => sound.holds > 0,
       attempts: 150,
       step: tick,
+      everyFrame: () => sound.playOn(tick),
     );
 
     expect(
@@ -186,7 +196,12 @@ void main() {
     // right after pressing play measures nothing about the buffer. What
     // separates 「waiting for these frames」 from 「waiting once, always」 is
     // that real time passes here and the playhead still does not move.
-    await settleAsync(tester, () => slot.position.value > 0, step: tick);
+    await settleAsync(
+      tester,
+      () => slot.position.value > 0,
+      step: tick,
+      everyFrame: () => sound.playOn(tick),
+    );
     expect(
       slot.position.value,
       0,
@@ -206,6 +221,7 @@ void main() {
       () => sound.resumes > 0,
       attempts: 150,
       step: tick,
+      everyFrame: () => sound.playOn(tick),
     );
 
     expect(sound.resumes, greaterThan(0), reason: 'the sound picked back up');
@@ -222,8 +238,9 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('🚨a frame it cannot read is asked for ONCE PER TICK, not as '
-      'fast as the decoder can refuse it', (tester) async {
+  testWidgets('🚨a frame it cannot read is asked for again ONCE A FRAME, '
+      'however often the clock looks — not as fast as the decoder can '
+      'refuse it', (tester) async {
     // 🪦Measured before the fix, with this exact fixture: `asked` came back
     // `[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]` — eleven asks for one frame
     // across three ticks. Nothing was throttling it. The failure arm cleared
@@ -256,28 +273,86 @@ void main() {
     );
 
     final before = fake.asked.length;
-    // Ten ticks of the movie's own clock. The fake clock only moves on
-    // `pump`, so this is EXACTLY ten however long the real waits take.
-    const ticks = 10;
-    for (var tick = 0; tick < ticks; tick += 1) {
+    // Ten frames of the movie's own time, looked at sixty times a second —
+    // the clock looks at every vsync, two and a half times a frame at
+    // 24fps. The fake clock only moves on `pump`, so this is EXACTLY ten
+    // frames however long the real waits take.
+    const frames = 10;
+    const looks = 25;
+    for (var look = 0; look < looks; look += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
-      await tester.pump(const Duration(milliseconds: 42));
+      await tester.pump(const Duration(microseconds: 16667));
     }
 
     final asks = fake.asked.length - before;
     expect(
       asks,
-      lessThanOrEqualTo(ticks + 1),
-      reason: 'the play tick is the retry clock — a frame that is not there '
-          'is asked for at the rate the movie needs it and no faster '
-          '(measured $asks asks over $ticks ticks: ${fake.asked})',
+      lessThanOrEqualTo(frames + 1),
+      reason: 'a frame\'s time is the retry clock — a frame that is not '
+          'there is asked for at the rate the movie needs it, not at the '
+          'rate the clock looks (measured $asks asks over $looks looks: '
+          '${fake.asked})',
     );
     // ⛔And not zero either: 「로드할때까지 멈춰있어야지」 is a WAIT, so it has
     // to keep asking. A viewer that gave up would sail through the bound
     // above — this is the half that keeps the resume below possible.
     expect(asks, greaterThan(0), reason: 'it is still trying');
+  });
+
+  testWidgets('🚨a movie\'s pictures keep its SOUND\'s time — and a sound '
+      'that ends before them hands the film on to the clock, from where it '
+      'ended', (tester) async {
+    final fake = await openMovie(tester);
+    // The track is half the movie: the device ends six frames in.
+    sound.length = 0.25;
+    await pressPlay(tester);
+    // Every frame lands while no time passes, so what follows is the clock
+    // and never a wait for a frame.
+    await settleAsync(tester, () => fake.asked.contains(11), attempts: 150);
+    await settleAsync(tester, () => false, attempts: 5);
+
+    const look = Duration(microseconds: 16667);
+    var looked = 0;
+    Future<void> lookOnce() async {
+      await tester.pump(look);
+      looked += 1;
+    }
+
+    // A device that starts a quarter second late — a wireless headset.
+    for (var i = 0; i < 15; i += 1) {
+      await lookOnce();
+    }
+    expect(
+      slot.position.value,
+      0,
+      reason: 'the sound has not started, so neither has the picture — a run '
+          'on its own clock would be six frames on',
+    );
+
+    while (!sound.hasEnded && looked < 100) {
+      await lookOnce();
+      sound.playOn(look);
+    }
+    final endedAt = looked;
+    while (playing(tester) && looked < endedAt + 100) {
+      await lookOnce();
+    }
+
+    expect(
+      slot.position.value,
+      11,
+      reason: '🚨it plays on to its last page — read from the sound alone, '
+          'the picture stood at the sound\'s end, playing for good',
+    );
+    expect(
+      looked - endedAt,
+      greaterThanOrEqualTo(14),
+      reason: 'and at its rate: the six frames after the sound ended are a '
+          'quarter second, fifteen looks — a clock that kept the time the '
+          'device was late would turn them a page a look',
+    );
   });
 
   testWidgets('stopping the run stops the sound', (tester) async {

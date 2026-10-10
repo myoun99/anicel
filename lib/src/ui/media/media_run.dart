@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show TickerProvider;
 
 import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
@@ -9,6 +9,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_picture_wait.dart';
+import '../playback/looking_ticker.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
 import 'page_rasters.dart';
@@ -36,9 +37,13 @@ abstract interface class MediaRunSurface {
   bool get mounted;
 
   void setState(VoidCallback fn);
+
+  /// Where the run's clock looks from — the surface's own vsync, so a
+  /// surface not shown silences it ([LookingTicker]).
+  TickerProvider get vsync;
 }
 
-/// A RUN of a document: the timer that turns its pages, the sound beside
+/// A RUN of a document: the clock that turns its pages, the sound beside
 /// them, and the law that the whole transport waits.
 ///
 /// 🚨One run for every surface that plays a [ViewerDocument] — the media
@@ -59,29 +64,48 @@ class MediaRun {
   /// The surface's sound, or silence if the app has no audio device.
   final ViewerSound sound;
 
-  /// The timer turning pages while playing, and null while stopped —
-  /// 🚨the ONLY thing that says whether this run is playing, so a second
-  /// flag cannot disagree with it ([[make-the-invariant-unrepresentable]]).
+  /// The clock's looks — one at every vsync while playing, none while
+  /// stopped: 🚨the ONLY thing that says whether this run is playing, so a
+  /// second flag cannot disagree with it
+  /// ([[make-the-invariant-unrepresentable]]).
   ///
-  /// ⚠️Write it through the setter below and nowhere else. [playingFlips]
-  /// has to fire for the actuation gate, and a notifier poked at the call
-  /// sites would be exactly the second flag this comment forbids — here it
-  /// cannot be written except by the assignment that changes the timer.
-  Timer? _timerField;
+  /// 🚨THE CANVAS'S TICK, IN ITS CODE (viewer-plays-by-the-one-playback-
+  /// law, ④). ↩️A `Timer.periodic` of a frame's length turned a page each
+  /// time it fired — and it fired early: Dart's timers count whole
+  /// milliseconds, so a 24fps run asked for 41,667µs and got 41ms (🔬10-11,
+  /// this machine: 24.374 a second — a ten-second movie over in 9.846s),
+  /// with the movie's sound running at its own speed beside it.
+  late final LookingTicker _clock = LookingTicker(_onTick);
 
-  Timer? get _timer => _timerField;
-
-  set _timer(Timer? timer) {
-    _timerField?.cancel();
-    _timerField = timer;
-    playingFlips.value = timer != null;
+  /// ⚠️Started and stopped here and nowhere else. [playingFlips] has to fire
+  /// for the actuation gate, and a notifier poked at the call sites would be
+  /// exactly the second flag the note above forbids.
+  void _runs(bool going) {
+    if (going) {
+      _clock.start(_surface.vsync);
+    } else {
+      _clock.stop();
+    }
+    playingFlips.value = going;
   }
 
   /// Fires when this run starts or stops, and on nothing else — never per
   /// turned page (the actuation gate wraps the whole editor).
   final ValueNotifier<bool> playingFlips = ValueNotifier<bool>(false);
 
-  bool get playing => _timer != null;
+  bool get playing => _clock.isRunning;
+
+  /// Where the clock's span began: the film's time then, in seconds, and
+  /// the clock's own time then — a run put on a page, or a parked run going
+  /// on ([_filmSeconds]).
+  double _spanFrom = 0;
+  Duration _spanAt = Duration.zero;
+
+  /// The clock's own time at its latest look.
+  Duration _elapsed = Duration.zero;
+
+  /// When a refused page was last asked for again ([_onTick]).
+  Duration? _retriedAt;
 
   /// True while the playhead is parked — the clock standing ([_wait]) and
   /// the sound held with it.
@@ -335,7 +359,7 @@ class MediaRun {
 
   /// Stops the run — silently, for the surface to rebuild around.
   void stop() {
-    _timer = null;
+    _runs(false);
     buffering = false;
     // ⚠️Unconditional: [ViewerSound.stop] is idempotent, and every path out
     // of a run — the button, the actuation gate, a new file, a closed tab —
@@ -404,18 +428,39 @@ class MediaRun {
     return length == null || soundSeconds >= length ? 0 : soundSeconds;
   }
 
-  /// How often a run of THIS document has something to do: once per
-  /// frame while pages advance, and otherwise once per screen frame,
-  /// which is all a playhead sliding along a waveform needs. Null = there
-  /// is nothing to run.
-  Duration? get _tickPeriod {
+  /// How long one of this document's frames lasts — null for a document
+  /// that turns no pages of its own.
+  Duration? get _framePeriod {
     final fps = _surface.document?.framesPerSecond ?? 0;
-    if (turnsItsOwnPages) {
-      return Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000));
+    return turnsItsOwnPages
+        ? Duration(microseconds: (1000000 / fps).round().clamp(1, 1000000))
+        : null;
+  }
+
+  /// Where the film has got to at this look, in seconds: the sound while it
+  /// is heard — the picture follows the sound, never a counter
+  /// ([_followTheSound]) — and the clock's span otherwise.
+  ///
+  /// 🚨The span is put where the sound is at every look that hears it, so a
+  /// sound that ends before the pictures hands the film on to the span from
+  /// where it ended: a movie whose track is shorter than its pictures plays
+  /// on to its last page. ↩️Read without that, its picture stood at the
+  /// sound's end, playing for good.
+  double _filmSecondsAtThisLook() {
+    final heard = _surface.soundPath != null && !sound.ended
+        ? sound.positionSeconds
+        : null;
+    if (heard != null) {
+      _spanFromNow(heard);
+      return heard;
     }
-    return _surface.soundPath == null
-        ? null
-        : const Duration(milliseconds: 16);
+    return _spanFrom + (_elapsed - _spanAt).inMicroseconds / 1e6;
+  }
+
+  /// The clock's span begins again at [seconds] of the film, now.
+  void _spanFromNow(double seconds) {
+    _spanFrom = seconds;
+    _spanAt = _elapsed;
   }
 
   /// The play button: starts a run, or stops the one going.
@@ -443,11 +488,11 @@ class MediaRun {
   }
 
   void _start({required bool fromTheTopAtTheEnd}) {
-    final period = _tickPeriod;
-    if (period == null) {
+    final soundPath = _surface.soundPath;
+    // Nothing to run: no pages that turn themselves, no sound.
+    if (!turnsItsOwnPages && soundPath == null) {
       return;
     }
-    final soundPath = _surface.soundPath;
     _surface.setState(() {
       // From the top when the playhead is already at the end: pressing play
       // on the last frame has to DO something, and the only sensible
@@ -463,7 +508,7 @@ class MediaRun {
           gain: _surface.loudness.gain,
         );
       }
-      // ⛔A run with neither pages to turn nor sound coming out is a timer
+      // ⛔A run with neither pages to turn nor sound coming out is a clock
       // saying 「재생 중」 to the actuation gate while nothing happens — and
       // the gate would then eat the next press for it. Standing down is
       // silent BY DESIGN (no audio device, a conform still landing), so
@@ -471,27 +516,39 @@ class MediaRun {
       if (!turnsItsOwnPages && !sound.isCarrying) {
         return;
       }
-      _timer = Timer.periodic(period, (_) => _onTick());
+      _elapsed = Duration.zero;
+      _retriedAt = null;
+      if (turnsItsOwnPages) {
+        _spanFromNow(_page / _surface.document!.framesPerSecond!);
+      }
+      _runs(true);
     });
   }
 
-  /// One tick of a run.
+  /// One look of a run's clock — every vsync.
   ///
   /// 🚨★★★**AND THE RETRY CLOCK.** A frame the decoder refused is forgotten
   /// here, so it is asked for again at the rate the movie actually needs
-  /// it — once per frame time — instead of as fast as the decoder can keep
-  /// saying no. See [PageRasters] for what that cost.
+  /// it — once per frame time, however often the clock looks — instead of
+  /// as fast as the decoder can keep saying no. See [PageRasters] for what
+  /// that cost.
   ///
   /// ⛔The fill has to be driven from here rather than left to the next
   /// build: while the buffer is dry [_turnThePage] returns WITHOUT a
   /// `setState`, so a parked viewer rebuilds for nothing and the walk
   /// forward would have no one to start it. That is why forgetting the
   /// failure is not enough on its own.
-  void _onTick() {
+  void _onTick(Duration elapsed) {
     if (!_surface.mounted) {
       return;
     }
-    _rasters.forgetRefusals();
+    _elapsed = elapsed;
+    final retried = _retriedAt;
+    final period = _framePeriod;
+    if (retried == null || period == null || elapsed - retried >= period) {
+      _rasters.forgetRefusals();
+      _retriedAt = elapsed;
+    }
     sound.keepStreaming();
     // 🚨BEFORE the turn, from the page on screen — the page the cache will
     // not let go ([PageRasters.shown]). Asked after it, the new frame could
@@ -532,7 +589,20 @@ class MediaRun {
   /// stutter together and come back in step; letting the sound run on
   /// would leave the picture to catch up by dropping frames, which is the
   /// behaviour this surface was given its law to refuse.
+  ///
+  /// 🚨A PAGE TURNS WHEN THE CLOCK REACHES ITS TIME, ONE AT A TIME. The
+  /// clock is the sound while it is heard, the clock's span otherwise
+  /// ([_filmSecondsAtThisLook]) — so the picture keeps the sound's time. A
+  /// clock that got ahead (a busy frame) is caught up a page a look, at the
+  /// screen's rate: no page is passed unseen, which is this surface's own
+  /// law above.
   void _turnThePage() {
+    final fps = _surface.document!.framesPerSecond!;
+    // Its time not come: the page on screen stays — and a parked run's
+    // clock stands, so it is asked only of a run that goes.
+    if (!buffering && _filmSecondsAtThisLook() * fps < _page + 1 - _sliver) {
+      return;
+    }
     if (_page >= _pageCount - 1) {
       _surface.setState(stop);
       return;
@@ -553,10 +623,18 @@ class MediaRun {
     }
     if (buffering) {
       sound.resume(soundSeconds);
+      // Goes on from here: the page it turns to has a whole frame's time,
+      // as if the clock had been stopped and started.
+      _spanFromNow((_page + 1) / fps);
       _surface.setState(() => buffering = false);
     }
     _surface.turnToPage(_page + 1);
   }
+
+  /// What a page's time is read short by — a millionth of a frame, so a
+  /// clock that reads exactly a page's time is not taken for one short of
+  /// it by a rounding.
+  static const double _sliver = 1e-6;
 
   /// Stops and lets go of the notifier — the surface is going.
   void dispose() {
