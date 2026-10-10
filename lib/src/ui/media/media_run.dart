@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/playback/frame_demand.dart';
@@ -91,9 +90,9 @@ class MediaRun {
 
   /// Whether the clock stands before the page ahead: the canvas's law
   /// ([PlaybackPictureWait]) at the setting this run plays by — render
-  /// first, with the cushion as what lies ahead ([bufferAheadPages]). A
-  /// page that is not there parks the playhead before it, and a parked
-  /// playhead goes on once the cushion has filled.
+  /// first, with the cushion as what lies ahead ([fillBuffer]). A page that
+  /// is not there parks the playhead before it, and a parked playhead goes
+  /// on once the read-ahead has come to rest where it stands.
   ///
   /// 🚨ONE LAW, ONE CODE (viewer-plays-by-the-one-playback-law, 유저
   /// 2026-10-08: 「쓸수있는 로직 뷰어패널에서도 법 통일된거 재사용하게」,
@@ -113,8 +112,7 @@ class MediaRun {
       final at = _rasters.scale;
       return at != null && _rasters.readyAt(page, at);
     },
-    aheadIsFilled: () =>
-        _rasters.readyFrom(_page + 1, _pageCount) >= _resumeAfterFrames(),
+    aheadIsFilled: () => _restingAt == _page,
   );
 
   /// Where the sound has got to, in seconds — the playhead's position on
@@ -272,48 +270,26 @@ class MediaRun {
   ///
   /// 유저 2026-08-31: 「10초? 5초? **메모리 제한에 맞춰서 알아서** 로드하고」
   /// — so this is a ceiling, not the number that usually decides. On any
-  /// document big enough to matter [bufferAheadPages] hits the byte budget
-  /// first, and the budget is the one that knows the device.
+  /// document big enough to matter the room runs out first ([fillBuffer]),
+  /// and the budget is the one that knows the device.
   static const double bufferAheadSeconds = 5;
 
-  /// Frames of read-ahead this document affords: whichever of the time
-  /// window and the memory budget runs out first, and zero when nothing is
-  /// playing (paging by hand needs no cushion).
-  ///
-  /// 🚨The budget has to hold the frame being LOOKED AT as well, so the
-  /// read-ahead gets what is left after it. Without that subtraction the
-  /// buffer fetches exactly enough to evict its own oldest entry, and the
-  /// eviction re-issues the render it just dropped.
-  int bufferAheadPages() {
-    final document = _surface.document;
-    final scale = _rasters.scale;
-    if (document == null || scale == null || !playing) {
-      return 0;
-    }
-    final fps = document.framesPerSecond ?? 0;
-    final size = document.pageSize(_page);
-    final bytes = estimatedImageBytes(
-      (size.width * scale).round().clamp(1, 1 << 13).toInt(),
-      (size.height * scale).round().clamp(1, 1 << 13).toInt(),
-    );
-    final affordable = bytes <= 0
-        ? 0
-        : (_rasters.budget.byteBudget ~/ bytes) - 1;
-    final window = (fps * bufferAheadSeconds).round();
-    return math.max(0, math.min(affordable, window));
-  }
+  /// The page the playhead stood on when the read-ahead last came to rest —
+  /// every page of the window ahead there, or no room for the next one —
+  /// and null while it is still asking ([fillBuffer]). A parked playhead
+  /// goes on when it rests where the playhead stands ([_wait]).
+  int? _restingAt;
 
-  /// What the buffer must hold before a parked playhead moves again.
+  /// Issues the NEXT missing raster the playhead will need, one at a time —
+  /// the walk the canvas's warmer walks (viewer-plays-by-the-one-playback-
+  /// law, ③): in the order a run that plays wants its pages, within the
+  /// time window, each asked for only when room is made for it by letting
+  /// go of pages wanted later ([PageRasters.makeRoomFor]). A page with no
+  /// room rests the walk, and what is held is the cushion.
   ///
-  /// 유저 2026-08-31: 「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」
-  /// — resuming on ONE ready frame is the stutter this replaces: play a
-  /// frame, run dry, park, play a frame. It is the SAME cushion
-  /// [bufferAheadPages] fills, capped by what is left of the movie so the
-  /// last seconds do not become unplayable.
-  int _resumeAfterFrames() =>
-      math.min(bufferAheadPages(), _pageCount - _page - 1);
-
-  /// Issues the NEXT missing raster the playhead will need, one at a time.
+  /// ↩️It counted the room up front — the budget over the page on screen,
+  /// less that page (`bufferAheadPages`) — which held while every page
+  /// weighed what the one on screen did; a document's pages need not.
   ///
   /// ⛔Not all of them at once: both decoders behind [ViewerDocument] are
   /// serial (PDFium runs one worker, and the video decoder's fast path is
@@ -322,28 +298,39 @@ class MediaRun {
   /// landing rebuilds, which issues the next — the queue walks forward on
   /// its own.
   ///
-  /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE CUSHION HOLDS.
-  /// The playhead parks BEFORE a page that is not there ([_turnThePage]),
-  /// so nothing else asks for that page: a page bigger than half the budget
-  /// leaves no cushion at all, and a run that asked for nothing ahead would
-  /// stand for good. ↩️Such a run turned onto pages that had not landed —
-  /// the blank frames the wait exists to refuse.
+  /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE ROOM — as the
+  /// canvas's warmer makes the picture under its playhead. The playhead
+  /// parks BEFORE a page that is not there ([_turnThePage]), so nothing
+  /// else asks for that page: a page bigger than half the budget leaves no
+  /// room beside the one on screen, and a run that asked for nothing ahead
+  /// would stand for good. ↩️Such a run turned onto pages that had not
+  /// landed — the blank frames the wait exists to refuse.
   void fillBuffer() {
+    _restingAt = null;
+    final document = _surface.document;
     final scale = _rasters.scale;
-    if (scale == null || _rasters.rendering) {
+    if (document == null || scale == null || !playing || _rasters.rendering) {
       return;
     }
-    final ahead = playing ? math.max(1, bufferAheadPages()) : 0;
-    for (var offset = 1; offset <= ahead; offset += 1) {
-      final page = _page + offset;
+    final window = math.max(
+      1,
+      ((document.framesPerSecond ?? 0) * bufferAheadSeconds).round(),
+    );
+    for (var step = 1; step <= window; step += 1) {
+      final page = _page + step;
       if (page >= _pageCount) {
-        return;
+        break;
       }
-      if (!_rasters.readyAt(page, scale)) {
-        _rasters.ensureRendered(page, scale);
-        return;
+      if (_rasters.readyAt(page, scale)) {
+        continue;
       }
+      if (step > 1 && !_rasters.makeRoomFor(page, scale, step: step)) {
+        break;
+      }
+      _rasters.ensureRendered(page, scale);
+      return;
     }
+    _restingAt = _page;
   }
 
   /// Stops the run — silently, for the surface to rebuild around.
@@ -552,7 +539,9 @@ class MediaRun {
     }
     // ⛔Not「one frame is ready, go」once parked: that plays a frame, runs
     // dry and parks again, which is a stutter rather than playback — the
-    // wait goes on when the cushion has filled ([_resumeAfterFrames]).
+    // wait goes on when the cushion has filled (유저 2026-08-31: 「로드가
+    // 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」), the read-ahead at rest
+    // ([fillBuffer]).
     if (_wait.holds(_page + 1, placed: false)) {
       if (!buffering) {
         // Remember where the sound was, because that is where BOTH pick up.
