@@ -120,7 +120,7 @@ void main() {
     expect(seen.writes, [seen.previews.last]);
   });
 
-  testWidgets('🚨its PENCIL opens ONE number, its unit outside the field — '
+  testWidgets('🚨its PENCIL opens ONE number, alone in the field — '
       'and what is typed goes back with the rest as it read', (tester) async {
     final seen = await pumpLane(tester, id: 'scale', value: '100.00, 80.00%');
 

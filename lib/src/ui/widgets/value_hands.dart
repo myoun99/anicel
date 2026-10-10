@@ -95,8 +95,9 @@ class ValueSteps extends StatelessWidget {
       );
 }
 
-/// The PENCIL that opens a value's typed field — the number alone, selected,
-/// its unit outside the field (`readoutParts`).
+/// The PENCIL that opens a value's typed field — the number alone
+/// (`readoutParts`), selected, the whole box a field with no name and no
+/// unit beside it.
 ///
 /// A press is the pencil's whole meaning, so it fires as every button
 /// fires: on the press on a rail's row, on the release inside everywhere

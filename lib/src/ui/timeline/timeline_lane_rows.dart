@@ -917,6 +917,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the same length the rail gives it (유저 2026-10-11: 「진짜로
   /// 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이 들어갈거같은데
   /// 그렇게하자. 약간 워드에서도 세로쓰기 있는데 뭐 검증된 방식이잖아」).
+  /// The steps and the pencil turn with it, − reading as a bar: asked
+  /// whether to stand them upright, the user kept them turned (유저
+  /// 2026-10-11 「여쭐것 둘다 문제없음」).
   /// ↩️Stood up: two small boxes one under the other, each with its pencil
   /// under it, and no ± (2026-10-10).
   Widget _memberColumn(

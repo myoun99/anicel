@@ -201,7 +201,8 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// rows went from about four to two (2026-10-10), and once the value was
   /// turned the block no longer fit the tallest dock at all — the window
   /// cut its tail, the SE speaker and the opacity and blend columns with it
-  /// (2026-10-11).
+  /// (2026-10-11). Asked with the rail's full length on offer, the user
+  /// kept this one (유저 2026-10-11 「여쭐것 둘다 문제없음」).
   static double _naturalNameExtent(LayerRailColumnWidths columns) =>
       timelineLayerControlsWidthFor(columns) -
       layerLaneValueHandsWidth -
