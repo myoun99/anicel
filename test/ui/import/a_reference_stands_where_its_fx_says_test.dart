@@ -510,26 +510,29 @@ void main() {
       s.playbackRig.prerenderScheduler.beginInputHold();
 
       await tester.runAsync(() async {
+        // A 200×100 canvas: the first page fits it at twice its size.
+        s.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 200, height: 100),
+        );
         final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
         await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
         expect(
           await s.importDoors.importPdfFile(
             path: path,
-            destination: ImportDestination.newCut,
+            destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
           ),
           isTrue,
         );
       });
 
-      // A new cut at the first page's size: contain there is 1:1.
       final cut = s.requireActiveCut;
       final row = cut.layers.firstWhere(
         (layer) => layer.mediaReference != null,
       );
       expect(
         row.mediaReference!.pose,
-        TransformPose(center: CanvasPoint(x: 50, y: 25)),
+        TransformPose.uniform(center: CanvasPoint(x: 100, y: 50), zoom: 2),
       );
       expect(
         row.mediaReference!.pictureSize,
@@ -540,15 +543,17 @@ void main() {
           s.brushFrameKeyForCut(cut, row.id, row.frames[index].id),
         ),
       );
-      expect(page(0), const ui.Rect.fromLTRB(0, 0, 100, 50));
+      expect(page(0), const ui.Rect.fromLTRB(0, 0, 200, 100));
       expect(
         page(1),
-        const ui.Rect.fromLTRB(-50, -25, 150, 75),
-        reason: 'the reference\'s pose over a 200×100 page — not its own fit',
+        const ui.Rect.fromLTRB(-100, -50, 300, 150),
+        reason: 'the reference\'s pose over a 200×100 page — twice its own '
+            'size, not fitted to the canvas again',
       );
       expect(
         [for (final (_, width, height) in pdf.renderRequests) (width, height)],
-        [(100, 50), (200, 100)],
+        [(200, 100), (400, 200)],
+        reason: 'the vector source rasters once, at the size it stands at',
       );
       s.playbackRig.prerenderScheduler.cancel();
       await tester.pump();

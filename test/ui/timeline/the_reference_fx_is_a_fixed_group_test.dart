@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_stack_map.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -338,9 +340,65 @@ void main() {
       reason: 'the picture laid at x 1170 is drawn at the scrubbed 1270',
     );
 
+    // Every step reaches the channel: a preview that compared equal to the
+    // last would be dropped, and the canvas would stop following the hand.
+    s.laneVerbs.previewLaneValueAt(
+      row.id,
+      referencePositionLaneId,
+      0,
+      '1300, 827',
+      frameIsGlobal: false,
+      scaleLinked: false,
+    );
+    expect(
+      laneEditInFlight(s.dragPreview.value)?.row?.mediaReference?.pose.center,
+      CanvasPoint(x: 1300, y: 827),
+    );
+
     s.laneVerbs.endLaneEditPreview();
     expect(s.dragPreview.value, isNull);
     await stopTheWarmer(tester, s);
+  });
+
+  test('a reference lane\'s row stands on the reference: a transform edit '
+      'leaves it as it was, an edit of the pose gives a new one', () {
+    final reference = MediaReference(
+      assetPath: '/paper.png',
+      pose: TransformPose(center: CanvasPoint(x: 50, y: 30)),
+      pictureSize: const CanvasSize(width: 100, height: 60),
+    );
+    final row = Layer(
+      id: const LayerId('paper'),
+      name: 'paper',
+      frames: const [],
+      mediaReference: reference,
+    );
+    final keyed = row.copyWith(
+      transformTrack: row.transformTrack.copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 1, y: 1),
+        ),
+      ),
+    );
+    final reposed = row.copyWith(
+      mediaReference: reference.copyWith(
+        pose: TransformPose(center: CanvasPoint(x: 60, y: 30)),
+      ),
+    );
+
+    for (final laneId in referenceLaneSelectionOrder) {
+      expect(
+        identical(laneRowSlice(row, laneId), laneRowSlice(keyed, laneId)),
+        isTrue,
+        reason: '$laneId does not rebuild for a transform key',
+      );
+      expect(
+        identical(laneRowSlice(row, laneId), laneRowSlice(reposed, laneId)),
+        isFalse,
+        reason: '$laneId rebuilds for its own value',
+      );
+    }
   });
 
   testWidgets('a cel whose picture was laid elsewhere — a movie\'s, while a '

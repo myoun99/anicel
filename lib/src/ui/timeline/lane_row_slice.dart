@@ -1,6 +1,7 @@
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'reference_lane_policy.dart' show laneIsReference;
 import 'se_name_tag_lane_policy.dart' show laneIsSeNameTag;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
@@ -45,6 +46,11 @@ Object laneRowSlice(Layer layer, String laneId) {
   }
   if (laneIsSeNameTag(laneId)) {
     return layer.seNameTag ?? layer;
+  }
+  // I-68: the reference fx's rows show the reference's pose, and only an
+  // edit of it makes a new reference.
+  if (laneIsReference(laneId)) {
+    return layer.mediaReference ?? layer;
   }
   final address = parseEffectLaneId(laneId);
   if (address == null) {
