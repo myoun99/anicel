@@ -175,7 +175,7 @@ void main() {
   Future<void> span(WidgetTester tester, int from, int to) async {
     await settleLoadedPages(tester);
     for (final (end, at) in [('in', from), ('out', to)]) {
-      await tester.tap(find.byKey(ValueKey<String>('transport-$end')));
+      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
       await tester.pump();
       await tester.enterText(
         find.byKey(ValueKey<String>('transport-$end-input')),

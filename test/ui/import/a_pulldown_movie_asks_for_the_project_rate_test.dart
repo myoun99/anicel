@@ -83,7 +83,7 @@ void main() {
   /// the transport shows them.
   Future<void> span(WidgetTester tester, int from, int to) async {
     for (final (end, at) in [('in', from), ('out', to)]) {
-      await tester.tap(find.byKey(ValueKey<String>('transport-$end')));
+      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
       await tester.pump();
       await tester.enterText(
         find.byKey(ValueKey<String>('transport-$end-input')),
@@ -241,7 +241,7 @@ void main() {
       'of the movie on the new clock', (tester) async {
     final movie = await write(tester, 'take.mp4');
     final s = await open(tester, [movie]);
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -323,8 +323,13 @@ void main() {
     final movie = await write(tester, 'take.mp4');
     final sound = await write(tester, 'voice.wav');
     final s = await open(tester, [movie, sound]);
+    // The row's NAME: the middle of a row is one of its answer cells, and a
+    // press there opens that answer's list over the preview.
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-row-voice.wav')),
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('import-row-voice.wav')),
+        matching: find.text('voice'),
+      ),
     );
     await settleLoadedPages(tester);
     await span(tester, 501, 1601);
