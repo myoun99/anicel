@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -239,6 +240,17 @@ void main() {
         tester.widget<Pill>(pill).selected,
         isTrue,
         reason: 'the window opens on the kind its key is, each side',
+      );
+    }
+    // As wide as the drawing the user picked (I-89 ②, 400): every choice
+    // says its word whole.
+    for (final word in tester.renderObjectList<RenderParagraph>(
+      find.descendant(of: find.byType(Pill), matching: find.byType(RichText)),
+    )) {
+      expect(
+        word.didExceedMaxLines,
+        isFalse,
+        reason: '${word.text.toPlainText()} is cut',
       );
     }
     await tester.tap(
