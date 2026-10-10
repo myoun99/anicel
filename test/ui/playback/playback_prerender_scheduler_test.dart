@@ -35,6 +35,8 @@ import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
+
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -769,6 +771,94 @@ void main() {
       });
     });
 
+    /// The walk reaching a picture it asked for ahead waits for it — and
+    /// asks past it while it waits, so as many stay on their way rather
+    /// than the asks running dry until the walk makes one of its own.
+    testWidgets('waiting for a picture it asked for ahead, it keeps asking '
+        'past it — as many stay on their way', (tester) async {
+      await tester.runAsync(() async {
+        Cut six() => Cut(
+          id: const CutId('cut'),
+          name: 'Cut',
+          duration: 6,
+          canvasSize: canvasSize,
+          layers: [
+            Layer(
+              id: const LayerId('layer'),
+              name: 'A',
+              frames: [
+                for (var index = 0; index < 6; index += 1)
+                  Frame(id: FrameId('f$index'), duration: 1, strokes: const []),
+              ],
+              timeline: {
+                for (var index = 0; index < 6; index += 1)
+                  index: TimelineExposure.drawing(
+                    FrameId('f$index'),
+                    length: 1,
+                  ),
+              },
+            ),
+          ],
+        );
+        final store = BrushFrameStore();
+        for (var index = 0; index < 6; index += 1) {
+          inkCelIn(
+            store,
+            frameKey(six(), const LayerId('layer'), FrameId('f$index')),
+            canvasSize: canvasSize,
+            at: CanvasPoint(x: 4, y: 4),
+            size: 6,
+            tileSize: 4,
+          );
+        }
+        final cache = _OneByOne(frameStore: store);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: picturesOver(cache),
+          resolveCut: (_) => six(),
+          idleDelay: Duration.zero,
+        );
+        scheduler.follow(
+          PlayingDemand(
+            totalFrames: 6,
+            loops: () => true,
+            playhead: () => 0,
+            picturesOf: (frame) => [(cut: six(), frameIndex: frame)],
+            playlistFrameOf: (cutId, frameIndex) =>
+                cutId == const CutId('cut') ? frameIndex : null,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          cache.asked,
+          {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
+          reason: '⛔premise: its own, and two ahead',
+        );
+
+        await cache.letThrough(const FrameId('f0'));
+        expect(
+          cache.asked,
+          contains(const FrameId('f3')),
+          reason: 'waiting for frame 1, asked ahead, it asked past it',
+        );
+
+        await cache.letThrough(const FrameId('f1'));
+        await cache.letThrough(const FrameId('f2'));
+        expect(
+          cache.asked,
+          containsAll([const FrameId('f4'), const FrameId('f5')]),
+          reason: 'and a picture asked ahead gives its place back when it '
+              'comes back',
+        );
+
+        for (final frame in ['f3', 'f4', 'f5']) {
+          await cache.letThrough(FrameId(frame));
+        }
+        await rested(scheduler);
+        scheduler.dispose();
+        cache.dispose();
+      });
+    });
+
     testWidgets('🚨it is followed at once — the quiet window is for the hand '
         'that draws, and nothing draws under a run', (tester) async {
       await tester.runAsync(() async {
@@ -1235,6 +1325,35 @@ class _Room implements PictureRoom {
         wantedAt: pictures.wantedAt(demand()),
         laterThan: step,
       );
+}
+
+/// An image cache whose asks come back one at a time, each when its cel is
+/// let through ([letThrough]); past it, no picture.
+class _OneByOne extends LayerFrameImageCache {
+  _OneByOne({required super.frameStore});
+
+  final _held = <FrameId, Completer<void>>{};
+
+  Set<FrameId> get asked => _held.keys.toSet();
+
+  /// Lets [frameId]'s ask come back, then lets the walk have its turns.
+  Future<void> letThrough(FrameId frameId) async {
+    _held[frameId]!.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+
+  @override
+  Future<LayerFrameImage?> prepare({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    bool Function()? shouldAbort,
+    bool inkSuffices = false,
+  }) async {
+    await _held.putIfAbsent(key.frameId, Completer<void>.new).future;
+    return null;
+  }
 }
 
 /// An image cache whose every ask waits at one gate, saying which cels were

@@ -419,12 +419,25 @@ class PlaybackPrerenderScheduler {
         continue;
       }
       // Asked for ahead and still being made: the walk waits for it — its
-      // room was made then, and its landing is told where it lands.
-      final asked = askedAhead[(missing.cut.id, missing.frameIndex)];
+      // room was made then, and its landing is told where it lands — and
+      // keeps asking past it, so as many stay on their way.
+      final waitingFor = (missing.cut.id, missing.frameIndex);
+      final asked = askedAhead[waitingFor];
       if (asked != null) {
         _progress.value = PrerenderProgress(
           cached: reached,
           total: _expected(length, reached: reached, walkedBytes: walkedBytes),
+        );
+        _askAhead(
+          generation,
+          demand,
+          at,
+          askedAhead,
+          making: (bytes: 0, parts: const {}),
+          waitingFor: waitingFor,
+          from: reached + 1,
+          lead: lead,
+          length: length,
         );
         await asked.landing;
         if (_isStale(generation)) {
@@ -507,10 +520,14 @@ class PlaybackPrerenderScheduler {
     Map<(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>
     askedAhead, {
     required ({int bytes, Set<Object> parts}) making,
+    (CutId, int)? waitingFor,
     required int from,
     required int lead,
     required int length,
   }) {
+    // The one the walk waits for is its own now, not one ahead of it.
+    int ahead() =>
+        askedAhead.length - (askedAhead.containsKey(waitingFor) ? 1 : 0);
     var pending = making.bytes;
     final spoken = {...making.parts};
     for (final asked in askedAhead.values) {
@@ -518,7 +535,7 @@ class PlaybackPrerenderScheduler {
       spoken.addAll(asked.parts);
     }
     for (var look = from;
-        askedAhead.length < _askedAhead && look < from + _walkBurst;
+        ahead() < _askedAhead && look < from + _walkBurst;
         look += 1) {
       final shown = at(look);
       if (shown == null) {
