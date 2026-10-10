@@ -343,6 +343,40 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
+  testWidgets('a cel whose picture was laid elsewhere — a movie\'s, while a '
+      'move\'s own picture is decoded — is drawn moved from where it was '
+      'laid', (tester) async {
+    final (s, row) = await placed(tester);
+    final cut = s.requireActiveCut;
+    final laidLeft = TransformPose(center: CanvasPoint(x: 1070, y: 827));
+    final map = EditingStackMap(
+      opacityVerbs: s.opacityVerbs,
+      project: s,
+      cut: cut,
+      stackCut: cut,
+      frameIndex: 0,
+      activeLayerId: null,
+      movieLaidAt: (key) => key.layerId == row.id ? laidLeft : null,
+    );
+    final placement = [
+      for (final node in map.mapTree(
+        resolveCutFrameCompositeTree(cut: cut, frameIndex: 0),
+      ))
+        if (node is CompositeLeaf<CanvasStackRow> &&
+            node.payload is CanvasLayerImageRequest &&
+            (node.payload as CanvasLayerImageRequest).frameKey.layerId ==
+                row.id)
+          (node.payload as CanvasLayerImageRequest).placement,
+    ].single!;
+
+    expect(
+      placement.apply(CanvasPoint(x: 1070, y: 827)),
+      CanvasPoint(x: 1170, y: 827),
+      reason: 'laid 100 to the left of where the row stands it',
+    );
+    await stopTheWarmer(tester, s);
+  });
+
   testWidgets('the ◆ on a reference lane makes no key — it has none to make',
       (tester) async {
     final (s, row) = await placed(tester);

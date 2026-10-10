@@ -17,7 +17,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -230,6 +232,40 @@ void main() {
 
     s.undo();
     expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+    await wrapUp(tester, s);
+  });
+
+  testWidgets('a row moved by its own transform: the box stands where the '
+      'canvas shows the picture, and a drag lands back through the row — '
+      'in the file\'s own place under it', (tester) async {
+    final (s, row, _) = await onTheCanvas(tester);
+    s.laneVerbs.updateLayerTransformTrack(
+      row.id,
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 1270, y: 827),
+        ),
+      ),
+    );
+    s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
+    await tester.pump();
+
+    final box = boxOf(tester)!;
+    expectPoint(box.corners[0], CanvasPoint(x: 1220, y: 797));
+    expectPoint(box.pose.center, CanvasPoint(x: 1270, y: 827));
+
+    box.move!.committed(CanvasPoint(x: 1300, y: 827));
+    await settle(
+      tester,
+      () => s.layerById(row.id)!.mediaReference!.pose.center.x == 1200,
+    );
+    expect(
+      s.layerById(row.id)!.mediaReference!.pose.center,
+      CanvasPoint(x: 1200, y: 827),
+      reason: 'the row\'s own move taken back off — where the file stands '
+          'in the row',
+    );
     await wrapUp(tester, s);
   });
 

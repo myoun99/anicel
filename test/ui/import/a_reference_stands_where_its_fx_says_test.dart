@@ -27,9 +27,11 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 
+import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -412,6 +414,19 @@ void main() {
         const ui.Rect.fromLTRB(168, 82, 232, 118),
       );
       expect(fake.asked.length, greaterThan(asked));
+      // Where the installed picture was laid — what the editing canvas
+      // moves it from while a move's own picture is decoded.
+      final layer = s.layerById(row.id)!;
+      expect(
+        s.movieCels.laidAt(
+          s.brushFrameKeyForCut(
+            s.requireActiveCut,
+            row.id,
+            resolveExposedFrameAt(layer, 0)!.id,
+          ),
+        ),
+        TransformPose(center: CanvasPoint(x: 200, y: 100)),
+      );
       await tester.pumpAndSettle();
     });
 
@@ -468,6 +483,75 @@ void main() {
         const ui.Rect.fromLTRB(168, 82, 232, 118),
       );
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('a PDF\'s pages', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('anicel-i68-pdf');
+    });
+
+    tearDown(() {
+      PdfRenderService.debugResetForTests();
+      deleteTempQuietly(tempDir);
+    });
+
+    testWidgets('🎯every page of a reference stands at ITS pose over the '
+        'page\'s own size — a bigger page stands bigger, not fitted again — '
+        'and each is rendered once at the size it stands at', (tester) async {
+      final pdf = FakePdfDocument(
+        pageSizes: const [ui.Size(100, 50), ui.Size(200, 100)],
+      );
+      PdfRenderService.debugOpenerOverride = (_) async => pdf;
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.playbackRig.prerenderScheduler.beginInputHold();
+
+      await tester.runAsync(() async {
+        final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+        await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        expect(
+          await s.importDoors.importPdfFile(
+            path: path,
+            destination: ImportDestination.newCut,
+            copyIntoProject: false,
+          ),
+          isTrue,
+        );
+      });
+
+      // A new cut at the first page's size: contain there is 1:1.
+      final cut = s.requireActiveCut;
+      final row = cut.layers.firstWhere(
+        (layer) => layer.mediaReference != null,
+      );
+      expect(
+        row.mediaReference!.pose,
+        TransformPose(center: CanvasPoint(x: 50, y: 25)),
+      );
+      expect(
+        row.mediaReference!.pictureSize,
+        const CanvasSize(width: 100, height: 50),
+      );
+      ui.Rect? page(int index) => inkOf(
+        s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+          s.brushFrameKeyForCut(cut, row.id, row.frames[index].id),
+        ),
+      );
+      expect(page(0), const ui.Rect.fromLTRB(0, 0, 100, 50));
+      expect(
+        page(1),
+        const ui.Rect.fromLTRB(-50, -25, 150, 75),
+        reason: 'the reference\'s pose over a 200×100 page — not its own fit',
+      );
+      expect(
+        [for (final (_, width, height) in pdf.renderRequests) (width, height)],
+        [(100, 50), (200, 100)],
+      );
+      s.playbackRig.prerenderScheduler.cancel();
+      await tester.pump();
     });
   });
 }
