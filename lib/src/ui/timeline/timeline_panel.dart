@@ -14,6 +14,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
+import 'lane_graph_seats.dart' show LaneGraphLine;
 import 'layer_timeline_display_adapter.dart';
 import 'layer_rail_window.dart'
     show
@@ -130,6 +131,7 @@ class TimelinePanel extends StatefulWidget {
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
+    this.laneGraphLineOf,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -496,11 +498,13 @@ class TimelinePanel extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
 
   /// Forwarded to the grids — see [TimelineGridHooks.laneGraphs] and its
-  /// live read [TimelineGridHooks.laneGraphsNow], and
-  /// [TimelineGridHooks.laneGraphVerbs].
+  /// live read [TimelineGridHooks.laneGraphsNow],
+  /// [TimelineGridHooks.laneGraphVerbs] and
+  /// [TimelineGridHooks.laneGraphLineOf].
   final LaneGraphsView laneGraphs;
   final LaneGraphVerbs? laneGraphVerbs;
   final LaneGraphsView Function()? laneGraphsNow;
+  final LaneGraphLine? Function(String key)? laneGraphLineOf;
 
   /// Forwarded to the grids — a LIVE read of the twirl state. See
   /// [LayerTimelineGrid.laneOpenOf].
@@ -683,6 +687,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       laneGraphs: widget.laneGraphs,
       laneGraphVerbs: widget.laneGraphVerbs,
       laneGraphsNow: widget.laneGraphsNow,
+      laneGraphLineOf: widget.laneGraphLineOf,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,
       onToggleLayerLanes: widget.onToggleLayerLanes,

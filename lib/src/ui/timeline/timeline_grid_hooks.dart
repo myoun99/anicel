@@ -21,7 +21,7 @@ import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
-import 'lane_graph_seats.dart' show seatLaneGraphs;
+import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
@@ -124,6 +124,7 @@ class TimelineGridHooks {
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
+    this.laneGraphLineOf,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -423,6 +424,12 @@ class TimelineGridHooks {
   /// [laneOpenOf] is to the twirls: [laneGraphs] reaches here a build late,
   /// and a sweep begun on a graph button spreads what the down just set.
   final LaneGraphsView Function()? laneGraphsNow;
+
+  /// The lane a pin names, by its key in [LaneGraphsView.pinned], as a
+  /// graph draws it — read whether or not the rail shows its row, so a pin
+  /// reaches every graph from wherever it was pinned. Null draws no
+  /// guests.
+  final LaneGraphLine? Function(String key)? laneGraphLineOf;
 
   /// A LIVE read of the twirl state, when the host can give one.
   ///

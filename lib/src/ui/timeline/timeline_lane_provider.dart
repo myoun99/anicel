@@ -2,8 +2,10 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../services/project_lookup.dart' show cutIdOfLayer, requireCut;
 import '../editor_session_manager.dart';
+import 'lane_graph_seats.dart' show LaneGraphLine;
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
+import 'timeline_current_row.dart' show laneGroupOf;
 import 'transform_lane_policy.dart'
     show cameraPropertyLanes, cameraUnionHeader;
 
@@ -124,4 +126,39 @@ PropertyLaneRow? timelineCameraUnionLane({
     track,
     defById: session.camera.cameraInstructionSet.defById,
   );
+}
+
+/// The lane the pin [key] names (I-89 ③, a `laneGroupKey`) as a header
+/// graph draws it — or null once its row or its lane is gone, or for a
+/// lane that draws no line.
+///
+/// Read with the lane's own group twirled open, whatever the rail shows:
+/// a pin in a folded group still reaches every graph. ⚠️The round's own
+/// answer, put to the user 2026-10-11 as I-89 ③ Q4 (A, this; B, a fold
+/// hides its pins too).
+LaneGraphLine? timelineLaneGraphLine(
+  String key, {
+  required EditorSessionManager session,
+}) {
+  final pinned = parseLaneGroupKey(key);
+  if (pinned == null) {
+    return null;
+  }
+  for (final layer in session.layers) {
+    if (layer.id != pinned.layerId) {
+      continue;
+    }
+    final group = laneGroupOf(pinned.laneId);
+    final lanes = timelineLanesForLayer(
+      layer: layer,
+      session: session,
+      expandedGroupKeys: {if (group != null) laneGroupKey(layer.id, group)},
+    );
+    for (final lane in lanes) {
+      if (lane.laneId == pinned.laneId && lane.curve != null) {
+        return (layer: layer, lane: lane);
+      }
+    }
+  }
+  return null;
 }

@@ -255,7 +255,6 @@ class _TimelineFrameRowsScrollBodyState
   List<Widget> _windowRows() => timelineFrameSide(
     (rows: widget.rows, first: widget.firstRowIndex, edges: widget.edges),
     _cellsRowGrid,
-    frameExtent: widget.totalFrameContentWidth,
     cells: _buildRow,
   );
 

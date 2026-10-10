@@ -143,7 +143,6 @@ class _XSheetGridColumns {
       children: timelineFrameSide(
         (rows: entries, first: 0, edges: edges),
         grid,
-        frameExtent: plan.totalFrameContentWidth,
         cells: (entry) => _gatedColumn(entry, plan, grid),
       ),
     );

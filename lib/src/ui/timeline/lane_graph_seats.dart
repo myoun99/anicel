@@ -109,6 +109,21 @@ String? _graphKeyOf(TimelineDisplayRow row) {
   return lane == null ? null : _groupKeyOfLane(row.layer.id, lane.laneId);
 }
 
+/// A lane as a header graph draws it (I-89 ③): its row's layer, whose
+/// colour label its keys wear, and the lane.
+typedef LaneGraphLine = ({Layer layer, PropertyLaneRow lane});
+
+/// The pins [seat]'s graph draws as GUESTS (I-89 ③), dashed: every pinned
+/// lane that is no member of its group — another group's, another row's —
+/// in the order they were pinned. Its own group's pins are its own
+/// ([laneGraphDrawnLanes]).
+List<String> laneGraphGuests(TimelineGraphSeat seat, Set<String> pinned) => [
+  for (final key in pinned)
+    if (parseLaneGroupKey(key) case (:final layerId, :final laneId)
+        when _groupKeyOfLane(layerId, laneId) != seat.groupKey)
+      key,
+];
+
 /// The key of the group [laneId] is a member of on [layerId]'s row, or
 /// null for a lane that is no member of a group — a header, a lane of its
 /// own.
