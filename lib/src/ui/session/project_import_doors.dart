@@ -1176,9 +1176,9 @@ class ProjectImportDoors {
   }
 
   /// The [wanted] pictures of [reference]'s image file — a still's one, a
-  /// GIF's frames — each laid at its pose, read through the project's copy
-  /// first ([readHeldMediaBytes]) as every door here reads. Null when the
-  /// file does not read or has no such picture.
+  /// GIF's frames — laid where it stands them ([_picturesMade]), read
+  /// through the project's copy first ([readHeldMediaBytes]) as every door
+  /// here reads. Null when the file does not read or has no such picture.
   Future<_MadePictures?> _framesOf(
     MediaReference reference,
     Set<int> wanted,
@@ -1193,24 +1193,14 @@ class ProjectImportDoors {
       return null;
     }
     try {
-      if (wanted.any((index) => index >= frames.length)) {
-        return null;
-      }
-      final made = (
-        surfaces: <int, BitmapSurface>{},
-        sizes: <int, CanvasSize>{},
+      return await _picturesMade(
+        wanted,
+        (index) async => index < frames.length
+            ? _pictureOf(frames[index].image, owned: false)
+            : null,
+        pose: reference.pose,
+        canvas: canvas,
       );
-      for (final index in wanted) {
-        final image = frames[index].image;
-        final size = CanvasSize(width: image.width, height: image.height);
-        made.sizes[index] = size;
-        made.surfaces[index] = await rasterizeImageToSurface(
-          image: image,
-          canvas: canvas,
-          placement: picturePlacement(reference.pose, size),
-        );
-      }
-      return made;
     } finally {
       for (final frame in frames) {
         frame.image.dispose();
@@ -1219,8 +1209,9 @@ class ProjectImportDoors {
   }
 
   /// The [wanted] pages of [reference]'s PDF, each rendered once at the size
-  /// its pose stands it at and laid there ([_renderedPage]). Null when the
-  /// document does not open or has no such page.
+  /// its pose stands it at ([_renderedPage]) and laid there
+  /// ([_picturesMade]). Null when the document does not open or has no such
+  /// page.
   Future<_MadePictures?> _pagesOf(
     MediaReference reference,
     Set<int> wanted,
@@ -1235,38 +1226,48 @@ class ProjectImportDoors {
       return null;
     }
     try {
-      if (wanted.any((index) => index >= document.pageCount)) {
-        return null;
-      }
-      final made = (
-        surfaces: <int, BitmapSurface>{},
-        sizes: <int, CanvasSize>{},
+      return await _picturesMade(
+        wanted,
+        (index) async => index < document.pageCount
+            ? await _renderedPage(
+                document,
+                index,
+                _pageSizeOf(document, index),
+                reference.pose,
+              )
+            : null,
+        pose: reference.pose,
+        canvas: canvas,
       );
-      for (final index in wanted) {
-        final page = _pageSizeOf(document, index);
-        final picture = await _renderedPage(
-          document,
-          index,
-          page,
-          reference.pose,
-        );
-        try {
-          made.sizes[index] = page;
-          made.surfaces[index] = await rasterizeImageToSurface(
-            image: picture.image,
-            canvas: canvas,
-            placement: _laid(picture, reference.pose),
-          );
-        } finally {
-          picture.image.dispose();
-        }
-      }
-      return made;
     } on Object {
       return null;
     } finally {
       await document.dispose();
     }
+  }
+
+  /// The [wanted] pictures of a file, each made by [pictureAt] from its
+  /// place in the file and laid on a [canvas]-sized cel where [pose] stands
+  /// it ([_celLaid]), with its own size. Null when [pictureAt] finds no
+  /// picture at a place a cel asks for.
+  ///
+  /// ⛔ONE LOOP for a GIF's frames and a PDF's pages: each wrote it out.
+  static Future<_MadePictures?> _picturesMade(
+    Set<int> wanted,
+    Future<_BakePicture?> Function(int index) pictureAt, {
+    required TransformPose pose,
+    required CanvasSize canvas,
+  }) async {
+    final made = (surfaces: <int, BitmapSurface>{}, sizes: <int, CanvasSize>{});
+    for (final index in wanted) {
+      final picture = await pictureAt(index);
+      if (picture == null) {
+        return null;
+      }
+      made.sizes[index] = picture.size;
+      made.surfaces[index] = await _celLaid(picture, pose, canvas);
+    }
+    return made;
   }
 
   /// [reference] with its movie's frame size as the decoder reads the file
@@ -1443,29 +1444,20 @@ class ProjectImportDoors {
       for (final bake in bakes) {
         try {
           final picture = await pictureOf(bake, cut.canvasSize);
-          try {
-            final surface = await rasterizeImageToSurface(
-              image: picture.image,
-              canvas: cut.canvasSize,
-              placement: _laid(
-                picture,
-                standing(picture.size, cut.canvasSize),
-              ),
-            );
-            bakeCelSurface(
-              _renderCaches.brushFrameStore,
-              _project.brushFrameKeyForCut(
-                cut,
-                rowId ?? bake.layerId,
-                bake.frameId,
-              ),
-              surface,
-            );
-          } finally {
-            if (picture.owned) {
-              picture.image.dispose();
-            }
-          }
+          final surface = await _celLaid(
+            picture,
+            standing(picture.size, cut.canvasSize),
+            cut.canvasSize,
+          );
+          bakeCelSurface(
+            _renderCaches.brushFrameStore,
+            _project.brushFrameKeyForCut(
+              cut,
+              rowId ?? bake.layerId,
+              bake.frameId,
+            ),
+            surface,
+          );
         } on Object {
           if (onFailed == null) {
             rethrow;
@@ -1478,6 +1470,28 @@ class ProjectImportDoors {
     }
     _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
     _changes.notifyChanged();
+  }
+
+  /// [picture] laid on a [canvas]-sized cel where it stands at [pose]
+  /// ([_laid]) — and let go of once laid when it was made for the laying
+  /// ([_BakePicture.owned]). How an import bakes each picture, and how a
+  /// reference row's pictures are laid again ([_picturesMade]).
+  static Future<BitmapSurface> _celLaid(
+    _BakePicture picture,
+    TransformPose pose,
+    CanvasSize canvas,
+  ) async {
+    try {
+      return await rasterizeImageToSurface(
+        image: picture.image,
+        canvas: canvas,
+        placement: _laid(picture, pose),
+      );
+    } finally {
+      if (picture.owned) {
+        picture.image.dispose();
+      }
+    }
   }
 
   /// Where [picture]'s image lays when the picture stands at [pose]: the
