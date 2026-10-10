@@ -53,10 +53,10 @@ class ToolSettingsSection extends StatelessWidget {
   /// The inset every tool's settings are read at.
   static const EdgeInsets inset = EdgeInsets.all(12);
 
-  /// The space under a row — and between a grid's two columns
-  /// ([ToolSettingGrid]). The brush's settings set the rhythm first, and
-  /// every tool reads at it (tool-settings-panel-tidy, 유저 2026-10-10:
-  /// 「줄 높이 하나」).
+  /// The space under a row — and across one, between its name and its
+  /// control and between a pair's two cells. The brush's settings set the
+  /// rhythm first, and every tool reads at it (tool-settings-panel-tidy, 유저
+  /// 2026-10-10: 「줄 높이 하나」).
   static const double rowGap = 6;
 
   /// How tall a one-line row stands: a bar and the gap under it — a switch

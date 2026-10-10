@@ -1,6 +1,4 @@
-import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
-
 
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
@@ -221,22 +219,7 @@ class ToolSettingsPanel extends StatelessWidget {
     final preview = _preview();
     final settings = Material(
       type: MaterialType.transparency,
-      // ONE NAME FOR EVERY ROW (tool-settings-panel-tidy, 유저 2026-10-10
-      // 「다 추천대로」 — 「켜고 끄는 줄도 같은 높이와 같은 글자」). A switch
-      // row's name is a list tile's TITLE, a size above the name every other
-      // row writes ([ToolSettingRow], the bars, the grid) and a tile taller
-      // than them; in here it is set as they are. The rows themselves stay
-      // the app's one boolean row (`SettingsSwitchRow`) — only this panel's
-      // tiles are told how its names read.
-      child: ListTileTheme(
-        data: ListTileThemeData(
-          dense: false,
-          titleTextStyle: Theme.of(context).textTheme.labelSmall,
-          minTileHeight: ToolSettingsSection.rowHeight,
-          minVerticalPadding: 0,
-        ),
-        child: _settingsOfTheTool(),
-      ),
+      child: ToolSettingSurface(child: _settingsOfTheTool()),
     );
     if (preview == null) {
       return settings;
@@ -634,8 +617,11 @@ class _CutStampSettings extends StatelessWidget {
         return ToolSettingsSection(
           tool: 'cut-stamp',
           children: [
-            ToolSettingBar(
-              Text(
+            Padding(
+              padding: const EdgeInsets.only(
+                bottom: ToolSettingsSection.rowGap,
+              ),
+              child: Text(
                 AppText.strings.toolCutHoldingTemplate
                     .replaceAll('{width}', '${piece.image.width}')
                     .replaceAll('{height}', '${piece.image.height}'),
@@ -667,8 +653,9 @@ class _CutStampSettings extends StatelessWidget {
             // remembered. And NOT the top strip's brush size — sharing it
             // would multiply the piece by whatever pen width was last
             // used, the same failure the locked 100% opacity avoids.
-            ToolSettingBar(
-              FieldSlider(
+            ToolSettingRow.bar(
+              label: AppText.strings.brSize,
+              bar: FieldSlider.cell(
                 key: const ValueKey<String>('cut-scale-slider'),
                 label: AppText.strings.brSize,
                 min: CutPiece.minScalePercent.toDouble(),
@@ -772,8 +759,9 @@ class _SelectionSettings extends StatelessWidget {
             ),
           ),
         if (onMask != null) ...[
-          ToolSettingBar(
-            FieldSlider(
+          ToolSettingRow.bar(
+            label: AppText.strings.brGrowShrink,
+            bar: FieldSlider.cell(
               key: const ValueKey<String>('selection-grow-slider'),
               min: -20,
               max: 20,
@@ -788,8 +776,9 @@ class _SelectionSettings extends StatelessWidget {
                   onMask(maskOptions.copyWith(growPx: value.round())),
             ),
           ),
-          ToolSettingBar(
-            FieldSlider(
+          ToolSettingRow.bar(
+            label: AppText.strings.brFeather,
+            bar: FieldSlider.cell(
               key: const ValueKey<String>('selection-feather-slider'),
               min: 0,
               max: 50,
@@ -806,7 +795,7 @@ class _SelectionSettings extends StatelessWidget {
           ),
           SettingsSwitchRow(
             tileKey: const ValueKey<String>('selection-anti-alias-switch'),
-            label: AppText.strings.brAntiAliasEdge,
+            label: AppText.strings.brAntiAlias,
             value: maskOptions.antiAlias,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(antiAlias: value)),
@@ -859,34 +848,25 @@ class _SelectionModeRow extends StatelessWidget {
     SelectionCombineMode.intersect: Icons.join_inner,
   };
 
-  /// A row like every other setting's — its name at the left, the four at
-  /// the right, at the panel's button size (tool-settings-panel-tidy, 유저
-  /// 2026-10-10 「줄 하나의 모양」). ↩️It was the four alone, at the tool
-  /// RAIL's 42px square.
+  /// A CHOICE like every other setting's: the four share the control
+  /// column as the app's one grouped choice ([PillStrip.even]), each drawn
+  /// as its glyph and named by its tooltip. ↩️It was the four alone at the
+  /// tool RAIL's 42px square, then four icon buttons at the row's end (유저
+  /// 2026-10-10: 「사각형 박스 크기가 다 달라서 정돈된느낌 하나도안들어」).
   @override
   Widget build(BuildContext context) {
     return ToolSettingRow(
       label: AppText.strings.toolSelectionMode,
-      child: Row(
+      child: PillStrip.even(
         key: const ValueKey<String>('selection-mode-row'),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (i, candidate) in SelectionCombineMode.values.indexed)
-            Padding(
-              padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
-              // 🚨THE THIRD FILLED CHIP THE AUDIT FOUND. 「선택 표시는 색상만」
-              // — an accent foreground, never a filled chip and never a
-              // check mark ([[ui-selection-style]]). This row wore
-              // `surfaceContainerHigh` behind the selected mode, the same
-              // way the tool rail did.
-              child: AppIconButton(
-                keyValue: 'selection-mode-${candidate.name}',
-                tooltip: candidate.labelFor(language),
-                isSelected: candidate == mode,
-                size: AppIconButtonSize.bar,
-                icon: Icon(_icons[candidate]),
-                onPressed: () => onChanged(candidate),
-              ),
+        items: [
+          for (final candidate in SelectionCombineMode.values)
+            PillItem(
+              keyValue: 'selection-mode-${candidate.name}',
+              label: candidate.labelFor(language),
+              icon: _icons[candidate],
+              selected: candidate == mode,
+              onTap: () => onChanged(candidate),
             ),
         ],
       ),
@@ -1072,13 +1052,12 @@ class _MoveSettingsState extends State<_MoveSettings> {
       },
     );
     final notifier = widget.selectionCommands?.liveTransformValues;
-    if (notifier == null) {
-      return box(_values);
-    }
-    return ValueListenableBuilder<TransformValues?>(
-      valueListenable: notifier,
-      builder: (context, values, _) => box(values ?? _values),
-    );
+    return notifier == null
+        ? box(_values)
+        : ValueListenableBuilder<TransformValues?>(
+            valueListenable: notifier,
+            builder: (context, values, _) => box(values ?? _values),
+          );
   }
 
   /// The mesh grid's cell count on one axis, as a number box.
@@ -1105,10 +1084,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
   );
 
   /// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 「다 추천대로」): the
-  /// values in ROWS AND COLUMNS — 위치 · 배율 · 회전 · 기준점 · 메쉬, each
-  /// pair one row ([ToolSettingGrid]) — the scale's link as the chain beside
-  /// 「배율」, the flips at the end of the rotation row, and 초기화 · 적용 as
-  /// the last line ([ToolSettingActions]). ↩️It was a list of nine
+  /// values in ROWS AND COLUMNS — 위치 · 배율 · 회전 · 기준점 · 메시, each
+  /// pair one row ([ToolSettingRow.pair]) — the scale's link as the chain
+  /// beside 「배율」, the flips in the rotation row's second cell, and 초기화
+  /// · 적용 as the last line ([ToolSettingActions]). ↩️It was a list of nine
   /// name-and-number lines with the link's switch row between them, and its
   /// four buttons folding onto two lines under them.
   @override
@@ -1132,176 +1111,169 @@ class _MoveSettingsState extends State<_MoveSettings> {
       tool: 'move',
       title: strings.toolTransform,
       children: [
-        ToolSettingGrid(
-          rows: [
-            (
-              label: strings.trPosition,
-              labelEnd: null,
-              first: _valueBox(
-                keyValue: 'move-x-field',
-                name: 'X',
-                value: _BoxValue(
-                  read: (values) => values.tx,
-                  write: (now, tx) => now.copyWith(tx: tx),
-                ),
-              ),
-              second: _valueBox(
-                keyValue: 'move-y-field',
-                name: 'Y',
-                value: _BoxValue(
-                  read: (values) => values.ty,
-                  write: (now, ty) => now.copyWith(ty: ty),
-                ),
-              ),
+        ToolSettingRow.pair(
+          label: strings.trPosition,
+          first: _valueBox(
+            keyValue: 'move-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.tx,
+              write: (now, tx) => now.copyWith(tx: tx),
             ),
-            // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
-            // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
-            // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
-            // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
-            // held two; this row showed the horizontal one as 「배율」 and
-            // wrote it to both. An edge middle's stretch reads on its own
-            // box now, and a mirror reads as the minus it is.
-            //
-            // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
-            // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
-            // axis; linked, the write carries the other along by the same
-            // ratio and leaves its sign alone (`TransformValues.withScaleX`).
-            (
-              label: strings.trScale,
-              labelEnd: ScaleChainButton(
-                keyValue: 'move-scale-link-switch',
-                isOn: options.scaleLinked,
-                onPressed: onOptions == null
-                    ? null
-                    : () => onOptions(
-                        options.copyWith(scaleLinked: !options.scaleLinked),
-                      ),
-              ),
-              first: _valueBox(
-                keyValue: 'move-scale-x-field',
-                name: 'X',
-                value: _BoxValue(
-                  read: (values) => values.sx,
-                  write: (now, sx) => _linkedWithin(
-                    now.withScaleX(
-                      _scaleWithin(sx),
-                      linked: options.scaleLinked,
-                    ),
+          ),
+          second: _valueBox(
+            keyValue: 'move-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.ty,
+              write: (now, ty) => now.copyWith(ty: ty),
+            ),
+          ),
+        ),
+        // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
+        // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
+        // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
+        // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
+        // held two; this row showed the horizontal one as 「배율」 and
+        // wrote it to both. An edge middle's stretch reads on its own
+        // box now, and a mirror reads as the minus it is.
+        //
+        // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
+        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
+        // axis; linked, the write carries the other along by the same
+        // ratio and leaves its sign alone (`TransformValues.withScaleX`).
+        ToolSettingRow.pair(
+          label: strings.trScale,
+          labelEnd: ScaleChainButton(
+            keyValue: 'move-scale-link-switch',
+            isOn: options.scaleLinked,
+            onPressed: onOptions == null
+                ? null
+                : () => onOptions(
+                    options.copyWith(scaleLinked: !options.scaleLinked),
                   ),
-                  unit: '%',
-                  perUnit: 0.01,
+          ),
+          first: _valueBox(
+            keyValue: 'move-scale-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.sx,
+              write: (now, sx) => _linkedWithin(
+                now.withScaleX(
+                  _scaleWithin(sx),
+                  linked: options.scaleLinked,
                 ),
               ),
-              second: _valueBox(
-                keyValue: 'move-scale-y-field',
-                name: 'Y',
-                value: _BoxValue(
-                  read: (values) => values.sy,
-                  write: (now, sy) => _linkedWithin(
-                    now.withScaleY(
-                      _scaleWithin(sy),
-                      linked: options.scaleLinked,
-                    ),
+              unit: '%',
+              perUnit: 0.01,
+            ),
+          ),
+          second: _valueBox(
+            keyValue: 'move-scale-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.sy,
+              write: (now, sy) => _linkedWithin(
+                now.withScaleY(
+                  _scaleWithin(sy),
+                  linked: options.scaleLinked,
+                ),
+              ),
+              unit: '%',
+              perUnit: 0.01,
+            ),
+          ),
+        ),
+        ToolSettingRow.pair(
+          label: strings.trRotation,
+          first: _valueBox(
+            keyValue: 'move-angle-field',
+            value: _BoxValue(
+              read: (values) => values.rotationDegrees,
+              write: (now, degrees) =>
+                  now.copyWith(rotationDegrees: degrees),
+              unit: '°',
+            ),
+          ),
+          // ↩️유저 08-13 put them in a row of their own, in this order:
+          // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box
+          // the way the angle does, so they stand in its row now — two
+          // boxes sharing the Y column, in the view pill's own glyphs.
+          second: Row(
+            children: [
+              Expanded(
+                child: ToolSettingAction.glyph(
+                  keyValue: 'move-flip-horizontal-button',
+                  label: strings.trFlipHorizontal,
+                  glyph: const Icon(Icons.flip),
+                  onPressed: canEdit
+                      ? () => commands?.flipTransform(horizontal: true)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: ToolSettingColumns.gap),
+              Expanded(
+                child: ToolSettingAction.glyph(
+                  keyValue: 'move-flip-vertical-button',
+                  label: strings.trFlipVertical,
+                  glyph: const RotatedBox(
+                    quarterTurns: 1,
+                    child: Icon(Icons.flip),
                   ),
-                  unit: '%',
-                  perUnit: 0.01,
+                  onPressed: canEdit
+                      ? () => commands?.flipTransform(horizontal: false)
+                      : null,
                 ),
               ),
+            ],
+          ),
+        ),
+        // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
+        // beside the other digits, and written the way they are: each
+        // box names its own value and restates none ([_write]).
+        //
+        // ⚠️Always here, never mode-gated: the rotation the anchor
+        // serves works in every mode (outside the box is the rotation),
+        // so a row that appeared and vanished would be inventing a rule
+        // the rotation does not have — and 「없다가 생기는 UI 금지」
+        // besides.
+        ToolSettingRow.pair(
+          label: strings.trAnchorPoint,
+          first: _valueBox(
+            keyValue: 'move-anchor-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.anchorX,
+              write: (now, anchorX) => now.copyWith(anchorX: anchorX),
             ),
-            (
-              label: strings.trRotation,
-              labelEnd: null,
-              first: _valueBox(
-                keyValue: 'move-angle-field',
-                value: _BoxValue(
-                  read: (values) => values.rotationDegrees,
-                  write: (now, degrees) =>
-                      now.copyWith(rotationDegrees: degrees),
-                  unit: '°',
-                ),
-              ),
-              // ↩️유저 08-13 put them in a row of their own, in this order:
-              // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box
-              // the way the angle does, so they stand at the end of its row
-              // now, in the view pill's own glyphs.
-              second: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  AppIconButton(
-                    keyValue: 'move-flip-horizontal-button',
-                    tooltip: strings.trFlipHorizontal,
-                    size: AppIconButtonSize.bar,
-                    icon: const Icon(Icons.flip),
-                    onPressed: canEdit
-                        ? () => commands?.flipTransform(horizontal: true)
-                        : null,
-                  ),
-                  const SizedBox(width: ToolSettingsSection.rowGap),
-                  AppIconButton(
-                    keyValue: 'move-flip-vertical-button',
-                    tooltip: strings.trFlipVertical,
-                    size: AppIconButtonSize.bar,
-                    icon: const RotatedBox(
-                      quarterTurns: 1,
-                      child: Icon(Icons.flip),
-                    ),
-                    onPressed: canEdit
-                        ? () => commands?.flipTransform(horizontal: false)
-                        : null,
-                  ),
-                ],
-              ),
+          ),
+          second: _valueBox(
+            keyValue: 'move-anchor-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.anchorY,
+              write: (now, anchorY) => now.copyWith(anchorY: anchorY),
             ),
-            // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
-            // beside the other digits, and written the way they are: each
-            // box names its own value and restates none ([_write]).
-            //
-            // ⚠️Always here, never mode-gated: the rotation the anchor
-            // serves works in every mode (outside the box is the rotation),
-            // so a row that appeared and vanished would be inventing a rule
-            // the rotation does not have — and 「없다가 생기는 UI 금지」
-            // besides.
-            (
-              label: strings.trAnchorPoint,
-              labelEnd: null,
-              first: _valueBox(
-                keyValue: 'move-anchor-x-field',
-                name: 'X',
-                value: _BoxValue(
-                  read: (values) => values.anchorX,
-                  write: (now, anchorX) => now.copyWith(anchorX: anchorX),
-                ),
-              ),
-              second: _valueBox(
-                keyValue: 'move-anchor-y-field',
-                name: 'Y',
-                value: _BoxValue(
-                  read: (values) => values.anchorY,
-                  write: (now, anchorY) => now.copyWith(anchorY: anchorY),
-                ),
-              ),
-            ),
-            (
-              label: strings.trMesh,
-              labelEnd: null,
-              first: _meshBox(
-                keyValue: 'move-mesh-columns-field',
-                name: strings.trMeshColumns,
-                value: options.meshColumns,
-                live: meshLive,
-                onChanged: (cells) =>
-                    meshHandler?.call(options.copyWith(meshColumns: cells)),
-              ),
-              second: _meshBox(
-                keyValue: 'move-mesh-rows-field',
-                name: strings.trMeshRows,
-                value: options.meshRows,
-                live: meshLive,
-                onChanged: (cells) =>
-                    meshHandler?.call(options.copyWith(meshRows: cells)),
-              ),
-            ),
-          ],
+          ),
+        ),
+        ToolSettingRow.pair(
+          label: strings.trMesh,
+          first: _meshBox(
+            keyValue: 'move-mesh-columns-field',
+            name: strings.trMeshColumns,
+            value: options.meshColumns,
+            live: meshLive,
+            onChanged: (cells) =>
+                meshHandler?.call(options.copyWith(meshColumns: cells)),
+          ),
+          second: _meshBox(
+            keyValue: 'move-mesh-rows-field',
+            name: strings.trMeshRows,
+            value: options.meshRows,
+            live: meshLive,
+            onChanged: (cells) =>
+                meshHandler?.call(options.copyWith(meshRows: cells)),
+          ),
         ),
         ToolSettingsGroupHeader(strings.trFinish),
         // AA, and nothing else.
@@ -1310,12 +1282,15 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // in-between shades, which is the same switch described from the
         // far side: the argmax preserves the source words BECAUSE it
         // refuses to blend, and the blend anti-aliases BECAUSE it does.
-        // 유저 08-13 asked for the two letters and the polarity that goes
-        // with them — AA on is the smoothing default, AA off is the
-        // two-value copy.
+        // 유저 08-13 asked for the polarity that goes with it — on is the
+        // smoothing default, off is the two-value copy.
+        //
+        // ↩️And for the two letters, 「AA」 — the one tool whose switch did
+        // not say what every other tool's did. 🗣️유저 2026-10-10: 「안티앨리어스는
+        // 왜 변형도구만 이름 다른건지도 모르겠고. 안티앨리어스로 이름 다 통일」.
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('move-antialias-switch'),
-          label: 'AA',
+          label: strings.brAntiAlias,
           value: options.resampleMode == ResampleMode.blend,
           onChanged: onOptions == null
               ? null
@@ -1431,51 +1406,56 @@ class _ReadSourceControl extends StatelessWidget {
     final names = readLayerNames;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Every row's name style (tool-settings-panel-tidy: 「이름 글자
-        // 하나」) — above its answers, which are too long to share its line.
-        Text(AppText.strings.toolReadSource, style: theme.textTheme.labelSmall),
-        const SizedBox(height: 4),
         // Selection shows through COLOR only — no check glyphs (the
         // program's selection style).
         //
-        // STOOD UP, one answer per line: side by side, three answers in the
-        // panel's width folded 「References」 onto four lines (measured in
-        // the real panel, 2026-09-24). Both tools wear the one shape — the
-        // app's one grouped choice (board pill-group-everywhere), down.
-        PillStrip(
-          key: ValueKey<String>('$tool-source-segments'),
-          axis: Axis.vertical,
-          items: [
-            for (final offer in offered)
-              PillItem(
-                keyValue: '$tool-source-${offer.name}',
-                label: _label(offer),
-                selected: offer == source,
-                onTap: handler == null ? null : () => handler(offer),
-              ),
-          ],
+        // ↩️It stood one answer per line under its name, because three
+        // answers side by side folded 「References」 onto four lines
+        // (measured, 2026-09-24). It is a choice row like every other now —
+        // its name in the name column, the answers sharing the control
+        // column, a long word ellipsising (tool-settings-panel-tidy, 유저
+        // 2026-10-10: 「채우기 참조는 왜 세로로 버튼이 있는건지도
+        // 모르겠고」).
+        ToolSettingRow(
+          label: AppText.strings.toolReadSource,
+          child: PillStrip.even(
+            key: ValueKey<String>('$tool-source-segments'),
+            items: [
+              for (final offer in offered)
+                PillItem(
+                  keyValue: '$tool-source-${offer.name}',
+                  label: _label(offer),
+                  selected: offer == source,
+                  onTap: handler == null ? null : () => handler(offer),
+                ),
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                names == null
-                    ? AppText.strings.toolReadsEveryVisibleLayer
-                    : names.isEmpty
-                    ? '—'
-                    : names.join(' · '),
-                key: ValueKey<String>('$tool-reads'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        // What the answer reads right now, under the answers.
+        ToolSettingRow(
+          label: '',
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  names == null
+                      ? AppText.strings.toolReadsEveryVisibleLayer
+                      : names.isEmpty
+                      ? '—'
+                      : names.join(' · '),
+                  key: ValueKey<String>('$tool-reads'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-            ?trailing,
-          ],
+              ?trailing,
+            ],
+          ),
         ),
       ],
     );
@@ -1503,22 +1483,21 @@ class _FillSettings extends StatelessWidget {
       tool: 'fill',
       title: AppText.strings.toolFill,
       children: [
-        ToolSettingBar(
-          _ReadSourceControl(
-            tool: 'fill',
-            offered: CanvasReadSource.values,
-            source: options.source,
-            onChanged: (source) => onChanged(options.copyWith(source: source)),
-            readLayerNames: readLayerNames,
-            trailing: FillReferenceButton(
-              keyValue: 'fill-active-layer-reference',
-              isOn: activeLayerIsFillReference,
-              onPressed: onToggleActiveLayerFillReference,
-            ),
+        _ReadSourceControl(
+          tool: 'fill',
+          offered: CanvasReadSource.values,
+          source: options.source,
+          onChanged: (source) => onChanged(options.copyWith(source: source)),
+          readLayerNames: readLayerNames,
+          trailing: FillReferenceButton(
+            keyValue: 'fill-active-layer-reference',
+            isOn: activeLayerIsFillReference,
+            onPressed: onToggleActiveLayerFillReference,
           ),
         ),
-        ToolSettingBar(
-          FieldSlider(
+        ToolSettingRow.bar(
+          label: AppText.strings.brTolerance,
+          bar: FieldSlider.cell(
             key: const ValueKey<String>('fill-tolerance-slider'),
             min: 0,
             max: 128,
@@ -1529,8 +1508,9 @@ class _FillSettings extends StatelessWidget {
                 onChanged(options.copyWith(tolerance: value.round())),
           ),
         ),
-        ToolSettingBar(
-          FieldSlider(
+        ToolSettingRow.bar(
+          label: AppText.strings.brExpand,
+          bar: FieldSlider.cell(
             key: const ValueKey<String>('fill-expand-slider'),
             min: 0,
             max: 4,
@@ -1542,8 +1522,9 @@ class _FillSettings extends StatelessWidget {
                 onChanged(options.copyWith(expandPx: value.round())),
           ),
         ),
-        ToolSettingBar(
-          FieldSlider(
+        ToolSettingRow.bar(
+          label: AppText.strings.brGapClose,
+          bar: FieldSlider.cell(
             key: const ValueKey<String>('fill-gap-close-slider'),
             min: 0,
             max: 8,

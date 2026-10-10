@@ -19,6 +19,8 @@ import '../widgets/empty_state_text.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import 'brush_tool_state.dart' show CanvasTool;
+import 'tool_setting_rows.dart';
+import 'tool_settings_section.dart';
 
 /// A fresh symmetry guide for [canvasSize].
 ///
@@ -437,24 +439,22 @@ class GuideSettings extends StatelessWidget {
       );
     }
     final shape = guide.shape;
-    return ContentScrollbar(
-      builder: (context, controller) => ListView(
-        key: ValueKey<String>('guide-settings-${guide.id.value}'),
-        controller: controller,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: switch (shape) {
-          SymmetryShape() => _symmetryFields(context, guide, shape),
-          PerspectiveShape() => _perspectiveFields(context, guide, shape),
-        },
-      ),
+    // The tool settings' one shell and grid, named by the guide it edits
+    // (tool-settings-panel-tidy, 유저 2026-10-10: 「다 통일해서 정돈된 행/열
+    // 느낌 나도록」). ↩️It was a list of its own: its rows flush to the
+    // panel's edge, each vanishing point a two-line list tile, and the add
+    // button gone once there were three.
+    return ToolSettingsSection(
+      tool: 'guide-${guide.id.value}',
+      title: guide.name,
+      children: switch (shape) {
+        SymmetryShape() => _symmetryFields(guide, shape),
+        PerspectiveShape() => _perspectiveFields(guide, shape),
+      },
     );
   }
 
-  List<Widget> _symmetryFields(
-    BuildContext context,
-    DrawingGuide guide,
-    SymmetryShape shape,
-  ) {
+  List<Widget> _symmetryFields(DrawingGuide guide, SymmetryShape shape) {
     final strings = AppText.strings;
     return [
       SettingsSwitchRow(
@@ -467,9 +467,9 @@ class GuideSettings extends StatelessWidget {
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(lineSymmetry: value)),
       ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: FieldSlider(
+      ToolSettingRow.bar(
+        label: strings.guideLineCount,
+        bar: FieldSlider.cell(
           key: const ValueKey<String>('guide-line-count'),
           label: strings.guideLineCount,
           value: shape.lineCount.toDouble(),
@@ -493,12 +493,9 @@ class GuideSettings extends StatelessWidget {
     ];
   }
 
-  List<Widget> _perspectiveFields(
-    BuildContext context,
-    DrawingGuide guide,
-    PerspectiveShape shape,
-  ) {
+  List<Widget> _perspectiveFields(DrawingGuide guide, PerspectiveShape shape) {
     final strings = AppText.strings;
+    final points = shape.vanishingPoints;
     return [
       // ⛔THE SNAP SWITCH IS GONE FROM HERE (유저 2026-09-01, guide-sym):
       // 「퍼스자의 툴설정에 있는 스냅버튼, **이거 중복되니까 삭제. 퍼스자
@@ -524,59 +521,60 @@ class GuideSettings extends StatelessWidget {
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(constrainToEyeLevel: value)),
       ),
-      const Divider(height: 12),
-      for (var index = 0; index < shape.vanishingPoints.length; index += 1)
+      ToolSettingsGroupHeader(strings.guideVanishingPoint),
+      for (var index = 0; index < points.length; index += 1)
         _VanishingPointRow(
           index: index,
-          point: shape.vanishingPoints[index],
+          point: points[index],
           onMadeVertical: () {
-            final points = [...shape.vanishingPoints];
+            final next = [...points];
             // Exactly vertical, stated as a DIRECTION — the one form that
             // does not depend on two lines being parallel to the last bit.
-            points[index] = VanishingPointTowards(dx: 0, dy: 1);
-            _replaceShape(guide, shape.copyWith(vanishingPoints: points));
+            next[index] = VanishingPointTowards(dx: 0, dy: 1);
+            _replaceShape(guide, shape.copyWith(vanishingPoints: next));
           },
-          onRemoved: shape.vanishingPoints.length > 1
-              ? () {
-                  final points = [...shape.vanishingPoints]..removeAt(index);
-                  _replaceShape(
-                    guide,
-                    shape.copyWith(vanishingPoints: points),
-                  );
-                }
+          onRemoved: points.length > 1
+              ? () => _replaceShape(
+                  guide,
+                  shape.copyWith(
+                    vanishingPoints: [...points]..removeAt(index),
+                  ),
+                )
               : null,
         ),
-      if (shape.vanishingPoints.length < 3)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const ValueKey<String>('guide-add-vanishing-point'),
-              icon: Icon(
-                Icons.add,
-                size: 18,
-                color: AppColors.addGlyph(enabled: true),
-              ),
-              label: Text(strings.guideAddVanishingPoint),
-              onPressed: () => _replaceShape(
-                guide,
-                shape.copyWith(
-                  vanishingPoints: [
-                    ...shape.vanishingPoints,
-                    // The third point is the vertical family far more often
-                    // than not, so that is what a new one starts as.
-                    VanishingPointTowards(dx: 0, dy: 1),
-                  ],
-                ),
-              ),
+      // A perspective holds three points at most: the button keeps its
+      // place and goes dead (없다가 생기는 UI 금지).
+      ToolSettingActions(
+        lines: [
+          [
+            ToolSettingAction(
+              keyValue: 'guide-add-vanishing-point',
+              label: strings.guideAddVanishingPoint,
+              onPressed: points.length < 3
+                  ? () => _replaceShape(
+                      guide,
+                      shape.copyWith(
+                        vanishingPoints: [
+                          ...points,
+                          // The third point is the vertical family far more
+                          // often than not, so that is what a new one starts
+                          // as.
+                          VanishingPointTowards(dx: 0, dy: 1),
+                        ],
+                      ),
+                    )
+                  : null,
             ),
-          ),
-        ),
+          ],
+        ],
+      ),
     ];
   }
 }
 
+/// One vanishing point as a row of the grid: its number in the name column,
+/// where it stands in the first cell, and its two buttons sharing the
+/// second — the rotation row's shape (an angle, then the two flips).
 class _VanishingPointRow extends StatelessWidget {
   const _VanishingPointRow({
     required this.index,
@@ -593,6 +591,7 @@ class _VanishingPointRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
+    final theme = Theme.of(context);
     final resolved = point.resolve();
     final position = resolved.position;
     // ⚠️EQUIVALENT MUTANT, and the arm stays on purpose (2026-09-08):
@@ -600,33 +599,41 @@ class _VanishingPointRow extends StatelessWidget {
     // `resolved.isInfinite` changes no answer. It NAMES the case a reader
     // came looking for, while the second arm also catches a cross product
     // that overflowed to NaN — which nobody would read out of it alone.
-    final subtitle = resolved.isInfinite || position == null
+    final reads = resolved.isInfinite || position == null
         ? strings.guideVanishingPointAtInfinity
         : '${position.x.round()}, ${position.y.round()}';
-    return Material(
-      type: MaterialType.transparency,
-      child: ListTile(
-        key: ValueKey<String>('guide-vanishing-point-$index'),
-        dense: true,
-        title: Text('${strings.guideVanishingPoint} ${index + 1}'),
-        subtitle: Text(subtitle),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIconButton(
+    return ToolSettingRow.pair(
+      key: ValueKey<String>('guide-vanishing-point-$index'),
+      label: '${index + 1}',
+      first: Text(
+        reads,
+        key: ValueKey<String>('guide-vanishing-point-$index-reads'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      second: Row(
+        children: [
+          Expanded(
+            child: ToolSettingAction.glyph(
               keyValue: 'guide-make-vertical',
-              tooltip: strings.guideMakeVertical,
-              icon: const Icon(Icons.vertical_align_center),
+              label: strings.guideMakeVertical,
+              glyph: const Icon(Icons.vertical_align_center),
               onPressed: onMadeVertical,
             ),
-            AppIconButton(
+          ),
+          const SizedBox(width: ToolSettingColumns.gap),
+          Expanded(
+            child: ToolSettingAction.glyph(
               keyValue: 'guide-remove',
-              tooltip: strings.guideDelete,
-              icon: const Icon(Icons.delete_outline),
+              label: strings.guideDelete,
+              glyph: const Icon(Icons.delete_outline),
               onPressed: onRemoved,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

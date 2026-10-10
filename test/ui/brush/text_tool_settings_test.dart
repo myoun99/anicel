@@ -19,17 +19,20 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cel_text_hand.dart';
+import '../../helpers/tool_setting_action_probe.dart';
 
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
 /// face, size, tracking, bold, colour, outline, outline width, the
 /// smoothing of the letters' edges · 상자 —
 /// alignment, box width, line spacing, background · and at the foot
-/// 「그림으로 굳히기」.
+/// 「래스터라이즈」.
 ///
 /// What a row reads and writes is `TextToolSettingsValues`'s, measured
 /// there. Here: every row is there, shows what it should, and a hand on it
@@ -113,9 +116,9 @@ void main() {
         ),
       );
 
-  /// 「그림으로 굳히기」, as the button it is.
-  FilledButton intoDrawing(WidgetTester tester) =>
-      tester.widget<FilledButton>(row('into-drawing'));
+  /// 「래스터라이즈」, as the button it is.
+  ToolSettingAction intoDrawing(WidgetTester tester) =>
+      tester.toolSettingAction(row('into-drawing'));
 
   BooleanDot boldRing(WidgetTester tester) => tester.widget<BooleanDot>(
     find.descendant(of: row('bold'), matching: find.byType(BooleanDot)),
@@ -232,7 +235,7 @@ void main() {
       );
     });
 
-    testWidgets('「그림으로 굳히기」 keeps its seat and is OUT: there is no '
+    testWidgets('「래스터라이즈」 keeps its seat and is OUT: there is no '
         'text to turn', (tester) async {
       await pumpSettings(tester);
 
@@ -783,9 +786,11 @@ void main() {
     );
   });
 
-  test('「그림으로 굳히기」 is said in EVERY language — in Korean as the '
-      'layout 유저 took wrote it, elsewhere by the app\'s own word for a '
-      'layer made pixels', () {
+  // ↩️Korean said it as the layout 유저 took wrote it, 「그림으로
+  // 굳히기」, until 유저 2026-10-10: 「굽기버튼도 마찬가지야. 뭐는 굽기 뭐는
+  // 래스터라이즈. 래스터라이즈로 통일」.
+  test('「래스터라이즈」 is said in EVERY language by the app\'s own word '
+      'for a layer made pixels', () {
     expect(
       {
         for (final language in AppLanguage.values)
@@ -794,7 +799,7 @@ void main() {
       {
         AppLanguage.en: 'Rasterize',
         AppLanguage.ja: 'ラスタライズ',
-        AppLanguage.ko: '그림으로 굳히기',
+        AppLanguage.ko: '래스터라이즈',
         AppLanguage.fr: 'Pixelliser',
         AppLanguage.zhHans: '栅格化',
       },
@@ -802,7 +807,7 @@ void main() {
   });
 
   // 유저 2026-10-06: 「동작은 텍스트 선택하면 해당 버튼 활성화색」.
-  testWidgets('🚨「그림으로 굳히기」 is LIT while a text is in hand, and '
+  testWidgets('🚨「래스터라이즈」 is LIT while a text is in hand, and '
       'pressed it turns that text into its cel\'s drawing — one step, the '
       'hand free, and the button out again', (tester) async {
     final hand = await pumpSettings(tester, text: said([run('ab')]));
@@ -828,7 +833,7 @@ void main() {
 
   // The press law (CLAUDE.md): 「컨트롤 위에서 시작한 제스처는 그 컨트롤의
   // 것이다. 스크롤은 그 외에서 일어난다」.
-  testWidgets('🚨a press on 「그림으로 굳히기」 that WOBBLES is still the '
+  testWidgets('🚨a press on 「래스터라이즈」 that WOBBLES is still the '
       'button\'s: the text turns, and the settings do not scroll', (
     tester,
   ) async {
@@ -854,7 +859,11 @@ void main() {
     await tester.pump();
     final scrolledTo = list.pixels;
     final button = tester.getRect(row('into-drawing'));
-    expect(button.height, greaterThan(24), reason: '⛔fixture: room to wobble');
+    expect(
+      button.height,
+      greaterThanOrEqualTo(24),
+      reason: '⛔fixture: room to wobble past the slop',
+    );
 
     // Down at its top, and past a finger's slop (18) before it comes up —
     // inside the button all the way.
@@ -862,9 +871,9 @@ void main() {
       button.topCenter + const Offset(0, 2),
     );
     await tester.pump();
-    await finger.moveBy(const Offset(0, 11));
+    await finger.moveBy(const Offset(0, 10));
     await tester.pump();
-    await finger.moveBy(const Offset(0, 11));
+    await finger.moveBy(const Offset(0, 9));
     await tester.pump();
     await finger.up();
     await tester.pump();

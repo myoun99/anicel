@@ -90,15 +90,33 @@ void main() {
     expect(find.text('Heading'), findsOneWidget);
     expect(find.text('row'), findsOneWidget);
 
-    // ⛔The heading is a STYLE, not a layout: the shell must not slip its
-    // own gap between the heading and the first row, because the sections
-    // do not agree on what belongs there — the shape fill puts its polygon
-    // confirm between the two. A shell that owned the gap would have moved
-    // every section by eight pixels to look tidier in one file.
+    // ↩️The heading was a style and not a layout: the shell kept out of the
+    // gap under it while the sections disagreed on what stood there (the
+    // shape fill put its polygon confirm between the two). The confirm is
+    // an action at the end now, and the gap is the shell's — every
+    // section's first row starts one distance under its name, whatever the
+    // row is (tool-settings-panel-tidy, 유저 2026-10-10 「다 추천대로」).
+    double gapUnderHeading(Finder first) =>
+        tester.getTopLeft(first).dy -
+        tester.getBottomLeft(find.text('Heading')).dy;
+    final underWords = gapUnderHeading(find.text('row'));
+    await tester.pumpWidget(
+      app(
+        const ToolSettingsSection(
+          tool: 'another-made-up-tool',
+          title: 'Heading',
+          children: <Widget>[
+            SizedBox(key: ValueKey<String>('a-bar'), height: 24),
+          ],
+        ),
+      ),
+    );
+
+    expect(underWords, greaterThan(0), reason: 'no gap under the heading');
     expect(
-      tester.getTopLeft(find.text('row')).dy,
-      tester.getBottomLeft(find.text('Heading')).dy,
-      reason: 'the shell inserted a gap of its own under the heading',
+      gapUnderHeading(find.byKey(const ValueKey<String>('a-bar'))),
+      underWords,
+      reason: 'the gap moved with what stands first',
     );
   });
 }

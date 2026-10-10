@@ -95,7 +95,10 @@ class SettingsSwitchRow extends StatelessWidget {
         // it always was, and a button of its own in here would fire twice.
         child: ListTile(
           key: tileKey,
-          contentPadding: EdgeInsets.zero,
+          // Flush — unless the surface keeps a column at the end of its
+          // rows (a tool's settings: its ring stands where the boxes end).
+          contentPadding:
+              ListTileTheme.of(context).contentPadding ?? EdgeInsets.zero,
           // Dense — unless the surface it stands on says otherwise. A dense
           // tile sets its name at 13 whatever its theme says, so a surface
           // whose rows are named in a style of its own (the tool settings

@@ -16,9 +16,13 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_press.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+
+import '../../helpers/tool_setting_action_probe.dart';
 
 /// R11-④: the Tool Library / Tool Settings panels follow the active tool.
 void main() {
@@ -541,7 +545,7 @@ void main() {
         await pumpSettings(tester, shape: shape, points: 0);
         expect(find.byKey(buttonKey), findsOneWidget, reason: '$shape');
         expect(
-          tester.widget<OutlinedButton>(find.byKey(buttonKey)).onPressed,
+          tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
           isNull,
           reason: '$shape',
         );
@@ -555,7 +559,7 @@ void main() {
         points: 2,
       );
       expect(
-        tester.widget<OutlinedButton>(find.byKey(buttonKey)).onPressed,
+        tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
         isNull,
       );
     });
@@ -604,8 +608,8 @@ void main() {
       await tester.pump();
     }
 
-    OutlinedButton button(WidgetTester tester) =>
-        tester.widget<OutlinedButton>(find.byKey(buttonKey));
+    ToolSettingAction button(WidgetTester tester) =>
+        tester.toolSettingAction(find.byKey(buttonKey));
 
     testWidgets('stands in one place, live, with a selection and without', (
       tester,

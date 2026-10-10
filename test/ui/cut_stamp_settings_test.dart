@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/tool_setting_action_probe.dart';
+
 CutPiece _piece({int scalePercent = 100, bool flipHorizontal = false}) {
   return CutPiece(
     image: BrushStampImage(
@@ -160,11 +162,11 @@ void main() {
     final slot = CutPieceSlot()..hold(_piece());
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
     final reset = find.byKey(const ValueKey<String>('cut-reset-button'));
-    expect(tester.widget<OutlinedButton>(reset).onPressed, isNull);
+    expect(tester.toolSettingAction(reset).onPressed, isNull);
 
     slot.updatePose(scalePercent: 250);
     await tester.pump();
-    expect(tester.widget<OutlinedButton>(reset).onPressed, isNotNull);
+    expect(tester.toolSettingAction(reset).onPressed, isNotNull);
   });
 
   testWidgets('Reset clears the size AND both flips in one press', (
@@ -210,7 +212,7 @@ void main() {
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
     expect(
       tester
-          .widget<OutlinedButton>(
+          .toolSettingAction(
             find.byKey(const ValueKey<String>('cut-paste-at-origin-button')),
           )
           .onPressed,

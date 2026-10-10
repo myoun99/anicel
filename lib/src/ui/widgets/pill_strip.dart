@@ -4,8 +4,17 @@ import 'package:flutter/rendering.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 import 'app_tooltip.dart';
+import 'field_slider.dart' show FieldSlider;
 
 const _pillPadding = EdgeInsets.symmetric(horizontal: 7, vertical: 2);
+
+/// A share of an even strip's: its word stands in the middle of it, so the
+/// sides only keep a long word off the hairline — 「없음」 fits a quarter
+/// of the brush's narrow column with them.
+const _sharePadding = EdgeInsets.symmetric(horizontal: 3);
+
+/// A glyph pill's glyph — a settings box's own size of mark.
+const double _glyphSize = 16;
 
 /// One segment of a [PillStrip].
 class PillItem {
@@ -17,12 +26,18 @@ class PillItem {
     this.tooltip,
     this.otherLabel,
     this.tone,
+    this.icon,
   });
 
   /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
   /// the row's contract.
   final String keyValue;
   final String label;
+
+  /// What the pill shows in place of its [label], which then names it to a
+  /// screen reader and a tooltip — the selection modes, drawn as the glyphs
+  /// they always were.
+  final IconData? icon;
   final bool selected;
 
   /// What a chosen pill is tinted with, where that is not the app's accent:
@@ -63,10 +78,25 @@ class PillStrip extends StatelessWidget {
     super.key,
     required this.items,
     this.axis = Axis.horizontal,
-  });
+  }) : _even = false;
+
+  /// THE STRIP OF A SETTINGS ROW: its pills share the width it is given
+  /// EVENLY, at a settings bar's height ([FieldSlider.defaultHeight]) — so
+  /// every choice of a tool's settings is the size of its boxes, and two
+  /// strips of two answers split their row at the same place.
+  ///
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「텍스트도구나 도형의
+  /// 선/채움이런거 설정끼리 사각형 박스 크기가 다 달라서 정돈된느낌
+  /// 하나도안들어. X값Y값 크기 통일한것처럼 이런부분 다 통일해서」.
+  const PillStrip.even({super.key, required this.items})
+    : axis = Axis.horizontal,
+      _even = true;
 
   final List<PillItem> items;
   final Axis axis;
+
+  /// Whether the pills share the strip's width evenly ([PillStrip.even]).
+  final bool _even;
 
   @override
   Widget build(BuildContext context) {
@@ -74,19 +104,36 @@ class PillStrip extends StatelessWidget {
     final pills = [
       for (var i = 0; i < items.length; i += 1) _pill(items[i], first: i == 0),
     ];
-    return Container(
+    final strip = Container(
       clipBehavior: Clip.antiAlias,
-      decoration: ShapeDecoration(
-        shape: AppShapes.container(
-          AppShapes.wellRadius,
-          side: BorderSide(color: theme.dividerColor),
-        ),
-      ),
+      // A settings row's strip wears the box's face — the ground and the
+      // hairline a bar and a number box stand in, dimmed as a dead bar's
+      // is when no answer takes a press — so the grid's controls read as
+      // one kind of box.
+      decoration: _even
+          ? FieldSlider.frameOf(
+              FieldSlider.defaultHeight,
+              enabled: items.any((item) => item.onTap != null),
+            )
+          : ShapeDecoration(
+              shape: AppShapes.container(
+                AppShapes.wellRadius,
+                side: BorderSide(color: theme.dividerColor),
+              ),
+            ),
       // Down, each pill is one line tall at the strip's full width.
-      child: axis == Axis.horizontal
+      child: _even
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [for (final pill in pills) Expanded(child: pill)],
+            )
+          : axis == Axis.horizontal
           ? _PillRow(children: pills)
           : Column(mainAxisSize: MainAxisSize.min, children: pills),
     );
+    return _even
+        ? SizedBox(height: FieldSlider.defaultHeight, child: strip)
+        : strip;
   }
 
   Widget _pill(PillItem item, {required bool first}) {
@@ -99,8 +146,10 @@ class PillStrip extends StatelessWidget {
       leadingHairline: !first,
       axis: axis,
       tone: item.tone,
+      icon: item.icon,
+      fills: _even,
     );
-    final tooltip = item.tooltip;
+    final tooltip = item.tooltip ?? (item.icon == null ? null : item.label);
     return tooltip == null ? pill : AppTooltip(message: tooltip, child: pill);
   }
 }
@@ -277,11 +326,20 @@ class Pill extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.otherLabel,
     this.tone,
+    this.icon,
+    this.fills = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// Shown in place of [label] ([PillItem.icon]).
+  final IconData? icon;
+
+  /// Whether the pill is a share of its strip rather than as wide as its
+  /// word ([PillStrip.even]) — its word then sits in the middle of it.
+  final bool fills;
 
   /// The tint of the pill while it is chosen ([PillItem.tone]); null is the
   /// app's accent.
@@ -302,34 +360,18 @@ class Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = tone ?? theme.colorScheme.primary;
-    Text word(String text, {bool shown = true}) => Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.labelSmall?.copyWith(
-        // A selected pill reads selected even when it takes no tap —
-        // 「커스텀」 is a state the delta puts the row in, not a button.
-        color: !shown
-            ? Colors.transparent
-            : selected
-            ? accent
-            : onTap == null
-            ? theme.disabledColor
-            : theme.colorScheme.onSurface,
-      ),
-    );
-    final other = otherLabel;
     final hairline = BorderSide(color: theme.dividerColor);
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
         onTap: silentPress(onTap),
         child: Container(
-          padding: _pillPadding,
+          padding: fills ? _sharePadding : _pillPadding,
           // Down, a pill takes the whole width the strip is given and sets
           // its word in the middle, as it sits in a pill only as wide as
-          // its word — one alignment does both.
-          alignment: axis == Axis.vertical ? Alignment.center : null,
+          // its word — one alignment does both; and so does a pill that is
+          // a share of an even strip.
+          alignment: axis == Axis.vertical || fills ? Alignment.center : null,
           decoration: BoxDecoration(
             color: selected ? accent.withValues(alpha: 0.14) : null,
             border: !leadingHairline
@@ -338,21 +380,51 @@ class Pill extends StatelessWidget {
                 ? Border(left: hairline)
                 : Border(top: hairline),
           ),
-          child: other == null
-              ? word(label)
-              : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Held for its width only: set in no colour and never
-                    // read out. ⛔Not an `Opacity` or a `Visibility`: the
-                    // one is a compositing boundary a panel cannot bake
-                    // across, the other takes the slot away.
-                    ExcludeSemantics(child: word(other, shown: false)),
-                    word(label),
-                  ],
-                ),
+          child: _face(theme, accent),
         ),
       ),
+    );
+  }
+
+  /// What the pill shows: its glyph, or its word — with its other word held
+  /// under it for the width.
+  Widget _face(ThemeData theme, Color accent) {
+    // A selected pill reads selected even when it takes no tap —
+    // 「커스텀」 is a state the delta puts the row in, not a button.
+    Color inkFor({bool shown = true}) => !shown
+        ? Colors.transparent
+        : selected
+        ? accent
+        : onTap == null
+        ? theme.disabledColor
+        : theme.colorScheme.onSurface;
+    Text word(String text, {bool shown = true}) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(color: inkFor(shown: shown)),
+    );
+    final other = otherLabel;
+    final glyph = icon;
+    if (glyph != null) {
+      return Semantics(
+        label: label,
+        child: Icon(glyph, size: _glyphSize, color: inkFor()),
+      );
+    }
+    if (other == null) {
+      return word(label);
+    }
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Held for its width only: set in no colour and never read out.
+        // ⛔Not an `Opacity` or a `Visibility`: the one is a compositing
+        // boundary a panel cannot bake across, the other takes the slot
+        // away.
+        ExcludeSemantics(child: word(other, shown: false)),
+        word(label),
+      ],
     );
   }
 }

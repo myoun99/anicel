@@ -28,7 +28,10 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// pill's spelling of it (`_barIconButton`), the buttons that wrap it and
 /// pass `shortcuts:` through (the strip's, the rail's, the command pill),
 /// and the layer rails' own button (`RailGlyphButton`, I-57 ①), which
-/// names no action, so each of its uses stands here. ⛔Not the kinds that are one of the answer's exclusions by what
+/// names no action, so each of its uses stands here — and a tool's
+/// ACTIONS (`ToolSettingAction`, tool-settings-panel-tidy 2026-10-10:
+/// they wore Material's buttons until then, which this scan never
+/// read). ⛔Not the kinds that are one of the answer's exclusions by what
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
 /// would stand here with the same reason.
@@ -36,6 +39,24 @@ enum Why { owed, aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
   // ── OWED ────────────────────────────────────────────────────────────
+  // The tool settings' actions, read since they became one kind of button
+  // (`ToolSettingAction`, tool-settings-panel-tidy 2026-10-10) — owed all
+  // along, unseen while they were Material's.
+  "brush/guide_panels.dart | 'guide-add-vanishing-point'": Why.owed,
+  "brush/text_tool_settings.dart | 'text-tool-into-drawing'": Why.owed,
+  "brush/tool_settings_panel.dart | 'cut-paste-at-origin-button'":
+      Why.owed,
+  "brush/tool_settings_panel.dart | 'cut-register-tip-button'": Why.owed,
+  "brush/tool_settings_panel.dart | 'cut-reset-button'": Why.owed,
+  "brush/tool_settings_panel.dart | 'move-apply-button'": Why.owed,
+  "brush/tool_settings_panel.dart | 'move-flip-horizontal-button'":
+      Why.owed,
+  "brush/tool_settings_panel.dart | 'move-flip-vertical-button'":
+      Why.owed,
+  "brush/tool_settings_panel.dart | 'move-reset-button'": Why.owed,
+  "brush/tool_settings_panel.dart | 'selection-close-polygon-button'":
+      Why.owed,
+  "brush/tool_settings_panel.dart | 'selection-invert-button'": Why.owed,
   // The panels' own pills.
   'brush/sheet_canvas_panel.dart | '
           "'\${brush.keyPrefix}-brush-toggle-button'":
@@ -67,9 +88,6 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-reset-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
-  'timeline/timeline_lane_rows.dart | '
-          "'\$_keyPrefix-lane-value-link-\${layer.id}-\${lane.laneId}'":
-      Why.aRow,
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-link-badge-\${layer.id}'":
       Why.aRow,
@@ -81,8 +99,10 @@ const ledger = <String, Why>{
   'widgets/panel_flyout.dart | action.keyValue': Why.aRow,
 
   // ── A SETTING ───────────────────────────────────────────────────────
-  "brush/tool_settings_panel.dart | 'selection-mode-\${candidate.name}'":
-      Why.aSetting,
+  // The scale's chain: a switch, on the transform tool's 배율 row and on
+  // a layer's Scale lane alike — one button since tool-settings-panel-
+  // tidy (2026-10-10); it stood on the lane row as that row's own.
+  'widgets/scale_chain_button.dart | keyValue': Why.aSetting,
   "envelope/cut_envelope_tab_host.dart | 'envelope-form-\${form.id}'":
       Why.aSetting,
   'widgets/boolean_dot.dart | keyValue': Why.aSetting,
@@ -157,6 +177,8 @@ void main() {
     'RailButton',
     'RailGlyphButton',
     'CommandPill',
+    'ToolSettingAction',
+    'ToolSettingAction.glyph',
   }, what: 'button');
 
   test('⛔premise: the scan reaches the buttons — the bar spelling '

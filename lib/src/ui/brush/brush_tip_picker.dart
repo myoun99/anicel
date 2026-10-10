@@ -9,6 +9,8 @@ import '../widgets/anchored_popup.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/field_slider.dart' show FieldSlider;
+import 'tool_setting_rows.dart' show ToolSettingRow;
 
 /// Which of a brush's three mask slots a picker drives.
 ///
@@ -67,24 +69,21 @@ class BrushTipPickerRow extends StatelessWidget {
   final void Function(BrushTipEntry tip)? onRenameTip;
   final void Function(BrushTipEntry tip)? onDeleteTip;
 
+  /// A row of the tool settings' grid, the tip at the end of the control
+  /// column where a swatch stands (tool-settings-panel-tidy, 유저 2026-10-10:
+  /// 「정돈된 행/열」). ↩️It wrote its own line of a name and the button.
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final current = selected;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
-          _TipSwatch(
-            keyValue: 'brush-tip-picker-${role.name}',
-            tooltip: current == null
-                ? AppText.strings.brTipNone
-                : _nameFor(current.id),
-            mask: current,
-            onTap: () => _openPicker(context),
-          ),
-        ],
+    return ToolSettingRow.atEnd(
+      label: label,
+      child: _TipSwatch(
+        keyValue: 'brush-tip-picker-${role.name}',
+        tooltip: current == null
+            ? AppText.strings.brTipNone
+            : _nameFor(current.id),
+        mask: current,
+        onTap: () => _openPicker(context),
       ),
     );
   }
@@ -169,9 +168,10 @@ class _TipSwatch extends StatelessWidget {
           key: ValueKey<String>(keyValue),
           onTap: silentPress(onTap),
           customBorder: AppShapes.container(AppShapes.wellRadius),
+          // One row high, as every control of the grid it stands in is.
           child: Container(
-            width: 26,
-            height: 26,
+            width: FieldSlider.defaultHeight,
+            height: FieldSlider.defaultHeight,
             decoration: ShapeDecoration(
               color: colorScheme.surfaceContainerHighest,
               shape: AppShapes.container(

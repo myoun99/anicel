@@ -385,10 +385,13 @@ void main() {
       tester.widget<Text>(reads).data,
       AppText.strings.toolReadsEveryVisibleLayer,
     );
+    // ↩️Stood up, one answer a line, while three side by side folded
+    // 「References」 — 유저 2026-10-10: 「채우기 참조는 왜 세로로 버튼이
+    // 있는건지도 모르겠고」. A choice row like every other now.
     expect(
       tester.widget<PillStrip>(segments).axis,
-      Axis.vertical,
-      reason: 'stood up — side by side the answers fold in the panel',
+      Axis.horizontal,
+      reason: 'side by side, as every choice of the settings is',
     );
     await press(
       tester,

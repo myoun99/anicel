@@ -82,7 +82,46 @@ class FieldSlider extends StatefulWidget {
     this.fillOrigin,
     this.height = defaultHeight,
     this.axis = Axis.horizontal,
-  }) : assert(max > min, 'max must exceed min'),
+  }) : _nameInside = true,
+       assert(max > min, 'max must exceed min'),
+       assert(
+         scale != FieldSliderScale.exponential || min > 0,
+         'exponential scale requires min > 0',
+       ),
+       assert(
+         divisions == null || scale == FieldSliderScale.linear,
+         'divisions only combine with the linear scale',
+       );
+
+  /// **A settings GRID's bar** ([ToolSettingRow.bar]): its name stands in
+  /// the row's name column, so the bar writes its number alone — at the
+  /// right, where a named bar writes it — and keeps its ± (a settings row's
+  /// bar, not the inline slot).
+  ///
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「X값Y값 크기 통일한것처럼
+  /// 이런부분 다 통일해서 정돈된 행/열 느낌 나도록」 — every row's name in one
+  /// column, every control in the next. [label] still names the bar to a
+  /// screen reader.
+  const FieldSlider.cell({
+    super.key,
+    required String this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    this.unit = '',
+    this.displayScale = 1,
+    this.onChangeEnd,
+    this.valueTextBuilder,
+    this.scale = FieldSliderScale.linear,
+    this.divisions,
+    this.fillOrigin,
+  }) : _nameInside = false,
+       restingText = null,
+       restingAccent = null,
+       height = defaultHeight,
+       axis = Axis.horizontal,
+       assert(max > min, 'max must exceed min'),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
          'exponential scale requires min > 0',
@@ -122,7 +161,8 @@ class FieldSlider extends StatefulWidget {
     this.label,
     this.height = defaultHeight,
     this.axis = Axis.horizontal,
-  }) : min = 0,
+  }) : _nameInside = true,
+       min = 0,
        fillOrigin = null,
        max = 1,
        divisions = 100,
@@ -206,9 +246,17 @@ class FieldSlider extends StatefulWidget {
   /// always comes from the host.
   final double height;
 
+  /// Whether the bar writes its [label] inside, at its left — false for a
+  /// grid's bar ([FieldSlider.cell]), whose name stands in its row.
+  final bool _nameInside;
+
   /// A settings row's bar — and the number box beside it, which wears this
   /// bar's face without the fill ([DragValueLabel.box]).
   static const double defaultHeight = 24;
+
+  /// What a settings bar's ± take of its row, gap included — the end
+  /// column a settings grid keeps on every row ([ToolSettingEnd]).
+  static const double stepperReach = _FieldSliderStepper.reach;
 
   /// How round a bar [height] thick is cornered.
   static double radiusFor(double height) => height < 20 ? 3 : 4;
@@ -270,7 +318,7 @@ class FieldSlider extends StatefulWidget {
   /// saying what it is.
   double narrowestIn(BuildContext context) {
     final name = label;
-    final nameRun = name == null
+    final nameRun = name == null || !_nameInside
         ? 0.0
         : TextMeasure(
                 context,
@@ -696,6 +744,14 @@ class _FieldSliderState extends State<FieldSlider> {
             overflow: TextOverflow.clip,
             style: value,
           ),
+        );
+      }
+      if (!widget._nameInside) {
+        // A grid's bar: the name stands in the row, the number where a
+        // named bar writes it.
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Text(valueText, maxLines: 1, style: value),
         );
       }
       return Row(

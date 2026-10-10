@@ -32,7 +32,7 @@ import 'tool_settings_section.dart';
 /// outline, outline width, and the smoothing of their edges (유저: 「2차에서
 /// 스위치로 넣음」) · **상자** — the way it is written (가로 · 세로,
 /// 유저: 「세로쓰기 … 그거 통합하면서 진행」), alignment, box width, line spacing,
-/// background · and at the foot 「그림으로 굳히기」.
+/// background · and at the foot 「래스터라이즈」.
 ///
 /// What every row reads and writes is ONE law, and it is not in this file
 /// ([TextToolSettingsValues]): the text in hand by the letters a setting
@@ -122,31 +122,35 @@ class _TextInHandRow extends StatelessWidget {
     return PanelKeysBinding(
       tool: CanvasTool.text,
       buttons: {EditorActionIds.textDeleteText: delete},
-      child: Row(
-        children: [
-          Expanded(
-            child: PanelFlyoutButton(
-              key: const ValueKey<String>('text-tool-selected-text'),
-              label: inHand == null ? '' : _nameOf(inHand.text),
-              tooltip: AppText.strings.textToolSelectedText,
-              expand: true,
-              // With no text on the cel there is none to pick.
-              enabled: tool != null && tool.list.texts.isNotEmpty,
-              entriesBuilder: () => _listOf(tool),
+      // Named in the grid's name column like every row under it
+      // (tool-settings-panel-tidy, 유저 2026-10-10: 「정돈된 행/열」).
+      child: ToolSettingRow(
+        label: AppText.strings.textToolSelectedText,
+        child: Row(
+          children: [
+            Expanded(
+              child: PanelFlyoutButton(
+                key: const ValueKey<String>('text-tool-selected-text'),
+                label: inHand == null ? '' : _nameOf(inHand.text),
+                expand: true,
+                // With no text on the cel there is none to pick.
+                enabled: tool != null && tool.list.texts.isNotEmpty,
+                entriesBuilder: () => _listOf(tool),
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          AppIconButton(
-            keyValue: 'text-tool-delete-text',
-            tooltip: AppText.strings.textToolDeleteText,
-            shortcuts: const [EditorActionIds.textDeleteText],
-            icon: Icon(
-              Icons.delete_outline,
-              color: AppColors.deleteGlyph(enabled: inHand != null),
+            const SizedBox(width: ToolSettingColumns.gap),
+            AppIconButton(
+              keyValue: 'text-tool-delete-text',
+              tooltip: AppText.strings.textToolDeleteText,
+              shortcuts: const [EditorActionIds.textDeleteText],
+              icon: Icon(
+                Icons.delete_outline,
+                color: AppColors.deleteGlyph(enabled: inHand != null),
+              ),
+              onPressed: delete,
             ),
-            onPressed: delete,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -173,8 +177,10 @@ class _TextInHandRow extends StatelessWidget {
   ];
 }
 
-/// 「그림으로 굳히기」: the text in hand becomes its cel's drawing
-/// ([CelTextTool.turnIntoDrawing]).
+/// 「래스터라이즈」: the text in hand becomes its cel's drawing
+/// ([CelTextTool.turnIntoDrawing]). ↩️It read 「그림으로 굳히기」 while the
+/// import's read 「굽기」 and the layer's 「래스터라이즈」 — 🗣️유저 2026-10-10:
+/// 「굽기버튼도 마찬가지야. 뭐는 굽기 뭐는 래스터라이즈. 래스터라이즈로 통일」.
 ///
 /// 🗣️유저 2026-10-06: 「나중에 도구설정에 등장시키기로. 동작은 **텍스트
 /// 선택하면 해당 버튼 활성화색**」 — at the foot of the settings, where the
@@ -259,7 +265,10 @@ class _LetterRows extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        ToolSettingBar(_FaceRow(values: values, fonts: fonts)),
+        ToolSettingRow(
+          label: AppText.strings.textToolFont,
+          child: _FaceRow(values: values, fonts: fonts),
+        ),
         _bar(_LetterNumber.size),
         _bar(_LetterNumber.tracking),
         SettingsSwitchRow(
@@ -312,8 +321,9 @@ class _LetterRows extends StatelessWidget {
       (style) => bar.write(style, value),
       settled: settled,
     );
-    return ToolSettingBar(
-      FieldSlider(
+    return ToolSettingRow.bar(
+      label: bar.label,
+      bar: FieldSlider.cell(
         key: ValueKey<String>('text-tool-${bar.name}'),
         label: bar.label,
         min: bar.min,
@@ -370,7 +380,7 @@ class _LetterRows extends StatelessWidget {
 
   Widget _colour() {
     final colour = values.letter((style) => style.color);
-    return ToolSettingRow(
+    return ToolSettingRow.atEnd(
       label: AppText.strings.textToolColor,
       child: ColorSwatchButton(
         keyValue: 'text-tool-color',
@@ -392,7 +402,7 @@ class _LetterRows extends StatelessWidget {
       (style) => style.copyWith(outlineColor: argb),
       settled: false,
     );
-    return ToolSettingRow(
+    return ToolSettingRow.atEnd(
       label: AppText.strings.textToolOutline,
       child: ColorSwatchButton(
         keyValue: 'text-tool-outline',
@@ -434,7 +444,6 @@ class _FaceRow extends StatelessWidget {
     return PanelFlyoutButton(
       key: const ValueKey<String>('text-tool-font'),
       label: face.mixed ? _mixed : _nameOf(face.value),
-      tooltip: AppText.strings.textToolFont,
       expand: true,
       enabled: values.writable,
       entriesBuilder: () => _faces(context, inUse: face),
@@ -699,8 +708,9 @@ class _BoxRows extends StatelessWidget {
   }
 
   /// A line's pitch, read as a share of its letters' size.
-  Widget _linePitch() => ToolSettingBar(
-    FieldSlider(
+  Widget _linePitch() => ToolSettingRow.bar(
+    label: AppText.strings.textToolLineHeight,
+    bar: FieldSlider.cell(
       key: const ValueKey<String>('text-tool-line-height'),
       label: AppText.strings.textToolLineHeight,
       min: _tightest,
@@ -716,7 +726,7 @@ class _BoxRows extends StatelessWidget {
     ),
   );
 
-  Widget _background() => ToolSettingRow(
+  Widget _background() => ToolSettingRow.atEnd(
     label: AppText.strings.textToolBackground,
     child: ColorSwatchButton(
       keyValue: 'text-tool-background',

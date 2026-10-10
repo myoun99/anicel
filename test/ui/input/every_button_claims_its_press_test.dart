@@ -145,12 +145,11 @@ void main() {
     // ↓2026-09-30, the app's one grouped choice (pill-group-everywhere):
     // the brush edge's and the read source's `SegmentedButton` became a
     // claimed `PillStrip` — brush settings 1 → gone, tool settings 9 → 8.
+    // ↓2026-10-10, tool-settings-panel-tidy: a tool's actions became one
+    // claimed box (`ToolSettingAction`) — tool settings 8 → gone. (16 → 15
+    // on 2026-09-22: the scale anchor's SegmentedButton went with the
+    // setting itself.)
     'lib/src/ui/brush/guide_panels.dart': 1,
-    // 16 → 15 on 2026-09-22: the scale anchor's SegmentedButton went with
-    // the setting itself (유저 gave the modifier a touch entrance instead,
-    // so a persistent choice and a held key were two entrances to one
-    // question). The ratchet only ever comes DOWN.
-    'lib/src/ui/brush/tool_settings_panel.dart': 8,
     // ↓2026-09-30, F-230: the nine framework dropdowns became the shared
     // flyout's button, which claims — audio settings 3, input settings 3,
     // the linked cut, the instruction and the language dialogs → gone.

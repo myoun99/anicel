@@ -1508,7 +1508,6 @@ enum AppStrings {
   String get brHardness => _s('brHardness');
   String get stepUp => _s('stepUp');
   String get stepDown => _s('stepDown');
-  String get brEdge => _s('brEdge');
   String get brEdgeNone => _s('brEdgeNone');
   String get brSpacing => _s('brSpacing');
   String get brAngle => _s('brAngle');
@@ -1556,7 +1555,6 @@ enum AppStrings {
   String get brGapClose => _s('brGapClose');
   String get brGrowShrink => _s('brGrowShrink');
   String get brAntiAlias => _s('brAntiAlias');
-  String get brAntiAliasEdge => _s('brAntiAliasEdge');
   String get brFillBeyondCanvas => _s('brFillBeyondCanvas');
   String get brOpenRegionsRefuse => _s('brOpenRegionsRefuse');
   String get brName => _s('brName');
@@ -2594,7 +2592,6 @@ enum AppStrings {
     'brHardness': 'Hardness',
     'stepUp': 'Step up',
     'stepDown': 'Step down',
-    'brEdge': 'Edge',
     'brEdgeNone': 'None',
     'brSpacing': 'Spacing',
     'brAngle': 'Angle',
@@ -2641,7 +2638,6 @@ enum AppStrings {
     'brGapClose': 'Gap Close',
     'brGrowShrink': 'Grow/Shrink',
     'brAntiAlias': 'Anti-alias',
-    'brAntiAliasEdge': 'Anti-alias edge',
     'brFillBeyondCanvas': 'Fill Beyond Canvas',
     'brOpenRegionsRefuse': 'Open regions refuse to fill',
     'brName': 'Name',
@@ -3943,7 +3939,6 @@ enum AppStrings {
     'brHardness': '硬さ',
     'stepUp': '1目盛り上げる',
     'stepDown': '1目盛り下げる',
-    'brEdge': 'エッジ',
     'brEdgeNone': 'なし',
     'brSpacing': '間隔',
     'brAngle': '角度',
@@ -3991,7 +3986,6 @@ enum AppStrings {
     'brGapClose': '隙間閉じ',
     'brGrowShrink': '拡張 / 収縮',
     'brAntiAlias': 'アンチエイリアス',
-    'brAntiAliasEdge': '縁のアンチエイリアス',
     'brFillBeyondCanvas': 'カンバス外も塗る',
     'brOpenRegionsRefuse': '開いた領域は塗られません',
     'brName': '名前',
@@ -4574,7 +4568,7 @@ enum AppStrings {
     'shortcutAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
     'shortcutAction.edit-frame-stats': '프레임 통계',
     'shortcutAction.edit-show-repaints': '다시 그리기 표시',
-    'shortcutAction.edit-bake-panels': '정적 패널 굽기',
+    'shortcutAction.edit-bake-panels': '정적 패널 래스터라이즈',
     'menuAction.edit-knee-at-one': '화면 해상도 버퍼',
     'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
     'shortcutAction.help-about': 'Anicel 정보',
@@ -5040,7 +5034,7 @@ enum AppStrings {
     'playbackMode': '재생 방식',
     'playbackModeSkipFrames': '건너뛰기',
     'playbackModeEveryPicture': '모든 그림',
-    'playbackModeRenderFirst': '재생 전 굽기',
+    'playbackModeRenderFirst': '재생 전 렌더링',
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
@@ -5255,7 +5249,7 @@ enum AppStrings {
     'imPlaceTitleTemplate': '배치 — {name}',
     'imModeKeep': '품기',
     'imModeReference': '참조',
-    'imBake': '굽기',
+    'imBake': '래스터라이즈',
     'imOptions': '옵션',
     'imPictureAndSound': '그림 + 소리',
     'imPictureOnly': '그림만',
@@ -5329,7 +5323,7 @@ enum AppStrings {
     'textToolWidthFixed': '고정',
     'textToolLineHeight': '줄 간격',
     'textToolBackground': '배경',
-    'textToolIntoDrawing': '그림으로 굳히기',
+    'textToolIntoDrawing': '래스터라이즈',
     'textToolWriting': '쓰기 방향',
     'textToolWritingLines': '가로',
     'textToolWritingColumns': '세로',
@@ -5396,7 +5390,6 @@ enum AppStrings {
     'brHardness': '경도',
     'stepUp': '한 걸음 올리기',
     'stepDown': '한 걸음 내리기',
-    'brEdge': '가장자리',
     'brEdgeNone': '없음',
     'brSpacing': '간격',
     'brAngle': '각도',
@@ -5443,8 +5436,7 @@ enum AppStrings {
     'brTolerance': '허용치',
     'brGapClose': '틈 메우기',
     'brGrowShrink': '확장 / 축소',
-    'brAntiAlias': '앤티에일리어스',
-    'brAntiAliasEdge': '가장자리 앤티에일리어스',
+    'brAntiAlias': '안티앨리어스',
     'brFillBeyondCanvas': '캔버스 밖도 채우기',
     'brOpenRegionsRefuse': '열린 영역은 채워지지 않습니다',
     'brName': '이름',
@@ -6977,7 +6969,6 @@ enum AppStrings {
     'brHardness': 'Dureté',
     'stepUp': 'Monter d’un cran',
     'stepDown': 'Baisser d’un cran',
-    'brEdge': 'Bord',
     'brEdgeNone': 'Aucun',
     'brSpacing': 'Espacement',
     'brAngle': 'Angle',
@@ -7021,7 +7012,6 @@ enum AppStrings {
     'brGapClose': 'Fermeture des trous',
     'brGrowShrink': 'Étendre / Réduire',
     'brAntiAlias': 'Anticrénelage',
-    'brAntiAliasEdge': 'Anticrénelage du bord',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
     'trPosition': 'Position',
@@ -8372,7 +8362,6 @@ enum AppStrings {
     'brHardness': '硬度',
     'stepUp': '增加一级',
     'stepDown': '减少一级',
-    'brEdge': '边缘',
     'brEdgeNone': '无',
     'brSpacing': '间距',
     'brAngle': '角度',
@@ -8416,7 +8405,6 @@ enum AppStrings {
     'brGapClose': '闭合缝隙',
     'brGrowShrink': '扩展 / 收缩',
     'brAntiAlias': '抗锯齿',
-    'brAntiAliasEdge': '边缘抗锯齿',
     'brFillBeyondCanvas': '填充到画布之外',
     'brOpenRegionsRefuse': '开放区域不会被填充',
     'brName': '名称',

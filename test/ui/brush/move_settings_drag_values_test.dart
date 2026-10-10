@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/tool_setting_action_probe.dart';
 import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
@@ -615,34 +618,29 @@ void main() {
       isFalse,
       reason: 'the AA switch must be flat with nothing to transform',
     );
+    expect(
+      tester
+          .appIconButton(
+            find.byKey(const ValueKey<String>('move-scale-link-switch')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'the chain must not be pressable with nothing to transform',
+    );
     for (final key in const [
-      'move-scale-link-switch',
       'move-flip-horizontal-button',
       'move-flip-vertical-button',
+      'move-reset-button',
+      'move-apply-button',
     ]) {
       expect(
-        tester.appIconButton(find.byKey(ValueKey<String>(key))).onPressed,
+        tester
+            .toolSettingAction(find.byKey(ValueKey<String>(key)))
+            .onPressed,
         isNull,
         reason: '$key must not be pressable with nothing to transform',
       );
     }
-    expect(
-      tester
-          .widget<OutlinedButton>(
-            find.byKey(const ValueKey<String>('move-reset-button')),
-          )
-          .onPressed,
-      isNull,
-      reason: 'reset must not be pressable with nothing to transform',
-    );
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('move-apply-button')),
-          )
-          .onPressed,
-      isNull,
-    );
   });
 
   testWidgets('적용 is grey when 적용 has nothing to do, though the tool can '
@@ -650,7 +648,7 @@ void main() {
     // confirm-button (유저 2026-09-24): 「할 게 없으면 회색」. ↩️It asked
     // whether the TOOL could edit, so it lit over a box with nothing to
     // confirm and nothing to replay, and pressing it did nothing.
-    FilledButton apply() => tester.widget<FilledButton>(
+    ToolSettingAction apply() => tester.toolSettingAction(
       find.byKey(const ValueKey<String>('move-apply-button')),
     );
     await pumpMoveSettings(tester, applied: []);

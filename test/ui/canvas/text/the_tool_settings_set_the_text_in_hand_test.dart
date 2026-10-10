@@ -3,6 +3,8 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_tool_harness.dart';
+import '../../../helpers/tool_setting_action_probe.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
 /// app, the real panel, a real mouse.
@@ -208,9 +211,9 @@ void main() {
 
   // 🗣️유저 2026-10-06: 「텍스트 그림으로 굳히기 아이디어 좋네 … 나중에
   // 도구설정에 등장시키기로. 동작은 텍스트 선택하면 해당 버튼 활성화색」.
-  group('「그림으로 굳히기」', () {
-    FilledButton button(WidgetTester tester) =>
-        tester.widget<FilledButton>(row('into-drawing'));
+  group('「래스터라이즈」', () {
+    ToolSettingAction button(WidgetTester tester) =>
+        tester.toolSettingAction(row('into-drawing'));
 
     testWidgets('🚨pressed, the text in hand is its cel\'s DRAWING: the '
         'canvas shows what it showed, to the byte, the hand is free — and '
