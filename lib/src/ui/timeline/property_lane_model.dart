@@ -70,9 +70,23 @@ class PropertyLaneRow {
     this.isGroupHeader = false,
     this.groupExpanded = false,
     this.groupEnabled,
+    this.headsAGraph = false,
     this.previewText,
     this.stretchWords = const [],
+    this.curve,
   });
+
+  /// THE LINE a header graph draws this lane by (I-89 ③) — read off the
+  /// same reading of its track as [valueLabel], widened to a time between
+  /// frames, so the curve and the number printed beside it are one value.
+  /// Null on a lane no graph draws: a header, a flag, a colour, a lane
+  /// with no value to read.
+  final LaneCurve? curve;
+
+  /// Group headers only: whether the group's lanes can stand as one HEADER
+  /// GRAPH in their place (I-89 ③) — the header wears the graph's button.
+  /// The Transform group's and every effect's.
+  final bool headsAGraph;
 
   /// The words written over the line between this lane's keys — each over
   /// the stretch from a key to the next, as an instruction span's name is
@@ -175,6 +189,14 @@ class PropertyLaneRow {
 /// A word over the stretch of a lane from its key on [from] to the next, on
 /// [to] — written in [ink].
 typedef LaneStretchWord = ({int from, int to, String word, Color ink});
+
+/// A lane as a header graph draws it ([PropertyLaneRow.curve]): the numbers
+/// it holds [at] a time — a frame, or a time between two — each drawn in
+/// its colour of [parts], in order.
+typedef LaneCurve = ({
+  List<Color> parts,
+  List<double> Function(double time) at,
+});
 
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can
 /// hold several group headers now (Transform, plus one per effect), so the

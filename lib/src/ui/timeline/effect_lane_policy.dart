@@ -5,6 +5,7 @@ import '../../models/layer_effect.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
+import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
@@ -59,13 +60,14 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// lanes while [isExpanded] says the header is twirled open (AE group
 /// collapse, exactly like the Transform group).
 ///
-/// [valueAt] resolves a parameter's value for the blue value column; the
-/// caller owns it because the sample must come from the same resolver the
-/// composite uses.
+/// [valueAt] resolves a parameter's value at a time — the blue value
+/// column's at its frame, a header graph's curve between frames too (I-89
+/// ③); the caller owns it because the sample must come from the same
+/// resolver the composite uses.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   required bool Function(EffectId effectId) isExpanded,
-  double Function(EffectId effectId, String parameterId, int frameIndex)?
+  double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
 }) {
   if (effects.isEmpty) {
@@ -97,12 +99,13 @@ List<PropertyLaneRow> effectPropertyLanes(
         showsKeyNavigator: false,
         isGroupHeader: true,
         groupExpanded: expanded,
+        headsAGraph: true,
       ),
     );
     if (!expanded) {
       continue;
     }
-    for (final spec in effectParametersOf(effect.kind)) {
+    for (final (index, spec) in effectParametersOf(effect.kind).indexed) {
       final parameter = effect.parameterOf(spec.id);
       rows.add(
         PropertyLaneRow(
@@ -114,10 +117,16 @@ List<PropertyLaneRow> effectPropertyLanes(
               ? null
               : (frameIndex) => formatEffectLaneValue(
                   spec,
-                  valueAt(effect.id, spec.id, frameIndex),
+                  valueAt(effect.id, spec.id, frameIndex.toDouble()),
                 ),
           scrubValue: (label, delta) =>
               scrubEffectLaneValue(spec, label, delta),
+          curve: valueAt == null
+              ? null
+              : (
+                  parts: [LaneCurvePalette.effectParameter(index)],
+                  at: (time) => [valueAt(effect.id, spec.id, time)],
+                ),
         ),
       );
     }

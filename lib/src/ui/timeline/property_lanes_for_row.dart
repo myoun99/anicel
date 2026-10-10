@@ -1,7 +1,7 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
-import '../../models/layer_effect.dart' show effectParameterValueAt;
+import '../../models/layer_effect.dart' show effectParameterValueAtTime;
 import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -109,30 +109,30 @@ List<PropertyLaneRow> propertyLanesForRow({
       includeAnchorAndOpacity: true,
       poseAt: centre == null || source == null
           ? null
-          : (frameIndex) {
-              final at = source(frameIndex);
-              return at.layer.transformTrack.resolveAt(
-                frameIndex: at.frame,
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return at.layer.transformTrack.resolveAtTime(
+                time: at.time,
                 orElse: () => layerIdentityPose(centre),
               );
             },
       anchorAt: centre == null || source == null
           ? null
-          : (frameIndex) {
-              final at = source(frameIndex);
-              return resolveAnchorTrackAt(
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return resolveAnchorTrackAtTime(
                     at.layer.transformTrack.anchorPoint,
-                    at.frame,
+                    at.time,
                   ) ??
                   layerIdentityPose(centre).center;
             },
       opacityAt: source == null
           ? null
-          : (frameIndex) {
-              final at = source(frameIndex);
-              return resolveOpacityTrackAt(
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return resolveOpacityTrackAtTime(
                 at.layer.transformTrack.opacity,
-                at.frame,
+                at.time,
               );
             },
     );
@@ -153,13 +153,13 @@ List<PropertyLaneRow> propertyLanesForRow({
       ),
       valueAt: source == null
           ? null
-          : (effectId, parameterId, frameIndex) {
-              final at = source(frameIndex);
-              return effectParameterValueAt(
+          : (effectId, parameterId, time) {
+              final at = _sourceAtTime(source, time);
+              return effectParameterValueAtTime(
                 at.layer.effects,
                 effectId,
                 parameterId,
-                at.frame,
+                at.time,
               );
             },
     );
@@ -237,4 +237,17 @@ List<PropertyLaneRow> propertyLanesForRow({
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];
   }
+}
+
+/// Where a lane on a row reads its value at [time] — a frame, or between
+/// two (a header graph's curve, I-89 ③): the row and frame [source] reads
+/// the time's own frame off, carried the rest of the way. A projection
+/// moves a row's frames, never the time between them.
+({Layer layer, double time}) _sourceAtTime(
+  ({Layer layer, int frame}) Function(int frameIndex) source,
+  double time,
+) {
+  final frame = time.floor();
+  final at = source(frame);
+  return (layer: at.layer, time: at.frame + (time - frame));
 }

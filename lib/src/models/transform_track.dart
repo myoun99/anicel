@@ -151,25 +151,32 @@ class TransformTrack {
   TransformPose resolveAt({
     required int frameIndex,
     required TransformPose Function() orElse,
+  }) => resolveAtTime(time: frameIndex.toDouble(), orElse: orElse);
+
+  /// [resolveAt] at a [time] between frames as well — a header graph's
+  /// curve (I-89 ③, [PropertyTrack.resolveAtTime]).
+  TransformPose resolveAtTime({
+    required double time,
+    required TransformPose Function() orElse,
   }) {
     TransformPose? defaultPose;
     TransformPose fallback() => defaultPose ??= orElse();
 
-    final scales = scale.resolveAt(
-      frameIndex: frameIndex,
+    final scales = scale.resolveAtTime(
+      time: time,
       orElse: () => fallback().scale,
       space: pointKeySpace,
     );
     return TransformPose(
-      center: position.resolveAt(
-        frameIndex: frameIndex,
+      center: position.resolveAtTime(
+        time: time,
         orElse: () => fallback().center,
         space: pointKeySpace,
       ),
       scaleX: scales.x,
       scaleY: scales.y,
-      rotationDegrees: rotation.resolveAt(
-        frameIndex: frameIndex,
+      rotationDegrees: rotation.resolveAtTime(
+        time: time,
         orElse: () => fallback().rotationDegrees,
         space: doubleKeySpace,
       ),
@@ -370,12 +377,16 @@ bool transformLaneUsesName(
 /// empty. Deliberately track-level and layer-agnostic — a layer's animated
 /// opacity multiplies its static opacity, and the storyboard V-track fades
 /// ride the same function.
-double resolveOpacityTrackAt(PropertyTrack<double> track, int frameIndex) {
+double resolveOpacityTrackAt(PropertyTrack<double> track, int frameIndex) =>
+    resolveOpacityTrackAtTime(track, frameIndex.toDouble());
+
+/// [resolveOpacityTrackAt] at a [time] between frames as well (I-89 ③).
+double resolveOpacityTrackAtTime(PropertyTrack<double> track, double time) {
   if (track.isEmpty) {
     return 1;
   }
   return track
-      .resolveAt(frameIndex: frameIndex, orElse: () => 1, space: doubleKeySpace)
+      .resolveAtTime(time: time, orElse: () => 1, space: doubleKeySpace)
       .clamp(0.0, 1.0)
       .toDouble();
 }
@@ -385,12 +396,18 @@ double resolveOpacityTrackAt(PropertyTrack<double> track, int frameIndex) {
 CanvasPoint? resolveAnchorTrackAt(
   PropertyTrack<CanvasPoint> track,
   int frameIndex,
+) => resolveAnchorTrackAtTime(track, frameIndex.toDouble());
+
+/// [resolveAnchorTrackAt] at a [time] between frames as well (I-89 ③).
+CanvasPoint? resolveAnchorTrackAtTime(
+  PropertyTrack<CanvasPoint> track,
+  double time,
 ) {
   if (track.isEmpty) {
     return null;
   }
-  return track.resolveAt(
-    frameIndex: frameIndex,
+  return track.resolveAtTime(
+    time: time,
     orElse: () => CanvasPoint(x: 0, y: 0),
     space: pointKeySpace,
   );

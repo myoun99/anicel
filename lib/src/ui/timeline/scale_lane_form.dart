@@ -18,8 +18,12 @@ import '../text/readout_text.dart';
 sealed class ScaleLaneForm {
   const ScaleLaneForm();
 
-  /// [scale] as the lane's value column prints it.
+  /// [scale] as the lane's value column prints it — its [numbers], each.
   String label(CanvasPoint scale);
+
+  /// The numbers [scale] is to the lane, in the units it prints them in:
+  /// what [label] writes, and what a header graph draws (I-89 ③).
+  List<double> numbers(CanvasPoint scale);
 
   /// What [input], typed where the lane showed [current], makes the scale —
   /// null when it is not a scale this form holds.
@@ -63,7 +67,11 @@ final class OneZoom extends ScaleLaneForm {
   const OneZoom();
 
   @override
-  String label(CanvasPoint scale) => '${columnValueText(scale.x * 100)}%';
+  String label(CanvasPoint scale) =>
+      '${columnValueText(numbers(scale).single)}%';
+
+  @override
+  List<double> numbers(CanvasPoint scale) => [scale.x * 100];
 
   @override
   CanvasPoint? typed(
@@ -96,9 +104,13 @@ final class TwoScales extends ScaleLaneForm {
   const TwoScales();
 
   @override
-  String label(CanvasPoint scale) =>
-      '${columnValueText(scale.x * 100)}, '
-      '${columnValueText(scale.y * 100)}%';
+  String label(CanvasPoint scale) {
+    final [across, down] = numbers(scale);
+    return '${columnValueText(across)}, ${columnValueText(down)}%';
+  }
+
+  @override
+  List<double> numbers(CanvasPoint scale) => [scale.x * 100, scale.y * 100];
 
   /// ONE number is both axes (`150` — the layer at one and a half its
   /// size). TWO are across and down; [linked], the one the editor's two

@@ -1,5 +1,5 @@
 import 'lane_span_in_order.dart';
-import 'dart:ui' show Offset;
+import 'dart:ui' show Color, Offset;
 
 import '../../models/camera_instruction.dart'
     show CameraInstructionDef, instructionTermName;
@@ -15,9 +15,11 @@ import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
-import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
+import '../../services/camera_pose_resolver.dart'
+    show resolveCameraPoseAtTime;
 import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
+import '../theme/lane_curve_palette.dart';
 import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
@@ -39,6 +41,7 @@ PropertyLaneRow get transformGroupHeaderLane => PropertyLaneRow(
   keyMarks: const {},
   showsKeyNavigator: false,
   isGroupHeader: true,
+  headsAGraph: true,
 );
 
 /// [transformGroupHeaderLane] carrying the collapse state (the header's
@@ -66,6 +69,7 @@ PropertyLaneRow transformGroupHeader({
     showsKeyNavigator: false,
     isGroupHeader: true,
     groupExpanded: expanded,
+    headsAGraph: true,
     // R8: the group's own bypass, the same switch every effect header
     // carries ([Layer.transformEnabled]). Null on rows that have no
     // transform of their own to bypass (the camera moves through the cut's
@@ -142,13 +146,13 @@ List<PropertyLaneRow> cameraPropertyLanes(
   scaleForm: scaleLaneFormOf(row),
   poseAt: canvasSize == null
       ? null
-      : (frameIndex) => TransformPose.ofCamera(
-          resolveCameraPoseAt(
+      : (time) => TransformPose.ofCamera(
+          resolveCameraPoseAtTime(
             // The SAME track the lanes are built from, so the value column
             // follows an in-flight key move like the diamonds do.
             camera: CutCamera.fromTrack(track),
             canvasSize: canvasSize,
-            frameIndex: frameIndex,
+            time: time,
           ),
         ),
 ).where((lane) => !lane.isGroupHeader).toList();
@@ -158,18 +162,21 @@ List<PropertyLaneRow> cameraPropertyLanes(
 /// Rotation / Opacity ([includeAnchorAndOpacity] gates the two layer-only
 /// lanes; the camera's group stays the pose trio).
 ///
-/// [poseAt]/[anchorAt]/[opacityAt] resolve the values for the value column
+/// [poseAt]/[anchorAt]/[opacityAt] resolve the values at a time — a frame,
+/// or between two: the value column reads them at its frame, a header
+/// graph's curve between frames too (I-89 ③), so the two are one reading
 /// (AE display units: Position and Anchor Point in canvas px, Scale as its
 /// [scaleForm] prints it, Rotation in clockwise degrees, Opacity ·100 %);
-/// null hides the values.
+/// null hides the values, and the curve with them.
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   required ScaleLaneForm scaleForm,
   bool includeAnchorAndOpacity = false,
-  TransformPose Function(int frameIndex)? poseAt,
-  CanvasPoint Function(int frameIndex)? anchorAt,
-  double Function(int frameIndex)? opacityAt,
+  TransformPose Function(double time)? poseAt,
+  CanvasPoint Function(double time)? anchorAt,
+  double Function(double time)? opacityAt,
 }) {
+  const point = [LaneCurvePalette.across, LaneCurvePalette.down];
   return [
     transformGroupHeaderLane,
     if (includeAnchorAndOpacity)
@@ -177,12 +184,13 @@ List<PropertyLaneRow> transformPropertyLanes(
         'anchor-point',
         AppText.strings.tlLaneAnchorPoint,
         track.anchorPoint,
-        valueLabel: anchorAt == null
-            ? null
-            : (frame) {
-                final anchor = anchorAt(frame);
-                return '${columnValueText(anchor.x)}, ${columnValueText(anchor.y)}';
-              },
+        _reading(
+          anchorAt,
+          (anchor) => [anchor.x, anchor.y],
+          parts: point,
+          printed: (anchor) =>
+              '${columnValueText(anchor.x)}, ${columnValueText(anchor.y)}',
+        ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
       ),
@@ -190,9 +198,12 @@ List<PropertyLaneRow> transformPropertyLanes(
       'position',
       AppText.strings.tlLanePosition,
       track.position,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => formatTransformLaneValue('position', poseAt(frame)),
+      _reading(
+        poseAt,
+        (pose) => [pose.center.x, pose.center.y],
+        parts: point,
+        printed: (pose) => formatTransformLaneValue('position', pose),
+      ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('position', label, delta),
     ),
@@ -200,9 +211,18 @@ List<PropertyLaneRow> transformPropertyLanes(
       'scale',
       AppText.strings.tlLaneScale,
       track.scale,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => scaleForm.label(poseAt(frame).scale),
+      _reading(
+        poseAt,
+        (pose) => scaleForm.numbers(pose.scale),
+        parts: switch (scaleForm) {
+          OneZoom() => const [LaneCurvePalette.scale],
+          TwoScales() => const [
+            LaneCurvePalette.scale,
+            LaneCurvePalette.scaleDown,
+          ],
+        },
+        printed: (pose) => scaleForm.label(pose.scale),
+      ),
       scrubValue: scaleForm.scrubbed,
       linkable: scaleForm.links,
     ),
@@ -210,9 +230,12 @@ List<PropertyLaneRow> transformPropertyLanes(
       'rotation',
       AppText.strings.tlLaneRotation,
       track.rotation,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => formatTransformLaneValue('rotation', poseAt(frame)),
+      _reading(
+        poseAt,
+        (pose) => [pose.rotationDegrees],
+        parts: const [LaneCurvePalette.rotation],
+        printed: (pose) => formatTransformLaneValue('rotation', pose),
+      ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('rotation', label, delta),
     ),
@@ -221,14 +244,41 @@ List<PropertyLaneRow> transformPropertyLanes(
         'opacity',
         AppText.strings.tlLaneOpacity,
         track.opacity,
-        valueLabel: opacityAt == null
-            ? null
-            : (frame) => '${columnValueText(opacityAt(frame) * 100)}%',
+        _reading(
+          opacityAt,
+          (opacity) => [opacity * 100],
+          parts: const [LaneCurvePalette.opacity],
+          printed: (opacity) => '${columnValueText(opacity * 100)}%',
+        ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
       ),
   ];
 }
+
+/// What a lane's value column prints and the line a header graph draws it
+/// by (I-89 ③), off ONE reading of its value — so the two cannot come to
+/// disagree.
+typedef _LaneReading = ({
+  String Function(int frameIndex)? label,
+  LaneCurve? curve,
+});
+
+/// The lane's value [at] a time — null where the rail has nothing to read
+/// it in, which hides the column and the line with it — as [printed] writes
+/// it on a frame, and as the [numbers] it holds at any time, each in its
+/// colour of [parts].
+_LaneReading _reading<V>(
+  V Function(double time)? at,
+  List<double> Function(V value) numbers, {
+  required List<Color> parts,
+  required String Function(V value) printed,
+}) => at == null
+    ? (label: null, curve: null)
+    : (
+        label: (frame) => printed(at(frame.toDouble())),
+        curve: (parts: parts, at: (time) => numbers(at(time))),
+      );
 
 /// Canonical display order of the transform lanes (the AE order
 /// [transformPropertyLanes] emits) — the lane-row span (R26 #3) resolves
@@ -389,8 +439,8 @@ String? scrubTransformLaneValue(
 PropertyLaneRow _lane<T>(
   String id,
   String label,
-  PropertyTrack<T> track, {
-  String Function(int frameIndex)? valueLabel,
+  PropertyTrack<T> track,
+  _LaneReading reading, {
   String? Function(String currentLabel, Offset dragDelta)? scrubValue,
   bool linkable = false,
 }) {
@@ -399,8 +449,9 @@ PropertyLaneRow _lane<T>(
     label: label,
     keyMarks: keyMarksOf(track),
     keyNames: track.namedKeysByFrame,
-    valueLabel: valueLabel,
+    valueLabel: reading.label,
     scrubValue: scrubValue,
     linkable: linkable,
+    curve: reading.curve,
   );
 }

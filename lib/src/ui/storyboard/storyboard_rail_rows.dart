@@ -34,11 +34,11 @@ class _StoryboardRailRows {
       isExpanded: (effectId) => _state.widget.expandedTransformGroups.contains(
         _StoryboardPanelState.trackEffectGroupKey(track, effectId),
       ),
-      valueAt: (effectId, parameterId, frameIndex) => effectParameterValueAt(
+      valueAt: (effectId, parameterId, time) => effectParameterValueAtTime(
         track.effects,
         effectId,
         parameterId,
-        frameIndex,
+        time,
       ),
     );
   }

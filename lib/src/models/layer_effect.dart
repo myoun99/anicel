@@ -306,8 +306,12 @@ class EffectParameter {
 
   /// The value at [frameIndex] — the key track when it has keys, the
   /// static value otherwise.
-  double resolveAt(int frameIndex) => track.resolveAt(
-    frameIndex: frameIndex,
+  double resolveAt(int frameIndex) => resolveAtTime(frameIndex.toDouble());
+
+  /// [resolveAt] at a [time] between frames as well — a header graph's
+  /// curve (I-89 ③).
+  double resolveAtTime(double time) => track.resolveAtTime(
+    time: time,
     orElse: () => value,
     space: doubleKeySpace,
   );
@@ -678,10 +682,23 @@ double effectParameterValueAt(
   EffectId effectId,
   String parameterId,
   int frameIndex,
+) => effectParameterValueAtTime(
+  effects,
+  effectId,
+  parameterId,
+  frameIndex.toDouble(),
+);
+
+/// [effectParameterValueAt] at a [time] between frames as well (I-89 ③).
+double effectParameterValueAtTime(
+  List<LayerEffect> effects,
+  EffectId effectId,
+  String parameterId,
+  double time,
 ) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameterOf(parameterId).resolveAt(frameIndex);
+      return effect.parameterOf(parameterId).resolveAtTime(time);
     }
   }
   return 0;

@@ -19,7 +19,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
-    show EffectId, LayerEffect, effectParameterValueAt;
+    show EffectId, LayerEffect, effectParameterValueAtTime;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';

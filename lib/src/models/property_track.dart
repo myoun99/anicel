@@ -359,18 +359,35 @@ class PropertyTrack<T> {
     required int frameIndex,
     required T Function() orElse,
     required KeyValueSpace<T> space,
+  }) => resolveAtTime(
+    time: frameIndex.toDouble(),
+    orElse: orElse,
+    space: space,
+  );
+
+  /// [resolveAt] at a [time] between two frames as well as on one — what a
+  /// header graph (I-89 ③) draws its curve through, so the line and the
+  /// value printed at a frame are one reading of the track. A key is only
+  /// ever ON a frame: between two, the segment they bound answers.
+  T resolveAtTime({
+    required double time,
+    required T Function() orElse,
+    required KeyValueSpace<T> space,
   }) {
     if (isEmpty) {
       return orElse();
     }
 
-    final exact = keys[frameIndex];
-    if (exact != null) {
-      return exact.value;
+    final frame = time.floor();
+    if (frame == time) {
+      final exact = keys[frame];
+      if (exact != null) {
+        return exact.value;
+      }
     }
 
-    final previousIndex = keys.lastKeyBefore(frameIndex);
-    final nextIndex = keys.firstKeyAfter(frameIndex);
+    final previousIndex = keys.lastKeyBefore(frame + 1);
+    final nextIndex = keys.firstKeyAfter(frame);
     if (previousIndex == null) {
       return keys[nextIndex!]!.value;
     }
@@ -388,7 +405,7 @@ class PropertyTrack<T> {
     final span = nextIndex - previousIndex;
     double along(T value) => space.inverseLerp(from.value, to.value, value);
     final progress = segmentProgress(
-      (frameIndex - previousIndex) / span,
+      (time - previousIndex) / span,
       leaving: keyHandleOf(leaving, () {
         final before = keys.lastKeyBefore(previousIndex);
         return before == null
