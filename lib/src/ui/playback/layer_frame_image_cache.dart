@@ -315,6 +315,7 @@ class LayerFrameImageCache {
   /// The pictures being made, by slot ([prepare]).
   final Map<(BrushFrameKey, PlaybackQuality), _Making> _making = {};
 
+
   Future<LayerFrameImage?> _prepareNow({
     required BrushFrameKey key,
     required CanvasSize canvasSize,

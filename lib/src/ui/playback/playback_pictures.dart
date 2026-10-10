@@ -9,6 +9,11 @@ abstract interface class PlaybackPictures {
   /// Whether [picture] is there to show.
   bool has(DemandedPicture picture);
 
+  /// The parts of [picture] not there yet that making it would make, each
+  /// by an identity two frames showing it share — what a walk asking ahead
+  /// counts so a part is asked for once.
+  Set<Object> partsToMake(DemandedPicture picture);
+
   /// Whether making [picture] threw at the content it has now — it is not
   /// waited for, nor made again until that content changes ([noteFailure]).
   bool failed(DemandedPicture picture);

@@ -950,9 +950,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
-  /// 🚨ONE ROW'S FAILURE IS ONE ROW'S. The future this walk runs in
-  /// is nobody's to await, so a throw here used to abandon the whole
-  /// pass — while the walk was serial, every LATER layer's prepare was
+  /// 🚨ONE ROW'S FAILURE IS ONE ROW'S. This walk is serial and the
+  /// future it runs in is nobody's to await, so a throw here used
+  /// to abandon the whole pass: every LATER layer's prepare was
   /// never called, and nothing said so. What the user sees is a
   /// stack where the first rows are drawn and the rest are blank
   /// until something happens to rebuild past the bad one — and
@@ -1021,17 +1021,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           return;
         }
         _rerunRequested = false;
-        final layers = List.of(widget.layers);
-        final wanted = {for (final layer in layers) layer.frameKey};
-        // 🚨THE ROWS ARE ASKED FOR AT ONCE ([CanvasPictures.make] says why —
-        // the warm's walk and this one are the same walk).
-        final refreshed = await Future.wait([
-          for (final layer in layers) _refreshLayerImage(layer),
-        ]);
-        if (refreshed.contains(null)) {
-          return;
+        var changed = false;
+        final wanted = <BrushFrameKey>{};
+        // ⛔One row after another, as the warm's walk ([CanvasPictures.make]
+        // says why).
+        for (final layer in List.of(widget.layers)) {
+          wanted.add(layer.frameKey);
+          final refreshed = await _refreshLayerImage(layer);
+          if (refreshed == null) {
+            return;
+          }
+          changed = changed || refreshed;
         }
-        var changed = refreshed.contains(true);
         // The frame this pass made whole goes up — a view that changes
         // frames whole held the last whole one until now.
         if (!identical(_shownNodes, widget.nodes) &&

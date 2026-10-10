@@ -82,6 +82,18 @@ class CanvasPictures implements PlaybackPictures {
     ).every((row) => _rowIsThere(row, picture.cut, level));
   }
 
+  /// Each row [make] would make, as the cache slot its image lands in — a
+  /// cel two frames show is one part.
+  @override
+  Set<Object> partsToMake(DemandedPicture picture) {
+    final level = qualityAt(picture.cut, picture.frameIndex);
+    return {
+      for (final row in rowsOf(picture.cut, picture.frameIndex))
+        if (!_rowIsThere(row, picture.cut, level) && !gaveUpOn(row))
+          (row.frameKey, level),
+    };
+  }
+
   /// Nothing of the frame is still to come: every row not there is one that
   /// could not be made.
   @override
@@ -143,10 +155,12 @@ class CanvasPictures implements PlaybackPictures {
   /// are — the frame's other rows are no reason for a cel that cannot be
   /// read to be read again, nor its failure a reason for them to be missing.
   ///
-  /// 🚨THE ROWS ARE ASKED FOR AT ONCE: each waits for its raster to come
-  /// back, and asked one after another a frame of thirteen rows waited
-  /// thirteen round trips (a-picture-is-made-once, 2026-10-10). A cel two
-  /// rows show is asked for once.
+  /// ⛔ONE ROW AFTER ANOTHER, on purpose: a row's making holds its cel's
+  /// tile pictures until its raster lands, and asked for at once a frame of
+  /// thirteen rows held thirteen cels' worth — for no gain (measured
+  /// 10-10, camera view, profile: the whole cut made +0.3–15% LATER). What
+  /// a walk gains from is asking for the NEXT frames before it waits
+  /// ([PlaybackPrerenderScheduler]'s ask ahead).
   @override
   Future<bool> make(
     DemandedPicture picture, {
@@ -155,8 +169,10 @@ class CanvasPictures implements PlaybackPictures {
     final level = qualityAt(picture.cut, picture.frameIndex);
     final cut = picture.cut;
     (Object, StackTrace)? thrown;
-    var stoodDown = false;
-    Future<void> makeRow(CanvasLayerImageRequest row) async {
+    for (final row in rowsOf(cut, picture.frameIndex)) {
+      if (_rowIsThere(row, cut, level) || gaveUpOn(row)) {
+        continue;
+      }
       final LayerFrameImage? image;
       try {
         image = await layerImages.prepare(
@@ -170,30 +186,17 @@ class CanvasPictures implements PlaybackPictures {
       } on Object catch (error, stack) {
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);
         thrown ??= (error, stack);
-        return;
+        continue;
       }
       if (image == null) {
         if (shouldAbort()) {
-          stoodDown = true;
-          return;
+          return false;
         }
         // A cel with pixels that cannot be drawn at this canvas size — the
         // canvas's own miss of the same name, which it leaves to the next
         // pass. A maker that left it would make it again on every walk.
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);
       }
-    }
-
-    final asked = <BrushFrameKey>{};
-    await Future.wait([
-      for (final row in rowsOf(cut, picture.frameIndex))
-        if (!_rowIsThere(row, cut, level) &&
-            !gaveUpOn(row) &&
-            asked.add(row.frameKey))
-          makeRow(row),
-    ]);
-    if (stoodDown) {
-      return false;
     }
     if (thrown case (final error, final stack)) {
       Error.throwWithStackTrace(error, stack);

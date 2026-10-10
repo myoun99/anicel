@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -738,6 +739,36 @@ void main() {
       );
     }
 
+    /// A picture waits for its raster to come back; asked for meanwhile, the
+    /// next missing pictures' rasters queue behind it. Measured 10-10: the
+    /// whole cut made 7–30% sooner.
+    testWidgets('🚨it asks for the next two missing pictures before the one '
+        'it waits for comes back', (tester) async {
+      await tester.runAsync(() async {
+        final f = inked();
+        f.layerImages.dispose();
+        final gated = _Gated(frameStore: f.store);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: picturesOver(gated),
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+        );
+
+        scheduler.follow(run());
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          gated.asked,
+          {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
+          reason: 'the frame waited for, and the two after it',
+        );
+
+        gated.gate.complete();
+        await rested(scheduler);
+        scheduler.dispose();
+        gated.dispose();
+      });
+    });
+
     testWidgets('🚨it is followed at once — the quiet window is for the hand '
         'that draws, and nothing draws under a run', (tester) async {
       await tester.runAsync(() async {
@@ -976,11 +1007,24 @@ void main() {
         scheduler.follow(run());
         await rested(scheduler);
 
-        expect(said, const [
-          PrerenderProgress(cached: 0, total: 4),
-          PrerenderProgress(cached: 1, total: 2),
-          PrerenderProgress(cached: 2, total: 2),
-        ]);
+        expect(
+          said.first,
+          const PrerenderProgress(cached: 0, total: 4),
+          reason: 'nothing weighed yet: every frame wanted',
+        );
+        expect(
+          said.skip(1).map((progress) => progress.total),
+          everyElement(2),
+          reason: 'a picture weighed, it expects what the room holds. '
+              '↩️(1/2) then (2/2) while the walk asked for one picture at a '
+              'time; asked for ahead, the second may be there before the '
+              'walk looks (10-10)',
+        );
+        expect(
+          said.last,
+          const PrerenderProgress(cached: 2, total: 2),
+          reason: 'and holds it',
+        );
         scheduler.dispose();
         f.layerImages.dispose();
       });
@@ -1138,10 +1182,18 @@ void main() {
         expect(reported, hasLength(1), reason: 'the failure is said, once');
         expect(
           passedAtEach,
-          [false, true, true, true, true],
-          reason: 'frame 0 landed; frame 1 was given up on, and THAT is told '
-              '— a run that waits for it goes on then, not when the walk '
-              'rests; frames 2 and 3 landed; it rested',
+          hasLength(5),
+          reason: 'a word for each picture that came back, given up on or '
+              'landed, and one when it rested',
+        );
+        expect(
+          passedAtEach.take(passedAtEach.length - 1),
+          contains(true),
+          reason: 'frame 1 was given up on, and THAT is told — a run that '
+              'waits for it goes on then, not when the walk rests. ↩️It was '
+              'told second, after frame 0, while the walk asked for one '
+              'picture at a time; asked for ahead, its failure may come back '
+              'first (10-10)',
         );
         expect(
           scheduler.has([(cut: four(), frameIndex: 1)]),
@@ -1183,6 +1235,29 @@ class _Room implements PictureRoom {
         wantedAt: pictures.wantedAt(demand()),
         laterThan: step,
       );
+}
+
+/// An image cache whose every ask waits at one gate, saying which cels were
+/// asked for; past the gate it answers with no picture.
+class _Gated extends LayerFrameImageCache {
+  _Gated({required super.frameStore});
+
+  final gate = Completer<void>();
+  final asked = <FrameId>{};
+
+  @override
+  Future<LayerFrameImage?> prepare({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    bool Function()? shouldAbort,
+    bool inkSuffices = false,
+  }) async {
+    asked.add(key.frameId);
+    await gate.future;
+    return null;
+  }
 }
 
 /// An image cache whose cel [frameId] cannot be read.
