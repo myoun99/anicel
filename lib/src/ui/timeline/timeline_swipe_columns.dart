@@ -1,12 +1,15 @@
+import 'package:flutter/painting.dart' show Axis;
+
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'lane_graph.dart' show LaneGraphsView;
-import 'lane_graph_seats.dart' show laneGraphHeadedBy;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy, lanePinOf;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_lane_rows.dart' show laneMemberPinInset;
 
 /// The toggle columns a rail's bulk-drag can sweep, for BOTH grids.
 ///
@@ -31,9 +34,12 @@ import 'timeline_grid_hooks.dart';
 /// [crossExtent] is the strip's extent across the sweep — the rail's row
 /// width, or the sheet's header height, which is that width turned on its
 /// side: the slot skeleton lays the sheet's cells with `axis: Axis.vertical`,
-/// so a slot's WIDTH is its height there.
+/// so a slot's WIDTH is its height there. [axis] is the grid's: a member
+/// lane's pin is laid by its cell, not by the skeleton, and the cell lays
+/// its value a different length on each.
 List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   required TimelineGridHooks hooks,
+  required Axis axis,
   required double crossExtent,
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
@@ -48,6 +54,13 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   fx: _fx(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
+  lanePin: switch (_lanePin(hooks)) {
+    final toggle? => (
+      toggle: toggle,
+      inset: laneMemberPinInset(axis, columns),
+    ),
+    null => null,
+  },
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -64,6 +77,24 @@ RailToggle<TimelineDisplayRow>? _graph(TimelineGridHooks hooks) {
     toggle: (row) {
       if (laneGraphHeadedBy(row.layer, row.lane) case final key?) {
         verbs.toggle(key);
+      }
+    },
+  );
+}
+
+/// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
+/// swept as it is pressed and read live, as the graph's button is.
+RailToggle<TimelineDisplayRow>? _lanePin(TimelineGridHooks hooks) {
+  final verbs = hooks.laneGraphVerbs;
+  if (verbs == null) return null;
+  return (
+    valueOf: (row) => switch (lanePinOf(row.layer, row.lane)) {
+      final key? => _laneGraphsOf(hooks).pinned.contains(key),
+      null => null,
+    },
+    toggle: (row) {
+      if (lanePinOf(row.layer, row.lane) case final key?) {
+        verbs.togglePin(key);
       }
     },
   );

@@ -226,6 +226,8 @@ void main() {
     final blurKey = laneGroupKey(layerId, effectGroupLaneId(blur));
     const metrics = TimelineGridMetrics.defaults;
     const row = timelineLayerRowHeight;
+    List<TimelineDisplayRow> seatOpen(Map<String, LaneGraph> open) =>
+        seatLaneGraphs(rows, LaneGraphsView(open: open), selection: const {});
 
     test('a lane answers with its group; a header and a layer with none', () {
       expect(laneGroupOf('position'), 'transform-group');
@@ -241,7 +243,7 @@ void main() {
 
     test('only the pressed group\'s lanes take a seat', () {
       const graph = LaneGraph(extent: 196);
-      final seated = seatLaneGraphs(rows, {transformKey: graph});
+      final seated = seatOpen({transformKey: graph});
       expect([for (final row in seated) row.graph?.groupKey], [
         null,
         null,
@@ -261,11 +263,11 @@ void main() {
         [for (final row in rows) row.address],
         reason: 'the rows are the same rows — 「서는곳 법 그대로」',
       );
-      expect(seatLaneGraphs(rows, const {}), same(rows));
+      expect(seatOpen(const {}), same(rows));
     });
 
     test('each open graph is one block of its seated lanes', () {
-      final seated = seatLaneGraphs(rows, {
+      final seated = seatOpen({
         transformKey: const LaneGraph(),
         blurKey: const LaneGraph(extent: 100),
       });
@@ -279,7 +281,7 @@ void main() {
 
     test('a graph stands its own extent: its lanes and the room after the '
         'last', () {
-      final seated = seatLaneGraphs(rows, {
+      final seated = seatOpen({
         transformKey: const LaneGraph(),
         blurKey: const LaneGraph(extent: 10),
       });
@@ -301,7 +303,7 @@ void main() {
     });
 
     test('a span\'s head is counted where the rows sit', () {
-      final seated = seatLaneGraphs(rows, {transformKey: const LaneGraph()});
+      final seated = seatOpen({transformKey: const LaneGraph()});
       final edges = timelineRowEdgesOf(seated, metrics);
       const anchor = LayerRowAddress(layerId);
       // Into the room after `scale`: the lane on the anchor's side.

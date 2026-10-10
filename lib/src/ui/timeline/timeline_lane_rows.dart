@@ -16,12 +16,15 @@ import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import 'layer_label_controls.dart'
     show
+        LayerRailColumnWidths,
         LayerSectionBandCell,
         RailSwipeColumnPointer,
         fxGlyphStyle,
+        layerLaneChipsSlotWidth,
+        layerLanePinSlotWidth,
         layerLaneValueBoxGap,
         layerMarkColor,
         layerRailColumnWidthsIn,
@@ -39,8 +42,10 @@ import 'layer_rail_columns.dart'
         layerRailTrailingCells,
         noOptionalRailColumns;
 import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
-import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
-import 'lane_graph_seats.dart' show laneGraphHeadedBy;
+import 'lane_graph.dart'
+    show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
+import 'lane_graph_seats.dart'
+    show laneGraphDrawnLanes, laneGraphHeadedBy, lanePinOf;
 import 'lane_graph_toggle.dart';
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
@@ -83,6 +88,38 @@ const double _laneNavigatorExtent = 3 * 20 + 4;
 /// height.
 const double _laneValueLinkExtent = 18;
 
+/// Between a lane's value and what stands before it, on either axis.
+const double _laneValueGap = 4;
+
+/// Between a stood-up lane's navigator and what stands after it.
+const double _laneStoodNavigatorGap = 4;
+
+/// A member cell's padding at its END along the rail, past the value.
+const double _laneMemberEndPadding = 8;
+
+/// A stood-up cell's padding at either end of its column.
+const double _laneColumnEndPadding = 4;
+
+/// A curve chip (I-89 ③) and the gap between two: the colours a lane's
+/// numbers are drawn in, at the mock's size (5판).
+const double _laneChipSize = 9;
+const double _laneChipGap = 2;
+
+/// How a seated lane's name reads while its graph does not draw it — the
+/// mock's (5판).
+const double _laneUndrawnNameAlpha = 0.45;
+
+/// How far a member lane's PIN stands from the END of its cell along
+/// [axis] (I-89 ③): the cell's end padding, the value's slot and the gap
+/// before it — the rail's value column, turned on the sheet. What a
+/// sweep's band is measured by, so the band is the column the row lays.
+double laneMemberPinInset(Axis axis, LayerRailColumnWidths columns) =>
+    (axis == Axis.horizontal
+        ? _laneMemberEndPadding
+        : _laneColumnEndPadding) +
+    columns.laneValue +
+    _laneValueGap;
+
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
 /// next key) and the property's value at the playhead — tappable to type a
@@ -113,6 +150,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.optionalColumns = noOptionalRailColumns,
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
+    this.seat,
   });
 
   final Layer layer;
@@ -163,6 +201,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
 
   /// What those buttons tell; null mounts none.
   final LaneGraphVerbs? laneGraphVerbs;
+
+  /// The open header graph this lane is drawn in — its row's
+  /// [TimelineDisplayRow.graph] — or null. A seated lane wears its curve's
+  /// chips while the graph draws it, and its name fades while it does not.
+  final TimelineGraphSeat? seat;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -593,7 +636,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return _standable(
       lane.isGroupHeader
           ? _headerCell(context, colorScheme, plate)
-          : _memberCell(colorScheme, plate),
+          : _memberCell(colorScheme, plate, currentRow),
     );
   }
 
@@ -819,18 +862,32 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   // ── a member lane ─────────────────────────────────────────────────────
 
-  Widget _memberCell(ColorScheme colorScheme, Color plate) {
+  Widget _memberCell(
+    ColorScheme colorScheme,
+    Color plate,
+    TimelineRowAddress? currentRow,
+  ) {
     final valueLabel = lane.valueLabel?.call(_frame);
+    final seat = widget.seat;
+    final drawn = seat == null
+        ? null
+        : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId);
+    final ink = colorScheme.onSurfaceVariant;
     // A lane's name reads down its column on the sheet, through the shared
     // vertical-writing table ([readableText]).
     final label = readableText(
       widget.axis,
       lane.label,
-      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+      style: TextStyle(
+        fontSize: 12,
+        color: drawn == false
+            ? ink.withValues(alpha: _laneUndrawnNameAlpha)
+            : ink,
+      ),
     );
     final content = widget.axis == Axis.horizontal
-        ? _memberRow(colorScheme, label, valueLabel)
-        : _memberColumn(colorScheme, label, valueLabel);
+        ? _memberRow(colorScheme, label, valueLabel, drawn)
+        : _memberColumn(colorScheme, label, valueLabel, drawn);
     final lead = _sectionLead(24);
     return _cellBox(
       plate: plate,
@@ -862,11 +919,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// then 2 left the turned bar 23 and it ran over by one (2026-10-11).
   EdgeInsets get _memberPadding {
     if (widget.axis != Axis.horizontal) {
-      return const EdgeInsets.symmetric(vertical: 4);
+      return const EdgeInsets.symmetric(vertical: _laneColumnEndPadding);
     }
     return widget.leadingInset > 0
-        ? const EdgeInsets.only(right: 8)
-        : const EdgeInsets.only(left: 24, right: 8);
+        ? const EdgeInsets.only(right: _laneMemberEndPadding)
+        : const EdgeInsets.only(left: 24, right: _laneMemberEndPadding);
   }
 
   /// Along the rail: navigator, name, value. The NAME takes the leftover and
@@ -874,16 +931,33 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// children of equal weight is what put the numbers at a different x on
   /// every row — each was right-aligned inside HALF of whatever its name
   /// left over, and names are not the same length.
-  Widget _memberRow(ColorScheme colorScheme, Widget label, String? valueLabel) {
+  ///
+  /// I-89 ③: on a rail that carries the header graphs, the curve's chips
+  /// before the name and the pin before the value, each in a slot every
+  /// lane keeps, so the names and the pins stand in one column whichever
+  /// lanes wear them.
+  Widget _memberRow(
+    ColorScheme colorScheme,
+    Widget label,
+    String? valueLabel,
+    bool? drawn,
+  ) {
+    final graphs = widget.optionalColumns.graph;
     return Row(
       children: [
         if (lane.showsKeyNavigator) ...[
           _navigator(colorScheme),
           const SizedBox(width: 6),
         ],
+        if (graphs)
+          SizedBox(
+            width: layerLaneChipsSlotWidth,
+            child: _curveChips(drawn),
+          ),
         Expanded(child: label),
         ?_valueLink(),
-        const SizedBox(width: 4),
+        if (graphs) SizedBox(width: layerLanePinSlotWidth, child: _lanePin()),
+        const SizedBox(width: _laneValueGap),
         SizedBox(
           // As wide as its boxes' widest number where the rail is shown: a
           // truncated coordinate is a WRONG coordinate. ↩️The readout shrank
@@ -922,6 +996,56 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
+  /// I-89 ③: the colours this lane's numbers are drawn in, while its
+  /// group's graph [drawn] it — the graph's key, in the lane's own row
+  /// (시안 5판). Nothing while it is not drawn, its slot kept.
+  ///
+  /// The corner is [AppShapes]' control family, which scales with its size:
+  /// the mock's chip at 9px, where a container's absolute corner would
+  /// have rounded it into a dot.
+  Widget? _curveChips(bool? drawn) {
+    final curve = lane.curve;
+    if (drawn != true || curve == null) {
+      return null;
+    }
+    return Flex(
+      direction: widget.axis,
+      children: [
+        for (final (index, colour) in curve.parts.indexed) ...[
+          if (index > 0) const SizedBox.square(dimension: _laneChipGap),
+          DecoratedBox(
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-chip-${layer.id}-${lane.laneId}-$index',
+            ),
+            decoration: ShapeDecoration(
+              color: colour,
+              shape: AppShapes.control(_laneChipSize),
+            ),
+            child: const SizedBox.square(dimension: _laneChipSize),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// I-89 ③: the lane PINNED to every open graph, or let go — AE's graph
+  /// editor set, the one way a lane reaches another group's graph. On a
+  /// lane that draws a curve ([lanePinOf]).
+  Widget? _lanePin() {
+    final verbs = widget.laneGraphVerbs;
+    final key = lanePinOf(layer, lane);
+    if (verbs == null || key == null) {
+      return null;
+    }
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.pin,
+      keyValue: '$_keyPrefix-lane-pin-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      on: widget.laneGraphs.pinned.contains(key),
+      onToggle: () => verbs.togglePin(key),
+    );
+  }
+
   /// X-sheet lane column header: the same controls stacked vertically, and
   /// the same rule the LAYER heading beside it follows — the NAME is what a
   /// heading is for, so it is paid first and the controls shed.
@@ -955,52 +1079,43 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     ColorScheme colorScheme,
     Widget label,
     String? valueLabel,
+    bool? drawn,
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final extent = constraints.maxHeight;
-        const gap = 4.0;
-        final laneValue = layerRailColumnWidthsIn(context).laneValue;
-        final showsValue =
-            valueLabel != null &&
-            extent >= _laneLabelFloor + gap + laneValue;
-        final valueExtent = showsValue ? gap + laneValue : 0.0;
-        final navigatorExtent = lane.showsKeyNavigator
-            ? gap + _laneNavigatorExtent
-            : 0.0;
-        final showsNavigator =
-            lane.showsKeyNavigator &&
-            extent >= _laneLabelFloor + navigatorExtent + valueExtent;
-        // The chain is paid LAST, once everything the column already showed
-        // has its room: it links the value, so it is never there without
-        // it, and no key button is shed to make it room. Asked of the
-        // navigator the LANE has, not of whether it is showing — or the
-        // chain would come and go and come again as the column grew.
-        final link = showsValue ? _valueLink() : null;
-        final showsLink =
-            link != null &&
-            extent >=
-                _laneLabelFloor +
-                    navigatorExtent +
-                    valueExtent +
-                    _laneValueLinkExtent;
+        final link = valueLabel == null ? null : _valueLink();
+        final shows = _stoodShows(
+          constraints.maxHeight,
+          hasValue: valueLabel != null,
+          hasLink: link != null,
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (showsNavigator) ...[
+            if (shows.navigator) ...[
               _navigator(colorScheme),
-              const SizedBox(height: gap),
+              const SizedBox(height: _laneStoodNavigatorGap),
             ],
+            if (shows.chips)
+              SizedBox(
+                height: layerLaneChipsSlotWidth,
+                child: _curveChips(drawn),
+              ),
             Expanded(child: label),
-            if (showsLink)
+            if (shows.link)
               SizedBox(
                 height: _laneValueLinkExtent,
                 child: Center(child: link),
               ),
-            if (showsValue) ...[
-              const SizedBox(height: gap),
+            if (shows.pin)
               SizedBox(
-                height: laneValue,
+                height: layerLanePinSlotWidth,
+                child: Center(child: _lanePin()),
+              ),
+            if (shows.value && valueLabel != null) ...[
+              const SizedBox(height: _laneValueGap),
+              SizedBox(
+                height: layerRailColumnWidthsIn(context).laneValue,
                 child: RotatedBox(
                   quarterTurns: 1,
                   child: _valueCell(valueLabel),
@@ -1012,7 +1127,59 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       },
     );
   }
+
+  /// What a stood-up member column [extent] long shows: the NAME is paid
+  /// first, then each control in turn, and what does not fit is shed.
+  ///
+  /// The chain is paid after the value and the navigator, once everything
+  /// the column already showed has its room: it links the value, so it is
+  /// never there without it, and no key button is shed to make it room.
+  /// Asked of the navigator the LANE has, not of whether it is showing — or
+  /// the chain would come and go and come again as the column grew.
+  ///
+  /// I-89 ③: the graph's pin and chips are paid after the chain, asked the
+  /// same way, so carrying them sheds nothing the column showed before they
+  /// came. The pin stands by the value, so it is never there without it.
+  _StoodShows _stoodShows(
+    double extent, {
+    required bool hasValue,
+    required bool hasLink,
+  }) {
+    final valueSlot =
+        _laneValueGap + layerRailColumnWidthsIn(context).laneValue;
+    final value = hasValue && extent >= _laneLabelFloor + valueSlot;
+    final valueExtent = value ? valueSlot : 0.0;
+    final navigatorExtent = lane.showsKeyNavigator
+        ? _laneStoodNavigatorGap + _laneNavigatorExtent
+        : 0.0;
+    final navigatorFloor = _laneLabelFloor + valueExtent;
+    final linkFloor = navigatorFloor + navigatorExtent;
+    final linked = value && hasLink;
+    final pinFloor = linkFloor + (linked ? _laneValueLinkExtent : 0.0);
+    final pinned = widget.optionalColumns.graph && value;
+    final chipsFloor = pinFloor + (pinned ? layerLanePinSlotWidth : 0.0);
+    return (
+      value: value,
+      navigator:
+          lane.showsKeyNavigator && extent >= navigatorFloor + navigatorExtent,
+      link: linked && extent >= linkFloor + _laneValueLinkExtent,
+      pin: pinned && extent >= pinFloor + layerLanePinSlotWidth,
+      chips:
+          widget.optionalColumns.graph &&
+          extent >= chipsFloor + layerLaneChipsSlotWidth,
+    );
+  }
 }
+
+/// What a stood-up member column shows of its controls
+/// ([_TimelineLaneControlsRowState._stoodShows]).
+typedef _StoodShows = ({
+  bool value,
+  bool navigator,
+  bool link,
+  bool pin,
+  bool chips,
+});
 
 class _NavigatorButton extends StatelessWidget {
   const _NavigatorButton({

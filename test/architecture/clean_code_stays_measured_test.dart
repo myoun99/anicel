@@ -323,7 +323,15 @@ void main() {
   /// its cells read, and the playhead reads its range hooks where it reads
   /// every other hook. 🔬The lane's scan against its base (`fceb34c9e`, at
   /// 389) named those three.
-  const wideSignatures = 388;
+  ///
+  /// ⚠️388 → 389 on 2026-10-11, one named as the rule above asks (I-89 ③,
+  /// a lane's pin): `timelineSwipeColumns` (five) took the grid's AXIS —
+  /// a member lane's pin is laid by its cell, which lays its value a
+  /// different length on each axis, so the band the sweep finds it by is
+  /// measured along the axis it stands on. 🔬The scan against the lane's
+  /// last commit (`bcceefcd2`, at 388) named that one added and nothing
+  /// gone.
+  const wideSignatures = 389;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

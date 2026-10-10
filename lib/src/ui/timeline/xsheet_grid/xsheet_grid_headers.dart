@@ -88,6 +88,7 @@ class _XSheetGridHeaders {
         optionalColumns: _state.widget.hooks.optionalRailColumns,
         laneGraphs: _state.widget.hooks.laneGraphs,
         laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+        seat: entry.graph,
       ),
     );
   }

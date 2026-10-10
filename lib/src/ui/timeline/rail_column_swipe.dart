@@ -12,6 +12,7 @@ import 'layer_label_controls.dart'
         LayerRailColumnWidths,
         layerFxSlotWidth,
         layerGraphSlotWidth,
+        layerLanePinSlotWidth,
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
@@ -614,6 +615,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   RailToggle<TRow>? fx,
   RailToggle<TRow>? timesheet,
   RailToggle<TRow>? laneToggle,
+  ({RailToggle<TRow> toggle, double inset})? lanePin,
 }) {
   /// A LEADING column's x depends on the row: the nesting indent falls
   /// between the mark and the twirl, so the twirl and the sheet toggle move
@@ -655,6 +657,19 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     return (_) => at;
   }
 
+  /// A MEMBER LANE's column, [inset] from the row's end — where its cell
+  /// lays it, which no slot skeleton does. ⛔No slack either side: the
+  /// chain, or the name a press stands on, is before it, and the value a
+  /// gap after.
+  ({double start, double end}) Function(int depth) laneEndBand(
+    double inset,
+    double width,
+  ) {
+    final end = crossExtent - inset;
+    final at = (start: end - width, end: end);
+    return (_) => at;
+  }
+
   RailToggleColumn<TRow> column(
     ({double start, double end}) Function(int depth) bandAt,
     RailToggle<TRow> toggle,
@@ -677,6 +692,11 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
       column(
         trailingBand(LayerRailTrailingSlot.fillReference, layerGraphSlotWidth),
         graph,
+      ),
+    if (lanePin != null)
+      column(
+        laneEndBand(lanePin.inset, layerLanePinSlotWidth),
+        lanePin.toggle,
       ),
     if (timesheet != null)
       column(leadingBand(LayerRailLeadingSlot.timesheet), timesheet),

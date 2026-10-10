@@ -100,7 +100,8 @@ class LaneGraphsView {
 }
 
 /// Where a member lane sits in its group's open HEADER GRAPH (I-89 ③): the
-/// group whose graph it is drawn in, that graph, and the lanes drawn in it.
+/// group whose graph it is drawn in, that graph, the lanes seated in it,
+/// and which of them the row selection and the pins name.
 ///
 /// 🗣️유저 2026-10-10: 「그래프누르면 해당 fx에서만 작동하도록」 — the graph
 /// takes the place of the group it was pressed on, and only that group's.
@@ -113,6 +114,8 @@ class TimelineGraphSeat {
     required this.groupKey,
     required this.graph,
     required this.lanes,
+    required this.picked,
+    required this.pinned,
   });
 
   /// The group's view-state key (`laneGroupKey`): a header's — or, on the
@@ -125,13 +128,28 @@ class TimelineGraphSeat {
   /// them — what its rows and its picture each read the drawn lanes off.
   final List<String> lanes;
 
+  /// Those of [lanes] in the row selection, in the same order.
+  final List<String> picked;
+
+  /// Those of [lanes] pinned to every graph ([LaneGraphsView.pinned]), in
+  /// the same order.
+  final List<String> pinned;
+
   @override
   bool operator ==(Object other) =>
       other is TimelineGraphSeat &&
       other.groupKey == groupKey &&
       other.graph == graph &&
-      listEquals(other.lanes, lanes);
+      listEquals(other.lanes, lanes) &&
+      listEquals(other.picked, picked) &&
+      listEquals(other.pinned, pinned);
 
   @override
-  int get hashCode => Object.hash(groupKey, graph, Object.hashAll(lanes));
+  int get hashCode => Object.hash(
+    groupKey,
+    graph,
+    Object.hashAll(lanes),
+    Object.hashAll(picked),
+    Object.hashAll(pinned),
+  );
 }

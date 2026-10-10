@@ -280,6 +280,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
         hooks: widget.hooks,
+        axis: Axis.horizontal,
         crossExtent:
             _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
         leadingOrigin: timelineLayerRowLeadingBorder,

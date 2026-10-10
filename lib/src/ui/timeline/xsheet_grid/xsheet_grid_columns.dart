@@ -51,6 +51,7 @@ class _XSheetGridColumns {
   List<RailToggleColumn<TimelineDisplayRow>> swipeColumns() =>
       timelineSwipeColumns(
         hooks: _state.widget.hooks,
+        axis: Axis.vertical,
         crossExtent: _state._headers.naturalHeaderExtent,
         leadingOrigin: 0,
         columns: _state.widget.metrics.railColumns,

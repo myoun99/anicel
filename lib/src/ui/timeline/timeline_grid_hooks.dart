@@ -555,7 +555,8 @@ class TimelineGridHooks {
   /// The rows a grid shows for [layers]: [buildTimelineDisplayRows] fed the
   /// bundle's own view state — open twirls, hidden sections, the row
   /// filter, folded attach groups, the active layer and the fx predicate —
-  /// with the lanes of every open header graph seated in it.
+  /// with the lanes of every open header graph seated in it, the row
+  /// selection and the pins told to each seat.
   ///
   /// The rail and the sheet each listed these six hand-offs (the audit's
   /// clone scan, 2026-09-06); a grid that forgot one showed rows the other
@@ -578,6 +579,7 @@ class TimelineGridHooks {
       fxEnabledOf: isLayerFxEnabled,
       lanesPrecedeLayer: lanesPrecedeLayer,
     ),
-    laneGraphs.open,
+    laneGraphs,
+    selection: selectedRows,
   );
 }
