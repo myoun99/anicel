@@ -182,6 +182,51 @@ void main() {
     );
   });
 
+  testWidgets('🚨the page turns on the frame AFTER the one that carried the '
+      'playhead out — that frame shows the film frame, not the turn', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final cursor = ValueNotifier<int>(0);
+    final playing = ValueNotifier<int?>(90);
+    addTearDown(cursor.dispose);
+    addTearDown(playing.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            hooks: hooks(cursor: cursor, playback: playing),
+            layers: layers,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: cell,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double offset() =>
+        positionOf(tester, 'timeline-frame-scroll-viewport').pixels;
+
+    // The playhead carried out of the page by a frame's own tick, as a run
+    // carries it — and the page read where that frame ends, before anything
+    // that frame asked to happen after it.
+    double? atTheEndOfThatFrame;
+    tester.binding
+      ..addPostFrameCallback((_) => atTheEndOfThatFrame = offset())
+      ..scheduleFrameCallback((_) => cursor.value = 91);
+    await tester.pump();
+
+    expect(
+      atTheEndOfThatFrame,
+      0,
+      reason: 'the frame that moved the playhead did not also move every '
+          'row\'s window',
+    );
+    expect(offset(), 91 * cell, reason: 'and the page turned after it');
+  });
+
   testWidgets('the x-sheet turns its page the same way, down its own axis', (
     tester,
   ) async {

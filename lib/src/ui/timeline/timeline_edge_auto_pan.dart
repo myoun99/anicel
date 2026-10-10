@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../panels/panel_collapsed_scope.dart';
@@ -221,8 +222,10 @@ typedef KeptStep = ({
 });
 
 /// [pageToPlayhead] for a kept axis — the same law ([pageScrollOffset]),
-/// against the window the row itself shows.
-void pageKeptAxis(KeptStep axis) => _moveKept(axis, pageScrollOffset);
+/// against the window the row itself shows, on the same frame
+/// ([_turnAfterThisFrame]).
+void pageKeptAxis(KeptStep axis) =>
+    _turnAfterThisFrame(() => _moveKept(axis, pageScrollOffset));
 
 /// [revealSelectionOnBothAxes]'s frame-axis law ([revealScrollOffset]) for
 /// a kept axis.
@@ -407,8 +410,26 @@ RevealedItem _itemAt(int at, double extent) =>
 /// Every surface that follows the playhead calls THIS — the timeline's
 /// frames, the x-sheet's (which run down, not across) and the storyboard's
 /// global strip — so the page law has one home, as the walk does.
-void pageToPlayhead(RevealedStep axis) {
+void pageToPlayhead(RevealedStep axis) => _turnAfterThisFrame(() {
   if (_axisCanMove(axis)) {
     jumpToPage(axis.controller, _itemOf(axis));
   }
+});
+
+/// 🚨A PAGE TURNS ON THE FRAME AFTER THE ONE THAT CARRIED THE PLAYHEAD OUT.
+/// A turn moves every row's window, and every row lays its widgets out
+/// again where the window put them: 🔬profile 10-10, a turn frame painted
+/// ~1,000 render objects (PAINT 9ms · SEMANTICS 7ms, against 0.6 · 0.2 on
+/// the frames between) and took vsync to raster 25–60ms at the median
+/// against 13–32. Turned in the frame that changed the film frame, all of
+/// that stood between the new film frame and the screen. A film's frames
+/// are farther apart than the screen's refreshes, and the turn takes the
+/// next one, where nothing else is shown.
+///
+/// One home for both kinds of axis — a scrollable's ([pageToPlayhead]) and
+/// a kept one's ([pageKeptAxis]).
+void _turnAfterThisFrame(VoidCallback turn) {
+  SchedulerBinding.instance
+    ..addPostFrameCallback((_) => turn())
+    ..ensureVisualUpdate();
 }
