@@ -185,6 +185,9 @@ void main() {
     tester,
   ) async {
     await pumpRoad(tester);
+    // ↩️I-88-Q1 put the turn on Shift+Space: with the turn unbound,
+    // Shift+Space is nobody's — and still not Space.
+    bindings.setActivators(EditorActionIds.canvasRotateHold, const []);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space, character: ' ');
