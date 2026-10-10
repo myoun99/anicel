@@ -155,11 +155,12 @@ void main() {
             .round();
     expect(rows, 3, reason: '⛔전제: the effect\'s two lanes lie between');
 
+    // ⛔No frame between the press and the first step: the sweep starts
+    // from what the button did on the down, before the grid rebuilds.
     final gesture = await tester.startGesture(
       tester.getCenter(from),
       kind: PointerDeviceKind.mouse,
     );
-    await tester.pump(const Duration(milliseconds: 16));
     for (var step = 1; step <= rows; step += 1) {
       await gesture.moveBy(Offset(0, -rowHeight));
       await tester.pump(const Duration(milliseconds: 16));
