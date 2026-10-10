@@ -276,6 +276,24 @@ void main() {
       );
     });
 
+    test('two of its rows gone at once: to a row still there, as the '
+        'timeline\'s delete of a selection hands on', () {
+      final five = _film([
+        _cut('a', ['-under', 'conte', '+over', '+high', '+top']),
+      ]);
+      expect(
+        conteRowHandedOff(
+          _seat(1),
+          before: five,
+          after: _film([
+            _cut('a', ['-under', 'conte', '+top']),
+          ]),
+        ),
+        _seat(1),
+        reason: 'Top, come down to the seat Over left — not High, gone too',
+      );
+    });
+
     test('the group gone whole: to the conte\'s own seat', () {
       expect(
         conteRowHandedOff(

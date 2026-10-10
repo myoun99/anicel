@@ -195,12 +195,12 @@ class Standing {
   /// an edit moved them to — a drag, a delete, an undo — and goes where the
   /// timeline's delete hands off once the edit took them all
   /// ([conteRowAfterChange], [conteRowHandedOff]). The session asks it with
-  /// every change it announces, before [followActiveLayer]: the row an edit
-  /// seats is still the row you stand on.
+  /// every change it announces.
   ///
   /// Counted from the project the stand was written in ([_railStand]), not
-  /// the last one announced: a door that stands before it announces wrote
-  /// that seat in the project its edit made.
+  /// the last one announced: a door that stands before it announces — the
+  /// row an edit seats ([seatVerbRowOnActiveLayer]) — wrote that seat in
+  /// the project its edit made, and is never carried off by it.
   void followConteSeats() {
     final stand = _railStand;
     final before = stand?.stoodIn;

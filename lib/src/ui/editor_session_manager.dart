@@ -2854,7 +2854,7 @@ class EditorSessionManager extends ChangeNotifier
   /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
   /// every door that moves it passes, collaborators' and this class's own.
   /// The conte rows the selection and the rail's stand hold follow their
-  /// rows' seats there too, first ([Standing.followConteSeats], F-322).
+  /// rows' seats there too ([Standing.followConteSeats], F-322).
   @override
   void notifyListeners() {
     rowSelectionVerbs.followConteSeats();

@@ -170,16 +170,52 @@ void main() {
     expect(session.rowSelection.value, [seat(1), seat(-1)]);
   });
 
-  test('🚨a seat is counted in the project it was written in: a stand '
-      'written after an edit, before the edit is announced, stays', () {
+  test('🚨working in the storyboard, the row its rail lights follows too — '
+      'though the edit moved no layer you draw on', () {
     final session = standingOn(seat(2));
+    expect(session.activeLayerId, const LayerId('a-high'), reason: '⛔전제');
+
     session.cutCommandCoordinator.deleteLayer(
       cutId: const CutId('a'),
       layerId: const LayerId('a-over'),
     );
-    expect(seatsOf(session), ['1:a-high', '0:a-conte', '-1:a-under']);
+    session.notifyChanged();
 
-    // High's seat now — written into the project the delete made.
+    expect(session.activeLayerId, const LayerId('a-high'), reason: '⛔전제');
+    expect(session.standing.currentRowListenable.value, seat(1));
+  });
+
+  test('🚨a seat is counted in the project it was written in: a stand '
+      'written after an edit, before the edit is announced, stays', () {
+    final session = standingOn(seat(0));
+    // Over and High trade seats in every cut, unannounced.
+    session.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            track.copyWith(
+              cuts: [
+                for (final cut in track.cuts)
+                  cut.copyWith(
+                    layers: [
+                      ...cut.layers.take(3),
+                      cut.layers[4],
+                      cut.layers[3],
+                    ],
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+    expect(seatsOf(session), [
+      '2:a-over',
+      '1:a-high',
+      '0:a-conte',
+      '-1:a-under',
+    ], reason: '⛔전제');
+
+    // High's seat now — written into the project the edit made.
     session.standOnRow(seat(1), panel: WorkingPanel.storyboard);
     session.notifyChanged();
 
