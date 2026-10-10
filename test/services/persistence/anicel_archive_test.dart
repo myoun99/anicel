@@ -241,6 +241,17 @@ void main() {
     );
   });
 
+  // I-89 (format 13): a v12 file's keys each carry ONE `interpolation`,
+  // which this build no longer reads — refused by its number rather than
+  // opened with every hold turned into a ramp.
+  test('🚨a v12 file is refused by its number — its holds would open as '
+      'ramps', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(12)),
+      refusesNaming('format 12,'),
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
