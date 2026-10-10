@@ -286,15 +286,16 @@ void main() {
       'page ahead — the order of a run that stands, not of one that plays', (
     tester,
   ) async {
-    // Six pages a budget, three once the OS warns: the page on screen and
-    // the two the run wants next.
+    // Ten pages a budget, five once the OS warns. Standing on a page shows
+    // the foot of the one above it too, so on 3 the screen holds 2 and 3,
+    // and three more are kept by the order the run wants them in.
     ViewerRasterBudget.debugPageBytesOverride =
-        await measureOnePage(tester) * 3 ~/ 2;
+        await measureOnePage(tester) * 5 ~/ 2;
     final fake = await openConte(tester, pages: 7);
     for (final page in [6, 3]) {
       await turnTo(tester, page);
     }
-    expect(reRendered(fake), isEmpty, reason: 'fixture: 1 to 6 are held');
+    expect(reRendered(fake), isEmpty, reason: 'fixture: every page is held');
 
     session.respondToMemoryPressure();
     await tester.pumpAndSettle();
@@ -303,12 +304,12 @@ void main() {
     expect(
       reRendered(fake),
       isEmpty,
-      reason: 'standing on 3, the page behind is as near as the page ahead '
-          '— a run that PLAYS lets go of what is behind it first, and paging '
-          'by hand goes back as often as forward',
+      reason: 'standing on 3, page 1 — two behind — was kept before page 6, '
+          'three ahead: a run that PLAYS lets go of what is behind it first, '
+          'and paging by hand goes back as often as forward',
     );
-    await turnTo(tester, 5);
-    expect(reRendered(fake), [5], reason: 'two away was let go');
+    await turnTo(tester, 6);
+    expect(reRendered(fake), [6], reason: 'three ahead was let go');
   });
 
   /// 🚨**A CACHE THIS BIG MUST APPEAR IN THE PANEL THAT SAYS WHERE MEMORY
