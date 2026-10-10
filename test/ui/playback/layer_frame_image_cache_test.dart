@@ -325,10 +325,7 @@ void main() {
       cache.invalidateFrame(key('frame-a'));
       final whole = ask();
       final ink = ask(inkSuffices: true);
-      expect(
-        (await Future.wait([whole, ink])),
-        everyElement(isNotNull),
-      );
+      expect(await Future.wait([whole, ink]), everyElement(isNotNull));
       expect(snapshots, 2, reason: 'its ink alone is another picture');
     });
   });

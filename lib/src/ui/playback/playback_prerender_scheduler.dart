@@ -359,7 +359,7 @@ class PlaybackPrerenderScheduler {
       final lead = math.min(demand.leadFor(_composeTime), length - 1);
       List<DemandedPicture>? at(int index) =>
           index < length ? demand.picturesAt((lead + index) % length) : null;
-      final _Pass pass = (at: at, stepAt: (index) => (lead + index) % length);
+      final pass = (at: at, stepAt: (int index) => (lead + index) % length);
 
       final moved = demand.advanced();
       if (moved > 0 && reached > 0) {
