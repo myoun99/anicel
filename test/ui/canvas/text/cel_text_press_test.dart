@@ -1076,10 +1076,13 @@ class _Host implements CelTextToolHost {
   final HistoryManager history = HistoryManager();
 
   @override
-  TextToolOptions get options => TextToolOptions(
+  late TextToolOptions options = TextToolOptions(
     letters: const TextLetterStyle(fontSize: 8),
     vertical: columns,
   );
+
+  @override
+  int? get brushColour => null;
 
   /// A press is handed its cel; none is named for the settings' list.
   @override

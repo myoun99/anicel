@@ -31,13 +31,22 @@ typedef ShownLetterSetting<T> = ({T value, bool mixed});
 /// [settled] false is a value still being dragged: it shows, and lands with
 /// the one that follows it ([CelTextTool.changeLetters]).
 class TextToolSettingsValues {
-  const TextToolSettingsValues({required this.options, required this.tool});
+  const TextToolSettingsValues({
+    required this.options,
+    required this.tool,
+    this.brushColour,
+  });
 
   /// The next text's values. Null in a host that does not own them.
   final ValueNotifier<TextToolOptions>? options;
 
   /// The hand of the canvas on screen. Null where no canvas holds one.
   final CelTextTool? tool;
+
+  /// The brush's colour — the next text's while the tool has none of its
+  /// own ([TextToolOptions.takesTheBrushColour]). Null where there is no
+  /// brush to read.
+  final int? brushColour;
 
   TextToolOptions get _next => options?.value ?? TextToolOptions.defaults;
 
@@ -52,7 +61,9 @@ class TextToolSettingsValues {
   /// One setting of the letters, read by [of].
   ShownLetterSetting<T> letter<T>(T Function(TextLetterStyle style) of) {
     final values = [
-      for (final style in tool?.letterStylesSpokenFor ?? [_next.letters])
+      for (final style
+          in tool?.letterStylesSpokenFor ??
+              [_next.letters(brushColour: brushColour)])
         of(style),
     ];
     return (
@@ -63,12 +74,30 @@ class TextToolSettingsValues {
 
   /// Makes [change] on the letters the setting speaks for, and on the next
   /// text's.
+  ///
+  /// ⚠️Not the colour — [setColour]: a colour set here would not be the
+  /// next text's while the tool takes the brush's.
   void setLetters(
     TextLetterStyle Function(TextLetterStyle style) change, {
     bool settled = true,
   }) {
     tool?.changeLetters(change, settled: settled);
-    _setNext((next) => next.copyWith(letters: change(next.letters)));
+    _setNext(
+      (next) => next.copyWith(
+        letters: change(next.letters(brushColour: brushColour)),
+      ),
+    );
+  }
+
+  /// Sets the letters' colour as [setLetters] sets a letter setting — and
+  /// on the next text's it is the tool's OWN from here, the brush's no
+  /// longer read (F-334-Q1: 「자기 색은 두고, 처음만 붓 색」).
+  void setColour(int color, {bool settled = true}) {
+    tool?.changeLetters(
+      (style) => style.copyWith(color: color),
+      settled: settled,
+    );
+    _setNext((next) => next.withColour(color));
   }
 
   // ── the box ─────────────────────────────────────────────────────────

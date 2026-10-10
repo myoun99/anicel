@@ -259,7 +259,7 @@ void main() {
       await tester.tap(row('writing-columns'));
       await tester.pump();
 
-      expect(hand.options.value.letters.bold, isTrue);
+      expect(hand.options.value.letters(brushColour: null).bold, isTrue);
       expect(hand.options.value.align, TextCelAlign.right);
       expect(hand.options.value.vertical, isTrue);
       expect(hand.host.ran, isEmpty);
@@ -364,7 +364,7 @@ void main() {
 
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.fontSize, shown);
-      expect(hand.options.value.letters.fontSize, shown);
+      expect(hand.options.value.letters(brushColour: null).fontSize, shown);
     });
 
     testWidgets('🚨each bar reads and sets its OWN number of the letters: '
@@ -404,7 +404,7 @@ void main() {
       // The next text is told each number too — and nothing it was not: it
       // has no outline to be the width of.
       expect(
-        hand.options.value.letters,
+        hand.options.value.letters(brushColour: null),
         plain.copyWith(
           letterSpacing: tracked.letterSpacing,
           outlineWidth: widened.outlineWidth,
@@ -449,7 +449,7 @@ void main() {
       );
       expect(hand.host.ran, hasLength(1));
       expect(smoothRing(tester).value, isFalse);
-      expect(hand.options.value.letters.antialias, isFalse);
+      expect(hand.options.value.letters(brushColour: null).antialias, isFalse);
     });
 
     testWidgets('letters that do not agree on it show its ring MIXED, and a '
@@ -574,7 +574,7 @@ void main() {
         landedOn(hand.cel).spans.single.style.fontFamily,
         'Nanum Gothic',
       );
-      expect(hand.options.value.letters.fontFamily, 'Nanum Gothic');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Nanum Gothic');
       expect(
         tester.widget<PanelFlyoutButton>(row('font')).label,
         'Nanum Gothic',
@@ -618,7 +618,7 @@ void main() {
       expect(wheel, findsNothing, reason: '⛔fixture: the window closed');
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.color, picked);
-      expect(hand.options.value.letters.color, picked);
+      expect(hand.options.value.letters(brushColour: null).color, picked);
     });
 
     testWidgets('「현재 색 반영」 brings the brush\'s colour to the letters', (
@@ -1113,7 +1113,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(options.value.letters.color, 0xFF336699);
+    expect(options.value.letters(brushColour: null).color, 0xFF336699);
   });
 
   testWidgets('a host that owns no settings and holds no text shows the '

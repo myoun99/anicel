@@ -106,7 +106,7 @@ void main() {
         ..setLineHeight(1.5)
         ..setBackgroundColor(0xFF112233);
 
-      expect(options.value.letters.fontSize, 30);
+      expect(options.value.letters(brushColour: null).fontSize, 30);
       expect(options.value.align, TextCelAlign.center);
       expect(options.value.lineHeight, 1.5);
       expect(options.value.backgroundColor, 0xFF112233);
@@ -197,7 +197,7 @@ void main() {
         run('cd', large.copyWith(bold: true)),
       ]);
       expect(host.ran, hasLength(1));
-      expect(options.value.letters, plain.copyWith(bold: true));
+      expect(options.value.letters(brushColour: null), plain.copyWith(bold: true));
       expect(values.letter((style) => style.bold), (value: true, mixed: false));
     });
 
@@ -238,7 +238,7 @@ void main() {
       values.setLetters((style) => style.copyWith(color: 0xFF0000FF));
 
       expect(tool.session!.nextLetterStyle.color, 0xFF0000FF);
-      expect(options.value.letters.color, 0xFF0000FF);
+      expect(options.value.letters(brushColour: null).color, 0xFF0000FF);
       expect(values.letter((style) => style.color).value, 0xFF0000FF);
     });
 
@@ -476,7 +476,7 @@ void main() {
 
       expect(nowhere.writable, isFalse);
       expect(nowhere.letter((style) => style.fontSize), (
-        value: TextToolOptions.defaults.letters.fontSize,
+        value: TextToolOptions.defaults.letters(brushColour: null).fontSize,
         mixed: false,
       ));
       expect(nowhere.align, TextToolOptions.defaults.align);
@@ -498,7 +498,7 @@ void main() {
 
       values.setLetters((style) => style.copyWith(bold: true));
 
-      expect(options.value.letters.bold, isTrue);
+      expect(options.value.letters(brushColour: null).bold, isTrue);
     });
 
     test('with a text in hand and no settings of its own, the text', () async {

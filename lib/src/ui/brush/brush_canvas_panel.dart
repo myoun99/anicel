@@ -885,9 +885,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the canvas. Null in a host that is not the app's canvas.
   final CelTextCommands? textCommands;
 
-  /// What the next text set with the text tool starts as. Null keeps the
+  /// What the next text set with the text tool starts as — and what setting
+  /// a text leaves it as ([CelTextToolHost.options]). Null keeps the
   /// defaults.
-  final ValueListenable<TextToolOptions>? textToolOptions;
+  final ValueNotifier<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands. Null in hosts that do not offer the tool
   /// (the cut variants are then inert rather than crashing).

@@ -305,7 +305,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel] (R9-rest): the text tool's channel and
   /// the next text's values.
   final CelTextCommands? textCommands;
-  final ValueListenable<TextToolOptions>? textToolOptions;
+  final ValueNotifier<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;

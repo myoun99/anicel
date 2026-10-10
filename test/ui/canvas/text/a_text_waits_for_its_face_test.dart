@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
@@ -8,6 +7,7 @@ import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_fixture.dart';
@@ -69,7 +69,9 @@ void main() {
     TextToolOptions next = TextToolOptions.defaults,
   }) {
     final baker = HeldBaker();
-    final host = TextHandHost(() => next);
+    final options = ValueNotifier(next);
+    addTearDown(options.dispose);
+    final host = TextHandHost(options);
     final tool = CelTextTool(host: host, bake: baker.call);
     final CelTextCel cel = (
       key: celTextTestKey,

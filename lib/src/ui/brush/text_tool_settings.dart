@@ -60,8 +60,10 @@ class TextToolSettings extends StatelessWidget {
   /// canvas to hold one.
   final CelTextCommands? commands;
 
-  /// The brush's colour — what 「현재 색 반영」 copies into a colour here.
-  /// Null where there is no brush to read.
+  /// The brush's colour — what 「현재 색 반영」 copies into a colour here, and
+  /// the next text's while the tool has none of its own
+  /// ([TextToolOptions.takesTheBrushColour]). Null where there is no brush
+  /// to read.
   final int Function()? currentColorOf;
 
   @override
@@ -73,6 +75,7 @@ class TextToolSettings extends StatelessWidget {
       final values = TextToolSettingsValues(
         options: options,
         tool: commands?.tool,
+        brushColour: currentColorOf?.call(),
       );
       final strings = AppText.strings;
       return ToolSettingsSection(
@@ -387,10 +390,7 @@ class _LetterRows extends StatelessWidget {
         color: colour.value,
         mixed: colour.mixed,
         currentColorOf: currentColorOf,
-        onChanged: (argb) => values.setLetters(
-          (style) => style.copyWith(color: argb),
-          settled: false,
-        ),
+        onChanged: (argb) => values.setColour(argb, settled: false),
         onSettled: values.settle,
       ),
     );

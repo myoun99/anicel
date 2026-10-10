@@ -198,7 +198,7 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level text channel and the next text's values (R9-rest),
   /// forwarded to the canvas that holds texts.
   final CelTextCommands? canvasTextCommands;
-  final ValueListenable<TextToolOptions>? textToolOptions;
+  final ValueNotifier<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — owned by the workspace so the piece
   /// outlives every project the canvas shows.

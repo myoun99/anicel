@@ -45,6 +45,13 @@ class _CanvasPanelText implements CelTextToolHost {
       _state.widget.textToolOptions?.value ?? TextToolOptions.defaults;
 
   @override
+  set options(TextToolOptions options) =>
+      _state.widget.textToolOptions?.value = options;
+
+  @override
+  int? get brushColour => _state.widget.brushToolState?.value.color;
+
+  @override
   HistoryMark? get historyMark =>
       _state.widget.historyManager?.gestures.mark;
 

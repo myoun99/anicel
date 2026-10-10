@@ -1742,6 +1742,9 @@ class _Host implements CelTextToolHost {
     letters: TextLetterStyle(fontSize: 8),
   );
 
+  @override
+  int? get brushColour => null;
+
   final List<({Command command, HistoryMark? withCelMadeSince})> ran = [];
 
   /// The families each step was said to be set in, in the order they ran.
