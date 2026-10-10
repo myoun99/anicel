@@ -871,6 +871,7 @@ void main() {
     'tlLinkedWith': (s) => s.tlLinkedWith,
     'tlAudioLane': (s) => s.tlAudioLane,
     'tlNameTagGroup': (s) => s.tlNameTagGroup,
+    'tlReferenceGroup': (s) => s.tlReferenceGroup,
     'tlTransformGroup': (s) => s.tlTransformGroup,
     'tlLaneAnchorPoint': (s) => s.tlLaneAnchorPoint,
     'tlLanePosition': (s) => s.tlLanePosition,

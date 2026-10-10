@@ -57,7 +57,10 @@ void main() {
       notationLanguage: AppLanguage.ko,
     );
     final older = fileErrorWords(refusalOf(9));
-    expect(older, AppText.strings.openOlderFormat(9, 11));
+    expect(
+      older,
+      AppText.strings.openOlderFormat(9, anicelOldestReadFormatVersion),
+    );
     expect(older, contains('9'));
     expect(older, contains('$anicelOldestReadFormatVersion'));
     expect(older, isNot(contains('FormatException')));
