@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/the_classic_rail.dart';
+
 /// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
 /// range, a drag starting inside the selection MOVES it (frame steps along
 /// the main axis, row steps across; the grid resolves rows to layers).
@@ -57,10 +59,12 @@ void main() {
     required ValueNotifier<int> cursor,
     required TimelineFrameRangeHooks rangeHooks,
     ValueChanged<int>? onSelectFrame,
-    // Classic geometry: this file's pan distances assume 48×52 cells.
+    // Classic geometry: this file's pan distances assume 48×52 cells,
+    // beside the rail they were measured by ([classicRailWidth]).
     TimelineGridMetrics metrics = const TimelineGridMetrics(
       frameCellWidth: 48,
       layerRowHeight: 52,
+      layerControlsWidth: classicRailWidth,
     ),
   }) {
     return MaterialApp(
@@ -435,6 +439,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -560,6 +565,7 @@ layers: [se1, se2],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -621,6 +627,7 @@ layers: [blockLayer('se-1').copyWith(kind: LayerKind.se)],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -714,6 +721,7 @@ layers: [
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -1642,6 +1650,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),
@@ -1816,6 +1825,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),
@@ -1891,6 +1901,7 @@ layers: [committed],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),

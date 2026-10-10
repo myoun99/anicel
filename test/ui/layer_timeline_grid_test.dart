@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/exposure_of.dart';
+import '../helpers/the_classic_rail.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -33,10 +34,14 @@ import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
-/// default is pinned in timeline_grid_metrics_test).
+/// default is pinned in timeline_grid_metrics_test) — and the rail they
+/// were drawn beside ([classicRailWidth]): the frame windows below are what
+/// is left of a surface after it. The rail's own width is pinned there too
+/// (519 since tool-settings-panel-tidy, 2026-10-10 — the lane values' hands).
 const _testMetrics = TimelineGridMetrics(
   frameCellWidth: 48,
   layerRowHeight: 52,
+  layerControlsWidth: classicRailWidth,
 );
 
 /// A vertical scroll gesture anchored inside the FRAME GRID.
@@ -335,7 +340,7 @@ void main() {
     // Untouched, the rail window is the rail's NATURAL width — nothing is
     // cut until the user drags the splitter.
     expect(railRect.left, moreOrLessEquals(gridLeft + 16));
-    expect(railRect.width, moreOrLessEquals(443));
+    expect(railRect.width, moreOrLessEquals(classicRailWidth));
     expect(splitterRect.left, moreOrLessEquals(railRect.right));
     expect(splitterRect.width, moreOrLessEquals(5));
     expect(frameGridAreaRect.left, moreOrLessEquals(splitterRect.right));
@@ -391,11 +396,11 @@ void main() {
         .left;
     final wideFrameArea = tester.getRect(frameGridArea).width;
 
-    rail.resizeBy(-243, naturalExtent: 443);
+    rail.resizeBy(-243, naturalExtent: classicRailWidth);
     await tester.pump();
 
     // The window is 200 wide; the rail INSIDE it never moved or shrank.
-    expect(tester.getSize(railBody).width, moreOrLessEquals(443));
+    expect(tester.getSize(railBody).width, moreOrLessEquals(classicRailWidth));
     final windowRight = gridLeft + 16 + 200;
     expect(
       tester.getRect(find.byType(LayerRailWindow).first).right,

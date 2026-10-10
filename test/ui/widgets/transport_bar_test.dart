@@ -583,7 +583,7 @@ void main() {
         frameCount: 100,
         range: span(0, 40, (start, _) => movedIn = start),
       );
-      await tester.tap(find.byKey(k('in')));
+      await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('in-input')), '13');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -598,7 +598,7 @@ void main() {
         frameCount: 100,
         range: span(0, 40, (start, _) => movedIn = start),
       );
-      await tester.tap(find.byKey(k('in')));
+      await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('in-input')), '99');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -615,12 +615,29 @@ void main() {
         frameCount: 100,
         range: span(30, 99, (_, end) => movedOut = end),
       );
-      await tester.tap(find.byKey(k('out')));
+      await tester.tap(find.byKey(k('out-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('out-input')), '5');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
       expect(movedOut, 30);
+    });
+
+    /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「숫자 뒤에 ±와 연필」.
+    testWidgets('IN\'s and OUT\'s ± step them a frame, held to the span', (
+      tester,
+    ) async {
+      final moves = <(int, int)>[];
+      await pump(
+        tester,
+        frameCount: 100,
+        range: span(10, 40, (start, end) => moves.add((start, end))),
+      );
+      await tester.tap(find.byKey(k('in-step-up')));
+      await tester.pump();
+      await tester.tap(find.byKey(k('out-step-down')));
+      await tester.pump();
+      expect(moves, [(11, 40), (10, 39)]);
     });
 
     testWidgets('a span that can act on nothing keeps its row, off', (

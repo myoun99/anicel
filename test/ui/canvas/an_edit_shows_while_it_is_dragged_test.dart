@@ -316,9 +316,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -403,9 +400,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     for (var step = 0; step < 4; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -538,9 +532,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -646,9 +637,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     for (var step = 0; step < 3; step += 1) {
       await gesture.moveBy(const Offset(10, 0));
       await tester.pump();
@@ -726,9 +714,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     await gesture.moveBy(const Offset(10, 0));
     await tester.pump();
 
@@ -773,9 +758,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     try {
       for (var step = 0; step < 3; step += 1) {
         await gesture.moveBy(const Offset(10, 0));
@@ -807,9 +789,6 @@ void main() {
       tester.getCenter(value),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     try {
       for (var step = 0; step < 3; step += 1) {
         await gesture.moveBy(const Offset(-10, 0));

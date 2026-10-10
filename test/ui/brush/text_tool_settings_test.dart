@@ -727,11 +727,12 @@ void main() {
 
       expect(written('line-height', '125%'), findsOneWidget);
 
-      // Four fifths of the way along its TRACK — the bar less the +/− pair
-      // at its end, 14 wide and 3 clear of it.
+      // Four fifths of the way along its TRACK — the bar less the hands at
+      // its end, the +/− pair and the pencil.
       final line = tester.getRect(row('line-height'));
       await tester.tapAt(
-        line.centerLeft + Offset((line.width - 17) * 0.8, 0),
+        line.centerLeft +
+            Offset((line.width - FieldSlider.handsReach) * 0.8, 0),
       );
       await tester.pump();
 

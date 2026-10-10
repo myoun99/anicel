@@ -164,7 +164,7 @@ class _BottomBarBuild {
             ? _CanvasViewportBottomBar._ownIconWidth
             : 0.0) +
         (_bar.onRotateByDrag != null
-            ? _rotationReadoutWidth
+            ? DragValueLabel.rowWidthOf(_rotationReadoutWidth)
             : 0.0) +
         (_bar.onRotateCw != null
             ? _CanvasViewportBottomBar._ownIconWidth
@@ -296,7 +296,7 @@ class _BottomBarBuild {
       hostVerbsCanUnfold: _hostVerbsCanUnfold,
       hostVerbCount: _hostVerbs.length,
       hostSettingsListed: _bar.hostSettings.isNotEmpty,
-      zoomReadoutWidth: _zoomReadoutWidth,
+      zoomReadoutWidth: DragValueLabel.rowWidthOf(_zoomReadoutWidth),
     );
     // Last of all the host's controls go too — but Fit never does.
     // With the docked bar gone this is its only home, and a panel

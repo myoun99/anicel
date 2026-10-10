@@ -11,6 +11,7 @@ import 'app_icon_button.dart';
 import 'drag_value_label.dart';
 import 'field_slider.dart';
 import 'owning_axis_grip.dart';
+import 'value_hands.dart' show valueHandsReach;
 
 /// The span a surface that TRIMS keeps of its source — the transport's third
 /// row.
@@ -147,7 +148,11 @@ class TransportBar extends StatelessWidget {
 
   /// The row and the hairline over it.
   static const double _rangeRowHeight = 27;
-  static const double _rangeEndWidth = 76;
+  /// IN or OUT: its word, its number, and the number's hands after it —
+  /// its ± and its pencil (tool-settings-panel-tidy, 유저 2026-10-10:
+  /// 「숫자 뒤에 ±와 연필」). ↩️76, the word and the number alone.
+  static const double _rangeEndWidth = 76 + valueHandsReach;
+  static const double _rangeValueWidth = 44;
   static const double _volumeWidth = 64;
   static const double _volumeHeight = 18;
 
@@ -348,9 +353,10 @@ class TransportBar extends StatelessWidget {
     ) => DragValueLabel(
       keyValue: _key(suffix),
       text: label(frame),
-      width: 44,
+      width: _rangeValueWidth,
       unitsPerPixel: 1,
       enabled: live,
+      steps: true,
       onDragDelta: (delta) => set(frame + delta.round()),
       onEditSubmit: (text) {
         final typed = int.tryParse(text.trim());

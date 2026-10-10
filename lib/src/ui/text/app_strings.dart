@@ -1627,7 +1627,7 @@ enum AppStrings {
   String get viewStraighten => _s('viewStraighten');
   String get viewZoomDrag => _s('viewZoomDrag');
   String get viewAngleDrag => _s('viewAngleDrag');
-  String get viewDragTap => _s('viewDragTap');
+  String get valueTypeIn => _s('valueTypeIn');
   String get viewCanvasColor => _s('viewCanvasColor');
   String get viewPasteboardColor => _s('viewPasteboardColor');
   String get viewBackdropColor => _s('viewBackdropColor');
@@ -2285,7 +2285,7 @@ enum AppStrings {
     'playbackStop': 'Stop',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
-    'sheetPageDrag': 'Page (drag / double-tap)',
+    'sheetPageDrag': 'Page (drag)',
     'autosaveTitle': 'Autosave',
     'autosaveEvery': 'Every',
     'autosaveSectionHelp':
@@ -2693,9 +2693,9 @@ enum AppStrings {
     'viewFlipHorizontal': 'Flip View Horizontal',
     'viewFlipVertical': 'Flip View Vertical',
     'viewStraighten': 'Straighten View (0°)',
-    'viewZoomDrag': 'Zoom (drag / double-tap)',
-    'viewAngleDrag': 'View angle (drag / double-tap)',
-    'viewDragTap': 'Drag / tap',
+    'viewZoomDrag': 'Zoom (drag)',
+    'viewAngleDrag': 'View angle (drag)',
+    'valueTypeIn': 'Type a value',
     'viewCanvasColor': 'Canvas color',
     'viewPasteboardColor': 'Pasteboard color',
     'viewBackdropColor': 'Backdrop color',
@@ -3580,7 +3580,7 @@ enum AppStrings {
     'playbackStop': '停止',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
-    'sheetPageDrag': 'ページ（ドラッグ / ダブルタップ）',
+    'sheetPageDrag': 'ページ（ドラッグ）',
     'autosaveTitle': '自動保存',
     'autosaveEvery': '間隔',
     'autosaveSectionHelp':
@@ -4113,9 +4113,9 @@ enum AppStrings {
     'viewFlipHorizontal': '表示を左右反転',
     'viewFlipVertical': '表示を上下反転',
     'viewStraighten': '傾きをリセット（0°）',
-    'viewZoomDrag': 'ズーム（ドラッグ / ダブルタップ）',
-    'viewAngleDrag': '表示角度（ドラッグ / ダブルタップ）',
-    'viewDragTap': 'ドラッグ / タップ',
+    'viewZoomDrag': 'ズーム（ドラッグ）',
+    'viewAngleDrag': '表示角度（ドラッグ）',
+    'valueTypeIn': '数値を入力',
     'viewCanvasColor': 'カンバスの色',
     'viewPasteboardColor': 'ペーストボードの色',
     'viewBackdropColor': '背景の色',
@@ -5038,7 +5038,7 @@ enum AppStrings {
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
-    'sheetPageDrag': '페이지 (드래그 / 더블탭)',
+    'sheetPageDrag': '페이지 (드래그)',
     'autosaveTitle': '자동 저장',
     'autosaveEvery': '주기',
     'autosaveSectionHelp':
@@ -5564,9 +5564,9 @@ enum AppStrings {
     'viewFlipHorizontal': '보기 좌우 반전',
     'viewFlipVertical': '보기 상하 반전',
     'viewStraighten': '기울기 초기화 (0°)',
-    'viewZoomDrag': '줌 (드래그 / 더블탭)',
-    'viewAngleDrag': '보기 각도 (드래그 / 더블탭)',
-    'viewDragTap': '드래그 / 탭',
+    'viewZoomDrag': '줌 (드래그)',
+    'viewAngleDrag': '보기 각도 (드래그)',
+    'valueTypeIn': '직접 입력',
     'viewCanvasColor': '캔버스 색',
     'viewPasteboardColor': '페이스트보드 색',
     'viewBackdropColor': '배경 색',
@@ -6539,7 +6539,7 @@ enum AppStrings {
     'playbackStop': 'Arrêter',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
-    'sheetPageDrag': 'Page (glisser / double-tap)',
+    'sheetPageDrag': 'Page (glisser)',
     'autosaveTitle': 'Sauvegarde automatique',
     'autosaveEvery': 'Toutes les',
     'autosaveSectionHelp':
@@ -7144,9 +7144,9 @@ enum AppStrings {
     'viewFlipHorizontal': 'Miroir horizontal',
     'viewFlipVertical': 'Miroir vertical',
     'viewStraighten': 'Redresser la vue (0°)',
-    'viewZoomDrag': 'Zoom (glisser / double-tap)',
-    'viewAngleDrag': 'Angle de vue (glisser / double-tap)',
-    'viewDragTap': 'Glisser / toucher',
+    'viewZoomDrag': 'Zoom (glisser)',
+    'viewAngleDrag': 'Angle de vue (glisser)',
+    'valueTypeIn': 'Saisir la valeur',
     'viewCanvasColor': 'Couleur du canevas',
     'viewPasteboardColor': 'Couleur du fond',
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
@@ -8020,7 +8020,7 @@ enum AppStrings {
     'playbackStop': '停止',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',
-    'sheetPageDrag': '页面（拖动 / 双击）',
+    'sheetPageDrag': '页面（拖动）',
     'autosaveTitle': '自动保存',
     'autosaveEvery': '间隔',
     'autosaveSectionHelp':
@@ -8532,9 +8532,9 @@ enum AppStrings {
     'viewFlipHorizontal': '视图水平翻转',
     'viewFlipVertical': '视图垂直翻转',
     'viewStraighten': '摆正视图（0°）',
-    'viewZoomDrag': '缩放（拖动 / 双击）',
-    'viewAngleDrag': '视图角度（拖动 / 双击）',
-    'viewDragTap': '拖动 / 点击',
+    'viewZoomDrag': '缩放（拖动）',
+    'viewAngleDrag': '视图角度（拖动）',
+    'valueTypeIn': '输入数值',
     'viewCanvasColor': '画布颜色',
     'viewPasteboardColor': '底板颜色',
     'viewBackdropColor': '背景颜色',

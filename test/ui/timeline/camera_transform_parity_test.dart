@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 import '../../helpers/block_word_finder.dart';
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨B4 (2026-08-17, device report): the CAMERA row's timeline interactions
@@ -109,6 +110,7 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
+  await standTheClassicRail(tester);
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-bottom')),
     const Offset(0, -520),

@@ -345,9 +345,26 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
 /// tool settings' NUMBER BOXES — one for each number, a pair side by
 /// side — and the column is two boxes holding a four-digit coordinate
 /// with room to spare: 「A로하란거, 지금 너무 공간 빡빡하거든? 공간
-/// 많으니까 다 쓰란건아닌데 좀 더 여유롭게 크게하자」. ↩️80px, the value
-/// written in blue and shrunk to fit it.
-const double layerLaneValueSlotWidth = 188;
+/// 많으니까 다 쓰란건아닌데 좀 더 여유롭게 크게하자」. Each box carries its
+/// hands after it, its ± and its pencil ([FieldSlider.handsReach]), as a
+/// settings box does (「상자에 한걸음 올리기 내리기버튼들도 동일하게」), and
+/// the rail pays the column's growth: 「값 칸이 188에서 약 260px로 넓어지고,
+/// 레일도 그만큼 넓어집니다」 (asked 2026-10-10, 「문제없는데」). ↩️80px, the
+/// value written in blue and shrunk to fit it; then 188, two bare boxes.
+const double layerLaneValueSlotWidth =
+    2 * _laneValueBoxWidth + layerLaneValueBoxGap + layerLaneValueHandsWidth;
+
+/// What a pair's HANDS take of the column — each box's ± and pencil
+/// ([FieldSlider.handsReach]) — the room the rail pays along its length for
+/// them (`timelineLayerControlsWidth`) — and the sheet's stood-up header
+/// none of: there a lane's boxes stand under its name.
+const double layerLaneValueHandsWidth = 2 * FieldSlider.handsReach;
+
+/// One of the column's boxes at 1×, before its hands.
+const double _laneValueBoxWidth = 91;
+
+/// Between a pair's two boxes: the tool settings' gap between two cells.
+const double layerLaneValueBoxGap = 6;
 
 /// What one of the column's boxes says at its widest: its name and a
 /// four-digit coordinate with its sign.

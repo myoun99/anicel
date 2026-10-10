@@ -182,7 +182,7 @@ void main() {
 
     final before = pillBody(tester);
     await tester.tap(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
     );
     await tester.pumpAndSettle();
     await tester.enterText(

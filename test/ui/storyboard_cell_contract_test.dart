@@ -13,6 +13,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
+import '../helpers/the_classic_rail.dart';
+
 /// THE cells contract, brought from the timeline to the storyboard: a press
 /// on a row selects that row and seeks to the frame under the pointer.
 ///
@@ -67,6 +69,8 @@ Future<void> _openStoryboard(WidgetTester tester) async {
     find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
   );
   await tester.pumpAndSettle();
+  // The second cut's frames on screen.
+  await standTheClassicRail(tester);
 }
 
 double _pixelsPerFrame(WidgetTester tester) =>

@@ -10,9 +10,9 @@ import '../widgets/drag_value_label.dart';
 ///
 /// 🗣️I-18 (유저): 「누르면 숫자 편집하는 창 나와서 숫자만 입력가능. 드래그로
 /// 조절하거나 수동입력. 기본값은 1인상태」. The number is the app's operable
-/// readout ([DragValueLabel]) — a drag along it moves it, a tap types it,
-/// digits alone — and it opens at 1 EVERY time: 「기본값은 1인상태」 names
-/// where it starts, not a number it keeps.
+/// readout ([DragValueLabel]) — a drag along it moves it, its ± step it,
+/// its pencil types it, digits alone — and it opens at 1 EVERY time:
+/// 「기본값은 1인상태」 names where it starts, not a number it keeps.
 ///
 /// Pops the number on Apply, nothing on Cancel.
 class StartNumberWindow extends StatefulWidget {
@@ -55,6 +55,7 @@ class _StartNumberWindowState extends State<StartNumberWindow> {
           width: 96,
           textStyle: Theme.of(context).textTheme.titleMedium,
           digitsOnly: true,
+          steps: true,
           onDragDelta: (delta) => _setStart(_start + delta.round()),
           onEditSubmit: _typed,
         ),

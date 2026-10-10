@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/dialogs/start_number_window.dart';
 void main() {
   const label = ValueKey<String>('auto-name-start');
   const input = ValueKey<String>('auto-name-start-input');
+  const pencil = ValueKey<String>('auto-name-start-edit');
 
   /// Opens the window; the answer reads what it popped.
   Future<int? Function()> open(WidgetTester tester) async {
@@ -65,9 +66,9 @@ void main() {
     expect(shown(tester), '0');
   });
 
-  testWidgets('a tap types the number — digits alone', (tester) async {
+  testWidgets('its pencil types the number — digits alone', (tester) async {
     final popped = await open(tester);
-    await tester.tap(find.byKey(label));
+    await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(input), 'a');
@@ -97,5 +98,26 @@ void main() {
       find.byKey(const ValueKey<String>('auto-name-dialog')),
       findsNothing,
     );
+  });
+
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「숫자 뒤에 ±와 연필」 —
+  /// the start number's ± are the settings bars' own pair.
+  testWidgets('its ± step it a number at a time, and stop at zero', (
+    tester,
+  ) async {
+    await open(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('auto-name-start-step-up')),
+    );
+    await tester.pumpAndSettle();
+    expect(shown(tester), '2');
+    final down = find.byKey(
+      const ValueKey<String>('auto-name-start-step-down'),
+    );
+    for (var step = 0; step < 3; step += 1) {
+      await tester.tap(down);
+      await tester.pumpAndSettle();
+    }
+    expect(shown(tester), '0');
   });
 }

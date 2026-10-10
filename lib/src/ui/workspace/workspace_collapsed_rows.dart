@@ -348,16 +348,27 @@ class _WorkspaceCollapsedRows {
   /// differ: the strip is its own height by design, while every horizontal
   /// measurement — rail width, section gutter, frame cell — comes from the
   /// panel so the columns line up under it.
-  TimelineGridMetrics _collapsedMetrics() => TimelineGridMetrics(
-    minimumVisibleFrameCells:
-        TimelineGridMetrics.defaults.minimumVisibleFrameCells,
-    layerControlsWidth: TimelineGridMetrics.defaults.layerControlsWidth,
-    frameCellWidth: _state._timelinePixelsPerFrame.value,
-    layerRowHeight: collapsedRowHeight(),
-    verticalScrollbarWidth: TimelineGridMetrics.defaults.verticalScrollbarWidth,
-    sectionLabelGutterWidth:
-        TimelineGridMetrics.defaults.sectionLabelGutterWidth,
-  );
+  ///
+  /// The rail's columns with them, grown with their words as the panel's
+  /// are ([layerRailColumnWidthsIn], text-scale-rail-columns): ↩️this read
+  /// the 1× rail, so under a larger OS text the folded row's columns and
+  /// its frames stood apart from the open panel's (the storyboard's
+  /// folded row already took its rail as its panel does).
+  TimelineGridMetrics _collapsedMetrics() {
+    final railColumns = layerRailColumnWidthsIn(_state.context);
+    return TimelineGridMetrics(
+      minimumVisibleFrameCells:
+          TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+      layerControlsWidth: timelineLayerControlsWidthFor(railColumns),
+      railColumns: railColumns,
+      frameCellWidth: _state._timelinePixelsPerFrame.value,
+      layerRowHeight: collapsedRowHeight(),
+      verticalScrollbarWidth:
+          TimelineGridMetrics.defaults.verticalScrollbarWidth,
+      sectionLabelGutterWidth:
+          TimelineGridMetrics.defaults.sectionLabelGutterWidth,
+    );
+  }
 
   /// ⑩ 구조 = 리빌드: everything that changes the collapsed row's SHAPE.
   ///

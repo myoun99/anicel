@@ -729,7 +729,12 @@ class StoryboardPanel extends StatefulWidget {
   // keeps the slot ([railHasBlendColumn]). The NUMBER stays: it is the width
   // the timeline's rail has held that cell in since R27 #6, and the room
   // comes back out of the name, where it had gone.
-  static const double _trackLabelWidth = 443;
+  //
+  // 443 → 519 (tool-settings-panel-tidy, 유저 2026-10-10): a lane's value
+  // boxes took their ± and pencil, and the timeline's rail pays the 76
+  // (「레일도 그만큼 넓어집니다」 — 「문제없는데」). This rail's camera and
+  // conte rows twirl down the same lanes, so the same number.
+  static const double _trackLabelWidth = 519;
 
   /// Whether this rail's rows keep a BLEND slot after the opacity's — the
   /// host's answer every row and the legend above them read
@@ -738,16 +743,17 @@ class StoryboardPanel extends StatefulWidget {
   static const bool railHasBlendColumn = true;
 
   /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
-  /// its word-holding columns' growth — the opacity bar's and the blend
-  /// chip's — as the timeline's pays for the same two
-  /// (text-scale-rail-columns, 유저 2026-09-25: 「칸도 글자 따라
+  /// its word-holding columns' growth — the opacity bar's, the blend
+  /// chip's and a lane's value boxes' — as the timeline's pays for the
+  /// same three (text-scale-rail-columns, 유저 2026-09-25: 「칸도 글자 따라
   /// 넓어진다」). 0 at 1×. ↩️The opacity's alone, while this rail had no
-  /// blend column.
+  /// blend column; the lanes' unpaid, out of their names.
   static double railWidthIn(BuildContext context) {
     final columns = layerRailColumnWidthsIn(context);
     return _trackLabelWidth +
         (columns.opacity - layerOpacitySlotWidth) +
-        (columns.blend - layerBlendSlotWidth);
+        (columns.blend - layerBlendSlotWidth) +
+        (columns.laneValue - layerLaneValueSlotWidth);
   }
 
   /// The frame ruler's height — and, since the seconds corner is the strip

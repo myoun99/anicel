@@ -1469,18 +1469,19 @@ void main() {
         )
         .viewport;
 
-    /// R10: ONE tap opens the entry. It was a double tap, which held every
-    /// tap on the readout for the double-tap window — ~300ms of nothing,
-    /// which the user asked to be gone everywhere. Nothing was lost: the
-    /// label had no single-tap action to collide with.
+    /// The readout's PENCIL opens the entry (tool-settings-panel-tidy, 유저
+    /// 2026-10-10: 「편집창 여는건 그 옆에 편집아이콘 둬서」). ↩️A tap on the
+    /// readout itself did (R10 — before that a double tap, which held every
+    /// tap for the double-tap window), and had to wait for the release to
+    /// know a tap from a drag.
     Future<void> tapZoomLabel(WidgetTester tester) async {
       await tester.tap(
-        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
     }
 
-    testWidgets('tap, type, and submit set the zoom', (tester) async {
+    testWidgets('its pencil, type, and submit set the zoom', (tester) async {
       await pumpZoomPanel(tester);
 
       await tapZoomLabel(tester);

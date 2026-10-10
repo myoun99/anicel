@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
+import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 /// The top strip that replaced the seven-menu bar: a Project button, a
 /// Settings button, and the work's name.
@@ -23,6 +24,22 @@ void main() {
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+  }
+
+  /// The strip with its brush group standing as bars — the test window
+  /// wider by the two bars' pencils (tool-settings-panel-tidy, 2026-10-10):
+  /// at 800 the test font's words fold the group into its button since.
+  Future<void> pumpHomeWithBars(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(
+      const Size(800 + 2 * ValuePencil.reach, 600),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+    expect(
+      find.byKey(const ValueKey<String>('top-strip-size-bar')),
+      findsOneWidget,
+      reason: '⛔premise: the brush group stands as bars',
+    );
   }
 
   Future<void> openStrip(WidgetTester tester, String buttonKey) async {
@@ -355,7 +372,7 @@ void main() {
   });
 
   testWidgets('the size and opacity bars ride the right end', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     expect(
       find.byKey(const ValueKey<String>('top-strip-size-bar')),
@@ -384,7 +401,7 @@ void main() {
     }
 
     testWidgets('opacity is per tool: the fill keeps its own', (tester) async {
-      await pumpHome(tester);
+      await pumpHomeWithBars(tester);
       final bar = find.byKey(const ValueKey<String>('top-strip-opacity-bar'));
 
       // Half-ish on the BRUSH.
@@ -419,7 +436,7 @@ void main() {
     testWidgets('a parameter the tool does not read is DIMMED, not gone', (
       tester,
     ) async {
-      await pumpHome(tester);
+      await pumpHomeWithBars(tester);
       // The eyedropper reads none of them.
       await arm(tester, 'tool-eyedropper-button');
       for (final key in const [
@@ -452,7 +469,7 @@ void main() {
   testWidgets('the bars show the ACTIVE tool — brush and eraser bank apart', (
     tester,
   ) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     double sizeOnBar() => tester
         .widget<FieldSlider>(
@@ -491,7 +508,7 @@ void main() {
 
   testWidgets('the blend button says its mode, and picking one changes what '
       'it says', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     // A NAMED button, not the icon popover the strip briefly wore: a blend
     // you cannot read without opening it is a blend you check by opening
@@ -516,7 +533,7 @@ void main() {
 
   testWidgets('the blend button keeps ONE width, so changing the mode never '
       'shoves the bars sideways', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     final button = find.byKey(
       const ValueKey<String>('brush-tool-blend-menu-button'),
@@ -542,7 +559,7 @@ void main() {
     // bringing its blend along IS the answer and there is nothing to pin.
     // ⛔With it goes R4 #12's 「잠궜는데 바꿀 수 있으면 잠금이 아니잖아」 —
     // that rule governed a control that no longer exists.
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
     final button = find.byKey(
       const ValueKey<String>('brush-tool-blend-menu-button'),
     );
@@ -573,7 +590,7 @@ void main() {
 
   testWidgets('the ERASER locks the blend — a lock chip, no flyout, and the '
       'bars do not move', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     final sizeBar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
     final barLeftWithBrush = tester.getTopLeft(sizeBar).dx;
@@ -597,7 +614,7 @@ void main() {
 
   testWidgets('the strip right group reads: blend | size, opacity — the '
       'colour has left it', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     double leftOf(String key) =>
         tester.getTopLeft(find.byKey(ValueKey<String>(key))).dx;
@@ -622,7 +639,7 @@ void main() {
 
   testWidgets('the colour left the strip for the sub-strip, and took its '
       'swatch with it', (tester) async {
-    await pumpHome(tester);
+    await pumpHomeWithBars(tester);
 
     // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was the one
     // surface that opened DOWNWARD out of a strip; as a rail group it opens
@@ -655,7 +672,7 @@ void main() {
 
   testWidgets('the strip survives a narrow window', (tester) async {
     // 844x390 is the size that used to overflow the bottom dock; the strip
-    // now carries two 140px bars, so it has to be checked too.
+    // now carries two bars, so it has to be checked too.
     tester.view.physicalSize = const Size(844, 390);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -697,7 +714,7 @@ void main() {
 
     testWidgets('a colour change rebuilds none of the bars, curve buttons or '
         'the blend button', (tester) async {
-      await pumpHome(tester);
+      await pumpHomeWithBars(tester);
       final tool = toolOf(tester);
       var news = 0;
       void heard() => news += 1;
@@ -724,7 +741,7 @@ void main() {
 
     testWidgets('a curve change keeps a colour picked after the strip was '
         'built', (tester) async {
-      await pumpHome(tester);
+      await pumpHomeWithBars(tester);
       final tool = toolOf(tester);
       tool.value = tool.value.copyWith(color: 0xFF3366CC);
       await tester.pump();
@@ -741,7 +758,7 @@ void main() {
 
     testWidgets('a blend pick keeps a colour picked after the strip was '
         'built', (tester) async {
-      await pumpHome(tester);
+      await pumpHomeWithBars(tester);
       final tool = toolOf(tester);
       tool.value = tool.value.copyWith(color: 0xFF3366CC);
       await tester.pump();

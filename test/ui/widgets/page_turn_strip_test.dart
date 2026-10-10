@@ -5,13 +5,14 @@ import '../../helpers/app_icon_button_probe.dart';
 
 /// The one page cluster the timesheet, the conte and the media viewer
 /// mount (유저 확정 ⑥ 2026-08-13, 「최대한 통일」): ◀ n/N ▶ stood upright,
-/// drag and typed entry on the readout, empty below two pages, inert with
-/// nowhere to turn to.
+/// a drag on the readout and a typed page from the pencil under it, empty
+/// below two pages, inert with nowhere to turn to.
 void main() {
   const prev = ValueKey<String>('sheet-previous-page-button');
   const next = ValueKey<String>('sheet-next-page-button');
   const readout = ValueKey<String>('sheet-page-readout');
   const input = ValueKey<String>('sheet-page-input');
+  const pencil = ValueKey<String>('sheet-page-readout-edit');
 
   Future<void> pump(
     WidgetTester tester, {
@@ -72,21 +73,33 @@ void main() {
     final turns = <int>[];
     await pump(tester, pageIndex: 0, pageCount: 7, onTurnTo: turns.add);
 
-    // 40px, of which the touch slop (18px) eats the first stretch: 22px of
-    // travel at ⅛ page per pixel is two whole pages. The harness never
-    // rebuilds, so each report is a delta off page 0.
-    await tester.drag(find.byKey(readout), const Offset(40, 0));
+    // 20px from the first pixel — the readout has no tap left to keep
+    // apart from a drag — at ⅛ page per pixel is two whole pages. The
+    // harness never rebuilds, so each report is a delta off page 0.
+    await tester.drag(find.byKey(readout), const Offset(20, 0));
     await tester.pumpAndSettle();
     expect(turns.fold<int>(0, (sum, turn) => sum + turn), 2);
 
+    // A press on the readout that does not move turns nothing.
+    final turned = turns.length;
     await tester.tap(find.byKey(readout));
+    await tester.pumpAndSettle();
+    expect(turns, hasLength(turned));
+    expect(find.byKey(input), findsNothing);
+
+    // Its pencil, under it, types one.
+    expect(
+      tester.getRect(find.byKey(pencil)).top,
+      greaterThanOrEqualTo(tester.getRect(find.byKey(readout)).bottom),
+    );
+    await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(input), '3/7');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(turns.last, 2, reason: 'page three is index 2');
 
-    await tester.tap(find.byKey(readout));
+    await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(input), '5');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -103,9 +116,11 @@ void main() {
     expect(find.byKey(next), findsOneWidget);
     expect(enabled(tester, prev), isFalse);
     expect(enabled(tester, next), isFalse);
+    // The readout is off with them: its pencil opens nothing.
+    expect(enabled(tester, pencil), isFalse);
     await tester.drag(find.byKey(readout), const Offset(40, 0));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(readout));
+    await tester.tap(find.byKey(pencil), warnIfMissed: false);
     await tester.pumpAndSettle();
     if (tester.any(find.byKey(input))) {
       await tester.enterText(find.byKey(input), '2');

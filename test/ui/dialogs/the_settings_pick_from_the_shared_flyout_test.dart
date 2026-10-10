@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 /// 🗣️F-230 (유저 2026-09-29): 「오디오의 출력 선택이나 트랜지션레이어의 ol선택등
 /// 선택하는 ui가 구식 ui 쓰는곳있는데, 앵커팝오버? 공용화된 ui 통일적용.
@@ -204,7 +205,13 @@ void main() {
     tester,
   ) async {
     // The test window's strip holds no two tabs, so they wait in its list —
-    // the row's own rule (see `project_tabs_test`).
+    // the row's own rule (see `project_tabs_test`). Wider by the brush
+    // bars' pencils (tool-settings-panel-tidy): at 800 the brush group
+    // folds to its button now, and the room it gives back holds both.
+    await tester.binding.setSurfaceSize(
+      const Size(800 + 2 * ValuePencil.reach, 600),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),
     );

@@ -252,7 +252,7 @@ void main() {
 
     // Typing reads the readout's own spelling: 3 is the third sheet of
     // paper — the body's first page.
-    await tester.tap(find.byKey(const ValueKey<String>('conte-page-readout')));
+    await tester.tap(find.byKey(const ValueKey<String>('conte-page-readout-edit')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey<String>('conte-page-input')),

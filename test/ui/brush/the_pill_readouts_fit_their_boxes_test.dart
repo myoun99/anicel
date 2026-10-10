@@ -66,8 +66,12 @@ void main() {
         of: find.byKey(ValueKey<String>(key)),
         matching: find.byType(DragValueLabel),
       );
+      // The FACE's writing — not its pencil's glyph beside it.
       final painted = tester.widget<RichText>(
-        find.descendant(of: label, matching: find.byType(RichText)),
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(RichText),
+        ),
       );
       return (
         box: tester.widget<DragValueLabel>(label).width,

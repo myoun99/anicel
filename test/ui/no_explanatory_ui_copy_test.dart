@@ -25,11 +25,11 @@ void main() {
   ///
   /// A subtitle that shows a VALUE is a second line of data, not a caption —
   /// removing it would delete information the window is there to give.
-  const allowed = <String, String>{
-    'lib/src/ui/brush/guide_panels.dart':
-        'the vanishing point row: the subtitle is its COORDINATES (or '
-            '"parallel"), which is the row\'s content, not a description of it',
-  };
+  ///
+  /// ↩️Empty since tool-settings-panel-tidy (2026-10-10): its one entry, the
+  /// vanishing point row's coordinates, stand in the row's own cell now
+  /// (`ToolSettingRow.pair`).
+  const allowed = <String, String>{};
 
   test('no `subtitle:` caption outside the ledger', () {
     final offenders = <String>[];

@@ -62,9 +62,6 @@ void main() {
       tester.getCenter(find.byKey(cell)),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     await gesture.moveBy(const Offset(20, 0));
     await tester.pump();
     await gesture.moveBy(const Offset(20, 0));
@@ -115,9 +112,6 @@ void main() {
       tester.getCenter(find.byKey(cell)),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     await gesture.moveBy(const Offset(20, 0));
     await tester.pump();
     await gesture.moveBy(const Offset(0, 30));
@@ -168,9 +162,6 @@ void main() {
       tester.getCenter(find.byKey(cell)),
       kind: PointerDeviceKind.mouse,
     );
-    // Past the slop the box waits out before its number moves.
-    await gesture.moveBy(const Offset(2, 0));
-    await tester.pump();
     await gesture.moveBy(const Offset(20, 0));
     await tester.pump();
 

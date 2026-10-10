@@ -47,6 +47,7 @@ import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../widgets/static_raster.dart';
+import '../widgets/value_hands.dart' show ValuePencil;
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
@@ -793,7 +794,10 @@ class EditorTopStrip extends StatelessWidget {
 /// bars stand at 140 down to a 770 window and narrow from there; the group
 /// is the button under 740 in English and in Japanese, under 727 in Korean,
 /// under 750 in French. An iPad mini held upright (744) leaves the two bars
-/// 254 between them, so it keeps its bars in the first three.
+/// 254 between them, so it keeps its bars in the first three. ⚠️Measured
+/// before each bar took its pencil (tool-settings-panel-tidy, 유저
+/// 2026-10-10: 막대에도 연필을 「달도록」): each stands 21 wider since, so
+/// these windows lie that much further out — not measured again.
 ///
 /// Each bar goes to its OWN narrowest for that reason, not only because the
 /// answer's words are each bar's: held to one width — the wider writing's,
@@ -975,7 +979,11 @@ class _BrushValueBars extends StatelessWidget {
   /// Side by side in the strip; one over the other in the group's popover.
   final Axis axis;
 
-  static const double fullBar = 140;
+  /// A bar at its full width — its track as it was at 140 and its pencil
+  /// after it ([ValuePencil.reach]), so a bar that took its pencil writes
+  /// in the room it always had (at twice the OS text its widest number
+  /// ran past its track without it).
+  static const double fullBar = 140 + ValuePencil.reach;
   static const _BarWidths full = (size: fullBar, opacity: fullBar);
   static const double _barHeight = 42;
   static const double _gap = 4;

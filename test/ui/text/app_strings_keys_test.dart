@@ -807,7 +807,7 @@ void main() {
     'viewStraighten': (s) => s.viewStraighten,
     'viewZoomDrag': (s) => s.viewZoomDrag,
     'viewAngleDrag': (s) => s.viewAngleDrag,
-    'viewDragTap': (s) => s.viewDragTap,
+    'valueTypeIn': (s) => s.valueTypeIn,
     'viewCanvasColor': (s) => s.viewCanvasColor,
     'viewPasteboardColor': (s) => s.viewPasteboardColor,
     'viewBackdropColor': (s) => s.viewBackdropColor,

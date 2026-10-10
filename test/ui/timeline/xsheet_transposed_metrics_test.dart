@@ -128,16 +128,19 @@ void main() {
   });
 
   group('the header block is the rail, stood up', () {
-    test('the natural block is the WHOLE rail, plus its two hairlines', () {
+    test('the natural block is the WHOLE rail, plus its two hairlines — '
+        'as its rows need it stood up', () {
       // The user overturned the shedding design outright: "타임라인에
-      // 있는거 싹다 넣어. 뭐 빼지말고."
+      // 있는거 싹다 넣어. 뭐 빼지말고." — every control. The room the rail
+      // pays a lane's value hands is a need ALONG it: stood up, a lane's
+      // boxes stand under its name (tool-settings-panel-tidy).
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
           hasOnionColumn: true,
           hasBlendColumn: true,
         ),
-        timelineLayerControlsWidth + 2,
+        timelineLayerControlsWidth - layerLaneValueHandsWidth + 2,
       );
       // A host that declines the two optional columns costs exactly them
       // less — the legend beside the headers sizes from the same call, so
@@ -148,7 +151,8 @@ void main() {
           hasOnionColumn: false,
           hasBlendColumn: false,
         ),
-        timelineLayerControlsWidth +
+        timelineLayerControlsWidth -
+            layerLaneValueHandsWidth +
             2 -
             layerOnionSlotWidth -
             layerBlendSlotWidth,

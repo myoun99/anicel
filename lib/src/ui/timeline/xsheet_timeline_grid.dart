@@ -184,9 +184,18 @@ class XSheetTimelineGrid extends StatefulWidget {
       _headerBorderExtent;
 
   /// The NAME's share of the rail — what the horizontal row's `Expanded`
-  /// resolves to once every slot has been served.
+  /// resolves to once every slot has been served — as the rows NEED it
+  /// stood up: less the room the rail pays a lane's value hands
+  /// ([layerLaneValueHandsWidth]), which a lane's row needs along the
+  /// rail and its stood-up column does not — its boxes stand under its
+  /// name. ⚠️Every control still stands here (「타임라인에 있는거 싹다
+  /// 넣어」); what is not paid is 76 of empty name. 🔬tool-settings-panel-
+  /// tidy (2026-10-10): paid, the header took 76 of a bottom dock that
+  /// stops at 640 (`EditorPanelLayoutModel.maxDockExtent`) — its frame
+  /// rows went from about four to two.
   static const double _naturalNameExtent =
       timelineLayerControlsWidth -
+      layerLaneValueHandsWidth -
       layerRailLeadingWidth -
       layerFillReferenceSlotWidth -
       layerFxSlotWidth -

@@ -19,6 +19,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/the_classic_rail.dart';
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
@@ -259,6 +260,7 @@ void main() {
   testWidgets('an EMPTY drawing cell double-tap makes a cel, and does NOT '
       'rename the one next door', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     // The fixture's drawing row is exposed over frames 0..3 only.
     expect(_cut(repository).layers.first.frames, hasLength(1));
 
@@ -374,6 +376,7 @@ void main() {
   testWidgets('toolbar Add on the camera layer keys the current pose at '
       'the playhead', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'cam', 4);
     await tester.pumpAndSettle();

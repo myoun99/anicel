@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/the_classic_rail.dart';
 
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
@@ -66,6 +67,7 @@ void main() {
   ) async {
     withTouchScroll();
     await tester.pumpWidget(const AnicelApp());
+    await standTheClassicRail(tester);
 
     // The bottom dock runs between the two vertical tool bars, so the
     // grid viewport is 88px narrower than the window — scroll far enough

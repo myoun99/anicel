@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/words_cut_off.dart';
@@ -64,12 +65,17 @@ double widthOf(WidgetTester tester, Key key) =>
 ValueNotifier<BrushToolState> toolOf(WidgetTester tester) =>
     tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).brushTool!;
 
+/// A bar at its full width: its track at the 140 it was drawn at, and the
+/// pencil after it (tool-settings-panel-tidy, 2026-10-10).
+const double fullBar = 140 + ValuePencil.reach;
+
 Standing standingOf(WidgetTester tester) {
   if (inStrip(groupButton).evaluate().isNotEmpty) {
     return Standing.button;
   }
   final narrowed =
-      widthOf(tester, sizeBar) < 140 || widthOf(tester, opacityBar) < 140;
+      widthOf(tester, sizeBar) < fullBar ||
+      widthOf(tester, opacityBar) < fullBar;
   return narrowed ? Standing.narrowed : Standing.full;
 }
 
@@ -86,12 +92,18 @@ double narrowestOf(WidgetTester tester, Key key) => tester
 /// group becomes the button no lower than the narrowest pair of names lets
 /// it — 727 in Korean, measured 2026-10-07. 780 down to 690 holds both with
 /// room; a pair of names short enough to pass 690 would fail 「went all the
-/// way to its narrowest」 below, which is the cue to widen this.
+/// way to its narrowest」 below, which is the cue to widen this. ⚠️Each bar
+/// took its pencil since (tool-settings-panel-tidy, 2026-10-10), so the
+/// range stands two pencils further out.
 Iterable<double> widthsDown(double from, double to) sync* {
   for (
     var width = from;
     width >= to;
-    width -= width <= 780 && width > 690 ? 1 : 10
+    width -=
+        width <= 780 + 2 * ValuePencil.reach &&
+            width > 690 + 2 * ValuePencil.reach
+        ? 1
+        : 10
   ) {
     yield width;
   }
@@ -152,12 +164,12 @@ void main() {
       );
       expect(
         narrowest.size,
-        lessThan(140),
+        lessThan(fullBar),
         reason: '⛔premise: in the app\'s faces there is something to narrow',
       );
-      expect(narrowest.opacity, lessThan(140), reason: '⛔premise');
+      expect(narrowest.opacity, lessThan(fullBar), reason: '⛔premise');
 
-      var last = (size: 140.0, opacity: 140.0);
+      var last = (size: fullBar, opacity: fullBar);
       final seen = await sweep(
         tester,
         from: 900,
@@ -189,7 +201,11 @@ void main() {
           );
           last = now;
           if (standing == Standing.full) {
-            expect(now, (size: 140.0, opacity: 140.0), reason: 'at $width');
+            expect(
+              now,
+              (size: fullBar, opacity: fullBar),
+              reason: 'at $width',
+            );
             return;
           }
           // Whole pixels, so the pixel rounding takes is allowed for.
@@ -277,9 +293,11 @@ void main() {
   });
 
   testWidgets('where one bar\'s writing asks for more than the full bar, '
-      'that bar stays at 140 and the other narrows alone', (tester) async {
-    // French at 1.1×: 「Taille … 2000.0 px」 no longer fits in 140, 「Opacité
-    // … 100%」 still does.
+      'that bar stays at its full width and the other narrows alone', (
+    tester,
+  ) async {
+    // French at 1.1×: 「Taille … 2000.0 px」 no longer fits in the full bar,
+    // 「Opacité … 100%」 still does.
     tester.platformDispatcher.textScaleFactorTestValue = 1.1;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     AppText.settings.value = const AppLanguageSettings(
@@ -289,12 +307,12 @@ void main() {
     await pumpAt(tester, 900);
     expect(
       narrowestOf(tester, sizeBar),
-      greaterThan(140),
+      greaterThan(fullBar),
       reason: '⛔premise: the size bar has nothing to spare',
     );
     expect(
       narrowestOf(tester, opacityBar),
-      lessThan(139),
+      lessThan(fullBar - 1),
       reason: '⛔premise: the opacity bar has',
     );
 
@@ -308,8 +326,8 @@ void main() {
           return;
         }
         narrowedSeen++;
-        expect(widthOf(tester, sizeBar), 140, reason: 'at $width');
-        expect(widthOf(tester, opacityBar), lessThan(140));
+        expect(widthOf(tester, sizeBar), fullBar, reason: 'at $width');
+        expect(widthOf(tester, opacityBar), lessThan(fullBar));
       },
     );
     expect(seen, [Standing.full, Standing.narrowed, Standing.button]);
@@ -317,16 +335,21 @@ void main() {
   });
 
   testWidgets('where neither has anything to spare there is nothing to '
-      'narrow: the bars stand at 140, then the group is the button', (
+      'narrow: the bars stand at their full width, then the group is the '
+      'button', (
     tester,
   ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.5;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await pumpAt(tester, 900);
-    expect(narrowestOf(tester, sizeBar), greaterThan(140), reason: '⛔premise');
+    expect(
+      narrowestOf(tester, sizeBar),
+      greaterThan(fullBar),
+      reason: '⛔premise',
+    );
     expect(
       narrowestOf(tester, opacityBar),
-      greaterThan(140),
+      greaterThan(fullBar),
       reason: '⛔premise',
     );
 
@@ -380,8 +403,8 @@ void main() {
           reason: '$key opens UNDER the strip',
         );
       }
-      expect(tester.getSize(find.byKey(sizeBar)).width, 140);
-      expect(tester.getSize(find.byKey(opacityBar)).width, 140);
+      expect(tester.getSize(find.byKey(sizeBar)).width, fullBar);
+      expect(tester.getSize(find.byKey(opacityBar)).width, fullBar);
       expect(
         tester.getTopLeft(find.byKey(opacityBar)).dy,
         greaterThan(tester.getTopLeft(find.byKey(sizeBar)).dy),

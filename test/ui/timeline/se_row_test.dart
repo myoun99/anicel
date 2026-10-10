@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 
 const _cutId = CutId('se-cut');
@@ -421,6 +422,7 @@ void main() {
       ),
       onRepositoryCreated: (repo) => repository = repo,
     );
+    await standTheClassicRail(tester);
     await _ensureRowVisible(tester, _seLayerId);
 
     // Edit the second entry to the SAME text as the first: SE rows allow

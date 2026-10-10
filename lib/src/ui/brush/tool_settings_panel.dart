@@ -1033,7 +1033,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
       keyValue: keyValue,
       name: name,
       text: value.shown(values),
-      tooltip: AppText.strings.viewDragTap,
       onDragDelta: (units) => _write(
         (now) => value.write(now, value.read(now) + units * value.perUnit),
       ),
@@ -1084,12 +1083,17 @@ class _MoveSettingsState extends State<_MoveSettings> {
   );
 
   /// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 「다 추천대로」): the
-  /// values in ROWS AND COLUMNS — 위치 · 배율 · 회전 · 기준점 · 메시, each
-  /// pair one row ([ToolSettingRow.pair]) — the scale's link as the chain
-  /// beside 「배율」, the flips in the rotation row's second cell, and 초기화
-  /// · 적용 as the last line ([ToolSettingActions]). ↩️It was a list of nine
-  /// name-and-number lines with the link's switch row between them, and its
-  /// four buttons folding onto two lines under them.
+  /// values in ROWS AND COLUMNS — 위치 · 배율 · 회전 · 기준점 · 메시 — the
+  /// scale's link as the chain beside 「배율」, and 초기화 · 적용 as the last
+  /// line ([ToolSettingActions]). ONE VALUE A LINE, its hands where a bar's
+  /// stand ([ToolSettingRow.bar]): X on the name's line, Y under it, and the
+  /// flips a line of their own under 회전, half the control column each.
+  /// 🗣️유저 2026-10-10: 「상자에 한걸음 올리기 내리기버튼들도 동일하게
+  /// 넣고싶어 … 공간 꽤 많이필요하니까 그냥 열당 하나. x만두고 다음열에 y두고」.
+  /// ↩️It was a list of nine name-and-number lines with the link's switch
+  /// row between them and its four buttons folding onto two lines under
+  /// them; then X beside Y, a pair a row, the flips in the rotation row's
+  /// second cell — until each value took its ± and its pencil.
   @override
   Widget build(BuildContext context) {
     // The one gate for the whole panel. Choosing the tool is always
@@ -1111,9 +1115,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
       tool: 'move',
       title: strings.toolTransform,
       children: [
-        ToolSettingRow.pair(
+        ToolSettingRow.bar(
           label: strings.trPosition,
-          first: _valueBox(
+          bar: _valueBox(
             keyValue: 'move-x-field',
             name: 'X',
             value: _BoxValue(
@@ -1121,7 +1125,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
               write: (now, tx) => now.copyWith(tx: tx),
             ),
           ),
-          second: _valueBox(
+        ),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
             keyValue: 'move-y-field',
             name: 'Y',
             value: _BoxValue(
@@ -1142,7 +1149,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
         // axis; linked, the write carries the other along by the same
         // ratio and leaves its sign alone (`TransformValues.withScaleX`).
-        ToolSettingRow.pair(
+        ToolSettingRow.bar(
           label: strings.trScale,
           labelEnd: ScaleChainButton(
             keyValue: 'move-scale-link-switch',
@@ -1153,7 +1160,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
                     options.copyWith(scaleLinked: !options.scaleLinked),
                   ),
           ),
-          first: _valueBox(
+          bar: _valueBox(
             keyValue: 'move-scale-x-field',
             name: 'X',
             value: _BoxValue(
@@ -1168,7 +1175,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
               perUnit: 0.01,
             ),
           ),
-          second: _valueBox(
+        ),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
             keyValue: 'move-scale-y-field',
             name: 'Y',
             value: _BoxValue(
@@ -1184,9 +1194,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
             ),
           ),
         ),
-        ToolSettingRow.pair(
+        ToolSettingRow.bar(
           label: strings.trRotation,
-          first: _valueBox(
+          bar: _valueBox(
             keyValue: 'move-angle-field',
             value: _BoxValue(
               read: (values) => values.rotationDegrees,
@@ -1195,37 +1205,28 @@ class _MoveSettingsState extends State<_MoveSettings> {
               unit: '°',
             ),
           ),
-          // ↩️유저 08-13 put them in a row of their own, in this order:
-          // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box
-          // the way the angle does, so they stand in its row now — two
-          // boxes sharing the Y column, in the view pill's own glyphs.
-          second: Row(
-            children: [
-              Expanded(
-                child: ToolSettingAction.glyph(
-                  keyValue: 'move-flip-horizontal-button',
-                  label: strings.trFlipHorizontal,
-                  glyph: const Icon(Icons.flip),
-                  onPressed: canEdit
-                      ? () => commands?.flipTransform(horizontal: true)
-                      : null,
-                ),
-              ),
-              const SizedBox(width: ToolSettingColumns.gap),
-              Expanded(
-                child: ToolSettingAction.glyph(
-                  keyValue: 'move-flip-vertical-button',
-                  label: strings.trFlipVertical,
-                  glyph: const RotatedBox(
-                    quarterTurns: 1,
-                    child: Icon(Icons.flip),
-                  ),
-                  onPressed: canEdit
-                      ? () => commands?.flipTransform(horizontal: false)
-                      : null,
-                ),
-              ),
-            ],
+        ),
+        // ↩️유저 08-13 put them in a row of their own, in this order:
+        // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box the
+        // way the angle does, so they stand under it — in the view pill's
+        // own glyphs, half the control column each (유저 2026-10-10).
+        ToolSettingRow.pair(
+          label: '',
+          first: ToolSettingAction.glyph(
+            keyValue: 'move-flip-horizontal-button',
+            label: strings.trFlipHorizontal,
+            glyph: const Icon(Icons.flip),
+            onPressed: canEdit
+                ? () => commands?.flipTransform(horizontal: true)
+                : null,
+          ),
+          second: ToolSettingAction.glyph(
+            keyValue: 'move-flip-vertical-button',
+            label: strings.trFlipVertical,
+            glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+            onPressed: canEdit
+                ? () => commands?.flipTransform(horizontal: false)
+                : null,
           ),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
@@ -1237,9 +1238,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // so a row that appeared and vanished would be inventing a rule
         // the rotation does not have — and 「없다가 생기는 UI 금지」
         // besides.
-        ToolSettingRow.pair(
+        ToolSettingRow.bar(
           label: strings.trAnchorPoint,
-          first: _valueBox(
+          bar: _valueBox(
             keyValue: 'move-anchor-x-field',
             name: 'X',
             value: _BoxValue(
@@ -1247,7 +1248,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
               write: (now, anchorX) => now.copyWith(anchorX: anchorX),
             ),
           ),
-          second: _valueBox(
+        ),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
             keyValue: 'move-anchor-y-field',
             name: 'Y',
             value: _BoxValue(
@@ -1256,9 +1260,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
             ),
           ),
         ),
-        ToolSettingRow.pair(
+        ToolSettingRow.bar(
           label: strings.trMesh,
-          first: _meshBox(
+          bar: _meshBox(
             keyValue: 'move-mesh-columns-field',
             name: strings.trMeshColumns,
             value: options.meshColumns,
@@ -1266,7 +1270,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
             onChanged: (cells) =>
                 meshHandler?.call(options.copyWith(meshColumns: cells)),
           ),
-          second: _meshBox(
+        ),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _meshBox(
             keyValue: 'move-mesh-rows-field',
             name: strings.trMeshRows,
             value: options.meshRows,

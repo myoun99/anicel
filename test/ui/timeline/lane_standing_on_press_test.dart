@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
+import '../../helpers/the_classic_rail.dart';
+
 /// 🚨C6 (2026-08-17): STANDING on an fx header/member row is the CELLS'
 /// press law — 「일반 행은 해당 인덱스에 서고 → 범위」, and the fx rows do
 /// the same now. A pen/mouse press on a lane band stands on the DOWN
@@ -75,6 +77,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project())),
     );
     await tester.pumpAndSettle();
+    await standTheClassicRail(tester);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
       const Offset(0, -520),

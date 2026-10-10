@@ -50,7 +50,7 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.byKey(const ValueKey<String>('v')));
+        await tester.tap(find.byKey(const ValueKey<String>('v-edit')));
         await tester.pump();
         expect(typed(tester, 'v-input'), number, reason: readout);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -107,10 +107,10 @@ void main() {
       expect(find.text('X'), findsOneWidget, reason: 'its name, inside');
     });
 
-    testWidgets('typed in, it holds the number, and the unit stands outside '
-        'the field', (tester) async {
+    testWidgets('typed in — its pencil opens it — it holds the number, and '
+        'the unit stands outside the field', (tester) async {
       final submitted = await pumpBox(tester);
-      await tester.tap(find.byKey(const ValueKey<String>('box')));
+      await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
       await tester.pump();
 
       expect(typed(tester, 'box-input'), '100.00');
@@ -161,7 +161,7 @@ void main() {
         find.byKey(const ValueKey<String>('box')),
         const Offset(40, 0),
       );
-      await tester.tap(find.byKey(const ValueKey<String>('box')));
+      await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
       await tester.pump();
       expect(dragged, isEmpty);
       expect(find.byKey(const ValueKey<String>('box-input')), findsNothing);

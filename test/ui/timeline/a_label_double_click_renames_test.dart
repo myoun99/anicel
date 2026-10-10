@@ -19,6 +19,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/rail_eyes.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -165,11 +166,31 @@ void main() {
         final letters = orientation == TimelineOrientation.vertical
             ? Offset(name.center.dx, name.top + 3)
             : Offset(name.left + 3, name.center.dy);
-        final ground = label(tester, a);
+        // The ground half the double click's reach past them — its slop is
+        // the frame block's (kDoubleTapSlop), and a label is wider than
+        // that since the lane values took their hands.
+        const pastTheLetters = kDoubleTapSlop / 2;
+        final ground = orientation == TimelineOrientation.vertical
+            ? Offset(name.center.dx, name.top + pastTheLetters)
+            : Offset(name.left + pastTheLetters, name.center.dy);
         expect(
-          (ground - letters).distance,
-          greaterThan(4),
-          reason: 'CONTROL: two different points',
+          name.contains(ground),
+          isTrue,
+          reason: 'CONTROL: the ground is the label\'s',
+        );
+        expect(
+          tester
+              .getRect(
+                find.descendant(
+                  of: find.byKey(
+                    ValueKey<String>('$prefix-layer-name-${a.value}'),
+                  ),
+                  matching: find.byType(RailEyeBuilder),
+                ),
+              )
+              .contains(ground),
+          isFalse,
+          reason: 'CONTROL: past the letters',
         );
 
         await twoPresses(tester, letters, ground);

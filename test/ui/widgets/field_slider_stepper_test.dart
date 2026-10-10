@@ -8,8 +8,10 @@
 // ⛔The rule lives in the widget, not at the call sites: a per-site flag is
 // how two kinds stop being two kinds.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, Widget slider) => tester.pumpWidget(
@@ -22,6 +24,9 @@ void main() {
 
   final up = find.byKey(const ValueKey<String>('field-slider-step-up'));
   final down = find.byKey(const ValueKey<String>('field-slider-step-down'));
+  // 🗣️tool-settings-panel-tidy (유저 2026-10-10): 막대에도 연필을
+  // 「달도록」 — the pencil is the pair's companion, by the same rule.
+  final pencil = find.byKey(const ValueKey<String>('field-slider-type'));
 
   testWidgets('a LABELLED bar carries the pair', (tester) async {
     await pump(
@@ -37,6 +42,7 @@ void main() {
     );
     expect(up, findsOneWidget);
     expect(down, findsOneWidget);
+    expect(pencil, findsOneWidget);
   });
 
   testWidgets('the MICRO variant does not — that is the whole rule', (
@@ -54,6 +60,7 @@ void main() {
     );
     expect(up, findsNothing);
     expect(down, findsNothing);
+    expect(pencil, findsNothing);
   });
 
   testWidgets('nor does a STOOD-UP bar, whatever it is named — its row has '
@@ -87,6 +94,7 @@ void main() {
     expect(find.text('Size'), findsOneWidget, reason: '⛔LIVENESS');
     expect(up, findsNothing);
     expect(down, findsNothing);
+    expect(pencil, findsNothing);
   });
 
   testWidgets('a DISABLED bar keeps the slot — the row must not resize when '
@@ -138,5 +146,92 @@ void main() {
     await tester.tap(down);
     await tester.pump();
     expect(value, closeTo(0.49, 1e-9), reason: 'and back down, twice');
+  });
+
+  /// A bar a host keeps, telling each change and each end.
+  Future<({List<double> changes, List<double> ends})> pumpKept(
+    WidgetTester tester,
+  ) async {
+    final changes = <double>[];
+    final ends = <double>[];
+    var value = 0.5;
+    await pump(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) => FieldSlider(
+          value: value,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          label: 'Size',
+          unit: '%',
+          displayScale: 100,
+          onChanged: (next) => setState(() {
+            value = next;
+            changes.add(next);
+          }),
+          onChangeEnd: ends.add,
+        ),
+      ),
+    );
+    return (changes: changes, ends: ends);
+  }
+
+  final field = find.byKey(const ValueKey<String>('field-slider-type-input'));
+
+  testWidgets('its PENCIL types a number: the number alone, selected, its '
+      'unit outside the field', (tester) async {
+    await pumpKept(tester);
+    expect(field, findsNothing);
+    await tester.tap(pencil);
+    await tester.pump();
+    expect(field, findsOneWidget);
+    final typed = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(InlineNumericField),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(typed.controller!.text, '50');
+    expect(
+      typed.controller!.selection,
+      const TextSelection(baseOffset: 0, extentOffset: 2),
+    );
+    expect(find.text('%'), findsOneWidget);
+  });
+
+  testWidgets('a typed number is held to the range and handed over as ONE '
+      'complete edit, as a step is', (tester) async {
+    final seen = await pumpKept(tester);
+    await tester.tap(pencil);
+    await tester.pump();
+    await tester.enterText(field, '150');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(seen.changes, [1.0], reason: 'held to the top of the range');
+    expect(seen.ends, [1.0]);
+    expect(field, findsNothing, reason: 'the bar stands again');
+
+    await tester.tap(pencil);
+    await tester.pump();
+    await tester.enterText(field, '25');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(seen.changes.last, closeTo(0.25, 1e-9));
+    expect(seen.ends.length, 2);
+  });
+
+  testWidgets('Escape abandons the typing and changes nothing', (
+    tester,
+  ) async {
+    final seen = await pumpKept(tester);
+    await tester.tap(pencil);
+    await tester.pump();
+    await tester.enterText(field, '80');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(field, findsNothing);
+    expect(seen.changes, isEmpty);
+    expect(seen.ends, isEmpty);
   });
 }

@@ -14,10 +14,11 @@ import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
-import 'app_icon_button.dart';
 import 'axis_bar_gesture.dart';
 import 'ground_ink_writing.dart';
+import 'inline_numeric_field.dart';
 import 'superellipse_clip.dart';
+import 'value_hands.dart';
 import '../repaint_props.dart';
 
 /// How a [FieldSlider] maps track position to value.
@@ -254,9 +255,10 @@ class FieldSlider extends StatefulWidget {
   /// bar's face without the fill ([DragValueLabel.box]).
   static const double defaultHeight = 24;
 
-  /// What a settings bar's ± take of its row, gap included — the end
-  /// column a settings grid keeps on every row ([ToolSettingEnd]).
-  static const double stepperReach = _FieldSliderStepper.reach;
+  /// What a settings bar's HANDS — its ± and its pencil ([ValueSteps],
+  /// [ValuePencil]) — take of its row, gaps included: the end column a
+  /// settings grid keeps on every row ([ToolSettingEnd]).
+  static const double handsReach = valueHandsReach;
 
   /// How round a bar [height] thick is cornered.
   static double radiusFor(double height) => height < 20 ? 3 : 4;
@@ -304,7 +306,7 @@ class FieldSlider extends StatefulWidget {
   /// The narrowest this bar can be and still write its name and the widest
   /// thing it says whole: the track's insets, the words measured in the
   /// styles the bar writes them in, a breath between the name and the
-  /// number, and the stepper where it carries one — the bar's own parts, so
+  /// number, and its hands where it carries them — the bar's own parts, so
   /// the width is measured rather than guessed.
   ///
   /// The number at an END of its range, never the one it holds: a floor
@@ -331,12 +333,13 @@ class FieldSlider extends StatefulWidget {
           context,
           valueStyleIn(context),
         ).widest([_textFor(min), _textFor(max), ?restingText]) +
-        (_carriesStepper ? _FieldSliderStepper.reach : 0);
+        (_carriesHands ? handsReach : 0);
   }
 
-  /// Whether this is the kind of bar that carries the +/− pair — the rule
-  /// is [_FieldSliderState._withStepper]'s, and this is its one statement.
-  bool get _carriesStepper => axis == Axis.horizontal && label != null;
+  /// Whether this is the kind of bar that carries the hands — the +/− pair
+  /// and the pencil — the rule is [_FieldSliderState._withHands]'s, and
+  /// this is its one statement.
+  bool get _carriesHands => axis == Axis.horizontal && label != null;
 
   /// How many digits this bar writes after the point — THE SAME COUNT AT
   /// EVERY VALUE, which is the whole of F-34 (유저 확정 2026-09-01: 「위젯이
@@ -478,15 +481,38 @@ class _FieldSliderState extends State<FieldSlider> {
 
   void _takeTrackExtent(double extent) => _trackExtent = extent;
 
-  /// The +/− pair as last built, and what it was built from.
+  /// The hands — the +/− pair and the pencil — as last built, and what
+  /// they were built from.
   ///
   /// 🔬H40 (유저 2026-09-11): 「고를때 렉있어서 그부분도 효율적으로 가볍게
   /// 하고싶어」. A bar rebuilds for every value it is handed and every frame
   /// of a drag, and the pair — two buttons, their tooltips, their ink —
   /// changes with none of that: only with the bar's height, whether it takes
   /// the gesture, and the language its tooltips speak.
-  Widget? _stepper;
-  Object? _stepperFor;
+  Widget? _hands;
+  Object? _handsFor;
+
+  /// Whether the bar is being typed into: its pencil opened the field
+  /// ([ValuePencil]), and the bar stands as a box holding it until Enter,
+  /// a press elsewhere, or Escape.
+  bool _typing = false;
+
+  void _beginTyping() => setState(() => _typing = true);
+
+  /// A typed number, in the units the bar writes ([FieldSlider
+  /// .displayScale]): held to the bar's range and its steps, and handed
+  /// over as a drag's release is — one complete edit.
+  void _typed(String text) {
+    setState(() => _typing = false);
+    final typed = double.tryParse(text.trim());
+    if (typed == null || !_enabled) {
+      return;
+    }
+    final kept = (typed / widget.displayScale).clamp(widget.min, widget.max);
+    final value = _valueFor(_tFor(kept));
+    _emit(value);
+    widget.onChangeEnd?.call(value);
+  }
 
   bool get _vertical => widget.axis == Axis.vertical;
 
@@ -730,6 +756,16 @@ class _FieldSliderState extends State<FieldSlider> {
     final valueText = dragging
         ? widget._textFor(_valueFor(gestureT))
         : widget.restingText ?? widget._textFor(widget.value);
+    if (_typing) {
+      return _withHands(
+        _FieldSliderTypedFace(
+          bar: widget,
+          valueText: valueText,
+          onSubmit: _typed,
+          onCancel: () => setState(() => _typing = false),
+        ),
+      );
+    }
 
     final accent = dragging
         ? AppColors.accent
@@ -830,7 +866,7 @@ class _FieldSliderState extends State<FieldSlider> {
       // 🪦The `Opacity(0.4)` that stood here is gone: the bar's pieces dim
       // themselves ([_asDrawn]) so that a disabled bar is not a compositing
       // boundary inside its panel.
-      return _withStepper(bar);
+      return _withHands(bar);
     }
     bar = MouseRegion(
       cursor: _vertical
@@ -893,21 +929,23 @@ class _FieldSliderState extends State<FieldSlider> {
         ),
       ),
     );
-    return _withStepper(claimed);
+    return _withHands(claimed);
   }
 
-  /// [bar] with the +/− pair beside it, when this is the kind of bar that
-  /// carries one.
+  /// [bar] with its hands beside it — the +/− pair and the pencil
+  /// ([ValueSteps], [ValuePencil]) — when this is the kind of bar that
+  /// carries them.
   ///
   /// 🚨★THERE ARE TWO KINDS OF BAR, AND THE VARIANT DECIDES WHICH — not the
   /// call site (유저 2026-09-09: 「슬라이더는 2개로 두자. 스텝퍼 적용 미적용
   /// 규칙. **초소형 변형은 기본적으로 빼도록**」).
   ///
   /// * A LABELLED bar is a settings row. It has room, it is read and nudged
-  ///   deliberately, and it gets the stepper.
+  ///   deliberately, and it gets the hands — the pencil since 유저
+  ///   2026-10-10 (tool-settings-panel-tidy): 막대에도 연필을 「달도록」.
   /// * The MICRO variant (`label == null`) is the inline slot — a timeline
   ///   layer row, a lane header — where the whole control is already down to
-  ///   a number in a gap. Two more buttons there would take the track it has
+  ///   a number in a gap. More buttons there would take the track it has
   ///   left, and the value is not being tuned to a digit in that context.
   ///
   /// ⛔NO PER-SITE FLAG. A boolean here is how the two kinds stop being two
@@ -917,11 +955,11 @@ class _FieldSliderState extends State<FieldSlider> {
   /// A VERTICAL bar is out for a plainer reason: it is the timeline's turned
   /// axis, whose row has no horizontal room at all, and the buttons would
   /// have to stack into the track itself.
-  Widget _withStepper(Widget bar) {
-    if (!widget._carriesStepper) {
+  Widget _withHands(Widget bar) {
+    if (!widget._carriesHands) {
       return bar;
     }
-    // Kept while nothing it shows changes (see [_stepper]). Its [_stepBy]
+    // Kept while nothing they show changes (see [_hands]). Its [_stepBy]
     // reads the bar's value at press time, so a pair built under an earlier
     // value steps from the current one.
     final key = (
@@ -929,93 +967,97 @@ class _FieldSliderState extends State<FieldSlider> {
       _enabled,
       AppText.strings.stepUp,
       AppText.strings.stepDown,
+      AppText.strings.valueTypeIn,
     );
-    final stepper = _stepper != null && _stepperFor == key
-        ? _stepper!
-        : _FieldSliderStepper(
-            height: widget.height,
-            enabled: _enabled,
-            onStep: _stepBy,
+    final hands = _hands != null && _handsFor == key
+        ? _hands!
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueSteps(
+                keyPrefix: 'field-slider-step',
+                height: widget.height,
+                enabled: _enabled,
+                onStep: _stepBy,
+              ),
+              ValuePencil(
+                keyValue: 'field-slider-type',
+                height: widget.height,
+                enabled: _enabled,
+                onPressed: _beginTyping,
+              ),
+            ],
           );
-    _stepper = stepper;
-    _stepperFor = key;
+    _hands = hands;
+    _handsFor = key;
     return Row(
       children: [
         Expanded(child: bar),
-        stepper,
+        hands,
       ],
     );
   }
 }
 
-/// The +/− pair at the right of a value bar (유저 확정 2026-09-08: 「+버튼을
-/// 세로로 위아래로 나눠서 위에 +버튼, 아래 -버튼」).
-///
-/// ⛔It fires [FieldSlider]'s own `_stepBy`, NOT arithmetic of its own — one
-/// notch here is one notch of the wheel, which is the whole of 유저's third
-/// 착수 결정. A second implementation would be one question with two answers.
-///
-/// The two cells split the bar's height, so a row is exactly as tall with the
-/// stepper as without it and nothing below shifts.
-class _FieldSliderStepper extends StatelessWidget {
-  const _FieldSliderStepper({
-    required this.height,
-    required this.enabled,
-    required this.onStep,
+/// The bar while it is typed in ([_FieldSliderState._typing]): its frame
+/// holding the field — the number alone, its unit after it, the law every
+/// typed number opens by ([readoutParts]) — and no fill, as a box has none.
+class _FieldSliderTypedFace extends StatelessWidget {
+  const _FieldSliderTypedFace({
+    required this.bar,
+    required this.valueText,
+    required this.onSubmit,
+    required this.onCancel,
   });
 
-  final double height;
-  final bool enabled;
-  final ValueChanged<int> onStep;
+  final FieldSlider bar;
 
-  /// Narrow on purpose: this sits in panels already budgeted to the pixel,
-  /// and it is a nudge, not a target you aim at from across the screen.
-  static const double width = 14;
-
-  /// The gap to the bar, so the buttons never look like part of the track.
-  static const double _gap = 3;
-
-  /// What the pair takes of its bar's run — what the track does not get.
-  static const double reach = _gap + width;
+  /// What the bar writes at rest — its number and its unit.
+  final String valueText;
+  final ValueChanged<String> onSubmit;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
-    final half = height / 2;
-    return Padding(
-      padding: const EdgeInsets.only(left: _gap),
+    final parts = readoutParts(valueText);
+    final part = parts.length == 1 ? parts.single : null;
+    final unit = part?.unit ?? '';
+    final ink = TextStyle(color: textOnColor(AppColors.surface));
+    final style = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
+    final name = bar.label;
+    return DecoratedBox(
+      decoration: FieldSlider.frameOf(bar.height, enabled: true),
       child: SizedBox(
-        width: width,
-        height: height,
-        child: Column(
-          children: [
-            // 🚨THE PLUS WEARS THE ACCENT, like every other ＋ in the app
-            // (유저 확정 2026-08-10: 「＋가있는 모든곳. 공통적으로」). The
-            // MINUS does not: the accent rule is the plus's alone, and its
-            // twin — the red one — is for DELETE, which this is not. The
-            // pair looking uneven is the law's own shape, not an oversight.
-            _cell(
-              Icons.add,
-              1,
-              half,
-              color: AppColors.addGlyph(enabled: enabled),
-            ),
-            _cell(Icons.remove, -1, half),
-          ],
+        height: bar.height,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+          child: Row(
+            children: [
+              if (bar._nameInside && name != null)
+                Text(
+                  name,
+                  maxLines: 1,
+                  style:
+                      Theme.of(context).textTheme.labelSmall?.merge(ink) ??
+                      ink,
+                ),
+              Expanded(
+                child: InlineNumericField(
+                  fieldKey: const ValueKey<String>('field-slider-type-input'),
+                  initialText: part?.number ?? valueText,
+                  textStyle: style,
+                  textAlign: TextAlign.right,
+                  onSubmit: onSubmit,
+                  onCancel: onCancel,
+                ),
+              ),
+              if (unit.isNotEmpty) Text(unit, style: style),
+            ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _cell(IconData icon, int direction, double half, {Color? color}) =>
-      AppIconButton(
-        keyValue: 'field-slider-step-${direction > 0 ? 'up' : 'down'}',
-        tooltip: direction > 0
-            ? AppText.strings.stepUp
-            : AppText.strings.stepDown,
-        size: AppIconButtonBox(width: width, height: half, iconSize: half - 2),
-        icon: Icon(icon, color: color),
-        onPressed: enabled ? () => onStep(direction) : null,
-      );
 }
 
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {

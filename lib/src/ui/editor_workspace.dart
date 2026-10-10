@@ -125,9 +125,14 @@ import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'timeline/collapsed_row_overlay.dart';
+import 'timeline/layer_label_controls.dart'
+    show layerRailColumnWidthsIn;
 import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/timeline_grid_metrics.dart'
-    show TimelineGridMetrics, timelineLayerRowHeightIn;
+    show
+        TimelineGridMetrics,
+        timelineLayerControlsWidthFor,
+        timelineLayerRowHeightIn;
 import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;

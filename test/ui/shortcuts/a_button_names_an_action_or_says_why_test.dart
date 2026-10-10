@@ -106,11 +106,15 @@ const ledger = <String, Why>{
   "envelope/cut_envelope_tab_host.dart | 'envelope-form-\${form.id}'":
       Why.aSetting,
   'widgets/boolean_dot.dart | keyValue': Why.aSetting,
-  'widgets/field_slider.dart | '
-          "'field-slider-step-\${direction > 0 ? 'up' : 'down'}'":
+  // A value's ± — a bar's and a number box's, one pair since tool-settings-
+  // panel-tidy (2026-10-10); they were the settings bar's own until then.
+  'widgets/value_hands.dart | '
+          "'\$keyPrefix-\${direction > 0 ? 'up' : 'down'}'":
       Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
+  // A value's pencil: it opens the value's typed field and runs nothing.
+  'widgets/value_hands.dart | keyValue': Why.aSecondLevel,
   "menu/editor_top_strip.dart | 'top-strip-brush-group-button'":
       Why.aSecondLevel,
   // The strip's popover buttons, made by one widget.

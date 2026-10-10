@@ -924,9 +924,10 @@ void main() {
       });
       await pump(tester, [png!, wav!]);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-bake')),
-      );
+      final header = find.byKey(const ValueKey<String>('import-column-bake'));
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('import-option-bake-true')),
@@ -1164,7 +1165,7 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     // Pages three and four of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -1172,7 +1173,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-out-input')),
@@ -1280,7 +1281,7 @@ void main() {
     );
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -1288,7 +1289,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-out-input')),
@@ -1368,7 +1369,7 @@ void main() {
     await tester.pump();
 
     // Pages two and three of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -1376,7 +1377,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-out-input')),

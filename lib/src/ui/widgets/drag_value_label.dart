@@ -3,6 +3,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../input/wheel_law.dart';
+import '../text/app_strings.dart' show AppText;
 import '../text/full_width_numerals.dart' show halfWidthDigitsOnly;
 import '../text/readout_text.dart' show ReadoutPart, readoutParts;
 import '../theme/app_theme.dart' show AppColors;
@@ -11,34 +13,41 @@ import '../theme/text_on_ground.dart';
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
 import 'inline_numeric_field.dart';
+import 'value_hands.dart';
 
-/// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
-/// for the canvas angle/zoom texts and any future value label):
-/// - horizontal DRAG adjusts the value ([unitsPerPixel] per pixel,
-///   reported as whole-unit deltas through [onDragDelta]);
-/// - a single TAP swaps to an inline numeric field (Enter/tap-out commits
-///   through [onEditSubmit], Escape cancels).
+/// A NUMBER YOU OPERATE, by hands that each do ONE thing (UI-R18 #21, the
+/// shared vocabulary for the canvas angle/zoom, the page readouts and every
+/// number box):
+/// - its FACE drags — along x, from the first pixel, whatever the pointer
+///   ([unitsPerPixel] per pixel, reported as whole units through
+///   [onDragDelta]); a press that does not move does nothing; the wheel
+///   over it turns it a step a notch;
+/// - its STEPS (the settings bar's own ±, [ValueSteps]) move it a step;
+/// - its PENCIL ([ValuePencil]) opens the inline field — the number alone,
+///   selected, its unit beside it ([readoutParts]); Enter or a press
+///   elsewhere commits through [onEditSubmit], Escape abandons.
 ///
-/// R10: the field used to open on a DOUBLE tap, which held every tap on
-/// this label for the double-tap window — ~300ms of nothing happening,
-/// which is what the user asked to be rid of everywhere. It cost nothing
-/// to give up: there was no single-tap action to collide with, and the
-/// app's rule is now one line — a tap edits a number, a double tap opens
-/// a thing.
+/// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「모든 드래그+편집이 가능한
+/// 박스를 구조를 나누고싶어. 펜으로도 1px만움직여도 드래그로 조정가능하고
+/// 편집도 떼면 바로 가능하게하려면 그냥 버튼을 나누는게 좋아보이거든? 지금의
+/// 박스는 그냥 드래그만 하고, 편집창 여는건 그 옆에 편집아이콘 둬서 그거
+/// 누르면 열리도록」 · 「상자에 한걸음 올리기 내리기버튼들도 동일하게
+/// 넣고싶어」 · 휠 「좋아」. ↩️A tap on the face opened the field (R10: once
+/// a double tap), so every press waited for its release to tell a tap from
+/// a drag, and the drag waited out the pointer's slop so a wobbling tap
+/// stayed a tap — 18px a pen had to travel before a fine adjustment began,
+/// and ONE pixel for a pen the OS calls a mouse, whose wobble scrubbed.
 ///
 /// 🚨H24 (유저 2026-09-15: 「뷰어쪽 줌 레일스크롤바랑 겹치는거」): A PRESS
-/// THAT STARTS HERE IS THE LABEL'S, WHICHEVER WAY IT MOVES. Tap and drag
-/// used to settle it between them in the arena — past the slop the drag
-/// won, and the tap was refused — which left the arena open to a list
-/// around the label. 🧪Measured in a scroller: a drag that ran straight up
-/// moved the list 120px for touch, pen and mouse alike (a horizontal
-/// recogniser never crosses its slop on one). The drag takes the arena on
-/// the first movement now, as the slider's does
-/// ([OwningHorizontalDragGestureRecognizer]) — which is exactly what would
-/// refuse a tap left in the arena on any wobble (F-120's shape), so the tap
-/// is the claim's, fired on release inside
-/// ([_DragValueLabelState._editUnlessScrubbed]).
+/// THAT STARTS ON THE FACE IS THE FACE'S, WHICHEVER WAY IT MOVES. The drag
+/// takes the arena on the first movement
+/// ([OwningHorizontalDragGestureRecognizer]), so no list around it ever
+/// scrolls; a vertical move scrubs nothing and scrolls nothing.
 class DragValueLabel extends StatefulWidget {
+  /// The bare readout — the number in its own width, its pencil after it
+  /// or, in a stood-up strip, under it ([pencilBelow]); its steps where the
+  /// host has none of its own ([steps]: the canvas bar turns the view with
+  /// its ⟲ ⟳, a page strip with its ↑ ↓).
   const DragValueLabel({
     super.key,
     required this.keyValue,
@@ -55,20 +64,27 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
-    this.shrinkToFit = false,
+    this.steps = false,
+    this.pencilBelow = false,
   }) : name = null,
-       _boxed = false;
+       _face = _Face.bare;
 
-  /// THE NUMBER BOX: this readout wearing a settings bar's face — its frame,
+  /// THE NUMBER BOX: this number wearing a settings bar's face — its frame,
   /// its name at the left, its number at the right ([FieldSlider.frameOf])
-  /// — without the fill, for a value with no range to fill. It fills the
-  /// width it is given.
+  /// — without the fill, for a value with no range to fill; and the bar's
+  /// hands after it, its steps and its pencil, in the column a bar's stand
+  /// in. It fills the width it is given.
   ///
   /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「다 추천대로」 — 숫자는
-  /// 「다른 도구의 숫자 상자와 같은 모양」 — and 「해당 상자, x상자같은거
-  /// 드래그하면 바뀌는거는 살아있는거지? 그건 좋아서」: the gestures are this
-  /// widget's, unchanged. While it is typed in, its unit stands outside the
-  /// field ([readoutParts]).
+  /// 「다른 도구의 숫자 상자와 같은 모양」.
+  ///
+  /// [stood]: the box STOOD UP, for a column with no room beside it (the
+  /// x-sheet's 28px): a small box whose number shrinks into it rather than
+  /// run past it — a coordinate cut short would be a wrong one — with no
+  /// name, and its pencil UNDER it. No steps: there is no room for them, and
+  /// the drag and the wheel turn it. 🗣️유저 2026-10-10: 「x시트랑 타임라인이랑
+  /// 동일하게 박스두도록 가능한가? 작아도되니까. ui가 하나도 안변해서
+  /// 이상하니까」 — ± 없이 연필만 「문제없는데」.
   const DragValueLabel.box({
     super.key,
     required this.keyValue,
@@ -83,18 +99,32 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
+    bool stood = false,
   }) : width = double.infinity,
        textStyle = null,
-       textAlign = TextAlign.right,
-       shrinkToFit = false,
-       _boxed = true;
+       textAlign = stood ? TextAlign.center : TextAlign.right,
+       steps = !stood,
+       pencilBelow = stood,
+       _face = stood ? _Face.stood : _Face.box;
+
+  /// What a bare readout [width] wide takes of its row with its hands after
+  /// it — its pencil, and its steps where it carries them ([steps]) — for a
+  /// host that budgets its row before it builds it (the canvas pill).
+  static double rowWidthOf(double width, {bool steps = false}) =>
+      width + ValuePencil.reach + (steps ? ValueSteps.reach : 0);
+
+  /// How tall a stood-up box stands with its pencil under it — what a
+  /// column budgets for each number it stacks.
+  static const double stoodExtent = _stoodBoxHeight + _stoodPencilHeight;
+  static const double _stoodBoxHeight = 16;
+  static const double _stoodPencilHeight = 14;
 
   /// What a box says it holds, inside at the left — `X`, a mesh's columns.
   /// Null on the bare readout, and on a box whose row already names it.
   final String? name;
 
-  /// Which face: the bare readout, or the box ([DragValueLabel.box]).
-  final bool _boxed;
+  /// Which face — the bare readout, the box, the stood-up box.
+  final _Face _face;
 
   /// Whether the typed value is a whole number with no sign: the field
   /// takes digits alone (full-width ones converted) on the number pad —
@@ -102,27 +132,34 @@ class DragValueLabel extends StatefulWidget {
   /// type a sign or a point leave it false.
   final bool digitsOnly;
 
-  /// Called ONCE at the top of a scrub or a typed commit, before the value
-  /// moves — for a host that records operations rather than values.
+  /// Called ONCE at the top of an operation — a scrub, a step, a notch of
+  /// the wheel, a typed commit — before the value moves, for a host that
+  /// records operations rather than values.
   ///
   /// ⚠️A scrub is one operation made of many [onDragDelta] calls, and only
   /// this widget knows where it began. Null for every readout that does
   /// not care, which is most of them.
   final VoidCallback? onOperationStart;
 
-  /// Called ONCE when a scrub this readout made is over — the press
-  /// that moved the value let go, or was taken away — for a host that
-  /// SHOWS a scrub while it runs and writes it once at the end (a
-  /// timeline lane: one drag, one undo). Null for every readout that
+  /// Called ONCE when an operation is over — the press that moved the
+  /// value let go or was taken away, a step or a notch was taken — for a
+  /// host that SHOWS a scrub while it runs and writes it once at the end
+  /// (a timeline lane: one drag, one undo). Null for every readout that
   /// writes as it goes, which is the rest of them.
   final VoidCallback? onOperationEnd;
 
-  /// Whether the resting readout SHRINKS into [width] rather than
-  /// running past it — the x-sheet's stood-up numbers, where a
-  /// coordinate cut short would be a wrong one.
-  final bool shrinkToFit;
+  /// Whether the bare readout carries the steps ([ValueSteps]) — where its
+  /// host has no steps of its own beside it. A box always does; a stood-up
+  /// box never has the room.
+  final bool steps;
 
-  /// Stable widget key base (`keyValue` label / `keyValue`-input).
+  /// Whether the pencil stands UNDER the number rather than after it — a
+  /// stood-up strip with no room beside it.
+  final bool pencilBelow;
+
+  /// Stable widget key base: `keyValue` the face, `keyValue`-edit its
+  /// pencil, `keyValue`-step-up / -down its steps, `keyValue`-input its
+  /// field.
   final String keyValue;
 
   /// Overrides the inline editor's key (hosts with pre-existing key
@@ -132,7 +169,8 @@ class DragValueLabel extends StatefulWidget {
   /// The resting readout ('90%', '-15°', …).
   final String text;
 
-  /// Whole-unit drag steps (sign follows the drag direction).
+  /// Whole-unit drag steps (sign follows the drag direction). A step and a
+  /// notch of the wheel are one unit each.
   final ValueChanged<double> onDragDelta;
 
   /// Receives the raw typed text on commit; the owner parses/clamps.
@@ -149,14 +187,16 @@ class DragValueLabel extends StatefulWidget {
   /// not this one's.
   final TextAlign textAlign;
 
-  /// False leaves the readout where it is: no scrub, no field, and the text
-  /// wears the disabled foreground every icon button wears
+  /// False leaves the readout where it is: no scrub, no steps, no field,
+  /// and the text wears the disabled foreground every icon button wears
   /// (`AppIconButton`'s `disabledForegroundColor`).
   final bool enabled;
 
   @override
   State<DragValueLabel> createState() => _DragValueLabelState();
 }
+
+enum _Face { bare, box, stood }
 
 class _DragValueLabelState extends State<DragValueLabel> {
   bool _editing = false;
@@ -165,18 +205,11 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// Whether the press under way has moved the value.
   bool _scrubbedThisPress = false;
 
-  /// Where the press went down, how far along the label it may go before
-  /// the value moves, and whether it has gone that far.
-  ///
-  /// ⛔NOT A NEW THRESHOLD. It is the rule the plain horizontal recogniser
-  /// this replaced applied before its first delta, spelled the same way:
-  /// the pointer kind's hit slop, measured as the press's net travel along
-  /// x. The owning recogniser takes the arena on the first movement and
-  /// reports what follows, so without this a pen that wobbles in a few
-  /// steps would move the zoom and lose its tap.
-  double _downX = 0;
-  double _slop = 0;
-  bool _pastTheSlop = false;
+  /// The hands as last built, and what they were built from — kept, as a
+  /// settings bar keeps its own: a lane's boxes rebuild on every frame the
+  /// cursor moves, and the hands change with none of that.
+  Widget? _hands;
+  Object? _handsFor;
 
   /// The readout as ONE number and its unit — null when it is not one.
   ReadoutPart? get _part => switch (readoutParts(widget.text)) {
@@ -201,39 +234,20 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
   }
 
-  void _pressStarted(PointerDownEvent event) {
-    _scrubbedThisPress = false;
-    _pastTheSlop = false;
-    _downX = event.position.dx;
-    _slop = computeHitSlop(
-      event.kind,
-      MediaQuery.maybeGestureSettingsOf(context),
-    );
-  }
-
-  bool _beyondTheSlop(Offset globalPosition) =>
-      (globalPosition.dx - _downX).abs() > _slop;
-
   void _dragStarted(DragStartDetails details) {
     _pendingUnits = 0;
-    _pastTheSlop = _beyondTheSlop(details.globalPosition);
+    _scrubbedThisPress = false;
   }
 
-  /// The event that carries the press past the slop is the one the old
-  /// recogniser accepted on, and it reported nothing for it either — the
-  /// deltas after it are the scrub.
+  /// Every pixel counts from the first: the face has no tap left to keep
+  /// apart from a drag.
   void _dragUpdated(DragUpdateDetails details) {
-    if (!_pastTheSlop) {
-      _pastTheSlop = _beyondTheSlop(details.globalPosition);
-      return;
-    }
     _pendingUnits += details.delta.dx * widget.unitsPerPixel;
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
       // ⚠️On the FIRST whole unit, not on the press: a press that never
-      // moves the value is not an operation, and the edit it opens
-      // instead announces itself in [_commitEdit].
+      // moves the value is not an operation.
       if (!_scrubbedThisPress) {
         widget.onOperationStart?.call();
       }
@@ -246,22 +260,39 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// .onOperationEnd]).
   void _scrubOver() {
     if (_scrubbedThisPress) {
+      _scrubbedThisPress = false;
       widget.onOperationEnd?.call();
     }
   }
 
-  /// A press edits the number unless it moved the value.
-  ///
-  /// ⛔Not the arena: the drag takes it on the first movement, so the arena
-  /// can no longer tell a tap from a scrub. The verb's own answer does —
-  /// did a whole unit go out.
-  void _editUnlessScrubbed() {
-    if (!_scrubbedThisPress) {
-      _beginEdit();
+  /// One step [direction] (+1 up, -1 down) — a whole operation of its own,
+  /// as a step of a settings bar is: a ± press, a notch of the wheel.
+  void _step(int direction) {
+    if (!widget.enabled) {
+      return;
     }
+    widget.onOperationStart?.call();
+    widget.onDragDelta(direction.toDouble());
+    widget.onOperationEnd?.call();
+  }
+
+  void _wheel(PointerScrollEvent event) {
+    if (event.scrollDelta.dy == 0) {
+      return;
+    }
+    _step(event.scrollDelta.dy < 0 ? 1 : -1);
   }
 
   static const TextStyle _bareStyle = TextStyle(fontSize: 12);
+
+  /// How tall the bare readout's hands stand.
+  static const double _bareHandsHeight = 20;
+
+  double get _handsHeight => switch (widget._face) {
+    _Face.box => FieldSlider.defaultHeight,
+    _Face.bare => _bareHandsHeight,
+    _Face.stood => DragValueLabel._stoodPencilHeight,
+  };
 
   /// The field the readout turns into, holding [_seed].
   Widget _field(TextStyle style, TextAlign align) => InlineNumericField(
@@ -277,39 +308,58 @@ class _DragValueLabelState extends State<DragValueLabel> {
     onCancel: () => setState(() => _editing = false),
   );
 
+  /// The unit beside an open field — never inside it.
+  Widget? _unitBeside(TextStyle style) {
+    final unit = _part?.unit ?? '';
+    return _editing && unit.isNotEmpty
+        ? Text(
+            unit,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            style: style,
+          )
+        : null;
+  }
+
   /// The bare readout: the number, in its own width.
   Widget _bare(BuildContext context) {
-    final style = widget.textStyle ?? _bareStyle;
-    if (_editing) {
-      return SizedBox(
-        width: widget.width,
-        child: _field(style, TextAlign.center),
-      );
-    }
-    final readout = Text(
-      widget.text,
-      textAlign: widget.textAlign,
-      maxLines: widget.shrinkToFit ? 1 : null,
-      softWrap: !widget.shrinkToFit,
-      style: widget.enabled
-          ? style
-          : style.copyWith(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.38),
-            ),
-    );
+    final base = widget.textStyle ?? _bareStyle;
+    final style = widget.enabled
+        ? base
+        : base.copyWith(
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.38),
+          );
+    final unit = _unitBeside(style);
     return SizedBox(
       width: widget.width,
-      child: widget.shrinkToFit
-          ? FittedBox(fit: BoxFit.scaleDown, child: readout)
-          : readout,
+      child: _editing
+          ? Row(
+              children: [
+                Expanded(child: _field(style, TextAlign.center)),
+                // A narrow readout keeps half of itself for the number being
+                // typed: what stands beside it clips rather than push the
+                // field out — a page strip's ` / 1200` in its 30px.
+                if (unit != null)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: widget.width / 2),
+                    child: unit,
+                  ),
+              ],
+            )
+          : Text(widget.text, textAlign: widget.textAlign, style: style),
     );
   }
 
   /// The box: a settings bar's frame around the name and the number. Typed
   /// in, the number becomes the field and its unit stands after it.
   Widget _box(BuildContext context) {
+    final stood = widget._face == _Face.stood;
+    final height = stood
+        ? DragValueLabel._stoodBoxHeight
+        : FieldSlider.defaultHeight;
     final ink = TextStyle(
       color: dimmedIfDisabled(
         textOnColor(AppColors.surface),
@@ -317,17 +367,30 @@ class _DragValueLabelState extends State<DragValueLabel> {
       ),
     );
     final numberStyle = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
-    final name = widget.name;
-    final unit = _part?.unit ?? '';
+    // A stood-up box has no room for its name.
+    final name = stood ? null : widget.name;
+    final number = _editing
+        ? _field(numberStyle, TextAlign.right)
+        : stood
+        // Shrinks into the column rather than run past it.
+        ? FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(widget.text, maxLines: 1, style: numberStyle),
+          )
+        : Text(
+            widget.text,
+            maxLines: 1,
+            textAlign: TextAlign.right,
+            style: numberStyle,
+          );
     return DecoratedBox(
-      decoration: FieldSlider.frameOf(
-        FieldSlider.defaultHeight,
-        enabled: widget.enabled,
-      ),
+      decoration: FieldSlider.frameOf(height, enabled: widget.enabled),
       child: SizedBox(
-        height: FieldSlider.defaultHeight,
+        height: height,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+          padding: EdgeInsets.symmetric(
+            horizontal: stood ? 1 : FieldSlider.inset,
+          ),
           child: Row(
             children: [
               if (name != null)
@@ -337,17 +400,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
                   style:
                       Theme.of(context).textTheme.labelSmall?.merge(ink) ?? ink,
                 ),
-              Expanded(
-                child: _editing
-                    ? _field(numberStyle, TextAlign.right)
-                    : Text(
-                        widget.text,
-                        maxLines: 1,
-                        textAlign: TextAlign.right,
-                        style: numberStyle,
-                      ),
-              ),
-              if (_editing && unit.isNotEmpty) Text(unit, style: numberStyle),
+              Expanded(child: number),
+              ?_unitBeside(numberStyle),
             ],
           ),
         ),
@@ -355,21 +409,78 @@ class _DragValueLabelState extends State<DragValueLabel> {
     );
   }
 
+  /// [face] with its hands: its steps where it carries them, and its pencil
+  /// — after it, or under it in a stood-up column.
+  Widget _withHands(Widget face) {
+    final key = (
+      widget.enabled,
+      widget.keyValue,
+      widget._face,
+      widget.steps,
+      widget.pencilBelow,
+      // Their tooltips speak the program's language.
+      AppText.language,
+    );
+    final hands = _hands != null && _handsFor == key ? _hands! : _handsNow();
+    _hands = hands;
+    _handsFor = key;
+    if (widget.pencilBelow) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [face, Center(child: hands)],
+      );
+    }
+    final fills = widget._face == _Face.box;
+    return Row(
+      mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,
+      children: [if (fills) Expanded(child: face) else face, hands],
+    );
+  }
+
+  Widget _handsNow() {
+    final pencil = ValuePencil(
+      keyValue: '${widget.keyValue}-edit',
+      height: _handsHeight,
+      enabled: widget.enabled,
+      onPressed: _beginEdit,
+      leadingGap: !widget.pencilBelow,
+    );
+    if (!widget.steps) {
+      return pencil;
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ValueSteps(
+          keyPrefix: '${widget.keyValue}-step',
+          height: _handsHeight,
+          enabled: widget.enabled,
+          onStep: _step,
+        ),
+        pencil,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final face = widget._boxed ? _box(context) : _bare(context);
+    final face = widget._face == _Face.bare ? _bare(context) : _box(context);
     if (_editing) {
-      return face;
+      return _withHands(face);
     }
-    // ⚠️The order is what makes the tap right. Pointer-up runs deepest
-    // first, so [DragVerbClaim] has let its claim go by the time
-    // [ControlPressClaim] asks whether a drag verb owns the pointer — the
-    // claim then fires, and [_editUnlessScrubbed] is what refuses a press
-    // that scrubbed.
+    // ⚠️The press is CLAIMED though it does nothing on a release: a press
+    // that starts on a control is that control's (CLAUDE.md, 「컨트롤 위에서
+    // 시작한 제스처는 그 컨트롤의 것이다」), so a row around the number does
+    // not take it for its own tap.
     final pressed = ControlPressClaim(
-      onPressed: widget.enabled ? _editUnlessScrubbed : null,
+      onPressed: null,
       child: Listener(
-        onPointerDown: _pressStarted,
+        // H23: registered rather than handled, so the notch the number takes
+        // is not also taken by a scroller or a canvas around it.
+        onPointerSignal: widget.enabled
+            ? (event) => handleWheelUnlessScrolling(event, context, _wheel)
+            : null,
         child: DragVerbClaim(
           behavior: HitTestBehavior.opaque,
           child: RawGestureDetector(
@@ -385,6 +496,10 @@ class _DragValueLabelState extends State<DragValueLabel> {
                             debugOwner: this,
                           ),
                           (recognizer) {
+                            // From the press: the first pixel is the
+                            // scrub's.
+                            recognizer.dragStartBehavior =
+                                DragStartBehavior.down;
                             recognizer.onStart = _dragStarted;
                             recognizer.onUpdate = _dragUpdated;
                             recognizer.onEnd = (_) => _scrubOver();
@@ -402,17 +517,11 @@ class _DragValueLabelState extends State<DragValueLabel> {
       cursor: widget.enabled
           ? SystemMouseCursors.resizeLeftRight
           : MouseCursor.defer,
-      // 🚨A NUMBER ANSWERS ITS TAP ON THE RELEASE, wherever it stands. Its
-      // press is a scrub or a tap, and which one is known only once the hand
-      // lets go ([_editUnlessScrubbed]) — so a row whose buttons act on the
-      // press (a timeline lane: 「레이어 쪽 버튼은 탭다운」, 유저 2026-08-30)
-      // cannot set its moment: the field opening on the press took the drag
-      // away before it began (tool-settings-panel-tidy, 2026-10-10, when the
-      // lanes' values became these). ↩️A lane's value was an `InkWell` of its
-      // own, which answered on the release too.
-      child: PressFireScope(fireOn: PressFire.upInside, child: pressed),
+      child: pressed,
     );
     final tooltip = widget.tooltip;
-    return tooltip == null ? label : AppTooltip(message: tooltip, child: label);
+    return _withHands(
+      tooltip == null ? label : AppTooltip(message: tooltip, child: label),
+    );
   }
 }

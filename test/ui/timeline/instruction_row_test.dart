@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
     show TimelineFrameCellsRow;
 
 import '../../helpers/block_word_finder.dart';
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 
 const _cutId = CutId('inst-cut');
@@ -169,6 +170,7 @@ void main() {
       _project(instructions: const {}),
       onRepositoryCreated: (repo) => repository = repo,
     );
+    await standTheClassicRail(tester);
 
     // Double-tap on the EMPTY cell creates a default-vocabulary event
     // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
@@ -260,6 +262,7 @@ void main() {
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
     );
+    await standTheClassicRail(tester);
 
     // Edit the B value on the covering cell (not the start).
     await _doubleTapCell(tester, 'inst-cam', 5);

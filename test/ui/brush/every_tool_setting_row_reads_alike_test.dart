@@ -93,7 +93,7 @@ void main() {
       expect(control.left, moreOrLessEquals(chip.left), reason: name);
     }
     // A bar's ± stand in the end column, past where every control ends.
-    final end = bar.right - FieldSlider.stepperReach;
+    final end = bar.right - FieldSlider.handsReach;
     for (final (name, control) in [
       ('chip', chip),
       ('strip', strip),

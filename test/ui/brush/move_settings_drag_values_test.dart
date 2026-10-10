@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
@@ -117,10 +118,10 @@ void main() {
     return commands;
   }
 
-  /// Types [text] into the readout [key]: a press that moved nothing opens
-  /// its editor, and Enter commits.
+  /// Types [text] into the readout [key]: its pencil opens its editor, and
+  /// Enter commits.
   Future<void> typeInto(WidgetTester tester, String key, String text) async {
-    await tester.tap(find.byKey(ValueKey<String>(key)));
+    await tester.tap(find.byKey(ValueKey<String>('$key-edit')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(ValueKey<String>('$key-input')), text);
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -279,8 +280,10 @@ void main() {
   /// 🗣️유저 2026-09-20: 「변형에 대한 **조작마다** 언두로 기록」. A label
   /// scrub writes a value per pixel; only the label knows where the
   /// operation began, so it is the label that says so.
-  testWidgets('⑤a label scrub announces ONE operation, a press that only '
-      'opens the editor announces none', (tester) async {
+  testWidgets('⑤a label scrub announces ONE operation, a press that moves '
+      'nothing and the pencil announce none, a step announces one', (
+    tester,
+  ) async {
     final applied = <AppliedTransform>[];
     var steps = 0;
     final commands = await pumpMoveSettings(tester, applied: applied);
@@ -321,11 +324,28 @@ void main() {
       );
     }
 
-    // A press that never moves the value opens the text field instead —
-    // nothing has happened yet, so there is nothing to step back to.
+    // A press that never moves the value does nothing, and the pencil only
+    // opens the field — nothing has happened yet, so there is nothing to
+    // step back to.
     await tester.tap(find.byKey(const ValueKey<String>('move-y-field')));
     await tester.pump(const Duration(milliseconds: 500));
     expect(steps, 1, reason: '⛔a tap is not an operation');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-y-field-edit')),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(steps, 1, reason: '⛔opening the field is not one');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    // A step is a whole operation of its own, as a scrub is.
+    final before = applied.length;
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-y-field-step-up')),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(steps, 2, reason: 'one step, one operation');
+    expect(applied.length, before + 1, reason: 'and one write');
   });
 
   testWidgets('a scale never rests on zero, and never past the ceiling — '
@@ -658,12 +678,16 @@ void main() {
     expect(apply().onPressed, isNotNull);
   });
 
-  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 「다 추천대로」): the
-  /// values in rows and columns, the flips at the end of the rotation row,
-  /// 초기화 · 적용 as the last line. ↩️유저 08-13's order 좌우반전 · 상하반전 ·
-  /// 리셋 · 적용 was one row of its own under the numbers.
-  testWidgets('a pair is one row, X over X and Y over Y; the flips end the '
-      'rotation row; 초기화 · 적용 end the settings', (tester) async {
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): the values in rows and
+  /// columns — ONE VALUE A LINE, X over Y, each with its ± and its pencil
+  /// where a bar's stand (「열당 하나. x만두고 다음열에 y두고」); the flips a
+  /// line of their own under 회전, half the control column each; 초기화 ·
+  /// 적용 as the last line. ↩️X beside Y, a pair a row, the flips in the
+  /// rotation row's second cell; before that 유저 08-13's order 좌우반전 ·
+  /// 상하반전 · 리셋 · 적용 was one row of its own under the numbers.
+  testWidgets('a value a line, X over Y in one column, each with its hands '
+      'at the end; the flips a line under 회전; 초기화 · 적용 end the '
+      'settings', (tester) async {
     await pumpMoveSettings(
       tester,
       applied: [],
@@ -671,26 +695,47 @@ void main() {
     );
     Rect at(String key) => tester.getRect(find.byKey(ValueKey<String>(key)));
 
-    for (final (x, y) in const [
-      ('move-x-field', 'move-y-field'),
-      ('move-scale-x-field', 'move-scale-y-field'),
-      ('move-anchor-x-field', 'move-anchor-y-field'),
-      ('move-mesh-columns-field', 'move-mesh-rows-field'),
-    ]) {
-      expect(at(x).center.dy, at(y).center.dy, reason: '$x and $y: one row');
-      expect(at(x).right, lessThan(at(y).left), reason: '$x before $y');
-      expect(at(x).left, at('move-x-field').left, reason: '$x: the X column');
-      expect(at(y).left, at('move-y-field').left, reason: '$y: the Y column');
+    const values = [
+      'move-x-field',
+      'move-y-field',
+      'move-scale-x-field',
+      'move-scale-y-field',
+      'move-angle-field',
+      'move-anchor-x-field',
+      'move-anchor-y-field',
+      'move-mesh-columns-field',
+      'move-mesh-rows-field',
+    ];
+    final first = at(values.first);
+    for (final (index, key) in values.indexed) {
+      final box = at(key);
+      expect(box.left, first.left, reason: '$key: the one column');
+      expect(box.right, first.right, reason: '$key: the one column');
+      expect(at('$key-step-up').left, at('move-x-field-step-up').left,
+          reason: '$key: its ± in the one end column');
+      expect(at('$key-edit').left, at('move-x-field-edit').left,
+          reason: '$key: its pencil after them');
+      expect(at('$key-step-up').left, greaterThan(box.right),
+          reason: '$key: the hands after the box');
+      if (index > 0) {
+        expect(box.top, greaterThan(at(values[index - 1]).bottom),
+            reason: '$key: a line under ${values[index - 1]}');
+      }
     }
+
     final angle = at('move-angle-field');
     final flipAcross = at('move-flip-horizontal-button');
     final flipDown = at('move-flip-vertical-button');
-    expect(angle.left, at('move-x-field').left, reason: 'the X column');
     for (final flip in [flipAcross, flipDown]) {
-      expect(flip.center.dy, closeTo(angle.center.dy, 1), reason: 'its row');
-      expect(flip.left, greaterThan(angle.right));
+      expect(flip.top, greaterThan(angle.bottom), reason: 'under 회전');
+      expect(flip.bottom, lessThan(at('move-anchor-x-field').top),
+          reason: 'over 기준점');
+      expect(flip.center.dy, flipAcross.center.dy, reason: 'one line');
     }
-    expect(flipAcross.right, lessThanOrEqualTo(flipDown.left));
+    expect(flipAcross.left, angle.left, reason: 'the control column');
+    expect(flipDown.right, angle.right, reason: 'ending where the boxes do');
+    expect(flipAcross.width, flipDown.width, reason: 'half each');
+    expect(flipAcross.right, lessThan(flipDown.left));
 
     final reset = at('move-reset-button');
     final apply = at('move-apply-button');

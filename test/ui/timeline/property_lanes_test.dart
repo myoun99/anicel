@@ -99,7 +99,10 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   // window and no further, so the window has to be twice what these rows
   // need. It used to lean on a ceiling of "everything but the canvas's
   // floor", which let this drag reach 1074 of 1200 — 89% of the screen.
-  await tester.binding.setSurfaceSize(const Size(1280, 2200));
+  // 1280 → 1360 wide (tool-settings-panel-tidy, 2026-10-10): the rail took
+  // 76 for its lane values' hands, which the frames beside it gave up — a
+  // key dragged two frames right then reached the edge that scrolls.
+  await tester.binding.setSurfaceSize(const Size(1360, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
@@ -142,14 +145,12 @@ Future<void> _scrubBy(
   double dx, {
   PointerDeviceKind kind = PointerDeviceKind.touch,
 }) async {
+  // From the first pixel, whatever the pointer: the box has no tap to
+  // keep apart from a drag (tool-settings-panel-tidy, 2026-10-10).
   final gesture = await tester.startGesture(
     tester.getCenter(cell),
     kind: kind,
   );
-  await gesture.moveBy(
-    Offset(kind == PointerDeviceKind.touch ? 20 : 2, 0),
-  );
-  await tester.pump();
   await gesture.moveBy(Offset(dx, 0));
   await tester.pump();
   await gesture.up();
@@ -543,7 +544,13 @@ void main() {
       /// Types [across] into the first of the Scale lane's two boxes and
       /// leaves the second as it is shown.
       Future<void> typeAcross(String across) async {
-        await tester.tap(draw('value'));
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>(
+              'timeline-lane-value-lane-draw-layer-scale-edit',
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(
           find.byKey(
@@ -1346,10 +1353,13 @@ void main() {
         '150.00%',
       );
 
-      // Type a new scale: Enter commits and keys the value there.
+      // Type a new scale from its pencil: Enter commits and keys the value
+      // there.
       await tester.tap(
         find.byKey(
-          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+          const ValueKey<String>(
+            'timeline-lane-value-lane-cam-layer-scale-edit',
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -1438,8 +1448,10 @@ void main() {
       expect(x, isNot(contains(',')));
       expect(y, isNot(contains(',')));
 
-      // A tap opens the box it lands on, and that one alone.
-      await tester.tap(find.byKey(secondKey));
+      // Its pencil opens the box it stands by, and that one alone.
+      await tester.tap(
+        find.byKey(ValueKey<String>('${secondKey.value}-edit')),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(yKey), findsOneWidget);
       expect(find.byKey(xKey), findsNothing, reason: 'x stands as shown');
@@ -1795,7 +1807,7 @@ void main() {
       // Typing keys the value at the playhead (Enter commits).
       await tester.tap(
         find.byKey(
-          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale-edit'),
         ),
       );
       await tester.pumpAndSettle();
@@ -1827,52 +1839,59 @@ void main() {
       expect(laneKey('scale', 0), findsOneWidget);
     });
 
-    testWidgets('a coordinate pair stacks as number, comma, number', (
-      tester,
-    ) async {
+    testWidgets('a coordinate pair stands as TWO small boxes, one under the '
+        'other, each with its pencil under it', (tester) async {
       await pumpXSheet(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(100), 4: _pose(80)})),
       );
       await expand(tester);
 
-      // The whole point of the change (user, 2026-08-08): `1170, 827` is
-      // three READABLE tokens down the column, not seven glyph cells —
-      // a four-digit run is past the 縦中横 limit and the vertical writer
-      // used to fall back to one digit per cell.
-      final cell = find.byKey(
-        const ValueKey<String>('xsheet-lane-label-lane-cam-layer-position'),
+      // 🗣️유저 2026-10-10: 「x시트랑 타임라인이랑 동일하게 박스두도록
+      // 가능한가? 작아도되니까」. ↩️Three lines down the column (user,
+      // 2026-08-08): `1170` / `,` / `827`, readable tokens rather than seven
+      // glyph cells — the boxes keep that, and the comma is no box.
+      final x = find.byKey(
+        const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position'),
       );
-      final lines = tester
-          .widgetList<Text>(
-            find.descendant(
-              of: cell,
-              matching: find.byWidgetPredicate(
-                (widget) =>
-                    widget is Text &&
-                    (widget.data == ',' ||
-                        RegExp(r'^-?\d').hasMatch(widget.data ?? '')),
-              ),
-            ),
-          )
-          .map((text) => text.data ?? '')
-          .toList();
-      expect(lines, hasLength(3));
-      expect(lines[1], ',');
-      // Each number its own readout, dragged and typed alone.
-      for (final key in const [
-        'xsheet-lane-value-lane-cam-layer-position',
-        'xsheet-lane-value-lane-cam-layer-position-1',
-      ]) {
+      final y = find.byKey(
+        const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position-1'),
+      );
+      for (final box in [x, y]) {
         expect(
-          find.ancestor(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(DragValueLabel),
-          ),
+          find.ancestor(of: box, matching: find.byType(DragValueLabel)),
           findsOneWidget,
-          reason: key,
         );
       }
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('xsheet-lane-label-lane-cam-layer-position'),
+          ),
+          matching: find.text(','),
+        ),
+        findsNothing,
+        reason: 'no comma line',
+      );
+      final pencilX = find.byKey(
+        const ValueKey<String>(
+          'xsheet-lane-value-lane-cam-layer-position-edit',
+        ),
+      );
+      expect(tester.getRect(pencilX).top, greaterThanOrEqualTo(
+        tester.getRect(x).bottom - 0.01,
+      ), reason: 'its pencil under it');
+      expect(tester.getRect(y).top, greaterThan(tester.getRect(pencilX).top),
+          reason: 'Y under X');
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'xsheet-lane-value-lane-cam-layer-position-step-up',
+          ),
+        ),
+        findsNothing,
+        reason: 'no ± in a column with no room for them',
+      );
     });
 
     testWidgets('prev/next navigator jumps the playhead between keys', (

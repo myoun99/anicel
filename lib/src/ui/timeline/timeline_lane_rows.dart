@@ -20,6 +20,7 @@ import 'layer_label_controls.dart'
         LayerSectionBandCell,
         RailSwipeColumnPointer,
         fxGlyphStyle,
+        layerLaneValueBoxGap,
         layerMarkColor,
         layerRailColumnWidthsIn,
         railSelectedRowColor;
@@ -73,31 +74,24 @@ const double _laneNavigatorExtent = 3 * 20 + 4;
 /// height.
 const double _laneValueLinkExtent = 18;
 
-/// The stood-up value readout's type, and the most LINES any lane makes of
-/// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
-/// 2026-08-08), and nothing this rail formats has two commas in it.
-const double _laneValueFontSize = 11;
-const int _laneValueMaxLines = 3;
-
-/// WHOLE pixels, and each line gets a box of exactly this. A paragraph's
-/// height rounds UP to an integer, so reserving `fontSize * lineHeight`
-/// under-reserves by the rounding — 11×1.15 is 12.65 and lays out at 13,
-/// which overflowed a three-line column by the 1.05px nobody budgeted.
-/// A fixed box makes the arithmetic here the arithmetic that happens.
-const double _laneValueLineExtent = 13;
-
-/// 20 → 28 → 76 → three lines (user, 2026-08-08).
+/// The stood-up value: a small box a number, its pencil under it
+/// ([DragValueLabel.stoodExtent]), and the most numbers any lane has — two,
+/// a pair; nothing this rail formats has two commas in it.
 ///
-/// The value used to SHRINK into whatever was left, so any budget "worked"
-/// and nobody had to ask what the readout actually costs. Then it read
-/// DOWN the column one glyph per cell, and the slot had to hold SIX of
-/// them — `0.0, 0.0` is eight cells, so anything smaller left a Position
-/// lane reading `0…`.
-///
-/// Stacked as whole numbers it costs three LINES instead of six cells, and
-/// the 36px that frees goes back to the lane's name — which is what the
-/// column is for.
-const double _laneValueExtent = _laneValueMaxLines * _laneValueLineExtent;
+/// ↩️20 → 28 → 76 → three LINES of 13px (user, 2026-08-08): whole numbers
+/// written across, `1170` / `,` / `827` — the value had shrunk into
+/// whatever was left, then read DOWN the column one glyph per cell. Its
+/// boxes cost 62 (유저 2026-10-10: 「x시트랑 타임라인이랑 동일하게
+/// 박스두도록 … 작아도되니까」).
+const int _laneValueMaxParts = 2;
+
+/// Between two stood-up boxes: the pencil under the first already keeps
+/// them apart.
+const double _laneValuePartGap = 2;
+
+const double _laneValueExtent =
+    _laneValueMaxParts * DragValueLabel.stoodExtent +
+    (_laneValueMaxParts - 1) * _laneValuePartGap;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -237,8 +231,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return best;
   }
 
-  // AE-style value scrubbing, ONE NUMBER AT A TIME: a number's own readout
-  // moves it and no other ([_valueBoxes], [_stackedValue]) by the drag's
+  // AE-style value scrubbing, ONE NUMBER AT A TIME: a number's own box
+  // moves it and no other ([_valueBoxes]) by the drag's
   // whole travel, on the label captured where the drag began — and the
   // release commits ONCE through the normal onSetValue path: one undo.
   // ↩️One drag of the whole value moved its first number along x and its
@@ -275,7 +269,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     _scrubTravel += pixels;
     final value = scrub(
       base,
-      part == 0 ? Offset(_scrubTravel, 0) : Offset(0, _scrubTravel),
+      offsetAlong(
+        part == 0 ? Axis.horizontal : Axis.vertical,
+        along: _scrubTravel,
+        across: 0,
+      ),
     );
     // A move inside one step of the value changes nothing to show.
     if (value == null || value == _scrubbed) {
@@ -373,71 +371,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// The stood-up readout: whole NUMBERS on their own lines, written
-  /// across (user, 2026-08-08 — `1170` / `,` / `827`, and `100%` on one
-  /// line the way it already was).
-  ///
-  /// It used to go through the vertical-writing table like every other
-  /// label on the sheet, which set `1170, 827` as `1 1 7 0 , ␣ 827` — seven
-  /// cells, because a four-digit run is past the 縦中横 limit and falls
-  /// apart into single glyphs. A number is not prose; it wants to be read
-  /// as one token, and the only thing vertical about it is which token
-  /// comes next.
-  ///
-  /// Lines SHRINK to fit rather than ellipsise, which is this cell's
-  /// exception to the rail-window rule: a truncated coordinate is a wrong
-  /// coordinate, and the user allowed the smaller type here by name.
-  ///
-  /// Each number is its own readout ([DragValueLabel]): a drag on its line
-  /// scrubs it alone and a tap opens it alone — the rail's boxes, in a
-  /// column with no room for a box (tool-settings-panel-tidy, 유저
-  /// 2026-10-10, 안 A: 「줄마다 자기 숫자만 끌리게」). ↩️One drag of the
-  /// column moved the first number along x and the second along y.
-  Widget _stackedValue(String label, ColorScheme colorScheme) {
-    final style = TextStyle(
-      fontSize: _laneValueFontSize,
-      color: colorScheme.primary,
-    );
-    final parts = readoutParts(label);
-    Widget line(Widget child) =>
-        SizedBox(height: _laneValueLineExtent, child: child);
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        for (final (index, part) in parts.indexed) ...[
-          // The comma on a line of its own, so the pair still reads as one.
-          if (index > 0)
-            line(
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(',', maxLines: 1, softWrap: false, style: style),
-              ),
-            ),
-          line(
-            DragValueLabel(
-              keyValue: _valueKey(index),
-              inputKeyValue: _valueFieldKey(index),
-              text: '${part.number}${part.unit}',
-              width: double.infinity,
-              textStyle: style,
-              shrinkToFit: true,
-              enabled: widget.laneEdit?.onSetValue != null,
-              onOperationStart: () => _startScrub(label),
-              onDragDelta: (pixels) => _scrubPart(index, pixels),
-              onOperationEnd: _endScrub,
-              onEditSubmit: (typed) => _typePart(parts, index, typed),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   /// The VALUE column: the property's value at the playhead — a flag's
-  /// ring, a colour's swatch, or its numbers: boxes along the rail
-  /// ([_valueBoxes]), lines down the sheet ([_stackedValue]). A tap types
-  /// a number (Enter commits and keys the value there), a drag scrubs it.
-  Widget _valueCell(ColorScheme colorScheme, String valueLabel) {
+  /// ring, a colour's swatch, or its numbers in boxes ([_valueBoxes]). A
+  /// drag scrubs a number, a step steps it, and its pencil types it
+  /// (Enter commits and keys the value there).
+  Widget _valueCell(String valueLabel) {
     final laneEdit = widget.laneEdit;
     // 🚨F-22 (유저 2026-08-24): 「fx의 멤버 편집, **타입에 따라 확실하게
     // 나누기. 지금 싹 다 텍스트임.** … **Bold같은 불리언 타입은 그냥 누르면
@@ -450,9 +388,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (lane.valueKind == PropertyLaneValueKind.boolean &&
         laneEdit?.onSetValue != null) {
       final on = valueLabel == 'on';
-      return Align(
-        alignment: _valueEnd,
-        child: ControlPressClaim(
+      return _atValueEnd(
+        ControlPressClaim(
           onPressed: () => laneEdit!.onSetValue!.call(
             layer,
             lane,
@@ -499,9 +436,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         _frame,
         text,
       );
-      return Align(
-        alignment: _valueEnd,
-        child: ColorSwatchButton(
+      return _atValueEnd(
+        ColorSwatchButton(
           keyValue: '$_keyPrefix-lane-color-${layer.id}-${lane.laneId}',
           color: parseArgbInput(valueLabel),
           onChanged: (argb) => set(formatLaneColorValue(argb)),
@@ -509,38 +445,48 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ),
       );
     }
-    return widget.axis == Axis.horizontal
-        ? _valueBoxes(valueLabel)
-        : _stackedValue(valueLabel, colorScheme);
+    return _valueBoxes(valueLabel);
   }
 
-  /// The value as the tool settings' NUMBER BOXES ([DragValueLabel.box]):
-  /// one for each number, a pair side by side — a drag on one scrubs that
-  /// number alone ([_scrubPart]), and a tap opens that number alone, its
-  /// unit standing outside the field.
+  /// The value as the tool settings' NUMBER BOXES ([DragValueLabel.box]),
+  /// one for each number: along the rail side by side, each with its hands
+  /// after it — a single number's box filling the column, so its hands
+  /// stand where a pair's second box has its own; down the sheet's narrow
+  /// column, stood up one under the other, each with its pencil under it.
+  /// A drag on a box scrubs its number alone ([_scrubPart]), a step steps
+  /// it alone, and its pencil opens it alone, its unit outside the field.
   ///
   /// 🚨F-22 (유저 2026-08-24): 「**단위 같은 고정요소를 편집창에서 제거**」,
   /// 「**포지션 등 2요소는 각각 편집**(온점 없이)」 — and tool-settings-
   /// panel-tidy (유저 2026-10-10): 「fx에도 텍스트편집하는거 있는데 거기도
-  /// 사용하는거 어떻지? x랑 y값 안그래도 같이움직여서 불편했고」 → 「A로하고」.
-  /// ↩️The value was blue text shrunk into an 80px column; a tap opened a
-  /// field for each number in its place, and one drag moved both numbers.
+  /// 사용하는거 어떻지? x랑 y값 안그래도 같이움직여서 불편했고」 → 「A로하고」;
+  /// 「x시트랑 타임라인이랑 동일하게 박스두도록 가능한가? 작아도되니까」;
+  /// 「회전의 박스가 다른 박스랑 길이가 살짝 짧거든? … 행 열 느낌나게」.
+  /// ↩️The value was blue text shrunk into an 80px column and stacked in
+  /// lines down the sheet; a tap opened a field for each number in its
+  /// place, and one drag moved both numbers.
   Widget _valueBoxes(String valueLabel) {
     final parts = readoutParts(valueLabel);
+    final stood = widget.axis == Axis.vertical;
     // A pair prints its unit once, after its second number (`150, 80%` —
     // After Effects' print); each box of the pair wears it.
     final pairUnit = parts.last.unit;
-    return Row(
+    final gap = stood
+        ? const SizedBox(height: _laneValuePartGap)
+        : const SizedBox(width: layerLaneValueBoxGap);
+    return Flex(
+      direction: widget.axis,
       children: [
         for (final (index, part) in parts.indexed) ...[
-          if (index > 0) const SizedBox(width: _valueBoxGap),
-          Expanded(
+          if (index > 0) gap,
+          Flexible(
+            fit: stood ? FlexFit.loose : FlexFit.tight,
             child: DragValueLabel.box(
               keyValue: _valueKey(index),
               inputKeyValue: _valueFieldKey(index),
               name: parts.length == 2 ? _pairNames[index] : null,
               text: '${part.number}${part.unit.isEmpty ? pairUnit : part.unit}',
-              tooltip: AppText.strings.viewDragTap,
+              stood: stood,
               enabled: widget.laneEdit?.onSetValue != null,
               onOperationStart: () => _startScrub(valueLabel),
               onDragDelta: (pixels) => _scrubPart(index, pixels),
@@ -554,19 +500,20 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   /// Where a ring or a swatch stands in the column: at its END along the
-  /// rail, where every box of the column ends (the tool settings' grid,
-  /// tool-settings-panel-tidy 2026-10-10) — in the middle of the sheet's
-  /// narrow column. ↩️In the middle of both, which in a column made
-  /// for two boxes left it floating.
-  Alignment get _valueEnd => widget.axis == Axis.horizontal
-      ? Alignment.centerRight
-      : Alignment.center;
+  /// rail, where every box of the column ends — short of the boxes' hands,
+  /// as a settings ring stands short of the grid's end column
+  /// (`ToolSettingSurface`) — and in the middle of the sheet's narrow
+  /// column. ↩️In the middle of both, which in a column made for two boxes
+  /// left it floating; then at the column's very end, past the boxes.
+  Widget _atValueEnd(Widget control) => widget.axis == Axis.horizontal
+      ? Padding(
+          padding: const EdgeInsets.only(right: FieldSlider.handsReach),
+          child: Align(alignment: Alignment.centerRight, child: control),
+        )
+      : Align(child: control);
 
   /// What a pair's two boxes are called inside them — across, then down.
   static const List<String> _pairNames = ['X', 'Y'];
-
-  /// Between a pair's two boxes: the tool settings' gap between two cells.
-  static const double _valueBoxGap = 6;
 
   /// The key a number's readout wears. The first keeps the key the whole
   /// value had: it IS that value on every lane that holds one number.
@@ -939,7 +886,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // slots already follow).
           child: valueLabel == null
               ? null
-              : _valueCell(colorScheme, valueLabel),
+              : _valueCell(valueLabel),
         ),
       ],
     );
@@ -1036,7 +983,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               // of pushing the heading out of its own column.
               SizedBox(
                 height: _laneValueExtent,
-                child: _valueCell(colorScheme, valueLabel),
+                child: _valueCell(valueLabel),
               ),
             ],
           ],

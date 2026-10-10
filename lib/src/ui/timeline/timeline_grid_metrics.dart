@@ -30,6 +30,8 @@ import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
         layerBlendSlotWidth,
+        layerLaneValueHandsWidth,
+        layerLaneValueSlotWidth,
         layerOpacitySlotWidth,
         layerRailColumnWidthsAtOne,
         layerRowNameStyle;
@@ -93,15 +95,21 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// user directed ("레이어라벨 더 키워야겟지").
 /// 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
 /// widened to hold the legend's OPAC at 1×, and the rail pays that too.
-const double timelineLayerControlsWidth = 443;
+/// 443 → 519 (tool-settings-panel-tidy, 유저 2026-10-10): a lane's value
+/// boxes took their ± and pencil, and the rail pays them
+/// ([layerLaneValueHandsWidth], 76) — 「레일도 그만큼 넓어집니다」, asked and
+/// answered 「문제없는데」 — so a lane's name keeps the room it had.
+const double timelineLayerControlsWidth = 443 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth
 /// (text-scale-rail-columns), as it paid for the blend column (R27 #6).
+/// ↩️The lane value column's growth went unpaid, out of its lane's name.
 double timelineLayerControlsWidthFor(LayerRailColumnWidths columns) =>
     timelineLayerControlsWidth +
     (columns.opacity - layerOpacitySlotWidth) +
-    (columns.blend - layerBlendSlotWidth);
+    (columns.blend - layerBlendSlotWidth) +
+    (columns.laneValue - layerLaneValueSlotWidth);
 
 /// How thick the frame RULER is across the layer axis — exactly one row
 /// (`headerHeight = _metrics.layerRowHeight` in the grid), which is why the

@@ -20,7 +20,8 @@ import 'tool_settings_section.dart' show ToolSettingsSection;
 ///
 /// A row stands in THREE columns: its NAME; its CONTROL — a box, a bar's
 /// track, a strip, a pair — which every row fills edge to edge; and the
-/// END, where a bar's ± stand (and the brush's curve buttons after them).
+/// END, where a value's hands stand — its ± and its pencil, a bar's and
+/// a box's alike — and the brush's curve buttons after them.
 /// The columns are worked out from the width the row is given, so every row
 /// of a panel stands in the same three, and every control is one height:
 /// a settings bar's ([FieldSlider.defaultHeight]).
@@ -38,8 +39,8 @@ abstract final class ToolSettingColumns {
   static const double gap = ToolSettingsSection.rowGap;
 }
 
-/// How wide the END column stands in the rows under it — a bar's ±
-/// ([FieldSlider.stepperReach]) unless a panel puts more there (the brush's
+/// How wide the END column stands in the rows under it — a value's hands
+/// ([FieldSlider.handsReach]) unless a panel puts more there (the brush's
 /// pressure-curve buttons).
 class ToolSettingEnd extends InheritedWidget {
   const ToolSettingEnd({super.key, required this.width, required super.child});
@@ -48,7 +49,7 @@ class ToolSettingEnd extends InheritedWidget {
 
   static double of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ToolSettingEnd>()?.width ??
-      FieldSlider.stepperReach;
+      FieldSlider.handsReach;
 
   @override
   bool updateShouldNotify(ToolSettingEnd oldWidget) =>
@@ -69,7 +70,7 @@ class ToolSettingEnd extends InheritedWidget {
 class ToolSettingSurface extends StatelessWidget {
   const ToolSettingSurface({
     super.key,
-    this.end = FieldSlider.stepperReach,
+    this.end = FieldSlider.handsReach,
     required this.child,
   });
 
@@ -123,19 +124,23 @@ class ToolSettingRow extends StatelessWidget {
        labelEnd = null,
        trailing = null;
 
-  /// A BAR ([FieldSlider.cell]): its track fills the control column, its ±
-  /// stand in the end column, and [trailing] after them where the panel's
-  /// end column has room (the brush's curve buttons).
+  /// A VALUE WITH HANDS — a bar ([FieldSlider.cell]) or a number box
+  /// (`DragValueLabel.box`): it fills the control column, its hands (± and
+  /// pencil) stand in the end column, and [trailing] after them where the
+  /// panel's end column has room (the brush's curve buttons).
   const ToolSettingRow.bar({
     super.key,
     required this.label,
     required Widget bar,
+    this.labelEnd,
     this.trailing,
   }) : child = bar,
-       _lay = _Lay.bar,
-       labelEnd = null;
+       _lay = _Lay.bar;
 
-  /// TWO values side by side, X under X and Y under Y down the panel.
+  /// TWO cells side by side, half the control column each — the flips, a
+  /// vanishing point's reading and its buttons. A value with hands takes a
+  /// line of its own instead ([ToolSettingRow.bar]): two of them and their
+  /// hands do not fit one control column.
   ToolSettingRow.pair({
     super.key,
     required this.label,
@@ -212,12 +217,12 @@ class ToolSettingRow extends StatelessWidget {
       ),
       SizedBox(width: end),
     ],
-    // The bar's ± take the end column's first reach, so its track ends
-    // where every box does.
+    // The value's hands take the end column's first reach, so the value
+    // ends where every other control does.
     _Lay.bar => [
       Expanded(child: child),
       SizedBox(
-        width: end - FieldSlider.stepperReach,
+        width: end - FieldSlider.handsReach,
         child: Align(alignment: Alignment.centerRight, child: trailing),
       ),
     ],

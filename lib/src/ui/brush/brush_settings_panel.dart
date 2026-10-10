@@ -725,7 +725,7 @@ class _PanelSlider extends StatelessWidget {
   /// The END column of this panel's grid ([ToolSettingSurface.end]): a
   /// bar's ±, and the curve button's slot after them.
   static const double endReach =
-      FieldSlider.stepperReach + _trailingGap + PressureCurveButton.slotWidth;
+      FieldSlider.handsReach + _trailingGap + PressureCurveButton.slotWidth;
 
   @override
   Widget build(BuildContext context) {
