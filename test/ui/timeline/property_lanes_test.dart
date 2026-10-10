@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -34,7 +35,10 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLaneValueSlotWidth;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -151,6 +155,7 @@ Future<void> _scrubBy(
   Finder cell,
   double dx, {
   PointerDeviceKind kind = PointerDeviceKind.touch,
+  Axis along = Axis.horizontal,
 }) async {
   // From the first pixel, whatever the pointer: the box has no tap to
   // keep apart from a drag (tool-settings-panel-tidy, 2026-10-10).
@@ -158,7 +163,9 @@ Future<void> _scrubBy(
     tester.getCenter(cell),
     kind: kind,
   );
-  await gesture.moveBy(Offset(dx, 0));
+  await gesture.moveBy(
+    along == Axis.horizontal ? Offset(dx, 0) : Offset(0, dx),
+  );
   await tester.pump();
   await gesture.up();
 }
@@ -1832,72 +1839,88 @@ void main() {
       await tester.pumpAndSettle();
       expect(valueLines(), ['200.00%']);
 
-      // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
-      // drag-axis mapping is the LANE's, identical in both orientations.
+      // Scrubbing: +40px DOWN the column = +20% at the 0.5%/px rate — the
+      // box is the rail's, turned, so its drag runs along the column; the
+      // rate is the LANE's, identical in both orientations.
       await _scrubBy(
         tester,
         find.byKey(
           const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
         ),
         40,
+        along: Axis.vertical,
       );
       await tester.pumpAndSettle();
       expect(valueLines(), ['220.00%']);
       expect(laneKey('scale', 0), findsOneWidget);
     });
 
-    testWidgets('a coordinate pair stands as TWO small boxes, one under the '
-        'other, each with its pencil under it', (tester) async {
+    testWidgets('a coordinate pair is the rail\'s two boxes TURNED: X then Y '
+        'down the column, each with its ± and its pencil after it, at the '
+        'rail\'s length', (tester) async {
       await pumpXSheet(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(100), 4: _pose(80)})),
       );
       await expand(tester);
 
-      // 🗣️유저 2026-10-10: 「x시트랑 타임라인이랑 동일하게 박스두도록
-      // 가능한가? 작아도되니까」. ↩️Three lines down the column (user,
-      // 2026-08-08): `1170` / `,` / `827`, readable tokens rather than seven
-      // glyph cells — the boxes keep that, and the comma is no box.
+      // 🗣️유저 2026-10-11: 「일본어 세로쓰기에서 영어 세로쓰기인데 진짜로
+      // 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이
+      // 들어갈거같은데 그렇게하자」. ↩️Two small boxes stood one under the
+      // other, each with its pencil under it and no ± (2026-10-10); three
+      // lines down the column before that (2026-08-08).
       final x = find.byKey(
         const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position'),
       );
       final y = find.byKey(
         const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position-1'),
       );
+      Finder hand(String suffix) => find.byKey(
+        ValueKey<String>('xsheet-lane-value-lane-cam-layer-position-$suffix'),
+      );
       for (final box in [x, y]) {
         expect(
-          find.ancestor(of: box, matching: find.byType(DragValueLabel)),
+          find.ancestor(of: box, matching: find.byType(RotatedBox)),
           findsOneWidget,
         );
+        final rect = tester.getRect(box);
+        expect(rect.width, FieldSlider.defaultHeight, reason: 'on its side');
+        expect(rect.height, greaterThan(rect.width));
       }
       expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey<String>('xsheet-lane-label-lane-cam-layer-position'),
-          ),
-          matching: find.text(','),
-        ),
-        findsNothing,
-        reason: 'no comma line',
+        find.descendant(of: x, matching: find.text('X')),
+        findsOneWidget,
+        reason: 'named, as on the rail',
       );
-      final pencilX = find.byKey(
-        const ValueKey<String>(
-          'xsheet-lane-value-lane-cam-layer-position-edit',
-        ),
-      );
-      expect(tester.getRect(pencilX).top, greaterThanOrEqualTo(
-        tester.getRect(x).bottom - 0.01,
-      ), reason: 'its pencil under it');
-      expect(tester.getRect(y).top, greaterThan(tester.getRect(pencilX).top),
-          reason: 'Y under X');
       expect(
-        find.byKey(
-          const ValueKey<String>(
-            'xsheet-lane-value-lane-cam-layer-position-step-up',
-          ),
-        ),
-        findsNothing,
-        reason: 'no ± in a column with no room for them',
+        tester.getRect(hand('step-up')).top,
+        greaterThanOrEqualTo(tester.getRect(x).bottom - 0.01),
+        reason: 'its ± after it, down the column',
+      );
+      expect(
+        tester.getRect(hand('edit')).top,
+        greaterThanOrEqualTo(tester.getRect(hand('step-up')).top),
+      );
+      expect(
+        tester.getRect(y).top,
+        greaterThan(tester.getRect(hand('edit')).bottom - 0.01),
+        reason: 'Y after X',
+      );
+      expect(
+        tester.getRect(hand('1-edit')).bottom - tester.getRect(x).top,
+        closeTo(layerLaneValueSlotWidth, 0.01),
+        reason: 'the rail\'s value column, its length unchanged',
+      );
+
+      // Its drag runs down the column, and its cursor says so.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(x));
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      expect(
+        // A test mouse is device 1, whatever its pointer.
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.resizeUpDown,
       );
     });
 

@@ -69,32 +69,12 @@ const double _selectedLaneKeyBorderWidth = 4 / 3;
 /// they must not do is pack into three pixels.
 const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 
-/// The stood-up navigator (three 20px buttons) and value readout, plus
-/// their leading gaps.
+/// The stood-up navigator (three 20px buttons), plus its leading gap.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
 /// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
 /// height.
 const double _laneValueLinkExtent = 18;
-
-/// The stood-up value: a small box a number, its pencil under it
-/// ([DragValueLabel.stoodExtent]), and the most numbers any lane has — two,
-/// a pair; nothing this rail formats has two commas in it.
-///
-/// ↩️20 → 28 → 76 → three LINES of 13px (user, 2026-08-08): whole numbers
-/// written across, `1170` / `,` / `827` — the value had shrunk into
-/// whatever was left, then read DOWN the column one glyph per cell. Its
-/// boxes cost 62 (유저 2026-10-10: 「x시트랑 타임라인이랑 동일하게
-/// 박스두도록 … 작아도되니까」).
-const int _laneValueMaxParts = 2;
-
-/// Between two stood-up boxes: the pencil under the first already keeps
-/// them apart.
-const double _laneValuePartGap = 2;
-
-const double _laneValueExtent =
-    _laneValueMaxParts * DragValueLabel.stoodExtent +
-    (_laneValueMaxParts - 1) * _laneValuePartGap;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -452,12 +432,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   /// The value as the tool settings' NUMBER BOXES ([DragValueLabel.box]),
-  /// one for each number: along the rail side by side, each with its hands
-  /// after it — a single number's box filling the column, so its hands
-  /// stand where a pair's second box has its own; down the sheet's narrow
-  /// column, stood up one under the other, each with its pencil under it.
-  /// A drag on a box scrubs its number alone ([_scrubPart]), a step steps
-  /// it alone, and its pencil opens it alone, its unit outside the field.
+  /// one for each number, side by side, each with its hands after it — a
+  /// single number's box filling the column, so its hands stand where a
+  /// pair's second box has its own. The sheet writes the same row, turned
+  /// ([_memberColumn]). A drag on a box scrubs its number alone
+  /// ([_scrubPart]), a step steps it alone, and its pencil opens it alone
+  /// on its number — the whole box a field, no name and no unit.
   ///
   /// 🚨F-22 (유저 2026-08-24): 「**단위 같은 고정요소를 편집창에서 제거**」,
   /// 「**포지션 등 2요소는 각각 편집**(온점 없이)」 — and tool-settings-
@@ -470,25 +450,20 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// place, and one drag moved both numbers.
   Widget _valueBoxes(String valueLabel) {
     final parts = readoutParts(valueLabel);
-    final stood = widget.axis == Axis.vertical;
     // A pair prints its unit once, after its second number (`150, 80%` —
     // After Effects' print); each box of the pair wears it.
     final pairUnit = parts.last.unit;
-    final gap = stood
-        ? const SizedBox(height: _laneValuePartGap)
-        : const SizedBox(width: layerLaneValueBoxGap);
-    return Flex(
-      direction: widget.axis,
+    return Row(
       children: [
         for (final (index, part) in parts.indexed) ...[
-          if (index > 0) gap,
+          if (index > 0) const SizedBox(width: layerLaneValueBoxGap),
           Flexible(
             child: DragValueLabel.box(
               keyValue: _valueKey(index),
               inputKeyValue: _valueFieldKey(index),
               name: parts.length == 2 ? _pairNames[index] : null,
               text: '${part.number}${part.unit.isEmpty ? pairUnit : part.unit}',
-              stood: stood,
+              turned: widget.axis == Axis.vertical,
               enabled: widget.laneEdit?.onSetValue != null,
               onOperationStart: () => _startScrub(valueLabel),
               onDragDelta: (pixels) => _scrubPart(index, pixels),
@@ -501,18 +476,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// Where a ring or a swatch stands in the column: at its END along the
-  /// rail, where every box of the column ends — short of the boxes' hands,
-  /// as a settings ring stands short of the grid's end column
-  /// (`ToolSettingSurface`) — and in the middle of the sheet's narrow
-  /// column. ↩️In the middle of both, which in a column made for two boxes
-  /// left it floating; then at the column's very end, past the boxes.
-  Widget _atValueEnd(Widget control) => widget.axis == Axis.horizontal
-      ? Padding(
-          padding: const EdgeInsets.only(right: FieldSlider.handsReach),
-          child: Align(alignment: Alignment.centerRight, child: control),
-        )
-      : Align(child: control);
+  /// Where a ring or a swatch stands in the column: at its END, where every
+  /// box of the column ends — short of the boxes' hands, as a settings ring
+  /// stands short of the grid's end column (`ToolSettingSurface`). ↩️In the
+  /// middle, which in a column made for two boxes left it floating; then
+  /// at the column's very end, past the boxes.
+  Widget _atValueEnd(Widget control) => Padding(
+    padding: const EdgeInsets.only(right: FieldSlider.handsReach),
+    child: Align(alignment: Alignment.centerRight, child: control),
+  );
 
   /// What a pair's two boxes are called inside them — across, then down.
   static const List<String> _pairNames = ['X', 'Y'];
@@ -853,10 +825,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// 8 → 2 on the sheet: a 28px column cannot spend 16 of it on side padding.
+  /// Along the cell only, never across it — on the sheet as on the rail.
+  /// The sheet's column holds the rail's value row turned on its side, so
+  /// it gives it the rail row's breadth: a settings bar's 24 between the
+  /// cell's two hairlines, with nothing spent beside it. ↩️8 → 2 a side
+  /// (R10 R6: a 28px column cannot spend 16 of it on side padding), and
+  /// then 2 left the turned bar 23 and it ran over by one (2026-10-11).
   EdgeInsets get _memberPadding {
     if (widget.axis != Axis.horizontal) {
-      return const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
+      return const EdgeInsets.symmetric(vertical: 4);
     }
     return widget.leadingInset > 0
         ? const EdgeInsets.only(right: 8)
@@ -934,6 +911,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the frame axis). The gaps count too: without them the label's floor
   /// was 4px short of what the gate promised at every rung, and nothing
   /// noticed while the label could still pack.
+  ///
+  /// THE VALUE IS THE RAIL'S VALUE COLUMN, TURNED: its row as the rail
+  /// writes it, a quarter on its side, as Latin turns in vertical writing —
+  /// the same length the rail gives it (유저 2026-10-11: 「진짜로
+  /// 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이 들어갈거같은데
+  /// 그렇게하자. 약간 워드에서도 세로쓰기 있는데 뭐 검증된 방식이잖아」).
+  /// ↩️Stood up: two small boxes one under the other, each with its pencil
+  /// under it, and no ± (2026-10-10).
   Widget _memberColumn(
     ColorScheme colorScheme,
     Widget label,
@@ -943,10 +928,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       builder: (context, constraints) {
         final extent = constraints.maxHeight;
         const gap = 4.0;
+        final laneValue = layerRailColumnWidthsIn(context).laneValue;
         final showsValue =
             valueLabel != null &&
-            extent >= _laneLabelFloor + gap + _laneValueExtent;
-        final valueExtent = showsValue ? gap + _laneValueExtent : 0.0;
+            extent >= _laneLabelFloor + gap + laneValue;
+        final valueExtent = showsValue ? gap + laneValue : 0.0;
         final navigatorExtent = lane.showsKeyNavigator
             ? gap + _laneNavigatorExtent
             : 0.0;
@@ -981,11 +967,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               ),
             if (showsValue) ...[
               const SizedBox(height: gap),
-              // A fixed slot, so a long readout ellipsises inside it instead
-              // of pushing the heading out of its own column.
               SizedBox(
-                height: _laneValueExtent,
-                child: _valueCell(valueLabel),
+                height: laneValue,
+                child: RotatedBox(
+                  quarterTurns: 1,
+                  child: _valueCell(valueLabel),
+                ),
               ),
             ],
           ],

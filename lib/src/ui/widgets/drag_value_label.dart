@@ -23,9 +23,9 @@ import 'value_hands.dart';
 ///   [onDragDelta]); a press that does not move does nothing; the wheel
 ///   over it turns it a step a notch;
 /// - its STEPS (the settings bar's own ±, [ValueSteps]) move it a step;
-/// - its PENCIL ([ValuePencil]) opens the inline field — the number alone,
-///   selected, its unit beside it ([readoutParts]); Enter or a press
-///   elsewhere commits through [onEditSubmit], Escape abandons.
+/// - its PENCIL ([ValuePencil]) opens the inline field — the number alone
+///   ([readoutParts]), selected, the field all of the readout; Enter or a
+///   press elsewhere commits through [onEditSubmit], Escape abandons.
 ///
 /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「모든 드래그+편집이 가능한
 /// 박스를 구조를 나누고싶어. 펜으로도 1px만움직여도 드래그로 조정가능하고
@@ -66,7 +66,9 @@ class DragValueLabel extends StatefulWidget {
     this.digitsOnly = false,
     this.steps = false,
     this.pencilBelow = false,
+    this.stepBeforePencil,
   }) : name = null,
+       turned = false,
        _face = _Face.bare;
 
   /// THE NUMBER BOX: this number wearing a settings bar's face — its frame,
@@ -78,13 +80,14 @@ class DragValueLabel extends StatefulWidget {
   /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「다 추천대로」 — 숫자는
   /// 「다른 도구의 숫자 상자와 같은 모양」.
   ///
-  /// [stood]: the box STOOD UP, for a column with no room beside it (the
-  /// x-sheet's 28px): a small box whose number shrinks into it rather than
-  /// run past it — a coordinate cut short would be a wrong one — with no
-  /// name, and its pencil UNDER it. No steps: there is no room for them, and
-  /// the drag and the wheel turn it. 🗣️유저 2026-10-10: 「x시트랑 타임라인이랑
-  /// 동일하게 박스두도록 가능한가? 작아도되니까. ui가 하나도 안변해서
-  /// 이상하니까」 — ± 없이 연필만 「문제없는데」.
+  /// [turned]: the box turned a quarter on its side by its host (a
+  /// `RotatedBox`), as Latin turns in vertical writing — the x-sheet's lane
+  /// values (유저 2026-10-11: 「일본어 세로쓰기에서 영어 세로쓰기인데 진짜로
+  /// 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이 들어갈거같은데
+  /// 그렇게하자」). The same box with the same hands; its drag runs along the
+  /// column, and its cursor says so. ↩️It STOOD UP in the sheet's 28px
+  /// column instead (2026-10-10): a small box whose number shrank into it,
+  /// with no name, no steps, and its pencil under it.
   const DragValueLabel.box({
     super.key,
     required this.keyValue,
@@ -99,13 +102,14 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
-    bool stood = false,
+    this.turned = false,
   }) : width = double.infinity,
        textStyle = null,
-       textAlign = stood ? TextAlign.center : TextAlign.right,
-       steps = !stood,
-       pencilBelow = stood,
-       _face = stood ? _Face.stood : _Face.box;
+       textAlign = TextAlign.right,
+       steps = true,
+       pencilBelow = false,
+       stepBeforePencil = null,
+       _face = _Face.box;
 
   /// What a bare readout [width] wide takes of its row with its hands after
   /// it — its pencil, and its steps where it carries them ([steps]) — for a
@@ -113,17 +117,14 @@ class DragValueLabel extends StatefulWidget {
   static double rowWidthOf(double width, {bool steps = false}) =>
       width + ValuePencil.reach + (steps ? ValueSteps.reach : 0);
 
-  /// How tall a stood-up box stands with its pencil under it — what a
-  /// column budgets for each number it stacks.
-  static const double stoodExtent = _stoodBoxHeight + _stoodPencilHeight;
-  static const double _stoodBoxHeight = 16;
-  static const double _stoodPencilHeight = 14;
-
   /// What a box says it holds, inside at the left — `X`, a mesh's columns.
   /// Null on the bare readout, and on a box whose row already names it.
   final String? name;
 
-  /// Which face — the bare readout, the box, the stood-up box.
+  /// Whether its host turned it a quarter on its side ([DragValueLabel.box]).
+  final bool turned;
+
+  /// Which face — the bare readout or the box.
   final _Face _face;
 
   /// Whether the typed value is a whole number with no sign: the field
@@ -149,13 +150,18 @@ class DragValueLabel extends StatefulWidget {
   final VoidCallback? onOperationEnd;
 
   /// Whether the bare readout carries the steps ([ValueSteps]) — where its
-  /// host has no steps of its own beside it. A box always does; a stood-up
-  /// box never has the room.
+  /// host has no steps of its own beside it. A box always does.
   final bool steps;
 
   /// Whether the pencil stands UNDER the number rather than after it — a
   /// stood-up strip with no room beside it.
   final bool pencilBelow;
+
+  /// The host's step that stands between the number and its pencil in such
+  /// a strip: a page strip's ↓, so its pencil comes after both of its steps
+  /// as a box's comes after its ± (유저 2026-10-11: 「페이지띠는 아래버튼
+  /// 밑에 연필버튼오도록. 위/페이지/아래 이런건 이어지는게 이쁘잖아」).
+  final Widget? stepBeforePencil;
 
   /// Stable widget key base: `keyValue` the face, `keyValue`-edit its
   /// pencil, `keyValue`-step-up / -down its steps, `keyValue`-input its
@@ -196,7 +202,7 @@ class DragValueLabel extends StatefulWidget {
   State<DragValueLabel> createState() => _DragValueLabelState();
 }
 
-enum _Face { bare, box, stood }
+enum _Face { bare, box }
 
 class _DragValueLabelState extends State<DragValueLabel> {
   bool _editing = false;
@@ -291,10 +297,15 @@ class _DragValueLabelState extends State<DragValueLabel> {
   double get _handsHeight => switch (widget._face) {
     _Face.box => FieldSlider.defaultHeight,
     _Face.bare => _bareHandsHeight,
-    _Face.stood => DragValueLabel._stoodPencilHeight,
   };
 
-  /// The field the readout turns into, holding [_seed].
+  /// The field the readout turns into, holding [_seed] — and nothing else:
+  /// typed in, a readout is all field, its name and its unit gone with the
+  /// rest of its chrome (유저 2026-10-11: 「X같은 글자 없애고
+  /// 전면텍스트박스로 하는거니까 뒤에 붙은 %나 도같은 단위도 텍스트편집창에서
+  /// 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」). ↩️The unit stood beside
+  /// the field and the name before it; a narrow readout kept half of itself
+  /// for the unit.
   Widget _field(TextStyle style, TextAlign align) => InlineNumericField(
     fieldKey: ValueKey<String>(
       widget.inputKeyValue ?? '${widget.keyValue}-input',
@@ -308,21 +319,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
     onCancel: () => setState(() => _editing = false),
   );
 
-  /// The unit beside an open field — never inside it.
-  Widget? _unitBeside(TextStyle style) {
-    final unit = _part?.unit ?? '';
-    return _editing && unit.isNotEmpty
-        ? Text(
-            unit,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.clip,
-            style: style,
-          )
-        : null;
-  }
-
-  /// The bare readout: the number, in its own width.
+  /// The bare readout: the number, in its own width — typed in, all of it
+  /// the field.
   Widget _bare(BuildContext context) {
     final base = widget.textStyle ?? _bareStyle;
     final style = widget.enabled
@@ -332,34 +330,18 @@ class _DragValueLabelState extends State<DragValueLabel> {
               context,
             ).colorScheme.onSurface.withValues(alpha: 0.38),
           );
-    final unit = _unitBeside(style);
     return SizedBox(
       width: widget.width,
       child: _editing
-          ? Row(
-              children: [
-                Expanded(child: _field(style, TextAlign.center)),
-                // A narrow readout keeps half of itself for the number being
-                // typed: what stands beside it clips rather than push the
-                // field out — a page strip's ` / 1200` in its 30px.
-                if (unit != null)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: widget.width / 2),
-                    child: unit,
-                  ),
-              ],
-            )
+          ? _field(style, TextAlign.center)
           : Text(widget.text, textAlign: widget.textAlign, style: style),
     );
   }
 
-  /// The box: a settings bar's frame around the name and the number. Typed
-  /// in, the number becomes the field and its unit stands after it.
+  /// The box: a settings bar's frame around the name and the number —
+  /// typed in, all of it the field, in a typed frame ([FieldSlider.frameOf]).
   Widget _box(BuildContext context) {
-    final stood = widget._face == _Face.stood;
-    final height = stood
-        ? DragValueLabel._stoodBoxHeight
-        : FieldSlider.defaultHeight;
+    const height = FieldSlider.defaultHeight;
     final ink = TextStyle(
       color: dimmedIfDisabled(
         textOnColor(AppColors.surface),
@@ -367,42 +349,40 @@ class _DragValueLabelState extends State<DragValueLabel> {
       ),
     );
     final numberStyle = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
-    // A stood-up box has no room for its name.
-    final name = stood ? null : widget.name;
-    final number = _editing
-        ? _field(numberStyle, TextAlign.right)
-        : stood
-        // Shrinks into the column rather than run past it.
-        ? FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(widget.text, maxLines: 1, style: numberStyle),
-          )
-        : Text(
-            widget.text,
-            maxLines: 1,
-            textAlign: TextAlign.right,
-            style: numberStyle,
-          );
+    final name = widget.name;
     return DecoratedBox(
-      decoration: FieldSlider.frameOf(height, enabled: widget.enabled),
+      decoration: FieldSlider.frameOf(
+        height,
+        enabled: widget.enabled,
+        typed: _editing,
+      ),
       child: SizedBox(
         height: height,
         child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: stood ? 1 : FieldSlider.inset,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
           child: Row(
-            children: [
-              if (name != null)
-                Text(
-                  name,
-                  maxLines: 1,
-                  style:
-                      Theme.of(context).textTheme.labelSmall?.merge(ink) ?? ink,
-                ),
-              Expanded(child: number),
-              ?_unitBeside(numberStyle),
-            ],
+            children: _editing
+                ? [Expanded(child: _field(numberStyle, TextAlign.right))]
+                : [
+                    if (name != null)
+                      Text(
+                        name,
+                        maxLines: 1,
+                        style:
+                            Theme.of(
+                              context,
+                            ).textTheme.labelSmall?.merge(ink) ??
+                            ink,
+                      ),
+                    Expanded(
+                      child: Text(
+                        widget.text,
+                        maxLines: 1,
+                        textAlign: TextAlign.right,
+                        style: numberStyle,
+                      ),
+                    ),
+                  ],
           ),
         ),
       ),
@@ -410,7 +390,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
   }
 
   /// [face] with its hands: its steps where it carries them, and its pencil
-  /// — after it, or under it in a stood-up column.
+  /// — after it, or under it in a stood-up strip, after the host's step
+  /// that stands there ([DragValueLabel.stepBeforePencil]).
   Widget _withHands(Widget face) {
     final key = (
       widget.enabled,
@@ -425,10 +406,15 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _hands = hands;
     _handsFor = key;
     if (widget.pencilBelow) {
+      final step = widget.stepBeforePencil;
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [face, Center(child: hands)],
+        children: [
+          face,
+          if (step != null) Center(child: step),
+          Center(child: hands),
+        ],
       );
     }
     final fills = widget._face == _Face.box;
@@ -514,9 +500,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
       ),
     );
     final label = MouseRegion(
-      cursor: widget.enabled
-          ? SystemMouseCursors.resizeLeftRight
-          : MouseCursor.defer,
+      cursor: widget.enabled ? _dragCursor : MouseCursor.defer,
       child: pressed,
     );
     final tooltip = widget.tooltip;
@@ -524,4 +508,9 @@ class _DragValueLabelState extends State<DragValueLabel> {
       tooltip == null ? label : AppTooltip(message: tooltip, child: label),
     );
   }
+
+  /// Which way the drag runs: down the column, on a turned box.
+  MouseCursor get _dragCursor => widget.turned
+      ? SystemMouseCursors.resizeUpDown
+      : SystemMouseCursors.resizeLeftRight;
 }

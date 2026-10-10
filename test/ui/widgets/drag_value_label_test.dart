@@ -9,11 +9,15 @@
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerScrollEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart'
+    show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
 /// What a readout told its owner.
@@ -114,7 +118,7 @@ void main() {
   });
 
   testWidgets('its PENCIL opens the field: the number alone, all of it '
-      'selected, its unit beside the field — and a submit reaches the owner', (
+      'selected, nothing beside it — and a submit reaches the owner', (
     tester,
   ) async {
     final seen = await pump(tester);
@@ -128,7 +132,7 @@ void main() {
       const TextSelection(baseOffset: 0, extentOffset: 3),
       reason: 'the first keystroke replaces the number',
     );
-    expect(find.text('%'), findsOneWidget, reason: 'the unit stands outside');
+    expect(find.text('%'), findsNothing, reason: 'its unit is gone with it');
 
     await tester.enterText(find.byType(TextField), '250');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -227,22 +231,30 @@ void main() {
     expect((seen.starts, seen.ends), (1, 1), reason: 'it scrubbed nothing');
   });
 
-  testWidgets('a STOOD-UP box shrinks its number into its width — a '
-      'coordinate cut short would be a wrong one — and wears its pencil '
-      'under it', (tester) async {
+  testWidgets('a TURNED box is the same box on its side: a drag DOWN its '
+      'column scrubs it up, and its cursor runs the way its drag does', (
+    tester,
+  ) async {
+    // 🗣️유저 2026-10-11: 「일본어 세로쓰기에서 영어 세로쓰기인데 진짜로
+    // 90도눕혀서 쓰는것처럼」 — the x-sheet's lane values.
+    final deltas = <double>[];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Center(
             child: SizedBox(
               width: 24,
-              child: DragValueLabel.box(
-                keyValue: 'line',
-                name: 'X',
-                text: '-1218.00',
-                stood: true,
-                onDragDelta: (_) {},
-                onEditSubmit: (_) {},
+              height: 160,
+              child: RotatedBox(
+                quarterTurns: 1,
+                child: DragValueLabel.box(
+                  keyValue: 'line',
+                  name: 'X',
+                  text: '-1218.00',
+                  turned: true,
+                  onDragDelta: deltas.add,
+                  onEditSubmit: (_) {},
+                ),
               ),
             ),
           ),
@@ -251,24 +263,110 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     final box = tester.getRect(find.byKey(const ValueKey<String>('line')));
+    expect(box.width, 24, reason: 'a box\'s height, across the column');
+    expect(box.height, greaterThan(box.width));
+    expect(find.text('X'), findsOneWidget, reason: 'its name, as the rail\'s');
     expect(
-      tester.getRect(find.text('-1218.00')).width,
-      lessThanOrEqualTo(box.width),
+      tester.getRect(find.byKey(const ValueKey<String>('line-edit'))).top,
+      greaterThanOrEqualTo(box.bottom - 0.01),
+      reason: 'its hands after it, down the column',
     );
-    expect(find.text('X'), findsNothing, reason: 'no room for its name');
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: box.center);
+    addTearDown(mouse.removePointer);
+    await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('line-step-up')),
-      findsNothing,
-      reason: 'no room for its steps either',
+      // A test mouse is device 1, whatever its pointer.
+      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+      SystemMouseCursors.resizeUpDown,
     );
-    final under = tester.getRect(
-      find.byKey(const ValueKey<String>('line-edit')),
+    await mouse.down(box.center);
+    await mouse.moveBy(const Offset(10, 0));
+    await tester.pump();
+    expect(deltas, isEmpty, reason: 'across the column turns nothing');
+    await mouse.moveBy(const Offset(0, 6));
+    await tester.pump();
+    await mouse.up();
+    expect(deltas.fold<double>(0, (sum, units) => sum + units), 6);
+  });
+
+  testWidgets('🚨typed in, under the app\'s own theme, a box is ALL field: '
+      'no name, no unit, no frame or padding of the field\'s own — its '
+      'frame takes the accent and its number stays where it stood', (
+    tester,
+  ) async {
+    // 🗣️유저 2026-10-11: 「직접입력눌렀을때 텍스트편집박스가 너무 작아.
+    // 오른쪽에도 이상한 패딩있고 왼쪽에도 X 글자 없애고 최대치로 잡아도
+    // 될거같은데. 다른박스 마찬가지 통일」 · 「뒤에 붙은 %나 도같은 단위도
+    // 텍스트편집창에서 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 160,
+              child: DragValueLabel.box(
+                keyValue: 'box',
+                name: 'X',
+                text: '100.00%',
+                onDragDelta: (_) {},
+                onEditSubmit: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
     );
-    expect(under.top, greaterThanOrEqualTo(box.bottom - 0.01));
+    // The frame does not move when it is typed in, so it is measured at
+    // rest — typed, the box's key goes with the drag it answers.
+    final frame = tester.getRect(find.byKey(const ValueKey<String>('box')));
+    final restingRight = tester.getRect(find.text('100.00%')).right;
+    await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
+    await tester.pump();
+
+    expect(find.text('X'), findsNothing, reason: 'its name steps aside');
+    expect(find.text('%'), findsNothing, reason: 'its unit too');
+    final typed = tester.getRect(find.byType(EditableText));
+    expect(typed.left, closeTo(frame.left + FieldSlider.inset, 0.01));
+    expect(typed.right, closeTo(frame.right - FieldSlider.inset, 0.01));
     expect(
-      box.height + under.height,
-      DragValueLabel.stoodExtent,
-      reason: 'what a column budgets for each number it stacks',
+      typed.right,
+      closeTo(restingRight, 0.01),
+      reason: 'the number does not move when it is typed in',
+    );
+    final decoration = tester
+        .widget<InputDecorator>(find.byType(InputDecorator))
+        .decoration;
+    expect(decoration.focusedBorder, InputBorder.none);
+    expect(decoration.contentPadding, EdgeInsets.zero);
+    final frames = tester
+        .widgetList<DecoratedBox>(
+          find.ancestor(
+            of: find.byType(EditableText),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .map((decorated) => decorated.decoration);
+    expect(
+      frames,
+      contains(
+        FieldSlider.frameOf(
+          FieldSlider.defaultHeight,
+          enabled: true,
+          typed: true,
+        ),
+      ),
+    );
+    expect(
+      frames
+          .whereType<ShapeDecoration>()
+          .map((frame) => frame.shape)
+          .whereType<OutlinedBorder>()
+          .map((shape) => shape.side.color),
+      contains(AppColors.accent),
+      reason: 'the frame is the field\'s now, in the accent',
     );
   });
 
@@ -301,10 +399,8 @@ void main() {
     );
   });
 
-  testWidgets('a NARROW readout typed in keeps half of itself for the '
-      'number — what stands beside the field clips rather than push it out', (
-    tester,
-  ) async {
+  testWidgets('a NARROW readout typed in is all field: the number across '
+      'its whole width, nothing beside it', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -324,12 +420,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('page-edit')));
     await tester.pump();
     expect(tester.takeException(), isNull, reason: 'nothing ran past it');
-    expect(
-      tester.getSize(find.byType(InlineNumericField)).width,
-      greaterThanOrEqualTo(15),
-      reason: 'half the readout for the number',
-    );
-    expect(find.text(' / 1200'), findsOneWidget, reason: 'beside, clipped');
+    expect(tester.getSize(find.byType(InlineNumericField)).width, 30);
+    expect(find.text(' / 1200'), findsNothing);
   });
 
   /// 🚨H24 (유저 2026-09-15: 「뷰어쪽 줌 레일스크롤바랑 겹치는거」) — the

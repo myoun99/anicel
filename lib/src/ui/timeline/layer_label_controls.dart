@@ -357,7 +357,8 @@ const double layerLaneValueSlotWidth =
 /// What a pair's HANDS take of the column — each box's ± and pencil
 /// ([FieldSlider.handsReach]) — the room the rail pays along its length for
 /// them (`timelineLayerControlsWidth`) — and the sheet's stood-up header
-/// none of: there a lane's boxes stand under its name.
+/// none of: there a lane's value row, turned, fits in the lane's own column
+/// under its name (`XSheetTimelineGrid.naturalHeaderBlockExtent`).
 const double layerLaneValueHandsWidth = 2 * FieldSlider.handsReach;
 
 /// One of the column's boxes at 1×, before its hands.

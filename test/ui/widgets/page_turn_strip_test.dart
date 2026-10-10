@@ -5,7 +5,7 @@ import '../../helpers/app_icon_button_probe.dart';
 
 /// The one page cluster the timesheet, the conte and the media viewer
 /// mount (유저 확정 ⑥ 2026-08-13, 「최대한 통일」): ◀ n/N ▶ stood upright,
-/// a drag on the readout and a typed page from the pencil under it, empty
+/// a drag on the readout and a typed page from the pencil under them, empty
 /// below two pages, inert with nowhere to turn to.
 void main() {
   const prev = ValueKey<String>('sheet-previous-page-button');
@@ -46,7 +46,9 @@ void main() {
   });
 
   testWidgets('the chevrons turn one page and disable at the ends, and the '
-      'cluster reads downward', (tester) async {
+      'cluster reads downward — up · page · down unbroken, then the pencil', (
+    tester,
+  ) async {
     final turns = <int>[];
     await pump(tester, pageIndex: 0, pageCount: 3, onTurnTo: turns.add);
     expect(enabled(tester, prev), isFalse);
@@ -55,11 +57,15 @@ void main() {
     await tester.tap(find.byKey(next));
     expect(turns, [1]);
 
-    final prevY = tester.getCenter(find.byKey(prev)).dy;
-    final readoutY = tester.getCenter(find.byKey(readout)).dy;
-    final nextY = tester.getCenter(find.byKey(next)).dy;
-    expect(prevY, lessThan(readoutY));
-    expect(readoutY, lessThan(nextY));
+    // 🗣️유저 2026-10-11: 「페이지띠는 아래버튼 밑에 연필버튼오도록.
+    // 위/페이지/아래 이런건 이어지는게 이쁘잖아」.
+    final prevRect = tester.getRect(find.byKey(prev));
+    final readoutRect = tester.getRect(find.byKey(readout));
+    final nextRect = tester.getRect(find.byKey(next));
+    final pencilRect = tester.getRect(find.byKey(pencil));
+    expect(prevRect.bottom, lessThanOrEqualTo(readoutRect.top + 0.01));
+    expect(readoutRect.bottom, lessThanOrEqualTo(nextRect.top + 0.01));
+    expect(nextRect.bottom, lessThanOrEqualTo(pencilRect.top + 0.01));
 
     await pump(tester, pageIndex: 2, pageCount: 3, onTurnTo: turns.add);
     expect(enabled(tester, prev), isTrue);
@@ -87,11 +93,7 @@ void main() {
     expect(turns, hasLength(turned));
     expect(find.byKey(input), findsNothing);
 
-    // Its pencil, under it, types one.
-    expect(
-      tester.getRect(find.byKey(pencil)).top,
-      greaterThanOrEqualTo(tester.getRect(find.byKey(readout)).bottom),
-    );
+    // Its pencil types one.
     await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(input), '3/7');

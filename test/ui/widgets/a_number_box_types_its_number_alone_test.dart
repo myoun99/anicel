@@ -107,22 +107,18 @@ void main() {
       expect(find.text('X'), findsOneWidget, reason: 'its name, inside');
     });
 
-    testWidgets('typed in — its pencil opens it — it holds the number, and '
-        'the unit stands outside the field', (tester) async {
+    testWidgets('typed in — its pencil opens it — it holds the number and '
+        'nothing else: no unit, no name', (tester) async {
       final submitted = await pumpBox(tester);
       await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
       await tester.pump();
 
       expect(typed(tester, 'box-input'), '100.00');
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('box-input')),
-          matching: find.text('%'),
-        ),
-        findsNothing,
-        reason: 'the unit is not in the text you type',
-      );
-      expect(find.text('%'), findsOneWidget, reason: 'beside it, as chrome');
+      // 🗣️유저 2026-10-11: 「뒤에 붙은 %나 도같은 단위도 텍스트편집창에서
+      // 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」 — 「편집시 100.00 만
+      // 뜨는느낌」, as 10-10 put it. ↩️It stood beside the field, as chrome.
+      expect(find.text('%'), findsNothing);
+      expect(find.text('X'), findsNothing);
 
       await tester.enterText(
         find.byKey(const ValueKey<String>('box-input')),

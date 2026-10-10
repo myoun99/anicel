@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
@@ -179,8 +180,8 @@ void main() {
 
   final field = find.byKey(const ValueKey<String>('field-slider-type-input'));
 
-  testWidgets('its PENCIL types a number: the number alone, selected, its '
-      'unit outside the field', (tester) async {
+  testWidgets('its PENCIL types a number: the number alone, selected, the '
+      'bar all field — no name, no unit', (tester) async {
     await pumpKept(tester);
     expect(field, findsNothing);
     await tester.tap(pencil);
@@ -197,7 +198,29 @@ void main() {
       typed.controller!.selection,
       const TextSelection(baseOffset: 0, extentOffset: 2),
     );
-    expect(find.text('%'), findsOneWidget);
+    // 🗣️유저 2026-10-11: 「X같은 글자 없애고 전면텍스트박스로 … %나 도같은
+    // 단위도 텍스트편집창에서 없도록」.
+    expect(find.text('%'), findsNothing);
+    expect(find.text('Size'), findsNothing);
+    // 「다른박스 마찬가지 통일」: typed, the bar is a number box typed — its
+    // field runs the whole frame, and the frame wears the accent.
+    final framed = find.ancestor(
+      of: find.byType(EditableText),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is DecoratedBox &&
+            widget.decoration is ShapeDecoration &&
+            (widget.decoration as ShapeDecoration).shape is OutlinedBorder,
+      ),
+    );
+    expect(framed, findsOneWidget);
+    final frame = tester.getRect(framed);
+    final editable = tester.getRect(find.byType(EditableText));
+    expect(editable.left, closeTo(frame.left + FieldSlider.inset, 0.01));
+    expect(editable.right, closeTo(frame.right - FieldSlider.inset, 0.01));
+    final decoration =
+        tester.widget<DecoratedBox>(framed).decoration as ShapeDecoration;
+    expect((decoration.shape as OutlinedBorder).side.color, AppColors.accent);
   });
 
   testWidgets('a typed number is held to the range and handed over as ONE '

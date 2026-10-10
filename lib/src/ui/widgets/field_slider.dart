@@ -267,16 +267,26 @@ class FieldSlider extends StatefulWidget {
   /// disabled bar draws it. One face for the bar and the number box
   /// (tool-settings-panel-tidy, 유저 2026-10-10: the box is 「다른 도구의
   /// 숫자 상자와 같은 모양」).
-  static ShapeDecoration frameOf(double height, {required bool enabled}) =>
-      ShapeDecoration(
-        color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
-        shape: AppShapes.container(
-          radiusFor(height),
-          side: BorderSide(
-            color: dimmedIfDisabled(AppColors.hairline, enabled: enabled),
-          ),
-        ),
-      );
+  ///
+  /// [typed]: the frame of a bar or a box being typed in. Its field runs
+  /// the whole of it, so the frame is the field's, in the accent a focused
+  /// field wears (유저 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데.
+  /// 다른박스 마찬가지 통일」).
+  static ShapeDecoration frameOf(
+    double height, {
+    required bool enabled,
+    bool typed = false,
+  }) => ShapeDecoration(
+    color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
+    shape: AppShapes.container(
+      radiusFor(height),
+      side: BorderSide(
+        color: typed
+            ? AppColors.accent
+            : dimmedIfDisabled(AppColors.hairline, enabled: enabled),
+      ),
+    ),
+  );
 
   /// What a bar drawn [height] at 1× adds where it is shown: its one line
   /// of words (the value, set in the theme's `labelSmall`) grown under the
@@ -999,9 +1009,10 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 }
 
-/// The bar while it is typed in ([_FieldSliderState._typing]): its frame
-/// holding the field — the number alone, its unit after it, the law every
-/// typed number opens by ([readoutParts]) — and no fill, as a box has none.
+/// The bar while it is typed in ([_FieldSliderState._typing]): its frame,
+/// typed ([FieldSlider.frameOf]), and all of it the field — the number
+/// alone, the law every typed number opens by ([readoutParts]), with no
+/// name, no unit and no fill, as a number box typed in (`DragValueLabel`).
 class _FieldSliderTypedFace extends StatelessWidget {
   const _FieldSliderTypedFace({
     required this.bar,
@@ -1021,26 +1032,16 @@ class _FieldSliderTypedFace extends StatelessWidget {
   Widget build(BuildContext context) {
     final parts = readoutParts(valueText);
     final part = parts.length == 1 ? parts.single : null;
-    final unit = part?.unit ?? '';
     final ink = TextStyle(color: textOnColor(AppColors.surface));
     final style = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
-    final name = bar.label;
     return DecoratedBox(
-      decoration: FieldSlider.frameOf(bar.height, enabled: true),
+      decoration: FieldSlider.frameOf(bar.height, enabled: true, typed: true),
       child: SizedBox(
         height: bar.height,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
           child: Row(
             children: [
-              if (bar._nameInside && name != null)
-                Text(
-                  name,
-                  maxLines: 1,
-                  style:
-                      Theme.of(context).textTheme.labelSmall?.merge(ink) ??
-                      ink,
-                ),
               Expanded(
                 child: InlineNumericField(
                   fieldKey: const ValueKey<String>('field-slider-type-input'),
@@ -1051,7 +1052,6 @@ class _FieldSliderTypedFace extends StatelessWidget {
                   onCancel: onCancel,
                 ),
               ),
-              if (unit.isNotEmpty) Text(unit, style: style),
             ],
           ),
         ),

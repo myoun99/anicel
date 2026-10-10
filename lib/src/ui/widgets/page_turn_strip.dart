@@ -6,9 +6,10 @@ import 'drag_value_label.dart';
 
 /// The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13) —
 /// the timesheet's ◀ n/N ▶ grammar stood upright, the readout dragged,
-/// and its pencil under it to type a page (tool-settings-panel-tidy, 유저
-/// 2026-10-10 — the chevrons are its steps). Below two pages the cluster
-/// is empty — nothing to turn.
+/// and a pencil to type a page (tool-settings-panel-tidy, 유저 2026-10-10 —
+/// the chevrons are its steps), under the ↓ so up · page · down run
+/// unbroken (유저 2026-10-11). Below two pages the cluster is empty —
+/// nothing to turn.
 ///
 /// ONE cluster for the three sheets that turn pages (the timesheet, the
 /// conte, the media viewer — 「최대한 통일」): the same chevrons, the same
@@ -73,15 +74,15 @@ List<Widget> pageTurnStrip({
           onTurnTo?.call(parsed - 1);
         }
       },
-    ),
-    AppIconButton(
-      keyValue: '$keyPrefix-next-page-button',
-      tooltip: strings.sheetNextPage,
-      icon: const Icon(Icons.keyboard_arrow_down),
-      size: AppIconButtonSize.strip,
-      onPressed: onTurnTo != null && page.index < page.count - 1
-          ? () => onTurnTo(page.index + 1)
-          : null,
+      stepBeforePencil: AppIconButton(
+        keyValue: '$keyPrefix-next-page-button',
+        tooltip: strings.sheetNextPage,
+        icon: const Icon(Icons.keyboard_arrow_down),
+        size: AppIconButtonSize.strip,
+        onPressed: onTurnTo != null && page.index < page.count - 1
+            ? () => onTurnTo(page.index + 1)
+            : null,
+      ),
     ),
   ];
 }

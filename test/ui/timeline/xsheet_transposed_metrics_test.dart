@@ -133,8 +133,9 @@ void main() {
         'as its rows need it stood up', () {
       // The user overturned the shedding design outright: "타임라인에
       // 있는거 싹다 넣어. 뭐 빼지말고." — every control. The room the rail
-      // pays a lane's value hands is a need ALONG it: stood up, a lane's
-      // boxes stand under its name (tool-settings-panel-tidy).
+      // pays a lane's value hands is a need ALONG it: on the sheet a lane's
+      // value row, turned (유저 2026-10-11), fits in the lane's own column
+      // under its name — paid, the block outgrew the tallest dock.
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
@@ -157,6 +158,27 @@ void main() {
             2 -
             layerOnionSlotWidth -
             layerBlendSlotWidth,
+      );
+    });
+
+    test('under the OS text size the block grows as the rail does — every '
+        'word-holding column the rail pays for, the lane value\'s included', () {
+      // The rail pays its word-holding columns' growth
+      // ([timelineLayerControlsWidthFor]); the stood-up rail is that rail.
+      // ↩️The header listed the rail's slots by hand at 1×, and the lane
+      // value column's growth went unpaid here.
+      const grown = (
+        opacity: layerOpacitySlotWidth + 9,
+        blend: layerBlendSlotWidth + 14,
+        laneValue: layerLaneValueSlotWidth + 30,
+      );
+      expect(
+        XSheetTimelineGrid.naturalHeaderBlockExtent(
+          columns: grown,
+          hasOnionColumn: true,
+          hasBlendColumn: true,
+        ),
+        timelineLayerControlsWidthFor(grown) - layerLaneValueHandsWidth + 2,
       );
     });
 
@@ -281,8 +303,8 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      // Even untouched — the natural block is 436 and most of this range
-      // cannot pay for it, so the WINDOW is what gives.
+      // Even untouched — most of this range cannot pay for the natural
+      // block, so the WINDOW is what gives.
       for (var height = 200.0; height <= 900; height += 20) {
         await tester.pumpWidget(_grid(height: height));
         final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
@@ -580,8 +602,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      // Roomy: everything is there.
-      await pumpLane(tester, 300);
+      // Roomy: everything is there — the value turned at the rail's length
+      // (유저 2026-10-11) is the column's longest control.
+      await pumpLane(tester, 420);
       expect(
         find.byKey(
           const ValueKey<String>('xsheet-lane-key-toggle-layer-1-position'),
@@ -597,7 +620,7 @@ void main() {
 
       // Cramped: the value goes first, then the navigator — and the label
       // never packs below two frame rows.
-      for (var height = 60.0; height <= 300; height += 4) {
+      for (var height = 60.0; height <= 420; height += 4) {
         await pumpLane(tester, height);
         expect(tester.takeException(), isNull, reason: 'lane at $height');
         final label = tester.getSize(

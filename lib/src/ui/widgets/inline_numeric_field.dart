@@ -144,13 +144,24 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
             ),
         inputFormatters: widget.inputFormatters ?? halfWidthNumerals,
         style: widget.textStyle ?? const TextStyle(fontSize: 12),
+        // BARE: the field replaces a readout in place, so it takes nothing
+        // of the app-wide boxed field — no fill, no frame in any state, no
+        // padding. 🐛It opted out of the fill and the resting border alone,
+        // and the theme's FOCUSED frame and its 9px came in with the focus
+        // the field always has: a box typed in drew a second, smaller box
+        // inside itself (유저 2026-10-11: 「직접입력눌렀을때 텍스트편집박스가
+        // 너무 작아. 오른쪽에도 이상한 패딩있고」).
         decoration: const InputDecoration(
-          // Bare: the field replaces a readout in place, so it opts out of
-          // the app-wide filled box.
           filled: false,
           isDense: true,
           isCollapsed: true,
+          contentPadding: EdgeInsets.zero,
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
         ),
         onSubmitted: (_) => _submit(),
         onTapOutside: (_) => _submitFromOutside(),

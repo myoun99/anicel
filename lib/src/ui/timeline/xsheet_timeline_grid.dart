@@ -175,7 +175,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   }) =>
       _sectionBandHeight +
       (layerRailLeadingWidth - layerSectionLabelSlotWidth) +
-      _naturalNameExtent +
+      _naturalNameExtent(columns) +
       layerRailTrailingWidth(
         columns: columns,
         hasOnionColumn: hasOnionColumn,
@@ -184,26 +184,33 @@ class XSheetTimelineGrid extends StatefulWidget {
       _headerBorderExtent;
 
   /// The NAME's share of the rail — what the horizontal row's `Expanded`
-  /// resolves to once every slot has been served — as the rows NEED it
-  /// stood up: less the room the rail pays a lane's value hands
-  /// ([layerLaneValueHandsWidth]), which a lane's row needs along the
-  /// rail and its stood-up column does not — its boxes stand under its
-  /// name. ⚠️Every control still stands here (「타임라인에 있는거 싹다
-  /// 넣어」); what is not paid is 76 of empty name. 🔬tool-settings-panel-
-  /// tidy (2026-10-10): paid, the header took 76 of a bottom dock that
-  /// stops at 640 (`EditorPanelLayoutModel.maxDockExtent`) — its frame
-  /// rows went from about four to two.
-  static const double _naturalNameExtent =
-      timelineLayerControlsWidth -
+  /// resolves to once every slot has been served, both optional columns
+  /// among them — read off the rail's own width
+  /// ([timelineLayerControlsWidthFor]) and its own slots
+  /// ([layerRailTrailingWidth]), so the stood-up rail grows as the rail
+  /// does under the OS text size. ↩️The slots were listed here by hand, at
+  /// 1×: the rail paid its lane value column's growth and the sheet did not.
+  ///
+  /// Less the room the rail pays a lane's value HANDS
+  /// ([layerLaneValueHandsWidth]): the sheet writes a lane's value row
+  /// turned on its side, at the rail's length, in the lane's own column,
+  /// where it fits under the lane's name (유저 2026-10-11: 「머리칸이라기보다
+  /// 편집숫자들 … 진짜로 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑
+  /// 똑같이 들어갈거같은데」). 🔬Paid, the header took 76 of a bottom dock
+  /// that stops at 640 (`EditorPanelLayoutModel.maxDockExtent`): its frame
+  /// rows went from about four to two (2026-10-10), and once the value was
+  /// turned the block no longer fit the tallest dock at all — the window
+  /// cut its tail, the SE speaker and the opacity and blend columns with it
+  /// (2026-10-11).
+  static double _naturalNameExtent(LayerRailColumnWidths columns) =>
+      timelineLayerControlsWidthFor(columns) -
       layerLaneValueHandsWidth -
       layerRailLeadingWidth -
-      layerFillReferenceSlotWidth -
-      layerFxSlotWidth -
-      layerOnionSlotWidth -
-      layerVisibilitySlotWidth -
-      layerMuteSlotWidth -
-      layerOpacitySlotWidth -
-      layerBlendSlotWidth;
+      layerRailTrailingWidth(
+        columns: columns,
+        hasOnionColumn: true,
+        hasBlendColumn: true,
+      );
 
   /// The column header's own hairlines, top and bottom.
   static const double _headerBorderExtent = 2;
