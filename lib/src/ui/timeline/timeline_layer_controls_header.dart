@@ -33,8 +33,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     required this.metrics,
     this.axis = Axis.horizontal,
     this.railExtent,
-    this.hasOnionColumn,
-    this.hasBlendColumn,
+    required this.optionalColumns,
     this.legend,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -64,12 +63,16 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// takes the natural extent.
   final double? railExtent;
 
-  /// Forces the optional columns on or off instead of inferring them from
-  /// [legend]'s bulk callbacks. The x-sheet's corner needs this: its rows
-  /// carry onion and blend but it has no legend flyouts to infer from, and
-  /// a legend that disagreed with its rows would stop naming their columns.
-  final bool? hasOnionColumn;
-  final bool? hasBlendColumn;
+  /// The optional columns the ROWS beside this legend carry — the host's
+  /// answer, which the legend lays its headings out by and, stood up,
+  /// sizes itself from. A legend that disagreed with its rows would stop
+  /// naming their columns.
+  ///
+  /// ↩️It used to be inferred from [legend]'s bulk callbacks unless forced,
+  /// which is why the x-sheet's corner had to force it: its rows carry
+  /// onion and blend, and it has no flyouts to infer them from. Every host
+  /// says it now, so the heading follows the column on every surface.
+  final LayerRailOptionalColumns optionalColumns;
 
   /// Null renders a display-only legend (no flyouts) — passive hosts.
   final LayerLegendCallbacks? legend;
@@ -409,16 +412,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     final restColor = colorScheme.onSurfaceVariant;
 
     final isVertical = axis == Axis.vertical;
-    // Which optional columns this host carries. Hoisted because the stood-up
-    // legend has to SIZE itself from the same answer it lays out from — a
-    // Column has no `Expanded` slack to hide a disagreement in, unlike the
-    // horizontal rail where the LAYER heading absorbs it.
-    final hasOnion =
-        hasOnionColumn ?? legend?.onToggleOnionSkinForDisplayed != null;
-    final hasBlend =
-        hasBlendColumn ??
-        (legend?.onSetBlendModeForDisplayed != null &&
-            displayedLayerIds != null);
+    final optional = optionalColumns;
 
     // The legend spans the rail: the rail's extent along its own axis, one
     // row across it. Stood up, the two swap — and the rail's extent is the
@@ -428,8 +422,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         this.railExtent ??
         (isVertical
             ? timelineLayerControlsWidthFor(metrics.railColumns) -
-                  (hasOnion ? 0 : layerOnionSlotWidth) -
-                  (hasBlend ? 0 : metrics.railColumns.blend)
+                  (optional.onion ? 0 : layerOnionSlotWidth) -
+                  (optional.blend ? 0 : metrics.railColumns.blend)
             : metrics.layerControlsWidth);
     final crossExtent = isVertical
         ? metrics.layerControlsWidth
@@ -519,20 +513,21 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ...layerRailTrailingCells(
                     axis: axis,
                     columns: metrics.railColumns,
+                    optionalColumns: optional,
                     fillReference: _buildFillReference(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
                     // displayed layers + the panel reveal. Hosts without
                     // the callback (storyboard rail) skip the COLUMN so
                     // their row columns stay aligned.
-                    hasOnionColumn: hasOnion,
+                    //
                     // The HEADING follows the COLUMN, and only the flyout
                     // follows the callbacks. It used to be the other way
                     // round, which is why the x-sheet — whose rows carry
                     // onion but which passes no legend bulk commands —
                     // reserved the slot and left it blank: the one column
                     // on that surface with no heading over it.
-                    onion: _buildOnion(menus, hasOnion, restColor),
+                    onion: _buildOnion(menus, optional.onion, restColor),
                     visibility: _buildVisibility(menus, restColor),
                     // The mute cell is a DIRECT all-SE toggle (R3 feedback
                     // #10): one tap mutes/unmutes every SE row, colored by
@@ -555,14 +550,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     ),
                     // R27 #6: the BLEND column header — one pick applies
                     // the mode to every displayed compositing row, the
-                    // master opacity bar's logic in a flyout. Hosts
-                    // without the bulk callback (the storyboard rail) skip
-                    // the COLUMN so their row columns stay aligned (the
-                    // onion precedent).
-                    hasBlendColumn: hasBlend,
+                    // master opacity bar's logic in a flyout. A host that
+                    // does not carry the column skips it, so its row
+                    // columns stay aligned (the onion precedent).
+                    //
                     // Heading follows the COLUMN, flyout follows the bulk
                     // callback — see the onion cell above.
-                    blend: _buildBlend(menus, hasBlend, colorScheme),
+                    blend: _buildBlend(menus, optional.blend, colorScheme),
                   ),
                 ],
               ),

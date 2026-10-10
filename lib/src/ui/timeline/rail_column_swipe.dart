@@ -606,8 +606,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double crossExtent,
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
-  bool hasOnionColumn = false,
-  bool hasBlendColumn = false,
+  required LayerRailOptionalColumns optionalColumns,
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
@@ -641,8 +640,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
         layerRailTrailingWidth(
           columns: columns,
           from: after,
-          hasOnionColumn: hasOnionColumn,
-          hasBlendColumn: hasBlendColumn,
+          optionalColumns: optionalColumns,
         );
     // A little tolerance so a thin band is easy to hit with a pen.
     //

@@ -15,8 +15,7 @@ class _XSheetGridHeaders {
   /// rail costs laid out in full. The window never changes it.
   double get _naturalHeaderBlockExtent =>
       XSheetTimelineGrid.naturalHeaderBlockExtent(
-        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+        optionalColumns: _state.widget.hooks.optionalRailColumns,
         columns: _state.widget.metrics.railColumns,
       );
 
@@ -84,10 +83,9 @@ class _XSheetGridHeaders {
         onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
         onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
         currentRowHooks: _state.widget.hooks.currentRowHooks,
-        // The SAME flags the layer's own column header passes, so a
+        // The SAME answer the layer's own column header reads, so a
         // group header's fx lands in the sheet's fx row (R5 #7).
-        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+        optionalColumns: _state.widget.hooks.optionalRailColumns,
       ),
     );
   }

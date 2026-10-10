@@ -32,6 +32,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
+import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_rail_window.dart';
 import 'rail_column_swipe.dart';
 import 'layer_label_controls.dart'
@@ -164,6 +165,8 @@ typedef _LegendMemoInputs = ({
   // its flyout and gates on the bulk callback's presence.
   AppLanguage language,
   bool hasBlendBulk,
+  // The rows' optional columns, which the headings follow.
+  LayerRailOptionalColumns optionalColumns,
 });
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {

@@ -765,14 +765,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
       layerRailTrailingCells(
         axis: axis,
         columns: metrics.railColumns,
+        optionalColumns: (
+          onion: onToggleLayerOnionSkin != null,
+          blend: onLayerBlendModeSelected != null,
+        ),
         fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
-        hasOnionColumn: onToggleLayerOnionSkin != null,
         onion: _onionToggle(colorScheme),
         visibility: _visibilityToggle(),
         mute: _muteButton(),
         opacity: _opacitySlot(),
-        hasBlendColumn: onLayerBlendModeSelected != null,
         blend: _blendChip(),
       );
 

@@ -33,7 +33,11 @@ import '../text/app_strings.dart' show AppText;
 import '../text/readout_text.dart'
     show ReadoutPart, joinReadoutParts, readoutParts;
 import 'layer_rail_columns.dart'
-    show LayerFoldTwirl, layerRailTrailingCells;
+    show
+        LayerFoldTwirl,
+        LayerRailOptionalColumns,
+        layerRailTrailingCells,
+        noOptionalRailColumns;
 import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
@@ -103,8 +107,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.height,
     this.leadingInset = 0,
     this.currentRowHooks,
-    this.hasOnionColumn = false,
-    this.hasBlendColumn = false,
+    this.optionalColumns = noOptionalRailColumns,
   });
 
   final Layer layer;
@@ -145,10 +148,9 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// switch landed at a different x on every header — wherever that
   /// header's name happened to end. It rides
   /// [layerRailTrailingCells] now, which is the same skeleton the layer row
-  /// above it uses: matching the flags is what keeps the two in ONE column,
+  /// above it uses: matching the answer is what keeps the two in ONE column,
   /// and hand-placing it is exactly how it drifted before.
-  final bool hasOnionColumn;
-  final bool hasBlendColumn;
+  final LayerRailOptionalColumns optionalColumns;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -718,8 +720,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         columns: widget.metrics.railColumns,
         fillReference: _groupReset(colorScheme),
         fx: _groupFx(context),
-        hasOnionColumn: widget.hasOnionColumn,
-        hasBlendColumn: widget.hasBlendColumn,
+        optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
       );
 

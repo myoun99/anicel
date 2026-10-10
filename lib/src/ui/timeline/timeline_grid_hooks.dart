@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit;
+import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -535,6 +536,14 @@ class TimelineGridHooks {
   /// through the one rule ([fxEnabledFromState]); no resolver means on.
   bool isLayerFxEnabled(LayerId layerId) =>
       fxEnabledFromState(layerFxStateOf?.call(layerId));
+
+  /// The optional columns this host's rail carries — each one as far as the
+  /// host handed over its verb. Read here once for the rows, the legend,
+  /// the swipe and the sheet's header block alike.
+  LayerRailOptionalColumns get optionalRailColumns => (
+    onion: onToggleLayerOnionSkin != null,
+    blend: onLayerBlendModeSelected != null,
+  );
 
   /// The rows a grid shows for [layers]: [buildTimelineDisplayRows] fed the
   /// bundle's own view state — open twirls, hidden sections, the row

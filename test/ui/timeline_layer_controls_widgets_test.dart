@@ -8,6 +8,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -501,7 +503,10 @@ void main() {
 Widget _header() {
   return const MaterialApp(
     home: Material(
-      child: TimelineLayerControlsHeader(metrics: TimelineGridMetrics.defaults),
+      child: TimelineLayerControlsHeader(
+        metrics: TimelineGridMetrics.defaults,
+        optionalColumns: noOptionalRailColumns,
+      ),
     ),
   );
 }

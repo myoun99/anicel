@@ -156,8 +156,7 @@ void main() {
           tester.getSize(legend).height,
           closeTo(
             XSheetTimelineGrid.naturalHeaderBlockExtent(
-              hasOnionColumn: true,
-              hasBlendColumn: true,
+              optionalColumns: (onion: true, blend: true),
               columns: layerRailColumnWidthsIn(tester.element(legend)),
             ),
             0.5,

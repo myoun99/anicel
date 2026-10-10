@@ -139,8 +139,7 @@ void main() {
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: true,
-          hasBlendColumn: true,
+          optionalColumns: (onion: true, blend: true),
         ),
         timelineLayerControlsWidth - layerLaneValueHandsWidth + 2,
       );
@@ -150,8 +149,7 @@ void main() {
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: false,
-          hasBlendColumn: false,
+          optionalColumns: noOptionalRailColumns,
         ),
         timelineLayerControlsWidth -
             layerLaneValueHandsWidth +
@@ -192,8 +190,7 @@ void main() {
       // the same answer.
       final natural = XSheetTimelineGrid.naturalHeaderBlockExtent(
         columns: layerRailColumnWidthsAtOne,
-        hasOnionColumn: false,
-        hasBlendColumn: false,
+        optionalColumns: noOptionalRailColumns,
       );
       for (final height in [700.0, 1000.0]) {
         await tester.pumpWidget(_grid(height: height));
@@ -226,8 +223,7 @@ void main() {
         -100,
         naturalExtent: XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: false,
-          hasBlendColumn: false,
+          optionalColumns: noOptionalRailColumns,
         ),
       );
       await tester.pump();
@@ -340,8 +336,7 @@ void main() {
       final expected =
           XSheetTimelineGrid.naturalHeaderBlockExtent(
             columns: layerRailColumnWidthsAtOne,
-            hasOnionColumn: false,
-            hasBlendColumn: false,
+            optionalColumns: noOptionalRailColumns,
           ) -
           layerSectionLabelSlotWidth;
       final header = tester.getRect(
@@ -360,8 +355,7 @@ void main() {
 
       final expected = XSheetTimelineGrid.naturalHeaderBlockExtent(
         columns: layerRailColumnWidthsAtOne,
-        hasOnionColumn: false,
-        hasBlendColumn: false,
+        optionalColumns: noOptionalRailColumns,
       );
       final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
       expect(legend.height, closeTo(expected, 0.01));
@@ -645,6 +639,7 @@ void main() {
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
+          optionalColumns: noOptionalRailColumns,
         ),
         layerMuteSlotWidth + layerOpacitySlotWidth,
       );
@@ -652,7 +647,7 @@ void main() {
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
-          hasBlendColumn: true,
+          optionalColumns: (onion: false, blend: true),
         ),
         layerMuteSlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
       );
@@ -663,11 +658,12 @@ void main() {
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
-              hasBlendColumn: true,
+              optionalColumns: (onion: false, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
+              optionalColumns: noOptionalRailColumns,
             ),
         layerBlendSlotWidth,
       );
@@ -681,10 +677,12 @@ void main() {
       expect(
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              hasOnionColumn: true,
-              hasBlendColumn: true,
+              optionalColumns: (onion: true, blend: true),
             ) -
-            layerRailTrailingWidth(columns: layerRailColumnWidthsAtOne),
+            layerRailTrailingWidth(
+              columns: layerRailColumnWidthsAtOne,
+              optionalColumns: noOptionalRailColumns,
+            ),
         layerOnionSlotWidth + layerBlendSlotWidth,
       );
 

@@ -407,20 +407,19 @@ double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
 };
 
 /// The cells AFTER a rail row's name, in order. Null cells reserve
-/// their slot; [hasOnionColumn]/[hasBlendColumn] false drops the column
-/// outright, which is the HOST's answer (the storyboard rail has neither),
-/// as distinct from a row that merely has nothing to put there.
+/// their slot; a column [optionalColumns] does not carry is dropped outright,
+/// which is the HOST's answer, as distinct from a row that merely has
+/// nothing to put there.
 List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
   required LayerRailColumnWidths columns,
+  required LayerRailOptionalColumns optionalColumns,
   Widget? fillReference,
   Widget? fx,
-  bool hasOnionColumn = false,
   Widget? onion,
   Widget? visibility,
   Widget? mute,
   Widget? opacity,
-  bool hasBlendColumn = false,
   Widget? blend,
   Widget? trailingRegion,
 }) {
@@ -438,17 +437,17 @@ List<Widget> layerRailTrailingCells({
         layerRailTrailingWidth(
           columns: columns,
           from: LayerRailTrailingSlot.onion,
-          hasOnionColumn: hasOnionColumn,
-          hasBlendColumn: hasBlendColumn,
+          optionalColumns: optionalColumns,
         ),
         trailingRegion,
       )
     else ...[
-      if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
+      if (optionalColumns.onion)
+        layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
       layerRailSlot(axis, layerMuteSlotWidth, mute),
       layerRailSlot(axis, columns.opacity, opacity),
-      if (hasBlendColumn) layerRailSlot(axis, columns.blend, blend),
+      if (optionalColumns.blend) layerRailSlot(axis, columns.blend, blend),
     ],
   ];
 }
@@ -464,6 +463,36 @@ enum LayerRailTrailingSlot {
   mute,
   opacity,
   blend,
+}
+
+/// Which of the rail's OPTIONAL columns a HOST carries — its answer, as
+/// distinct from a row that merely has nothing to put in one: a null cell
+/// reserves its slot, a column the host does not carry is not there at all
+/// (the storyboard rail carries no onion).
+///
+/// ONE answer to every question asked of the run — the cells a row lays
+/// out, what the run costs, where a swipe finds a column, how tall the
+/// sheet's header block stands — so a column cannot be there for one of
+/// them and not for another. The timeline and the sheet read theirs off
+/// what they were handed ([TimelineGridHooks.optionalRailColumns]); each
+/// of their surfaces used to write that reading out again.
+typedef LayerRailOptionalColumns = ({bool onion, bool blend});
+
+/// A host that carries none of them.
+const LayerRailOptionalColumns noOptionalRailColumns = (
+  onion: false,
+  blend: false,
+);
+
+/// [LayerRailOptionalColumns] asked about one slot of the run.
+extension LayerRailCarries on LayerRailOptionalColumns {
+  /// Whether [slot] is in the host's run — every slot that is not optional
+  /// is.
+  bool carries(LayerRailTrailingSlot slot) => switch (slot) {
+    LayerRailTrailingSlot.onion => onion,
+    LayerRailTrailingSlot.blend => blend,
+    _ => true,
+  };
 }
 
 double _trailingSlotWidth(
@@ -487,21 +516,12 @@ double _trailingSlotWidth(
 /// therefore without going stale the next time a column is added.
 double layerRailTrailingWidth({
   required LayerRailColumnWidths columns,
+  required LayerRailOptionalColumns optionalColumns,
   LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
-  bool hasOnionColumn = false,
-  bool hasBlendColumn = false,
 }) {
   var total = 0.0;
   for (final slot in LayerRailTrailingSlot.values) {
-    if (slot.index < from.index) {
-      continue;
-    }
-    final carried = switch (slot) {
-      LayerRailTrailingSlot.onion => hasOnionColumn,
-      LayerRailTrailingSlot.blend => hasBlendColumn,
-      _ => true,
-    };
-    if (!carried) {
+    if (slot.index < from.index || !optionalColumns.carries(slot)) {
       continue;
     }
     total += _trailingSlotWidth(slot, columns);

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -52,6 +54,7 @@ void main() {
             width: 900,
             child: TimelineLayerControlsHeader(
               metrics: TimelineGridMetrics.defaults,
+              optionalColumns: noOptionalRailColumns,
               legend: withLegend ? callbacks() : null,
               showRowSolos: showRowSolos,
               marksInUse: marksInUse,

@@ -657,7 +657,7 @@ class _StoryboardRailRows {
       crossExtent: _state._naturalRailWidth,
       columns: layerRailColumnWidthsIn(_state.context),
       leadingOrigin: 0,
-      hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+      optionalColumns: StoryboardPanel.optionalRailColumns,
       visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
       // The transition row draws no fx switch, and a kind that shows none
       // draws none either — both read null, which is the same answer the row

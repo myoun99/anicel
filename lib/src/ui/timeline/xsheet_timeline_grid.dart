@@ -167,13 +167,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// narrower WINDOW onto it (the rail-window round): the tail is cut, the
   /// splitter says where, and nothing inside rearranges.
   ///
-  /// [hasOnionColumn]/[hasBlendColumn] are the HOST's answer about which
-  /// optional columns exist at all — the legend beside the headers must
-  /// size from the same answer or its icons stop naming the columns under
-  /// them.
+  /// [optionalColumns] is the HOST's answer about which optional columns
+  /// exist at all — the legend beside the headers must size from the same
+  /// answer or its icons stop naming the columns under them.
   static double naturalHeaderBlockExtent({
-    required bool hasOnionColumn,
-    required bool hasBlendColumn,
+    required LayerRailOptionalColumns optionalColumns,
     required LayerRailColumnWidths columns,
   }) =>
       _sectionBandHeight +
@@ -181,8 +179,7 @@ class XSheetTimelineGrid extends StatefulWidget {
       _naturalNameExtent(columns) +
       layerRailTrailingWidth(
         columns: columns,
-        hasOnionColumn: hasOnionColumn,
-        hasBlendColumn: hasBlendColumn,
+        optionalColumns: optionalColumns,
       ) +
       _headerBorderExtent;
 
@@ -1211,16 +1208,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     // the optional columns from, so it is told
                                     // what the ROWS carry — or its icons stop
                                     // naming the columns under them.
-                                    hasOnionColumn:
-                                        widget
-                                            .hooks
-                                            .onToggleLayerOnionSkin !=
-                                        null,
-                                    hasBlendColumn:
-                                        widget
-                                            .hooks
-                                            .onLayerBlendModeSelected !=
-                                        null,
+                                    optionalColumns:
+                                        widget.hooks.optionalRailColumns,
                                     hiddenSections:
                                         widget.hooks.hiddenSections,
                                   ),

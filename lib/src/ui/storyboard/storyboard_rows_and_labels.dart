@@ -239,7 +239,7 @@ class _StoryboardRowsAndLabels {
           : (_, _) => onResetGroup(lane),
       keyPrefix: 'storyboard',
       leadingInset: layerSectionLabelSlotWidth,
-      hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+      optionalColumns: StoryboardPanel.optionalRailColumns,
       currentRowHooks: _state.widget.currentRowHooks,
     );
 

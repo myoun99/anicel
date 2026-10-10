@@ -728,7 +728,7 @@ class StoryboardPanel extends StatefulWidget {
   // 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」; the drawn
   // proposal: 「라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인 펼침이 타임라인과
   // 같이 됩니다」), so this rail carries the column and every row of it
-  // keeps the slot ([railHasBlendColumn]). The NUMBER stays: it is the width
+  // keeps the slot ([optionalRailColumns]). The NUMBER stays: it is the width
   // the timeline's rail has held that cell in since R27 #6, and the room
   // comes back out of the name, where it had gone.
   //
@@ -738,11 +738,14 @@ class StoryboardPanel extends StatefulWidget {
   // conte rows twirl down the same lanes, so the same number.
   static const double _trackLabelWidth = 519;
 
-  /// Whether this rail's rows keep a BLEND slot after the opacity's — the
-  /// host's answer every row and the legend above them read
-  /// ([layerRailTrailingCells]): a row with no blend to show reserves it,
-  /// empty, as it does every column it has nothing in.
-  static const bool railHasBlendColumn = true;
+  /// Which optional columns this rail's rows keep — the host's answer every
+  /// row and the legend above them read ([layerRailTrailingCells]): a BLEND
+  /// slot after the opacity's, which a row with no blend to show reserves,
+  /// empty, as it does every column it has nothing in; no onion.
+  static const LayerRailOptionalColumns optionalRailColumns = (
+    onion: false,
+    blend: true,
+  );
 
   /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
   /// its word-holding columns' growth — the opacity bar's, the blend
@@ -2475,14 +2478,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               // today is the same number as the timeline's and is
               // deliberately not the same constant (see
               // [StoryboardPanel.railWidthIn]). Widening it
-              // adds no column here — `hasBlendColumn` is a host
+              // adds no column here — `optionalRailColumns` is a host
               // answer, not something derived from the width — so
               // the extra width lands in the NAME, which is where
               // a track wants it.
               //
               // And the host's answer is said here outright, not left to
               // whether a legend was handed in: the rows below keep the
-              // blend slot either way ([StoryboardPanel.railHasBlendColumn]),
+              // blend slot either way ([StoryboardPanel.optionalRailColumns]),
               // and a heading that came and went with the legend would stand
               // a column off them.
               //
@@ -2498,7 +2501,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 railColumns: layerRailColumnWidthsIn(context),
               ),
               legend: widget.legend,
-              hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+              optionalColumns: StoryboardPanel.optionalRailColumns,
               rowFilter: widget.rowFilter,
               hiddenSections: widget.hiddenSections,
               onToggleSection: widget.onToggleSection,
@@ -3276,7 +3279,7 @@ class _StoryboardSeLabel extends StatelessWidget {
               ),
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
-                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+                optionalColumns: StoryboardPanel.optionalRailColumns,
                 // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
                 // none either — the twirled-down Audio lane is the "big
                 // waveform" view. The fill-reference slot stays reserved so
@@ -3478,7 +3481,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
               ),
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
-                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+                optionalColumns: StoryboardPanel.optionalRailColumns,
                 // The eye: include/exclude this row's composite
                 // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
                 // fx and opacity stay kind-gated off, exactly like the
@@ -4791,7 +4794,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
               // and empty.
               ...layerRailTrailingCells(
                 columns: layerRailColumnWidthsIn(context),
-                hasBlendColumn: StoryboardPanel.railHasBlendColumn,
+                optionalColumns: StoryboardPanel.optionalRailColumns,
                 // R9 #21: the switch in this row's fx column is the
                 // TRACK's — a row's columns describe the row's own
                 // subject, and this row is the track's.

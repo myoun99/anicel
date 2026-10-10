@@ -143,6 +143,7 @@ class _LayerGridRailRows {
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
       language: AppText.language,
       hasBlendBulk: _state.widget.legend?.onSetBlendModeForDisplayed != null,
+      optionalColumns: _state.widget.hooks.optionalRailColumns,
     );
     final cached = _state._legendHeaderMemo;
     if (cached != null && cached.inputs == inputs) {
@@ -150,6 +151,7 @@ class _LayerGridRailRows {
     }
     final header = TimelineLayerControlsHeader(
       metrics: _state._metrics,
+      optionalColumns: inputs.optionalColumns,
       legend: _state.widget.legend,
       hiddenSections: _state.widget.hooks.hiddenSections,
       onToggleSection: _state.widget.onToggleSection,
@@ -218,10 +220,9 @@ class _LayerGridRailRows {
         onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
         currentRowHooks: _state.widget.hooks.currentRowHooks,
         leadingInset: layerSectionLabelSlotWidth,
-        // The SAME flags the layer row passes, so a group
+        // The SAME answer the layer row reads, so a group
         // header's fx lands in the layer rows' fx column (R5 #7).
-        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+        optionalColumns: _state.widget.hooks.optionalRailColumns,
       ),
     );
   }

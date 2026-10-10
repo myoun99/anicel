@@ -6,6 +6,8 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_legend_callbacks.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
@@ -40,6 +42,7 @@ void main() {
             width: 900,
             child: TimelineLayerControlsHeader(
               metrics: TimelineGridMetrics.defaults,
+              optionalColumns: noOptionalRailColumns,
               legend: LayerLegendCallbacks(
                 onShowAllLayers: () {},
                 onHideAllLayers: () {},
