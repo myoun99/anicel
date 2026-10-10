@@ -1039,8 +1039,14 @@ class ProjectImportDoors {
   /// ↩️A still's new picture was fitted to the canvas as it is NOW, with the
   /// fit the row was placed with — on a canvas grown since, in its middle.
   ///
+  /// Each cel takes the same picture of the new file as it showed of the old
+  /// ([Frame.filePicture]) — the law moving the fx lays it again by (I-68
+  /// 「가」: one law, one cel or many) — so a file that has no such picture
+  /// is not taken.
+  ///
   /// False when nothing changed: a row that does not take [path], a file
-  /// that would not read, or a row that changed while it was being read.
+  /// that would not read or lacks a cel's picture, or a row that changed
+  /// while it was being read.
   Future<bool> swapReference({
     required LayerId layerId,
     required String path,

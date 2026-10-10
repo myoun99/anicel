@@ -595,9 +595,9 @@ void main() {
 
     testWidgets('🎯moving the fx renders EACH page again from its own page '
         'of the file — counted from the span\'s IN, not from the row\'s '
-        'first cel', (tester) async {
+        'first cel — each at its own size', (tester) async {
       final pdf = FakePdfDocument(
-        pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(100, 50)],
+        pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(60, 30)],
       );
       PdfRenderService.debugOpenerOverride = (_) async => pdf;
       final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -637,18 +637,74 @@ void main() {
 
       expect(
         pdf.renderRequests,
-        [(1, 100, 50), (2, 100, 50)],
+        [(1, 100, 50), (2, 60, 30)],
         reason: 'each page once, at the size it stands at now',
       );
-      for (final index in [0, 1]) {
+      for (final (index, ink) in [
+        (0, const ui.Rect.fromLTRB(50, 25, 150, 75)),
+        (1, const ui.Rect.fromLTRB(70, 35, 130, 65)),
+      ]) {
         final cel = celOf(s, row, index);
-        expect(inkOf(cel), const ui.Rect.fromLTRB(50, 25, 150, 75));
+        expect(inkOf(cel), ink);
         expect(
           colourAt(cel, 100, 50),
           rgbaOf(FakePdfDocument.pageColor(index + 1)),
           reason: 'cel $index is page ${index + 1}',
         );
       }
+      expect(
+        s.layerById(row.id)!.mediaReference!.pictureSize,
+        const CanvasSize(width: 100, height: 50),
+        reason: 'the size the row says is its first cel\'s page, as placed',
+      );
+      s.playbackRig.prerenderScheduler.cancel();
+      await tester.pump();
+    });
+
+    testWidgets('one page kept from the middle is a still that says WHICH '
+        'page it is — and the fx lays that page again', (tester) async {
+      final pdf = FakePdfDocument(
+        pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(100, 50)],
+      );
+      PdfRenderService.debugOpenerOverride = (_) async => pdf;
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.playbackRig.prerenderScheduler.beginInputHold();
+      await tester.runAsync(() async {
+        s.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 200, height: 100),
+        );
+        final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+        await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        expect(
+          await s.importDoors.importPdfFile(
+            path: path,
+            destination: ImportDestination.activeCutLayer,
+            copyIntoProject: false,
+            inFrame: 2,
+            outFrame: 2,
+          ),
+          isTrue,
+        );
+      });
+      final row = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.mediaReference != null,
+      );
+      expect(row.frames.single.filePicture, 2);
+      pdf.renderRequests.clear();
+
+      await tester.runAsync(
+        () => s.importDoors.reposeReference(
+          layerId: row.id,
+          pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
+        ),
+      );
+
+      expect(pdf.renderRequests, [(2, 100, 50)]);
+      expect(
+        colourAt(celOf(s, row, 0), 100, 50),
+        rgbaOf(FakePdfDocument.pageColor(2)),
+      );
       s.playbackRig.prerenderScheduler.cancel();
       await tester.pump();
     });
@@ -744,6 +800,81 @@ void main() {
       for (final (index, colour) in [(0, white), (1, black)]) {
         final cel = celOf(s, row, index);
         expect(inkOf(cel), const ui.Rect.fromLTRB(25, 25, 75, 75));
+        expect(colourAt(cel, 50, 50), colour, reason: 'cel $index');
+      }
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('one frame kept is a still that says WHICH frame it is — '
+        'the white one, laid again white', (tester) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.playbackRig.prerenderScheduler.beginInputHold();
+      await tester.runAsync(() async {
+        s.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 100, height: 100),
+        );
+        await s.importDoors.importImageFile(
+          path: await writeThreeFrameGif(tempDir, 'walk.gif'),
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: false,
+          inFrame: 1,
+          outFrame: 1,
+        );
+      });
+      final row = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.mediaReference != null,
+      );
+      expect(row.frames.single.filePicture, 1);
+
+      await tester.runAsync(
+        () => s.importDoors.reposeReference(
+          layerId: row.id,
+          pose: TransformPose.uniform(
+            center: CanvasPoint(x: 50, y: 50),
+            zoom: 50,
+          ),
+        ),
+      );
+
+      final cel = celOf(s, row, 0);
+      expect(inkOf(cel), const ui.Rect.fromLTRB(25, 25, 75, 75));
+      expect(colourAt(cel, 50, 50), white);
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a file that has since lost the picture a cel shows is not '
+        'laid again — the move lands nothing, and every cel keeps what it '
+        'showed', (tester) async {
+      final (s, row) = await placed(tester);
+      final canUndo = s.canUndo;
+      // The same name, now one picture: the GIF re-exported shorter.
+      await tester.runAsync(
+        () => writeSolidPng(
+          tempDir,
+          'walk.gif',
+          width: 1,
+          height: 1,
+          rgba: 0x00FF00FF,
+        ),
+      );
+
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.reposeReference(
+            layerId: row.id,
+            pose: TransformPose.uniform(
+              center: CanvasPoint(x: 50, y: 50),
+              zoom: 50,
+            ),
+          ),
+        ),
+        isFalse,
+      );
+      expect(s.canUndo, canUndo);
+      for (final (index, colour) in [(0, white), (1, black)]) {
+        final cel = celOf(s, row, index);
+        expect(inkOf(cel), const ui.Rect.fromLTRB(0, 0, 100, 100));
         expect(colourAt(cel, 50, 50), colour, reason: 'cel $index');
       }
       await stopTheWarmer(tester, s);
