@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
@@ -188,6 +189,13 @@ void main() {
         transformGroupHeaderLane.laneId: true,
         seNameTagGroupLaneId: false,
       },
+    );
+    expect(
+      transformPropertyLanes(track, scaleForm: const TwoScales()).first,
+      isA<PropertyLaneRow>()
+          .having((lane) => lane.isGroupHeader, 'a header', isTrue)
+          .having((lane) => lane.headsAGraph, 'heads a graph', isTrue),
+      reason: 'the header the Transform lanes are listed under says so too',
     );
   });
 }
