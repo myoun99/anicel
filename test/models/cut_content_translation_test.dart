@@ -233,7 +233,7 @@ void main() {
           keys: {
             0: PropertyKey(
               CanvasPoint(x: 100, y: 50),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
               name: 'A',
             ),
             8: PropertyKey(CanvasPoint(x: 300, y: 200)),
@@ -247,8 +247,8 @@ void main() {
     final position = moved.track.position;
     expect(position.keyAt(0)!.value.x, 110);
     expect(
-      position.keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      position.keyAt(0)!.outgoing,
+      KeyExit.hold,
       reason: 'a stepped camera must not start panning after a resize — '
           'the pose-facade rebuild linearized holds (adversarial review)',
     );

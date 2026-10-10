@@ -927,7 +927,7 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(
           2,
           uniformScale(1.5),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
         rotation: PropertyTrack<double>().withKey(2, 30),
       );
@@ -938,8 +938,8 @@ void main() {
       );
       expect(next.scale.keyAt(2)!.value, CanvasPoint(x: 2.5, y: -0.5));
       expect(
-        next.scale.keyAt(2)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        next.scale.keyAt(2)!.outgoing,
+        KeyExit.hold,
       );
       expect(next.rotation.keyAt(2)!.value, 30, reason: 'untouched');
       expect(next.position.isEmpty, isTrue);

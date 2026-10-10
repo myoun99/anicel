@@ -768,13 +768,13 @@ void main() {
       '-',
       '',
     )]!.cameraMoves.single;
-    Map<int, (double, PropertyKeyInterpolation)> keys(
+    Map<int, (double, KeyExit)> keys(
       PropertyTrack<double> track,
     ) => {
       for (final MapEntry(:key, :value) in track.keys.entries)
-        key: (value.value, value.interpolation),
+        key: (value.value, value.outgoing),
     };
-    const straight = PropertyKeyInterpolation.linear;
+    const straight = KeySide.linear;
     expect(move.span, (start: 0, end: 48));
     expect(keys(move.x), {0: (300.0, straight), 24: (360.0, straight)});
     expect(keys(move.y), {0: (200.0, straight), 24: (230.0, straight)});
@@ -782,7 +782,7 @@ void main() {
     expect(keys(move.pivotX), {0: (100.0, straight)}, reason: 'its pair');
     expect(keys(move.pivotY), {0: (50.0, straight)});
     expect(keys(move.degrees), {
-      0: (0.0, PropertyKeyInterpolation.hold),
+      0: (0.0, KeyExit.hold),
       24: (10.0, straight),
     });
     expect(move.unread, isTrue, reason: 'a curve it does not know');

@@ -253,7 +253,7 @@ void main() {
             .withKey(
               6,
               CanvasPoint(x: 5, y: 5),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             ),
         rotation: PropertyTrack<double>().withKey(3, 90),
       );
@@ -375,7 +375,7 @@ void main() {
               position: PropertyTrack<CanvasPoint>().withKey(
                 4,
                 CanvasPoint(x: 1, y: 1),
-                interpolation: PropertyKeyInterpolation.hold,
+                outgoing: KeyExit.hold,
               ),
             ),
           ),
@@ -889,7 +889,7 @@ void main() {
               position: PropertyTrack<CanvasPoint>().withKey(
                 4,
                 CanvasPoint(x: 1, y: 1),
-                interpolation: PropertyKeyInterpolation.hold,
+                outgoing: KeyExit.hold,
               ),
               rotation: PropertyTrack<double>().withKey(8, 12),
             ),
@@ -1013,7 +1013,7 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(
           0,
           uniformScale(1),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
 
@@ -1036,8 +1036,8 @@ void main() {
       final scaled = edited('scale', 0, '250%')!;
       expect(scaled.scale.keyAt(0)!.value, uniformScale(2.5));
       expect(
-        scaled.scale.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        scaled.scale.keyAt(0)!.outgoing,
+        KeyExit.hold,
         reason: 'editing a value keeps the key interpolation',
       );
 
@@ -1106,27 +1106,27 @@ void main() {
             .withKeyName(3, 'A'),
       );
 
-      final held = transformTrackWithLaneKeysInterpolated(
+      final held = transformTrackWithLaneKeySides(
         track,
         laneId: 'rotation',
         frames: {3},
-        interpolation: PropertyKeyInterpolation.hold,
+        edit: KeySidesEdit.hold,
       )!;
       final key = held.rotation.keyAt(3)!;
-      expect(key.interpolation, PropertyKeyInterpolation.hold);
+      expect(key.outgoing, KeyExit.hold);
       expect(key.name, 'A', reason: 'the name rides across');
       expect(key.value, 45, reason: 'and so does the value');
       expect(
-        held.rotation.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        held.rotation.keyAt(5)!.outgoing,
+        KeySide.linear,
         reason: 'outside the range, untouched',
       );
       expect(
-        transformTrackWithLaneKeysInterpolated(
+        transformTrackWithLaneKeySides(
           held,
           laneId: 'rotation',
           frames: {3},
-          interpolation: PropertyKeyInterpolation.hold,
+          edit: KeySidesEdit.hold,
         ),
         isNull,
         reason: 'already that type: nothing to write',

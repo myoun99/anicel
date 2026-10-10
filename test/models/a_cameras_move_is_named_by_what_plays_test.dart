@@ -52,7 +52,7 @@ void main() {
           for (final MapEntry(key: frame, value: key)
               in track.position.keys.entries)
             frame: frame == 0
-                ? key.copyWith(interpolation: PropertyKeyInterpolation.hold)
+                ? key.copyWith(outgoing: KeyExit.hold)
                 : key,
         },
       ),

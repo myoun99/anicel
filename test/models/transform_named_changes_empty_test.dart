@@ -14,7 +14,11 @@ void main() {
     expect(
       const TransformNamedChanges(
         opacity: {
-          'fade': (value: 0.5, interpolation: PropertyKeyInterpolation.linear),
+          'fade': (
+            value: 0.5,
+            incoming: KeySide.linear,
+            outgoing: KeySide.linear,
+          ),
         },
       ).isEmpty,
       isFalse,
@@ -22,7 +26,11 @@ void main() {
     expect(
       const TransformNamedChanges(
         rotation: {
-          'turn': (value: 90, interpolation: PropertyKeyInterpolation.linear),
+          'turn': (
+            value: 90,
+            incoming: KeySide.linear,
+            outgoing: KeySide.linear,
+          ),
         },
       ).isEmpty,
       isFalse,

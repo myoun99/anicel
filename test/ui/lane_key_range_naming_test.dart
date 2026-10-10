@@ -179,23 +179,23 @@ void main() {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(0, 5);
     expect(
-      laneVerbs.laneKeyInterpolationForSelection,
-      PropertyKeyInterpolation.linear,
+      laneVerbs.laneKeysHaveSides(KeySidesEdit.linear),
+      isTrue,
       reason: 'the window opens on the type the keys agree on',
     );
 
     laneVerbs.setLaneKeyNamesForSelection(
       'A',
-      interpolation: PropertyKeyInterpolation.hold,
+      sides: KeySidesEdit.hold,
     );
-    expect(rotation().keyAt(0)!.interpolation, PropertyKeyInterpolation.hold);
-    expect(rotation().keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+    expect(rotation().keyAt(0)!.outgoing, KeyExit.hold);
+    expect(rotation().keyAt(4)!.outgoing, KeyExit.hold);
     expect(rotation().keyNames, {'A'});
 
     session.undo();
     expect(
-      rotation().keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      rotation().keyAt(0)!.outgoing,
+      KeySide.linear,
       reason: 'one step took the type…',
     );
     expect(rotation().keyNames, isEmpty, reason: '…and the name with it');
@@ -206,23 +206,24 @@ void main() {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(4, 5);
     laneVerbs.setLaneKeyNamesForSelection('B');
-    laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    laneVerbs.setLaneKeySidesForSelection(
+      KeySidesEdit.hold,
     );
-    expect(rotation().keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+    expect(rotation().keyAt(4)!.outgoing, KeyExit.hold);
     expect(
       rotation().keyAt(4)!.name,
       'B',
       reason: 'the type alone leaves the name',
     );
     expect(
-      rotation().keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      rotation().keyAt(0)!.outgoing,
+      KeySide.linear,
       reason: 'outside the range',
     );
 
     selectRotationRange(0, 5);
-    expect(laneVerbs.laneKeyInterpolationForSelection, isNull);
+    expect(laneVerbs.laneKeysHaveSides(KeySidesEdit.linear), isFalse);
+    expect(laneVerbs.laneKeysHaveSides(KeySidesEdit.hold), isFalse);
   });
 
   // ── F-17/F-84: the camera row IS its transform header ──
@@ -247,7 +248,7 @@ void main() {
 
     laneVerbs.setLaneKeyNamesForSelection(
       'Pan',
-      interpolation: PropertyKeyInterpolation.hold,
+      sides: KeySidesEdit.hold,
     );
 
     final track = session.activeCutOrNull!.camera.track;
@@ -257,7 +258,7 @@ void main() {
       track.rotation.keyAt(2),
     ]) {
       expect(key!.name, 'Pan');
-      expect(key.interpolation, PropertyKeyInterpolation.hold);
+      expect(key.outgoing, KeyExit.hold);
     }
   });
 
@@ -310,13 +311,13 @@ void main() {
     expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
     laneVerbs.setLaneKeyNamesForSelection('B');
-    laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    laneVerbs.setLaneKeySidesForSelection(
+      KeySidesEdit.hold,
     );
 
     final track = layer().effects.single.parameterOf('blurX').track;
     for (final frame in [1, 2, 3]) {
-      expect(track.keyAt(frame)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(track.keyAt(frame)!.outgoing, KeyExit.hold);
       expect(
         track.keyAt(frame)!.name,
         'B',
@@ -324,8 +325,8 @@ void main() {
       );
     }
     expect(
-      laneVerbs.laneKeyInterpolationForSelection,
-      PropertyKeyInterpolation.hold,
+      laneVerbs.laneKeysHaveSides(KeySidesEdit.hold),
+      isTrue,
     );
   });
 
@@ -380,7 +381,7 @@ void main() {
     selectRotationRange(0, 1);
     laneVerbs.setLaneKeyNamesForSelection(
       'A',
-      interpolation: PropertyKeyInterpolation.hold,
+      sides: KeySidesEdit.hold,
     );
 
     selectRotationRange(4, 5);
@@ -390,13 +391,13 @@ void main() {
     final joined = rotation().keyAt(4)!;
     expect(joined.value, 10, reason: 'joining adopts the value');
     expect(
-      joined.interpolation,
-      PropertyKeyInterpolation.hold,
+      joined.outgoing,
+      KeyExit.hold,
       reason: 'and the type that value comes with (유저 2026-09-12)',
     );
     expect(
-      rotation().keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      rotation().keyAt(0)!.outgoing,
+      KeyExit.hold,
       reason: 'the holder was not restyled by the joiner',
     );
   });

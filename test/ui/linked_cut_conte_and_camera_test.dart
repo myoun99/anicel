@@ -206,8 +206,8 @@ void main() {
       LaneRowAddress(cameraOf(pair.source).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    session.laneVerbs.setLaneKeySidesForSelection(
+      KeySidesEdit.hold,
     );
     keyCameraIn(pair.linked, {0: CanvasPoint(x: 1, y: 1)});
     joinName(pair.linked, 0, 'A');
@@ -221,14 +221,14 @@ void main() {
     PropertyKey<CanvasPoint> keyOf(CutId cutId) =>
         cutById(cutId).camera.track.position.keyAt(0)!;
     expect(
-      keyOf(pair.source).interpolation,
-      PropertyKeyInterpolation.hold,
+      keyOf(pair.source).outgoing,
+      KeyExit.hold,
       reason: '「홀드인상태서 … 값 바꾸면 홀드가 리니어로 돌아와」 — no longer',
     );
     expect(keyOf(pair.linked).value, CanvasPoint(x: 12, y: 12));
     expect(
-      keyOf(pair.linked).interpolation,
-      PropertyKeyInterpolation.hold,
+      keyOf(pair.linked).outgoing,
+      KeyExit.hold,
       reason: 'the sibling holds the same key, type included',
     );
   });
@@ -243,13 +243,13 @@ void main() {
       LaneRowAddress(cameraOf(pair.linked).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    session.laneVerbs.setLaneKeySidesForSelection(
+      KeySidesEdit.hold,
     );
 
     expect(
-      cutById(pair.source).camera.track.position.keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      cutById(pair.source).camera.track.position.keyAt(0)!.outgoing,
+      KeyExit.hold,
       reason: '「겸용컷끼리 홀드/리니어타입 … 싹다링크해야하는데」',
     );
   });

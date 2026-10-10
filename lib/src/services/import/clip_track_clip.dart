@@ -298,9 +298,9 @@ ClipCameraMove _cameraMoveOf(
           for (var i = 0; i < ticks.length && i < values.length; i += 1)
             frameAt(ticks[i]).round(): PropertyKey(
               values[i] / unit,
-              interpolation: i < curves.length && curves[i] == 'Constant'
-                  ? PropertyKeyInterpolation.hold
-                  : PropertyKeyInterpolation.linear,
+              outgoing: i < curves.length && curves[i] == 'Constant'
+                  ? KeyExit.hold
+                  : KeySide.linear,
             ),
         },
       );

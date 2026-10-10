@@ -1413,9 +1413,9 @@ void main() {
             for (final MapEntry(:key, :value) in values.entries)
               key: PropertyKey(
                 value,
-                interpolation: held.contains(key)
-                    ? PropertyKeyInterpolation.hold
-                    : PropertyKeyInterpolation.linear,
+                outgoing: held.contains(key)
+                    ? KeyExit.hold
+                    : KeySide.linear,
               ),
           },
         );

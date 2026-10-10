@@ -65,6 +65,21 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v13 (2026-10-10, I-89 — 유저 10-10 「키 양쪽. 업계 표준인 전문 툴대로
+/// 하고싶어. 그게 ae고」): a key eases with two sides, After Effects'
+/// incoming and outgoing temporal interpolation — `in` and `out` on a key
+/// (`PropertyTrack.toJson`, each written only where it is not linear;
+/// `KeyExit.toJson`), where a key carried one `interpolation` for the
+/// segment leaving it. A v12 build reads neither word: it opens every eased
+/// key as a straight one and every hold as a ramp, and its next save
+/// writes them back so — the bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔The one `interpolation` is NOT read here (the save law), and with it
+/// goes every file older than this one ([anicelOldestReadFormatVersion]).
+/// What to carry when one is asked for: each key's `interpolation: hold`
+/// becomes `out: hold`, and a key without the word stays without either.
+///
 /// v12 (2026-10-10, I-68 — the reference fx): a media reference says WHERE
 /// its file's picture stands — `pose`, its centre on the canvas with a
 /// scale per axis over the picture's own pixels and a turn about that
@@ -206,7 +221,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 12;
+const int anicelFormatVersion = 13;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -228,7 +243,8 @@ const int anicelFormatVersion = 12;
 /// 11: a cut's one note is no longer read (v11 above).
 /// 12: a reference that does not say where it stands is no longer read
 /// (v12 above).
-const int anicelOldestReadFormatVersion = 12;
+/// 13: a key's one interpolation is no longer read (v13 above).
+const int anicelOldestReadFormatVersion = 13;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

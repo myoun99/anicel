@@ -414,8 +414,7 @@ PropertyLaneRow _lane<T>(
     keyedFrames: track.keys.keys.toSet(),
     holdOutFrames: {
       for (final entry in track.keys.entries)
-        if (entry.value.interpolation == PropertyKeyInterpolation.hold)
-          entry.key,
+        if (entry.value.outgoing is KeyHold) entry.key,
     },
     keyNames: track.namedKeysByFrame,
     valueLabel: valueLabel,

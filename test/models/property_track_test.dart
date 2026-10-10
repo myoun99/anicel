@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart' show doubleKeySpace;
 
-double _lerp(double a, double b, double t) => a + (b - a) * t;
-
-double _resolve(PropertyTrack<double> track, int frame) =>
-    track.resolveAt(frameIndex: frame, orElse: () => -1, lerp: _lerp);
+double _resolve(PropertyTrack<double> track, int frame) => track.resolveAt(
+  frameIndex: frame,
+  orElse: () => -1,
+  space: doubleKeySpace,
+);
 
 void main() {
   group('PropertyTrack', () {
@@ -29,7 +31,7 @@ void main() {
 
     test('a HOLD key freezes its segment (AE hold keyframe)', () {
       final track = PropertyTrack<double>()
-          .withKey(10, 100, interpolation: PropertyKeyInterpolation.hold)
+          .withKey(10, 100, outgoing: KeyExit.hold)
           .withKey(20, 200);
 
       expect(_resolve(track, 15), 100);
@@ -40,7 +42,7 @@ void main() {
     test('hold only affects the outgoing segment of its own key', () {
       final track = PropertyTrack<double>()
           .withKey(0, 0)
-          .withKey(10, 100, interpolation: PropertyKeyInterpolation.hold)
+          .withKey(10, 100, outgoing: KeyExit.hold)
           .withKey(20, 200);
 
       // Before the hold key: linear as usual.
@@ -73,7 +75,7 @@ void main() {
     test('json round-trips values and interpolation', () {
       final track = PropertyTrack<double>()
           .withKey(3, 1.5)
-          .withKey(9, 4, interpolation: PropertyKeyInterpolation.hold);
+          .withKey(9, 4, outgoing: KeyExit.hold);
 
       final restored = PropertyTrack.fromJson<double>(
         track.toJson((value) => value),
@@ -81,7 +83,7 @@ void main() {
       );
 
       expect(restored, track);
-      expect(restored.keyAt(9)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(restored.keyAt(9)!.outgoing, KeyExit.hold);
     });
 
     test('json rejects duplicate key indexes', () {

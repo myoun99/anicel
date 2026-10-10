@@ -80,20 +80,17 @@ List<LayerEffect>? effectsWithLaneRangeNamed(
   });
 }
 
-/// [effects] with parameter lane [laneId]'s keys inside [frames] set to
-/// [interpolation] — the key window's TYPE (F-17), the range form of the
+/// [effects] with parameter lane [laneId]'s keys inside [frames] given
+/// [edit]'s sides — the key window's TYPE (F-17), the range form of the
 /// naming next door. Null when nothing changed.
-List<LayerEffect>? effectsWithLaneKeysInterpolated(
+List<LayerEffect>? effectsWithLaneKeySides(
   List<LayerEffect> effects, {
   required String laneId,
   required Set<int> frames,
-  required PropertyKeyInterpolation interpolation,
+  required KeySidesEdit edit,
 }) {
   return _editParameter(effects, laneId, (parameter, spec) {
-    final track = parameter.track.withKeysInterpolated(
-      frames: frames,
-      interpolation: interpolation,
-    );
+    final track = parameter.track.withKeySides(frames: frames, edit: edit);
     return track == null ? null : parameter.copyWith(track: track);
   });
 }
@@ -129,13 +126,7 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       return null;
     }
     return parameter.copyWith(
-      track: parameter.track.withKey(
-        frameIndex,
-        value,
-        interpolation:
-            parameter.track.keyAt(frameIndex)?.interpolation ??
-            PropertyKeyInterpolation.linear,
-      ),
+      track: parameter.track.withKey(frameIndex, value),
     );
   });
 }
@@ -190,13 +181,7 @@ List<LayerEffect>? effectsWithGroupReset(
         if (keyedFramesOnly && parameter.track.keyAt(frame) == null) {
           continue;
         }
-        track = track.withKey(
-          frame,
-          spec.defaultValue,
-          interpolation:
-              parameter.track.keyAt(frame)?.interpolation ??
-              PropertyKeyInterpolation.linear,
-        );
+        track = track.withKey(frame, spec.defaultValue);
       }
       if (track == parameter.track) {
         continue;

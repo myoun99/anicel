@@ -6,7 +6,7 @@ import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/property_track.dart' show PropertyKeyInterpolation;
+import '../../models/property_track.dart' show KeySidesEdit;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/se_line_type.dart';
@@ -791,8 +791,7 @@ Future<void> _renameLaneKey(
   // the joining key's own type to every key the name reaches — a join
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
-  final agreed = session.laneVerbs.laneKeyInterpolationForSelection;
-  PropertyKeyInterpolation? picked;
+  KeySidesEdit? picked;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -802,8 +801,10 @@ Future<void> _renameLaneKey(
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
       fieldTrailing: (setLocal) => _keyInterpolationPills(
-        selected: picked ?? agreed,
-        onPicked: (kind) => setLocal(() => picked = kind),
+        lit: (edit) => picked == null
+            ? session.laneVerbs.laneKeysHaveSides(edit)
+            : picked == edit,
+        onPicked: (edit) => setLocal(() => picked = edit),
       ),
     )),
     // The RANGE form is the only one called: a single key is the one-frame
@@ -815,7 +816,7 @@ Future<void> _renameLaneKey(
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
-            interpolation: picked,
+            sides: picked,
           )
           ? trimmed
           : null;
@@ -827,16 +828,14 @@ Future<void> _renameLaneKey(
         session.repository.requireProject(),
         lane.layerId,
       ),
-      join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
-        name,
-        interpolation: picked,
-      ),
+      join: (name) =>
+          session.laneVerbs.linkLaneKeyNamesForSelection(name, sides: picked),
       // The name stood down; a type the user picked in the same window was
       // still confirmed, so it lands.
       decline: () {
-        final kind = picked;
-        if (kind != null) {
-          session.laneVerbs.setLaneKeyInterpolationsForSelection(kind);
+        final edit = picked;
+        if (edit != null) {
+          session.laneVerbs.setLaneKeySidesForSelection(edit);
         }
       },
     ),
@@ -845,23 +844,28 @@ Future<void> _renameLaneKey(
 
 /// The key window's TYPE — the grouped-choice control (유저 2026-09-09:
 /// 「여러개중 하나 선택한다거나 … 그룹으로 묶여있는 선택은 이 ui 사용하도록
-/// 공용화」). Nothing is lit while the covered keys disagree.
+/// 공용화」). [lit] says which choice shows as picked — nothing while the
+/// covered keys disagree.
+///
+/// I-89 keeps the two choices this window had while the key's two sides
+/// came in; the window's own type controls are redrawn with the lane glyphs
+/// (I-89 ②, 「키 창의 종류 칸은 본 라운드에서 새 모델에 맞출 때 다시 본다」).
 Widget _keyInterpolationPills({
-  required PropertyKeyInterpolation? selected,
-  required ValueChanged<PropertyKeyInterpolation> onPicked,
+  required bool Function(KeySidesEdit edit) lit,
+  required ValueChanged<KeySidesEdit> onPicked,
 }) {
   final strings = AppText.strings;
   return PillStrip(
     items: [
-      for (final (kind, label) in [
-        (PropertyKeyInterpolation.linear, strings.keyInterpolationLinear),
-        (PropertyKeyInterpolation.hold, strings.keyInterpolationHold),
+      for (final (id, edit, label) in [
+        ('linear', KeySidesEdit.linear, strings.keyInterpolationLinear),
+        ('hold', KeySidesEdit.hold, strings.keyInterpolationHold),
       ])
         PillItem(
-          keyValue: 'rename-key-interpolation-${kind.name}',
+          keyValue: 'rename-key-interpolation-$id',
           label: label,
-          selected: selected == kind,
-          onTap: () => onPicked(kind),
+          selected: lit(edit),
+          onTap: () => onPicked(edit),
         ),
     ],
   );

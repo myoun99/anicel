@@ -46,7 +46,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>().withKey(
           0,
           CanvasPoint(x: 1, y: 1),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
 
@@ -57,8 +57,8 @@ void main() {
       );
       expect(dragged.position.keyAt(0)!.value, CanvasPoint(x: 9, y: 3));
       expect(
-        dragged.position.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        dragged.position.keyAt(0)!.outgoing,
+        KeyExit.hold,
       );
 
       final keyedFresh = transformTrackWithPositionDragged(
@@ -68,8 +68,8 @@ void main() {
       );
       expect(keyedFresh.position.keyAt(4)!.value, CanvasPoint(x: 2, y: 2));
       expect(
-        keyedFresh.position.keyAt(4)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        keyedFresh.position.keyAt(4)!.outgoing,
+        KeySide.linear,
       );
     });
   });

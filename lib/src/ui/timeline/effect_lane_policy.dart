@@ -109,8 +109,7 @@ List<PropertyLaneRow> effectPropertyLanes(
           keyedFrames: parameter.track.keys.keys.toSet(),
           holdOutFrames: {
             for (final entry in parameter.track.keys.entries)
-              if (entry.value.interpolation == PropertyKeyInterpolation.hold)
-                entry.key,
+              if (entry.value.outgoing is KeyHold) entry.key,
           },
           keyNames: parameter.track.namedKeysByFrame,
           valueLabel: valueAt == null

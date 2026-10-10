@@ -262,8 +262,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      positionOf(s).keyAt(8)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      positionOf(s).keyAt(8)!.outgoing,
+      KeyExit.hold,
     );
   });
 
@@ -310,8 +310,8 @@ void main() {
     final key = positionOf(s).keyAt(8)!;
     expect(key.name, isNull, reason: 'the name stood down');
     expect(
-      key.interpolation,
-      PropertyKeyInterpolation.hold,
+      key.outgoing,
+      KeyExit.hold,
       reason: 'the type did not',
     );
   });
@@ -324,8 +324,8 @@ void main() {
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
     s.laneVerbs.setLaneKeyNamesForSelection('A');
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 8);
-    s.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    s.laneVerbs.setLaneKeySidesForSelection(
+      KeySidesEdit.hold,
     );
     await tester.pumpAndSettle();
 
@@ -342,13 +342,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      positionOf(s).keyAt(8)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      positionOf(s).keyAt(8)!.outgoing,
+      KeySide.linear,
       reason: "the joining key ADOPTS the name's type",
     );
     expect(
-      positionOf(s).keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      positionOf(s).keyAt(0)!.outgoing,
+      KeySide.linear,
       reason: 'and the holder keeps its own',
     );
   });

@@ -70,16 +70,17 @@ Set<int> transformKeyMixedUnion(TransformTrack track) =>
   final holds = <int>{};
   final mixed = <int>{};
   for (final frame in transformKeyFrameUnion(track)) {
-    final interpolations = [
+    final sides = [
       for (final lane in lanes)
-        if (lane.keyAt(frame) case final key?) key.interpolation,
+        if (lane.keyAt(frame) case final key?)
+          (incoming: key.incoming, outgoing: key.outgoing),
     ];
-    if (interpolations.isEmpty) {
+    if (sides.isEmpty) {
       continue;
     }
-    final first = interpolations.first;
-    if (interpolations.every((interpolation) => interpolation == first)) {
-      if (first == PropertyKeyInterpolation.hold) {
+    final first = sides.first;
+    if (sides.every((side) => side == first)) {
+      if (first.outgoing is KeyHold) {
         holds.add(frame);
       }
       continue;

@@ -41,7 +41,7 @@ void main() {
             .withKey(
               0,
               uniformScale(2.0),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             )
             .withKey(8, uniformScale(3.0)),
       );
@@ -54,8 +54,8 @@ void main() {
       expect(reset.scale.keys.keys.toList(), [0, 8]);
       expect(reset.scale.keyAt(0)!.value, uniformScale(1));
       expect(
-        reset.scale.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        reset.scale.keyAt(0)!.outgoing,
+        KeyExit.hold,
         reason: 'a reset changes the value, not how it is reached',
       );
       expect(

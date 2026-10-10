@@ -23,7 +23,7 @@ void main() {
     List<int> x, {
     List<int> turns = const [],
     Map<int, String> names = const {},
-    Map<int, PropertyKeyInterpolation> types = const {},
+    Map<int, KeyExit> types = const {},
   }) => CutCamera.fromTrack(
     TransformTrack.empty().copyWith(
       position: PropertyTrack(
@@ -31,7 +31,7 @@ void main() {
           for (final frame in x)
             frame: PropertyKey(
               CanvasPoint(x: frame.toDouble(), y: 0),
-              interpolation: types[frame] ?? PropertyKeyInterpolation.linear,
+              outgoing: types[frame] ?? KeySide.linear,
               name: names[frame],
             ),
         },
@@ -55,7 +55,7 @@ void main() {
           [0, 12, 23],
           turns: [0, 23],
           names: {23: 'OUT'},
-          types: {23: PropertyKeyInterpolation.hold},
+          types: {23: KeyExit.hold},
         ),
         lastFrame: 29,
         previousLastFrame: 23,
@@ -65,7 +65,7 @@ void main() {
       expect(moved.track.rotation.keys.keys, [0, 29]);
       final key = moved.track.position.keys[29]!;
       expect(key.name, 'OUT');
-      expect(key.interpolation, PropertyKeyInterpolation.hold);
+      expect(key.outgoing, KeyExit.hold);
     });
 
     test('🚨comes in with the end when the cut shrinks', () {

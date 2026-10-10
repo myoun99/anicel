@@ -2,7 +2,8 @@
 import 'canvas_size.dart';
 import 'property_track.dart';
 import 'text_cel_style.dart';
-import 'transform_track.dart' show lerpArgb, lerpBoolHold, lerpDouble;
+import 'transform_track.dart'
+    show argbKeySpace, boolHoldKeySpace, doubleKeySpace;
 
 /// An SE row's ON-CANVAS NAME TAG (R5b, §6-z15): the アフレコ label —
 /// white text in a red box — that names who is speaking over the picture,
@@ -178,22 +179,22 @@ class SeNameTag {
     double size(double fallback) => keys.fontSize.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpDouble,
+      space: doubleKeySpace,
     );
     double tracking(double fallback) => keys.letterSpacing.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpDouble,
+      space: doubleKeySpace,
     );
     bool weight(bool fallback) => keys.bold.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpBoolHold,
+      space: boolHoldKeySpace,
     );
     int ink(PropertyTrack<int> lane, int fallback) => lane.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpArgb,
+      space: argbKeySpace,
     );
     return SeNameTag(
       style: style.copyWith(
@@ -217,7 +218,7 @@ class SeNameTag {
       showLine: keys.showLine.resolveAt(
         frameIndex: frameIndex,
         orElse: () => showLine,
-        lerp: lerpBoolHold,
+        space: boolHoldKeySpace,
       ),
       track: keys,
     );

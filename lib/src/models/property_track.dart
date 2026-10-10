@@ -1,36 +1,30 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'key_side.dart';
 import 'non_negative_index_map.dart';
 
-/// AE-style temporal interpolation OUT of a key: how the segment between
-/// this key and the next one moves.
-enum PropertyKeyInterpolation {
-  /// Linear ramp to the next key (AE default).
-  linear,
+export 'key_side.dart';
 
-  /// Freeze on this key's value until the next key (AE hold keyframe) —
-  /// the staple of stepped 2D animation and the sheet's SLIDE notation.
-  hold;
-
-  String toJson() => name;
-
-  static PropertyKeyInterpolation fromJson(Object? json) =>
-      values.asNameMap()[json] ?? PropertyKeyInterpolation.linear;
-}
-
-/// One keyframe of a single transform property.
+/// One keyframe of a single property.
 class PropertyKey<T> {
   const PropertyKey(
     this.value, {
-    this.interpolation = PropertyKeyInterpolation.linear,
+    this.incoming = KeySide.linear,
+    this.outgoing = KeySide.linear,
     this.name,
   });
 
   final T value;
 
-  /// Interpolation of the segment LEAVING this key.
-  final PropertyKeyInterpolation interpolation;
+  /// How the segment ARRIVING at this key ends — AE's incoming temporal
+  /// interpolation.
+  final KeySide incoming;
+
+  /// How the segment LEAVING this key starts, or the hold that freezes it
+  /// — AE's outgoing (the staple of stepped 2D animation and the sheet's
+  /// SLIDE notation is that hold).
+  final KeyExit outgoing;
 
   /// The key's NAME, and with it a link: keys sharing a name inside one
   /// naming space hold the same value, exactly the way frame names mean
@@ -41,14 +35,20 @@ class PropertyKey<T> {
   /// DERIVED from the name; there is no identity to keep somewhere else.
   final String? name;
 
+  /// What a name hands every key it links: the number and both sides.
+  NamedKeyValue<T> get held =>
+      (value: value, incoming: incoming, outgoing: outgoing);
+
   PropertyKey<T> copyWith({
     T? value,
-    PropertyKeyInterpolation? interpolation,
+    KeySide? incoming,
+    KeyExit? outgoing,
     String? Function()? name,
   }) {
     return PropertyKey(
       value ?? this.value,
-      interpolation: interpolation ?? this.interpolation,
+      incoming: incoming ?? this.incoming,
+      outgoing: outgoing ?? this.outgoing,
       // A closure so a key can be UNnamed (the plain-nullable convention
       // cannot say "clear it").
       name: name == null ? this.name : name(),
@@ -58,17 +58,30 @@ class PropertyKey<T> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is PropertyKey<T> &&
-          other.value == value &&
-          other.interpolation == interpolation &&
-          other.name == name;
+      other is PropertyKey<T> && other.held == held && other.name == name;
 
   @override
-  int get hashCode => Object.hash(value, interpolation, name);
+  int get hashCode => Object.hash(value, incoming, outgoing, name);
 
   @override
   String toString() =>
-      'PropertyKey($value, $interpolation${name == null ? '' : ', $name'})';
+      'PropertyKey($value, $incoming → $outgoing'
+      '${name == null ? '' : ', $name'})';
+}
+
+/// What the values of a track are to its resolver: how to stand between
+/// two of them ([lerp]) and where a third falls on the way from one to the
+/// other ([inverseLerp] — the first 0, the second 1), which is how an auto
+/// side reads its neighbours. One object, so the two answers cannot come
+/// from different spaces.
+class KeyValueSpace<T> {
+  const KeyValueSpace({required this.lerp, required this.inverseLerp});
+
+  final T Function(T a, T b, double t) lerp;
+
+  /// Where [value] falls along the line from [a] to [b] — 0 when the two
+  /// are one value and there is no line to fall on.
+  final double Function(T a, T b, T value) inverseLerp;
 }
 
 /// A single animated property, keyed independently of every other property
@@ -77,9 +90,10 @@ class PropertyKey<T> {
 ///
 /// Resolution semantics ([resolveAt]): exact keys win; frames before the
 /// first key hold the first value and frames after the last hold the last;
-/// between two keys the PREVIOUS key's interpolation decides — linear
-/// ramps, hold freezes. An empty track means "no animation" — consumers
-/// supply their own default.
+/// between two keys the segment moves as the out side of the key it leaves
+/// and the in side of the key it reaches say ([segmentProgress]) — a hold
+/// freezes it. An empty track means "no animation" — consumers supply
+/// their own default.
 class PropertyTrack<T> {
   PropertyTrack({Map<int, PropertyKey<T>>? keys})
     : keys = nonNegativeIndexedCopy(
@@ -100,7 +114,8 @@ class PropertyTrack<T> {
   PropertyTrack<T> withKey(
     int frameIndex,
     T value, {
-    PropertyKeyInterpolation? interpolation,
+    KeySide? incoming,
+    KeyExit? outgoing,
   }) {
     final existing = keys[frameIndex];
     return PropertyTrack(
@@ -114,10 +129,8 @@ class PropertyTrack<T> {
           // 홀드가 리니어로 돌아와」 — the camera's pose facade writes
           // through here with no type to hand over, and the hold was gone
           // on every drag.
-          interpolation:
-              interpolation ??
-              existing?.interpolation ??
-              PropertyKeyInterpolation.linear,
+          incoming: incoming ?? existing?.incoming ?? KeySide.linear,
+          outgoing: outgoing ?? existing?.outgoing ?? KeySide.linear,
           name: existing?.name,
         ),
       },
@@ -179,7 +192,7 @@ class PropertyTrack<T> {
       withNamedKeys({name: held});
 
   /// [this] with every key whose name appears in [held] set to that name's
-  /// value AND type — the many-names form of [withNamedKey].
+  /// value AND sides — the many-names form of [withNamedKey].
   ///
   /// One transform write can move several named keys at once (a pose key
   /// touches position, scale and rotation together), so the link applies
@@ -194,12 +207,11 @@ class PropertyTrack<T> {
       final key = entry.value;
       final name = key.name;
       final linked = name == null ? null : held[name];
-      if (linked != null &&
-          (key.value != linked.value ||
-              key.interpolation != linked.interpolation)) {
+      if (linked != null && key.held != linked) {
         next[entry.key] = key.copyWith(
           value: linked.value,
-          interpolation: linked.interpolation,
+          incoming: linked.incoming,
+          outgoing: linked.outgoing,
         );
         changed = true;
         continue;
@@ -213,7 +225,7 @@ class PropertyTrack<T> {
   /// use the name.
   ///
   /// The link IS "same name, same key", so every match holds the same
-  /// number and the same type, and the first one speaks for all of them.
+  /// number and the same sides, and the first one speaks for all of them.
   /// This is the read a rename does before it commits: joining a name
   /// adopts what the name ALREADY holds, the way linking a frame adopts
   /// the drawing that is already there rather than overwriting it (user
@@ -247,7 +259,7 @@ class PropertyTrack<T> {
   /// Which KEY they land on, in order: [adopted] when the name already
   /// holds one somewhere (joining adopts, the frame-link rule), else the
   /// key at [preferredFrame] — the one you are standing on — else the
-  /// earliest key in range. Its TYPE rides across with its value.
+  /// earliest key in range. Its SIDES ride across with its value.
   ///
   /// ⛔This REVERSES "interpolation rides across untouched; adopting a
   /// value must not restyle the segment leaving a key" (mine, no user
@@ -276,13 +288,12 @@ class PropertyTrack<T> {
           : null;
       final landing = adopted ?? standing ?? keys[keyed.first]!;
       for (final frame in keyed) {
-        final key = next.keys[frame]!;
-        if (key.value != landing.value ||
-            key.interpolation != landing.interpolation) {
+        if (next.keys[frame]!.held != landing.held) {
           next = next.withKey(
             frame,
             landing.value,
-            interpolation: landing.interpolation,
+            incoming: landing.incoming,
+            outgoing: landing.outgoing,
           );
         }
       }
@@ -293,23 +304,25 @@ class PropertyTrack<T> {
     return next == this ? null : next;
   }
 
-  /// The keys inside [frames] set to [interpolation] — the TYPE half of the
+  /// The keys inside [frames] with [edit]'s sides — the TYPE half of the
   /// key window, in the range form the name half already has (F-17, 유저
   /// 2026-09-01: 「해당 키 공용 편집창 손봐서 이름변경이랑 오른쪽에 유니언
   /// 타입 변경 두개 존재하도록」). Values and names ride across untouched.
   /// Null when nothing here changed.
-  PropertyTrack<T>? withKeysInterpolated({
+  PropertyTrack<T>? withKeySides({
     required Set<int> frames,
-    required PropertyKeyInterpolation interpolation,
+    required KeySidesEdit edit,
   }) {
     Map<int, PropertyKey<T>>? next;
     for (final frame in frames) {
       final key = keys[frame];
-      if (key == null || key.interpolation == interpolation) {
+      if (key == null ||
+          edit.isTrueOf(incoming: key.incoming, outgoing: key.outgoing)) {
         continue;
       }
       (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = key.copyWith(
-        interpolation: interpolation,
+        incoming: edit.incoming,
+        outgoing: edit.outgoing,
       );
     }
     return next == null ? null : PropertyTrack(keys: next);
@@ -335,11 +348,11 @@ class PropertyTrack<T> {
   }
 
   /// Resolves the property value at [frameIndex]; [orElse] supplies the
-  /// empty-track default and [lerp] the component interpolation.
+  /// empty-track default and [space] what the values are made of.
   T resolveAt({
     required int frameIndex,
     required T Function() orElse,
-    required T Function(T a, T b, double t) lerp,
+    required KeyValueSpace<T> space,
   }) {
     if (isEmpty) {
       return orElse();
@@ -359,15 +372,35 @@ class PropertyTrack<T> {
       return keys[previousIndex]!.value;
     }
 
-    final previous = keys[previousIndex]!;
-    if (previous.interpolation == PropertyKeyInterpolation.hold) {
-      return previous.value;
+    final from = keys[previousIndex]!;
+    final to = keys[nextIndex]!;
+    // A hold freezes the segment on the key it leaves.
+    final leaving = from.outgoing;
+    if (leaving is! KeySide) {
+      return from.value;
     }
-    return lerp(
-      previous.value,
-      keys[nextIndex]!.value,
-      (frameIndex - previousIndex) / (nextIndex - previousIndex),
+    final span = nextIndex - previousIndex;
+    double along(T value) => space.inverseLerp(from.value, to.value, value);
+    final progress = segmentProgress(
+      (frameIndex - previousIndex) / span,
+      leaving: keyHandleOf(leaving, () {
+        final before = keys.lastKeyBefore(previousIndex);
+        return before == null
+            ? linearKeyHandle.speed
+            : autoSideSpeed(
+                (1 - along(keys[before]!.value)) * span / (nextIndex - before),
+              );
+      }),
+      arriving: keyHandleOf(to.incoming, () {
+        final after = keys.firstKeyAfter(nextIndex);
+        return after == null
+            ? linearKeyHandle.speed
+            : autoSideSpeed(
+                along(keys[after]!.value) * span / (after - previousIndex),
+              );
+      }),
     );
+    return space.lerp(from.value, to.value, progress);
   }
 
   List<Map<String, dynamic>> toJson(Object? Function(T value) encodeValue) => [
@@ -375,8 +408,10 @@ class PropertyTrack<T> {
       {
         'index': entry.key,
         'value': encodeValue(entry.value.value),
-        if (entry.value.interpolation != PropertyKeyInterpolation.linear)
-          'interpolation': entry.value.interpolation.toJson(),
+        if (entry.value.incoming != KeySide.linear)
+          'in': entry.value.incoming.toJson(),
+        if (entry.value.outgoing != KeySide.linear)
+          'out': entry.value.outgoing.toJson(),
         if (entry.value.name != null) 'name': entry.value.name,
       },
   ];
@@ -392,11 +427,16 @@ class PropertyTrack<T> {
       if (keys.containsKey(index)) {
         throw FormatException('Duplicate property key index: $index');
       }
+      final incoming = entry['in'];
+      final outgoing = entry['out'];
       keys[index] = PropertyKey(
         decodeValue(entry['value']),
-        interpolation: PropertyKeyInterpolation.fromJson(
-          entry['interpolation'],
-        ),
+        incoming: incoming == null
+            ? KeySide.linear
+            : KeySide.fromJson(incoming),
+        outgoing: outgoing == null
+            ? KeySide.linear
+            : KeyExit.fromJson(outgoing),
         name: entry['name'] as String?,
       );
     }
@@ -417,13 +457,13 @@ class PropertyTrack<T> {
   String toString() => 'PropertyTrack(keys: $keys)';
 }
 
-/// What a named key hands its link: the number AND the type of the segment
-/// leaving it.
+/// What a named key hands its link: the number AND both of its sides
+/// ([PropertyKey.held]).
 ///
 /// 🗣️유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 링크안되는건가?
-/// 싹다링크해야하는데」 — a name is ONE key seen in several places, so the
-/// two travel together or the link is only half there.
-typedef NamedKeyValue<T> = ({T value, PropertyKeyInterpolation interpolation});
+/// 싹다링크해야하는데」 — a name is ONE key seen in several places, so they
+/// travel together or the link is only half there.
+typedef NamedKeyValue<T> = ({T value, KeySide incoming, KeyExit outgoing});
 
 /// The named keys one track edit MOVED between [before] and [after] — what
 /// it hands the "same name, same key" link.
@@ -449,12 +489,10 @@ Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
       continue;
     }
     final old = before.keys[entry.key];
-    if (old == null ||
-        old.name != name ||
-        (old.value == key.value && old.interpolation == key.interpolation)) {
+    if (old == null || old.name != name || old.held == key.held) {
       continue;
     }
-    moved[name] = (value: key.value, interpolation: key.interpolation);
+    moved[name] = key.held;
   }
   return moved;
 }

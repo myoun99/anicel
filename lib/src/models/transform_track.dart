@@ -14,7 +14,7 @@ enum TransformPropertyId { anchorPoint, position, scale, rotation, opacity }
 
 /// A keyframed transform in the After Effects model: every property is its
 /// own independently keyed [PropertyTrack] (Position can carry three keys
-/// while Scale carries none), with linear or HOLD interpolation per key.
+/// while Scale carries none), each key easing its two sides ([KeySide]).
 ///
 /// The original pose-keyed API ([keyframes]/[keyframeAt]/[withKeyframe]/
 /// [withoutKeyframe]) survives as a FACADE: a pose key means synchronized
@@ -156,20 +156,20 @@ class TransformTrack {
     final scales = scale.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback().scale,
-      lerp: CanvasPoint.lerp,
+      space: pointKeySpace,
     );
     return TransformPose(
       center: position.resolveAt(
         frameIndex: frameIndex,
         orElse: () => fallback().center,
-        lerp: CanvasPoint.lerp,
+        space: pointKeySpace,
       ),
       scaleX: scales.x,
       scaleY: scales.y,
       rotationDegrees: rotation.resolveAt(
         frameIndex: frameIndex,
         orElse: () => fallback().rotationDegrees,
-        lerp: lerpDouble,
+        space: doubleKeySpace,
       ),
     );
   }
@@ -373,7 +373,7 @@ double resolveOpacityTrackAt(PropertyTrack<double> track, int frameIndex) {
     return 1;
   }
   return track
-      .resolveAt(frameIndex: frameIndex, orElse: () => 1, lerp: lerpDouble)
+      .resolveAt(frameIndex: frameIndex, orElse: () => 1, space: doubleKeySpace)
       .clamp(0.0, 1.0)
       .toDouble();
 }
@@ -390,11 +390,41 @@ CanvasPoint? resolveAnchorTrackAt(
   return track.resolveAt(
     frameIndex: frameIndex,
     orElse: () => CanvasPoint(x: 0, y: 0),
-    lerp: CanvasPoint.lerp,
+    space: pointKeySpace,
   );
 }
 
 double lerpDouble(double a, double b, double t) => a + (b - a) * t;
+
+/// [lerpDouble] undone: where [value] falls from [a] (0) to [b] (1).
+double inverseLerpDouble(double a, double b, double value) =>
+    a == b ? 0 : (value - a) / (b - a);
+
+/// A number's [KeyValueSpace].
+const KeyValueSpace<double> doubleKeySpace = KeyValueSpace(
+  lerp: lerpDouble,
+  inverseLerp: inverseLerpDouble,
+);
+
+/// A point's [KeyValueSpace] — Position's, Anchor Point's, and Scale's two
+/// numbers.
+const KeyValueSpace<CanvasPoint> pointKeySpace = KeyValueSpace(
+  lerp: CanvasPoint.lerp,
+  inverseLerp: CanvasPoint.inverseLerp,
+);
+
+/// An ARGB colour's [KeyValueSpace], channel by channel like [lerpArgb].
+const KeyValueSpace<int> argbKeySpace = KeyValueSpace(
+  lerp: lerpArgb,
+  inverseLerp: _inverseLerpArgb,
+);
+
+/// A boolean's [KeyValueSpace]: it never tweens ([lerpBoolHold]), so no
+/// value falls between two keys.
+const KeyValueSpace<bool> boolHoldKeySpace = KeyValueSpace(
+  lerp: lerpBoolHold,
+  inverseLerp: _nothingBetween,
+);
 
 /// ARGB interpolation, channel by channel (R5 #7 — the first colour lanes).
 ///
@@ -421,6 +451,22 @@ int lerpArgb(int a, int b, double t) {
 /// lane rides the ordinary [PropertyTrack.resolveAt] path — the value HOLDS
 /// until the next key, which is what AE's checkbox properties do.
 bool lerpBoolHold(bool a, bool b, double t) => a;
+
+/// [lerpArgb] undone: [value]'s channels projected onto the line from [a]
+/// to [b].
+double _inverseLerpArgb(int a, int b, int value) {
+  var along = 0.0;
+  var length = 0.0;
+  for (final shift in const [24, 16, 8, 0]) {
+    final from = (a >> shift) & 0xFF;
+    final step = ((b >> shift) & 0xFF) - from;
+    along += (((value >> shift) & 0xFF) - from) * step;
+    length += step * step;
+  }
+  return length == 0 ? 0 : along / length;
+}
+
+double _nothingBetween(bool a, bool b, bool value) => 0;
 
 Map<int, PropertyKey<T>> _poseComponentKeys<T>(
   Map<int, TransformPose>? keyframes,

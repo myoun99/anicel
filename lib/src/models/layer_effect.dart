@@ -1,7 +1,7 @@
 import '../core/collection_equality.dart';
 import 'property_track.dart';
 import 'string_id.dart';
-import 'transform_track.dart' show lerpDouble;
+import 'transform_track.dart' show doubleKeySpace;
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -309,7 +309,7 @@ class EffectParameter {
   double resolveAt(int frameIndex) => track.resolveAt(
     frameIndex: frameIndex,
     orElse: () => value,
-    lerp: lerpDouble,
+    space: doubleKeySpace,
   );
 
   EffectParameter copyWith({double? value, PropertyTrack<double>? track}) =>
@@ -591,18 +591,16 @@ class NamedEffectKeyChange {
     required this.effectId,
     required this.parameterId,
     required this.name,
-    required this.value,
-    required this.interpolation,
+    required this.held,
   });
 
   final EffectId effectId;
   final String parameterId;
   final String name;
-  final double value;
 
-  /// The type of the segment leaving the key — carried with the value
-  /// (F-84 실기, 유저 2026-09-12: 「싹다링크해야하는데」).
-  final PropertyKeyInterpolation interpolation;
+  /// The number and both sides, carried together (F-84 실기, 유저
+  /// 2026-09-12: 「싹다링크해야하는데」).
+  final NamedKeyValue<double> held;
 }
 
 /// The named keys whose VALUE differs between [before] and [after] — the
@@ -637,8 +635,7 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
             effectId: effect.id,
             parameterId: entry.key,
             name: moved.key,
-            value: moved.value.value,
-            interpolation: moved.value.interpolation,
+            held: moved.value,
           ),
         );
       }
@@ -710,10 +707,7 @@ List<LayerEffect> effectsWithNamedValues(
     if (parameter == null) {
       continue;
     }
-    final track = parameter.track.withNamedKey(change.name, (
-      value: change.value,
-      interpolation: change.interpolation,
-    ));
+    final track = parameter.track.withNamedKey(change.name, change.held);
     if (track == parameter.track) {
       continue;
     }

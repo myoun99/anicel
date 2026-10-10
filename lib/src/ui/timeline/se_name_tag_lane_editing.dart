@@ -56,11 +56,7 @@ SeNameTag? seNameTagWithLaneKeyToggled(
           ? lane.withoutKey(frameIndex)
           // Booleans hold by nature (a half-shown line is not a state), so
           // the key is authored HOLD rather than left to tween.
-          : lane.withKey(
-              frameIndex,
-              resolvedValue,
-              interpolation: PropertyKeyInterpolation.hold,
-            ),
+          : lane.withKey(frameIndex, resolvedValue, outgoing: KeyExit.hold),
     ),
   );
 
@@ -150,17 +146,7 @@ SeNameTag? seNameTagWithLaneValueEdited(
     if (lane.isEmpty) {
       return putStatic(value);
     }
-    return tag.copyWith(
-      track: putKey(
-        lane.withKey(
-          frameIndex,
-          value,
-          interpolation:
-              lane.keyAt(frameIndex)?.interpolation ??
-              PropertyKeyInterpolation.linear,
-        ),
-      ),
-    );
+    return tag.copyWith(track: putKey(lane.withKey(frameIndex, value)));
   }
 
   SeNameTag? argb(
@@ -181,17 +167,7 @@ SeNameTag? seNameTagWithLaneValueEdited(
     if (lane.isEmpty) {
       return putStatic(value);
     }
-    return tag.copyWith(
-      track: putKey(
-        lane.withKey(
-          frameIndex,
-          value,
-          interpolation:
-              lane.keyAt(frameIndex)?.interpolation ??
-              PropertyKeyInterpolation.linear,
-        ),
-      ),
-    );
+    return tag.copyWith(track: putKey(lane.withKey(frameIndex, value)));
   }
 
   SeNameTag? flag(
@@ -207,13 +183,7 @@ SeNameTag? seNameTagWithLaneValueEdited(
       return putStatic(value);
     }
     return tag.copyWith(
-      track: putKey(
-        lane.withKey(
-          frameIndex,
-          value,
-          interpolation: PropertyKeyInterpolation.hold,
-        ),
-      ),
+      track: putKey(lane.withKey(frameIndex, value, outgoing: KeyExit.hold)),
     );
   }
 

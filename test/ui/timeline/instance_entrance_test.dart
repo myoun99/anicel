@@ -354,8 +354,8 @@ void main() {
     ]) {
       expect(key!.name, 'Wall', reason: 'the header names every member');
       expect(
-        key.interpolation,
-        PropertyKeyInterpolation.hold,
+        key.outgoing,
+        KeyExit.hold,
         reason: 'and types every member (「일괄변경」)',
       );
     }
@@ -365,8 +365,8 @@ void main() {
     final undone = _cut(repository).camera.track.position.keyAt(2)!;
     expect(undone.name, isNull, reason: 'ONE step took the name…');
     expect(
-      undone.interpolation,
-      PropertyKeyInterpolation.linear,
+      undone.outgoing,
+      KeySide.linear,
       reason: '…and the type with it',
     );
   });

@@ -259,7 +259,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>().withKey(
           4,
           CanvasPoint(x: 1, y: 1),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
       await _pump(

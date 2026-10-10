@@ -11,7 +11,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show ReferenceRedraw;
 import '../../models/property_track.dart'
-    show PropertyKey, PropertyKeyInterpolation;
+    show KeySidesEdit, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -27,8 +27,8 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithLaneKeyRemoved,
+        effectsWithLaneKeySides,
         effectsWithLaneKeyToggled,
-        effectsWithLaneKeysInterpolated,
         effectsWithLaneRangeNamed,
         effectsWithLaneValueEdited,
         effectsWithRemoved;
@@ -42,8 +42,8 @@ import '../timeline/transform_lane_editing.dart'
         transformLaneKeyFrames,
         transformTrackWithGroupReset,
         transformTrackWithLaneKeyRemoved,
+        transformTrackWithLaneKeySides,
         transformTrackWithLaneKeyToggled,
-        transformTrackWithLaneKeysInterpolated,
         transformTrackWithLaneRangeNamed,
         transformTrackWithLaneValueEdited;
 import '../timeline/scale_lane_form.dart' show scaleLaneFormOf;
@@ -1234,12 +1234,18 @@ class LaneVerbs {
     return names.length == 1 ? names.first : null;
   }
 
-  /// The TYPE the range's keys agree on, or null when they disagree — what
-  /// the key window's type opens with, by the rule the name above follows
-  /// (and the ○ the group header draws where its members disagree).
-  PropertyKeyInterpolation? get laneKeyInterpolationForSelection {
-    final kinds = {for (final key in _laneRangeKeys()) key.interpolation};
-    return kinds.length == 1 ? kinds.first : null;
+  /// Whether every key the range covers already has [edit]'s sides — what
+  /// the key window's type opens with: a type is lit when picking it would
+  /// change nothing, so nothing is lit where the keys disagree, by the rule
+  /// the name above follows (and the ○ the group header draws where its
+  /// members disagree).
+  bool laneKeysHaveSides(KeySidesEdit edit) {
+    final keys = _laneRangeKeys();
+    return keys.isNotEmpty &&
+        keys.every(
+          (key) =>
+              edit.isTrueOf(incoming: key.incoming, outgoing: key.outgoing),
+        );
   }
 
   /// Names every key the LANE RANGE covers, on every lane it spans — the
@@ -1261,41 +1267,32 @@ class LaneVerbs {
   /// NOTHING was written — the caller asks ONCE for the whole range and
   /// then calls [linkLaneKeyNamesForSelection].
   ///
-  /// [interpolation], when given, lands on the same keys in the same undo
-  /// step — the key window's TYPE (F-17, 유저 2026-09-01: 「이름변경이랑
-  /// 오른쪽에 유니언 타입 변경 두개 존재하도록」).
-  bool setLaneKeyNamesForSelection(
-    String? name, {
-    PropertyKeyInterpolation? interpolation,
-  }) => _writeLaneKeysForSelection(
-    names: true,
-    name: name,
-    interpolation: interpolation,
-    adopt: false,
-  );
+  /// [sides], when given, lands on the same keys in the same undo step —
+  /// the key window's TYPE (F-17, 유저 2026-09-01: 「이름변경이랑 오른쪽에
+  /// 유니언 타입 변경 두개 존재하도록」).
+  bool setLaneKeyNamesForSelection(String? name, {KeySidesEdit? sides}) =>
+      _writeLaneKeysForSelection(
+        names: true,
+        name: name,
+        sides: sides,
+        adopt: false,
+      );
 
   /// Joins [name] across the range, ADOPTING the value it already holds —
   /// the answer to the "합칠까요?" [setLaneKeyNamesForSelection] raises.
-  void linkLaneKeyNamesForSelection(
-    String name, {
-    PropertyKeyInterpolation? interpolation,
-  }) => _writeLaneKeysForSelection(
-    names: true,
-    name: name,
-    interpolation: interpolation,
-    adopt: true,
-  );
+  void linkLaneKeyNamesForSelection(String name, {KeySidesEdit? sides}) =>
+      _writeLaneKeysForSelection(
+        names: true,
+        name: name,
+        sides: sides,
+        adopt: true,
+      );
 
   /// The TYPE alone, on the keys the range covers — what the key window
   /// still owes when its name stood down (a taken name the user chose not
   /// to join): the type was confirmed in the same window.
-  void setLaneKeyInterpolationsForSelection(
-    PropertyKeyInterpolation interpolation,
-  ) => _writeLaneKeysForSelection(
-    names: false,
-    interpolation: interpolation,
-    adopt: false,
-  );
+  void setLaneKeySidesForSelection(KeySidesEdit sides) =>
+      _writeLaneKeysForSelection(names: false, sides: sides, adopt: false);
 
   /// The shared body: walks the spanned lanes, and stops at the FIRST lane
   /// whose name is taken unless [adopt] says the user already agreed.
@@ -1306,7 +1303,7 @@ class LaneVerbs {
   bool _writeLaneKeysForSelection({
     required bool names,
     String? name,
-    PropertyKeyInterpolation? interpolation,
+    KeySidesEdit? sides,
     required bool adopt,
   }) {
     final lane = laneVerbRange;
@@ -1376,13 +1373,13 @@ class LaneVerbs {
                   adopted: read.adopted,
                   preferredFrame: preferred,
                 );
-          final typed = interpolation == null
+          final typed = sides == null
               ? null
-              : effectsWithLaneKeysInterpolated(
+              : effectsWithLaneKeySides(
                   named ?? effects,
                   laneId: laneId,
                   frames: read.frames,
-                  interpolation: interpolation,
+                  edit: sides,
                 );
           return typed ?? named;
         },
@@ -1434,13 +1431,13 @@ class LaneVerbs {
                 adoptFrom: read.holder,
                 preferredFrame: preferred,
               );
-        final typed = interpolation == null
+        final typed = sides == null
             ? null
-            : transformTrackWithLaneKeysInterpolated(
+            : transformTrackWithLaneKeySides(
                 named ?? value,
                 laneId: laneId,
                 frames: read.frames,
-                interpolation: interpolation,
+                edit: sides,
               );
         return typed ?? named;
       },

@@ -24,9 +24,9 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// what that unification was for.
 void main() {
   TransformTrack trackWith({
-    PropertyKeyInterpolation? position,
-    PropertyKeyInterpolation? scale,
-    PropertyKeyInterpolation? rotation,
+    KeyExit? position,
+    KeyExit? scale,
+    KeyExit? rotation,
   }) {
     var track = TransformTrack.empty();
     if (position != null) {
@@ -34,7 +34,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>().withKey(
           4,
           CanvasPoint(x: 1, y: 1),
-          interpolation: position,
+          outgoing: position,
         ),
       );
     }
@@ -43,7 +43,7 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(
           4,
           uniformScale(2),
-          interpolation: scale,
+          outgoing: scale,
         ),
       );
     }
@@ -52,15 +52,15 @@ void main() {
         rotation: PropertyTrack<double>().withKey(
           4,
           90,
-          interpolation: rotation,
+          outgoing: rotation,
         ),
       );
     }
     return track;
   }
 
-  const hold = PropertyKeyInterpolation.hold;
-  const smooth = PropertyKeyInterpolation.linear;
+  const hold = KeyExit.hold;
+  const smooth = KeySide.linear;
 
   group('the derivation', () {
     test('every member holds — the frame is HOLD, not mixed', () {

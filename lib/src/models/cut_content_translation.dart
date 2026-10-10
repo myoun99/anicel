@@ -43,10 +43,8 @@ PropertyTrack<CanvasPoint> _translatedPointTrack(
   return PropertyTrack(
     keys: {
       for (final entry in track.keys.entries)
-        entry.key: PropertyKey(
-          _translated(entry.value.value, dx, dy),
-          interpolation: entry.value.interpolation,
-          name: entry.value.name,
+        entry.key: entry.value.copyWith(
+          value: _translated(entry.value.value, dx, dy),
         ),
     },
   );

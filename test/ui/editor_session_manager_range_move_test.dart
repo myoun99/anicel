@@ -393,7 +393,7 @@ void main() {
             .withKey(
               2,
               CanvasPoint(x: 40, y: 30),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             )
             .withKeyName(2, 'in'),
         scale: PropertyTrack<CanvasPoint>.empty().withKey(6, uniformScale(2)),
@@ -469,7 +469,7 @@ void main() {
       final position = landed(s).position;
       expect(position.keys.keys, [4]);
       expect(position.keyAt(4)!.value, CanvasPoint(x: 40, y: 30));
-      expect(position.keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(position.keyAt(4)!.outgoing, KeyExit.hold);
       expect(position.keyAt(4)!.name, 'in');
       expect(
         landed(s).scale.keys.keys,

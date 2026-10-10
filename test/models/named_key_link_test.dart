@@ -33,17 +33,18 @@ void main() {
         10: (3, 'A'),
       }).withNamedKey('A', (
         value: 9,
-        interpolation: PropertyKeyInterpolation.hold,
+        incoming: KeySide.linear,
+        outgoing: KeyExit.hold,
       ));
 
       expect(result.keyAt(0)!.value, 9);
-      expect(result.keyAt(0)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(result.keyAt(0)!.outgoing, KeyExit.hold);
       expect(result.keyAt(10)!.value, 9);
-      expect(result.keyAt(10)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(result.keyAt(10)!.outgoing, KeyExit.hold);
       expect(result.keyAt(5)!.value, 2, reason: 'unnamed keys are untouched');
       expect(
-        result.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        result.keyAt(5)!.outgoing,
+        KeySide.linear,
         reason: 'and so is their type',
       );
     });
@@ -52,24 +53,24 @@ void main() {
         'canvas write that turned a hold linear (유저 2026-09-12)', () {
       final held = track({
         4: (1, 'A'),
-      }).withKeysInterpolated(frames: {4}, interpolation: PropertyKeyInterpolation.hold)!;
+      }).withKeySides(frames: {4}, edit: KeySidesEdit.hold)!;
 
       final moved = held.withKey(4, 9);
 
       expect(moved.keyAt(4)!.value, 9);
-      expect(moved.keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(moved.keyAt(4)!.outgoing, KeyExit.hold);
       expect(moved.keyAt(4)!.name, 'A');
     });
 
     test('a TYPE-only change is a change the link carries', () {
       final before = track({4: (1, 'A')});
-      final after = before.withKeysInterpolated(
+      final after = before.withKeySides(
         frames: {4},
-        interpolation: PropertyKeyInterpolation.hold,
+        edit: KeySidesEdit.hold,
       )!;
 
       expect(movedNamedKeys(before, after), {
-        'A': (value: 1, interpolation: PropertyKeyInterpolation.hold),
+        'A': (value: 1, incoming: KeySide.linear, outgoing: KeyExit.hold),
       });
     });
 
@@ -77,7 +78,7 @@ void main() {
       final before = track({4: (1, null)});
       final after = track({
         4: (1, 'A'),
-      }).withKeysInterpolated(frames: {4}, interpolation: PropertyKeyInterpolation.hold)!;
+      }).withKeySides(frames: {4}, edit: KeySidesEdit.hold)!;
 
       expect(
         movedNamedKeys(before, after),
@@ -122,7 +123,7 @@ void main() {
 
       expect(changes, hasLength(1));
       expect(changes.single.name, 'A');
-      expect(changes.single.value, 5);
+      expect(changes.single.held.value, 5);
       expect(changes.single.parameterId, radiusId);
     });
 
@@ -195,16 +196,15 @@ void main() {
           effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
-          value: 9,
-          interpolation: PropertyKeyInterpolation.hold,
+          held: (value: 9, incoming: KeySide.linear, outgoing: KeyExit.hold),
         ),
       ]);
 
       final radius = result.single.parameters[radiusId]!.track;
       expect(radius.keyAt(0)!.value, 9);
       expect(
-        radius.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        radius.keyAt(0)!.outgoing,
+        KeyExit.hold,
         reason: 'the type travels with the number (유저 2026-09-12)',
       );
       expect(radius.keyAt(4)!.value, 2, reason: 'a different name is a '
@@ -220,8 +220,7 @@ void main() {
           effectId: const EffectId('other'),
           parameterId: radiusId,
           name: 'A',
-          value: 9,
-          interpolation: PropertyKeyInterpolation.linear,
+          held: (value: 9, incoming: KeySide.linear, outgoing: KeySide.linear),
         ),
       ]);
 
@@ -240,8 +239,7 @@ void main() {
           effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
-          value: 9,
-          interpolation: PropertyKeyInterpolation.linear,
+          held: (value: 9, incoming: KeySide.linear, outgoing: KeySide.linear),
         ),
       ]);
 
@@ -272,7 +270,7 @@ void main() {
       );
 
       expect(changes.rotation, {
-        'A': (value: 45.0, interpolation: PropertyKeyInterpolation.linear),
+        'A': (value: 45.0, incoming: KeySide.linear, outgoing: KeySide.linear),
       });
       expect(changes.position, isEmpty);
     });
@@ -291,22 +289,22 @@ void main() {
         lanes(rotation: track({0: (10, 'A'), 5: (20, null), 9: (30, 'A')})),
         const TransformNamedChanges(
           rotation: {
-            'A': (value: 45, interpolation: PropertyKeyInterpolation.hold),
+            'A': (value: 45, incoming: KeySide.linear, outgoing: KeyExit.hold),
           },
         ),
       );
 
       expect(result.rotation.keyAt(0)!.value, 45);
       expect(
-        result.rotation.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        result.rotation.keyAt(0)!.outgoing,
+        KeyExit.hold,
         reason: 'the type is part of the link (유저 2026-09-12)',
       );
       expect(result.rotation.keyAt(9)!.value, 45);
       expect(result.rotation.keyAt(5)!.value, 20, reason: 'unnamed is free');
       expect(
-        result.rotation.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        result.rotation.keyAt(5)!.outgoing,
+        KeySide.linear,
       );
     });
 
@@ -320,7 +318,11 @@ void main() {
         ),
         const TransformNamedChanges(
           rotation: {
-            'A': (value: 45, interpolation: PropertyKeyInterpolation.linear),
+            'A': (
+              value: 45,
+              incoming: KeySide.linear,
+              outgoing: KeySide.linear,
+            ),
           },
         ),
       );
@@ -367,7 +369,7 @@ void main() {
         name: 'A',
         adopted: const PropertyKey(
           9,
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
         preferredFrame: 5,
       );
@@ -375,8 +377,8 @@ void main() {
       expect(result!.keyAt(0)!.value, 9);
       expect(result.keyAt(5)!.value, 9);
       expect(
-        result.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        result.keyAt(5)!.outgoing,
+        KeyExit.hold,
         reason: "the name's TYPE comes with its number (유저 2026-09-12: "
             '「싹다링크해야하는데」)',
       );
@@ -412,7 +414,7 @@ void main() {
           0: const PropertyKey(1),
           5: const PropertyKey(
             2,
-            interpolation: PropertyKeyInterpolation.hold,
+            outgoing: KeyExit.hold,
           ),
         },
       );
@@ -421,15 +423,15 @@ void main() {
 
       expect(result!.keyAt(5)!.value, 1, reason: 'the earliest key speaks');
       expect(
-        result.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        result.keyAt(5)!.outgoing,
+        KeySide.linear,
         reason:
             "⛔REVERSES 'interpolation survives the collapse' (mine, no user "
             'behind it). 유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 '
             '링크안되는건가? 싹다링크해야하는데」 — the keys a name gathers '
             'hold one value AND one type',
       );
-      expect(result.keyAt(0)!.interpolation, PropertyKeyInterpolation.linear);
+      expect(result.keyAt(0)!.outgoing, KeySide.linear);
     });
 
     test('keyForName can EXCLUDE the keys that are joining', () {

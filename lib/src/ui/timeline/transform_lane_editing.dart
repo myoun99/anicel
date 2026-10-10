@@ -154,27 +154,26 @@ TransformTrack? transformTrackWithLaneRangeNamed(
   return null;
 }
 
-/// Sets lane [laneId]'s keys inside [frames] to [interpolation] — the key
+/// Gives lane [laneId]'s keys inside [frames] [edit]'s sides — the key
 /// window's TYPE (F-17), in the range form every key verb takes. Null when
 /// nothing changed.
 ///
 /// It replaced a per-key Toggle Hold that only the camera's own key window
 /// ever called. That window is gone, and the common one says WHICH type
 /// rather than flipping whichever it was.
-TransformTrack? transformTrackWithLaneKeysInterpolated(
+TransformTrack? transformTrackWithLaneKeySides(
   TransformTrack track, {
   required String laneId,
   required Set<int> frames,
-  required PropertyKeyInterpolation interpolation,
+  required KeySidesEdit edit,
 }) => transformLaneLens(laneId)?.update(
   track,
-  <U>(PropertyTrack<U> lane) =>
-      lane.withKeysInterpolated(frames: frames, interpolation: interpolation),
+  <U>(PropertyTrack<U> lane) => lane.withKeySides(frames: frames, edit: edit),
 );
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
-/// playhead), preserving an existing key's interpolation. Accepted input
+/// playhead), preserving an existing key's sides. Accepted input
 /// per lane (AE display units): position/anchor `x, y`; scale as the row's
 /// [scaleForm] reads it — a camera's one zoom `150%`, a layer's two
 /// `150, 80%`, the one left as shown carried when [scaleLinked]
@@ -222,7 +221,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         current: track.scale.resolveAt(
           frameIndex: frameIndex,
           orElse: () => uniformScale(1),
-          lerp: CanvasPoint.lerp,
+          space: pointKeySpace,
         ),
         linked: scaleLinked,
       );

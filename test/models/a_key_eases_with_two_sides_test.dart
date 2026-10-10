@@ -1,0 +1,263 @@
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart' show doubleKeySpace;
+import 'package:flutter_test/flutter_test.dart';
+
+/// I-89 (유저 2026-10-10: 「키 양쪽. 업계 표준인 전문 툴대로 하고싶어. 그게
+/// ae고」): a key eases the segment arriving at it with its in side and the
+/// one leaving it with its out side — After Effects' temporal
+/// interpolation, the segment's curve the two sides' handles together.
+void main() {
+  double at(PropertyTrack<double> track, int frame) => track.resolveAt(
+    frameIndex: frame,
+    orElse: () => -1,
+    space: doubleKeySpace,
+  );
+
+  double progress(KeyHandle leaving, KeyHandle arriving, double x) =>
+      segmentProgress(x, leaving: leaving, arriving: arriving);
+
+  const easyEase = (influence: 1 / 3, speed: 0.0);
+
+  group('the segment curve', () {
+    test('two straight ramps are time itself', () {
+      for (final x in [0.0, 0.1, 0.25, 0.5, 0.8, 1.0]) {
+        expect(
+          progress(linearKeyHandle, linearKeyHandle, x),
+          closeTo(x, 1e-9),
+        );
+      }
+    });
+
+    test('an Easy Ease on both sides is slow at both ends and even in the '
+        'middle', () {
+      expect(progress(easyEase, easyEase, 0.5), closeTo(0.5, 1e-9));
+      expect(
+        progress(easyEase, easyEase, 0.2) + progress(easyEase, easyEase, 0.8),
+        closeTo(1, 1e-9),
+        reason: 'the same ease both ways is symmetric',
+      );
+      expect(progress(easyEase, easyEase, 0.1), lessThan(0.1 / 2));
+    });
+
+    test('easing out of a key leaves it slowly, easing in reaches it '
+        'slowly', () {
+      expect(progress(easyEase, linearKeyHandle, 0.1), lessThan(0.1));
+      expect(progress(linearKeyHandle, easyEase, 0.9), greaterThan(0.9));
+    });
+
+    test('a speed above the average starts faster than the ramp', () {
+      const quick = (influence: 1 / 3, speed: 2.0);
+      expect(progress(quick, linearKeyHandle, 0.05), greaterThan(0.05));
+    });
+
+    test('time runs forward even where the two influences overlap', () {
+      const long = (influence: 1.0, speed: 0.0);
+      var last = 0.0;
+      for (var step = 0; step <= 200; step += 1) {
+        final y = progress(long, long, step / 200);
+        expect(y, greaterThanOrEqualTo(last - 1e-12));
+        last = y;
+      }
+      expect(progress(long, long, 0.5), closeTo(0.5, 1e-9));
+    });
+  });
+
+  group('the resolver', () {
+    test('a key easing in arrives slowly', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(10, 100, incoming: const EaseSide());
+      expect(at(track, 5), greaterThan(50));
+      expect(at(track, 9), greaterThan(90));
+      expect(at(track, 10), 100);
+    });
+
+    test('a key easing out leaves slowly', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0, outgoing: const EaseSide())
+          .withKey(10, 100);
+      expect(at(track, 1), lessThan(10));
+      expect(at(track, 5), lessThan(50));
+    });
+
+    test('a hold out of a key freezes whatever the next key eases in '
+        'with', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0, outgoing: KeyExit.hold)
+          .withKey(10, 100, incoming: const EaseSide());
+      expect(at(track, 9), 0);
+      expect(at(track, 10), 100);
+    });
+
+    test('an auto key at a peak stops level there', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(
+            10,
+            100,
+            incoming: KeySide.auto,
+            outgoing: KeySide.auto,
+          )
+          .withKey(20, 0);
+      expect(at(track, 9), closeTo(at(track, 11), 1e-9));
+      expect(at(track, 9), greaterThan(90), reason: 'level, not a corner');
+      expect(at(track, 10), 100);
+    });
+
+    test('an auto key on an even run moves like the ramp through it', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(
+            10,
+            100,
+            incoming: KeySide.auto,
+            outgoing: KeySide.auto,
+          )
+          .withKey(20, 200);
+      for (final frame in [3, 7, 9, 11, 14, 18]) {
+        expect(at(track, frame), closeTo(frame * 10.0, 1e-6));
+      }
+    });
+
+    test('an auto key never throws the curve past the values it joins', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(10, 10, incoming: KeySide.auto)
+          .withKey(20, 1000);
+      for (var frame = 0; frame <= 10; frame += 1) {
+        expect(at(track, frame), inInclusiveRange(0, 10));
+      }
+    });
+
+    test('an auto side at the first or last key is a straight one', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 0, outgoing: KeySide.auto)
+          .withKey(10, 100, incoming: KeySide.auto);
+      expect(at(track, 4), closeTo(40, 1e-9));
+    });
+  });
+
+  group('the file', () {
+    List<Map<String, dynamic>> json(PropertyTrack<double> track) =>
+        track.toJson((value) => value);
+
+    PropertyTrack<double> read(List<Object?> json) => PropertyTrack.fromJson(
+      json,
+      (value) => (value! as num).toDouble(),
+    );
+
+    test('each side is written only where it is not straight', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 1)
+          .withKey(4, 2, incoming: KeySide.auto, outgoing: KeyExit.hold)
+          .withKey(
+            8,
+            3,
+            outgoing: const EaseSide(influence: 0.75, speed: 0.5),
+          );
+      final written = json(track);
+      expect(written[0].containsKey('in'), isFalse);
+      expect(written[0].containsKey('out'), isFalse);
+      expect(written[1]['in'], 'auto');
+      expect(written[1]['out'], 'hold');
+      expect(written[2]['out'], {
+        'kind': 'ease',
+        'influence': 0.75,
+        'speed': 0.5,
+      });
+      expect(read(written), track);
+    });
+
+    test('an in side that holds is a file this build cannot read', () {
+      expect(
+        () => read([
+          {'index': 0, 'value': 1, 'in': 'hold'},
+        ]),
+        throwsFormatException,
+      );
+    });
+
+    test('a side it has no word for, or an ease out of range, is refused', () {
+      expect(
+        () => read([
+          {'index': 0, 'value': 1, 'out': 'bounce'},
+        ]),
+        throwsFormatException,
+      );
+      expect(
+        () => read([
+          {
+            'index': 0,
+            'value': 1,
+            'out': {'kind': 'ease', 'influence': 0, 'speed': 0},
+          },
+        ]),
+        throwsFormatException,
+      );
+    });
+  });
+
+  group('writing sides', () {
+    test('a value edit keeps both sides', () {
+      final track = PropertyTrack<double>()
+          .withKey(4, 1, incoming: KeySide.auto, outgoing: KeyExit.hold)
+          .withKey(4, 2);
+      expect(track.keyAt(4)!.incoming, KeySide.auto);
+      expect(track.keyAt(4)!.outgoing, KeyExit.hold);
+    });
+
+    test('an edit writes the side it gives and leaves the other', () {
+      final track = PropertyTrack<double>()
+          .withKey(4, 1, outgoing: KeyExit.hold)
+          .withKeySides(
+            frames: {4},
+            edit: const KeySidesEdit(incoming: EaseSide()),
+          )!;
+      expect(track.keyAt(4)!.incoming, const EaseSide());
+      expect(track.keyAt(4)!.outgoing, KeyExit.hold);
+    });
+
+    test('a choice is lit when it would change nothing', () {
+      expect(
+        KeySidesEdit.linear.isTrueOf(
+          incoming: KeySide.linear,
+          outgoing: KeySide.linear,
+        ),
+        isTrue,
+      );
+      expect(
+        KeySidesEdit.linear.isTrueOf(
+          incoming: const EaseSide(),
+          outgoing: KeySide.linear,
+        ),
+        isFalse,
+      );
+      expect(
+        KeySidesEdit.hold.isTrueOf(
+          incoming: const EaseSide(),
+          outgoing: KeyExit.hold,
+        ),
+        isTrue,
+        reason: 'a hold says nothing about the side arriving',
+      );
+    });
+
+    test('a name carries both sides to every key it links', () {
+      final track = PropertyTrack<double>()
+          .withKey(0, 1)
+          .withKey(8, 1)
+          .withKeyName(0, 'A')
+          .withKeyName(8, 'A')
+          .withNamedKey('A', (
+            value: 5,
+            incoming: const EaseSide(speed: 0.5),
+            outgoing: KeySide.auto,
+          ));
+      for (final frame in [0, 8]) {
+        expect(track.keyAt(frame)!.value, 5);
+        expect(track.keyAt(frame)!.incoming, const EaseSide(speed: 0.5));
+        expect(track.keyAt(frame)!.outgoing, KeySide.auto);
+      }
+    });
+  });
+}

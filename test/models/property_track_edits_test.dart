@@ -68,7 +68,7 @@ void main() {
         'outside the range stays', () {
       const held = PropertyKey(
         1.0,
-        interpolation: PropertyKeyInterpolation.hold,
+        outgoing: KeyExit.hold,
         name: 'in',
       );
       final track = _track({2: held, 9: const PropertyKey(3.0)});
@@ -79,7 +79,7 @@ void main() {
       )!;
       expect(shifted.keys.keys.toSet(), {6, 9});
       expect(shifted.keyAt(6)!.value, 1.0);
-      expect(shifted.keyAt(6)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(shifted.keyAt(6)!.outgoing, KeyExit.hold);
       expect(shifted.keyAt(6)!.name, 'in');
       expect(shifted.keyAt(9)!.value, 3.0);
     });
@@ -94,17 +94,22 @@ void main() {
 
     test('withNamedKey rewrites every key of that name whose value or type '
         'differs and leaves the rest', () {
-      const linear = PropertyKeyInterpolation.linear;
+      const linear = KeySide.linear;
       final next = track.withNamedKey('a', (
         value: 2.0,
-        interpolation: linear,
+        incoming: linear,
+        outgoing: linear,
       ));
       expect(next.keys[0]!.value, 2.0, reason: 'was 1.0, changes');
       expect(next.keys[8]!.value, 2.0, reason: 'already 2.0, untouched');
       expect(next.keys[4]!.value, 2.0, reason: 'another name, untouched');
       expect(
         identical(
-          track.withNamedKey('b', (value: 2.0, interpolation: linear)),
+          track.withNamedKey('b', (
+            value: 2.0,
+            incoming: linear,
+            outgoing: linear,
+          )),
           track,
         ),
         isTrue,
@@ -112,17 +117,19 @@ void main() {
     });
 
     test('withNamedKeys applies each name once, changed keys only', () {
-      const linear = PropertyKeyInterpolation.linear;
+      const linear = KeySide.linear;
       final next = track.withNamedKeys({
-        'a': (value: 5.0, interpolation: linear),
-        'zz': (value: 9.0, interpolation: linear),
+        'a': (value: 5.0, incoming: linear, outgoing: linear),
+        'zz': (value: 9.0, incoming: linear, outgoing: linear),
       });
       expect(next.keys[0]!.value, 5.0);
       expect(next.keys[8]!.value, 5.0);
       expect(next.keys[4]!.value, 2.0);
       expect(
         identical(
-          track.withNamedKeys({'b': (value: 2.0, interpolation: linear)}),
+          track.withNamedKeys({
+            'b': (value: 2.0, incoming: linear, outgoing: linear),
+          }),
           track,
         ),
         isTrue,

@@ -76,7 +76,7 @@ import '../../models/property_track.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
-import '../../models/transform_track.dart' show lerpDouble;
+import '../../models/transform_track.dart' show doubleKeySpace;
 import '../camera_pose_resolver.dart' show defaultCameraPoseFor;
 import '../editing/default_cut_helpers.dart';
 import 'camera_track.dart';
@@ -1441,7 +1441,7 @@ final class _CutCameras {
     double at(PropertyTrack<double> keys, double resting) => keys.resolveAt(
       frameIndex: frame,
       orElse: () => resting,
-      lerp: lerpDouble,
+      space: doubleKeySpace,
     );
     final keyed = move.first;
     final scale = at(keyed.scale, rest.scaleX);
