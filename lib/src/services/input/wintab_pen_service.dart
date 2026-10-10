@@ -99,6 +99,16 @@ class WintabPenService {
     apply(AppInput.settings.value);
   }
 
+  /// The driver's stream opens under [TabletService.wintab] and under
+  /// nothing else.
+  ///
+  /// 🗣️F-331-Q1 (유저 2026-10-10, 「추천대로」): with Windows Ink off the OS
+  /// hands the pen over as a mouse, with no pressure — and under
+  /// [TabletService.standard] it DRAWS at pressure 1, as every other tool
+  /// draws. The pressure is one switch away, here. ⛔Do not open this stream
+  /// under standard to read the pressure there: the switch would stop
+  /// meaning what it says, and one way of opening it cut the driver's cursor
+  /// once (08-06, since fixed).
   void apply(AppInputSettings settings) {
     if (settings.tabletService == TabletService.wintab) {
       start();
