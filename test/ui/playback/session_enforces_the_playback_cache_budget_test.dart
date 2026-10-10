@@ -176,9 +176,15 @@ void main() {
       line.enforcePlaybackCacheBudget();
       expect(held(), 2 * fullImageBytes, reason: 'premise');
       expect(held(), lessThanOrEqualTo(budget), reason: 'all of it fits');
+      expect(line.bytes, budget, reason: '⛔premise: nothing lent yet');
 
       line.lend(lent);
       expect(line.lentBytes, lent);
+      expect(
+        line.bytes,
+        budget - lent,
+        reason: 'the warm\'s room is the line less what is lent',
+      );
       expect(held(), lessThanOrEqualTo(budget - lent), reason: 'at once');
 
       // The warm builds the evicted frame again and enforces, as it does

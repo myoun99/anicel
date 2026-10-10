@@ -114,6 +114,7 @@ void main() {
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
     StackRun? run,
+    void Function(Object cut, int bytes)? onBufferBytes,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
     bool pasteboardNone = false,
@@ -138,6 +139,7 @@ void main() {
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             seNameTagsOf: seNameTagsOf,
             run: run,
+            onBufferBytes: onBufferBytes,
             pasteboardArgb: 0xff123456,
             backdropNone: backdropNone,
             pasteboardNone: pasteboardNone,
@@ -599,6 +601,30 @@ void main() {
         reason: 'the arriving cut, alone now in the first slot, keeps its own '
             '— not the stack the leaving cut held its pictures in',
       );
+    });
+
+    /// The census adds the buffers up by name: two cuts telling under one
+    /// would count whichever told last, and the one that went first would
+    /// take the other's bytes off with it.
+    testWidgets('each cut tells its own buffer\'s bytes under its own name', (
+      tester,
+    ) async {
+      final told = <Object, int>{};
+      await pumpView(
+        tester,
+        frame: ValueNotifier<int?>(3),
+        layout: buildStoryboardTimelineLayout(olProject()),
+        spansOf: spans,
+        onBufferBytes: (cut, bytes) => told[cut] = bytes,
+      );
+      final stacks = tester
+          .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+          .toList();
+      expect(stacks, hasLength(2), reason: '⛔premise: the O.L');
+      for (final (i, stack) in stacks.indexed) {
+        stack.onBufferBytes!(100 + i);
+      }
+      expect(told, {const CutId('cut-a'): 100, const CutId('cut-b'): 101});
     });
 
     testWidgets('lays the leaving cut down OPAQUE and the arriving one at the '
