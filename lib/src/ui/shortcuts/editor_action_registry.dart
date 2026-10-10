@@ -1003,12 +1003,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️I-88 (유저 2026-10-09): 「키보드유저용 캔버스 쉽게 회전하려고 지금
   // 스페이스바는 이동이니까 스페이스바+컨트롤상태에선 회전으로 작동하도록」 —
   // held as the pan is, and a primary drag turns the view about its middle.
+  // ↩️I-88-Q1 (유저 2026-10-10): 「Anicel 배치도 Shift+Space」 — 「굳이
+  // 컨트롤+스페이스 일 필요는없음. 통일해서 작동만하면됨. 클튜 키라면
+  // 검증된거란거니 좋네」. Ctrl is ⌘ on a Mac or an iPad, and ⌘+Space is
+  // Spotlight there, so Ctrl+Space never reached the app; Clip Studio's
+  // Shift+Space does, on every device.
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateHold,
     label: 'Rotate (hold)',
     shelf: ShortcutShelf.view,
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.space, control: true),
+      SingleActivator(LogicalKeyboardKey.space, shift: true),
     ],
     hold: true,
   ),

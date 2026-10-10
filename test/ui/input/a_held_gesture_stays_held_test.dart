@@ -286,7 +286,7 @@ void main() {
     testWidgets('🚨the 「회전」 key and a ${kind.name} press in the SAME frame '
         'turn the view over a cel — nothing is drawn', (tester) async {
       final area = await pumpHome(tester);
-      // Ctrl+Space is the registry's key for it.
+      // Shift+Space is the registry's key for it (I-88-Q1).
       await useAnicelKeys(tester);
       session.createDrawingAtCurrentFrame();
       await tester.pumpAndSettle();
@@ -294,7 +294,7 @@ void main() {
       final before = live()?.rotationDegrees ?? 0;
       final steps = session.historyManager.undoCount;
 
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
       // ⛔No pump here: that is the race.
       final hand = await tester.startGesture(
@@ -308,7 +308,7 @@ void main() {
 
       await hand.up();
       await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       await tester.pumpAndSettle();
       expect(
         session.historyManager.undoCount,

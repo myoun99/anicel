@@ -324,14 +324,15 @@ void main() {
       expect(keysOn(ShortcutPreset.clipStudio), ('Shift+I', 'Ctrl+Shift+N'));
     });
 
-    test('the view\'s turn is held on Ctrl+Space, on Clip Studio\'s own '
-        'Shift+Space there, and on anicel\'s under TVPaint — whose turn is '
-        'Ctrl+Alt held, no key (I-88)', () {
+    test('the view\'s turn is held on Shift+Space under every preset — Clip '
+        'Studio\'s own key, which anicel took (I-88-Q1 「Anicel 배치도 '
+        'Shift+Space」), and anicel\'s under TVPaint, whose turn is Ctrl+Alt '
+        'held, no key (I-88)', () {
       String turn(ShortcutPreset preset) =>
           keysOf(preset, EditorActionIds.canvasRotateHold).join(' ');
-      expect(turn(ShortcutPreset.anicel), 'Ctrl+Space');
+      expect(turn(ShortcutPreset.anicel), 'Shift+Space');
       expect(turn(ShortcutPreset.clipStudio), 'Shift+Space');
-      expect(turn(ShortcutPreset.tvpaint), 'Ctrl+Space');
+      expect(turn(ShortcutPreset.tvpaint), 'Shift+Space');
     });
 
     for (final preset in ShortcutPreset.values) {

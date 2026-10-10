@@ -72,8 +72,9 @@ final class EditorKeyHolds {
   /// The presses holding the view, by key, the latest last — kept to be
   /// asked again as the modifiers change under them. 🗣️I-88 (유저
   /// 2026-10-09): 「스페이스바+컨트롤상태에선 회전으로 작동하도록」 — a STATE of
-  /// the keys, not an order: Space then Ctrl turns, and Ctrl let go pans
-  /// again.
+  /// the keys, not an order: Space then the turn's modifier turns, and that
+  /// modifier let go pans again. ↩️I-88-Q1 moved the turn to Shift+Space;
+  /// the law did not move with it.
   final Map<LogicalKeyboardKey, KeyEvent> _viewPresses = {};
 
   /// Eyedropper keys that came down mid-stroke: held, and in force the

@@ -79,44 +79,46 @@ void main() {
   });
 
   // 🗣️I-88 (유저 2026-10-09): 「지금 스페이스바는 이동이니까
-  // 스페이스바+컨트롤상태에선 회전으로 작동하도록」.
-  testWidgets('Ctrl+Space held turns the view — taken whole, and letting go '
+  // 스페이스바+컨트롤상태에선 회전으로 작동하도록」 — and ↩️I-88-Q1
+  // (2026-10-10): 「Anicel 배치도 Shift+Space」.
+  testWidgets('Shift+Space held turns the view — taken whole, and letting go '
       'lets go', (tester) async {
     await pumpRoad(tester);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     expect(await tester.sendKeyDownEvent(LogicalKeyboardKey.space), isTrue);
     expect(CanvasViewHold.held.value, ViewHold.turn);
 
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(CanvasViewHold.held.value, isNull);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
-  testWidgets('the pan and the turn are a STATE of the keys: Ctrl pressed '
+  testWidgets('the pan and the turn are a STATE of the keys: Shift pressed '
       'under a held Space turns, and let go pans again', (tester) async {
     await pumpRoad(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
     expect(CanvasViewHold.held.value, ViewHold.pan);
 
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     expect(CanvasViewHold.held.value, ViewHold.turn);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     expect(CanvasViewHold.held.value, ViewHold.pan);
 
-    // A modifier that makes the press neither keeps the hold as it is.
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    // A modifier that makes the press neither keeps the hold as it is —
+    // Ctrl among them, the turn's key until I-88-Q1.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     expect(CanvasViewHold.held.value, ViewHold.pan);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
 
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     expect(CanvasViewHold.held.value, isNull);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     expect(
       CanvasViewHold.held.value,
       isNull,
-      reason: 'Ctrl with no view key held holds nothing',
+      reason: 'Shift with no view key held holds nothing',
     );
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
   testWidgets('a focused text field keeps its space bar — no pan', (
