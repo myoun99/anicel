@@ -179,6 +179,12 @@ void main() {
     }, reason: 'from the edge the name stands at');
     await sweepFrom(pin.right - 1);
     expect(_pinned(s), isEmpty, reason: 'from the edge the value stands at');
+
+    // ⛔And no slack past either edge: the name a press stands on is before
+    // it, and the gap before the value after.
+    await sweepFrom(pin.left - 2);
+    await sweepFrom(pin.right + 2);
+    expect(_pinned(s), isEmpty);
   });
 
   testWidgets('the sheet\'s lane columns wear the pin, swept across them as '
