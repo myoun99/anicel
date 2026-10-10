@@ -296,6 +296,43 @@ void main() {
     });
   });
 
+  /// A making answers the content it was started for: joined after the cel
+  /// moved on, an ask would get the picture from before the edit.
+  testWidgets('an ask for content that moved on while it was being made, or '
+      'kept another way, makes its own', (tester) async {
+    await tester.runAsync(() async {
+      final (store, coordinator) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      var snapshots = 0;
+      debugOnWaitedSnapshot = (_, _) => snapshots += 1;
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      Future<LayerFrameImage?> ask({bool inkSuffices = false}) => cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+        inkSuffices: inkSuffices,
+      );
+
+      final before = ask();
+      coordinator.commitSourceStroke(sourceDabs: [dab(x: 6, y: 6)]);
+      final after = ask();
+      await Future.wait([before, after]);
+      expect(snapshots, 2, reason: 'the second ask is for the edited cel');
+
+      snapshots = 0;
+      cache.invalidateFrame(key('frame-a'));
+      final whole = ask();
+      final ink = ask(inkSuffices: true);
+      expect(
+        (await Future.wait([whole, ink])),
+        everyElement(isNotNull),
+      );
+      expect(snapshots, 2, reason: 'its ink alone is another picture');
+    });
+  });
+
   testWidgets('a making stands down only for the ask that started it — an '
       'ask that did not want to stand down is made again', (tester) async {
     await tester.runAsync(() async {
