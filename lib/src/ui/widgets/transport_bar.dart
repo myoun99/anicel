@@ -123,7 +123,8 @@ class TransportBar extends StatelessWidget {
   /// The narrowest the bar lays out with its range shown: the IN and OUT
   /// readouts keep their width at either end of the row, and the track
   /// between them is what gives.
-  static const double minimumWidth = 2 * (_rangeEndWidth + _gap + _inset);
+  static double minimumWidthIn(BuildContext context) =>
+      2 * (_rangeEndWidthIn(context) + _gap + _inset);
 
   /// The wash over the span IN/OUT keep — the tracks', and wherever the
   /// same span is marked over the source itself (the import preview's
@@ -150,8 +151,20 @@ class TransportBar extends StatelessWidget {
   static const double _rangeRowHeight = 27;
   /// IN or OUT: its word, its number, and the number's hands after it —
   /// its ± and its pencil (tool-settings-panel-tidy, 유저 2026-10-10:
-  /// 「숫자 뒤에 ±와 연필」). ↩️76, the word and the number alone.
-  static const double _rangeEndWidth = 76 + valueHandsReach;
+  /// 「숫자 뒤에 ±와 연필」). Both ends hold the wider of the two words as it
+  /// is set here — in the language shown, at the OS text size (「칸도 글자
+  /// 따라 넓어진다」) — so the span between them keeps the middle.
+  /// ↩️A fixed 76 for the word and the number: room for In/Out and 인/아웃,
+  /// while アウト and Sortie were drawn scaled down to fit it.
+  static double _rangeEndWidthIn(BuildContext context) =>
+      TextMeasure(context, _wordsStyleIn(context)).widest([
+        AppText.strings.transportIn,
+        AppText.strings.transportOut,
+      ]) +
+      _wordGap +
+      _rangeValueWidth +
+      valueHandsReach;
+  static const double _wordGap = 4;
   static const double _rangeValueWidth = 44;
   static const double _volumeWidth = 64;
   static const double _volumeHeight = 18;
@@ -365,8 +378,9 @@ class TransportBar extends StatelessWidget {
         }
       },
     );
+    final endWidth = _rangeEndWidthIn(context);
     Widget end(Alignment alignment, List<Widget> children) => SizedBox(
-      width: _rangeEndWidth,
+      width: endWidth,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         alignment: alignment,
@@ -377,7 +391,7 @@ class TransportBar extends StatelessWidget {
       children: [
         end(Alignment.centerLeft, [
           Text(strings.transportIn, style: words),
-          const SizedBox(width: 4),
+          const SizedBox(width: _wordGap),
           value('in', range.inFrame, _setIn),
         ]),
         const SizedBox(width: _gap),
@@ -393,7 +407,7 @@ class TransportBar extends StatelessWidget {
         const SizedBox(width: _gap),
         end(Alignment.centerRight, [
           value('out', range.outFrame, _setOut),
-          const SizedBox(width: 4),
+          const SizedBox(width: _wordGap),
           Text(strings.transportOut, style: words),
         ]),
       ],
@@ -423,9 +437,14 @@ class TransportBar extends StatelessWidget {
 
   /// The bar's words — set solid, so a counting readout does not shiver —
   /// in the dim ink, or that ink off.
-  TextStyle? _wordsIn(BuildContext context, {required bool enabled}) =>
-      Theme.of(context).textTheme.labelSmall?.copyWith(
+  TextStyle _wordsIn(BuildContext context, {required bool enabled}) =>
+      _wordsStyleIn(context).copyWith(
         color: dimmedIfDisabled(AppColors.textDim, enabled: enabled),
+      );
+
+  /// The words' face, whatever their ink — what an end is measured in.
+  static TextStyle _wordsStyleIn(BuildContext context) =>
+      (Theme.of(context).textTheme.labelSmall ?? const TextStyle()).copyWith(
         fontFeatures: const [FontFeature.tabularFigures()],
       );
 }

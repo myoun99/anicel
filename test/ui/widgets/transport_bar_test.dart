@@ -141,6 +141,21 @@ void main() {
       expect(outValue.left, greaterThan(range.right));
     });
 
+    testWidgets('IN and OUT stand at their own size — each end holds its '
+        'word, its number and the number\'s hands without shrinking them', (
+      tester,
+    ) async {
+      await pump(tester, frameCount: 96, range: span(0, 95));
+      for (final end in const ['in', 'out']) {
+        final number = find.byKey(k(end));
+        expect(
+          tester.getRect(number).width,
+          moreOrLessEquals(tester.getSize(number).width),
+          reason: '$end: drawn as wide as it is laid out',
+        );
+      }
+    });
+
     testWidgets('the bar stands as tall as it says, with the range and '
         'without', (tester) async {
       await pump(tester, frameCount: 96);
@@ -672,12 +687,11 @@ void main() {
     testWidgets('at its minimum width the bar lays out without running over', (
       tester,
     ) async {
-      await pump(
-        tester,
-        frameCount: 96,
-        range: span(0, 95),
-        width: TransportBar.minimumWidth,
+      await pump(tester, frameCount: 96, range: span(0, 95));
+      final minimum = TransportBar.minimumWidthIn(
+        tester.element(find.byType(TransportBar)),
       );
+      await pump(tester, frameCount: 96, range: span(0, 95), width: minimum);
       expect(tester.takeException(), isNull);
       expect(find.byKey(k('play')), findsOneWidget);
       expect(find.byKey(k('in')), findsOneWidget);

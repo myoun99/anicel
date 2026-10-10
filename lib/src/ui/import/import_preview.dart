@@ -133,7 +133,8 @@ class ImportPreview extends StatefulWidget {
 
   /// The narrowest this zone lays out: the transport's own minimum. The
   /// window gives the file table the rest.
-  static const double minimumWidth = TransportBar.minimumWidth;
+  static double minimumWidthIn(BuildContext context) =>
+      TransportBar.minimumWidthIn(context);
 
   @override
   State<ImportPreview> createState() => _ImportPreviewState();

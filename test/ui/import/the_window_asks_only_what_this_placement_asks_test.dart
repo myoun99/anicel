@@ -117,6 +117,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(openOptions(), isEmpty, reason: 'the door answered it');
 
+    // The table scrolls sideways under the preview where it is narrower
+    // than its columns.
+    await tester.ensureVisible(cell('file', png));
+    await tester.pumpAndSettle();
     await tester.tap(cell('file', png));
     await tester.pumpAndSettle();
     expect(openOptions(), {

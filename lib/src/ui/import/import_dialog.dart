@@ -1474,7 +1474,7 @@ class _ImportDialogState extends State<ImportDialog> {
           0.0,
           constraints.maxWidth -
               DockEdgeSplitter.thickness -
-              ImportPreview.minimumWidth,
+              ImportPreview.minimumWidthIn(context),
         );
         final maxTable = math.min(
           math.max(minTable, constraints.maxWidth - 200),
