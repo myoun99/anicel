@@ -150,10 +150,9 @@ void main() {
     expect(region.debugCaptureCount, 1, reason: 'the image was not retaken');
   });
 
-  testWidgets('🚨a tick something painted after it covers keeps the region '
-      'painting — over the image it would cover what covered it', (
-    tester,
-  ) async {
+  testWidgets('🚨a tick something painted after it covers stays IN the image '
+      '— over it, it would cover what covered it — and its moving is a '
+      'change of the region\'s', (tester) async {
     final at = ValueNotifier<double>(0);
     addTearDown(at.dispose);
     await _pump(
@@ -170,14 +169,27 @@ void main() {
       ),
     );
     await _untilImage(tester);
+    final region = _region(tester);
+    expect(
+      region.debugDrawnFromImage,
+      isTrue,
+      reason: 'still while nothing in it moves, the tick and all',
+    );
+    expect(region.debugTickRefusals.single, contains('covered'));
 
-    expect(_region(tester).debugDrawnFromImage, isFalse);
-    expect(_region(tester).standDown, StillStandDown.unvouched);
+    at.value = 150;
+    await tester.pump();
+
+    expect(region.debugDrawnFromImage, isFalse);
     final bytes = await captureBytes(tester);
     expect(
       _pixelAt(tester, bytes, const Offset(_left + 5, _top + 5)),
       _cover,
       reason: 'what is painted after the tick stays over it',
+    );
+    expect(
+      _pixelAt(tester, bytes, const Offset(_left + 155, _top + 5)),
+      _mark,
     );
   });
 
@@ -203,8 +215,9 @@ void main() {
     expect(_region(tester).debugDrawnFromImage, isTrue);
   });
 
-  testWidgets('a tick under a transform keeps the region painting — it cannot '
-      'be put back over the image as it was', (tester) async {
+  testWidgets('🚨a tick under a transform stays in the image — it cannot be '
+      'put back over it as it was — and the region is still taken while '
+      'nothing in it moves', (tester) async {
     final at = ValueNotifier<double>(0);
     addTearDown(at.dispose);
     await _pump(
@@ -215,9 +228,13 @@ void main() {
       ),
     );
     await _untilImage(tester);
+    final region = _region(tester);
 
-    expect(_region(tester).debugDrawnFromImage, isFalse);
-    expect(_region(tester).standDown, StillStandDown.unvouched);
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(region.debugTickRefusals.single, contains('TransformLayer'));
+    at.value = 150;
+    await tester.pump();
+    expect(region.debugDrawnFromImage, isFalse);
   });
 
   testWidgets('🚨a tick under a clip is clipped over the image as it was in '
