@@ -63,15 +63,7 @@ class DockEdgeSplitter extends StatefulWidget {
     this.onDragEnd,
     this.onDoubleTap,
     this.tooltip,
-    this.edgePans = false,
   });
-
-  /// Whether a drag reaching the edge of the scrollable the splitter stands
-  /// in pans it along the drag, the pan folded into the travel as every
-  /// drag-borne edge pan's is ([edgeAutoPanApply]) — for an edge inside the
-  /// content it sizes, a header graph's (I-89 ③). The panels' and the
-  /// rails' edges stand in no scroll of their own axis.
-  final bool edgePans;
 
   /// [Axis.vertical] separates side-by-side areas (drag left-right);
   /// [Axis.horizontal] separates stacked ones (drag up-down).
@@ -150,13 +142,16 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     if (!_dragging) {
       return;
     }
-    final panned = widget.edgePans
-        ? edgeAutoPanApply(
-            context: context,
-            globalPosition: details.globalPosition,
-            axis: _dragAxis,
-          )
-        : 0.0;
+    // An edge inside the content it sizes stands in a scroll of its own
+    // axis — a header graph's (I-89 ③), the storyboard's V rows' — and a
+    // pull that reaches the view's edge pans it, the pan folded into the
+    // travel as every drag-borne edge pan's is. The panels' and the rails'
+    // edges stand in no such scroll, so for them this is nothing.
+    final panned = edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: _dragAxis,
+    );
     _applyDelta(
       (_dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy) +
           panned,

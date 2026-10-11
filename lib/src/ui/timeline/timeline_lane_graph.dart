@@ -105,7 +105,6 @@ class TimelineLaneGraph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final guests = _guests();
     final standing = grid.hooks.currentRowHooks?.currentRow;
     final preview = grid.hooks.dragPreview;
     final verbs = grid.hooks.laneGraphVerbs;
@@ -125,55 +124,60 @@ class TimelineLaneGraph extends StatelessWidget {
             ),
           ),
         ),
-        Positioned.fill(
-          child: _standingInTheView(
-            CustomMultiChildLayout(
-              delegate: _LaneGraphCorners(grid.axis, grid.viewportMainExtent),
-              children: [
-                LayoutId(
-                  id: _LaneGraphCorner.tools,
-                  child: LaneGraphTools(
-                    keyPrefix: grid.keyPrefix,
-                    groupKey: seat.groupKey,
-                    mode: seat.graph.mode,
-                    onPlot: verbs == null
-                        ? null
-                        : (mode) => verbs.plot(seat.groupKey, mode),
-                  ),
-                ),
-                if (guests.isNotEmpty)
-                  LayoutId(
-                    id: _LaneGraphCorner.guests,
-                    child: LaneGraphGuestTags(
-                      key: ValueKey<String>(
-                        '${grid.keyPrefix}-lane-graph-guests-${seat.groupKey}',
-                      ),
-                      guests: guests,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        // Its cross end: the timeline's bottom, the sheet's right.
-        Positioned(
-          left: grid.axis == Axis.horizontal ? 0 : null,
-          top: grid.axis == Axis.horizontal ? null : 0,
-          right: 0,
-          bottom: 0,
-          child: LaneGraphGrip(
-            key: ValueKey<String>(
-              '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
-            ),
-            axis: grid.axis,
-            extent: crossExtent,
-            least: lanesExtent,
-            onResize: (extent) => verbs?.resize(seat.groupKey, extent),
-          ),
-        ),
+        Positioned.fill(child: _standingInTheView(_corners(verbs))),
+        _grip(verbs),
       ],
     );
   }
+
+  /// Its tools and its guests' tags, each in its corner of the view.
+  Widget _corners(LaneGraphVerbs? verbs) {
+    final guests = _guests();
+    return CustomMultiChildLayout(
+      delegate: _LaneGraphCorners(grid.axis, grid.viewportMainExtent),
+      children: [
+        LayoutId(
+          id: _LaneGraphCorner.tools,
+          child: LaneGraphTools(
+            keyPrefix: grid.keyPrefix,
+            groupKey: seat.groupKey,
+            mode: seat.graph.mode,
+            onPlot: verbs == null
+                ? null
+                : (mode) => verbs.plot(seat.groupKey, mode),
+          ),
+        ),
+        if (guests.isNotEmpty)
+          LayoutId(
+            id: _LaneGraphCorner.guests,
+            child: LaneGraphGuestTags(
+              key: ValueKey<String>(
+                '${grid.keyPrefix}-lane-graph-guests-${seat.groupKey}',
+              ),
+              guests: guests,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Its grip along its cross end: the timeline's bottom, the sheet's
+  /// right.
+  Widget _grip(LaneGraphVerbs? verbs) => Positioned(
+    left: grid.axis == Axis.horizontal ? 0 : null,
+    top: grid.axis == Axis.horizontal ? null : 0,
+    right: 0,
+    bottom: 0,
+    child: LaneGraphGrip(
+      key: ValueKey<String>(
+        '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
+      ),
+      axis: grid.axis,
+      extent: crossExtent,
+      least: lanesExtent,
+      onResize: (extent) => verbs?.resize(seat.groupKey, extent),
+    ),
+  );
 
   /// [corners] standing still in the view while the frames scroll under
   /// them ([ScrollStill]) — at the frames' start where the host scrolls
@@ -285,7 +289,6 @@ class _LaneGraphGripState extends State<LaneGraphGrip> {
   @override
   Widget build(BuildContext context) => DockEdgeSplitter(
     axis: widget.axis,
-    edgePans: true,
     onDragStart: () => _reached = widget.extent,
     onDragDelta: _pull,
   );

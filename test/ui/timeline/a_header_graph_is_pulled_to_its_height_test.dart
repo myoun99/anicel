@@ -37,7 +37,14 @@ void main() {
       'before the last one\'s rebuild included', (tester) async {
     final s = await _pump(tester);
     await _openTheGraph(tester, s);
-    final before = tester.getRect(_graph('timeline')).height;
+    final graph = tester.getRect(_graph('timeline'));
+    final grip = tester.getRect(_grip('timeline'));
+    expect(
+      (grip.left, grip.right, grip.bottom),
+      (graph.left, graph.right, graph.bottom),
+      reason: 'the grip is its bottom edge, the whole of it',
+    );
+    final before = graph.height;
 
     final gesture = await _grab(tester, 'timeline');
     await gesture.moveBy(const Offset(0, 20));
@@ -127,7 +134,14 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
     await tester.pumpAndSettle();
-    final before = tester.getRect(_graph('xsheet')).width;
+    final graph = tester.getRect(_graph('xsheet'));
+    final grip = tester.getRect(_grip('xsheet'));
+    expect(
+      (grip.top, grip.bottom, grip.right),
+      (graph.top, graph.bottom, graph.right),
+      reason: 'the grip is its right edge, the whole of it',
+    );
+    final before = graph.width;
 
     final gesture = await _grab(tester, 'xsheet');
     await gesture.moveBy(const Offset(40, 0));
