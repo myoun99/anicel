@@ -1,4 +1,7 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+
+import 'still_raster.dart' show TickSceneLayer;
 
 /// Where what a tick moves is laid out, painted and described — ALONE.
 ///
@@ -52,7 +55,7 @@ class TickLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    child: RepaintBoundary(
+    child: _TickBoundary(
       child: LayoutBuilder(
         builder: (context, constraints) {
           assert(
@@ -65,6 +68,25 @@ class TickLayer extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A tick's repaint boundary, whose layer a still region draws over its
+/// image rather than in it ([TickSceneLayer]) — so a region holding a tick
+/// stays still between its ticks.
+class _TickBoundary extends SingleChildRenderObjectWidget {
+  const _TickBoundary({required super.child});
+
+  @override
+  RenderTickBoundary createRenderObject(BuildContext context) =>
+      RenderTickBoundary();
+}
+
+class RenderTickBoundary extends RenderRepaintBoundary {
+  @override
+  OffsetLayer updateCompositedLayer({
+    required covariant OffsetLayer? oldLayer,
+  }) => (oldLayer is TickSceneLayer ? oldLayer : TickSceneLayer())
+    ..size = size;
 }
 
 /// The marks a tick moves over a [Stack] — each a `Positioned` of that stack's

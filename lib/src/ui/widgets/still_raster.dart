@@ -337,7 +337,8 @@ class RenderStillRaster extends RenderProxyBox {
 }
 
 /// The region's layer: it hands the scene either its children or, while
-/// they stay the same, one picture of one image of them.
+/// they stay the same, one picture of one image of them — with what its
+/// ticks move drawn over it ([TickSceneLayer]).
 class _StillLayer extends OffsetLayer {
   _StillLayer(this._owner);
 
@@ -348,6 +349,16 @@ class _StillLayer extends OffsetLayer {
   RasterGridFit? _imageFit;
   List<Object?>? _imageSignature;
 
+  /// The region's ticks as its image was taken — each with the layers
+  /// between the region and it, which [_addTicks] puts it back under.
+  List<({TickSceneLayer tick, List<ContainerLayer> path})> _ticks = const [];
+
+  /// What the region's layer tree was, its ticks aside, and where it sat,
+  /// the last time it was re-added — a re-add that only a tick asked for
+  /// changes nothing.
+  List<Object?>? _lastSignature;
+  RasterGridFit? _lastFit;
+
   /// The frame this region was last re-added with its children.
   int _changedAt = 0;
 
@@ -356,6 +367,10 @@ class _StillLayer extends OffsetLayer {
   int _stillFramesNeeded = StillRaster.stillFrames;
   bool _watching = false;
   bool _capturing = false;
+
+  /// Whether some region is taking its image right now — the one moment a
+  /// tick adds nothing ([TickSceneLayer.addToScene]).
+  static bool _takingAnImage = false;
 
   static int get _frame => StaticRaster.debugFrameSerial;
 
@@ -389,6 +404,7 @@ class _StillLayer extends OffsetLayer {
     _image = null;
     _imageFit = null;
     _imageSignature = null;
+    _ticks = const [];
     _capturedAt = null;
   }
 
@@ -401,6 +417,7 @@ class _StillLayer extends OffsetLayer {
         oldLayer: engineLayer as ui.OffsetEngineLayer?,
       );
       builder.addPicture(Offset.zero, _picture!);
+      _addTicks(builder);
       builder.pop();
       _owner._drawnFromImage = true;
       _owner._standDown = StillStandDown.none;
@@ -410,7 +427,19 @@ class _StillLayer extends OffsetLayer {
       if (_picture != null) {
         _drop();
       }
-      _changedAt = _frame;
+      // 🚨A re-add only a tick asked for changed nothing the image would
+      // hold: the region is still for as long as the rest of it is. One
+      // that moved it is a change like any — or a region dragged across the
+      // screen would be taken again on every frame of the drag.
+      final signature = _signatureOf();
+      final fit = _owner._gridFit();
+      if (signature == null ||
+          !listEquals(signature, _lastSignature) ||
+          fit != _lastFit) {
+        _changedAt = _frame;
+      }
+      _lastSignature = signature;
+      _lastFit = fit;
       _owner._drawnFromImage = false;
       final gate = _owner._gate();
       _owner._standDown = gate == StillStandDown.none
@@ -563,7 +592,8 @@ class _StillLayer extends OffsetLayer {
       return;
     }
     final signature = _signatureOf();
-    if (signature == null) {
+    final ticks = _ticksOf();
+    if (signature == null || ticks == null) {
       _owner._standDown = StillStandDown.unvouched;
       return;
     }
@@ -578,6 +608,7 @@ class _StillLayer extends OffsetLayer {
       size.height + fit.shift.dy,
     );
     _capturing = true;
+    _takingAnImage = true;
     try {
       if (!supportsRasterization()) {
         _owner._standDown = StillStandDown.unvouched;
@@ -593,6 +624,7 @@ class _StillLayer extends OffsetLayer {
         _keepPlacement();
       }
       _imageSignature = signature;
+      _ticks = ticks;
       _capturedAt = _frame;
       StillRaster._capturesEver += 1;
     } on Object catch (error, stack) {
@@ -600,6 +632,13 @@ class _StillLayer extends OffsetLayer {
       return;
     } finally {
       _capturing = false;
+      _takingAnImage = false;
+      // The image's scene took the layers above each tick as layers of
+      // its own, with the tick left out: the next scene that wants them
+      // whole builds them again rather than keep what the image had.
+      for (final (:tick, path: _) in ticks) {
+        tick._addAgain();
+      }
     }
     // The scene still holds the children: re-add this layer so the next
     // frame draws the image instead.
@@ -656,6 +695,13 @@ class _StillLayer extends OffsetLayer {
     bool walk(Layer layer) {
       out.add(layer);
       switch (layer) {
+        // A tick is drawn over the image, not in it: where it stands and how
+        // big it is are the region's, what it draws is its own.
+        case TickSceneLayer(:final offset, :final size):
+          out
+            ..add(offset)
+            ..add(size);
+          return true;
         case PictureLayer(:final picture):
           out.add(picture);
         // A backdrop filter draws what is BEHIND the region, which an
@@ -739,4 +785,161 @@ class _StillLayer extends OffsetLayer {
     }
     return out;
   }
+
+  /// The region's ticks, each with the layers between the region and it —
+  /// or null when one of them cannot be drawn over the image as it was
+  /// drawn in place: under a layer [_addTicks] cannot put back, or covered
+  /// by something painted after it, which over the image it would cover.
+  List<({TickSceneLayer tick, List<ContainerLayer> path})>? _ticksOf() {
+    final ticks = <({TickSceneLayer tick, List<ContainerLayer> path})>[];
+    final tickBounds = <Rect>[];
+    final path = <ContainerLayer>[];
+    bool visit(Layer layer, Matrix4 toRegion) {
+      switch (layer) {
+        case TickSceneLayer():
+          if (path.any((above) => !_putsBack(above))) {
+            return false;
+          }
+          ticks.add((tick: layer, path: List.of(path)));
+          tickBounds.add(
+            MatrixUtils.transformRect(
+              toRegion,
+              layer.offset & layer.size,
+            ),
+          );
+          return true;
+        case PictureLayer(:final canvasBounds):
+          final drawn = MatrixUtils.transformRect(toRegion, canvasBounds);
+          return !tickBounds.any((tick) => tick.overlaps(drawn));
+        case ContainerLayer():
+          final inner = toRegion.clone();
+          switch (layer) {
+            case TransformLayer(:final transform, :final offset):
+              inner
+                ..translateByDouble(offset.dx, offset.dy, 0, 1)
+                ..multiply(transform ?? Matrix4.identity());
+            case OffsetLayer(:final offset) || LeaderLayer(:final offset):
+              inner.translateByDouble(offset.dx, offset.dy, 0, 1);
+            default:
+          }
+          path.add(layer);
+          for (var child = layer.firstChild;
+              child != null;
+              child = child.nextSibling) {
+            if (!visit(child, inner)) {
+              return false;
+            }
+          }
+          path.removeLast();
+          return true;
+        default:
+          return true;
+      }
+    }
+
+    for (var child = firstChild; child != null; child = child.nextSibling) {
+      if (!visit(child, Matrix4.identity())) {
+        return null;
+      }
+    }
+    return ticks;
+  }
+
+  /// Whether [_addTicks] can put a tick back under [layer] as the region
+  /// had it.
+  static bool _putsBack(ContainerLayer layer) => switch (layer) {
+    TransformLayer() ||
+    ColorFilterLayer() ||
+    ImageFilterLayer() ||
+    ShaderMaskLayer() ||
+    BackdropFilterLayer() => false,
+    _ => true,
+  };
+
+  /// Each tick over the image, under the layers the region had above it —
+  /// pushed again as the region pushed them, so it is clipped, moved and
+  /// faded as it was in place.
+  void _addTicks(ui.SceneBuilder builder) {
+    for (final (:tick, :path) in _ticks) {
+      var pushed = 0;
+      for (final layer in path) {
+        if (_push(builder, layer)) {
+          pushed += 1;
+        }
+      }
+      tick.addToScene(builder);
+      for (var i = 0; i < pushed; i += 1) {
+        builder.pop();
+      }
+    }
+  }
+
+  static bool _push(ui.SceneBuilder builder, ContainerLayer layer) {
+    switch (layer) {
+      case ClipRectLayer(:final clipRect?, :final clipBehavior)
+          when clipBehavior != Clip.none:
+        builder.pushClipRect(clipRect, clipBehavior: clipBehavior);
+      case ClipRRectLayer(:final clipRRect?, :final clipBehavior)
+          when clipBehavior != Clip.none:
+        builder.pushClipRRect(clipRRect, clipBehavior: clipBehavior);
+      case ClipRSuperellipseLayer(
+            :final clipRSuperellipse?,
+            :final clipBehavior,
+          )
+          when clipBehavior != Clip.none:
+        builder.pushClipRSuperellipse(
+          clipRSuperellipse,
+          clipBehavior: clipBehavior,
+        );
+      case ClipPathLayer(:final clipPath?, :final clipBehavior)
+          when clipBehavior != Clip.none:
+        builder.pushClipPath(clipPath, clipBehavior: clipBehavior);
+      case OpacityLayer(:final alpha?, :final offset):
+        builder.pushOpacity(alpha, offset: offset);
+      case OffsetLayer(:final offset) || LeaderLayer(:final offset):
+        builder.pushOffset(offset.dx, offset.dy);
+      default:
+        return false;
+    }
+    return true;
+  }
+}
+
+/// 🚨WHAT A TICK MOVES IS DRAWN OVER A STILL REGION'S IMAGE, NOT IN IT
+/// (10-12, [TickLayer]'s layer): a cut playing changed the timeline's dock
+/// on every film frame — its cursor, its playhead's writing, its counter,
+/// each on a tick layer of its own — so the region was never still and
+/// every frame drew all of it again. 🔬While a cut played the side rails
+/// came from their images on 75 frames of 75 and the timeline's dock on
+/// none; with the timeline folded, a playing frame's raster ran about 1.5ms
+/// shorter (the user's layout, cut 302, 144Hz).
+///
+/// A region takes its image with its ticks left out, and draws each tick
+/// over the image under the layers it had above it, so a tick moving does
+/// not change what the image holds. A tick that something painted after it
+/// covers, or one under a layer that cannot be put back over the image,
+/// keeps its region painting ([StillStandDown.unvouched]).
+class TickSceneLayer extends OffsetLayer {
+  /// The box the tick paints in, at [offset] — what the region checks
+  /// nothing painted after the tick covers.
+  Size size = Size.zero;
+
+  @override
+  void addToScene(ui.SceneBuilder builder) {
+    // A region's image holds everything but its ticks.
+    if (_StillLayer._takingAnImage) {
+      return;
+    }
+    super.addToScene(builder);
+  }
+
+  /// While a region takes its image, a tick is never handed to it whole
+  /// from the last scene ([addToScene] is asked, and adds nothing).
+  @override
+  bool get alwaysNeedsAddToScene =>
+      _StillLayer._takingAnImage || super.alwaysNeedsAddToScene;
+
+  /// Asked of the next scene whole: the layers above it were built into a
+  /// region's image without it.
+  void _addAgain() => markNeedsAddToScene();
 }
