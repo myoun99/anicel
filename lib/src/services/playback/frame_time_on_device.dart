@@ -1,39 +1,72 @@
-/// The time a frame is read at, on the audio device's clock: the frame's
-/// own time — the engine's, one for every read in that frame — carried onto
-/// the device's clock by the gap between the two as the ticks have seen it.
+/// A moment on the frame clock — the clock the engine's frame times are on
+/// — on the audio device's clock: carried across by the difference between
+/// the two clocks, READ SIDE BY SIDE.
 ///
-/// 🚨THE CLOCK IS READ AT THE FRAME'S TIME, NOT WHEN THE TICK RUNS
-/// (the-clock-is-read-when-the-tick-runs). A tick runs a little after its
-/// frame begins, and by a different amount each time (🔬profile 10-10, this
-/// machine: 2.4–15.7ms after the vsync, 7.5–9.1 for most). A film frame
-/// whose start fell inside that spread could change on one refresh or the
-/// next depending on how late the tick happened to run — a frame five
-/// refreshes long beside one seven long, where six were due. Read at the
-/// frame's own time, every tick of a frame answers alike.
+/// 🚨THE CLOCK IS READ AT THE MOMENT ITS FRAME IS SHOWN (`frameShownAt`),
+/// NOT WHEN THE TICK RUNS (the-clock-is-read-when-the-tick-runs). A tick
+/// runs a little after its frame begins, and by a different amount each
+/// time (🔬profile 10-10, this machine: 2.4–15.7ms after the vsync, 7.5–9.1
+/// for most). A film frame whose start fell inside that spread could change
+/// on one refresh or the next depending on how late the tick happened to
+/// run — a frame five refreshes long beside one seven long, where six were
+/// due. Read at the moment its frame is shown, every tick of a frame
+/// answers alike, and what the picture shows is what is heard as it is
+/// seen.
 ///
-/// The gap is FOLLOWED, not fixed: it is whatever the two clocks and the
-/// ticks' lateness make it, smoothed over the ticks, so on average the
-/// clock reads where it read before — what the sound and the picture were
-/// matched by (C-playback-frames-on-their-time ③, 유저 확인 10-09) — and a
-/// device clock that is not the engine's (another epoch, or a hair another
-/// rate) is followed as it goes. 🔬On Windows the two are one clock (QPC):
-/// the device's `qa_audio_clock_now_us` and the engine's frame times stood a
-/// tick's lateness apart, frame after frame.
+/// 🚨THE GAP IS THE TWO CLOCKS' OWN DIFFERENCE: the device's clock as the
+/// tick reads it, and the frame clock read straight after. The second read
+/// comes after the first, so a read can only make the difference look
+/// smaller than it is — the gap is the LARGEST a recent pair has said, as
+/// the device's line is the highest its callbacks lie on
+/// ([DeviceClockLine]). It rises at once to a pair that says more, and
+/// otherwise sinks a thousandth of the frame-clock time that passes —
+/// enough to follow a device clock a hair slower than the engine's.
+/// 🔬On Windows the two are one clock (the performance counter): the gap
+/// is a microsecond or so.
+///
+/// ↩️It was the difference between the device's clock as a tick ran and the
+/// FRAME'S TIME — two moments, not one: every tick's lateness came into it,
+/// at first averaged (a sixteenth of each tick) and then as its lowest
+/// edge. That read the picture where the tick ran, which was the sound's
+/// match only because the user's ear had matched it there
+/// (C-playback-frames-on-their-time ③, 유저 확인 10-09); and on Windows,
+/// where the engine's frame times are a grid of its own that jumps, it
+/// carried every jump into what the clock said.
 final class FrameTimeOnDevice {
-  /// How much of each new gap the followed one takes.
-  static const int _follows = 16;
+  /// How fast the gap sinks while no pair says more: a microsecond for
+  /// every millisecond of frame-clock time (1000ppm).
+  static const int _sinksPerMicros = 1000;
 
-  /// The gap, device clock minus frame time, in microseconds — null until a
-  /// tick has said one.
-  double? _gap;
+  /// The gap, device clock minus frame clock, in microseconds — null until
+  /// a pair has said one.
+  int? _gap;
 
-  /// Where frame time [frameMicros] stands on the device's clock, the device
-  /// reading [deviceNowMicros] as the tick runs.
-  int onDevice({required int deviceNowMicros, required int frameMicros}) {
-    final seen = (deviceNowMicros - frameMicros).toDouble();
+  /// The frame-clock time the gap was last carried to.
+  int? _lastFrameNowMicros;
+
+  /// Where frame-clock moment [frameMicros] stands on the device's clock —
+  /// the device's clock reading [deviceNowMicros], and the frame clock
+  /// [frameNowMicros] straight after.
+  int onDevice({
+    required int deviceNowMicros,
+    required int frameNowMicros,
+    required int frameMicros,
+  }) {
+    final said = deviceNowMicros - frameNowMicros;
     final gap = _gap;
-    final followed = gap == null ? seen : gap + (seen - gap) / _follows;
+    final last = _lastFrameNowMicros;
+    final int followed;
+    if (gap == null || said >= gap) {
+      followed = said;
+    } else {
+      final passed = last == null || frameNowMicros < last
+          ? 0
+          : frameNowMicros - last;
+      final sunk = gap - passed ~/ _sinksPerMicros;
+      followed = sunk > said ? sunk : said;
+    }
     _gap = followed;
-    return frameMicros + followed.round();
+    _lastFrameNowMicros = frameNowMicros;
+    return frameMicros + followed;
   }
 }

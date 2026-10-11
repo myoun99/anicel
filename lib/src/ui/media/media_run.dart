@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart' show SchedulerBinding, TickerProvider;
+import 'package:flutter/scheduler.dart' show TickerProvider;
 
 import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
@@ -11,6 +11,7 @@ import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_picture_wait.dart';
 import '../../services/playback/playhead_way.dart';
 import '../playback/looking_ticker.dart';
+import '../present_pacing.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
 import 'page_rasters.dart';
@@ -365,10 +366,11 @@ class MediaRun {
     }
   }
 
-  /// The sound beside the pages as it is heard in the frame this look draws
-  /// ([ViewerSound.heardAt]), or null while none is coming out.
+  /// The sound beside the pages as it is heard when the frame this look
+  /// draws is shown ([ViewerSound.heardAt], [frameShownAt]), or null while
+  /// none is coming out.
   ({double seconds, bool ended})? _heard() => sound.heardAt(
-    frameTime: SchedulerBinding.instance.currentSystemFrameTimeStamp,
+    frameTime: frameShownAt(),
   );
 
   /// Where a press picks the sound up: where the playhead STANDS — the
@@ -485,6 +487,8 @@ class MediaRun {
     if (!_surface.mounted) {
       return;
     }
+    final rate = _surface.frameRate;
+    final shown = frameAt(rate);
     _film.look(elapsed);
     final retried = _retriedAt;
     final period = _framePeriod;
@@ -505,6 +509,9 @@ class MediaRun {
       _turnThePage();
     } else {
       _followTheSound();
+    }
+    if (_surface.mounted && frameAt(rate) != shown) {
+      lookChangedWhatItShows();
     }
   }
 

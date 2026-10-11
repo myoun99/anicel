@@ -12,6 +12,7 @@ import '../../services/playback/playhead_way.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
 import 'looking_ticker.dart';
+import '../present_pacing.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).
@@ -91,10 +92,10 @@ class CanvasPlaybackController extends ChangeNotifier
   /// The ticker keeps running either way — it is the polling cadence, the
   /// clock is whose TIME gets shown.
   ///
-  /// [frameTime] is the time of the frame the tick runs in (the engine's,
-  /// [SchedulerBinding.currentSystemFrameTimeStamp]): the clock is read at
-  /// THAT time, not at the moment the tick happens to run
-  /// (`FrameTimeOnDevice`). Null reads it now.
+  /// [frameTime] is the moment the frame the tick runs in is SHOWN
+  /// ([frameShownAt]): the clock is read at THAT time, not at the moment
+  /// the tick happens to run (`FrameTimeOnDevice`) — what is heard as the
+  /// picture is seen. Null reads it now.
   ClockReading? Function({Duration? frameTime})? resolveAudioClock;
 
   /// Asked of every frame the run would stand on: whether its clock must
@@ -491,17 +492,19 @@ class CanvasPlaybackController extends ChangeNotifier
     // picture itself is not made ([waitsOn]), and then the device is
     // stopped with the clock ([isWaiting]).
     final says =
-        resolveAudioClock?.call(
-          frameTime: SchedulerBinding.instance.currentSystemFrameTimeStamp,
-        ) ??
+        resolveAudioClock?.call(frameTime: frameShownAt()) ??
         _wallClock(elapsed, total);
+    final shown = _currentGlobalFrame;
     if (says.ended && _loopMode == PlaybackLoopMode.once) {
       _endAt(total);
-      return;
+    } else {
+      // A reading past either end is the end it is past; a step back is the
+      // lap wrapping, and [_goTo] goes round the end to it.
+      _goTo(says.globalFrame.clamp(0, total - 1), total);
     }
-    // A reading past either end is the end it is past; a step back is the
-    // lap wrapping, and [_goTo] goes round the end to it.
-    _goTo(says.globalFrame.clamp(0, total - 1), total);
+    if (_currentGlobalFrame != shown) {
+      lookChangedWhatItShows();
+    }
   }
 
   /// What the wall clock says [elapsed] after the run's ticker started on

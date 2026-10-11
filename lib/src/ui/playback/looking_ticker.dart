@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/scheduler.dart';
 
 import '../look_only_frames.dart';
+import '../present_pacing.dart';
 
 /// The ticker of a clock that follows time: it LOOKS at every vsync, and
 /// asks for nothing to be drawn.
@@ -25,10 +26,21 @@ class LookingTicker {
   final TickerCallback _onTick;
   Ticker? _ticker;
 
+  /// When the first tick's frame is shown — what the elapsed time counts
+  /// from.
+  Duration? _firstShown;
+
   bool get isRunning => _ticker != null;
 
   /// Starts afresh on [vsync]: the elapsed time its ticks carry counts from
   /// the first of them.
+  ///
+  /// 🚨ON THE MOMENTS THEIR FRAMES ARE SHOWN ([frameShownAt]), not on the
+  /// engine's vsyncs: on Windows those are a grid of the engine's own that
+  /// jumps by a part of a refresh several times a run, and a clock counted
+  /// on it changed its film frame a refresh early or late at every jump
+  /// (`PresentClaims`). Where the engine's vsync is the display's, the two
+  /// are the same times.
   void start(TickerProvider vsync) {
     stop();
     final ticker = _ticker = vsync.createTicker(_tick);
@@ -38,10 +50,14 @@ class LookingTicker {
   void stop() {
     _ticker?.dispose();
     _ticker = null;
+    _firstShown = null;
   }
 
   void _tick(Duration elapsed) {
-    _onTick(elapsed);
+    // Counted from where the ticker's own count starts — the frame it was
+    // started in — and on from there by the moments shown.
+    final shown = frameShownAt();
+    _onTick(shown - (_firstShown ??= shown - elapsed));
     // The tick may have ended this clock: then there is nothing to look
     // again with. (It may have started it afresh, too; the ticker it then
     // has looks again like any other.)

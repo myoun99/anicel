@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'look_only_frames.dart';
+import 'present_pacing.dart';
 import 'ui_scale.dart';
 import 'session/cache_budgets.dart';
 
@@ -145,7 +146,7 @@ mixin UiScaleViewConfiguration on RendererBinding {
 }
 
 class AnicelBinding extends WidgetsFlutterBinding
-    with UiScaleViewConfiguration, LookOnlyFrames {
+    with UiScaleViewConfiguration, LookOnlyFrames, PresentPacing {
   /// Initializes the binding (creating it on the first call, as
   /// `WidgetsFlutterBinding.ensureInitialized` does) and starts following
   /// the UI scale.
