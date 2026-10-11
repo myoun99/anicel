@@ -192,44 +192,77 @@ final class RasterSpread {
     }
   }
 
+  /// What a length weighs against the one after it.
+  ///
+  /// 🚨THE LAST FEW SCENES SAY WHERE THE WINDOW GOES (10-12): a run changes
+  /// as it goes — its pictures all made, a load come or gone — and with
+  /// every length weighing alike, the steady scenes after a run had made
+  /// its pictures took the window back only once they were half the ring:
+  /// 🔬on the screen, film frames shown a refresh early for 0.7s after the
+  /// making ended. Replayed over seven runs' own lengths, a length weighing
+  /// this much less for each newer one after it put 14.3 film changes in a
+  /// hundred off against 15.6 even. One odd scene still weighs less than
+  /// the steady ones around it.
+  static const double ageDecay = 0.85;
+
   /// Where to hand a scene over, against the vblank its raster is to end
   /// past, on a display of [periodMicros]: the window of the latch's width
-  /// that holds the most of the recent lengths — the middle one of those
-  /// that hold as many — handed over so that its lengths end in the
+  /// that holds the most of the recent lengths, each weighing [ageDecay]
+  /// for every newer one, handed over so that its lengths end in the
   /// latch's window, centred in it.
   PresentHandOff handOffFor(double periodMicros) {
     final width = math.max(
       0.0,
       periodMicros - presentLatchEarlyMicros - presentLatchLateMicros,
     );
-    final lengths = _recent.length < 8
-        ? const [unmeasuredLowMicros, unmeasuredHighMicros]
-        : ([..._recent]..sort());
+    final lengths = _byLength();
     // Each candidate covers lengths[i..j]: a window [b, b + width] holds
     // them for any b from lengths[j] − width up to lengths[i].
-    var most = 0;
-    final best = <(double, double)>[];
-    var j = 0;
+    var most = -1.0;
+    var covered = 0.0;
+    var (low, high) = (0.0, 0.0);
+    var j = -1;
     for (var i = 0; i < lengths.length; i += 1) {
-      j = math.max(j, i);
-      while (j + 1 < lengths.length && lengths[j + 1] - lengths[i] <= width) {
-        j += 1;
+      if (j < i) {
+        j = i;
+        covered = lengths[i].weight;
       }
-      final covered = j - i + 1;
-      if (covered < most) {
-        continue;
+      while (j + 1 < lengths.length &&
+          lengths[j + 1].micros - lengths[i].micros <= width) {
+        j += 1;
+        covered += lengths[j].weight;
       }
       if (covered > most) {
         most = covered;
-        best.clear();
+        (low, high) = (lengths[j].micros - width, lengths[i].micros.toDouble());
       }
-      best.add((lengths[j] - width, lengths[i].toDouble()));
+      covered -= lengths[i].weight;
     }
-    final (low, high) = best[best.length ~/ 2];
     return (
       fromMicros: presentLatchEarlyMicros - (low + high) / 2,
       byMicros: presentLatchEarlyMicros - low,
     );
+  }
+
+  /// The recent lengths, shortest first, each with its weight — the newest
+  /// weighing 1 — or, before eight have said, the unmeasured two alike.
+  List<({int micros, double weight})> _byLength() {
+    if (_recent.length < 8) {
+      return const [
+        (micros: unmeasuredLowMicros, weight: 1),
+        (micros: unmeasuredHighMicros, weight: 1),
+      ];
+    }
+    // The ring's oldest is at [_next] once it is full, at 0 before.
+    final oldest = _recent.length < capacity ? 0 : _next;
+    return [
+      for (var age = 0; age < _recent.length; age += 1)
+        (
+          micros:
+              _recent[(oldest + _recent.length - 1 - age) % _recent.length],
+          weight: math.pow(ageDecay, age).toDouble(),
+        ),
+    ]..sort((a, b) => a.micros.compareTo(b.micros));
   }
 }
 

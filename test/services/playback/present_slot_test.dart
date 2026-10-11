@@ -71,23 +71,6 @@ void main() {
     );
   });
 
-  test('lengths spread wider than any one window: the hand-off is placed '
-      'among the middle of them, not at the shortest or the longest', () {
-    final claim = claimAt(
-      PresentClaims(),
-      vblank + 700 * period + 50,
-      handOff: handOffOf([for (var i = 1; i <= 16; i += 1) i * 1000]),
-    );
-    expect(
-      endOf(claim, claim.handOffFromMicros, 8500),
-      inInclusiveRange(
-        presentLatchEarlyMicros,
-        period - presentLatchLateMicros,
-      ),
-      reason: 'the median length lands',
-    );
-  });
-
   test('🚨the hand-off aims at the middle: the shortest and the longest '
       'length end as far inside the latch\'s two edges', () {
     final claim = claimAt(
@@ -109,17 +92,19 @@ void main() {
   });
 
   test('🚨lengths wider than the latch leaves: the hand-off lands the most '
-      'of them — a few slow scenes do not move it', () {
+      'of them — a few slow scenes among them do not move it', () {
+    // Every fourth scene a slow one, the newest of all among them.
     final lengths = [
-      for (var i = 0; i < 24; i += 1) 4000 + (i % 8) * 125,
-      for (var i = 0; i < 8; i += 1) 9000 + i * 900,
+      for (var i = 0; i < 32; i += 1)
+        if (i % 4 == 3) 9000 + (i ~/ 4) * 900 else 4000 + (i % 8) * 125,
     ];
+    final steady = [for (final length in lengths) if (length < 9000) length];
     final claim = claimAt(
       PresentClaims(),
       vblank + 500 * period + 4321,
       handOff: handOffOf(lengths),
     );
-    for (final length in lengths.take(24)) {
+    for (final length in steady) {
       expect(
         endOf(claim, claim.handOffFromMicros, length),
         inInclusiveRange(
@@ -138,6 +123,27 @@ void main() {
     final claim = claimAt(
       PresentClaims(),
       vblank + 600 * period + 100,
+      handOff: handOffOf([...making, ...steady]),
+    );
+    for (final length in steady) {
+      expect(
+        endOf(claim, claim.handOffFromMicros, length),
+        inInclusiveRange(
+          presentLatchEarlyMicros,
+          period - presentLatchLateMicros,
+        ),
+      );
+    }
+  });
+
+  test('🚨a run that changes is followed within a few frames: once its '
+      'pictures are all made, six steady scenes take the window back — not '
+      'half the ring', () {
+    final making = [for (var i = 0; i < 26; i += 1) 12000 + (i % 7) * 100];
+    final steady = [for (var i = 0; i < 6; i += 1) 4000 + i * 100];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 650 * period + 300,
       handOff: handOffOf([...making, ...steady]),
     );
     for (final length in steady) {
