@@ -475,13 +475,6 @@ const double _graphToolsInset = 6;
 const double _graphToolsPadding = 2;
 const double _graphToolsGap = 6;
 
-/// The narrowest the tools are laid out: the enlarge button with none of
-/// the pills beside it — narrower, and their row overflows.
-final double _graphToolsLeastWidth =
-    2 * _graphToolsPadding +
-    _graphToolsGap +
-    AppIconButtonSize.strip.maxWidth;
-
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
 /// it plots — its values, or how fast they change — and the button that
 /// enlarges it over every other row or lets it back (③D).
@@ -595,7 +588,11 @@ enum _LaneGraphCorner { tools, guests }
 /// nothing here moves with the scroll, and a scroll lays nothing out.
 ///
 /// The tools are no wider than the view, their pills giving width up
-/// first; never narrower than their enlarge button.
+/// first. ⛔No floor of their own for the button: the view never runs
+/// narrower than the frame area's two cells (`layerRailFrameReserveExtent`)
+/// nor a graph across than its two lanes at least, which leave it whole —
+/// a floor here was never reached, and a narrower view is the narrow
+/// view's test to catch.
 ///
 /// The tags never stand before the tools' end: no wider than the room the
 /// view leaves them on the timeline — the graph's on the sheet — so a long
@@ -629,10 +626,9 @@ class _LaneGraphCorners extends MultiChildLayoutDelegate {
     final tools = layoutChild(
       _LaneGraphCorner.tools,
       BoxConstraints(
-        maxWidth: math.max(
-          _graphToolsLeastWidth,
-          (axis == Axis.horizontal ? view : size.width) - 2 * _graphToolsInset,
-        ),
+        maxWidth:
+            (axis == Axis.horizontal ? view : size.width) -
+            2 * _graphToolsInset,
         maxHeight: size.height,
       ),
     );
