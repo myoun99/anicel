@@ -2167,6 +2167,20 @@ class _LayerStackPainter extends CustomPainter {
     return (located: true, dirty: dirty?.inflate(1), now: now);
   }
 
+  /// Whether this tree draws the live surface — the one thing a later paint
+  /// can patch over its buffer.
+  bool get _drawsLive {
+    if (activeSurfacePainter == null) {
+      return false;
+    }
+    for (final node in preorderNodes(nodes)) {
+      if (node case CompositeLeaf(payload: _PaintActiveSurface())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Everything the composite depends on that the bake's key does not
   /// already carry — or null when this stack must not be cached at all.
   ///

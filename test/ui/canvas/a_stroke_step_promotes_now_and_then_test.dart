@@ -185,4 +185,66 @@ void main() {
       reason: 'patching over an older base changed the picture',
     );
   });
+
+  // A tree draws its live surface only with a live row in it AND a painter
+  // to draw that row: a run's tree stands no row live
+  // (`EditingCanvas.playingStack`) while the host still hands the canvas
+  // its surface painter, and the film's track stack hands it none.
+  for (final (:name, :rows, :painted) in [
+    (name: 'a run on the canvas', rows: 0, painted: true),
+    (name: 'a live row with no painter', rows: 1, painted: false),
+  ]) {
+    testWidgets('🚨a tree that draws no live surface asks no snapshot — '
+        '$name composes each frame whole and patches none', (tester) async {
+      tester.view.physicalSize = const Size(512, 512);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final buffers = DisplayBufferCache();
+      addTearDown(buffers.dispose);
+      final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
+      // Each frame here is another paper, so each one composes whole.
+      Future<void> frame(int index) => tester.pumpWidget(
+        MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 512,
+              height: 512,
+              child: CanvasLayerStackView(
+                nodes: rows == 0 ? const [] : nodes,
+                imageCache: imageCache,
+                debugBufferCache: buffers,
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(),
+                activeSurfacePainter: painted ? surfaces.first : null,
+                paintPaper: true,
+                paperBackground: ProjectBackground.color(
+                  0xFF000000 | (index * 0x202020),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      const frames = 6;
+      await tester.runAsync(() async {
+        for (var index = 0; index < frames; index += 1) {
+          await frame(index);
+          await tester.pump();
+          await Future<void>.delayed(Duration.zero);
+        }
+      });
+      expect(
+        buffers.fullCount,
+        greaterThanOrEqualTo(frames),
+        reason: 'fixture: every frame composed whole',
+      );
+      expect(
+        buffers.promotedCount,
+        0,
+        reason: '↩️a run asked a snapshot of every frame it showed and '
+            'threw it away unread',
+      );
+    });
+  }
 }
