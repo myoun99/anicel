@@ -425,6 +425,84 @@ void main() {
     expect(positionOf(s).keyAt(8)!.path, KeyPath.auto);
   });
 
+  /// I-89 ④-Q5 (A′ while it is asked): the roving row is the window's as
+  /// the path row is. A key at 2 half way along the straight line from 0
+  /// (0, 0) to 8 (9, 9) — passed at 4 once its time roves.
+  Future<void> keyBetween(EditorSessionManager s, WidgetTester tester) async {
+    final track = s.layers
+        .firstWhere((layer) => layer.id == drawId)
+        .transformTrack;
+    s.laneVerbs.updateLayerTransformTrack(
+      drawId,
+      track.copyWith(
+        position: track.position.withKey(2, CanvasPoint(x: 4.5, y: 4.5)),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pickRoving(WidgetTester tester) async {
+    final on = find.byKey(const ValueKey<String>('rename-key-rove-on'));
+    await tester.ensureVisible(on);
+    await tester.tap(on);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  bool roveLit(WidgetTester tester, String choice) => tester
+      .widget<Pill>(find.byKey(ValueKey<String>('rename-key-rove-$choice')))
+      .selected;
+
+  testWidgets('the roving row frees the key between, which stands where its '
+      'run passes it — and opens on what its key says', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    expect(roveLit(tester, 'off'), isTrue);
+    await pickRoving(tester);
+    expect(positionOf(s).keys.keys, [0, 4, 8]);
+    expect(positionOf(s).keyAt(4)!.roving, isTrue);
+
+    await doubleTapBand(tester, 'position', 4.5);
+    expect((off: roveLit(tester, 'off'), on: roveLit(tester, 'on')), (
+      off: false,
+      on: true,
+    ));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a taken name the user does NOT join still frees the time '
+      'picked with it', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    await pickRoving(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final key = positionOf(s).keyAt(4)!;
+    expect(key.name, isNull, reason: 'the name stood down');
+    expect(key.roving, isTrue, reason: 'the time did not');
+  });
+
   testWidgets('a TAP inside the lane selection clears it on the release — '
       "the cells' release rule, which the band rides (H18)", (tester) async {
     final s = await pumpHost(tester);
