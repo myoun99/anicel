@@ -201,8 +201,8 @@ class ScrollFollower extends StatelessWidget {
 }
 
 /// Content INSIDE a scrolled body that stands still in its view while the
-/// rest scrolls under it — a header graph's guest tags at the view's end
-/// (I-89 ③). [ScrollFollower] the other way round: moved back by the
+/// rest scrolls under it — a header graph's tools and guest tags in the
+/// view's corners (I-89 ③). [ScrollFollower] the other way round: moved back by the
 /// scroll position, read as the frame is composited, less the nudge the
 /// content lands by — so it neither trails a position a viewport corrects
 /// in its own layout (F-95) nor walks a fraction of a device pixel against

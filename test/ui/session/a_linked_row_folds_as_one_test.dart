@@ -9,6 +9,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart'
+    show LaneGraph, LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -318,7 +320,32 @@ void main() {
       expect(pinned.value.pinned, isEmpty);
     });
 
-    test('a graph or a pin is view state — no undo step', () {
+    test('🚨what a graph plots and how far it stands is on every use of its '
+        'row — and a graph that is shut stays shut', () {
+      final r = _Rig()..linkACut();
+      final graphs = r.s.railView.laneGraphs;
+      final group = transformGroupHeaderLane.laneId;
+      final here = laneGroupKey(r.twinOf(r.plain), group);
+      final there = laneGroupKey(r.plain, group);
+      r.presses.toggleLaneGraph(here);
+
+      r.presses.plotLaneGraph(here, LaneGraphMode.speed);
+      r.presses.resizeLaneGraph(there, 300);
+      for (final key in [here, there]) {
+        expect(graphs.value.open[key], const LaneGraph(
+          extent: 300,
+          mode: LaneGraphMode.speed,
+        ), reason: key);
+      }
+
+      r.presses.toggleLaneGraph(here);
+      r.presses.plotLaneGraph(here, LaneGraphMode.value);
+      r.presses.resizeLaneGraph(here, 120);
+      expect(graphs.value.open, isEmpty);
+    });
+
+    test('a graph, a pin, what it plots and how far it stands are view state '
+        '— no undo step', () {
       final r = _Rig();
       final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
       r.presses.toggleLaneGroup(key);
@@ -326,9 +353,15 @@ void main() {
 
       r.presses.toggleLaneGraph(key);
       r.presses.toggleLanePin(laneGroupKey(r.plain, 'position'));
+      r.presses.plotLaneGraph(key, LaneGraphMode.speed);
+      r.presses.resizeLaneGraph(key, 300);
 
       expect(r.s.historyManager.undoCount, depth);
-      expect(r.s.railView.laneGraphs.value.open.keys, [key], reason: '⛔전제');
+      expect(
+        r.s.railView.laneGraphs.value.open[key],
+        const LaneGraph(extent: 300, mode: LaneGraphMode.speed),
+        reason: '⛔전제',
+      );
     });
   });
 }

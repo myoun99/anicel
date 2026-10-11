@@ -11,7 +11,8 @@ import '../../services/project_lookup.dart'
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
-import '../timeline/lane_graph.dart' show LaneGraph, LaneGraphVerbs;
+import '../timeline/lane_graph.dart'
+    show LaneGraph, LaneGraphMode, LaneGraphVerbs;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
@@ -212,8 +213,12 @@ class SessionRowButtonPresses {
   }
 
   /// The header graphs' buttons as a grid is handed them (I-89 ③).
-  LaneGraphVerbs get laneGraphVerbs =>
-      (toggle: toggleLaneGraph, togglePin: toggleLanePin);
+  LaneGraphVerbs get laneGraphVerbs => (
+    toggle: toggleLaneGraph,
+    togglePin: toggleLanePin,
+    plot: plotLaneGraph,
+    resize: resizeLaneGraph,
+  );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
   /// its row (F-302, as the group's twirl beside it), and on no other
@@ -258,6 +263,32 @@ class SessionRowButtonPresses {
       pinned.addAll(everyUse);
     }
     graphs.value = graphs.value.copyWith(pinned: pinned);
+  }
+
+  /// What a group's open graph PLOTS, on every use of its row. View state,
+  /// no undo.
+  void plotLaneGraph(String groupKey, LaneGraphMode mode) =>
+      _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(mode: mode));
+
+  /// How far a group's open graph stands along the rail — its grip's — on
+  /// every use of its row. View state, no undo.
+  void resizeLaneGraph(String groupKey, double extent) =>
+      _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(extent: extent));
+
+  /// [reshape] laid on [groupKey]'s graph wherever it stands open on a use
+  /// of its row; a shut one stays shut.
+  void _reshapeLaneGraph(
+    String groupKey,
+    LaneGraph Function(LaneGraph graph) reshape,
+  ) {
+    final graphs = session.railView.laneGraphs;
+    final open = Map<String, LaneGraph>.of(graphs.value.open);
+    for (final key in _everyUseOf(groupKey)) {
+      if (open[key] case final graph?) {
+        open[key] = reshape(graph);
+      }
+    }
+    graphs.value = graphs.value.copyWith(open: open);
   }
 
   /// [groupKey]'s group twirled open where it is shut: the camera row's

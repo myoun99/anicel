@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -40,6 +41,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 /// **I-89 ③ — an open header graph draws its lines.**
 ///
@@ -290,10 +292,15 @@ void main() {
     void expectAtTheViewsEnd(String when) {
       final rect = tester.getRect(tags);
       final graph = tester.getRect(_graph('timeline'));
-      final seen = '$when — view $view, graph $graph, tags $rect, offset '
-          '${scroll.position.pixels}';
+      final tools = tester.getRect(_tools('timeline'));
+      final seen = '$when — view $view, graph $graph, tags $rect, tools '
+          '$tools, offset ${scroll.position.pixels}';
       expect(rect.right, moreOrLessEquals(view.right - 8), reason: seen);
-      expect(rect.left, greaterThanOrEqualTo(view.left + 8), reason: seen);
+      expect(
+        rect.left,
+        moreOrLessEquals(tools.right + 8),
+        reason: 'the room the tools leave them, all of it — $seen',
+      );
       expect(rect.top, moreOrLessEquals(graph.top + 6), reason: seen);
     }
 
@@ -416,9 +423,81 @@ void main() {
     expect(tester.takeException(), isNull, reason: 'its row did not overflow');
     expect(
       tester.getRect(_tags('timeline')).left,
-      moreOrLessEquals(view.left + 8),
-      reason: 'it starts in the view and runs out past its end',
+      moreOrLessEquals(tester.getRect(_tools('timeline')).right + 8),
+      reason: 'it starts after the tools and runs out past the view\'s end',
     );
+  });
+
+  testWidgets('its tools stand at the view\'s start, the values plotted — '
+      'and 속도 plots how fast each number changes, from still at the foot '
+      'to its fastest at the top, marking no key; 값 brings the values '
+      'back', (tester) async {
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.pumpAndSettle();
+
+    final view = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+    );
+    final graph = tester.getRect(_graph('timeline'));
+    final tools = tester.getRect(_tools('timeline'));
+    expect(tools.left, moreOrLessEquals(view.left + 6));
+    expect(tools.top, moreOrLessEquals(graph.top + 6));
+    expect(_plots(tester, LaneGraphMode.value), isTrue);
+    expect(_plots(tester, LaneGraphMode.speed), isFalse);
+    final extent = tester.getSize(_picture('timeline')).height;
+    bool spansThePadding(Rect line) =>
+        (line.top - 16).abs() < 0.5 &&
+        (line.bottom - (extent - 16)).abs() < 0.5;
+    expect(
+      _strokes(tester).any(spansThePadding),
+      isFalse,
+      reason: '⛔전제: a value line keeps its spare inside the padding',
+    );
+
+    await _tap(tester, _plot('timeline', LaneGraphMode.speed));
+    expect(
+      s.railView.laneGraphs.value.open[_transformGroup]!.mode,
+      LaneGraphMode.speed,
+    );
+    expect(_painter(tester).mode, LaneGraphMode.speed);
+    expect(_plots(tester, LaneGraphMode.speed), isTrue);
+    expect(_plots(tester, LaneGraphMode.value), isFalse);
+    // Position runs from its key on 0 to its key on 8 at an even speed
+    // (sides linear), and stands after it.
+    final speeds = _strokes(tester);
+    expect(speeds, hasLength(2), reason: 'its across and its down');
+    expect(speeds.every(spansThePadding), isTrue, reason: '$speeds');
+    expect(_marks(tester), 0, reason: 'the speed graph marks no key');
+
+    await _tap(tester, _plot('timeline', LaneGraphMode.value));
+    expect(_painter(tester).mode, LaneGraphMode.value);
+    expect(_marks(tester), 2 * 2);
+  });
+
+  testWidgets('on the sheet its tools stand at the top right — the '
+      'timeline\'s top left turned a quarter clockwise', (tester) async {
+    final s = await _pump(tester, tall: true);
+    await _openTransform(tester);
+    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final view = tester.getRect(
+      find.byKey(const ValueKey<String>('xsheet-frame-vertical-viewport')),
+    );
+    final graph = tester.getRect(_graph('xsheet'));
+    final tools = tester.getRect(_tools('xsheet'));
+    expect(tools.top, moreOrLessEquals(view.top + 6));
+    expect(tools.right, moreOrLessEquals(graph.right - 6));
+
+    await _tap(tester, _plot('xsheet', LaneGraphMode.speed));
+    expect(_painter(tester, grid: 'xsheet').mode, LaneGraphMode.speed);
   });
 
   testWidgets('the playhead\'s column runs down through the graph', (
@@ -498,22 +577,42 @@ int _marks(WidgetTester tester) {
   ].length;
 }
 
-/// How far along the frames the timeline graph's lines run, painted now.
-({double start, double end}) _drawnAlong(WidgetTester tester) {
+/// Where each of the timeline graph's lines runs, painted now.
+List<Rect> _strokes(WidgetTester tester) {
   final canvas = TestRecordingCanvas();
   _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
-  final lines = [
+  return [
     for (final call in canvas.invocations)
       if (call.invocation.memberName == #drawPath &&
           (call.invocation.positionalArguments[1] as Paint).style ==
               PaintingStyle.stroke)
         (call.invocation.positionalArguments[0] as Path).getBounds(),
   ];
+}
+
+/// How far along the frames the timeline graph's lines run, painted now.
+({double start, double end}) _drawnAlong(WidgetTester tester) {
+  final lines = _strokes(tester);
   return (
     start: lines.map((line) => line.left).reduce(math.min),
     end: lines.map((line) => line.right).reduce(math.max),
   );
 }
+
+/// The drawing's Transform graph's tools on [grid].
+Finder _tools(String grid) => find.descendant(
+  of: _graph(grid),
+  matching: find.byType(LaneGraphTools),
+);
+
+/// The key of the pill on [grid]'s Transform graph that plots [mode].
+String _plot(String grid, LaneGraphMode mode) =>
+    '$grid-lane-graph-plot-${mode.name}-$_transformGroup';
+
+/// Whether the timeline graph's pill for [mode] is the one chosen.
+bool _plots(WidgetTester tester, LaneGraphMode mode) => tester
+    .widget<Pill>(find.byKey(ValueKey<String>(_plot('timeline', mode))))
+    .selected;
 
 List<String> _ids(List<LaneGraphLine> lines) => [
   for (final (:lane, layer: _) in lines) lane.laneId,

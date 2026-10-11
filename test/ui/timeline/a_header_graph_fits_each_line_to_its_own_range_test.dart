@@ -94,28 +94,29 @@ void main() {
     });
   });
 
-  group('each line is fitted to its own range', () {
-    LaneCurve line(List<double> Function(double time) at) =>
-        (parts: const [Color(0xFF000000), Color(0xFFFFFFFF)], at: at);
+  /// A line of as many numbers as [at] gives.
+  LaneCurve line(List<double> Function(double time) at) => (
+    parts: [for (final _ in at(0)) const Color(0xFF000000)],
+    at: at,
+  );
 
+  group('each line is fitted to its own range', () {
     test('from its lowest to its highest, 12% of that beyond either', () {
-      final range = laneGraphRange(
-        line((time) => [10 + 50 * time / 8, 0]),
+      final range = laneGraphRanges(
+        line((time) => [10 + 50 * time / 8]),
         [0, 8],
-        0,
-      );
+      ).single;
       expect(range.low, closeTo(10 - 50 * 0.12, 1e-9));
       expect(range.high, closeTo(60 + 50 * 0.12, 1e-9));
     });
 
     test('and what an eased stretch passes beyond its keys', () {
-      final range = laneGraphRange(
+      final range = laneGraphRanges(
         line(
           (time) => [10 + 50 * time / 8 + 30 * math.sin(math.pi * time / 8)],
         ),
         [0, 8],
-        0,
-      );
+      ).single;
       // Its middle stands at 65, over both keys (10 and 60): the range
       // reaches that with its spare. ↩️Asked only to pass the keys' own 66,
       // it passed with nothing read between them — the sine's rounding at 8
@@ -124,15 +125,120 @@ void main() {
     });
 
     test('a line that never moves is given one either way first', () {
-      final range = laneGraphRange(line((_) => [5]), [0, 8], 0);
+      final range = laneGraphRanges(line((_) => [5]), [0, 8]).single;
       expect(range.low, closeTo(4 - 2 * 0.12, 1e-9));
       expect(range.high, closeTo(6 + 2 * 0.12, 1e-9));
     });
 
+    test('each number by itself — a point\'s across and its down — each '
+        'time read once for both', () {
+      var reads = 0;
+      final point = line((time) {
+        reads += 1;
+        return [100 + time, -5 * time];
+      });
+      reads = 0;
+      final ranges = laneGraphRanges(point, [0, 8]);
+      expect(ranges[0].low, greaterThan(90));
+      expect(ranges[1].high, lessThan(10));
+      expect(reads, 1 + 7 + 1, reason: 'the two keys and seven between');
+    });
+  });
+
+  group('how fast a line changes — the speed graph', () {
+    // 10 a frame from its key on 2 to its key on 8, then 40 a frame to its
+    // key on 10.
+    final keyed = [2, 8, 10];
+    final curve = line(
+      (time) => [if (time <= 8) 10 * time else 80 + 40 * (time - 8)],
+    );
+
+    test('per frame, inside the stretch it is read in', () {
+      expect(
+        laneGraphSpeedsAt(curve, 5, from: 2, to: 8).single,
+        closeTo(10, 1e-6),
+      );
+      expect(
+        laneGraphSpeedsAt(curve, 9, from: 8, to: 10).single,
+        closeTo(40, 1e-6),
+      );
+    });
+
+    test('a hold is still to its end — the jump on its next key is never '
+        'read', () {
+      final held = line((time) => [if (time < 8) 5 else 100]);
+      expect(laneGraphSpeedsAt(held, 8, from: 0, to: 8), [0]);
+      expect(laneGraphSpeedsAt(held, 7.99, from: 0, to: 8), [0]);
+    });
+
+    test('on a key it stands twice — the speed it arrives at, then the one '
+        'it leaves at — and outside the keys it is still', () {
+      final speeds = [
+        for (final (:time, :numbers) in laneGraphSpeeds(curve, keyed, const [
+          0,
+          2,
+          5,
+          8,
+          9,
+          10,
+          11,
+        ]))
+          (time, numbers.single.roundToDouble()),
+      ];
+      expect(speeds, [
+        (0.0, 0.0),
+        (2.0, 0.0),
+        (2.0, 10.0),
+        (5.0, 10.0),
+        (8.0, 10.0),
+        (8.0, 40.0),
+        (9.0, 40.0),
+        (10.0, 40.0),
+        (10.0, 0.0),
+        (11.0, 0.0),
+      ]);
+    });
+
     test('each number by itself — a point\'s across and its down', () {
-      final point = line((time) => [100 + time, -5 * time]);
-      expect(laneGraphRange(point, [0, 8], 0).low, greaterThan(90));
-      expect(laneGraphRange(point, [0, 8], 1).high, lessThan(10));
+      final point = line((time) => [3 * time, -5 * time]);
+      expect(laneGraphSpeedsAt(point, 4, from: 0, to: 8), [
+        closeTo(3, 1e-6),
+        closeTo(5, 1e-6),
+      ]);
+      expect(laneGraphSpeedRanges(point, [0, 8]).map((range) => range.high), [
+        closeTo(3, 1e-6),
+        closeTo(5, 1e-6),
+      ]);
+    });
+
+    test('fitted from still to the fastest it goes between its keys, with '
+        'no spare either way', () {
+      final range = laneGraphSpeedRanges(curve, keyed).single;
+      expect(range.low, 0);
+      expect(range.high, closeTo(40, 1e-6));
+    });
+
+    test('read across a stretch, not only at its keys: an eased one is '
+        'fastest in its middle and still at both ends', () {
+      final eased = line(
+        (time) => [25 * (1 - math.cos(math.pi * time / 8))],
+      );
+      expect(
+        laneGraphSpeedRanges(eased, [0, 8]).single.high,
+        closeTo(25 * math.pi / 8, 0.01),
+      );
+    });
+
+    test('a line that never moves is given 0 to 1 — it lies at the foot', () {
+      expect(laneGraphSpeedRanges(line((_) => [5]), [0, 8]).single, (
+        low: 0.0,
+        high: 1.0,
+      ));
+      expect(
+        laneGraphSpeedRanges(line((_) => [5]), [4]).single,
+        (low: 0.0, high: 1.0),
+        reason: 'one key: no stretch to move in',
+      );
     });
   });
 

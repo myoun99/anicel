@@ -1709,6 +1709,8 @@ enum AppStrings {
   String get railLaneGraph => _s('railLaneGraph');
   String get railLanePinOn => _s('railLanePinOn');
   String get railLanePin => _s('railLanePin');
+  String get laneGraphValue => _s('laneGraphValue');
+  String get laneGraphSpeed => _s('laneGraphSpeed');
   String get railFillReferenceOn => _s('railFillReferenceOn');
   String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
@@ -2776,6 +2778,8 @@ enum AppStrings {
     'railLaneGraph': 'Graph',
     'railLanePinOn': 'Pinned to every graph',
     'railLanePin': 'Pin to every graph',
+    'laneGraphValue': 'Value',
+    'laneGraphSpeed': 'Speed',
     'railFillReferenceOn': 'Fill reference layer (on)',
     'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
@@ -4212,6 +4216,8 @@ enum AppStrings {
     'railLaneGraph': 'グラフ',
     'railLanePinOn': 'すべてのグラフに表示中',
     'railLanePin': 'すべてのグラフに表示',
+    'laneGraphValue': '値',
+    'laneGraphSpeed': '速度',
     'railFillReferenceOn': '塗り参照レイヤー（オン）',
     'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
@@ -5679,6 +5685,8 @@ enum AppStrings {
     'railLaneGraph': '그래프',
     'railLanePinOn': '모든 그래프에 고정됨',
     'railLanePin': '모든 그래프에 고정',
+    'laneGraphValue': '값',
+    'laneGraphSpeed': '속도',
     'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
     'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
@@ -7278,6 +7286,8 @@ enum AppStrings {
     'railLaneGraph': 'Graphique',
     'railLanePinOn': 'Épinglé à tous les graphiques',
     'railLanePin': 'Épingler à tous les graphiques',
+    'laneGraphValue': 'Valeur',
+    'laneGraphSpeed': 'Vitesse',
     'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
     'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
@@ -8681,6 +8691,8 @@ enum AppStrings {
     'railLaneGraph': '图表',
     'railLanePinOn': '已固定到所有图表',
     'railLanePin': '固定到所有图表',
+    'laneGraphValue': '值',
+    'laneGraphSpeed': '速度',
     'railFillReferenceOn': '填充参考图层（开）',
     'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',

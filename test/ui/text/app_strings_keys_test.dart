@@ -871,6 +871,8 @@ void main() {
     'railLaneGraph': (s) => s.railLaneGraph,
     'railLanePinOn': (s) => s.railLanePinOn,
     'railLanePin': (s) => s.railLanePin,
+    'laneGraphValue': (s) => s.laneGraphValue,
+    'laneGraphSpeed': (s) => s.laneGraphSpeed,
     'railFillReferenceOn': (s) => s.railFillReferenceOn,
     'railFillReference': (s) => s.railFillReference,
     'tlLayerMark': (s) => s.tlLayerMark,

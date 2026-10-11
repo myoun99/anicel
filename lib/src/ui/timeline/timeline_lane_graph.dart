@@ -7,7 +7,9 @@ import '../../models/key_mark.dart' show KeyMark;
 import '../../models/timeline_row_address.dart';
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
+import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'axis_turn.dart'
     show acrossBox, extentAcross, extentAlong, offsetAlong;
 import 'key_mark_glyph.dart' show paintKeyMark;
@@ -67,10 +69,11 @@ List<Widget> timelineFrameSide(
 ///
 /// It draws the lanes its seat names as its own ([laneGraphDrawnLanes]),
 /// read off where the rail stands, and every pin of another group's as a
-/// guest ([laneGraphGuests]), named in the view's corner
-/// ([LaneGraphGuestTags]). Along the frames it is a row of cells: laid out
-/// by the grid's live geometry ([TimelineFrameAxisBox]) and drawing only
-/// its window, so a scroll or a zoom step repaints it and rebuilds nothing.
+/// guest ([laneGraphGuests]), named in the view's far corner
+/// ([LaneGraphGuestTags]) — its tools in the near one ([LaneGraphTools]).
+/// Along the frames it is a row of cells: laid out by the grid's live
+/// geometry ([TimelineFrameAxisBox]) and drawing only its window, so a
+/// scroll or a zoom step repaints it and rebuilds nothing.
 class TimelineLaneGraph extends StatelessWidget {
   const TimelineLaneGraph({
     super.key,
@@ -97,6 +100,7 @@ class TimelineLaneGraph extends StatelessWidget {
     final guests = _guests();
     final standing = grid.hooks.currentRowHooks?.currentRow;
     final preview = grid.hooks.dragPreview;
+    final verbs = grid.hooks.laneGraphVerbs;
     return Stack(
       children: [
         TimelineFrameAxisBox(
@@ -114,14 +118,24 @@ class TimelineLaneGraph extends StatelessWidget {
           ),
         ),
         Positioned.fill(
-          child: guests.isEmpty
-              ? const SizedBox.shrink()
-              : _standingInTheView(
-                  CustomSingleChildLayout(
-                    delegate: _GuestTagsAtTheViewsEnd(
-                      grid.axis,
-                      grid.viewportMainExtent,
-                    ),
+          child: _standingInTheView(
+            CustomMultiChildLayout(
+              delegate: _LaneGraphCorners(grid.axis, grid.viewportMainExtent),
+              children: [
+                LayoutId(
+                  id: _LaneGraphCorner.tools,
+                  child: LaneGraphTools(
+                    keyPrefix: grid.keyPrefix,
+                    groupKey: seat.groupKey,
+                    mode: seat.graph.mode,
+                    onPlot: verbs == null
+                        ? null
+                        : (mode) => verbs.plot(seat.groupKey, mode),
+                  ),
+                ),
+                if (guests.isNotEmpty)
+                  LayoutId(
+                    id: _LaneGraphCorner.guests,
                     child: LaneGraphGuestTags(
                       key: ValueKey<String>(
                         '${grid.keyPrefix}-lane-graph-guests-${seat.groupKey}',
@@ -129,26 +143,28 @@ class TimelineLaneGraph extends StatelessWidget {
                       guests: guests,
                     ),
                   ),
-                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// [tags] standing still in the view while the frames scroll under them
-  /// ([ScrollStill]) — at the frames' start where the host scrolls none.
-  /// Forward along the frames, as the scroll body they stand in lands
-  /// (`TimelineScrollViewport`).
-  Widget _standingInTheView(Widget tags) {
+  /// [corners] standing still in the view while the frames scroll under
+  /// them ([ScrollStill]) — at the frames' start where the host scrolls
+  /// none. Forward along the frames, as the scroll body they stand in
+  /// lands (`TimelineScrollViewport`).
+  Widget _standingInTheView(Widget corners) {
     final controller = grid.frameAxisController;
     return controller == null
-        ? tags
+        ? corners
         : ScrollStill(
             controller: controller,
             axisDirection: grid.axis == Axis.horizontal
                 ? AxisDirection.right
                 : AxisDirection.down,
-            child: tags,
+            child: corners,
           );
   }
 
@@ -190,6 +206,63 @@ class TimelineLaneGraph extends StatelessWidget {
         ],
         guests: _guests(),
         grid: grid,
+        mode: seat.graph.mode,
+      ),
+    );
+  }
+}
+
+/// What a graph's tools keep clear of the view's start along the frames
+/// and of the graph's edge across them, and what their well keeps around
+/// the pills (the mock's, 5판).
+const double _graphToolsInset = 6;
+const double _graphToolsPadding = 2;
+
+/// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
+/// it plots — its values, or how fast they change.
+class LaneGraphTools extends StatelessWidget {
+  const LaneGraphTools({
+    super.key,
+    required this.keyPrefix,
+    required this.groupKey,
+    required this.mode,
+    required this.onPlot,
+  });
+
+  /// The grid's key prefix and the graph's group, which its pills' keys
+  /// are made of.
+  final String keyPrefix;
+  final String groupKey;
+
+  final LaneGraphMode mode;
+
+  /// Null where the host hands the graph no verbs: the pills keep their
+  /// place and take no press.
+  final ValueChanged<LaneGraphMode>? onPlot;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    final onPlot = this.onPlot;
+    PillItem pill(LaneGraphMode plotted, String label) => PillItem(
+      keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
+      label: label,
+      selected: mode == plotted,
+      onTap: onPlot == null ? null : () => onPlot(plotted),
+    );
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: AppColors.surface,
+        shape: AppShapes.container(AppShapes.wellRadius),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(_graphToolsPadding),
+        child: PillStrip(
+          items: [
+            pill(LaneGraphMode.value, strings.laneGraphValue),
+            pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+          ],
+        ),
       ),
     );
   }
@@ -217,17 +290,21 @@ const double _guestTagsLeastWidth =
     2 * _guestTagGap +
     _guestPinSize;
 
-/// Lays a graph's guest tags at the frames' far end of the VIEW — the
-/// mock's top right of the timeline's graph (5판), and on the sheet, the
-/// timeline turned a quarter clockwise, its bottom right — reckoned from the
-/// graph's start, which [ScrollStill] keeps at the view's while it scrolls:
-/// so nothing here moves with the scroll, and a scroll lays nothing out.
+/// What stands in a graph's view over its picture.
+enum _LaneGraphCorner { tools, guests }
+
+/// Lays a graph's TOOLS at the frames' start of the VIEW and its GUEST
+/// TAGS at their far end — the mock's top left and top right of the
+/// timeline's graph (5판), and on the sheet, the timeline turned a quarter
+/// clockwise, its top right and bottom right — reckoned from the graph's
+/// start, which [ScrollStill] keeps at the view's while it scrolls: so
+/// nothing here moves with the scroll, and a scroll lays nothing out.
 ///
-/// No wider than the room the view leaves on the timeline — the graph's on
-/// the sheet — so a long name ends in an ellipsis; never narrower than a
-/// tag's dash and pin.
-class _GuestTagsAtTheViewsEnd extends SingleChildLayoutDelegate {
-  const _GuestTagsAtTheViewsEnd(this.axis, this.viewportExtent);
+/// The tags never stand before the tools' end: no wider than the room the
+/// view leaves them on the timeline — the graph's on the sheet — so a long
+/// name ends in an ellipsis; never narrower than a tag's dash and pin.
+class _LaneGraphCorners extends MultiChildLayoutDelegate {
+  _LaneGraphCorners(this.axis, this.viewportExtent);
 
   final Axis axis;
 
@@ -241,31 +318,62 @@ class _GuestTagsAtTheViewsEnd extends SingleChildLayoutDelegate {
     return viewportExtent > 0 ? math.min(viewportExtent, length) : length;
   }
 
+  /// Where a child [childSize] big stands across a graph [size] big: off
+  /// the timeline's top, and — the top turned a quarter clockwise — off
+  /// the sheet's right.
+  double _across(Size size, Size childSize, double inset) =>
+      axis == Axis.horizontal
+      ? inset
+      : extentAcross(axis, size) - extentAcross(axis, childSize) - inset;
+
   @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
-    final size = constraints.biggest;
+  void performLayout(Size size) {
+    final view = _view(size);
+    final tools = layoutChild(
+      _LaneGraphCorner.tools,
+      BoxConstraints(
+        maxWidth: math.max(
+          0,
+          (axis == Axis.horizontal ? view : size.width) - 2 * _graphToolsInset,
+        ),
+        maxHeight: size.height,
+      ),
+    );
+    positionChild(
+      _LaneGraphCorner.tools,
+      offsetAlong(
+        axis,
+        along: _graphToolsInset,
+        across: _across(size, tools, _graphToolsInset),
+      ),
+    );
+    if (!hasChild(_LaneGraphCorner.guests)) {
+      return;
+    }
+    final after =
+        _graphToolsInset + extentAlong(axis, tools) + _guestTagsInsetAlong;
     final room = axis == Axis.horizontal
-        ? _view(size) - 2 * _guestTagsInsetAlong
+        ? view - _guestTagsInsetAlong - after
         : size.width - 2 * _guestTagsInsetAcross;
-    return BoxConstraints(maxWidth: math.max(_guestTagsLeastWidth, room));
+    final tags = layoutChild(
+      _LaneGraphCorner.guests,
+      BoxConstraints(maxWidth: math.max(_guestTagsLeastWidth, room)),
+    );
+    positionChild(
+      _LaneGraphCorner.guests,
+      offsetAlong(
+        axis,
+        along: math.max(
+          after,
+          view - _guestTagsInsetAlong - extentAlong(axis, tags),
+        ),
+        across: _across(size, tags, _guestTagsInsetAcross),
+      ),
+    );
   }
 
   @override
-  Offset getPositionForChild(Size size, Size childSize) => offsetAlong(
-    axis,
-    along: math.max(
-      _guestTagsInsetAlong,
-      _view(size) - _guestTagsInsetAlong - extentAlong(axis, childSize),
-    ),
-    across: axis == Axis.horizontal
-        ? _guestTagsInsetAcross
-        : extentAcross(axis, size) -
-              extentAcross(axis, childSize) -
-              _guestTagsInsetAcross,
-  );
-
-  @override
-  bool shouldRelayout(_GuestTagsAtTheViewsEnd oldDelegate) =>
+  bool shouldRelayout(_LaneGraphCorners oldDelegate) =>
       oldDelegate.axis != axis || oldDelegate.viewportExtent != viewportExtent;
 }
 
@@ -275,7 +383,7 @@ class _GuestTagsAtTheViewsEnd extends SingleChildLayoutDelegate {
 ///
 /// The same tags upright on the sheet: a graph is as wide there as its
 /// lanes' columns together, room for the names to read across, so only
-/// where they stand is turned ([_GuestTagsAtTheViewsEnd]) — 2026-10-11.
+/// where they stand is turned ([_LaneGraphCorners]) — 2026-10-11.
 class LaneGraphGuestTags extends StatelessWidget {
   const LaneGraphGuestTags({super.key, required this.guests});
 
@@ -401,6 +509,9 @@ const int _laneGraphRangeSteps = 8;
 const double _laneGraphSampleSpacing = 2;
 const int _laneGraphFrameSteps = 8;
 
+/// How far ahead of a time its speed is read, in frames.
+const double _laneGraphSpeedStep = 1 / 64;
+
 /// Where [time] — a frame, or a time between two — stands along a graph
 /// laid by [frames]: in the middle of its frame's cell, where a lane marks
 /// its key.
@@ -412,20 +523,25 @@ double laneGraphAlong(double time, TimelineFrameGeometry frames) {
   return from + (time - frame) * (middle(frame + 1) - from);
 }
 
-/// The values [curve]'s [part] is fitted to (I-89 ③, 「곡선마다 제 범위로
-/// 맞춰 겹침」 — AE's normalised view): from its lowest to its highest
-/// between its [keyed] frames, with [_laneGraphSpare] of that span beyond
-/// either; a line that never moves is given one either way first.
+/// The values each number of [curve] is fitted to (I-89 ③, 「곡선마다 제
+/// 범위로 맞춰 겹침」 — AE's normalised view), in the order of its parts:
+/// from its lowest to its highest between its [keyed] frames, with
+/// [_laneGraphSpare] of that span beyond either; a number that never moves
+/// is given one either way first.
 ///
 /// Read between the keys as well as on them: an eased stretch can pass
-/// beyond the keys it runs between.
-LaneGraphRange laneGraphRange(LaneCurve curve, List<int> keyed, int part) {
-  var low = double.infinity;
-  var high = double.negativeInfinity;
+/// beyond the keys it runs between. Each time is read once for all its
+/// numbers — a point's two are one pose.
+List<LaneGraphRange> laneGraphRanges(LaneCurve curve, List<int> keyed) {
+  final parts = curve.parts.length;
+  final low = List.filled(parts, double.infinity);
+  final high = List.filled(parts, double.negativeInfinity);
   void take(double time) {
-    final value = curve.at(time)[part];
-    low = math.min(low, value);
-    high = math.max(high, value);
+    final numbers = curve.at(time);
+    for (var part = 0; part < parts; part += 1) {
+      low[part] = math.min(low[part], numbers[part]);
+      high[part] = math.max(high[part], numbers[part]);
+    }
   }
 
   for (var index = 0; index < keyed.length; index += 1) {
@@ -439,12 +555,93 @@ LaneGraphRange laneGraphRange(LaneCurve curve, List<int> keyed, int part) {
       take(from + (to - from) * step / _laneGraphRangeSteps);
     }
   }
-  if (high - low < 1e-6) {
-    low -= 1;
-    high += 1;
+  return [
+    for (var part = 0; part < parts; part += 1)
+      _spared(low[part], high[part]),
+  ];
+}
+
+/// [low] to [high] with [_laneGraphSpare] of the span beyond either — one
+/// either way first, where they meet.
+LaneGraphRange _spared(double low, double high) {
+  final (from, to) = high - low < 1e-6 ? (low - 1, high + 1) : (low, high);
+  final spare = (to - from) * _laneGraphSpare;
+  return (low: from - spare, high: to + spare);
+}
+
+/// How fast each number of [curve] changes at [time] — per frame, as AE's
+/// speed graph plots it (I-89 ③ 속도) — read inside the stretch between
+/// its keys on [from] and [to]: a step ahead, and never on [to] itself,
+/// where a hold jumps.
+List<double> laneGraphSpeedsAt(
+  LaneCurve curve,
+  double time, {
+  required int from,
+  required int to,
+}) {
+  final at = time.clamp(from.toDouble(), to - 2 * _laneGraphSpeedStep);
+  final before = curve.at(at);
+  final after = curve.at(at + _laneGraphSpeedStep);
+  return [
+    for (var part = 0; part < before.length; part += 1)
+      (after[part] - before[part]).abs() / _laneGraphSpeedStep,
+  ];
+}
+
+/// [curve] as a speed graph plots it through [times]: how fast each of its
+/// numbers changes ([laneGraphSpeedsAt]) inside each stretch between two
+/// of its [keyed] frames, and still before the first and after the last —
+/// and on a key, the speeds it arrives at and then the ones it leaves at,
+/// so the line steps where they differ.
+Iterable<({double time, List<double> numbers})> laneGraphSpeeds(
+  LaneCurve curve,
+  List<int> keyed,
+  Iterable<double> times,
+) sync* {
+  final still = List<double>.filled(curve.parts.length, 0);
+  List<double> inStretch(int index, double time) =>
+      index < 0 || index + 1 >= keyed.length
+      ? still
+      : laneGraphSpeedsAt(
+          curve,
+          time,
+          from: keyed[index],
+          to: keyed[index + 1],
+        );
+  var next = 0;
+  for (final time in times) {
+    while (next < keyed.length && keyed[next] < time) {
+      next += 1;
+    }
+    yield (time: time, numbers: inStretch(next - 1, time));
+    if (next < keyed.length && keyed[next] == time) {
+      yield (time: time, numbers: inStretch(next, time));
+    }
   }
-  final spare = (high - low) * _laneGraphSpare;
-  return (low: low - spare, high: high + spare);
+}
+
+/// The speeds each number of [curve] is fitted to across a speed graph,
+/// in the order of its parts: from still — the timeline's foot, the
+/// sheet's left — to the fastest it goes between its [keyed] frames, with
+/// no spare either way (the mock's, 5판); read on both ends of every
+/// stretch and [_laneGraphRangeSteps] times across it. A number that never
+/// moves is given 0 to 1.
+List<LaneGraphRange> laneGraphSpeedRanges(LaneCurve curve, List<int> keyed) {
+  final high = List<double>.filled(curve.parts.length, 0);
+  for (var index = 0; index + 1 < keyed.length; index += 1) {
+    final from = keyed[index];
+    final to = keyed[index + 1];
+    for (var step = 0; step <= _laneGraphRangeSteps; step += 1) {
+      final time = from + (to - from) * step / _laneGraphRangeSteps;
+      final speeds = laneGraphSpeedsAt(curve, time, from: from, to: to);
+      for (var part = 0; part < high.length; part += 1) {
+        high[part] = math.max(high[part], speeds[part]);
+      }
+    }
+  }
+  return [
+    for (final fastest in high) (low: 0, high: fastest < 1e-6 ? 1 : fastest),
+  ];
 }
 
 /// Where [value] stands across a graph [extent] deep, fitted to [range]
@@ -509,23 +706,62 @@ typedef _LaneGraphPass = ({
 /// A key's mark, held back until every line is drawn.
 typedef _LaneGraphMark = ({Offset at, KeyMark mark, Color color});
 
+/// A line as a painter plots it: in dashes or not, and what it is fitted
+/// to — its keyed frames in order and each number's range — or null for a
+/// line with nothing to draw.
+typedef _LaneGraphPlot = ({
+  LaneGraphLine line,
+  bool dashed,
+  ({List<int> keyed, List<LaneGraphRange> ranges})? fit,
+});
+
 /// A header graph's picture (I-89 ③): each line of [own] solid and each of
 /// [guests] dashed, every number it holds in its own colour and fitted to
-/// its own range, and a mark on every key — over the frames [grid] lays,
-/// only those its window shows, as its rows of cells draw them
+/// its own range, as [mode] plots it — its values, with a mark on every
+/// key, or how fast they change — over the frames [grid] lays, only those
+/// its window shows, as its rows of cells draw them
 /// ([visibleFrameWindowFor]).
 class TimelineLaneGraphPainter extends CustomPainter {
   TimelineLaneGraphPainter({
     required this.own,
     required this.guests,
     required this.grid,
+    this.mode = LaneGraphMode.value,
   }) : super(repaint: Listenable.merge([grid.geometry, ?grid.windowBucket]));
 
   final List<LaneGraphLine> own;
   final List<LaneGraphLine> guests;
   final TimelineCellsRowGrid grid;
+  final LaneGraphMode mode;
 
   Axis get axis => grid.axis;
+
+  /// Each of [own]'s lines and [guests]', with what it is fitted to — read
+  /// on the first paint and kept, since its lines are this painter's for
+  /// as long as it lives and a scroll paints them again. 🔬Read on every
+  /// paint, 200 keys cost 10.7ms a paint to the values and 19.8ms to the
+  /// speeds (two lanes, the test VM).
+  late final List<_LaneGraphPlot> _plots = [
+    for (final line in own) (line: line, dashed: false, fit: _fitOf(line)),
+    for (final line in guests) (line: line, dashed: true, fit: _fitOf(line)),
+  ];
+
+  ({List<int> keyed, List<LaneGraphRange> ranges})? _fitOf(
+    LaneGraphLine line,
+  ) {
+    final curve = line.lane.curve;
+    final keyed = [...line.lane.keyedFrames]..sort();
+    if (curve == null || keyed.isEmpty) {
+      return null;
+    }
+    return (
+      keyed: keyed,
+      ranges: switch (mode) {
+        LaneGraphMode.value => laneGraphRanges(curve, keyed),
+        LaneGraphMode.speed => laneGraphSpeedRanges(curve, keyed),
+      },
+    );
+  }
 
   /// The frames [paint] draws — the probe surface for the window's tests,
   /// as the cells painter's is.
@@ -552,10 +788,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       extent: extentAcross(axis, size),
     );
     // The marks go on last, over every line.
-    final marks = [
-      for (final line in own) ..._drawLine(pass, line, dashed: false),
-      for (final line in guests) ..._drawLine(pass, line, dashed: true),
-    ];
+    final marks = [for (final plot in _plots) ..._drawLine(pass, plot)];
     for (final (:at, :mark, :color) in marks) {
       paintKeyMark(
         canvas,
@@ -568,49 +801,60 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
   }
 
-  /// Draws every number [line] holds through [pass], in dashes for a
-  /// guest, and gives back the marks its keys in the window take.
-  List<_LaneGraphMark> _drawLine(
-    _LaneGraphPass pass,
-    LaneGraphLine line, {
-    required bool dashed,
-  }) {
+  /// Draws every number [plot]'s line holds through [pass], in dashes for
+  /// a guest, and gives back the marks its keys in the window take — none
+  /// in a speed graph (the mock's, 5판).
+  List<_LaneGraphMark> _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
+    final (:line, :dashed, :fit) = plot;
     final curve = line.lane.curve;
-    final keyed = [...line.lane.keyedFrames]..sort();
-    if (curve == null || keyed.isEmpty) {
+    if (curve == null || fit == null) {
       return const [];
     }
+    final (:keyed, :ranges) = fit;
     final (:canvas, :frames, :window, :times, :extent) = pass;
-    final marks = <_LaneGraphMark>[];
+    Offset at(double time, double number, int part) => offsetAlong(
+      axis,
+      along: laneGraphAlong(time, frames),
+      across: laneGraphAcross(number, ranges[part], extent, axis),
+    );
+    // Each time read once, for all its numbers.
+    final readings = switch (mode) {
+      LaneGraphMode.value => [
+        for (final time in times) (time: time, numbers: curve.at(time)),
+      ],
+      LaneGraphMode.speed => laneGraphSpeeds(curve, keyed, times).toList(),
+    };
     for (var part = 0; part < curve.parts.length; part += 1) {
-      final range = laneGraphRange(curve, keyed, part);
-      Offset at(double time) => offsetAlong(
-        axis,
-        along: laneGraphAlong(time, frames),
-        across: laneGraphAcross(curve.at(time)[part], range, extent, axis),
-      );
       _strokeLaneGraphLine(
         canvas,
-        Path()..addPolygon([for (final time in times) at(time)], false),
+        Path()..addPolygon([
+          for (final (:time, :numbers) in readings)
+            at(time, numbers[part], part),
+        ], false),
         curve.parts[part],
         dashed: dashed,
       );
-      marks.addAll([
-        for (final frame in keyed)
-          if (frameWindowContains(window, frame))
-            (
-              at: at(frame.toDouble()),
-              mark: line.lane.keyMarkAt(frame),
-              color: layerMarkColor(line.layer.mark),
-            ),
-      ]);
     }
-    return marks;
+    if (mode == LaneGraphMode.speed) {
+      return const [];
+    }
+    final color = layerMarkColor(line.layer.mark);
+    return [
+      for (final frame in keyed)
+        if (frameWindowContains(window, frame))
+          for (final (part, number) in curve.at(frame.toDouble()).indexed)
+            (
+              at: at(frame.toDouble(), number, part),
+              mark: line.lane.keyMarkAt(frame),
+              color: color,
+            ),
+    ];
   }
 
   @override
   bool shouldRepaint(TimelineLaneGraphPainter oldDelegate) =>
       oldDelegate.own != own ||
       oldDelegate.guests != guests ||
-      oldDelegate.grid != grid;
+      oldDelegate.grid != grid ||
+      oldDelegate.mode != mode;
 }

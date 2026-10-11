@@ -358,7 +358,12 @@ void main() {
                   width: XSheetTimelineGrid.defaultMetrics.layerRowHeight,
                   height: height,
                   optionalColumns: (graph: graphs, onion: false, blend: false),
-                  laneGraphVerbs: (toggle: (_) {}, togglePin: (_) {}),
+                  laneGraphVerbs: (
+                    toggle: (_) {},
+                    togglePin: (_) {},
+                    plot: (_, _) {},
+                    resize: (_, _) {},
+                  ),
                   seat: graphs ? seat : null,
                 ),
               ),

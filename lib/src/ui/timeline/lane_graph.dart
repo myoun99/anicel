@@ -3,10 +3,13 @@ import 'package:flutter/foundation.dart'
 
 /// What a grid's header graphs are told (I-89 ③), each by the key of the
 /// group or the lane it was pressed on (`laneGroupKey`): a group's graph
-/// on or off, and a lane pinned to every graph or let go.
+/// on or off, a lane pinned to every graph or let go, what a graph plots,
+/// and how far it stands along the rail.
 typedef LaneGraphVerbs = ({
   ValueChanged<String> toggle,
   ValueChanged<String> togglePin,
+  void Function(String groupKey, LaneGraphMode mode) plot,
+  void Function(String groupKey, double extent) resize,
 });
 
 /// What a header graph plots: the values, or how fast they change.
