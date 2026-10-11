@@ -39,12 +39,25 @@ Path keyMarkPath(KeyMark mark, double size) {
             radius: size * _mixedHole,
           ),
         );
+    // A roving key (I-89 ④): After Effects' dot, smaller than any key
+    // whose time is its own, so 「부드럽게 지나감」's whole disc stays its own.
+    case RovingKeyMark():
+      return Path()..addOval(
+        Rect.fromCircle(
+          center: Offset(size / 2, size / 2),
+          radius: size * _rovingRadius,
+        ),
+      );
   }
 }
 
 /// How much of a mixed mark is hole: the radius of its inside, as a share
 /// of its box.
 const double _mixedHole = 0.32;
+
+/// How big a roving key's dot is: its radius, as a share of its box — the
+/// dot half as wide as the box.
+const double _rovingRadius = 0.25;
 
 /// Whether [mark] is drawn HOLLOW — the union's ○ (F-17), the one mark
 /// with nothing in its middle — so the line between a row's keys stops at

@@ -21,6 +21,9 @@ sealed class KeyMark {
 
   /// A union whose keyed members disagree.
   static const KeyMark mixed = MixedKeyMark._();
+
+  /// A key whose time roves.
+  static const KeyMark roving = RovingKeyMark._();
 }
 
 /// A key's two sides, by kind.
@@ -55,15 +58,27 @@ final class MixedKeyMark extends KeyMark {
   String toString() => 'KeyMark.mixed';
 }
 
-/// [key]'s mark.
-KeyMark keyMarkOf(PropertyKey<Object?> key) => SidesKeyMark(
-  incoming: keySideKindOf(key.incoming),
-  outgoing: keySideKindOf(key.outgoing),
-);
+/// A key whose time is its run's (I-89 ④, [PropertyKey.roving]) — After
+/// Effects' small dot. It says nothing of its sides: the pace through it
+/// is the one the run's timed ends set.
+final class RovingKeyMark extends KeyMark {
+  const RovingKeyMark._();
 
-/// Every key of [track], by frame — a lane's marks.
+  @override
+  String toString() => 'KeyMark.roving';
+}
+
+/// Every key of [track], by frame — a lane's marks: [KeyMark.roving] where
+/// a key roves ([PropertyTrack.keyCanRove] — an end flagged roving keeps
+/// its time, and wears its sides), its two sides elsewhere.
 Map<int, KeyMark> keyMarksOf(PropertyTrack<Object?> track) => {
-  for (final entry in track.keys.entries) entry.key: keyMarkOf(entry.value),
+  for (final MapEntry(key: frame, value: key) in track.keys.entries)
+    frame: key.roving && track.keyCanRove(frame)
+        ? KeyMark.roving
+        : SidesKeyMark(
+            incoming: keySideKindOf(key.incoming),
+            outgoing: keySideKindOf(key.outgoing),
+          ),
 };
 
 /// A GROUP's marks from its members' ([lanes]): at each frame some member
