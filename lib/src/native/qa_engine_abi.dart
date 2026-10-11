@@ -232,7 +232,13 @@ import 'dart:io';
 ///   runs. A long sound is conformed as it is decoded instead of whole in
 ///   memory (board long-sound-conform-memory-Q1, 유저 2026-10-10 「지금
 ///   한다 — 전 플랫폼」).
-const int kQaEngineAbiVersion = 43;
+/// - v44: `qa_display_vblank` / `qa_display_wait_until_us` — the
+///   compositor's vblank (Windows' DWM; 0 everywhere else) and a wait that
+///   ends on a microsecond, for a clock's frame to be handed to the GPU
+///   where it lands on the vblank it claimed (`QaDisplayTiming`, board
+///   playback-frame-raster-is-the-whole-window, 유저 2026-10-11 「144hz든
+///   몇이든 확실하게」).
+const int kQaEngineAbiVersion = 44;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

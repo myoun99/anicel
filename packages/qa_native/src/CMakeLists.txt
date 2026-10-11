@@ -31,6 +31,7 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_display.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)

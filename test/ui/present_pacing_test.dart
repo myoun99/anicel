@@ -1,9 +1,8 @@
-import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/windows_display_timing.dart';
+import 'package:anicel/src/native/qa_display_timing.dart';
 import 'package:anicel/src/services/playback/present_slot.dart';
 import 'package:anicel/src/ui/look_only_frames.dart';
 import 'package:anicel/src/ui/present_pacing.dart';

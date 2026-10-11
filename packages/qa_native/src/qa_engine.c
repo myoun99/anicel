@@ -6084,4 +6084,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v43: qa_audio_stream_open/_read/_close - a sound opened once and read on,
 // every decoder through one door - and qa_audio_resampler_* - the resampler
 // fed a piece at a time, through the loop qa_audio_resample runs.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 43; }
+// v44: qa_display_vblank / qa_display_wait_until_us - the compositor's
+// vblank and a wait that ends on a microsecond, for a clock's frame to be
+// handed to the GPU where it lands on the vblank it claimed.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 44; }

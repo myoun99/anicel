@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, TimingsCallback;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 
-import '../native/windows_display_timing.dart';
+import '../native/qa_display_timing.dart';
 import '../services/playback/present_slot.dart';
 
 /// 🚨THE MOMENT THE FRAME UNDER WAY IS SHOWN, ON THE FRAME CLOCK — the time
@@ -56,10 +56,10 @@ void lookChangedWhatItShows() {
 /// there a frame is shown on the vsync after its raster, which the build
 /// already starts on.
 mixin PresentPacing on WidgetsBinding {
-  /// The display's timing: the platform's own ([WindowsDisplayTiming]), or
+  /// The display's timing: the engine's own ([QaDisplayTiming]), or
   /// null where the engine's vsync is the display's. A test hands its own.
   @protected
-  DisplayTiming? get displayTiming => WindowsDisplayTiming.instance;
+  DisplayTiming? get displayTiming => QaDisplayTiming.instance;
 
   /// How long a look's frame may still take, from the look to the seam,
   /// for the vblank it claims to be within reach. 🔬Measured 1.5–3ms from
