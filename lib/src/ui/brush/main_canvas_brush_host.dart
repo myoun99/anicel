@@ -41,7 +41,6 @@ import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../widgets/panel_flyout.dart' show PanelFlyoutEntry;
 
 /// Production main-canvas Brush host for HomePage integration.
 ///
@@ -67,8 +66,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.viewportOverlayBuilder,
     this.viewportControlsBuilder,
     this.viewportUnderlayBuilder,
-    this.bottomBarSettings = const <PanelFlyoutEntry>[],
-    this.bottomBarHostToken,
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
     this.interactiveContentPose,
@@ -190,13 +187,6 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// (paper + layers below the active one) — or, in merged mode, the whole
   /// composite tree with the active layer inside it.
   final CanvasUnderlayBuilder? viewportUnderlayBuilder;
-
-  /// Forwarded to [BrushCanvasPanel.bottomBarSettings]: what the editor puts
-  /// in the canvas's ⚙ list — how it shows the camera's path (I-89 ④).
-  final List<PanelFlyoutEntry> bottomBarSettings;
-
-  /// Forwarded to [BrushCanvasPanel.bottomBarHostToken].
-  final Object? bottomBarHostToken;
 
   /// Forwarded to [BrushCanvasPanel]: the host-owned live-stroke overlay
   /// that puts the canvas in MERGED mode (the active layer painted inside
@@ -614,8 +604,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
       viewportControlsBuilder: widget.viewportControlsBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
-      bottomBarSettings: widget.bottomBarSettings,
-      bottomBarHostToken: widget.bottomBarHostToken,
       activeStrokeOverlayModel: widget.activeStrokeOverlayModel,
       interactiveContentOpacity: widget.interactiveContentOpacity,
       interactiveContentPose: widget.interactiveContentPose,

@@ -15,6 +15,13 @@ import '../widgets/pill_strip.dart';
 ///
 /// Each row reads the live value ([CameraPathSettings.settings]) at its
 /// press, so a list left open never writes back a value it opened on.
+///
+/// ⚠️Where the list opens from is asked (④-Q1, again 2026-10-12): the
+/// canvas's ⚙ it was first meant for does not stand on a wide floor (유저
+/// 확정 2026-08-13: 「설정에 있는거 다 빼 … 바닥에 깔려있는 메인뷰어랑
+/// 캔버스패널만」), and standing one there for these would undo that. Until
+/// it is answered no surface opens it, and the path shows as its defaults
+/// say.
 List<PanelFlyoutEntry> cameraPathSettingsRows(
   ValueChanged<CameraPathSettings> onChanged,
 ) {
@@ -92,7 +99,6 @@ PanelFlyoutRow _frames(
   listenable: CameraPathSettings.settings,
   builder: (_) => DragValueLabel(
     keyValue: keyValue,
-    inputKeyValue: '$keyValue-input',
     text: '${read(_now)}f',
     unitsPerPixel: 1 / 8,
     width: 40,

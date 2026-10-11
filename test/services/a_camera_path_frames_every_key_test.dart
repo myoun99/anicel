@@ -215,10 +215,61 @@ void main() {
     expect(trail.points, hasLength(13));
     expect(trail.points.first.dx, closeTo(200, 1e-9));
 
+    final early = marksOf(pathOf(three), from: -6, to: 6);
+    expect(wordsIn(early).map((label) => label.text), ['1f']);
+    expect(
+      early.whereType<SheetStroke>().first.points,
+      hasLength(7),
+      reason: 'frames 0 to 6 — nothing before the first key',
+    );
+
     expect(marksOf(pathOf(three), from: 30, to: 40), isEmpty);
   });
 
+  test('every point is laid on the surface by its place — the frames, the '
+      'trail, the labels and the crosses in time — at the surface\'s own '
+      'sizes', () {
+    Offset laid(Offset point) => Offset(point.dx * 2 + 10, point.dy * 2 - 5);
+    final path = pathOf(three);
+    final marks = cameraPathMarks(
+      path,
+      place: laid,
+      sizes: sizes,
+      layer: SheetPaintLayer.picture,
+    ).toList();
+    expectPoints(framesIn(marks)[1].points, [
+      for (final corner in frameAround(320, 45)) laid(corner),
+    ]);
+    final trail = marks.whereType<SheetStroke>().first;
+    expect(trail.argb, cameraTrailArgb, reason: '⛔전제');
+    expectPoints([trail.points[6]], [laid(const Offset(200, 45))]);
+    final topLeft = laid(frameAround(320, 45).first);
+    expect(wordsIn(marks)[1].slot.left, closeTo(topLeft.dx + 4, 1e-9));
+    expect(wordsIn(marks)[1].slot.top, closeTo(topLeft.dy + 4, 1e-9));
+    final arm = armsIn(marks).first;
+    expect(
+      (arm.points[1] - arm.points[0]).distance,
+      closeTo(2 * sizes.crossArm, 1e-9),
+      reason: 'an arm as long however the canvas is laid',
+    );
+    final tick = cameraPathTicks(
+      path,
+      place: laid,
+      every: 5,
+      playhead: 0,
+      arm: 3,
+      width: 1.1,
+      layer: SheetPaintLayer.picture,
+    ).cast<SheetStroke>().first;
+    expectPoints([middleOf(tick)], [laid(const Offset(180, 45))]);
+  });
+
   group('in time', () {
+    /// The spec's grey behind the playhead and blue ahead of it (2026-10-10,
+    /// the mock's 5판).
+    const grey = 0xFF8E9093;
+    const blue = 0xFF3A78C8;
+
     List<SheetStroke> ticksOf(
       CameraPath path, {
       required int every,
@@ -243,10 +294,10 @@ void main() {
       final ticks = ticksOf(pathOf(three), every: 5, playhead: 10);
       expect(ticks, hasLength(8), reason: 'frames 5, 10, 15, 20 — 0 is a key');
       expect([for (var i = 0; i < 8; i += 2) ticks[i].argb], [
-        cameraTickPastArgb,
+        grey,
         cameraBetweenArgb,
-        cameraTickAheadArgb,
-        cameraTickAheadArgb,
+        blue,
+        blue,
       ]);
       expect(middleOf(ticks[0]).dx, closeTo(180, 1e-9), reason: 'frame 5');
       expect(middleOf(ticks[6]).dy, closeTo(45 + 135 * 8 / 12, 1e-9));
@@ -276,6 +327,11 @@ void main() {
         ticksOf(pathOf(three), every: 1, playhead: 0, from: 10, to: 14),
         hasLength(8),
         reason: 'frames 10, 11, 13, 14 — 12 is a key',
+      );
+      expect(
+        ticksOf(pathOf(three), every: 1, playhead: 0, from: -3, to: 2),
+        hasLength(4),
+        reason: 'frames 1 and 2 — nothing before the first key',
       );
     });
 

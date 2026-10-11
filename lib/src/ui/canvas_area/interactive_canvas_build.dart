@@ -299,14 +299,6 @@ class _InteractiveCanvasBuild {
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
         session,
       ),
-      // I-89 ④-Q1 (A, the recommendation, while it is asked): how the
-      // camera's path shows, in the canvas's ⚙ list — the gear keeps what a
-      // hand does not reach for constantly. The rows read the live value
-      // themselves; the language writes their words.
-      bottomBarSettings: cameraPathSettingsRows(
-        session.appSettings.setCameraPathSettings,
-      ),
-      bottomBarHostToken: (session.appSettings, AppText.language),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
       // composite tree and a folder's group buffer can enclose
