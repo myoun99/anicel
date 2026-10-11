@@ -210,8 +210,11 @@ void main() {
     // The INDEPENDENT truth: frame F sits at content x = F * cellWidth, and
     // the viewport shows content x at screen x - left + offset.
     const cellWidth = 24.0;
-    final frameUnderPointer =
-        ((scrolled + viewportRect.width / 2) / cellWidth).floor();
+    // A cell inside its block of four, clear of the comma grips on the
+    // block's two ends: a press on a grip is the grip's (I-43), and which
+    // cell the view's middle meets moves with the rail's width.
+    final middle = ((scrolled + viewportRect.width / 2) / cellWidth).floor();
+    final frameUnderPointer = middle - middle % 4 + 2;
     final expectedLeft =
         viewportRect.left + frameUnderPointer * cellWidth - scrolled;
 

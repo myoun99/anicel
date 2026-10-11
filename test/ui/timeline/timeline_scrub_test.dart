@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
@@ -260,6 +261,7 @@ layers: layers,
         ),
       );
       await tester.pumpAndSettle();
+      await standTheClassicRail(tester);
       notifies = 0;
 
       final rowFinder = find.byKey(

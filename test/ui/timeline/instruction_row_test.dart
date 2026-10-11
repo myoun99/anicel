@@ -234,6 +234,7 @@ void main() {
       ),
       onRepositoryCreated: (repo) => repository = repo,
     );
+    await standTheClassicRail(tester);
 
     // The chip prints the free text, not 'PAN'.
     expect(findBlockText('メモリPAN'), findsOneWidget);

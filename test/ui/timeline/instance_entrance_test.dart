@@ -126,6 +126,7 @@ void main() {
   testWidgets('drawing cell double-tap opens the frame-name editor; single '
       'tap still selects', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     // Single tap: selection only, no dialog.
     await tapTimelineCell(tester, 'draw', 2);
@@ -181,6 +182,7 @@ void main() {
   testWidgets('an EMPTY camera cell double-tap KEYS it, and a second '
       'double-tap opens the dialog', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     expect(
       _cut(repository).camera.track.position.keyAt(2),
       isNull,
@@ -233,6 +235,7 @@ void main() {
     tester,
   ) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     Layer se() => _cut(
       repository,
     ).layers.firstWhere((layer) => layer.kind == LayerKind.se);
@@ -308,6 +311,7 @@ void main() {
   testWidgets('the camera row edits its keys in the COMMON key window — a '
       'name and a type on every member, ONE undo step', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'cam', 2);
     await tester.pumpAndSettle();
@@ -392,6 +396,7 @@ void main() {
       'directly — no dialog (UI-R25 #2); the Edit Instance dialog labels '
       'it afterwards', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();
@@ -466,6 +471,7 @@ void main() {
   testWidgets('toolbar Edit Instance is DARK on an EMPTY SE cell, and a press '
       'there makes nothing (F-105)', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();
 
