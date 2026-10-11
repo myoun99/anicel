@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -9,16 +10,25 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/temp_dir.dart';
 
 /// 🚨A SNAPSHOT IS A FIXED PRICE WHATEVER ITS SIZE (2026-09-25, the real
 /// Windows app: 32×32 and 2448×1313 alike 1.6–2.0 ms of raster), and on a
@@ -187,21 +197,63 @@ void main() {
     );
   });
 
+  // What a run's tree holds: rows drawn from their made images, none
+  // standing live.
+  const runKey = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('l'),
+    frameId: FrameId('f'),
+  );
+  const runRows = <CompositeNode<CanvasStackRow>>[
+    CompositeLeaf<CanvasStackRow>(
+      CanvasLayerImageRequest(frameKey: runKey, opacity: 1),
+    ),
+  ];
+
+  /// A cache holding [runKey]'s image, made from a one-tile cel on disk.
+  Future<LayerFrameImageCache> heldRunImage(WidgetTester tester) async {
+    final dir = Directory.systemTemp.createTempSync('anicel-run-rows');
+    addTearDown(() => deleteTempQuietly(dir));
+    final surface = BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: {TileCoord(x: 2, y: 2): tile},
+    );
+    final blob = AnicelCelBlob.encode(
+      AnicelCelEntry.fromSurface(runKey, surface),
+    );
+    final file = File('${dir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
+    final store = BrushFrameStore()
+      ..restoreFromFile({
+        runKey: AnicelCelFileRef(
+          filePath: file.path,
+          dataOffset: 0,
+          length: blob.bytes.length,
+          canvasSize: canvasSize,
+          tileSize: tileSize,
+        ),
+      });
+    final cache = LayerFrameImageCache(frameStore: store);
+    await tester.runAsync(
+      () => cache.prepare(
+        key: runKey,
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      ),
+    );
+    return cache;
+  }
+
   // A tree draws its live surface only with a live row in it AND a painter
   // to draw that row: a run's tree stands no row live
   // (`EditingCanvas.playingStack`) while the host still hands the canvas
   // its surface painter, and the film's track stack hands it none.
-  // What a run's tree holds, standing nothing live: here an empty folder.
-  const notLive = <CompositeNode<CanvasStackRow>>[
-    CompositeGroup<CanvasStackRow>(
-      children: [],
-      opacity: 1,
-      blendMode: LayerBlendMode.normal,
-    ),
-  ];
-  for (final (:name, :rows, :painted) in [
-    (name: 'a run on the canvas', rows: 0, painted: true),
-    (name: 'a live row with no painter', rows: 1, painted: false),
+  for (final (:name, :run, :painted) in [
+    (name: 'a run on the canvas', run: true, painted: true),
+    (name: 'a live row with no painter', run: false, painted: false),
   ]) {
     testWidgets('🚨a tree that draws no live surface asks no snapshot — '
         '$name composes each frame whole and patches none', (tester) async {
@@ -210,7 +262,9 @@ void main() {
       addTearDown(tester.view.reset);
       final buffers = DisplayBufferCache();
       addTearDown(buffers.dispose);
-      final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
+      final imageCache = run
+          ? await heldRunImage(tester)
+          : LayerFrameImageCache(frameStore: BrushFrameStore());
       // Each frame here is another paper, so each one composes whole.
       Future<void> frame(int index) => tester.pumpWidget(
         MaterialApp(
@@ -220,7 +274,7 @@ void main() {
               width: 512,
               height: 512,
               child: CanvasLayerStackView(
-                nodes: rows == 0 ? notLive : nodes,
+                nodes: run ? runRows : nodes,
                 imageCache: imageCache,
                 debugBufferCache: buffers,
                 canvasSize: canvasSize,
@@ -243,6 +297,19 @@ void main() {
           await Future<void>.delayed(Duration.zero);
         }
       });
+      if (run) {
+        expect(
+          imageCache.peek(
+            runKey,
+            PlaybackQuality.full,
+            canvasSize: canvasSize,
+            sourceEffects: const [],
+            inkSuffices: true,
+          ),
+          isNotNull,
+          reason: '⛔LIVENESS: the run\'s row is drawn from its made image',
+        );
+      }
       expect(
         buffers.fullCount,
         greaterThanOrEqualTo(frames),

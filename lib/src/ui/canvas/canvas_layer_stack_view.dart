@@ -2168,11 +2168,9 @@ class _LayerStackPainter extends CustomPainter {
   }
 
   /// Whether this tree draws the live surface — the one thing a later paint
-  /// can patch over its buffer.
+  /// can patch over its buffer. (A live row with no painter to draw it never
+  /// gets here: [_CanvasLayerStackViewState._paintRowFor] drops it.)
   bool get _drawsLive {
-    if (activeSurfacePainter == null) {
-      return false;
-    }
     for (final node in preorderNodes(nodes)) {
       if (node case CompositeLeaf(payload: _PaintActiveSurface())) {
         return true;
