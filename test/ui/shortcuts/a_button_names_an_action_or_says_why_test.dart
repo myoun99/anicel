@@ -48,6 +48,9 @@ const ledger = <String, Why>{
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
+  // A header graph's two toggles (I-89 ③): the graph of the group whose
+  // header or camera row wears it, and the pin of the lane it stands on.
+  'timeline/lane_graph_toggle.dart | keyValue': Why.aRow,
   'timeline/layer_label_controls.dart | '
           "'\$keyPrefix-layer-timesheet-\$layerId'":
       Why.aRow,
