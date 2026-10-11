@@ -3,6 +3,7 @@
 // splitter rides the bottom edge of a V row's label and moves the ONE height
 // every V row shares, inside its legal range — and the layout file keeps it
 // the way it keeps the rail widths, absent while it is the default.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -201,7 +202,15 @@ void main() {
     // Closed first: closing saves the layout it holds.
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
-    await tester.runAsync(() => store.save({...written!, _key: kept}));
+    // ⛔Not inside runAsync: this save queues behind the closing one, and
+    // while that is still on the disk only a pump lands it — awaited in
+    // runAsync, the test hung for its ten minutes under load.
+    var landed = false;
+    unawaited(
+      store.save({...written!, _key: kept}).then((_) => landed = true),
+    );
+    await _settleIo(tester, () => landed);
+    expect(landed, isTrue, reason: '⛔전제: the kept height is on the file');
     await _openStoryboard(tester, store, window: const Size(1600, 1800));
     await _settleIo(tester, () => _laneHeights(tester).first != _default);
     await tester.drag(
