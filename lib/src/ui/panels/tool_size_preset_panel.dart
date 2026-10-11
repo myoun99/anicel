@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
+import '../widgets/field_slider.dart';
 
 /// **The tool's sizes, as buttons** (I-2).
 ///
@@ -96,11 +97,6 @@ class ToolSizePresetPanel extends StatelessWidget {
     2000,
   ];
 
-  /// How close a size has to be to a preset to read as that preset. The
-  /// list is exact and a press writes it verbatim, so this only absorbs
-  /// float error.
-  static const double _match = 0.01;
-
   static String label(double value) =>
       value == value.roundToDouble() ? '${value.round()}' : '$value';
 
@@ -116,7 +112,9 @@ class ToolSizePresetPanel extends StatelessWidget {
             _SizeCell(
               key: ValueKey<String>('tool-size-preset-${label(preset)}'),
               value: preset,
-              selected: (preset - size).abs() < _match,
+              // The size reads as a preset by the reach the size bar's step
+              // leaves a preset by — one reading for both.
+              selected: FieldSlider.standsOn(size, preset),
               onTap: () => onSizeSelected(preset),
             ),
         ],

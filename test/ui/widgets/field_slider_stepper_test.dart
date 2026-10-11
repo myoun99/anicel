@@ -7,6 +7,7 @@
 //
 // ⛔The rule lives in the widget, not at the call sites: a per-site flag is
 // how two kinds stop being two kinds.
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -147,6 +148,61 @@ void main() {
     await tester.tap(down);
     await tester.pump();
     expect(value, closeTo(0.49, 1e-9), reason: 'and back down, twice');
+  });
+
+  testWidgets('🚨a bar with STOPS steps to the next stop either way, from '
+      'wherever it stands — the wheel the same (F-325)', (tester) async {
+    // 유저 2026-10-09: 「브러시 사이즈의 + -버튼인 한걸음 조정 버튼, 툴 사이즈
+    // 패널의 프리셋을 그대로 따름」.
+    var value = 3.3;
+    late StateSetter hold;
+    await pump(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) {
+          hold = setState;
+          return FieldSlider(
+            value: value,
+            min: 1,
+            max: 20,
+            stops: const [1, 2, 5, 10, 20],
+            scale: FieldSliderScale.exponential,
+            label: 'Size',
+            unit: ' px',
+            onChanged: (next) => setState(() => value = next),
+          );
+        },
+      ),
+    );
+    Future<void> press(Finder button) async {
+      await tester.tap(button);
+      await tester.pump();
+    }
+
+    await press(up);
+    expect(value, 5, reason: 'between two stops, up is the one above');
+    await press(up);
+    expect(value, 10, reason: 'on a stop, up is the next');
+    await press(down);
+    await press(down);
+    expect(value, 2);
+    await press(down);
+    await press(down);
+    expect(value, 1, reason: 'and below the first there is nothing to step to');
+
+    // A value a drag left a hair off a stop stands on it.
+    hold(() => value = 10.004);
+    await tester.pump();
+    await press(down);
+    expect(value, 5, reason: 'the stop it stands on is not the next one');
+
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(
+      pointer.hover(tester.getCenter(find.byType(FieldSlider))),
+    );
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -20)));
+    await tester.pump();
+    expect(value, 10, reason: 'one wheel notch is the + — the same step');
   });
 
   /// A bar a host keeps, telling each change and each end.

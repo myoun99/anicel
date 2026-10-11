@@ -80,6 +80,7 @@ class FieldSlider extends StatefulWidget {
     this.label,
     this.scale = FieldSliderScale.linear,
     this.divisions,
+    this.stops,
     this.fillOrigin,
     this.height = defaultHeight,
     this.axis = Axis.horizontal,
@@ -92,6 +93,10 @@ class FieldSlider extends StatefulWidget {
        assert(
          divisions == null || scale == FieldSliderScale.linear,
          'divisions only combine with the linear scale',
+       ),
+       assert(
+         stops == null || divisions == null,
+         'a step is the next stop or the next division, not both',
        );
 
   /// **A settings GRID's bar** ([ToolSettingRow.bar]): its name stands in
@@ -120,6 +125,7 @@ class FieldSlider extends StatefulWidget {
   }) : _nameInside = false,
        restingText = null,
        restingAccent = null,
+       stops = null,
        height = defaultHeight,
        axis = Axis.horizontal,
        assert(max > min, 'max must exceed min'),
@@ -167,6 +173,7 @@ class FieldSlider extends StatefulWidget {
        fillOrigin = null,
        max = 1,
        divisions = 100,
+       stops = null,
        scale = FieldSliderScale.linear,
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
@@ -236,6 +243,39 @@ class FieldSlider extends StatefulWidget {
 
   /// Snaps values to `divisions` equal steps (linear scale only).
   final int? divisions;
+
+  /// Whether [value] stands on [stop]: within float error and what a drag
+  /// leaves — the reach a rack of these values reads its chosen one by
+  /// (`ToolSizePresetPanel`), so a step from a value the rack shows as
+  /// chosen goes on to the next.
+  static bool standsOn(double value, double stop) =>
+      (value - stop).abs() < 0.01;
+
+  /// The stop next past [value] [direction] (+1 up, −1 down) — not one it
+  /// [standsOn]; null past the last.
+  static double? stopPast(List<double> stops, double value, int direction) {
+    double? next;
+    for (final stop in stops) {
+      if (standsOn(value, stop) || (stop > value) != (direction > 0)) {
+        continue;
+      }
+      if (next == null || (stop < next) == (direction > 0)) {
+        next = stop;
+      }
+    }
+    return next;
+  }
+
+  /// The values a STEP moves between — the +/− buttons and the wheel go
+  /// to the next one above or below the value, wherever it stands; null
+  /// steps along the track ([_FieldSliderState._stepBy]). A drag is not
+  /// stepped: it lands where it is let go.
+  ///
+  /// 🗣️F-325 (유저 2026-10-09): 「브러시 사이즈의 + -버튼인 한걸음 조정
+  /// 버튼, 툴 사이즈 패널의 프리셋을 그대로 따름」 — the brush size's step is
+  /// the rack the tool size panel shows. ⚠️「그대로」: the stops ARE the
+  /// step, so Shift asks for no finer one on a bar that has them.
+  final List<double>? stops;
 
   /// The value the filled bar grows FROM; null means [min], which is what a
   /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
@@ -730,6 +770,17 @@ class _FieldSliderState extends State<FieldSlider> {
   /// commit-on-release consumers get their commit right away.
   void _stepBy(int direction) {
     if (!_enabled) {
+      return;
+    }
+    final stops = widget.stops;
+    if (stops != null) {
+      final next = FieldSlider.stopPast(stops, widget.value, direction);
+      if (next == null) {
+        return;
+      }
+      final value = next.clamp(widget.min, widget.max).toDouble();
+      _emit(value);
+      widget.onChangeEnd?.call(value);
       return;
     }
     final divisions = widget.divisions;

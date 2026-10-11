@@ -58,6 +58,7 @@ import '../export/export_plan.dart'
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ImageExportSpec;
+import '../panels/tool_size_preset_panel.dart';
 import '../panels/workspace_panels_menu.dart';
 import 'project_open_door.dart';
 import 'project_settings_menu.dart';
@@ -1011,6 +1012,9 @@ class _BrushValueBars extends StatelessWidget {
     // Equal travel multiplies the value, so the left half covers the small
     // sizes where a pixel matters.
     scale: FieldSliderScale.exponential,
+    // F-325 (유저 2026-10-09): the +/− and the wheel step through the tool
+    // size panel's rack, as it is.
+    stops: ToolSizePresetPanel.presets,
     unit: ' px',
     height: _barHeight,
     onChanged: onChanged,

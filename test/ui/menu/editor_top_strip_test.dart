@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
@@ -399,6 +400,40 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
     }
+
+    testWidgets('🚨the size bar\'s + and − step through the tool size '
+        'panel\'s rack, as it is (F-325)', (tester) async {
+      await pumpHomeWithBars(tester);
+      final tool = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .brushTool!;
+      tool.value = tool.value.withActiveSize(10);
+      await tester.pumpAndSettle();
+      final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+      Finder hand(String key) => find.descendant(
+        of: bar,
+        matching: find.byKey(ValueKey<String>(key)),
+      );
+
+      await tester.tap(hand('field-slider-step-up'));
+      await tester.pumpAndSettle();
+      expect(
+        tool.value.activeSize,
+        12,
+        reason: 'the rack goes 10 → 12 — ↩️the + moved a hundredth of the '
+            'track',
+      );
+      await tester.tap(hand('field-slider-step-down'));
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-down'));
+      await tester.pumpAndSettle();
+      expect(tool.value.activeSize, 8, reason: 'and back down past 10, to 8');
+      expect(
+        barOf(tester, 'top-strip-size-bar').stops,
+        same(ToolSizePresetPanel.presets),
+        reason: 'the rack itself, not a copy of it',
+      );
+    });
 
     testWidgets('opacity is per tool: the fill keeps its own', (tester) async {
       await pumpHomeWithBars(tester);
