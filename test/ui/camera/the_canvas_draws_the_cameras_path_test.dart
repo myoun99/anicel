@@ -97,12 +97,15 @@ void main() {
       if (mark is SheetWords) mark.text,
   ];
 
-  /// The two-point strokes — the arms of the keys' and the ticks' crosses.
-  int armsOf(WidgetTester tester) => [
+  /// The two-point strokes — the arms of the keys' and the ticks' crosses —
+  /// each as long as it is drawn on the screen.
+  List<double> arms(WidgetTester tester) => [
     for (final mark in marks(tester))
       if (mark is SheetStroke && !mark.closed && mark.points.length == 2)
-        mark,
-  ].length;
+        (mark.points.last - mark.points.first).distance,
+  ];
+
+  int armsOf(WidgetTester tester) => arms(tester).length;
 
   /// The frames the path draws, a key each, first to last — on the screen.
   List<List<Offset>> keyFrames(WidgetTester tester) => [
@@ -150,6 +153,14 @@ void main() {
     await tester.pump();
     expect(path(), findsNothing);
 
+    s.standOnRow(LayerRowAddress(row));
+    await tester.pump();
+    expect(path(), findsOneWidget, reason: '⛔전제');
+    s.standOnRow(TrackRowAddress(s.selectedTrackId));
+    await tester.pump();
+    expect(cameraOf(s).isCameraLayerActive, isTrue, reason: '⛔전제');
+    expect(path(), findsNothing, reason: 'the cut row');
+
     final drawing = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind != LayerKind.camera)
         .id;
@@ -169,6 +180,12 @@ void main() {
     await pumpArea(tester, s);
     expect(labels(tester), ['1f', '6f']);
     expect(armsOf(tester), 4 + 8, reason: 'two keys, and frames 1 to 4');
+    // The mock's sizes (5판): a key's cross reaches 5 screen pixels either
+    // way, a frame's 3.
+    expect(arms(tester), [
+      for (var arm = 0; arm < 4; arm++) closeTo(10, 1e-9),
+      for (var arm = 0; arm < 8; arm++) closeTo(6, 1e-9),
+    ]);
 
     CameraPathSettings.settings.value = const CameraPathSettings(
       show: CameraPathShow.space,
@@ -345,6 +362,33 @@ void main() {
     expect(path(), findsNothing);
 
     s.playbackRig.playback.stop();
+    await drain(tester);
+  });
+
+  testWidgets('a gap has no cut and no camera: no path in it, as no frame', (
+    tester,
+  ) async {
+    final (s, row) = panning();
+    addTearDown(s.dispose);
+    s.cutVerbs.createCut();
+    final track = s.repository.requireProject().tracks.first;
+    s.repository.updateCutLeadingGap(
+      cutId: track.cuts[1].id,
+      leadingGapFrames: 4,
+    );
+    s.selectCut(track.cuts[0].id);
+    s.standOnRow(LayerRowAddress(row));
+    await pumpArea(tester, s);
+    expect(path(), findsOneWidget, reason: '⛔전제');
+
+    final gap = track.cuts[0].duration + 1;
+    s.frameScrub.scrubGlobalFrame(gap);
+    s.frameScrub.scrubGlobalFrame(gap + 1);
+    await tester.pump();
+    expect(s.editingSession.playheadInGap, isTrue, reason: '⛔전제');
+    expect(find.byType(CameraFrameOverlay), findsNothing, reason: '⛔전제');
+    expect(path(), findsNothing);
+
     await drain(tester);
   });
 

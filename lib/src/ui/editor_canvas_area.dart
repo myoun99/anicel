@@ -1320,8 +1320,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.canvasAdjust.cameraSizeShown ?? session.camera.cameraFrameSize;
 
   /// The camera's path (I-89 ④) under its frame, as the canvas's camera path
-  /// settings say — at the size the frame is shown at, and around the
-  /// playhead the cursor moves.
+  /// settings say — at the size the frame is shown at, around the playhead
+  /// the cursor moves, and where the frame is: nowhere in a gap.
   Positioned _cameraPath(
     EditorSessionManager session,
     CanvasViewport viewport,
@@ -1331,11 +1331,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       builder: (context, settings, _) => settings.show == CameraPathShow.off
           ? const SizedBox.shrink()
           : ListenableBuilder(
-              listenable: Listenable.merge([
-                session.editingFrameCursor,
-                session.canvasAdjust,
-              ]),
-              builder: (context, _) {
+              listenable: session.canvasAdjust,
+              builder: (context, _) => _atTheCameraPose(session, (_) {
                 final path = session.camera.activeCutCameraPath(
                   _cameraFrameSizeShown(session),
                 );
@@ -1347,7 +1344,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         settings: settings,
                         viewport: viewport,
                       );
-              },
+              }),
             ),
     ),
   );
@@ -1383,7 +1380,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// [build] at the camera's pose as the canvas shows it, again whenever the
   /// pose moves — and nothing where there is no pose: under the cursor is a
-  /// gap. The camera's frame and its box both stand on it.
+  /// gap. The camera's frame, its box and its path (I-89 ④) all stand on it.
   ///
   /// The cursor subscription keeps the frame gliding along its animated
   /// pose during scrubs (and after committed seeks) without any wider
