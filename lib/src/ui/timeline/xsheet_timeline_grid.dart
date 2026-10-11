@@ -1109,11 +1109,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         _metrics.verticalScrollbarWidth,
                   )
                 : 0.0;
-            _dragEdges = timelineRowEdgesOf(
-              entries,
-              _metrics,
-              view: columnsView,
-            );
+            TimelineRowEdges lay(List<TimelineDisplayRow> laid) =>
+                timelineRowEdgesOf(laid, _metrics, view: columnsView);
+            _dragEdges = lay(entries);
             // ⚠️AFTER the line above: the sheet draws the silhouette column
             // the timeline draws, and the gap is counted on the list
             // without it ([rowsWithSilhouette]).
@@ -1126,11 +1124,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // pushed along.
             final columnEdges = identical(drawnEntries, entries)
                 ? _dragEdges
-                : timelineRowEdgesOf(
-                    drawnEntries,
-                    _metrics,
-                    view: columnsView,
-                  );
+                : lay(drawnEntries);
             // The bundles are FIELDS here (the x-sheet reads them from more
             // than one builder), so the assignment stays and only the
             // construction moved.

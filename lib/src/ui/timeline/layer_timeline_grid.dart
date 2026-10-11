@@ -560,9 +560,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// cut from, so the scroll's crossing reads it too.
   TimelineRowEdges _drawnEdges = TimelineRowEdges.uniform(0, 0);
 
-  /// What [_dragEdges] and [_drawnEdges] were laid from ([_layRows]).
+  /// What [_dragEdges] and [_drawnEdges] were laid from ([_layRows]). The
+  /// drawn rows stand for the pass: they are its rows, or a list made from
+  /// them in it ([rowsWithSilhouette]) — a new pass is a new list either
+  /// way.
   ({
-    List<TimelineDisplayRow> rows,
     List<TimelineDisplayRow> drawn,
     double view,
     TimelineGridMetrics metrics,
@@ -570,7 +572,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   _laid;
 
   /// Lays [rows] into [_dragEdges] and [drawn] — the rows the pass DRAWS —
-  /// into [_drawnEdges], along a view [view] long; the drawn edges back.
+  /// into [_drawnEdges], both along a view [view] long; the drawn edges
+  /// back.
   ///
   /// Laid where the view is measured, since an enlarged graph stands as far
   /// as the view lets one (I-89 ③D) — and once per pass and view: a row
@@ -581,21 +584,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     double view,
   ) {
     if (_laid case (
-      rows: final laidRows,
       drawn: final laidDrawn,
       view: final laidView,
       metrics: final laidMetrics,
-    ) when identical(laidRows, rows) &&
-        identical(laidDrawn, drawn) &&
+    ) when identical(laidDrawn, drawn) &&
         laidView == view &&
         laidMetrics == _metrics) {
       return _drawnEdges;
     }
-    _laid = (rows: rows, drawn: drawn, view: view, metrics: _metrics);
-    _dragEdges = timelineRowEdgesOf(rows, _metrics, view: view);
-    return _drawnEdges = identical(drawn, rows)
-        ? _dragEdges
-        : timelineRowEdgesOf(drawn, _metrics, view: view);
+    _laid = (drawn: drawn, view: view, metrics: _metrics);
+    TimelineRowEdges lay(List<TimelineDisplayRow> laid) =>
+        timelineRowEdgesOf(laid, _metrics, view: view);
+    _dragEdges = lay(rows);
+    return _drawnEdges = identical(drawn, rows) ? _dragEdges : lay(drawn);
   }
 
   /// The row, made draggable. The wrapper is built fresh every pass and the
