@@ -100,6 +100,17 @@ void main() {
 
   List<RowBoxTangent> tangents(WidgetTester tester) => box(tester).tangents;
 
+  /// The box's own paint: its chrome, and its paths' handles under it.
+  Finder chrome() => find
+      .descendant(
+        of: find.byType(RowTransformBox),
+        matching: find.byType(CustomPaint),
+      )
+      .first;
+
+  CustomPainter painter(WidgetTester tester) =>
+      tester.widget<CustomPaint>(chrome()).painter!;
+
   /// Where [at] on the canvas is on the tester's screen.
   Offset onScreen(WidgetTester tester, CanvasPoint at) =>
       tester.getTopLeft(find.byType(RowTransformBox)) +
@@ -176,12 +187,7 @@ void main() {
     final knob = view.canvasToViewportOffset(shown.single.at);
     final end = view.canvasToViewportOffset(shown.single.behind);
     expect(
-      find
-          .descendant(
-            of: find.byType(RowTransformBox),
-            matching: find.byType(CustomPaint),
-          )
-          .first,
+      chrome(),
       paints
         ..line(p1: end, p2: knob, color: grey)
         ..circle(x: end.dx, y: end.dy, radius: 4, color: Colors.white)
@@ -217,6 +223,8 @@ void main() {
         .path
         .trailBetween(0, 10)
         .toList();
+    final paintedBefore = painter(tester);
+    final cornersBefore = box(tester).corners;
 
     const travel = Offset(30, -20);
     final gesture = await tester.startGesture(
@@ -230,6 +238,16 @@ void main() {
     final carried = onCanvas(tester, travel);
     final reached = CanvasPoint(x: from.x + carried.x, y: from.y + carried.y);
     expectNear(tangents(tester).last.at, reached, 'the knob follows');
+    expect(
+      box(tester).corners,
+      cornersBefore,
+      reason: '⛔전제: the frame stood still',
+    );
+    expect(
+      painter(tester).shouldRepaint(paintedBefore),
+      isTrue,
+      reason: 'the knob is drawn where it went',
+    );
     expect(
       tester
           .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
