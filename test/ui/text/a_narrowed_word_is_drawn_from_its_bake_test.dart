@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
@@ -264,6 +266,163 @@ void main() {
     );
   });
 
+  testWidgets('🚨a landing wakes the waiters of THAT word — a painter waiting '
+      'for another word stays as it is', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // The uploads are held, so which word lands first is the test's to say.
+    final held = <({int width, Completer<ui.Image> image, Uint8List rgba})>[];
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          final image = Completer<ui.Image>();
+          held.add((width: width, image: image, rgba: rgba));
+          return image.future;
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+    Future<void> release(int index, int height) async {
+      final upload = held[index];
+      debugRawRgbaUploader = null;
+      final image = uploadRawRgba(
+        upload.rgba,
+        width: upload.width,
+        height: (upload.rgba.length ~/ 4) ~/ upload.width,
+      );
+      upload.image.complete(await image);
+    }
+
+    const fit = (x: 0.25, y: 1.0);
+    final short = ValueNotifier(0);
+    final long = ValueNotifier(0);
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('あ', fontSize: 12), fit, short),
+              ),
+            ),
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('かぜかぜ', fontSize: 12), fit, long),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    for (var i = 0; i < 400 && held.length < 2; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(held.length, 2, reason: 'fixture: both words reached the upload');
+    final narrow = held[0].width < held[1].width ? 0 : 1;
+    final shortBefore = short.value;
+    final longBefore = long.value;
+
+    await tester.runAsync(() => release(narrow, 0));
+    await pumpUntilAWordBakeLands(tester);
+
+    expect(
+      short.value,
+      shortBefore + 1,
+      reason: 'fixture: the short word landed, and its painter painted it',
+    );
+    expect(
+      long.value,
+      longBefore,
+      reason: 'the painter still waiting for the long word is not painted '
+          'again for another word\'s landing',
+    );
+    await tester.runAsync(() => release(1 - narrow, 0));
+    await pumpUntilAWordBakeLands(tester);
+    expect(long.value, longBefore + 1, reason: 'and is, for its own');
+  });
+
+  testWidgets('🚨a waiter for another narrowing of a word whose bake came to '
+      'nothing is woken, and asks for its own', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // The first upload is refused; the rest go through.
+    var uploads = 0;
+    Future<ui.Image> refuseTheFirst(
+      Uint8List rgba, {
+      required int width,
+      required int height,
+      int? targetWidth,
+      int? targetHeight,
+    }) {
+      uploads += 1;
+      if (uploads == 1) {
+        return Future.error(StateError('refused'));
+      }
+      debugRawRgbaUploader = null;
+      final image = uploadRawRgba(rgba, width: width, height: height);
+      debugRawRgbaUploader = refuseTheFirst;
+      return image;
+    }
+
+    debugRawRgbaUploader = refuseTheFirst;
+    addTearDown(() => debugRawRgbaUploader = null);
+    final word = _word('しずく', fontSize: 12);
+    const first = (x: 0.25, y: 1.0);
+    const second = (x: 0.5, y: 1.0);
+    // Two painters of one word at two narrowings: the first's bake goes
+    // ahead, the second waits on the word.
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(word, first, ValueNotifier(0)),
+              ),
+            ),
+            RepaintBoundary(
+              child: CustomPaint(
+                key: const ValueKey<String>('second'),
+                size: const Size(40, 20),
+                painter: _WordPainter(word, second, ValueNotifier(0)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    for (var i = 0; i < 400 && uploads < 2; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(
+      uploads,
+      2,
+      reason: 'the first narrowing was refused, and the second painter, '
+          'woken, asked for its own',
+    );
+    await pumpUntilAWordBakeLands(tester);
+    expect(
+      find.byKey(const ValueKey<String>('second')),
+      paints..drawImageRect(
+        source: Rect.fromLTWH(
+          0,
+          0,
+          (word.width * second.x).ceil() + 2.0,
+          word.height.ceil() + 2.0,
+        ),
+      ),
+      reason: 'and draws the word from it',
+    );
+  });
+
   testWidgets('a word bakes one narrowing at a time — a zoom passes the '
       'rest on the bake it has', (tester) async {
     tester.view.devicePixelRatio = 1;
@@ -326,6 +485,23 @@ void main() {
     expect(paintIt, paints..paragraph());
     expect(paintIt, paintsExactlyCountTimes(#drawImageRect, 0));
     expect(refused, 1, reason: 'a refused word is not asked for again');
+
+    // Painted again by a painter, it is not waited for: nothing will land.
+    final waitingBefore = BakedWords.instance.debugWaitingWords;
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _WordPainter(word, (x: 0.25, y: 1.0), ValueNotifier(0)),
+        ),
+      ),
+    );
+    expect(
+      BakedWords.instance.debugWaitingWords,
+      waitingBefore,
+      reason: 'a painter is not put down as waiting for a word whose bake '
+          'came to nothing — it would wait for ever',
+    );
   });
 
   group('down a column', () {

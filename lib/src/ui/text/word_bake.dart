@@ -494,6 +494,10 @@ final class BakedWords {
   /// Who drew each word from a stand-in, waiting for its bake.
   final Map<_Word, Set<WordBakeWaiter>> _waiting = {};
 
+  /// How many words someone waits for.
+  @visibleForTesting
+  int get debugWaitingWords => _waiting.length;
+
   /// The waiters the next frame wakes: those whose word's bake finished.
   final Set<WordBakeWaiter> _toWake = {};
   bool _wakeScheduled = false;
