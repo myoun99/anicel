@@ -82,16 +82,32 @@ void main() {
       });
     });
 
-    test('a key that ARRIVES named carries NOTHING — not even its type', () {
-      final before = track({4: (1, null)});
-      final after = track({
-        4: (1, 'A'),
-      }).withKeySides(frames: {4}, edit: KeySidesEdit.hold)!;
+    // ↩️A key that JOINED a name carried nothing (09-12), so a pick the
+    // window made as it joined landed on it alone and split the name — card
+    // `key-window-join-with-a-pick-splits-the-name`.
+    test('a key that JOINS a name hands the link what it holds: the name\'s '
+        'own, pulled, and what was picked with it', () {
+      final before = track({0: (1, 'A'), 4: (3, null)});
+      PropertyTrack<double> joined(KeyTypePick pick) => before.withKeysWritten(
+        frames: {4},
+        naming: (name: 'A', adopted: before.keyAt(0), preferredFrame: null),
+        pick: pick,
+      )!;
 
+      final pulled = joined(const KeyTypePick());
       expect(
-        movedNamedKeys(before, after),
-        isEmpty,
-        reason: 'joining ADOPTS what the name holds; it never imposes',
+        pulled.withNamedKeys(movedNamedKeys(before, pulled)),
+        pulled,
+        reason: 'joining PULLS what the name holds: nothing it reaches moves',
+      );
+
+      final held = joined(const KeyTypePick(sides: KeySidesEdit.hold));
+      final linked = held.withNamedKeys(movedNamedKeys(before, held));
+      expect(linked.keyAt(4)!.outgoing, KeyExit.hold);
+      expect(
+        linked.keyAt(0)!.outgoing,
+        KeyExit.hold,
+        reason: 'one name, one key',
       );
     });
 
@@ -135,21 +151,8 @@ void main() {
       expect(changes.single.parameterId, radiusId);
     });
 
-    test('a RENAME carries NOTHING — joining pulls, it never pushes', () {
-      final before = [blur('e1', track({0: (1, null)}))];
-      final after = [blur('e1', track({0: (1, 'A')}))];
-
-      expect(
-        namedEffectKeyChanges(before, after),
-        isEmpty,
-        reason:
-            'joining a name adopts the value that name already holds, so '
-            'the rename verb pulls it before it commits — the frame-link '
-            'rule (user 2026-08-10). Only a value that MOVED propagates.',
-      );
-    });
-
-    test('a key that ARRIVES already named carries nothing either', () {
+    test('a key standing where none stood was moved in time, and carries '
+        'nothing', () {
       final before = [blur('e1', track({}))];
       final after = [blur('e1', track({0: (7, 'A')}))];
 
@@ -330,15 +333,6 @@ void main() {
         ),
       });
       expect(changes.position, isEmpty);
-    });
-
-    test('a RENAME carries nothing here either', () {
-      final changes = transformNamedKeyChanges(
-        lanes(rotation: track({0: (10, null)})),
-        lanes(rotation: track({0: (10, 'A')})),
-      );
-
-      expect(changes.isEmpty, isTrue);
     });
 
     test('applying a change moves every key of that name in the lane', () {

@@ -968,14 +968,23 @@ class KeyTypePick {
 }
 
 /// The named keys one track edit MOVED between [before] and [after] — what
-/// it hands the "same name, same key" link.
+/// it hands the "same name, same key" link: a key whose name holds
+/// something else now, and a key that JOINED a name. A joining key holds
+/// what the name already holds — the rename verb pulls it before it
+/// commits (the frame-link rule, user 2026-08-10) — and what the key window
+/// picked with it, which is the name's from then on (유저 2026-09-12:
+/// 「싹다링크해야하는데」). Handed on, the pull moves nothing, and the pick
+/// reaches the key that held the name and its 겸용 siblings.
 ///
-/// A RENAME carries nothing, and neither does a key that ARRIVES already
-/// named: joining a name adopts what that name ALREADY holds, which the
-/// rename verb pulls before it commits (the frame-link rule, user
-/// 2026-08-10). That is why a key whose NAME changed is skipped rather than
-/// trusted to have moved nothing — a joining key carrying its own hold
-/// would otherwise impose it on every key the name reaches.
+/// ↩️A key whose NAME changed was skipped (09-12), so that a joining key
+/// carrying its own hold could not impose it on every key the name reaches.
+/// The join has pulled the whole key since that same day, so the skip
+/// guarded nothing — and it stopped the pick, which landed on the joining
+/// keys alone and split one name in two (card
+/// `key-window-join-with-a-pick-splits-the-name`).
+///
+/// A key standing where none stood was moved in time, which leaves what it
+/// holds as it was.
 Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
   PropertyTrack<T> before,
   PropertyTrack<T> after,
@@ -991,7 +1000,7 @@ Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
       continue;
     }
     final old = before.keys[entry.key];
-    if (old == null || old.name != name || old.held == key.held) {
+    if (old == null || (old.name == name && old.held == key.held)) {
       continue;
     }
     moved[name] = key.held;

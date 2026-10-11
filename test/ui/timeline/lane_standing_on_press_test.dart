@@ -403,12 +403,11 @@ void main() {
     expect(positionOf(s).keyAt(0)!.path, KeyPath.straight);
   });
 
-  /// ⚠️What the key holding the name does is not pinned: a pick made as a
-  /// key joins lands on the joining keys alone, the type's since 2026-09-12
-  /// and the path's with it, which splits the name — card
-  /// `key-window-join-with-a-pick-splits-the-name`.
-  testWidgets('a path picked as a key joins a name lands on the key that '
-      'joins', (tester) async {
+  /// ↩️A pick made as a key joined a name landed on the joining keys alone
+  /// — the type's since 2026-09-12 and the path's with it — and split the
+  /// name (card `key-window-join-with-a-pick-splits-the-name`).
+  testWidgets('a path picked as a key joins a name lands on the name — the '
+      'key that held it too', (tester) async {
     final s = await pumpHost(tester);
     await openTransformLanes(tester);
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
@@ -423,6 +422,11 @@ void main() {
 
     expect(positionOf(s).keyAt(8)!.name, 'A', reason: '⛔전제: joined');
     expect(positionOf(s).keyAt(8)!.path, KeyPath.auto);
+    expect(
+      positionOf(s).keyAt(0)!.path,
+      KeyPath.auto,
+      reason: 'one name, one key',
+    );
   });
 
   /// I-89 ④-Q5 (A′ while it is asked): the roving row is the window's as
