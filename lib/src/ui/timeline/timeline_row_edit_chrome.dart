@@ -1291,6 +1291,19 @@ class _TimelineRowEditChromeLayerState
   @override
   Widget build(BuildContext context) {
     _refreshGestureSettings(context);
+    // 🚨A LAYER OF ITS OWN (유저 2026-09-27: 「층 최대한 나눠서 굽는다던가」).
+    // The chrome repaints on every window-bucket crossing — it draws only
+    // the targets its window can show — and with no boundary of its own
+    // that repaint climbed to the row's layer and re-recorded the whole
+    // row with it, every gesture layer and overlay included: a page turn
+    // re-recorded 1,134 render objects over 27 rows (measured 2026-10-11).
+    // The cells already stand on a boundary of their own
+    // ([timelineRowCellsPaintArea]); this was the one painter that follows
+    // the bucket and did not.
+    return RepaintBoundary(child: _painted(context));
+  }
+
+  Widget _painted(BuildContext context) {
     return CustomPaint(
       key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
