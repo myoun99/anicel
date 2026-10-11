@@ -198,19 +198,54 @@ void main() {
           'to nowhere tells nothing',
     );
 
-    // A value a drag left a hair off a stop stands on it.
-    hold(() => value = 10.004);
+    // A value a drag left off a stop, where the bar writes it as the stop,
+    // stands on it: the press must show.
+    hold(() => value = 10.03);
     await tester.pump();
+    expect(find.text('10.0 px'), findsOneWidget, reason: '⛔LIVENESS');
     await press(down);
-    expect(value, 5, reason: 'the stop it stands on is not the next one');
+    expect(value, 5, reason: 'the stop it reads as is not the next one');
+    hold(() => value = 9.96);
+    await tester.pump();
+    await press(up);
+    expect(value, 20, reason: 'nor from under it');
 
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(
       pointer.hover(tester.getCenter(find.byType(FieldSlider))),
     );
-    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -20)));
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 20)));
     await tester.pump();
-    expect(value, 10, reason: 'one wheel notch is the + — the same step');
+    expect(value, 10, reason: 'one wheel notch is the − — the same step');
+  });
+
+  testWidgets('a stop past the bar\'s range lands on its end, as a step '
+      'along the track does — the rack\'s 0.7 is under the brush\'s floor', (
+    tester,
+  ) async {
+    final changes = <double>[];
+    Future<void> stepFrom(double value, Finder button) async {
+      await pump(
+        tester,
+        FieldSlider(
+          value: value,
+          min: 1,
+          max: 20,
+          stops: const [0.7, 1, 30],
+          scale: FieldSliderScale.exponential,
+          label: 'Size',
+          unit: ' px',
+          onChanged: changes.add,
+        ),
+      );
+      await tester.tap(button);
+      await tester.pump();
+    }
+
+    await stepFrom(1.5, down);
+    await stepFrom(1, down);
+    await stepFrom(15, up);
+    expect(changes, [1, 1, 20]);
   });
 
   /// A bar a host keeps, telling each change and each end.

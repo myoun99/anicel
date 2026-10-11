@@ -244,28 +244,6 @@ class FieldSlider extends StatefulWidget {
   /// Snaps values to `divisions` equal steps (linear scale only).
   final int? divisions;
 
-  /// Whether [value] stands on [stop]: within float error and what a drag
-  /// leaves — the reach a rack of these values reads its chosen one by
-  /// (`ToolSizePresetPanel`), so a step from a value the rack shows as
-  /// chosen goes on to the next.
-  static bool standsOn(double value, double stop) =>
-      (value - stop).abs() < 0.01;
-
-  /// The stop next past [value] [direction] (+1 up, −1 down) — not one it
-  /// [standsOn]; null past the last.
-  static double? stopPast(List<double> stops, double value, int direction) {
-    double? next;
-    for (final stop in stops) {
-      if (standsOn(value, stop) || (stop > value) != (direction > 0)) {
-        continue;
-      }
-      if (next == null || (stop < next) == (direction > 0)) {
-        next = stop;
-      }
-    }
-    return next;
-  }
-
   /// The values a STEP moves between — the +/− buttons and the wheel go
   /// to the next one above or below the value, wherever it stands; null
   /// steps along the track ([_FieldSliderState._stepBy]). A drag is not
@@ -276,6 +254,26 @@ class FieldSlider extends StatefulWidget {
   /// the rack the tool size panel shows. ⚠️「그대로」: the stops ARE the
   /// step, so Shift asks for no finer one on a bar that has them.
   final List<double>? stops;
+
+  /// The stop next past [value] [direction] (+1 up, −1 down); null past
+  /// the last.
+  ///
+  /// ⚠️A stop the bar WRITES [value] as is not the next one: a drag that
+  /// left 10.03 reads 「10.0」, and a step from it to 10 would be a press
+  /// that shows nothing.
+  double? _stopPast(double value, int direction) {
+    final shown = _textFor(value);
+    double? next;
+    for (final stop in stops!) {
+      if (_textFor(stop) == shown || (stop > value) != (direction > 0)) {
+        continue;
+      }
+      if (next == null || (stop < next) == (direction > 0)) {
+        next = stop;
+      }
+    }
+    return next;
+  }
 
   /// The value the filled bar grows FROM; null means [min], which is what a
   /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
@@ -784,13 +782,11 @@ class _FieldSliderState extends State<FieldSlider> {
   /// [FieldSlider.stops], or one notch along the track. Null when the
   /// stops run out that way.
   double? _stepFrom(int direction) {
-    final stops = widget.stops;
-    if (stops != null) {
-      return FieldSlider.stopPast(
-        stops,
-        widget.value,
-        direction,
-      )?.clamp(widget.min, widget.max).toDouble();
+    if (widget.stops != null) {
+      return widget
+          ._stopPast(widget.value, direction)
+          ?.clamp(widget.min, widget.max)
+          .toDouble();
     }
     final divisions = widget.divisions;
     final double step;
