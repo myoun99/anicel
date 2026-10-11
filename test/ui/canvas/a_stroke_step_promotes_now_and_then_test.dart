@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -190,6 +191,14 @@ void main() {
   // to draw that row: a run's tree stands no row live
   // (`EditingCanvas.playingStack`) while the host still hands the canvas
   // its surface painter, and the film's track stack hands it none.
+  // What a run's tree holds, standing nothing live: here an empty folder.
+  const notLive = <CompositeNode<CanvasStackRow>>[
+    CompositeGroup<CanvasStackRow>(
+      children: [],
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+    ),
+  ];
   for (final (:name, :rows, :painted) in [
     (name: 'a run on the canvas', rows: 0, painted: true),
     (name: 'a live row with no painter', rows: 1, painted: false),
@@ -211,7 +220,7 @@ void main() {
               width: 512,
               height: 512,
               child: CanvasLayerStackView(
-                nodes: rows == 0 ? const [] : nodes,
+                nodes: rows == 0 ? notLive : nodes,
                 imageCache: imageCache,
                 debugBufferCache: buffers,
                 canvasSize: canvasSize,
