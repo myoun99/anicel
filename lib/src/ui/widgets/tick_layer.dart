@@ -48,26 +48,44 @@ import 'still_raster.dart' show TickSceneLayer;
 /// the zoom beside it, painted alone since 10-11 and still described with
 /// the counter.
 class TickLayer extends StatelessWidget {
-  const TickLayer({super.key, required this.child});
+  const TickLayer({super.key, required this.child}) : _drawnOverStill = true;
+
+  /// A panel's HOST on a layer of its own — laid out, painted and described
+  /// alone, as a tick is, for the same reasons — that a still region keeps
+  /// in its image like the rest of the region: it changes on its panel's
+  /// edits, not on a tick, and what ticks INSIDE it is what the region
+  /// draws over its image ([TickSceneLayer]).
+  ///
+  /// 🔬Taken for a tick, the timeline's host — the whole panel, 808×287 —
+  /// was the region's one tick, every tick of the panel inside it out of
+  /// sight, and covered by the panel's chrome painted after it; so it stayed
+  /// in the image and the region was never still while a cut played
+  /// (10-12).
+  const TickLayer.host({super.key, required this.child})
+    : _drawnOverStill = false;
 
   final Widget child;
+  final bool _drawnOverStill;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    child: _TickBoundary(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          assert(
-            constraints.isTight,
-            'A TickLayer keeps its layout in only under tight constraints '
-            '(got $constraints).',
-          );
-          return child;
-        },
-      ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final laidOutAlone = LayoutBuilder(
+      builder: (context, constraints) {
+        assert(
+          constraints.isTight,
+          'A TickLayer keeps its layout in only under tight constraints '
+          '(got $constraints).',
+        );
+        return child;
+      },
+    );
+    return Semantics(
+      container: true,
+      child: _drawnOverStill
+          ? _TickBoundary(child: laidOutAlone)
+          : RepaintBoundary(child: laidOutAlone),
+    );
+  }
 }
 
 /// A tick's repaint boundary, whose layer a still region draws over its

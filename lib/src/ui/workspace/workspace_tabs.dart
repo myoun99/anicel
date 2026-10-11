@@ -67,7 +67,7 @@ class _WorkspaceTabs {
   Widget _panelHost({
     required Listenable listenable,
     required WidgetBuilder host,
-  }) => TickLayer(
+  }) => TickLayer.host(
     child: PanelAwareListenableBuilder(listenable: listenable, builder: host),
   );
 
@@ -286,7 +286,7 @@ class _WorkspaceTabs {
               // page's root — the canvas is a panel host like the others
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
-              TickLayer(
+              TickLayer.host(
                 child: EditorCanvasArea(
                   key: _state._canvasAreaKey,
                   onInvokeAction: _state.widget.onInvokeAction,
