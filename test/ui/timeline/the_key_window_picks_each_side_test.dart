@@ -168,6 +168,9 @@ void main() {
     }
   });
 
+  // As wide as the drawing the user picked (I-89 ②, 400): every choice
+  // says its word whole — in the faces the app draws it in, since the
+  // test's own font is wider than any of them.
   for (final language in AppLanguage.values) {
     testWidgets('every choice of both rows stands whole in the key window, '
         'in the app\'s own faces — ${language.name}', (tester) async {
