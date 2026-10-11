@@ -22,7 +22,8 @@ Duration frameShownAt() {
 }
 
 /// A clock's look changed what it shows in the frame under way — what
-/// lets the look after it take back the lead its wait spent
+/// holds the frame for its claim's window ([PresentPacing]), and lets the
+/// look after it take back the lead that wait spent
 /// ([PresentClaims.changed]). Said anywhere else, it is nobody's news.
 void lookChangedWhatItShows() {
   final binding = SchedulerBinding.instance;
@@ -40,16 +41,19 @@ void lookChangedWhatItShows() {
 /// ([createSceneBuilder] — called once a frame, by
 /// `RenderView.compositeFrame`, and nowhere else): by then the frame is
 /// built, laid out and painted, so however long that took is waited out
-/// with the rest, and only the raster's own spread is left for the window
-/// to hold ([RasterSpread], learned from the frames it paced). Any moment
-/// in the window lands the picture on the same vblank, so the wait is the
-/// shortest that reaches it.
+/// with the rest, and only the scene's own length is left for the window
+/// to place ([RasterSpread], learned from the frames it paced): the frame
+/// is handed over at the window's start, or at once anywhere up to its end.
 ///
-/// A frame no clock looked in is handed over the moment it is built — an
-/// edit is never held for a vblank. A frame a clock looked in is handed
-/// over in its claim's window whatever else asked for it to be drawn: a
-/// page turn or a tile landing in the same frame shows on the same vblank
-/// as the film it carries.
+/// 🚨ONLY A LOOK THAT CHANGED WHAT ITS CLOCK SHOWS IS HELD (10-12): a look
+/// that changed nothing shows the same picture whichever vblank its frame
+/// lands on, so a page turn or a tile landing drawn between two film
+/// frames is handed over the moment it is built, and the lengths learned
+/// are those of the changing frames — the ones whose landing IS the
+/// cadence. A frame that carries a change is handed over in its claim's
+/// window whatever else asked for it to be drawn: a page turn in the same
+/// frame shows on the same vblank as the film it carries. A frame no clock
+/// looked in is never held — an edit waits for no vblank.
 ///
 /// ⛔Where the engine's vsync IS the display's — every platform but Windows
 /// — there is no [displayTiming], nothing is claimed and nothing waits:
@@ -68,12 +72,16 @@ mixin PresentPacing on WidgetsBinding {
   static const int budgetMicros = 3000;
 
   final PresentClaims _claims = PresentClaims();
-  final RasterSpread _spread = RasterSpread();
+  RasterSpread _spread = RasterSpread();
 
   /// Whether the frame under way has been asked for its claim, and the
   /// claim — null for a frame no clock looked in, or no display that says.
   bool _claimAsked = false;
   PresentClaim? _claim;
+
+  /// Whether a look in the frame under way changed what its clock shows —
+  /// the only frame that is held for its claim's window.
+  bool _changed = false;
 
   /// Each paced frame by its number, with the moment its seam let it go —
   /// waiting for the frame's timings to say when its raster ended.
@@ -82,14 +90,20 @@ mixin PresentPacing on WidgetsBinding {
   TimingsCallback? _learning;
 
   /// A test's own run starts where a run starts — every test replays the
-  /// same frame times, and a chain left by the test before would go on.
+  /// same frame times, and a chain left by the test before would go on, and
+  /// the lengths it taught would place the window.
   @visibleForTesting
-  void debugForgetClaims() => _claims.forget();
+  void debugForgetClaims() {
+    _claims.forget();
+    _spread = RasterSpread();
+    _paced.clear();
+  }
 
   @override
   void handleBeginFrame(Duration? rawTimeStamp) {
     _claimAsked = false;
     _claim = null;
+    _changed = false;
     super.handleBeginFrame(rawTimeStamp);
   }
 
@@ -113,13 +127,13 @@ mixin PresentPacing on WidgetsBinding {
       vblankMicros: grid.vblankMicros,
       periodMicros: grid.periodMicros,
       budgetMicros: budgetMicros,
-      rasterLowMicros: _spread.lowMicros,
-      rasterHighMicros: _spread.highMicros,
+      handOff: _spread.handOffFor(grid.periodMicros),
     );
   }
 
   void _changedInALook() {
     if (_claim != null) {
+      _changed = true;
       _claims.changed();
     }
   }
@@ -128,7 +142,7 @@ mixin PresentPacing on WidgetsBinding {
   ui.SceneBuilder createSceneBuilder() {
     final claim = _claim;
     final timing = displayTiming;
-    if (claim != null && timing != null) {
+    if (claim != null && timing != null && _changed) {
       _handOver(claim, timing);
     }
     return super.createSceneBuilder();

@@ -97,9 +97,15 @@ void main() {
     vblankMicros: _Display.vblank,
     periodMicros: _Display.period,
     budgetMicros: PresentPacing.budgetMicros,
-    rasterLowMicros: (spread ?? RasterSpread()).lowMicros,
-    rasterHighMicros: (spread ?? RasterSpread()).highMicros,
+    handOff: (spread ?? RasterSpread()).handOffFor(_Display.period),
   );
+
+  /// A look in this frame changed what its clock shows — said to the
+  /// binding, and to the claims the test expects.
+  void changedInTheLook() {
+    lookChangedWhatItShows();
+    expected.changed();
+  }
 
   /// A picture of a number, and nothing asking for a frame.
   Future<ValueNotifier<int>> settle(WidgetTester tester) async {
@@ -134,6 +140,7 @@ void main() {
       claim = expectedClaim();
       readAt = frameShownAt();
       shown.value += 1;
+      changedInTheLook();
     });
     await tester.pump(vsync);
 
@@ -152,11 +159,35 @@ void main() {
       claim = expectedClaim();
       frameShownAt();
       shown.value += 1;
+      changedInTheLook();
     });
     binding.scheduleFrame();
     await tester.pump(vsync);
 
     expect(display.waits, [claim!.handOffFromMicros]);
+  });
+
+  testWidgets('🚨a look that changed nothing is not held, though its frame '
+      'is drawn for something else — a page turn between two film frames '
+      'lands whenever it lands', (tester) async {
+    final shown = await settle(tester);
+    Duration? readAt;
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim();
+      readAt = frameShownAt();
+      shown.value += 1;
+    });
+    await tester.pump(vsync);
+
+    expect(find.text('1'), findsOneWidget, reason: '⛔premise: drawn');
+    expect(
+      readAt,
+      Duration(microseconds: claim!.shownAtMicros),
+      reason: 'the clock still reads at its claim',
+    );
+    expect(display.waits, isEmpty);
   });
 
   testWidgets('🚨a frame no clock looked in is handed over as it is built — '
@@ -188,6 +219,7 @@ void main() {
     lookNext((_) {
       frameShownAt();
       shown.value += 1;
+      changedInTheLook();
     });
     await tester.pump(vsync);
 
@@ -208,8 +240,7 @@ void main() {
         read.add(frameShownAt());
         if (look == 2) {
           shown.value += 1;
-          lookChangedWhatItShows();
-          expected.changed();
+          changedInTheLook();
         }
       });
       await tester.pump(refresh);
@@ -323,7 +354,7 @@ void main() {
     expect(find.text('1'), findsOneWidget);
   });
 
-  testWidgets('🚨the raster\'s spread is learned from the frames it paced: '
+  testWidgets('🚨the scenes\' lengths are learned from the frames it paced: '
       'what their timings say moves the next window', (tester) async {
     final shown = await settle(tester);
     final learned = RasterSpread();
@@ -332,6 +363,7 @@ void main() {
         expectedClaim();
         frameShownAt();
         shown.value += 1;
+        changedInTheLook();
       });
       await tester.pump(vsync);
       final released = display.seamNow;
@@ -361,11 +393,11 @@ void main() {
         vblankMicros: _Display.vblank,
         periodMicros: _Display.period,
         budgetMicros: PresentPacing.budgetMicros,
-        rasterLowMicros: RasterSpread.unmeasuredLowMicros,
-        rasterHighMicros: RasterSpread.unmeasuredHighMicros,
+        handOff: RasterSpread().handOffFor(_Display.period),
       );
       frameShownAt();
       shown.value += 1;
+      changedInTheLook();
     });
     await tester.pump(vsync);
 
@@ -375,5 +407,40 @@ void main() {
       isNot(unlearned!.handOffFromMicros - unlearned!.shownAtMicros),
       reason: '⛔premise: the learned spread puts the window elsewhere',
     );
+  });
+
+  testWidgets('a frame that was not held is not learned — how long a page '
+      'turn took says nothing of where a change lands', (tester) async {
+    final shown = await settle(tester);
+    for (var round = 0; round < 8; round += 1) {
+      lookNext((_) {
+        expectedClaim();
+        frameShownAt();
+        shown.value += 1;
+      });
+      await tester.pump(vsync);
+      binding.platformDispatcher.onReportTimings?.call([
+        FrameTiming(
+          vsyncStart: 0,
+          buildStart: 0,
+          buildFinish: 0,
+          rasterStart: 0,
+          rasterFinish: display.seamNow + 50000,
+          rasterFinishWallTime: 0,
+          frameNumber: binding.platformDispatcher.frameData.frameNumber,
+        ),
+      ]);
+    }
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim();
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    expect(display.waits, [claim!.handOffFromMicros]);
   });
 }

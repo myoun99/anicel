@@ -4,41 +4,127 @@ import 'package:anicel/src/services/playback/present_slot.dart';
 /// WHICH VBLANK EACH LOOK OF A CLOCK FILLS (유저 2026-10-11: 「144hz든
 /// 몇이든 확실하게 근본/구조적으로 해결하도록」): one look, one real vblank,
 /// one after another — whatever the engine's own vsync grid does — and a
-/// hand-off window that lands a raster of the measured spread on it.
+/// hand-off that lands the scenes' measured lengths inside the latch.
 void main() {
   const vblank = 5000000;
   const period = 6948.6; // a 143.9Hz screen, as DWM says it
   const budget = 3000;
-  const low = 3500;
-  const high = 7500;
+  const width = period - presentLatchEarlyMicros - presentLatchLateMicros;
 
   int vblankIndexOf(num micros) => ((micros - vblank) / period).round();
 
+  /// The hand-off for scenes of these [lengths], as the spread learns them.
+  PresentHandOff handOffOf(List<int> lengths, {int capacity = 32}) {
+    final spread = RasterSpread(capacity: capacity);
+    lengths.forEach(spread.add);
+    return spread.handOffFor(period);
+  }
+
   /// A claim for a look made at [now].
-  PresentClaim claimAt(PresentClaims claims, num now) => claims.claim(
+  PresentClaim claimAt(
+    PresentClaims claims,
+    num now, {
+    PresentHandOff? handOff,
+  }) => claims.claim(
     nowMicros: now.round(),
     vblankMicros: vblank,
     periodMicros: period,
     budgetMicros: budget,
-    rasterLowMicros: low,
-    rasterHighMicros: high,
+    handOff: handOff ?? RasterSpread().handOffFor(period),
   );
 
   /// The vblank a claim's picture is shown on.
   int shownOn(PresentClaim claim) => vblankIndexOf(claim.shownAtMicros);
 
-  test('🚨a raster of the spread handed over anywhere in the window ends '
-      'between the latch\'s edges of the vblank before the one it is shown '
-      'on', () {
-    final claims = PresentClaims();
-    final claim = claimAt(claims, vblank + 300 * period + 1234);
-    final before =
-        claim.shownAtMicros - presentShownAfterVblanks * period;
+  /// Where, past the vblank before the one [claim] is shown on, a scene of
+  /// [length] handed over at [handOff] ends.
+  double endOf(PresentClaim claim, int handOff, int length) =>
+      handOff +
+      length -
+      (claim.shownAtMicros - presentShownAfterVblanks * period);
+
+  test('🚨every learned length handed over anywhere from the window\'s start '
+      'to its end ends between the latch\'s edges of the vblank before the '
+      'one it is shown on', () {
+    final lengths = [for (var i = 0; i < 32; i += 1) 3600 + i * 100];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 300 * period + 1234,
+      handOff: handOffOf(lengths),
+    );
     for (final handOff in [claim.handOffFromMicros, claim.handOffByMicros]) {
-      expect(handOff + low - before, greaterThanOrEqualTo(presentLatchEarlyMicros - 1));
+      for (final length in lengths) {
+        expect(
+          endOf(claim, handOff, length),
+          inInclusiveRange(
+            presentLatchEarlyMicros - 1,
+            period - presentLatchLateMicros + 1,
+          ),
+          reason: 'handed over at $handOff, $length long',
+        );
+      }
+    }
+  });
+
+  test('🚨the hand-off aims at the middle: the shortest and the longest '
+      'length end as far inside the latch\'s two edges', () {
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 400 * period + 777,
+      handOff: handOffOf([for (var i = 0; i < 16; i += 1) 4000 + i * 100]),
+    );
+    final early = endOf(claim, claim.handOffFromMicros, 4000) -
+        presentLatchEarlyMicros;
+    final late = period -
+        presentLatchLateMicros -
+        endOf(claim, claim.handOffFromMicros, 5500);
+    expect(early, greaterThan(500), reason: '⛔premise: room on both sides');
+    expect(
+      (early - late).abs(),
+      lessThanOrEqualTo(2),
+      reason: 'a microsecond of rounding each, the hand-off and the vblank',
+    );
+  });
+
+  test('🚨lengths wider than the latch leaves: the hand-off lands the most '
+      'of them — a few slow scenes do not move it', () {
+    final lengths = [
+      for (var i = 0; i < 24; i += 1) 4000 + (i % 8) * 125,
+      for (var i = 0; i < 8; i += 1) 9000 + i * 900,
+    ];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 500 * period + 4321,
+      handOff: handOffOf(lengths),
+    );
+    for (final length in lengths.take(24)) {
       expect(
-        before + period - (handOff + high),
-        greaterThanOrEqualTo(presentLatchLateMicros - 1),
+        endOf(claim, claim.handOffFromMicros, length),
+        inInclusiveRange(
+          presentLatchEarlyMicros,
+          period - presentLatchLateMicros,
+        ),
+      );
+    }
+  });
+
+  test('🚨a run still making its pictures does not drag the window after '
+      'it: the steady scenes take it back as soon as they outnumber the '
+      'slow ones within one window\'s width', () {
+    final making = [for (var i = 0; i < 24; i += 1) 20000 + i * 1700];
+    final steady = [for (var i = 0; i < 8; i += 1) 4000 + i * 150];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 600 * period + 100,
+      handOff: handOffOf([...making, ...steady]),
+    );
+    for (final length in steady) {
+      expect(
+        endOf(claim, claim.handOffFromMicros, length),
+        inInclusiveRange(
+          presentLatchEarlyMicros,
+          period - presentLatchLateMicros,
+        ),
       );
     }
   });
@@ -135,61 +221,75 @@ void main() {
     expect(more, again, reason: 'the reserve stops the chain running ahead');
   });
 
-  test('a spread wider than the latch leaves is handed over at the window\'s '
-      'middle — the best a hand-off can do', () {
+  test('a claim leaves its frame the budget to reach the seam before its '
+      'window ends', () {
+    final handOff = handOffOf([for (var i = 0; i < 8; i += 1) 4000]);
     final claims = PresentClaims();
-    final claim = claims.claim(
-      nowMicros: (vblank + 100 * period).round(),
-      vblankMicros: vblank,
-      periodMicros: period,
-      budgetMicros: budget,
-      rasterLowMicros: 1000,
-      rasterHighMicros: 9000,
+    // A look whose budget runs just past the window's end of the vblank
+    // its lead would claim.
+    const at = vblank + 9000 * period;
+    final claim = claimAt(claims, at, handOff: handOff);
+    expect(
+      at + budget,
+      lessThanOrEqualTo(claim.handOffByMicros),
+      reason: 'the claim leaves its frame the budget to reach the seam',
     );
-    expect(claim.handOffFromMicros, claim.handOffByMicros);
-    final before = claim.shownAtMicros - presentShownAfterVblanks * period;
-    final middle = claim.handOffFromMicros + (1000 + 9000) / 2;
-    final windowMiddle =
-        (before + presentLatchEarlyMicros + before + period -
-            presentLatchLateMicros) /
-        2;
-    expect((middle - windowMiddle).abs(), lessThanOrEqualTo(1));
   });
 
-  group('the raster\'s spread', () {
-    test('reads what the latch was measured with until eight frames have '
-        'said', () {
+  group('the scenes\' lengths', () {
+    test('place the hand-off where the latch was measured with until eight '
+        'frames have said', () {
       final spread = RasterSpread();
       for (var i = 0; i < 7; i += 1) {
-        spread.add(4000);
-      }
-      expect(spread.lowMicros, RasterSpread.unmeasuredLowMicros);
-      expect(spread.highMicros, RasterSpread.unmeasuredHighMicros);
-      spread.add(4000);
-      expect(spread.lowMicros, 4000);
-      expect(spread.highMicros, 4000);
-    });
-
-    test('🚨quantiles, not extremes: one raster an upload landed in does not '
-        'move the window', () {
-      final spread = RasterSpread();
-      for (var i = 0; i < 60; i += 1) {
-        spread.add(3500 + (i % 10) * 200);
-      }
-      spread.add(13000);
-      expect(spread.highMicros, lessThanOrEqualTo(5300));
-      expect(spread.lowMicros, greaterThanOrEqualTo(3500));
-    });
-
-    test('follows the last frames only — an old spread is forgotten', () {
-      final spread = RasterSpread(capacity: 16);
-      for (var i = 0; i < 16; i += 1) {
         spread.add(9000);
       }
-      for (var i = 0; i < 16; i += 1) {
-        spread.add(4000);
-      }
-      expect(spread.highMicros, 4000);
+      final unmeasured = handOffOf([
+        for (var i = 0; i < 4; i += 1) RasterSpread.unmeasuredLowMicros,
+        for (var i = 0; i < 4; i += 1) RasterSpread.unmeasuredHighMicros,
+      ]);
+      expect(spread.handOffFor(period), unmeasured);
+      spread.add(9000);
+      expect(spread.handOffFor(period), isNot(unmeasured));
     });
+
+    test('🚨one scene an upload landed in does not move the window', () {
+      final steady = [for (var i = 0; i < 31; i += 1) 3500 + (i % 10) * 200];
+      expect(
+        handOffOf([...steady, 13000]),
+        handOffOf([...steady, 3500]),
+      );
+    });
+
+    test('follow the last frames only — an old spread is forgotten', () {
+      expect(
+        handOffOf([
+          for (var i = 0; i < 16; i += 1) 9000,
+          for (var i = 0; i < 16; i += 1) 4000,
+        ], capacity: 16),
+        handOffOf([for (var i = 0; i < 16; i += 1) 4000], capacity: 16),
+      );
+    });
+
+    test('the hand-off\'s start never comes after its end — at any refresh '
+        'rate, even one too fast for the latch\'s edges to leave room', () {
+      for (final hz in [60, 120, 144, 165, 240, 360, 500]) {
+        final p = 1e6 / hz;
+        final spread = RasterSpread();
+        for (var i = 0; i < 16; i += 1) {
+          spread.add(3000 + i * 300);
+        }
+        final handOff = spread.handOffFor(p);
+        expect(
+          handOff.fromMicros,
+          lessThanOrEqualTo(handOff.byMicros),
+          reason: '$hz Hz',
+        );
+      }
+    });
+  });
+
+  test('⛔premise: at 144Hz the latch leaves a window wider than the '
+      'lengths these pins spread', () {
+    expect(width, greaterThan(4000));
   });
 }
