@@ -1,8 +1,12 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/key_side.dart' show KeySidesEdit;
+import '../../models/layer.dart' show Layer;
+import '../../models/timeline_row_address.dart' show LaneRowAddress;
 import '../brush/transform_tool_options.dart';
 import '../editor_session_manager.dart';
-import 'property_lane_model.dart' show PropertyLaneEditCallbacks;
+import 'property_lane_model.dart'
+    show PropertyLaneEditCallbacks, PropertyLaneRow;
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 
 /// A rail's lane edits wired to [session] — the one wiring behind the
@@ -68,24 +72,35 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
     onEndPreview: session.laneVerbs.endLaneEditPreview,
     // I-89 ③: a header graph's handle — the key window's write of the type,
     // shown while the drag lasts.
-    onSetKeySides: (layer, lane, frameIndex, sides) =>
-        session.laneVerbs.setLaneKeySidesAt(
-          layer.id,
-          lane.laneId,
-          frameIndex,
-          sides,
-          frameIsGlobal: frameIsGlobal,
-        ),
-    onPreviewKeySides: (layer, lane, frameIndex, sides) =>
-        session.laneVerbs.previewLaneKeySidesAt(
-          layer.id,
-          lane.laneId,
-          frameIndex,
-          sides,
-          frameIsGlobal: frameIsGlobal,
-        ),
+    onSetKeySides: _atTheKey(
+      session.laneVerbs.setLaneKeySidesAt,
+      frameIsGlobal: frameIsGlobal,
+    ),
+    onPreviewKeySides: _atTheKey(
+      session.laneVerbs.previewLaneKeySidesAt,
+      frameIsGlobal: frameIsGlobal,
+    ),
   );
 }
+
+/// [verb] of a key's sides, handed the key as a lane edit names it — its
+/// row's layer, its lane and its frame on [frameIsGlobal]'s axis.
+void Function(Layer layer, PropertyLaneRow lane, int frameIndex, KeySidesEdit)
+_atTheKey(
+  void Function(
+    LaneRowAddress lane,
+    int frameIndex,
+    KeySidesEdit sides, {
+    required bool frameIsGlobal,
+  })
+  verb, {
+  required bool frameIsGlobal,
+}) => (layer, lane, frameIndex, sides) => verb(
+  LaneRowAddress(layer.id, lane.laneId),
+  frameIndex,
+  sides,
+  frameIsGlobal: frameIsGlobal,
+);
 
 /// The sound edits an SE row's audio band takes, wired to [session] — the
 /// one object the timeline's rows and the storyboard's S rows hand over

@@ -83,7 +83,12 @@ void main() {
   );
 
   void pull(LayerId id, String lane, int frame, KeySidesEdit sides) =>
-      laneVerbs.setLaneKeySidesAt(id, lane, frame, sides, frameIsGlobal: false);
+      laneVerbs.setLaneKeySidesAt(
+        LaneRowAddress(id, lane),
+        frame,
+        sides,
+        frameIsGlobal: false,
+      );
 
   test('with nothing selected, a handle eases the key it stands for alone, '
       'in one undo step', () {
@@ -231,8 +236,7 @@ void main() {
     keyTheRow(row);
     final undoable = session.historyManager.canUndo;
     void inFlight() => laneVerbs.previewLaneKeySidesAt(
-      row,
-      'rotation',
+      LaneRowAddress(row, 'rotation'),
       0,
       pulled,
       frameIsGlobal: false,
@@ -293,8 +297,7 @@ void main() {
     expect(seLeaving(), pulledEase, reason: 'the cut\'s rail');
 
     laneVerbs.setLaneKeySidesAt(
-      se,
-      'rotation',
+      LaneRowAddress(se, 'rotation'),
       cutStart + 2,
       const KeySidesEdit(outgoing: KeySideEdit(influence: 0.25)),
       frameIsGlobal: true,
