@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart'
+    show DockEdgeSplitter;
 
 /// **I-89 ③ — a header graph is pulled to its height.**
 ///
@@ -40,8 +42,15 @@ void main() {
     final graph = tester.getRect(_graph('timeline'));
     final grip = tester.getRect(_grip('timeline'));
     expect(
-      (grip.left, grip.right, grip.bottom),
-      (graph.left, graph.right, graph.bottom),
+      grip,
+      rectMoreOrLessEquals(
+        Rect.fromLTRB(
+          graph.left,
+          graph.bottom - DockEdgeSplitter.thickness,
+          graph.right,
+          graph.bottom,
+        ),
+      ),
       reason: 'the grip is its bottom edge, the whole of it',
     );
     final before = graph.height;
@@ -137,8 +146,15 @@ void main() {
     final graph = tester.getRect(_graph('xsheet'));
     final grip = tester.getRect(_grip('xsheet'));
     expect(
-      (grip.top, grip.bottom, grip.right),
-      (graph.top, graph.bottom, graph.right),
+      grip,
+      rectMoreOrLessEquals(
+        Rect.fromLTRB(
+          graph.right - DockEdgeSplitter.thickness,
+          graph.top,
+          graph.right,
+          graph.bottom,
+        ),
+      ),
       reason: 'the grip is its right edge, the whole of it',
     );
     final before = graph.width;
