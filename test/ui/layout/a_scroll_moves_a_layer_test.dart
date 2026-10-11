@@ -392,7 +392,7 @@ void main() {
   }
 
   testWidgets('🚨a new grid — another screen\'s ratio — lands both halves on '
-      'it, though nothing else is painted again', (tester) async {
+      'it', (tester) async {
     useRatio(tester, 1.25);
     final controller = ScrollController();
     addTearDown(controller.dispose);
@@ -409,17 +409,51 @@ void main() {
     expect(
       seen.cells,
       landed((500 * 1.5 - (300.5 * 1.5).roundToDouble()).round(), 2, 1.5),
-      reason: 'the cells land on the new grid — the viewport they stand in '
-          'was not painted again, so they paint themselves',
+      reason: 'the cells land on the new grid — the scrollable makes itself '
+          'a new position at a new ratio, and the viewport paints them with '
+          'the nudge read then',
     );
     expect(seen.ruler, seen.cells, reason: 'and the ruler with them');
+  });
+
+  testWidgets('🚨what follows, painted again while scrolled, still stands over '
+      'the cells — its layer moves it, its paint does not', (tester) async {
+    useRatio(tester, 1);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final again = ValueNotifier<int>(0);
+    addTearDown(again.dispose);
+    final rulerPaints = _Mark(const Color(0xFFFF0000), repaint: again);
+    await tester.pumpWidget(
+      harness(controller, ratio: 1, rulerPainter: rulerPaints),
+    );
+    controller.jumpTo(305);
+    await tester.pump();
+    final painted = rulerPaints.paints;
+
+    again.value += 1;
+    await tester.pump();
+
+    expect(
+      rulerPaints.paints,
+      greaterThan(painted),
+      reason: 'fixture: the ruler was painted again, scrolled',
+    );
+    final seen = await marks(tester, 1);
+    expect(seen.cells, 195, reason: 'fixture: the cells\' mark, 500 - 305');
+    expect(
+      seen.ruler,
+      seen.cells,
+      reason: 'and the ruler\'s stands over it — one painted at the scroll '
+          'AND moved by its layer would stand 305 further on',
+    );
   });
 }
 
 /// A painter that draws one upright line [width] wide at [at] and counts its
-/// paints — and never asks to repaint.
+/// paints — and repaints only when [repaint] says so.
 class _Mark extends CustomPainter {
-  _Mark(this.color, {this.at = 500, this.width = 1});
+  _Mark(this.color, {this.at = 500, this.width = 1, super.repaint});
 
   final Color color;
   final double at;

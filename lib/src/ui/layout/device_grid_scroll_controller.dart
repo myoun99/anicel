@@ -249,31 +249,23 @@ class _RenderLandedOnTheGrid extends RenderProxyBox
   _RenderLandedOnTheGrid({
     required this.controller,
     required this.axis,
-    required DeviceGrid grid,
-  }) : _grid = grid;
+    required this.grid,
+  });
 
-  /// What it lands by, along which axis — a change needs no marking: a new
-  /// position comes with the viewport's repaint, and what follows from
-  /// outside reads it as the frame is composited. ↩️The follower listened,
-  /// and the mutant that took the listener away lived.
+  /// What it lands by, along which axis, on which grid — a change needs no
+  /// marking. A new position comes with the viewport's repaint, and so does
+  /// a new grid: it is a new ratio, and at a new ratio the scrollable makes
+  /// itself a new position (`ScrollableState.didChangeDependencies`), which
+  /// lays the viewport out again. What follows from outside reads them as
+  /// the frame is composited. ↩️The follower listened, and a new grid
+  /// repainted this; the mutants that took each away lived.
   ScrollController controller;
   Axis axis;
-
-  /// The grid it lands on — a new one (another screen's ratio) moves
-  /// nothing else, so it repaints this.
-  DeviceGrid get grid => _grid;
-  DeviceGrid _grid;
-  set grid(DeviceGrid value) {
-    if (value == _grid) {
-      return;
-    }
-    _grid = value;
-    markNeedsPaint();
-  }
+  DeviceGrid grid;
 
   /// How far along [axis] the child is moved, with the position at
   /// [pixels].
-  double movedAt(double pixels) => deviceGridScrollCorrection(pixels, _grid);
+  double movedAt(double pixels) => deviceGridScrollCorrection(pixels, grid);
 
   Offset get _translation {
     final moved = movedAt(singleScrollPixelsOf(controller) ?? 0.0);
