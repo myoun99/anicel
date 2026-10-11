@@ -308,6 +308,31 @@ KeyHandle keyHandleOf(KeySide side, double Function() autoSpeed) =>
 /// an ease or a graph handle asks for on purpose.
 double autoSideSpeed(double reach) => reach.clamp(0.0, 3.0).toDouble();
 
+/// Where [handle] stands in its segment's unit square: [leaving], from the
+/// key the segment leaves — (influence, influence · speed); else from the
+/// key it arrives at — (1 − influence, 1 − influence · speed). The point
+/// [segmentProgress] bends the segment by, and the one a header graph draws
+/// the handle at and pulls it from (I-89 ③), so the two are one point.
+({double x, double y}) keyHandlePoint(
+  KeyHandle handle, {
+  required bool leaving,
+}) {
+  final reach = handle.influence;
+  final rise = handle.influence * handle.speed;
+  return leaving ? (x: reach, y: rise) : (x: 1 - reach, y: 1 - rise);
+}
+
+/// [keyHandlePoint] read back: the handle that stands at [x], [y] of the
+/// unit square, [leaving] or arriving — its influence held to the reach a
+/// side may take ([EaseSide.leastInfluence] to all of the segment), its
+/// speed what rising to [y] over that influence takes.
+KeyHandle keyHandleAt(double x, double y, {required bool leaving}) {
+  final influence = (leaving ? x : 1 - x)
+      .clamp(EaseSide.leastInfluence, 1.0)
+      .toDouble();
+  return (influence: influence, speed: (leaving ? y : 1 - y) / influence);
+}
+
 /// How far a segment has come at [x], the fraction of its TIME gone (0..1):
 /// the unit cubic Bézier through (0, 0), the [leaving] key's handle
 /// (`influence`, `influence · speed`), the [arriving] key's handle
@@ -329,10 +354,8 @@ double segmentProgress(
   if (x >= 1) {
     return 1;
   }
-  final x1 = leaving.influence;
-  final y1 = leaving.influence * leaving.speed;
-  final x2 = 1 - arriving.influence;
-  final y2 = 1 - arriving.influence * arriving.speed;
+  final (x: x1, y: y1) = keyHandlePoint(leaving, leaving: true);
+  final (x: x2, y: y2) = keyHandlePoint(arriving, leaving: false);
   double bezier(double t, double p1, double p2) {
     final u = 1 - t;
     return 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t;

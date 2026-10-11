@@ -64,6 +64,53 @@ void main() {
     });
   });
 
+  group('a handle\'s point (I-89 ③)', () {
+    test('leaving, a side stands its influence into the segment and its '
+        'influence × speed up it; arriving, as far back from the end', () {
+      void stands(KeyHandle handle, bool leaving, double x, double y) {
+        final point = keyHandlePoint(handle, leaving: leaving);
+        expect(point.x, closeTo(x, 1e-12));
+        expect(point.y, closeTo(y, 1e-12));
+      }
+
+      stands(easyEase, true, 1 / 3, 0);
+      stands(easyEase, false, 2 / 3, 1);
+      const quick = (influence: 0.25, speed: 2.0);
+      stands(quick, true, 0.25, 0.5);
+      stands(quick, false, 0.75, 0.5);
+    });
+
+    test('read back, a point gives the handle standing there', () {
+      for (final handle in [
+        easyEase,
+        linearKeyHandle,
+        (influence: 0.5, speed: 2.0),
+        (influence: 0.2, speed: -1.0),
+      ]) {
+        for (final leaving in [true, false]) {
+          final (:x, :y) = keyHandlePoint(handle, leaving: leaving);
+          final back = keyHandleAt(x, y, leaving: leaving);
+          expect(back.influence, closeTo(handle.influence, 1e-12));
+          expect(back.speed, closeTo(handle.speed, 1e-12));
+        }
+      }
+    });
+
+    test('a point past either end reads the reach a side may take: the '
+        'least influence, or the whole segment', () {
+      expect(
+        keyHandleAt(-0.5, 0, leaving: true).influence,
+        EaseSide.leastInfluence,
+      );
+      expect(keyHandleAt(1.5, 0, leaving: true).influence, 1);
+      expect(
+        keyHandleAt(1.5, 1, leaving: false).influence,
+        EaseSide.leastInfluence,
+      );
+      expect(keyHandleAt(-0.5, 1, leaving: false).influence, 1);
+    });
+  });
+
   group('the resolver', () {
     test('a key easing in arrives slowly', () {
       final track = PropertyTrack<double>()
