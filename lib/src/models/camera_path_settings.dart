@@ -43,6 +43,14 @@ class CameraPathSettings {
   /// [CameraPathRange.aroundPlayhead] draws.
   final int around;
 
+  /// The frames the canvas draws of a path while the playhead stands at
+  /// [playhead] — its marks and its handles alike: within [around] of it,
+  /// or unbounded where all the keys are drawn.
+  ({int? from, int? to}) framesShownAt(int playhead) =>
+      range == CameraPathRange.aroundPlayhead
+      ? (from: playhead - around, to: playhead + around)
+      : (from: null, to: null);
+
   CameraPathSettings copyWith({
     CameraPathShow? show,
     CameraPathRange? range,

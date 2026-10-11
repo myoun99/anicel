@@ -192,6 +192,54 @@ void main() {
       expect(keyPathHandle(at, 10, ahead: true), const Offset(12, -5));
       expect(keyPathHandle(at, 10, ahead: false), const Offset(-12, 5));
     });
+
+    group('as the canvas draws it (3b)', () {
+      final bent = keys({
+        0: PropertyKey(p(0, 0), path: KeyPath.auto),
+        10: PropertyKey(p(100, 0), path: KeyPath.auto),
+        20: PropertyKey(p(100, 60)),
+        30: PropertyKey(p(40, 60), path: HandledPath(p(12, -5))),
+      });
+
+      test('every curved key has one — its ends where the handle reaches '
+          'ahead and behind; a corner has none', () {
+        final knobs = keyPathKnobs(bent);
+        expect([for (final knob in knobs) knob.frame], [0, 10, 30]);
+        final smooth = knobs[1];
+        expect(smooth.at, p(100, 0));
+        // Along (100, 60) from (100, 0): 60 / 3 ahead, 100 / 3 behind.
+        final along = const Offset(100, 60) / const Offset(100, 60).distance;
+        expectNear(
+          Offset(smooth.ahead.x, smooth.ahead.y),
+          const Offset(100, 0) + along * 20,
+        );
+        expectNear(
+          Offset(smooth.behind.x, smooth.behind.y),
+          const Offset(100, 0) - along * (100 / 3),
+        );
+        expect(knobs[2].ahead, p(52, 55));
+        expect(knobs[2].behind, p(28, 65));
+      });
+
+      test('a smooth end key\'s has no length: it stands on its key, where '
+          'the hand pulls it out from', () {
+        final end = keyPathKnobs(bent).first;
+        expect(end.ahead, p(0, 0));
+        expect(end.behind, p(0, 0));
+      });
+
+      test('only the frames the path is drawn for', () {
+        expect(
+          [for (final knob in keyPathKnobs(bent, from: 5, to: 30)) knob.frame],
+          [10, 30],
+        );
+        expect(
+          [for (final knob in keyPathKnobs(bent, from: 0, to: 10)) knob.frame],
+          [0, 10],
+        );
+        expect(keyPathKnobs(bent, from: 11, to: 29), isEmpty);
+      });
+    });
   });
 
   group('a layer\'s or the camera\'s position walks the path', () {
@@ -370,6 +418,18 @@ void main() {
       expect(straight.keyAt(10)!.path, KeyPath.straight);
       expect(straight.keyAt(30)!.path, KeyPath.straight);
       expect(straight.keyAt(0)!.path, KeyPath.auto, reason: 'not chosen');
+    });
+
+    test('a handle placed on the canvas bends that one key — its value, '
+        'sides and name stay, and the link hears it', () {
+      final bent = track.withKeyPath(0, HandledPath(p(3, 1)))!;
+      expect(bent.keyAt(0)!.path, HandledPath(p(3, 1)));
+      expect(bent.keyAt(0)!.value, p(0, 0));
+      expect(bent.keyAt(0)!.name, 'A');
+      expect(bent.keyAt(10)!.path, HandledPath(p(4, 4)));
+      expect(movedNamedKeys(track, bent)['A']!.path, HandledPath(p(3, 1)));
+      expect(track.withKeyPath(10, HandledPath(p(4, 4))), isNull);
+      expect(track.withKeyPath(5, KeyPath.auto), isNull, reason: 'no key');
     });
 
     test('and says so when it changed nothing', () {

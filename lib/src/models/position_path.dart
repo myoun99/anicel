@@ -72,3 +72,41 @@ Offset keyPathHandle(
       return through / through.distance * (ahead ? reach : -reach);
   }
 }
+
+/// A curved key's handle as the canvas draws it (I-89 ④, the mock's 5판):
+/// the key at [frame], standing [at], its handle ending [ahead] of it —
+/// the knob the hand takes — and [behind] it.
+typedef KeyPathKnob = ({
+  int frame,
+  CanvasPoint at,
+  CanvasPoint ahead,
+  CanvasPoint behind,
+});
+
+/// The handles [keys]' curved keys reach out with ([keyPathHandle]), from
+/// frame [from] to frame [to] where the canvas keeps to some — a corner
+/// has none. One of no length stands on its key: a smooth end key's, which
+/// the hand pulls out from there.
+List<KeyPathKnob> keyPathKnobs(
+  SplayTreeMap<int, PropertyKey<CanvasPoint>> keys, {
+  int? from,
+  int? to,
+}) {
+  CanvasPoint reached(CanvasPoint at, Offset handle) =>
+      CanvasPoint(x: at.x + handle.dx, y: at.y + handle.dy);
+  return [
+    for (final MapEntry(key: frame, :value) in keys.entries)
+      if (value.path.curved &&
+          frame >= (from ?? frame) &&
+          frame <= (to ?? frame))
+        (
+          frame: frame,
+          at: value.value,
+          ahead: reached(value.value, keyPathHandle(keys, frame, ahead: true)),
+          behind: reached(
+            value.value,
+            keyPathHandle(keys, frame, ahead: false),
+          ),
+        ),
+  ];
+}

@@ -53,11 +53,7 @@ class CameraPathOverlay extends StatelessWidget {
     Offset place(Offset point) => viewport.canvasToViewportOffset(
       CanvasPoint(x: point.dx, y: point.dy),
     );
-    final around = settings.range == CameraPathRange.aroundPlayhead
-        ? settings.around
-        : null;
-    final from = around == null ? null : playhead - around;
-    final to = around == null ? null : playhead + around;
+    final (:from, :to) = settings.framesShownAt(playhead);
     return [
       ...cameraPathMarks(
         path,

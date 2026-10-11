@@ -378,6 +378,14 @@ class PropertyTrack<T> {
         : key.copyWith(path: curved ? KeyPath.auto : KeyPath.straight),
   );
 
+  /// The key at [frame] bending through as [path] says — a handle the hand
+  /// placed on the canvas (I-89 ④). Its value, sides and name ride across
+  /// untouched. Null where no key stands or it already bends so.
+  PropertyTrack<T>? withKeyPath(int frame, KeyPath path) => _withKeysAt(
+    {frame},
+    (key) => key.path == path ? null : key.copyWith(path: path),
+  );
+
   /// The keys inside [frames] as [edit] leaves each — null where it changes
   /// it not — or null when it changed none.
   PropertyTrack<T>? _withKeysAt(

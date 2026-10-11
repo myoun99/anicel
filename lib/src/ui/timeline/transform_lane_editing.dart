@@ -293,6 +293,20 @@ TransformTrack transformTrackWithPositionDragged(
   );
 }
 
+/// A path's knob carried on the canvas (I-89 ④-Q4 A: 「캔버스에서 끈 접선 —
+/// 반대쪽은 거울」): the position key at [frameIndex] bends along [tangent],
+/// how far the knob stands from the key — its mirror behind it. The key's
+/// value, sides and name stay as they are, and where no position key stands
+/// nothing changes.
+TransformTrack transformTrackWithPositionHandle(
+  TransformTrack track, {
+  required int frameIndex,
+  required CanvasPoint tangent,
+}) {
+  final bent = track.position.withKeyPath(frameIndex, HandledPath(tangent));
+  return bent == null ? track : track.copyWith(position: bent);
+}
+
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
 /// the scale lane alone. Dragging a corner is a statement about scale, so
 /// nothing else keys. [scale] is the two the box reached — a camera's the

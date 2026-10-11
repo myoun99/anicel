@@ -182,6 +182,9 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
       }
       return _TurnPress(event, artwork, start: session.content, about: cross);
     }),
+    // A row's position path is bent on its row's box (I-89 ④); a text's box
+    // is handed no tangents.
+    BoxPress.tangent => throw StateError('A text box bends no path.'),
   };
 }
 

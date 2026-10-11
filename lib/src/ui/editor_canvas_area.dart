@@ -12,6 +12,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
+import '../models/position_path.dart' show keyPathKnobs;
 import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_read_source.dart';
@@ -1255,7 +1256,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// through the one handle path the layer handles take (「트랜스폼이나
   /// 카메라나 법 하나」): one key at the playhead, shown while it moves, on
   /// the ONE member the grab drives — as the user chose
-  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」).
+  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」). Where its path is
+  /// drawn, a curved key's tangent bends it ([_cameraPathTangents]).
   Widget _cameraBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1298,20 +1300,66 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       description: 'Rotate camera $at',
     );
     // The box follows the frame along its animated pose, as the frame does.
-    return _atTheCameraPose(
-      session,
-      (pose) => CameraFrameBox(
-        pose: pose,
-        cameraFrameSize: session.camera.cameraFrameSize,
-        canvasSize: canvasSize,
-        viewport: viewport,
-        claimsCanvas: frame.boxClaimsCanvas,
-        onCancelled: session.laneVerbs.endLaneEditPreview,
-        move: move,
-        zoom: zoom,
-        turn: turn,
+    return ValueListenableBuilder<CameraPathSettings>(
+      valueListenable: CameraPathSettings.settings,
+      builder: (context, settings, _) => _atTheCameraPose(
+        session,
+        (pose) => CameraFrameBox(
+          pose: pose,
+          cameraFrameSize: session.camera.cameraFrameSize,
+          canvasSize: canvasSize,
+          viewport: viewport,
+          claimsCanvas: frame.boxClaimsCanvas,
+          onCancelled: session.laneVerbs.endLaneEditPreview,
+          move: move,
+          zoom: zoom,
+          turn: turn,
+          tangents: frame.cameraPathShown
+              ? _cameraPathTangents(session, cameraRow.id, settings)
+              : const [],
+        ),
       ),
     );
+  }
+
+  /// The handles of the camera's curved position keys on its path (I-89
+  /// ④): drawn with it in time (유저 2026-10-10, 「공간 + 시간」 — the
+  /// mock's 5판 draws them there), over the frames it is drawn for, each
+  /// tangent carried bending its key — one undo where it is let go.
+  List<RowBoxTangent> _cameraPathTangents(
+    EditorSessionManager session,
+    LayerId cameraRowId,
+    CameraPathSettings settings,
+  ) {
+    final track = session.camera.activeCutCameraTrack;
+    if (settings.show != CameraPathShow.spaceAndTime ||
+        track == null ||
+        session.camera.activeCutCameraPath(_cameraFrameSizeShown(session)) ==
+            null) {
+      return const [];
+    }
+    final (:from, :to) = settings.framesShownAt(session.currentFrameIndex);
+    return [
+      for (final knob in keyPathKnobs(track.position.keys, from: from, to: to))
+        (
+          at: knob.ahead,
+          behind: knob.behind,
+          landing: _handleLandings<CanvasPoint>(
+            session,
+            cameraRowId,
+            (end) =>
+                (camera, _) => transformTrackWithPositionHandle(
+                  camera,
+                  frameIndex: knob.frame,
+                  tangent: CanvasPoint(
+                    x: end.x - knob.at.x,
+                    y: end.y - knob.at.y,
+                  ),
+                ),
+            description: 'Bend camera path at frame ${knob.frame + 1}',
+          ),
+        ),
+    ];
   }
 
   /// The camera frame's size as the canvas shows it: the size being dragged
