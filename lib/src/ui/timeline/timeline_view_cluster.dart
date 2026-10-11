@@ -235,47 +235,63 @@ class TimelineViewCluster extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
-        // decorations — click-to-zoom without the slider's drag precision.
-        _zoomStepButton(zoomIn: false),
-        SizedBox(
-          width: 140,
-          child: FieldSlider(
-            key: const ValueKey<String>('timeline-zoom-slider'),
-            min: _minPixelsPerFrame,
-            max: TimelineZoomLimits.maxPixelsPerFrame,
-            value: pixelsPerFrame.clamp(
-              _minPixelsPerFrame,
-              TimelineZoomLimits.maxPixelsPerFrame,
-            ),
-            // Zoom reads as percent of the default frame width.
-            unit: '%',
-            displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
-            height: _zoomBarHeight + FieldSlider.growthIn(context),
-            // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of
-            // its length on 24→96px and left the whole narrow half — the
-            // half the user zooms out into — inside its first few pixels.
-            // Equal travel is equal RATIO here, as it is on every editor
-            // zoom in the app.
-            scale: FieldSliderScale.exponential,
-            // F-220: every value the bar reaches is the zoom — held inside
-            // the range, and nothing else ([TimelineZoomLimits.clamped]).
-            onChanged: onPixelsPerFrameChanged == null
-                ? null
-                : (value) {
-                    final zoom = TimelineZoomLimits.clamped(
-                      value,
-                      framesPerSecond: projectFrameRate.countingBase,
-                    );
-                    if (zoom != pixelsPerFrame) {
-                      onPixelsPerFrameChanged!(zoom);
-                    }
-                  },
+        // 🚨THE ZOOM STANDS BESIDE A TICK, ON A LAYER OF ITS OWN
+        // (playback-making-pictures-shakes-the-frames, 10-11). The counter
+        // ticks with every frame played and its width moves the row, so the
+        // bar this sits in is one tick layer ([TimelineCommandBar]) — and
+        // everything on it was painted again with the counter: 🔬72–78 render
+        // objects a frame, the slider most of them. Standing on its own
+        // boundary the zoom is moved, not painted, when the row moves.
+        RepaintBoundary(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // UI-R11 #11: the flanking glyphs are real STEP buttons now,
+              // not decorations — click-to-zoom without the slider's drag
+              // precision.
+              _zoomStepButton(zoomIn: false),
+              _zoomSlider(context),
+              _zoomStepButton(zoomIn: true),
+              ...trailing,
+            ],
           ),
         ),
-        _zoomStepButton(zoomIn: true),
-        ...trailing,
       ],
     );
   }
+
+  Widget _zoomSlider(BuildContext context) => SizedBox(
+    width: 140,
+    child: FieldSlider(
+      key: const ValueKey<String>('timeline-zoom-slider'),
+      min: _minPixelsPerFrame,
+      max: TimelineZoomLimits.maxPixelsPerFrame,
+      value: pixelsPerFrame.clamp(
+        _minPixelsPerFrame,
+        TimelineZoomLimits.maxPixelsPerFrame,
+      ),
+      // Zoom reads as percent of the default frame width.
+      unit: '%',
+      displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
+      height: _zoomBarHeight + FieldSlider.growthIn(context),
+      // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of its
+      // length on 24→96px and left the whole narrow half — the half the
+      // user zooms out into — inside its first few pixels. Equal travel is
+      // equal RATIO here, as it is on every editor zoom in the app.
+      scale: FieldSliderScale.exponential,
+      // F-220: every value the bar reaches is the zoom — held inside the
+      // range, and nothing else ([TimelineZoomLimits.clamped]).
+      onChanged: onPixelsPerFrameChanged == null
+          ? null
+          : (value) {
+              final zoom = TimelineZoomLimits.clamped(
+                value,
+                framesPerSecond: projectFrameRate.countingBase,
+              );
+              if (zoom != pixelsPerFrame) {
+                onPixelsPerFrameChanged!(zoom);
+              }
+            },
+    ),
+  );
 }

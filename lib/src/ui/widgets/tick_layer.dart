@@ -31,6 +31,15 @@ import 'package:flutter/widgets.dart';
 /// TIGHT constraints: a `Positioned.fill`, a box sized on both axes. Handed
 /// loose ones it lays its parent out again on every tick, and the boundary
 /// holds nothing back.
+///
+/// 🚨WHAT STANDS BESIDE A TICK ON THE LAYER IS PAINTED WITH IT (the third
+/// time, 10-11 — a tab strip around its level meter, the timeline's command
+/// bar around its counter): a tick lays out and paints the WHOLE layer. So
+/// where what ticks has a size of its own, the layer holds it and nothing
+/// more (the meter in its seat); where its size moves its row (the
+/// counter), the heavy things beside it stand on boundaries of their own.
+/// 🔬A steady run painted 90 + 52 + 78 render objects of unchanging chrome
+/// on every frame played.
 class TickLayer extends StatelessWidget {
   const TickLayer({super.key, required this.child});
 
