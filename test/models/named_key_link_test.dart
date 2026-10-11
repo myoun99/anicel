@@ -36,6 +36,7 @@ void main() {
         incoming: KeySide.linear,
         outgoing: KeyExit.hold,
         path: KeyPath.straight,
+        roving: false,
       ));
 
       expect(result.keyAt(0)!.value, 9);
@@ -207,6 +208,7 @@ void main() {
             incoming: KeySide.linear,
             outgoing: KeyExit.hold,
             path: KeyPath.straight,
+            roving: false,
           ),
         ),
       ]);
@@ -261,6 +263,7 @@ void main() {
             incoming: KeySide.linear,
             outgoing: KeySide.linear,
             path: KeyPath.straight,
+            roving: false,
           ),
         ),
       ]);
@@ -285,6 +288,7 @@ void main() {
             incoming: KeySide.linear,
             outgoing: KeySide.linear,
             path: KeyPath.straight,
+            roving: false,
           ),
         ),
       ]);
@@ -345,6 +349,7 @@ void main() {
               incoming: KeySide.linear,
               outgoing: KeyExit.hold,
               path: KeyPath.straight,
+              roving: false,
             ),
           },
         ),
@@ -379,6 +384,7 @@ void main() {
               incoming: KeySide.linear,
               outgoing: KeySide.linear,
               path: KeyPath.straight,
+              roving: false,
             ),
           },
         ),

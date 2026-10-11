@@ -45,6 +45,10 @@ final class CubicWalk {
 
   static const int _steps = 256;
 
+  /// How long the walk is — what a run of several walks shares its way out
+  /// by (a roving key's, I-89 ④).
+  double get length => _lengths?[_steps] ?? (to - from).distance;
+
   Float64List _lengthsAlong() {
     final lengths = Float64List(_steps + 1);
     var before = from;

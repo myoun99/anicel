@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
 import 'key_path.dart';
@@ -15,6 +16,7 @@ class PropertyKey<T> {
     this.incoming = KeySide.linear,
     this.outgoing = KeySide.linear,
     this.path = KeyPath.straight,
+    this.roving = false,
     this.name,
   });
 
@@ -33,6 +35,15 @@ class PropertyKey<T> {
   /// position lane's (I-89 ④); every other lane's keys are straight.
   final KeyPath path;
 
+  /// Whether the key's TIME is its run's to place — After Effects' Rove
+  /// Across Time (I-89 ①: 「위치에만, 처음 · 끝 키 시간 고정, 가운데 키는
+  /// 시간을 풀어 속도를 고르게」). Between the fixed keys either side, the
+  /// value walks the path through it at the pace those two set, and the
+  /// key stands on the frame nearest where that walk passes it
+  /// ([PropertyTrack.withRovingKeysSlotted]). A position lane's alone; the
+  /// first and the last key are fixed.
+  final bool roving;
+
   /// The key's NAME, and with it a link: keys sharing a name inside one
   /// naming space hold the same value, exactly the way frame names mean
   /// "the same drawing" (user 2026-07-30). Null is the ordinary unnamed
@@ -42,16 +53,33 @@ class PropertyKey<T> {
   /// DERIVED from the name; there is no identity to keep somewhere else.
   final String? name;
 
-  /// What a name hands every key it links: the number, both sides and the
-  /// path through it.
-  NamedKeyValue<T> get held =>
-      (value: value, incoming: incoming, outgoing: outgoing, path: path);
+  /// What a name hands every key it links: the number, both sides, the
+  /// path through it and whether its time roves.
+  NamedKeyValue<T> get held => (
+    value: value,
+    incoming: incoming,
+    outgoing: outgoing,
+    path: path,
+    roving: roving,
+  );
+
+  /// This key holding [held] — its name kept: what a link lands on every
+  /// key it reaches, and what naming a range lands on the keys it names.
+  PropertyKey<T> withHeld(NamedKeyValue<T> held) => PropertyKey(
+    held.value,
+    incoming: held.incoming,
+    outgoing: held.outgoing,
+    path: held.path,
+    roving: held.roving,
+    name: name,
+  );
 
   PropertyKey<T> copyWith({
     T? value,
     KeySide? incoming,
     KeyExit? outgoing,
     KeyPath? path,
+    bool? roving,
     String? Function()? name,
   }) {
     return PropertyKey(
@@ -59,6 +87,7 @@ class PropertyKey<T> {
       incoming: incoming ?? this.incoming,
       outgoing: outgoing ?? this.outgoing,
       path: path ?? this.path,
+      roving: roving ?? this.roving,
       // A closure so a key can be UNnamed (the plain-nullable convention
       // cannot say "clear it").
       name: name == null ? this.name : name(),
@@ -71,12 +100,14 @@ class PropertyKey<T> {
       other is PropertyKey<T> && other.held == held && other.name == name;
 
   @override
-  int get hashCode => Object.hash(value, incoming, outgoing, path, name);
+  int get hashCode =>
+      Object.hash(value, incoming, outgoing, path, roving, name);
 
   @override
   String toString() =>
       'PropertyKey($value, $incoming → $outgoing'
       '${path == KeyPath.straight ? '' : ', $path'}'
+      '${roving ? ', roving' : ''}'
       '${name == null ? '' : ', $name'})';
 }
 
@@ -101,19 +132,93 @@ class KeyValueSpace<T> {
   /// The walk along the segment from the key at frame `from` to the key at
   /// frame `to` of [keys], where the values walk a path the keys shape (a
   /// position lane's, I-89 ④) — [lerp] between the two values where it is
-  /// null. A track lays a segment's walk once and asks it for every point
-  /// along it ([PropertyTrack.resolveAtTime]).
-  final SegmentWalk<T> Function(
-    SplayTreeMap<int, PropertyKey<T>> keys,
-    int from,
-    int to,
-  )?
-  walk;
+  /// null, and no key roves there ([PropertyKey.roving]). A track lays a
+  /// segment's walk once and asks it for every point along it
+  /// ([PropertyTrack.resolveAtTime]).
+  final SegmentWalker<T>? walk;
 }
 
+/// What lays a [SegmentWalk]: the way from the key at frame `from` to the
+/// key at frame `to` of `keys`.
+typedef SegmentWalker<T> =
+    SegmentWalk<T> Function(
+      SplayTreeMap<int, PropertyKey<T>> keys,
+      int from,
+      int to,
+    );
+
 /// Where a segment between two keys stands at a `progress` of its way
-/// ([KeyValueSpace.walk]).
-typedef SegmentWalk<T> = T Function(double progress);
+/// ([at]), and how long that way is — what a run of segments shares its
+/// way out by, a roving key's (I-89 ④) ([KeyValueSpace.walk]).
+typedef SegmentWalk<T> = ({T Function(double progress) at, double length});
+
+/// The walk from a fixed key to the next through every roving key between
+/// them (I-89 ④), by distance: each segment's share of the way is its
+/// length's. A run of one segment is that segment, read as it is.
+final class _RunWalk<T> {
+  _RunWalk(this.segments) : stops = _stopsAlong(segments);
+
+  final List<SegmentWalk<T>> segments;
+
+  /// The share of the way at which the walk passes each key it goes
+  /// through — the first 0, the last 1; evenly spaced where the way has no
+  /// length to share.
+  final List<double> stops;
+
+  static List<double> _stopsAlong(List<SegmentWalk<Object?>> segments) {
+    final total = segments.fold(0.0, (sum, segment) => sum + segment.length);
+    if (total <= 0) {
+      return [
+        for (var index = 0; index <= segments.length; index += 1)
+          index / segments.length,
+      ];
+    }
+    var reached = 0.0;
+    return [
+      0,
+      for (final segment in segments) (reached += segment.length) / total,
+    ];
+  }
+
+  T at(double progress) {
+    if (segments.length == 1) {
+      return segments.single.at(progress);
+    }
+    var index = 0;
+    while (index < segments.length - 1 && progress > stops[index + 1]) {
+      index += 1;
+    }
+    final from = stops[index];
+    final share = stops[index + 1] - from;
+    return segments[index].at(share <= 0 ? 0 : (progress - from) / share);
+  }
+}
+
+/// The pace of a way between two fixed keys: the leaving side of the one
+/// and the arriving side of the other, as handles ([segmentProgress]).
+typedef KeyPace = ({KeyHandle leaving, KeyHandle arriving});
+
+/// The share of a way's time at which its [pace] has come [share] of the
+/// way — [segmentProgress] read back; a crossing of it where a speed asks
+/// for an overshoot.
+double _timeAtShare(double share, KeyPace pace) {
+  var lo = 0.0;
+  var hi = 1.0;
+  for (var step = 0; step < 50; step += 1) {
+    final mid = (lo + hi) / 2;
+    final reached = segmentProgress(
+      mid,
+      leaving: pace.leaving,
+      arriving: pace.arriving,
+    );
+    if (reached < share) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return (lo + hi) / 2;
+}
 
 /// A single animated property, keyed independently of every other property
 /// (the After Effects model: Position can carry three keys while Scale
@@ -137,12 +242,15 @@ class PropertyTrack<T> {
 
   final SplayTreeMap<int, PropertyKey<T>> keys;
 
-  /// The walk a [KeyValueSpace.walk] laid of each segment asked along, by
-  /// the frame the segment starts on — a position's curve, measured once
-  /// and read again for every point asked along it (a trail or a header
-  /// graph asks for hundreds). The keys never change under it: an edit is
-  /// a new track.
-  Map<int, SegmentWalk<T>>? _walked;
+  /// The walk a [KeyValueSpace.walk] laid of each way asked along — a
+  /// segment, or a run through roving keys — by the frame it starts on: a
+  /// position's curve, measured once and read again for every point asked
+  /// along it (a trail or a header graph asks for hundreds). The keys never
+  /// change under it: an edit is a new track.
+  Map<int, _RunWalk<T>>? _walked;
+
+  /// Whether a key roves here ([PropertyKey.roving]).
+  late final bool _anyRoving = keys.values.any((key) => key.roving);
 
   bool get isEmpty => keys.isEmpty;
   bool get isNotEmpty => keys.isNotEmpty;
@@ -249,12 +357,7 @@ class PropertyTrack<T> {
       final name = key.name;
       final linked = name == null ? null : held[name];
       if (linked != null && key.held != linked) {
-        next[entry.key] = key.copyWith(
-          value: linked.value,
-          incoming: linked.incoming,
-          outgoing: linked.outgoing,
-          path: linked.path,
-        );
+        next[entry.key] = key.withHeld(linked);
         changed = true;
         continue;
       }
@@ -302,7 +405,7 @@ class PropertyTrack<T> {
   /// holds one somewhere (joining adopts, the frame-link rule), else the
   /// key at [preferredFrame] — the one you are standing on — else the
   /// earliest key in range. Its SIDES ride across with its value, and its
-  /// path (I-89 ④).
+  /// path and whether its time roves (I-89 ④).
   ///
   /// ⛔This REVERSES "interpolation rides across untouched; adopting a
   /// value must not restyle the segment leaving a key" (mine, no user
@@ -329,18 +432,13 @@ class PropertyTrack<T> {
       final standing = preferredFrame != null && keyed.contains(preferredFrame)
           ? keys[preferredFrame]
           : null;
-      final landing = adopted ?? standing ?? keys[keyed.first]!;
-      for (final frame in keyed) {
-        if (next.keys[frame]!.held != landing.held) {
-          next = next.withKey(
-            frame,
-            landing.value,
-            incoming: landing.incoming,
-            outgoing: landing.outgoing,
-            path: landing.path,
-          );
-        }
-      }
+      final landing = (adopted ?? standing ?? keys[keyed.first]!).held;
+      next =
+          _withKeysAt(
+            keyed.toSet(),
+            (key) => key.held == landing ? null : key.withHeld(landing),
+          ) ??
+          this;
     }
     for (final frame in keyed) {
       next = next.withKeyName(frame, name);
@@ -377,6 +475,22 @@ class PropertyTrack<T> {
         ? null
         : key.copyWith(path: curved ? KeyPath.auto : KeyPath.straight),
   );
+
+  /// The keys inside [frames] roving as [roving] says — the time half of
+  /// the key window (I-89 ④-Q5, A′ while it is asked): a key's time left to
+  /// its run to place ([PropertyKey.roving]), or held where it stands. The
+  /// first and the last key keep their time by where they are, and are
+  /// left. Values, sides, paths and names ride across untouched. Null when
+  /// nothing here changed.
+  PropertyTrack<T>? withKeysRoving({
+    required Set<int> frames,
+    required bool roving,
+  }) => isEmpty
+      ? null
+      : _withKeysAt(
+          frames.difference({keys.firstKey(), keys.lastKey()}),
+          (key) => key.roving == roving ? null : key.copyWith(roving: roving),
+        );
 
   /// The key at [frame] bending through as [path] says — a handle the hand
   /// placed on the canvas (I-89 ④). Its value, sides and name ride across
@@ -443,8 +557,14 @@ class PropertyTrack<T> {
 
   /// [resolveAt] at a [time] between two frames as well as on one — what a
   /// header graph (I-89 ③) draws its curve through, so the line and the
-  /// value printed at a frame are one reading of the track. A key is only
-  /// ever ON a frame: between two, the segment they bound answers.
+  /// value printed at a frame are one reading of the track. A key that
+  /// keeps its time is only ever ON a frame: between two, the way they
+  /// bound answers.
+  ///
+  /// A roving key's time is its run's (I-89 ④): where keys rove, time sees
+  /// the keys that keep theirs alone, and the way between two of them walks
+  /// through every roving key between, at the pace those two set — a
+  /// roving key's frame says where it stands, not when it is passed.
   T resolveAtTime({
     required double time,
     required T Function() orElse,
@@ -453,17 +573,19 @@ class PropertyTrack<T> {
     if (isEmpty) {
       return orElse();
     }
+    final walk = space.walk;
+    final roves = walk != null && _anyRoving;
 
     final frame = time.floor();
     if (frame == time) {
       final exact = keys[frame];
-      if (exact != null) {
+      if (exact != null && _keepsItsTime(frame, roves: roves)) {
         return exact.value;
       }
     }
 
-    final previousIndex = keys.lastKeyBefore(frame + 1);
-    final nextIndex = keys.firstKeyAfter(frame);
+    final previousIndex = _timedKeyBefore(frame + 1, roves: roves);
+    final nextIndex = _timedKeyAfter(frame, roves: roves);
     if (previousIndex == null) {
       return keys[nextIndex!]!.value;
     }
@@ -472,40 +594,188 @@ class PropertyTrack<T> {
     }
 
     final from = keys[previousIndex]!;
-    final to = keys[nextIndex]!;
     // A hold freezes the segment on the key it leaves.
-    final leaving = from.outgoing;
-    if (leaving is! KeySide) {
+    if (from.outgoing is! KeySide) {
       return from.value;
     }
-    final span = nextIndex - previousIndex;
-    double along(T value) => space.inverseLerp(from.value, to.value, value);
+    final pace = _paceBetween(previousIndex, nextIndex, space, roves: roves);
     final progress = segmentProgress(
-      (time - previousIndex) / span,
-      leaving: keyHandleOf(leaving, () {
-        final before = keys.lastKeyBefore(previousIndex);
-        return before == null
-            ? linearKeyHandle.speed
-            : autoSideSpeed(
-                (1 - along(keys[before]!.value)) * span / (nextIndex - before),
-              );
-      }),
-      arriving: keyHandleOf(to.incoming, () {
-        final after = keys.firstKeyAfter(nextIndex);
+      (time - previousIndex) / (nextIndex - previousIndex),
+      leaving: pace.leaving,
+      arriving: pace.arriving,
+    );
+    if (walk == null) {
+      return space.lerp(from.value, keys[nextIndex]!.value, progress);
+    }
+    return _walkFrom(previousIndex, nextIndex, walk).at(progress);
+  }
+
+  /// Whether the key at [frame] keeps its own time: every key, but a
+  /// roving one between the first and the last where keys [roves].
+  bool _keepsItsTime(int frame, {required bool roves}) =>
+      !roves ||
+      !keys[frame]!.roving ||
+      frame == keys.firstKey() ||
+      frame == keys.lastKey();
+
+  /// The last key before [frame] that keeps its own time.
+  int? _timedKeyBefore(int frame, {required bool roves}) {
+    var at = keys.lastKeyBefore(frame);
+    while (at != null && !_keepsItsTime(at, roves: roves)) {
+      at = keys.lastKeyBefore(at);
+    }
+    return at;
+  }
+
+  /// The first key after [frame] that keeps its own time.
+  int? _timedKeyAfter(int frame, {required bool roves}) {
+    var at = keys.firstKeyAfter(frame);
+    while (at != null && !_keepsItsTime(at, roves: roves)) {
+      at = keys.firstKeyAfter(at);
+    }
+    return at;
+  }
+
+  /// The pace of the way from the timed key at [from] to the next, at
+  /// [to]: the leaving side of the one — straight where it holds, which a
+  /// hold's run is placed by ([rovingTimes]) — and the arriving side of the
+  /// other. An auto side reads the timed keys either side of the way, how
+  /// far along it they stand.
+  KeyPace _paceBetween(
+    int from,
+    int to,
+    KeyValueSpace<T> space, {
+    required bool roves,
+  }) {
+    final start = keys[from]!;
+    final end = keys[to]!;
+    final span = to - from;
+    double along(T value) => space.inverseLerp(start.value, end.value, value);
+    final leaving = start.outgoing;
+    return (
+      leaving: leaving is KeySide
+          ? keyHandleOf(leaving, () {
+              final before = _timedKeyBefore(from, roves: roves);
+              return before == null
+                  ? linearKeyHandle.speed
+                  : autoSideSpeed(
+                      (1 - along(keys[before]!.value)) * span / (to - before),
+                    );
+            })
+          : linearKeyHandle,
+      arriving: keyHandleOf(end.incoming, () {
+        final after = _timedKeyAfter(to, roves: roves);
         return after == null
             ? linearKeyHandle.speed
-            : autoSideSpeed(
-                along(keys[after]!.value) * span / (after - previousIndex),
-              );
+            : autoSideSpeed(along(keys[after]!.value) * span / (after - from));
       }),
     );
-    final walk = space.walk;
-    if (walk == null) {
-      return space.lerp(from.value, to.value, progress);
+  }
+
+  /// The way from the timed key at [from] to the next, at [to], through
+  /// every key between — each of them roving — laid once ([_walked]).
+  _RunWalk<T> _walkFrom(int from, int to, SegmentWalker<T> walk) =>
+      (_walked ??= {})[from] ??= _RunWalk([
+        for (final (start, end) in _stepsBetween(from, to))
+          walk(keys, start, end),
+      ]);
+
+  /// Each key from [from] to [to] with the one after it, in order.
+  Iterable<(int, int)> _stepsBetween(int from, int to) sync* {
+    var at = from;
+    while (at < to) {
+      final next = keys.firstKeyAfter(at)!;
+      yield (at, next);
+      at = next;
     }
-    final walked = _walked ??= {};
-    return (walked[previousIndex] ??= walk(keys, previousIndex, nextIndex))(
-      progress,
+  }
+
+  /// When the walk through each roving key's run passes it, by its frame
+  /// ([resolveAtTime]): its share of the way, at the pace the run's timed
+  /// ends set — a hold's run as if it did not hold, since its hold passes
+  /// none of them. Empty where no key roves or [space] walks no path.
+  Map<int, double> rovingTimes(KeyValueSpace<T> space) {
+    final walk = space.walk;
+    final times = <int, double>{};
+    if (walk == null || !_anyRoving) {
+      return times;
+    }
+    for (var from = keys.firstKey(); from != null;) {
+      final to = _timedKeyAfter(from, roves: true);
+      if (to == null) {
+        break;
+      }
+      final stops = _walkFrom(from, to, walk).stops;
+      if (stops.length > 2) {
+        final pace = _paceBetween(from, to, space, roves: true);
+        var passed = 0;
+        for (final (_, frame) in _stepsBetween(from, to)) {
+          passed += 1;
+          if (frame != to) {
+            times[frame] =
+                from + (to - from) * _timeAtShare(stops[passed], pace);
+          }
+        }
+      }
+      from = to;
+    }
+    return times;
+  }
+
+  /// [this] with each roving key on the frame nearest when its run passes
+  /// it ([rovingTimes]) — in their order, one to a frame, between the
+  /// run's timed ends — and the first and the last key, whose time is
+  /// their own (I-89 ①: 「처음 · 끝 키 시간 고정」), not roving. Where
+  /// [space] walks no path, no key roves. [this] where every key already
+  /// stands so.
+  ///
+  /// It always fits: a run's keys stood on frames of their own between its
+  /// ends. Where they go is read off the timed keys and the way's lengths
+  /// alone, never off where they stood, so a placed track stays as it is.
+  PropertyTrack<T> withRovingKeysSlotted(KeyValueSpace<T> space) {
+    if (!_anyRoving) {
+      return this;
+    }
+    PropertyKey<T>? timed(PropertyKey<T> key) =>
+        key.roving ? key.copyWith(roving: false) : null;
+    if (space.walk == null) {
+      return _withKeysAt(keys.keys.toSet(), timed)!;
+    }
+    final ends = _withKeysAt({keys.firstKey()!, keys.lastKey()!}, timed);
+    if (ends != null) {
+      return ends.withRovingKeysSlotted(space);
+    }
+    final times = rovingTimes(space);
+    final placed = <int, int>{};
+    for (var from = keys.firstKey(); from != null;) {
+      final to = _timedKeyAfter(from, roves: true);
+      if (to == null) {
+        break;
+      }
+      final run = [
+        for (final (_, frame) in _stepsBetween(from, to))
+          if (frame != to) frame,
+      ];
+      var before = from;
+      for (var index = 0; index < run.length; index += 1) {
+        final nearest = times[run[index]]!.round();
+        final within = math.min(
+          math.max(nearest, from + index + 1),
+          to - (run.length - index),
+        );
+        before = math.max(before + 1, within);
+        placed[run[index]] = before;
+      }
+      from = to;
+    }
+    if (placed.entries.every((entry) => entry.key == entry.value)) {
+      return this;
+    }
+    return PropertyTrack(
+      keys: {
+        for (final MapEntry(key: frame, :value) in keys.entries)
+          placed[frame] ?? frame: value,
+      },
     );
   }
 
@@ -519,20 +789,29 @@ class PropertyTrack<T> {
         if (entry.value.outgoing != KeySide.linear)
           'out': entry.value.outgoing.toJson(),
         if (entry.value.path.toJson() case final Object path) 'path': path,
+        if (entry.value.roving) 'rove': true,
         if (entry.value.name != null) 'name': entry.value.name,
       },
   ];
 
+  /// [toJson] read back. A key may rove only on a lane whose keys walk a
+  /// path ([roves]); one that roves anywhere else is a file this build
+  /// cannot read, and says so.
   static PropertyTrack<T> fromJson<T>(
     List<dynamic>? json,
-    T Function(Object? value) decodeValue,
-  ) {
+    T Function(Object? value) decodeValue, {
+    bool roves = false,
+  }) {
     final keys = <int, PropertyKey<T>>{};
     for (final item in json ?? const []) {
       final entry = item as Map<String, dynamic>;
       final index = entry['index'] as int;
       if (keys.containsKey(index)) {
         throw FormatException('Duplicate property key index: $index');
+      }
+      final roving = entry['rove'] == true;
+      if (roving && !roves) {
+        throw FormatException('A key roves on a lane walking no path: $index');
       }
       final incoming = entry['in'];
       final outgoing = entry['out'];
@@ -545,6 +824,7 @@ class PropertyTrack<T> {
             ? KeySide.linear
             : KeyExit.fromJson(outgoing),
         path: KeyPath.fromJson(entry['path']),
+        roving: roving,
         name: entry['name'] as String?,
       );
     }
@@ -566,7 +846,7 @@ class PropertyTrack<T> {
 }
 
 /// What a named key hands its link: the number AND both of its sides AND
-/// the path through it ([PropertyKey.held]).
+/// the path through it AND whether its time roves ([PropertyKey.held]).
 ///
 /// 🗣️유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 링크안되는건가?
 /// 싹다링크해야하는데」 — a name is ONE key seen in several places, so they
@@ -576,6 +856,7 @@ typedef NamedKeyValue<T> = ({
   KeySide incoming,
   KeyExit outgoing,
   KeyPath path,
+  bool roving,
 });
 
 /// The named keys one track edit MOVED between [before] and [after] — what

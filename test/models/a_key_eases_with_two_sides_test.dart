@@ -460,6 +460,7 @@ void main() {
             incoming: const EaseSide(speed: 0.5),
             outgoing: KeySide.auto,
             path: KeyPath.straight,
+            roving: false,
           ));
       for (final frame in [0, 8]) {
         expect(track.keyAt(frame)!.value, 5);

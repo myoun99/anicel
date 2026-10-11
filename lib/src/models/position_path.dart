@@ -24,10 +24,13 @@ SegmentWalk<CanvasPoint> positionPathBetween(
     end + keyPathHandle(keys, to, ahead: false),
     end,
   );
-  return (progress) {
-    final at = walk.at(progress);
-    return CanvasPoint(x: at.dx, y: at.dy);
-  };
+  return (
+    at: (progress) {
+      final at = walk.at(progress);
+      return CanvasPoint(x: at.dx, y: at.dy);
+    },
+    length: walk.length,
+  );
 }
 
 /// How far, and which way, the path's handle at the key at [frame] of

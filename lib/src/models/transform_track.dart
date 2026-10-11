@@ -47,13 +47,17 @@ class TransformTrack {
       ),
       opacity = PropertyTrack.empty();
 
-  const TransformTrack.properties({
+  /// The five lanes as given — but for [position]'s roving keys, each on
+  /// the frame its run passes it nearest ([PropertyTrack.withRovingKeysSlotted],
+  /// I-89 ④): a roving key's frame is never anywhere else, whichever edit
+  /// made the track.
+  TransformTrack.properties({
     required this.anchorPoint,
-    required this.position,
+    required PropertyTrack<CanvasPoint> position,
     required this.scale,
     required this.rotation,
     required this.opacity,
-  });
+  }) : position = position.withRovingKeysSlotted(positionKeySpace);
 
   factory TransformTrack.empty() => TransformTrack();
 
@@ -206,6 +210,7 @@ class TransformTrack {
       position: PropertyTrack.fromJson(
         json['position'] as List?,
         (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
+        roves: true,
       ),
       scale: PropertyTrack.fromJson(
         json['scale'] as List?,

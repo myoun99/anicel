@@ -65,6 +65,20 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v15 (2026-10-12, I-89 ④ — a roving key, After Effects' Rove Across
+/// Time; I-89 ①: 「위치에만, 처음 · 끝 키 시간 고정, 가운데 키는 시간을
+/// 풀어 속도를 고르게」): a position key between others may give up its
+/// time — `rove` on a key (`PropertyTrack.toJson`, written only where it
+/// roves) — and the keys either side that keep theirs walk the way through
+/// it at one pace. A v14 build reads a key without the word: it holds the
+/// key to the frame it was placed on, so the walk around it speeds and
+/// slows again, and its next save writes the key back without it. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a key that does not say keeps its
+/// time at THIS version too, so a v14 file was such a document.
+///
 /// v14 (2026-10-12, I-89 ④ — the path a position walks in space, After
 /// Effects' spatial interpolation): a key says how the path bends through
 /// it — `path` on a key (`PropertyTrack.toJson`): `auto`, or the handle's
@@ -233,7 +247,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 14;
+const int anicelFormatVersion = 15;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

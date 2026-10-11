@@ -286,7 +286,7 @@ void main() {
       expect(at(track, 15).x, greaterThan(100), reason: 'and the way out');
       expect(
         at(track, 5),
-        positionPathBetween(SplayTreeMap.of(keys), 0, 10)(0.5),
+        positionPathBetween(SplayTreeMap.of(keys), 0, 10).at(0.5),
       );
     });
 
@@ -327,7 +327,7 @@ void main() {
       expect(edited.keyAt(10)!.path, KeyPath.auto, reason: '⛔전제');
       expect(
         along(edited, 5),
-        positionPathBetween(SplayTreeMap.of(edited.keys), 0, 10)(0.5),
+        positionPathBetween(SplayTreeMap.of(edited.keys), 0, 10).at(0.5),
       );
       expect(laid, [0, 10, 0]);
     });
@@ -350,7 +350,7 @@ void main() {
         at(moving(line), 3),
       );
       expect(progress, isNot(closeTo(0.3, 0.01)), reason: '⛔전제: eased');
-      final expected = positionPathBetween(SplayTreeMap.of(bent), 0, 10)(
+      final expected = positionPathBetween(SplayTreeMap.of(bent), 0, 10).at(
         progress,
       );
       final actual = at(moving(bent), 3);
@@ -387,6 +387,7 @@ void main() {
         incoming: KeySide.linear,
         outgoing: KeySide.linear,
         path: KeyPath.auto,
+        roving: false,
       ));
       expect(linked.keyAt(0)!.path, KeyPath.auto);
       expect(linked.keyAt(20)!.path, KeyPath.auto);
