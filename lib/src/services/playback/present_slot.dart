@@ -192,11 +192,6 @@ final class RasterSpread {
     }
   }
 
-  /// The longest of the recent lengths: by when, after its hand-off, a
-  /// scene's raster is over at the latest ([quietBetweenHeldFrames]).
-  int get longestMicros =>
-      _recent.length < 8 ? unmeasuredHighMicros : _recent.reduce(math.max);
-
   /// Where to hand a scene over, against the vblank its raster is to end
   /// past, on a display of [periodMicros]: the window of the latch's width
   /// that holds the most of the recent lengths — the middle one of those
@@ -247,22 +242,21 @@ final class RasterSpread {
 /// against 3.3ms in the others — and those were the film frames shown a
 /// refresh late.
 ///
-/// The quiet a held frame leaves runs from its raster's end — its release
-/// plus [sceneMicros], the longest scene of late — to the next held
-/// frame's release, [heldIntervalMicros] after its own, less [marginMicros]
-/// for where that release falls. The answer is the first such quiet not
-/// over at [nowMicros] — or null where the scenes leave none, and nothing
-/// can be kept clear of them.
-({int fromMicros, int untilMicros})? quietBetweenHeldFrames({
+/// The quiet a held frame leaves runs from its raster's end — [sceneMicros]
+/// after its release, where the latch's window for its vblank closes — to
+/// the next held frame's release, [heldIntervalMicros] after its own, less
+/// [marginMicros] for where that release falls and for the build before it.
+/// The answer is the first such quiet not over at [nowMicros]. Where the
+/// scenes leave no room it is EMPTY — it ends before it begins — and the
+/// work waits for one that has room: a quiet with no room is not leave to
+/// run beside the frames.
+({int fromMicros, int untilMicros}) quietBetweenHeldFrames({
   required int nowMicros,
   required int lastReleaseMicros,
   required int heldIntervalMicros,
   required int sceneMicros,
   required int marginMicros,
 }) {
-  if (heldIntervalMicros - sceneMicros - marginMicros <= 0) {
-    return null;
-  }
   final over =
       nowMicros - (lastReleaseMicros + heldIntervalMicros - marginMicros);
   final release =

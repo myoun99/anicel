@@ -35,8 +35,9 @@ void lookChangedWhatItShows() {
 
 /// When background GPU work — an upload, a bake — can run without running
 /// beside a held frame's raster, on the frame clock
-/// ([quietBetweenHeldFrames] has why): null where nothing is held — no
-/// display that says, or no clock running.
+/// ([quietBetweenHeldFrames] has why): EMPTY where a run leaves no room,
+/// and null only where nothing is held — no display that says, or no clock
+/// running.
 ({int fromMicros, int untilMicros})? quietForBackgroundGpuWork() {
   final binding = SchedulerBinding.instance;
   return binding is PresentPacing ? binding._quiet() : null;
@@ -99,11 +100,13 @@ mixin PresentPacing on WidgetsBinding {
 
   TimingsCallback? _learning;
 
-  /// When a clock last looked, when the last held frame was let go, and
-  /// the last intervals between two let go — what the quiet between held
-  /// frames is read off ([quietForBackgroundGpuWork]).
+  /// When a clock last looked, when the last held frame was let go and by
+  /// when its raster is over — where the latch's window for its vblank
+  /// closes — and the last intervals between two let go: what the quiet
+  /// between held frames is read off ([quietForBackgroundGpuWork]).
   int? _lookedAt;
   int? _released;
+  int _rasterOverBy = 0;
   final List<int> _heldIntervals = <int>[];
 
   /// No look for this long and no clock is running: nothing is held.
@@ -119,6 +122,7 @@ mixin PresentPacing on WidgetsBinding {
     _paced.clear();
     _lookedAt = null;
     _released = null;
+    _rasterOverBy = 0;
     _heldIntervals.clear();
   }
 
@@ -192,7 +196,14 @@ mixin PresentPacing on WidgetsBinding {
       _heldIntervals.add(released - before);
     }
     _released = released;
+    _rasterOverBy =
+        claim.shownAtMicros -
+        ((presentShownAfterVblanks - 1) * _periodOf(timing)).round() -
+        presentLatchLateMicros;
   }
+
+  double _periodOf(DisplayTiming timing) =>
+      timing.vblankGrid()?.periodMicros ?? 1e6 / 60;
 
   ({int fromMicros, int untilMicros})? _quiet() {
     final timing = displayTiming;
@@ -208,15 +219,19 @@ mixin PresentPacing on WidgetsBinding {
     if (now - lookedAt > _runGoneMicros) {
       return null;
     }
-    // The next release falls a refresh either side of where the shortest
-    // interval puts it: its claim's vblank comes off the chain.
-    final period = timing.vblankGrid()?.periodMicros ?? 1e6 / 60;
+    // The second shortest of the last intervals: one odd one — the loop's
+    // wrap, a run's first frames — does not shut every quiet after it.
+    final intervals = [..._heldIntervals]..sort();
+    final period = _periodOf(timing);
     return quietBetweenHeldFrames(
       nowMicros: now,
       lastReleaseMicros: released,
-      heldIntervalMicros: _heldIntervals.reduce(math.min),
-      sceneMicros: _spread.longestMicros,
-      marginMicros: period.round() + 1000,
+      heldIntervalMicros: intervals[math.min(1, intervals.length - 1)],
+      sceneMicros: _rasterOverBy - released,
+      // The next release falls a refresh either side of where the interval
+      // puts it — its claim's vblank comes off the chain — and its frame is
+      // built the refresh before.
+      marginMicros: (2 * period).round() + 1000,
     );
   }
 

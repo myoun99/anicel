@@ -321,7 +321,7 @@ void main() {
     const scene = 7000;
     const margin = 8000;
 
-    ({int fromMicros, int untilMicros})? quietAt(int now) =>
+    ({int fromMicros, int untilMicros}) quietAt(int now) =>
         quietBetweenHeldFrames(
           nowMicros: now,
           lastReleaseMicros: release,
@@ -352,29 +352,21 @@ void main() {
       expect(quietAt(release + interval - margin + 1), next);
       expect(quietAt(release + interval + scene + 1), next);
       expect(
-        quietAt(release + 2 * interval - margin + 1)!.fromMicros,
+        quietAt(release + 2 * interval - margin + 1).fromMicros,
         release + 2 * interval + scene,
       );
     });
 
-    test('scenes as long as the frames come leave no quiet to keep', () {
-      expect(
-        quietBetweenHeldFrames(
-          nowMicros: release,
-          lastReleaseMicros: release,
-          heldIntervalMicros: 14000,
-          sceneMicros: scene,
-          marginMicros: 7000,
-        ),
-        isNull,
+    test('🚨scenes as long as the frames come leave an EMPTY quiet — the '
+        'work waits; it is not let run beside the frames', () {
+      final quiet = quietBetweenHeldFrames(
+        nowMicros: release,
+        lastReleaseMicros: release,
+        heldIntervalMicros: 14000,
+        sceneMicros: scene,
+        marginMicros: 7500,
       );
-    });
-
-    test('a held raster is over by the longest of the recent lengths', () {
-      final spread = RasterSpread();
-      expect(spread.longestMicros, RasterSpread.unmeasuredHighMicros);
-      [4000, 9000, 5000, 4500, 4200, 4100, 4300, 4400].forEach(spread.add);
-      expect(spread.longestMicros, 9000);
+      expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));
     });
   });
 }
