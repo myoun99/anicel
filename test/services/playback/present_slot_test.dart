@@ -157,6 +157,28 @@ void main() {
     }
   });
 
+  test('older scenes running on up from the steady ones without a gap do '
+      'not pull the window after them', () {
+    final steady = [for (var i = 0; i < 6; i += 1) 4000 + i * 60];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 670 * period + 300,
+      handOff: handOffOf([
+        for (var i = 0; i < 26; i += 1) 4400 + i * 400,
+        ...steady,
+      ]),
+    );
+    for (final length in steady) {
+      expect(
+        endOf(claim, claim.handOffFromMicros, length),
+        inInclusiveRange(
+          presentLatchEarlyMicros,
+          period - presentLatchLateMicros,
+        ),
+      );
+    }
+  });
+
   test('a ring come round still weighs its newest most', () {
     final steady = [for (var i = 0; i < 6; i += 1) 4000 + i * 100];
     final claim = claimAt(
