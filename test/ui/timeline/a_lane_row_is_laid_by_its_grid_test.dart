@@ -94,6 +94,7 @@ void main() {
       geometry: geometry,
       windowBucket: null,
       viewportMainExtent: 400.0,
+      frameAxisController: null,
       rangeGesture: null,
       axis: axis,
       keyPrefix: keyPrefix,

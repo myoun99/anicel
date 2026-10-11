@@ -107,7 +107,7 @@ class DeviceGridScrollBody extends StatelessWidget {
     controller: controller,
     axis: axisDirectionToAxis(axisDirection),
     grid: DeviceGrid.of(context),
-    follows: false,
+    landing: _Landing.scrolled,
     child: child,
   );
 }
@@ -195,39 +195,101 @@ class ScrollFollower extends StatelessWidget {
     controller: controller,
     axis: axisDirectionToAxis(axisDirection),
     grid: DeviceGrid.of(context),
-    follows: true,
+    landing: _Landing.follows,
     child: child,
   );
 }
 
-/// The two halves of a scroll — what is scrolled ([DeviceGridScrollBody])
-/// and what follows it from outside ([ScrollFollower]) — landed by the one
-/// object, so they read the one position at the one moment.
+/// Content INSIDE a scrolled body that stands still in its view while the
+/// rest scrolls under it — a header graph's guest tags at the view's end
+/// (I-89 ③). [ScrollFollower] the other way round: moved back by the
+/// scroll position, read as the frame is composited, less the nudge the
+/// content lands by — so it neither trails a position a viewport corrects
+/// in its own layout (F-95) nor walks a fraction of a device pixel against
+/// the view with every step (F-32).
+///
+/// 🧪The tags were first laid out from the offset NOTIFIER: laid out again
+/// every pixel, and 0.06px off the sheet's view scrolled to 5305.06.
+class ScrollStill extends StatelessWidget {
+  const ScrollStill({
+    super.key,
+    required this.controller,
+    required this.axisDirection,
+    required this.child,
+  }) : assert(
+         axisDirection == AxisDirection.down ||
+             axisDirection == AxisDirection.right,
+         'A reverse scroll lands the other way ([DeviceGridScrollBody]).',
+       );
+
+  /// The controller of the scrollable whose body this stands in.
+  final ScrollController controller;
+
+  /// See [DeviceGridScrollBody.axisDirection].
+  final AxisDirection axisDirection;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _LandedOnTheGrid(
+    controller: controller,
+    axis: axisDirectionToAxis(axisDirection),
+    grid: DeviceGrid.of(context),
+    landing: _Landing.standsStill,
+    child: child,
+  );
+}
+
+/// Where what a [_LandedOnTheGrid] holds stands against its scroll.
+enum _Landing {
+  /// Inside the scrollable, carried by it ([DeviceGridScrollBody]).
+  scrolled,
+
+  /// Outside it, following it ([ScrollFollower]) — then nothing carries it
+  /// along, and nothing paints it as the position changes.
+  follows,
+
+  /// Inside it, standing still in its view ([ScrollStill]) — carried, and
+  /// moved back as far.
+  standsStill,
+}
+
+/// The halves of a scroll — what is scrolled ([DeviceGridScrollBody]), what
+/// follows it from outside ([ScrollFollower]) and what stands still inside
+/// it ([ScrollStill]) — landed by the one object, so they read the one
+/// position at the one moment.
 class _LandedOnTheGrid extends SingleChildRenderObjectWidget {
   const _LandedOnTheGrid({
     required this.controller,
     required this.axis,
     required this.grid,
-    required this.follows,
+    required this.landing,
     required Widget super.child,
   });
 
   final ScrollController controller;
   final Axis axis;
   final DeviceGrid grid;
-
-  /// Whether it stands OUTSIDE the scrollable — then nothing carries it
-  /// along, and nothing paints it as the position changes.
-  final bool follows;
+  final _Landing landing;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => follows
-      ? _RenderFollowingTheScroll(
-          controller: controller,
-          axis: axis,
-          grid: grid,
-        )
-      : _RenderLandedOnTheGrid(controller: controller, axis: axis, grid: grid);
+  RenderObject createRenderObject(BuildContext context) => switch (landing) {
+    _Landing.scrolled => _RenderLandedOnTheGrid(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+    _Landing.follows => _RenderFollowingTheScroll(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+    _Landing.standsStill => _RenderStandingStill(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+  };
 
   @override
   void updateRenderObject(
@@ -330,6 +392,21 @@ class _RenderFollowingTheScroll extends _RenderLandedOnTheGrid {
       context.paintChild(child, offset);
     }
   }
+}
+
+/// What stands still inside a scroll: carried by the position like all the
+/// content, and moved back as far — the follower's move, the other way
+/// round. Its layer moves it as the follower's does, so a scroll repaints
+/// nothing of it.
+class _RenderStandingStill extends _RenderFollowingTheScroll {
+  _RenderStandingStill({
+    required super.controller,
+    required super.axis,
+    required super.grid,
+  });
+
+  @override
+  double movedAt(double pixels) => -super.movedAt(pixels);
 }
 
 /// The layer of a [_RenderFollowingTheScroll]: where the framework put it,

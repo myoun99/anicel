@@ -114,6 +114,7 @@ class _XSheetGridColumns {
     geometry: _state._frameScroll.publishFrameGeometry(),
     windowBucket: _state._frameWindowBucket,
     viewportMainExtent: viewportExtent,
+    frameAxisController: _state._frameScrollController,
     rangeGesture: _state._rangeGesture,
     axis: Axis.vertical,
     keyPrefix: 'xsheet',

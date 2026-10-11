@@ -133,6 +133,7 @@ void main() {
       geometry: geometry,
       windowBucket: null,
       viewportMainExtent: viewportMainExtent,
+      frameAxisController: null,
       rangeGesture: range,
       axis: Axis.horizontal,
       keyPrefix: 'timeline',

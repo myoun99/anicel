@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/timeline_row_address.dart';
 import '../dashed_path.dart' show DashPattern, dashesAlong;
-import 'axis_turn.dart' show acrossBox, extentAcross, offsetAlong;
+import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
+import 'axis_turn.dart'
+    show acrossBox, extentAcross, extentAlong, offsetAlong;
 import 'key_mark_glyph.dart' show paintKeyMark;
 import 'lane_graph.dart';
 import 'lane_graph_seats.dart'
@@ -61,10 +65,10 @@ List<Widget> timelineFrameSide(
 ///
 /// It draws the lanes its seat names as its own ([laneGraphDrawnLanes]),
 /// read off where the rail stands, and every pin of another group's as a
-/// guest ([laneGraphGuests]). Along the frames it is a row of cells: laid
-/// out by the grid's live geometry ([TimelineFrameAxisBox]) and drawing
-/// only its window, so a scroll or a zoom step repaints it and rebuilds
-/// nothing.
+/// guest ([laneGraphGuests]), named in the view's corner
+/// ([LaneGraphGuestTags]). Along the frames it is a row of cells: laid out
+/// by the grid's live geometry ([TimelineFrameAxisBox]) and drawing only
+/// its window, so a scroll or a zoom step repaints it and rebuilds nothing.
 class TimelineLaneGraph extends StatelessWidget {
   const TimelineLaneGraph({
     super.key,
@@ -88,26 +92,75 @@ class TimelineLaneGraph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final guests = _guests();
     final standing = grid.hooks.currentRowHooks?.currentRow;
-    return TimelineFrameAxisBox(
-      geometry: grid.geometry,
-      crossAxisExtent: crossExtent,
-      axis: grid.axis,
-      child: RepaintBoundary(
-        child: standing == null
-            ? _picture(null)
-            : ValueListenableBuilder<TimelineRowAddress?>(
-                valueListenable: standing,
-                builder: (context, row, _) => _picture(row),
-              ),
-      ),
+    return Stack(
+      children: [
+        TimelineFrameAxisBox(
+          geometry: grid.geometry,
+          crossAxisExtent: crossExtent,
+          axis: grid.axis,
+          child: RepaintBoundary(
+            child: standing == null
+                ? _picture(null, guests)
+                : ValueListenableBuilder<TimelineRowAddress?>(
+                    valueListenable: standing,
+                    builder: (context, row, _) => _picture(row, guests),
+                  ),
+          ),
+        ),
+        Positioned.fill(
+          child: guests.isEmpty
+              ? const SizedBox.shrink()
+              : _standingInTheView(
+                  CustomSingleChildLayout(
+                    delegate: _GuestTagsAtTheViewsEnd(
+                      grid.axis,
+                      grid.viewportMainExtent,
+                    ),
+                    child: LaneGraphGuestTags(
+                      key: ValueKey<String>(
+                        '${grid.keyPrefix}-lane-graph-guests-${seat.groupKey}',
+                      ),
+                      guests: guests,
+                    ),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 
-  Widget _picture(TimelineRowAddress? standing) {
-    final drawn = laneGraphDrawnLanes(seat, standing);
+  /// [tags] standing still in the view while the frames scroll under them
+  /// ([ScrollStill]) — at the frames' start where the host scrolls none.
+  /// Forward along the frames, as the scroll body they stand in lands
+  /// (`TimelineScrollViewport`).
+  Widget _standingInTheView(Widget tags) {
+    final controller = grid.frameAxisController;
+    return controller == null
+        ? tags
+        : ScrollStill(
+            controller: controller,
+            axisDirection: grid.axis == Axis.horizontal
+                ? AxisDirection.right
+                : AxisDirection.down,
+            child: tags,
+          );
+  }
+
+  /// Every pin of another group's, as the host finds it.
+  List<LaneGraphLine> _guests() {
     final hooks = grid.hooks;
     final lineOf = hooks.laneGraphLineOf;
+    return [
+      if (lineOf != null)
+        for (final key in laneGraphGuests(seat, hooks.laneGraphs.pinned))
+          ?lineOf(key),
+    ];
+  }
+
+  Widget _picture(TimelineRowAddress? standing, List<LaneGraphLine> guests) {
+    final drawn = laneGraphDrawnLanes(seat, standing);
     return CustomPaint(
       painter: TimelineLaneGraphPainter(
         own: [
@@ -115,14 +168,191 @@ class TimelineLaneGraph extends StatelessWidget {
             if (drawn.contains(row.lane!.laneId))
               (layer: row.layer, lane: row.lane!),
         ],
-        guests: [
-          if (lineOf != null)
-            for (final key in laneGraphGuests(seat, hooks.laneGraphs.pinned))
-              ?lineOf(key),
-        ],
+        guests: guests,
         grid: grid,
       ),
     );
+  }
+}
+
+/// What the guest tags keep clear of the view's end along the frames, and
+/// of the graph's edge across them (the mock's, 5판).
+const double _guestTagsInsetAlong = 8;
+const double _guestTagsInsetAcross = 6;
+
+/// A guest tag's parts (the mock's, 5판): how long its dash runs, the gap
+/// between its dash, name and pin, the pin's size, and what their well
+/// keeps clear beside them and above and below.
+const double _guestDashLength = 14;
+const double _guestTagGap = 6;
+const double _guestPinSize = 16;
+const double _guestTagsSidePadding = 8;
+const double _guestTagsTopPadding = 4;
+
+/// The narrowest the tags are laid out: a tag's dash and pin with none of
+/// its name between them — narrower, and its row overflows.
+const double _guestTagsLeastWidth =
+    2 * _guestTagsSidePadding +
+    _guestDashLength +
+    2 * _guestTagGap +
+    _guestPinSize;
+
+/// Lays a graph's guest tags at the frames' far end of the VIEW — the
+/// mock's top right of the timeline's graph (5판), and on the sheet, the
+/// timeline turned a quarter clockwise, its bottom right — reckoned from the
+/// graph's start, which [ScrollStill] keeps at the view's while it scrolls:
+/// so nothing here moves with the scroll, and a scroll lays nothing out.
+///
+/// No wider than the room the view leaves on the timeline — the graph's on
+/// the sheet — so a long name ends in an ellipsis; never narrower than a
+/// tag's dash and pin.
+class _GuestTagsAtTheViewsEnd extends SingleChildLayoutDelegate {
+  const _GuestTagsAtTheViewsEnd(this.axis, this.viewportExtent);
+
+  final Axis axis;
+
+  /// The view's extent along the frames; nothing where the host says
+  /// nothing, and the view is all of them.
+  final double viewportExtent;
+
+  /// How far the view reaches along a graph [size] big.
+  double _view(Size size) {
+    final length = extentAlong(axis, size);
+    return viewportExtent > 0 ? math.min(viewportExtent, length) : length;
+  }
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    final size = constraints.biggest;
+    final room = axis == Axis.horizontal
+        ? _view(size) - 2 * _guestTagsInsetAlong
+        : size.width - 2 * _guestTagsInsetAcross;
+    return BoxConstraints(maxWidth: math.max(_guestTagsLeastWidth, room));
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => offsetAlong(
+    axis,
+    along: math.max(
+      _guestTagsInsetAlong,
+      _view(size) - _guestTagsInsetAlong - extentAlong(axis, childSize),
+    ),
+    across: axis == Axis.horizontal
+        ? _guestTagsInsetAcross
+        : extentAcross(axis, size) -
+              extentAcross(axis, childSize) -
+              _guestTagsInsetAcross,
+  );
+
+  @override
+  bool shouldRelayout(_GuestTagsAtTheViewsEnd oldDelegate) =>
+      oldDelegate.axis != axis || oldDelegate.viewportExtent != viewportExtent;
+}
+
+/// A graph's guests named over its picture (I-89 ③, the mock's 5판): each
+/// line's dash in its first colour, 「layer · lane」 and the pin that put
+/// it there.
+///
+/// The same tags upright on the sheet: a graph is as wide there as its
+/// lanes' columns together, room for the names to read across, so only
+/// where they stand is turned ([_GuestTagsAtTheViewsEnd]) — 2026-10-11.
+class LaneGraphGuestTags extends StatelessWidget {
+  const LaneGraphGuestTags({super.key, required this.guests});
+
+  final List<LaneGraphLine> guests;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: DecoratedBox(
+      decoration: ShapeDecoration(
+        color: AppColors.surface,
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: const BorderSide(color: AppColors.hairline),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: _guestTagsSidePadding,
+          vertical: _guestTagsTopPadding,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 3,
+          children: [for (final guest in guests) _tag(guest)],
+        ),
+      ),
+    ),
+  );
+
+  Widget _tag(LaneGraphLine guest) {
+    final (:layer, :lane) = guest;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: _guestTagGap,
+      children: [
+        CustomPaint(
+          size: const Size(_guestDashLength, _laneGraphStroke),
+          painter: _GuestDashPainter(
+            lane.curve?.parts.first ?? AppColors.textDim,
+          ),
+        ),
+        Flexible(
+          child: Text(
+            '${layer.name} · ${lane.label}',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.text),
+          ),
+        ),
+        const Icon(
+          Icons.push_pin,
+          size: _guestPinSize,
+          color: AppColors.textDim,
+        ),
+      ],
+    );
+  }
+}
+
+/// A guest's line in its tag: its dashes in its colour.
+class _GuestDashPainter extends CustomPainter {
+  const _GuestDashPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final middle = size.height / 2;
+    _strokeLaneGraphLine(
+      canvas,
+      Path()
+        ..moveTo(0, middle)
+        ..lineTo(size.width, middle),
+      color,
+      dashed: true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GuestDashPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+/// Strokes [path], a graph's line, in [color] — in dashes for a guest's.
+void _strokeLaneGraphLine(
+  Canvas canvas,
+  Path path,
+  Color color, {
+  required bool dashed,
+}) {
+  final ink = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = _laneGraphStroke
+    ..color = color;
+  for (final piece
+      in dashed ? dashesAlong(path, _laneGraphGuestDashes) : [path]) {
+    canvas.drawPath(piece, ink);
   }
 }
 
@@ -339,7 +569,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
         along: laneGraphAlong(time, frames),
         across: laneGraphAcross(curve.at(time)[part], range, extent, axis),
       );
-      _stroke(
+      _strokeLaneGraphLine(
         canvas,
         Path()..addPolygon([for (final time in times) at(time)], false),
         curve.parts[part],
@@ -356,23 +586,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
       ]);
     }
     return marks;
-  }
-
-  /// Strokes [path] in [color] — in dashes for a guest's.
-  void _stroke(
-    Canvas canvas,
-    Path path,
-    Color color, {
-    required bool dashed,
-  }) {
-    final ink = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _laneGraphStroke
-      ..color = color;
-    for (final piece
-        in dashed ? dashesAlong(path, _laneGraphGuestDashes) : [path]) {
-      canvas.drawPath(piece, ink);
-    }
   }
 
   @override

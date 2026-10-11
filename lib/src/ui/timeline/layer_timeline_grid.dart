@@ -718,6 +718,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       totalFrameContentWidth: totalFrameContentWidth,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
+      frameAxisController: _horizontalScrollController,
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,

@@ -40,6 +40,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.laneRange,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.frameAxisController,
   });
 
   /// What the session answers to the rows — the grid's ONE bundle, which
@@ -55,6 +56,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// scroll rebuilds nothing here.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// The frame axis' scrollable, which the rows' header graphs keep their
+  /// guest tags in the view by ([TimelineCellsRowGrid.frameAxisController]).
+  final ScrollController? frameAxisController;
 
   /// Display rows: layer rows interleaved with expanded property lanes.
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
@@ -236,6 +241,7 @@ class _TimelineFrameRowsScrollBodyState
     geometry: _windowedGeometry,
     windowBucket: widget.windowBucket,
     viewportMainExtent: widget.viewportMainExtent,
+    frameAxisController: widget.frameAxisController,
     rangeGesture: widget.rangeGesture,
     axis: Axis.horizontal,
     keyPrefix: 'timeline',

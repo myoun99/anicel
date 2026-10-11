@@ -116,6 +116,11 @@ typedef TimelineCellsRowGrid = ({
   ValueNotifier<TimelineFrameGeometry> geometry,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent,
+  // The frame axis' scrollable — what a header graph's guest tags read
+  // where they paint, to stand in the view while its picture scrolls under
+  // them (I-89 ③). Null where the host has none: the view stands at the
+  // frames' start.
+  ScrollController? frameAxisController,
   // The range select/move gesture bundle (UI-R8 — the block-body move
   // handle's successor); null keeps rows display-only.
   TimelineRangeGestureCallbacks? rangeGesture,
