@@ -358,7 +358,15 @@ void main() {
   /// path with its value. 🔬`clean_code_diff` against the lane's last
   /// commit before it (`91c98de18`, at 392) named those two added and `bez`
   /// gone.
-  const wideSignatures = 393;
+  ///
+  /// ⚠️393 → 394 on 2026-10-12, at the landing of I-89 ④ onto master
+  /// `09cb64a24`: the trunk had come to 389 under its own ceiling — while it
+  /// stood one above the count, `PresentClaims.claim` (five — now, the real
+  /// vblank, the refresh period, the budget and the hand-off; `c1ffcd789`,
+  /// the display's real vblank) landed unnamed — so the lane's five come on
+  /// top of it. 🔬`clean_code_diff` between the lane's base (`7f40aad8e`, at
+  /// 388) and that master named it added and nothing gone.
+  const wideSignatures = 394;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
