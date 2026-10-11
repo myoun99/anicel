@@ -231,12 +231,19 @@ void main() {
     show(painter);
     paintRow(painter);
     await pumpEventQueue();
-    expect(uploads, 1, reason: '⛔premise: a shown span is out');
+    // Every shown span but the last landed: none waits in the queue, one
+    // is still being rastered.
+    final shown = painter.tileSpans.length;
+    for (var landed = 0; landed < shown - 1; landed += 1) {
+      held.removeAt(0).complete(tiny());
+      await pumpEventQueue();
+    }
+    expect(uploads, shown, reason: '⛔premise: the last shown span is out');
 
     store.warmTheNextPage(tiles: 16);
     await pumpEventQueue();
 
-    expect(uploads, 1, reason: 'the warm-up waits for the shown spans');
+    expect(uploads, shown, reason: 'the warm-up waits for the shown spans');
     while (held.isNotEmpty) {
       held.removeAt(0).complete(tiny());
       await pumpEventQueue();
