@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 import 'package:anicel/src/ui/layout/device_grid_scroll_controller.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
@@ -30,15 +32,16 @@ void main() {
   }
 
   /// A ruler [rulerWidth] wide following a horizontal scroll of cells
-  /// [viewportWidth] wide, both 2000 long and each marked at [markAt] — red
-  /// on the ruler, blue on the cells — and a neighbour beside them, all on
-  /// one layer.
+  /// [viewportWidth] wide, both 2000 long and each marked at [markAt],
+  /// [markWidth] wide — red on the ruler, blue on the cells — and a
+  /// neighbour beside them, all on one layer.
   Widget harness(
     ScrollController controller, {
     required double ratio,
     double viewportWidth = 300,
     double rulerWidth = 300,
     double markAt = 500,
+    double markWidth = 1,
     _Mark? rulerPainter,
     _Mark? besidePainter,
   }) => MediaQuery(
@@ -70,7 +73,11 @@ void main() {
                             key: ruler,
                             painter:
                                 rulerPainter ??
-                                _Mark(const Color(0xFFFF0000), at: markAt),
+                                _Mark(
+                                  const Color(0xFFFF0000),
+                                  at: markAt,
+                                  width: markWidth,
+                                ),
                             size: const Size(2000, 20),
                           ),
                         ),
@@ -87,7 +94,11 @@ void main() {
                         controller: controller,
                         axisDirection: AxisDirection.right,
                         child: CustomPaint(
-                          painter: _Mark(const Color(0xFF0000FF), at: markAt),
+                          painter: _Mark(
+                            const Color(0xFF0000FF),
+                            at: markAt,
+                            width: markWidth,
+                          ),
                           size: const Size(2000, 40),
                         ),
                       ),
@@ -106,9 +117,8 @@ void main() {
     ),
   );
 
-  /// The device column each mark comes out of the compositor at, in the
-  /// ruler's band and the cells' — null where none does.
-  Future<({int? ruler, int? cells})> marks(
+  /// The panel as the compositor makes it, one device pixel a sample.
+  Future<({ByteData bytes, int width})> picture(
     WidgetTester tester,
     double ratio,
   ) async {
@@ -122,9 +132,19 @@ void main() {
       image.dispose();
       return (bytes: bytes!, width: width);
     });
+    return read!;
+  }
+
+  /// The device column each mark comes out of the compositor at, in the
+  /// ruler's band and the cells' — null where none does.
+  Future<({int? ruler, int? cells})> marks(
+    WidgetTester tester,
+    double ratio,
+  ) async {
+    final read = await picture(tester, ratio);
     int? firstColumn(double logicalY, {required bool red}) {
       final row = (logicalY * ratio).floor();
-      for (var x = 0; x < read!.width; x += 1) {
+      for (var x = 0; x < read.width; x += 1) {
         final at = (row * read.width + x) * 4;
         final r = read.bytes.getUint8(at);
         final b = read.bytes.getUint8(at + 2);
@@ -140,6 +160,33 @@ void main() {
       cells: firstColumn(40, red: false),
     );
   }
+
+  /// Every device column each mark covers, with how much of it (alpha) —
+  /// where a mark a fraction of a pixel off the grid shows, and its first
+  /// column alone may not.
+  Future<({List<(int, int)> ruler, List<(int, int)> cells})> coverage(
+    WidgetTester tester,
+    double ratio,
+  ) async {
+    final read = await picture(tester, ratio);
+    List<(int, int)> covered(double logicalY) {
+      final row = (logicalY * ratio).floor();
+      return [
+        for (var x = 0; x < read.width; x += 1)
+          if (read.bytes.getUint8((row * read.width + x) * 4 + 3)
+              case final alpha when alpha > 0)
+            (x, alpha),
+      ];
+    }
+
+    return (ruler: covered(10), cells: covered(40));
+  }
+
+  /// A mark [width] logical wide standing ON the grid from device column
+  /// [first]: whole columns, each covered all the way.
+  List<(int, int)> landed(int first, double width, double ratio) => [
+    for (var x = first; x < first + (width * ratio).round(); x += 1) (x, 255),
+  ];
 
   testWidgets('🚨a pixel of scroll repaints neither what follows it nor what '
       'stands beside it — and what follows still moves', (tester) async {
@@ -272,65 +319,118 @@ void main() {
     );
   });
 
-  testWidgets('🚨a viewport that pulls its position back during layout takes '
-      'what follows it along — with no listener told (F-95)', (tester) async {
-    useRatio(tester, 1);
+  for (final ratio in <double>[1, 1.5]) {
+    testWidgets('🚨a viewport that pulls its position back during layout '
+        'takes what follows it along — with no listener told, and both on '
+        'the grid, ratio $ratio (F-95 · F-32)', (tester) async {
+      useRatio(tester, ratio);
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      // ⚠️At 1.5 the narrow viewport is no whole number of device pixels,
+      // so the nudge onto the grid before the pull is not the one after it:
+      // a half still wearing the old one stands a quarter of a device pixel
+      // off the other, and off the grid (10-11 — the cells wore it).
+      final narrow = ratio == 1 ? 300.0 : 300.5;
+      // The ruler as wide as the cells will be, and the marks at 1800 and
+      // two wide: in view before the pull and after it, and whole device
+      // pixels at both ratios when they land.
+      final rulerPaints = _Mark(const Color(0xFFFF0000), at: 1800, width: 2);
+      Widget panelOf(double viewportWidth) => harness(
+        controller,
+        ratio: ratio,
+        viewportWidth: viewportWidth,
+        rulerWidth: 800,
+        markAt: 1800,
+        markWidth: 2,
+        rulerPainter: rulerPaints,
+      );
+      /// Where the marks land with the position at [offset].
+      int landsAt(double offset) =>
+          (1800 * ratio - (offset * ratio).roundToDouble()).round();
+
+      await tester.pumpWidget(panelOf(narrow));
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pump();
+      expect(controller.offset, 2000 - narrow, reason: 'fixture: at the end');
+      final before = await coverage(tester, ratio);
+      expect(
+        before.cells,
+        landed(landsAt(2000 - narrow), 2, ratio),
+        reason: 'fixture: the cells on the grid',
+      );
+      expect(before.ruler, before.cells, reason: 'fixture: the ruler over it');
+
+      var told = 0;
+      controller.addListener(() => told += 1);
+      final painted = rulerPaints.paints;
+      // The cells' viewport grows past their end; the ruler's box does not
+      // change at all, so nothing lays it out or paints it.
+      await tester.pumpWidget(panelOf(800));
+
+      expect(controller.offset, 1200, reason: 'fixture: pulled back');
+      expect(told, 0, reason: 'fixture: and nobody was told');
+      expect(
+        rulerPaints.paints,
+        painted,
+        reason: 'fixture: nor was the ruler painted',
+      );
+      final after = await coverage(tester, ratio);
+      expect(
+        after.cells,
+        landed(landsAt(1200), 2, ratio),
+        reason: 'the cells land on the grid by the PULLED position — '
+            '↩️they kept the nudge read as they were built, before the pull',
+      );
+      expect(
+        after.ruler,
+        after.cells,
+        reason: 'and the ruler still stands over the cells it numbers, to the '
+            'device pixel — its layer read the pulled position as the frame '
+            'was composited',
+      );
+    });
+  }
+
+  testWidgets('🚨a new grid — another screen\'s ratio — lands both halves on '
+      'it, though nothing else is painted again', (tester) async {
+    useRatio(tester, 1.25);
     final controller = ScrollController();
     addTearDown(controller.dispose);
-    // The ruler as wide as the cells will be, and the marks at 1800: in
-    // view before the pull and after it.
-    final rulerPaints = _Mark(const Color(0xFFFF0000), at: 1800);
-    Widget panelOf(double viewportWidth) => harness(
-      controller,
-      ratio: 1,
-      viewportWidth: viewportWidth,
-      rulerWidth: 800,
-      markAt: 1800,
-      rulerPainter: rulerPaints,
-    );
-    await tester.pumpWidget(panelOf(300));
-    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpWidget(harness(controller, ratio: 1.25, markWidth: 2));
+    // Where the nudge at 1.25 (-0.3) is not the one at 1.5 (-1/6), and the
+    // marks at 500 are in view.
+    controller.jumpTo(300.5);
     await tester.pump();
-    expect(controller.offset, 1700, reason: 'fixture: at the end');
-    final before = await marks(tester, 1);
-    expect(before.cells, 100, reason: 'fixture: 1800 - 1700');
-    expect(before.ruler, 100, reason: 'fixture: the ruler over it');
 
-    var told = 0;
-    controller.addListener(() => told += 1);
-    final painted = rulerPaints.paints;
-    // The cells' viewport grows past their end; the ruler's box does not
-    // change at all, so nothing lays it out or paints it.
-    await tester.pumpWidget(panelOf(800));
+    useRatio(tester, 1.5);
+    await tester.pumpWidget(harness(controller, ratio: 1.5, markWidth: 2));
 
-    expect(controller.offset, 1200, reason: 'fixture: pulled back');
-    expect(told, 0, reason: 'fixture: and nobody was told');
-    expect(rulerPaints.paints, painted, reason: 'fixture: nor was it painted');
-    final after = await marks(tester, 1);
-    expect(after.cells, 600, reason: 'fixture: 1800 - 1200');
+    final seen = await coverage(tester, 1.5);
     expect(
-      after.ruler,
-      600,
-      reason: 'the ruler still stands over the cells it numbers — its layer '
-          'read the pulled position as the frame was composited',
+      seen.cells,
+      landed((500 * 1.5 - (300.5 * 1.5).roundToDouble()).round(), 2, 1.5),
+      reason: 'the cells land on the new grid — the viewport they stand in '
+          'was not painted again, so they paint themselves',
     );
+    expect(seen.ruler, seen.cells, reason: 'and the ruler with them');
   });
 }
 
-/// A painter that draws one upright line at [at] and counts its paints —
-/// and never asks to repaint.
+/// A painter that draws one upright line [width] wide at [at] and counts its
+/// paints — and never asks to repaint.
 class _Mark extends CustomPainter {
-  _Mark(this.color, {this.at = 500});
+  _Mark(this.color, {this.at = 500, this.width = 1});
 
   final Color color;
   final double at;
+  final double width;
   int paints = 0;
 
   @override
   void paint(Canvas canvas, Size size) {
     paints += 1;
     canvas.drawRect(
-      Rect.fromLTWH(at, 0, 1, size.height),
+      Rect.fromLTWH(at, 0, width, size.height),
       Paint()..color = color,
     );
   }
