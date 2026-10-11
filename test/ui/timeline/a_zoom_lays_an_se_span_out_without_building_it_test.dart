@@ -104,6 +104,96 @@ void main() {
     }
   });
 
+  testWidgets('a column grown wider measures its dialogue again — a glyph '
+      'standing in it is fitted to the width first', (tester) async {
+    var across = 10.0;
+    late StateSetter setState;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: StatefulBuilder(
+              builder: (context, set) {
+                setState = set;
+                return SizedBox(
+                  width: across,
+                  height: 60,
+                  child: const SeSpanVisual(
+                    axis: Axis.vertical,
+                    frames: 4,
+                    dialogue: dialogue,
+                    seName: 'ドア',
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    final style = dialogueFitStyle(
+      tester.element(find.byType(SeSpanVisual)),
+      color: Colors.black,
+    );
+    final chip = find.bySemanticsLabel('SE name ドア');
+    double naturalIn(double width) => dialogueNaturalExtent(
+      dialogue,
+      axis: Axis.vertical,
+      style: style,
+      maxCrossExtent: width,
+    );
+    expect(
+      naturalIn(10),
+      isNot(naturalIn(40)),
+      reason: '⛔premise: the width across moves the dialogue\'s length',
+    );
+
+    for (final width in [10.0, 40.0]) {
+      setState(() => across = width);
+      await tester.pump();
+      final natural = naturalIn(width);
+      expect(
+        tester.getSize(chip).height,
+        closeTo(seNameBoxExtentIn(60, dialogueExtent: natural), 1e-6),
+        reason: 'a column $width wide',
+      );
+    }
+  });
+
+  testWidgets('a new dialogue at the same length lays the chip out again', (
+    tester,
+  ) async {
+    Widget span(String text) => MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 60,
+            height: row,
+            child: SeSpanVisual(
+              axis: Axis.horizontal,
+              frames: 4,
+              dialogue: text,
+              seName: 'ドア',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(span('あ'));
+    final chip = find.bySemanticsLabel('SE name ドア');
+    final short = tester.getSize(chip).width;
+
+    await tester.pumpWidget(span(dialogue));
+
+    expect(
+      tester.getSize(chip).width,
+      lessThan(short),
+      reason: 'a longer dialogue narrows the chip beside it',
+    );
+  });
+
   testWidgets('the chip\'s ground is tinted over the length the box gives '
       'it, painted at that size', (tester) async {
     final resize = await mount(tester, width: 400);
