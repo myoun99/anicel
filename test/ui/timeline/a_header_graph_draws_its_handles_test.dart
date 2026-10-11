@@ -202,6 +202,66 @@ void main() {
     );
   });
 
+  List<(int, bool)> drawnSides() => [
+    for (final handle in painterOf([
+      lineOf('rotation'),
+    ]).handlesIn(sizeFor(Axis.horizontal)))
+      (handle.frame, handle.leaving),
+  ];
+
+  test('a segment the window shows some of keeps its handles, though a key '
+      'of it stands outside the window', () {
+    // Eight frames to a window's step at this zoom, two cells overscan.
+    bucket.value = 2;
+    expect(
+      painterOf([lineOf('rotation')]).visibleFrameWindow().startIndex,
+      14,
+      reason: '⛔전제',
+    );
+    expect(
+      drawnSides(),
+      [(18, false)],
+      reason: '12 to 18 shows; 0 to 6 and 6 to 12 do not',
+    );
+
+    bucket.value = 0;
+    geometry.value = const TimelineFrameGeometry(
+      frameCellExtent: cell,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 15,
+    );
+    expect(
+      drawnSides(),
+      [(0, true), (6, false), (18, false)],
+      reason: 'the window ends at 15, inside 12 to 18',
+    );
+  });
+
+  test('a zoom, a scroll or a taller graph reads its handles again', () {
+    final size = sizeFor(Axis.horizontal);
+    final painter = painterOf([lineOf('rotation')]);
+    List<Offset> drawn(TimelineLaneGraphPainter painter, Size size) => [
+      for (final handle in painter.handlesIn(size)) handle.at,
+    ];
+    final before = drawn(painter, size);
+
+    geometry.value = const TimelineFrameGeometry(
+      frameCellExtent: 20,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 48,
+    );
+    expect(drawn(painter, size), isNot(before), reason: '⛔전제');
+    expect(drawn(painter, size), drawn(painterOf([lineOf('rotation')]), size));
+    final taller = Size(size.width, size.height + 40);
+    expect(
+      drawn(painter, taller),
+      drawn(painterOf([lineOf('rotation')]), taller),
+    );
+    // Five frames to a step at this zoom: the window from 23 on.
+    bucket.value = 5;
+    expect(painter.handlesIn(size), isEmpty, reason: 'past every segment');
+  });
+
   test('no handle on a line of two numbers, nor in a speed graph', () {
     expect(
       painterOf([lineOf('position')]).handlesIn(sizeFor(Axis.horizontal)),

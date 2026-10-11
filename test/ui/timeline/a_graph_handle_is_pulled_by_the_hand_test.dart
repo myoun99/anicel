@@ -45,7 +45,9 @@ void main() {
     const pull = Offset(24, -36);
 
     final gesture = await tester.startGesture(
-      start,
+      // Off its middle: the handle goes as far as the hand does, and does
+      // not jump to it.
+      start + const Offset(2, 1),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -110,22 +112,30 @@ void main() {
     expect(_leaving(s), isNot(const EaseSide()), reason: 'the pull bent it');
   });
 
-  testWidgets('a press beside a handle is not the handle\'s', (tester) async {
-    final s = await _pump(tester);
+  testWidgets('a press beside a handle is not the handle\'s: it falls to what '
+      'lies under — a finger there scrolls the rows', (tester) async {
+    final s = await _pump(tester, under: 12);
     await _openTheGraph(tester, s);
+    final rows = _rowsScroll(tester);
+    rows.jumpTo(0);
+    await tester.pump();
+    expect(rows.maxScrollExtent, greaterThan(100), reason: '⛔전제');
     final start = _handleOnScreen(tester, 'timeline');
 
     final gesture = await tester.startGesture(
       // Past its circle and its ink, 4.5 + 0.8 round.
       start + const Offset(0, 7),
-      kind: PointerDeviceKind.mouse,
+      kind: PointerDeviceKind.touch,
     );
     await tester.pump();
-    await gesture.moveBy(const Offset(20, -20));
-    await tester.pump();
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(0, -12));
+      await tester.pump();
+    }
     expect(s.dragPreview.value, isNot(isA<LaneEditPreview>()));
     await gesture.up();
     await tester.pumpAndSettle();
+    expect(rows.pixels, greaterThan(0));
     expect(_leaving(s), const EaseSide());
   });
 
