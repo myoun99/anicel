@@ -319,6 +319,75 @@ void main() {
     );
   });
 
+  testWidgets('🚨a scroll builds its bar\'s share of the accessibility tree '
+      'again and not the share beside it', (tester) async {
+    useRatio(tester, 1);
+    final semantics = tester.ensureSemantics();
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final over = _Assemblies();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 300,
+            height: 80,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: SingleChildScrollView(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    child: const SizedBox(width: 2000, height: 40),
+                  ),
+                ),
+                // One boundary over the bar and what stands beside it — the
+                // workspace's, in the app. (The scroll stands outside it: its
+                // own updates are its own boundary's.)
+                _CountsAssemblies(
+                  assemblies: over,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 16,
+                        child: AppControllerScrollbar(
+                          controller: controller,
+                          axis: Axis.horizontal,
+                        ),
+                      ),
+                      Semantics(
+                        label: 'beside',
+                        child: const SizedBox(width: 300, height: 20),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final assembled = over.count;
+
+    for (var step = 1; step <= 5; step += 1) {
+      controller.jumpTo(step * 100.0);
+      await tester.pump();
+    }
+
+    expect(assembled, greaterThan(0), reason: 'fixture: it is in the tree');
+    expect(
+      over.count,
+      assembled,
+      reason: '↩️the bar\'s relayout climbed to the boundary over both, and '
+          'a page turn of a run built the workspace\'s share again',
+    );
+    semantics.dispose();
+  });
+
   for (final ratio in <double>[1, 1.5]) {
     testWidgets('🚨a viewport that pulls its position back during layout '
         'takes what follows it along — with no listener told, and both on '
@@ -471,4 +540,43 @@ class _Mark extends CustomPainter {
 
   @override
   bool shouldRepaint(_Mark oldDelegate) => false;
+}
+
+/// How often [_CountsAssemblies]' node was assembled.
+class _Assemblies {
+  int count = 0;
+}
+
+/// A semantics boundary that counts how often its node is assembled — what
+/// a flush does to every boundary it builds again, in every build mode.
+class _CountsAssemblies extends SingleChildRenderObjectWidget {
+  const _CountsAssemblies({required this.assemblies, super.child});
+
+  final _Assemblies assemblies;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderCountsAssemblies(assemblies);
+}
+
+class _RenderCountsAssemblies extends RenderProxyBox {
+  _RenderCountsAssemblies(this.assemblies);
+
+  final _Assemblies assemblies;
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    config.isSemanticBoundary = true;
+  }
+
+  @override
+  void assembleSemanticsNode(
+    SemanticsNode node,
+    SemanticsConfiguration config,
+    Iterable<SemanticsNode> children,
+  ) {
+    assemblies.count += 1;
+    super.assembleSemanticsNode(node, config, children);
+  }
 }

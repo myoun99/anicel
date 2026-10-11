@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'app_scrollbar_lane.dart';
 import 'owning_axis_grip.dart';
+import 'tick_layer.dart';
 
 /// The lane vocabulary lives next door so calculation-only files can name
 /// a width without importing a widget; everyone who has the scrollbar has
@@ -473,11 +474,12 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
     // one-pixel scroll of its frame axis — at every page turn of a run.
     // (The bar's [Stack] expands to its lane already, so tightening it
     // changes no size.)
-    return RepaintBoundary(
-      child: SizedBox.expand(
-        child: LayoutBuilder(builder: (context, _) => _bar()),
-      ),
-    );
+    // ↩️It brought the paint and the layout halves of a [TickLayer] by hand
+    // and not the third: a scroll's relayout climbed to the semantics
+    // boundary above it, and a page turn of a run re-walked 351 render
+    // objects of the workspace for a moved thumb (2026-10-11). It is a tick
+    // of the scroll, so it is one.
+    return SizedBox.expand(child: TickLayer(child: _bar()));
   }
 
   Widget _bar() => AnimatedBuilder(
