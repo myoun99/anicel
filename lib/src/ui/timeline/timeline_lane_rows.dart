@@ -1136,7 +1136,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   ///
   /// I-89 ③: the graph's pin and chips are paid after the chain, asked the
   /// same way, so carrying them sheds nothing the column showed before they
-  /// came. The pin stands by the value, so it is never there without it.
+  /// came.
   _StoodShows _stoodShows(
     double extent, {
     required bool hasValue,
@@ -1153,17 +1153,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final linkFloor = navigatorFloor + navigatorExtent;
     final linked = value && hasLink;
     final pinFloor = linkFloor + (linked ? _laneValueLinkExtent : 0.0);
-    final pinned = widget.optionalColumns.graph && value;
-    final chipsFloor = pinFloor + (pinned ? layerLanePinSlotWidth : 0.0);
+    final graphs = widget.optionalColumns.graph;
+    final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
     return (
       value: value,
       navigator:
           lane.showsKeyNavigator && extent >= navigatorFloor + navigatorExtent,
       link: linked && extent >= linkFloor + _laneValueLinkExtent,
-      pin: pinned && extent >= pinFloor + layerLanePinSlotWidth,
-      chips:
-          widget.optionalColumns.graph &&
-          extent >= chipsFloor + layerLaneChipsSlotWidth,
+      pin: graphs && extent >= pinFloor + layerLanePinSlotWidth,
+      chips: graphs && extent >= chipsFloor + layerLaneChipsSlotWidth,
     );
   }
 }

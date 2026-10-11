@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,11 +18,19 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart'
+    show VerticalWritingText;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLanePinSlotWidth, layerRailColumnWidthsAtOne;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
+    show railSwipeColumns;
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineFrameCellWidth;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -182,10 +192,29 @@ void main() {
     expect(_pinned(s), isEmpty, reason: 'from the edge the value stands at');
 
     // ⛔And no slack past either edge: the name a press stands on is before
-    // it, and the gap before the value after.
+    // it, and the gap before the value after. Each read on its own — two
+    // sweeps that both pinned would toggle each other back to nothing.
     await sweepFrom(pin.left - 2);
+    expect(_pinned(s), isEmpty, reason: 'not from the name before it');
     await sweepFrom(pin.right + 2);
-    expect(_pinned(s), isEmpty);
+    expect(_pinned(s), isEmpty, reason: 'nor from the gap after it');
+  });
+
+  test('the pin\'s band is its slot to the pixel — not one either side', () {
+    // Through the pointer a band a little too wide cannot be seen: the name
+    // before it and the value after it claim their own presses. The band is
+    // asked here instead, where it is made.
+    final columns = railSwipeColumns<int>(
+      crossExtent: 300,
+      leadingOrigin: 0,
+      columns: layerRailColumnWidthsAtOne,
+      optionalColumns: (graph: true, onion: false, blend: false),
+      lanePin: (toggle: (valueOf: (_) => false, toggle: (_) {}), inset: 40),
+    );
+    expect(columns.single.bandAt(0), (
+      start: 260 - layerLanePinSlotWidth,
+      end: 260.0,
+    ));
   });
 
   testWidgets('the sheet\'s lane columns wear the pin, swept across them as '
@@ -299,6 +328,9 @@ void main() {
     const chip = 'xsheet-lane-chip-draw-scale-0';
     const keys = [value, navigator, link, pin, chip];
 
+    /// The least room the name got at any height.
+    var leastName = double.infinity;
+
     /// The shortest column, from 60 up, that shows each of [keys].
     Future<Map<String, double?>> firstShown({required bool graphs}) async {
       final first = <String, double?>{for (final key in keys) key: null};
@@ -330,6 +362,17 @@ void main() {
             first[key] = height;
           }
         }
+        leastName = math.min(
+          leastName,
+          tester
+              .getSize(
+                find.descendant(
+                  of: _cell('xsheet', 'scale'),
+                  matching: find.byType(VerticalWritingText),
+                ),
+              )
+              .height,
+        );
       }
       return first;
     }
@@ -337,6 +380,12 @@ void main() {
     final without = await firstShown(graphs: false);
     final carried = await firstShown(graphs: true);
 
+    expect(
+      leastName,
+      greaterThanOrEqualTo(2 * timelineFrameCellWidth),
+      reason: 'the name is paid first: whatever else stands, it keeps its '
+          'floor of two frame rows',
+    );
     expect(without[pin], isNull);
     expect(without[chip], isNull);
     for (final key in [value, navigator, link]) {
