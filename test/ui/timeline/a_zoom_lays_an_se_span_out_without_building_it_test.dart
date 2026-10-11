@@ -101,6 +101,16 @@ void main() {
         closeTo(width, 1e-6),
         reason: 'the dialogue takes the rest, at $width',
       );
+      expect(
+        tester.getTopLeft(find.byType(DialogueFitText)).dx,
+        closeTo(tester.getTopRight(chip).dx, 1e-6),
+        reason: 'the dialogue begins where the chip ends, at $width',
+      );
+      expect(
+        tester.getCenter(chip).dy,
+        closeTo(tester.getCenter(find.byType(SeSpanVisual)).dy, 1e-6),
+        reason: 'the chip stands in the middle across, as the flex had it',
+      );
     }
   });
 
