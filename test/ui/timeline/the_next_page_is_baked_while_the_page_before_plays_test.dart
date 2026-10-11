@@ -405,6 +405,22 @@ void main() {
       expect(uploads, 2, reason: 'a quiet of 25ms still takes one');
     });
 
+    test('🚨a quiet with no room holds the warm-up back — a run that leaves '
+        'none is not leave to run beside its frames', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await shownRow('no-room');
+      quiet = (fromMicros: 9000, untilMicros: 4000);
+
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+
+      expect(uploads, 0);
+      expect(waits, isEmpty, reason: 'nothing to wait for in it either');
+    });
+
     test('with nothing held there is no quiet to wait for', () async {
       if (!available) {
         markTestSkipped('qa_engine.dll not built');
