@@ -3,6 +3,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../models/key_mark.dart';
+import '../../models/key_side.dart' show KeyExit, KeySide;
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -192,10 +193,12 @@ typedef LaneStretchWord = ({int from, int to, String word, Color ink});
 
 /// A lane as a header graph draws it ([PropertyLaneRow.curve]): the numbers
 /// it holds [at] a time — a frame, or a time between two — each drawn in
-/// its colour of [parts], in order.
+/// its colour of [parts], in order; and the [sides] of each of its keys by
+/// frame, which its handles stand for (I-89 ③).
 typedef LaneCurve = ({
   List<Color> parts,
   List<double> Function(double time) at,
+  Map<int, ({KeySide incoming, KeyExit outgoing})> sides,
 });
 
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can

@@ -341,6 +341,13 @@ class PropertyTrack<T> {
       if (entry.value.name case final String name) entry.key: name,
   };
 
+  /// Each key's two sides by frame — what a header graph's handles stand
+  /// for (I-89 ③).
+  Map<int, ({KeySide incoming, KeyExit outgoing})> get sidesByFrame => {
+    for (final MapEntry(key: frame, value: key) in keys.entries)
+      frame: (incoming: key.incoming, outgoing: key.outgoing),
+  };
+
   /// The names this track uses, in frame order — what a naming space asks
   /// for when it checks whether a name is already taken.
   Set<String> get keyNames => {

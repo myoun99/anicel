@@ -126,6 +126,7 @@ List<PropertyLaneRow> effectPropertyLanes(
               : (
                   parts: [LaneCurvePalette.effectParameter(index)],
                   at: (time) => [valueAt(effect.id, spec.id, time)],
+                  sides: parameter.track.sidesByFrame,
                 ),
         ),
       );

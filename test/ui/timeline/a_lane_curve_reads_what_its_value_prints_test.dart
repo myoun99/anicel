@@ -187,6 +187,30 @@ void main() {
     }
   });
 
+  test('a lane\'s curve carries each of its keys\' two sides, by the frames '
+      'its marks stand on — what a graph\'s handles stand for', () {
+    final lanes = lanesOf(layer);
+    const straight = (incoming: KeySide.linear, outgoing: KeySide.linear);
+    expect(laneOf(lanes, 'position').curve!.sides, {
+      0: straight,
+      8: (incoming: const EaseSide(), outgoing: KeySide.linear),
+    });
+    expect(laneOf(lanes, effectLaneId(blur.id, 'blurX')).curve!.sides, {
+      0: straight,
+      8: straight,
+    });
+    expect(
+      laneOf(lanes, effectLaneId(blur.id, 'blurY')).curve!.sides,
+      isEmpty,
+      reason: 'a value no key holds',
+    );
+    for (final lane in lanes) {
+      if (lane.curve case final curve?) {
+        expect(curve.sides.keys.toSet(), lane.keyedFrames.toSet());
+      }
+    }
+  });
+
   test('between frames the curve runs on along the track', () {
     final position = laneOf(lanesOf(layer), 'position').curve!;
     final across = position.at(4.5).first;

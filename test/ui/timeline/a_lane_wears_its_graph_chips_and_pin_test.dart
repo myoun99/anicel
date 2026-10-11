@@ -59,6 +59,7 @@ void main() {
               ? (
                   parts: const [LaneCurvePalette.across],
                   at: (_) => const [0.0],
+                  sides: const {},
                 )
               : null,
         );
@@ -305,6 +306,7 @@ void main() {
       curve: (
         parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
         at: (_) => const [100.0, 100.0],
+        sides: const {},
       ),
     );
     final changes = ValueNotifier<int>(0);

@@ -98,6 +98,7 @@ void main() {
   LaneCurve line(List<double> Function(double time) at) => (
     parts: [for (final _ in at(0)) const Color(0xFF000000)],
     at: at,
+    sides: const {},
   );
 
   group('each line is fitted to its own range', () {

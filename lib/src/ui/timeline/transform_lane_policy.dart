@@ -258,10 +258,10 @@ List<PropertyLaneRow> transformPropertyLanes(
 
 /// What a lane's value column prints and the line a header graph draws it
 /// by (I-89 ③), off ONE reading of its value — so the two cannot come to
-/// disagree.
+/// disagree. The line's keys are the track's ([_lane]).
 typedef _LaneReading = ({
   String Function(int frameIndex)? label,
-  LaneCurve? curve,
+  ({List<Color> parts, List<double> Function(double time) at})? curve,
 });
 
 /// The lane's value [at] a time — null where the rail has nothing to read
@@ -452,6 +452,13 @@ PropertyLaneRow _lane<T>(
     valueLabel: reading.label,
     scrubValue: scrubValue,
     linkable: linkable,
-    curve: reading.curve,
+    curve: switch (reading.curve) {
+      (:final parts, :final at) => (
+        parts: parts,
+        at: at,
+        sides: track.sidesByFrame,
+      ),
+      null => null,
+    },
   );
 }
