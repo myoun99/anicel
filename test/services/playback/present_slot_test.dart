@@ -64,6 +64,28 @@ void main() {
         );
       }
     }
+    expect(
+      endOf(claim, claim.handOffByMicros + 3, lengths.last),
+      greaterThan(period - presentLatchLateMicros),
+      reason: 'the window\'s end is the LAST moment that lands them all',
+    );
+  });
+
+  test('lengths spread wider than any one window: the hand-off is placed '
+      'among the middle of them, not at the shortest or the longest', () {
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 700 * period + 50,
+      handOff: handOffOf([for (var i = 1; i <= 16; i += 1) i * 1000]),
+    );
+    expect(
+      endOf(claim, claim.handOffFromMicros, 8500),
+      inInclusiveRange(
+        presentLatchEarlyMicros,
+        period - presentLatchLateMicros,
+      ),
+      reason: 'the median length lands',
+    );
   });
 
   test('🚨the hand-off aims at the middle: the shortest and the longest '

@@ -200,6 +200,29 @@ void main() {
     expect(display.waits, isEmpty);
   });
 
+  testWidgets('🚨the frame after a change, whose look changed nothing, is '
+      'not held — a change holds its own frame and no other', (tester) async {
+    final shown = await settle(tester);
+    lookNext((_) {
+      expectedClaim();
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+    expect(display.waits, hasLength(1), reason: '⛔premise: the change held');
+    display.waits.clear();
+
+    lookNext((_) {
+      expectedClaim();
+      frameShownAt();
+      shown.value += 1;
+    });
+    await tester.pump(vsync);
+
+    expect(display.waits, isEmpty);
+  });
+
   testWidgets('a look that changed nothing draws nothing, and waits for '
       'nothing', (tester) async {
     await settle(tester);
