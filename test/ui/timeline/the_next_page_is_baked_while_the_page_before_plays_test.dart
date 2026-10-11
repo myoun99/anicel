@@ -4,6 +4,7 @@
 @Timeout(Duration(minutes: 3))
 library;
 
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -16,6 +17,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart'
+    show debugRawRgbaUploader;
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -86,6 +89,14 @@ void main() {
     painter.addListener(onRepaint);
     addTearDown(() => painter.removeListener(onRepaint));
     return () => repaints;
+  }
+
+  /// A tile's pixels as a held or counted upload hands them back: any image
+  /// will do for the store.
+  ui.Image tiny() {
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(Rect.zero, Paint());
+    return recorder.endRecording().toImageSync(1, 1);
   }
 
   Future<void> idle() async {
@@ -196,6 +207,84 @@ void main() {
     await idle();
 
     expect(repaints(), before + 1);
+  });
+
+  test('while a shown span waits, a warm-up starts nothing — what is on the '
+      'screen is rastered first', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    var uploads = 0;
+    final held = <Completer<ui.Image>>[];
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          uploads += 1;
+          final landing = Completer<ui.Image>();
+          held.add(landing);
+          return landing.future;
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final painter = painterFor('first', bucket);
+    show(painter);
+    paintRow(painter);
+    await pumpEventQueue();
+    expect(uploads, 1, reason: '⛔premise: a shown span is out');
+
+    store.warmTheNextPage(tiles: 16);
+    await pumpEventQueue();
+
+    expect(uploads, 1, reason: 'the warm-up waits for the shown spans');
+    while (held.isNotEmpty) {
+      held.removeAt(0).complete(tiny());
+      await pumpEventQueue();
+    }
+    final shownUploads = uploads;
+    await idle();
+    expect(uploads, shownUploads, reason: 'and starts only when asked again');
+  });
+
+  test('a span a paint takes over from the warm-up is rastered once', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final painter = painterFor('once', bucket);
+    show(painter);
+    paintRow(painter);
+    await idle();
+    var uploads = 0;
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          uploads += 1;
+          return Future.value(tiny());
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+
+    // Queued, none rastered yet: the shown paint below takes one over.
+    store.warmTheNextPage(tiles: 0);
+    final (start, end) = painter.tileSpansOfTheNextPage[1];
+    store.tileFor(
+      painter: painter,
+      spanStartIndex: start,
+      spanEndIndexExclusive: end,
+      devicePixelRatio: 1,
+    );
+    await idle();
+    final afterTheShownOne = uploads;
+    store.warmTheNextPage(tiles: 64);
+    await idle();
+
+    expect(
+      uploads,
+      afterTheShownOne + painter.tileSpansOfTheNextPage.length - 2,
+      reason: 'every span of the next page but the one past the window a '
+          'paint keeps warm and the one the paint took over',
+    );
   });
 
   testWidgets('🚨the page law warms the next page after the frame it turns in '

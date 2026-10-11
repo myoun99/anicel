@@ -108,10 +108,6 @@ class TimelineGridTileStore {
   final Set<String> _warmInFlight = <String>{};
   final Set<String> _askedWhileWarm = <String>{};
 
-  /// The frame the last warm-up began in: one a frame, however many
-  /// surfaces turn their pages in it.
-  int? _warmedIn;
-
   /// The keys a drain has taken off the queue and not landed yet.
   final Set<String> _inFlight = <String>{};
 
@@ -174,7 +170,6 @@ class TimelineGridTileStore {
     _warming.clear();
     _warmInFlight.clear();
     _askedWhileWarm.clear();
-    _warmedIn = null;
     _drainsRunning = 0;
     _epoch += 1;
   }
@@ -468,20 +463,15 @@ class TimelineGridTileStore {
   /// comes straight after that frame, and on the raster thread straight
   /// after its picture, a film frame's length before the next is due.
   ///
-  /// [tiles] at most a call and one call a frame, however many surfaces
-  /// turn their pages in it; only while no shown span waits — what is on
-  /// the screen is rastered first ([tileFor] takes a span over from here).
+  /// [tiles] at most a call, and none while any raster is under way: the
+  /// surfaces that turn their pages in one frame start one warm-up between
+  /// them, and what is on the screen is rastered first ([tileFor] takes a
+  /// span over from here).
   void warmTheNextPage({int tiles = 6}) {
     final engine = QaNativeEngine.instance;
     if (engine == null) {
       return;
     }
-    final frame = WidgetsBinding.instance.platformDispatcher.frameData
-        .frameNumber;
-    if (_warmedIn == frame) {
-      return;
-    }
-    _warmedIn = frame;
     for (final MapEntry(key: row, value: (:painter, :ratio))
         in _askedBy.entries) {
       if (!_shown.containsKey(row) ||
