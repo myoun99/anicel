@@ -286,7 +286,10 @@ void main() {
     controller.attachTicker(const TestVSync());
     controller.play(scope: PlaybackScope.activeCut);
 
-    const refresh = Duration(microseconds: 6949);
+    // The engine's grid 7ms a step — not the display's refresh — so a
+    // clock read on the engine's times could not pass for one read on the
+    // shown moments.
+    const refresh = Duration(microseconds: 7000);
     await tester.pump(refresh);
     await tester.pump(refresh);
     heard = 1;
