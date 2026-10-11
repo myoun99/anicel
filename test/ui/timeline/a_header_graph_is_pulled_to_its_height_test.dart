@@ -22,6 +22,8 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraph;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart'
+    show edgeAutoPanDelta;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart'
@@ -199,6 +201,68 @@ void main() {
       tester.getRect(_grip('timeline')).center.dy,
       moreOrLessEquals(edge),
       reason: 'the edge stays where the pull left it',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('reaching its most partway through a pan, the view pans as '
+      'far as it grew and no further — the edge still under the hand', (
+    tester,
+  ) async {
+    final s = await _pump(tester, under: 12);
+    await _openTheGraph(tester, s);
+    final rows = _rowsScroll(tester);
+    rows.jumpTo(0);
+    await tester.pump();
+    final view = _viewOf(tester, rows);
+    final most = view.height - _rowExtent(tester);
+    final graphs = s.railView.laneGraphs;
+    graphs.value = graphs.value.copyWith(
+      open: {
+        ...graphs.value.open,
+        _transformGroup: _graphOf(s)!.copyWith(extent: most - 60),
+      },
+    );
+    await tester.pump();
+
+    // The one move: from the grip, clear of the band, into the band — the
+    // hand's own way taken whole, then the pan that move asks for.
+    final hand = Offset(view.left + 40, view.bottom - 4);
+    double roomAfterTheHand() =>
+        most -
+        tester.getRect(_graph('timeline')).height -
+        (hand.dy - tester.getRect(_grip('timeline')).center.dy);
+    // What is left once the hand's way is taken shrinks one for one as the
+    // rows scroll: scrolled so that about five are left.
+    rows.jumpTo(rows.pixels + roomAfterTheHand() - 5);
+    await tester.pump();
+    final room = roomAfterTheHand();
+    expect(room, moreOrLessEquals(5, epsilon: 0.5), reason: '⛔전제');
+    expect(
+      edgeAutoPanDelta(hand.dy - view.top, view.height),
+      greaterThan(room + 10),
+      reason: '⛔전제: the move asks for a pan well past what is left',
+    );
+    final before = rows.pixels;
+
+    final gesture = await _grab(tester, 'timeline');
+    await gesture.moveTo(hand);
+    await tester.pump();
+    expect(
+      tester.getRect(_graph('timeline')).height,
+      moreOrLessEquals(most),
+      reason: 'it stands at its most',
+    );
+    expect(
+      rows.pixels,
+      moreOrLessEquals(before + room, epsilon: 0.5),
+      reason: 'the view panned what it grew, not the whole of the pan',
+    );
+    expect(
+      tester.getRect(_grip('timeline')).center.dy,
+      moreOrLessEquals(hand.dy, epsilon: 1),
+      reason: 'the edge did not slide off up the view',
     );
     await gesture.up();
     await tester.pumpAndSettle();
