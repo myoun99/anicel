@@ -67,6 +67,15 @@ Map<int, String> transformKeyNameUnion(TransformTrack track) {
 /// What a union prints where its members disagree (㉚).
 const String unionMixedKeyName = '...';
 
+/// The NAME [track]'s keys carry where they are written on a picture — the
+/// one its lanes agree on ([transformKeyNameUnion]); a key whose lanes
+/// disagree carries none, as an unnamed one does (유저 2026-09-30: 「레인끼리
+/// 달라서 헤더가 ...으로 표시되는 경우 … 이름 안정해진거랑 같은 규칙으로」).
+Map<int, String> transformKeyAgreedNames(TransformTrack track) => {
+  for (final MapEntry(:key, :value) in transformKeyNameUnion(track).entries)
+    if (value != unionMixedKeyName) key: value,
+};
+
 /// An SE→SE ROW move (P3b-4, 같은 섹션 행이동): the selected sound
 /// blocks land on a SIBLING SE row — cels travel with the blocks (the
 /// drawing-move planner's cross-layer carry) and the AUDIO CLIPS follow

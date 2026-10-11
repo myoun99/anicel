@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../../services/persistence/app_accent_settings_store.dart';
+import '../../services/persistence/app_camera_path_settings_store.dart';
 import '../../services/persistence/app_frame_count_settings_store.dart';
 import '../../services/persistence/app_frame_grid_settings_store.dart';
 import '../../services/persistence/app_onion_skin_settings_store.dart';
@@ -21,6 +22,7 @@ import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
+import '../../models/camera_path_settings.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/onion_skin_settings.dart';
@@ -63,6 +65,7 @@ class EditorAppSettings {
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
     AppFrameGridSettingsStore? frameGridSettingsStore,
     AppFrameCountSettingsStore? frameCountSettingsStore,
+    AppCameraPathSettingsStore? cameraPathSettingsStore,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -75,7 +78,8 @@ class EditorAppSettings {
        _uiScaleStore = uiScaleStore,
        _onionSkinSettingsStore = onionSkinSettingsStore,
        _frameGridSettingsStore = frameGridSettingsStore,
-       _frameCountSettingsStore = frameCountSettingsStore;
+       _frameCountSettingsStore = frameCountSettingsStore,
+       _cameraPathSettingsStore = cameraPathSettingsStore;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -93,6 +97,7 @@ class EditorAppSettings {
     unawaited(_restoreOnionSkinSettings());
     unawaited(_restoreFrameGridSettings());
     unawaited(_restoreFrameCountSettings());
+    unawaited(_restoreCameraPathSettings());
   }
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
@@ -133,6 +138,26 @@ class EditorAppSettings {
     AppFrameCountSettings.settings,
     settings,
     _frameCountSettingsStore?.save,
+  );
+
+  // --- Camera path (I-89 ④) -------------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppCameraPathSettingsStore? _cameraPathSettingsStore;
+
+  /// The LIVE value lives app-wide on [CameraPathSettings.settings] — the
+  /// canvas draws by it; the session only restores/persists.
+  Future<void> _restoreCameraPathSettings() async {
+    _restored(
+      CameraPathSettings.settings,
+      await _cameraPathSettingsStore?.load(),
+    );
+  }
+
+  void setCameraPathSettings(CameraPathSettings settings) => _publish(
+    CameraPathSettings.settings,
+    settings,
+    _cameraPathSettingsStore?.save,
   );
 
 

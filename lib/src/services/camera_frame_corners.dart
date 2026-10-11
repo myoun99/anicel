@@ -39,34 +39,23 @@ List<Offset> cameraFrameCornersInCanvas({
   ];
 }
 
-/// The camera's frame at each of its [keys] from frame [from] up to
-/// [toExclusive], in frame order — its four corners on the canvas
-/// ([cameraFrameCornersInCanvas]). What a camera's path is drawn from.
-List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
-  Map<int, CameraPose> keys,
-  CanvasSize cameraFrameSize, {
-  int from = 0,
-  int? toExclusive,
-}) {
-  final frames = [
-    for (final key in keys.entries)
-      if (key.key >= from && (toExclusive == null || key.key < toExclusive))
-        key,
-  ]..sort((a, b) => a.key.compareTo(b.key));
-  return [
-    for (final key in frames)
-      (
-        frameIndex: key.key,
-        corners: cameraFrameCornersInCanvas(
-          pose: key.value,
-          cameraFrameSize: cameraFrameSize,
-        ),
-      ),
-  ];
-}
+/// [cut]'s camera frame at [frameIndex] as playback shows it
+/// ([resolveCameraPoseAt]) — its four corners on the canvas.
+List<Offset> cameraFrameShownAt(
+  Cut cut,
+  CanvasSize cameraFrameSize,
+  int frameIndex,
+) => cameraFrameCornersInCanvas(
+  pose: resolveCameraPoseAt(
+    camera: cut.camera,
+    canvasSize: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
+  cameraFrameSize: cameraFrameSize,
+);
 
 /// [cut]'s camera frame from frame [first] to frame [last] as playback
-/// shows it ([resolveCameraPoseAt]): at [first], at each key after it, and
+/// shows it ([cameraFrameShownAt]): at [first], at each key after it, and
 /// at [last] — in frame order. What a stretch of the camera's path is drawn
 /// from (유저 2026-10-01, H54: 「카메라 움직임을 키 기준으로 생각하는게
 /// 아니라, 제대로 보여지는 카메라대로 … 그 블록 안에서 일어나는 카메라를
@@ -91,24 +80,14 @@ List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   required int first,
   required int last,
 }) {
-  CameraPose shown(int frameIndex) => resolveCameraPoseAt(
-    camera: cut.camera,
-    canvasSize: cut.canvasSize,
-    frameIndex: frameIndex,
-  );
   ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
     frameIndex: frameIndex,
-    corners: cameraFrameCornersInCanvas(
-      pose: shown(frameIndex),
-      cameraFrameSize: cameraFrameSize,
-    ),
+    corners: cameraFrameShownAt(cut, cameraFrameSize, frameIndex),
   );
-  final keys = cameraKeyFrames(
-    {for (final frame in cut.camera.track.keyedFrames) frame: shown(frame)},
-    cameraFrameSize,
-    from: first,
-    toExclusive: last + 1,
-  );
+  final keys = [
+    for (final frame in cut.camera.track.keyedFrames)
+      if (frame >= first && frame <= last) shownAt(frame),
+  ];
   final opening = shownAt(first);
   final closing = shownAt(last);
   return [

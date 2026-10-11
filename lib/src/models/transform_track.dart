@@ -95,7 +95,7 @@ class TransformTrack {
   bool get isEmpty => lanes.every((lane) => lane.isEmpty);
   bool get isNotEmpty => !isEmpty;
 
-  /// The union of every property's keyed frames.
+  /// The union of every property's keyed frames, first to last.
   Set<int> get keyedFrames => SplayTreeSet<int>()
     ..addAll([for (final lane in lanes) ...lane.keys.keys]);
 

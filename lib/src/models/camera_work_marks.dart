@@ -25,7 +25,14 @@ enum CameraKeyRole {
   between,
 
   /// The last: OUT's red.
-  last,
+  last;
+
+  /// The role of the key at [index] among [count] keys, first to last.
+  static CameraKeyRole at(int index, int count) => index == 0
+      ? first
+      : index == count - 1
+      ? last
+      : between;
 }
 
 /// A camera's first key, frame and label — Storyboard Pro's IN green; its
@@ -46,6 +53,13 @@ const int cameraBetweenArgb = 0xFF101010;
 /// between's ink at half strength: that ink went black (H55), and the
 /// trails stay as light as H47 made them.
 const int cameraTrailArgb = 0x805F5E5A;
+
+/// The crosses a camera's path wears in time on the canvas (I-89 ④, the
+/// confirmed spec of 2026-10-10 and its mock, 5판): grey where the playhead
+/// has passed, blue where it is yet to go — the one it stands on wears a
+/// key between's ink.
+const int cameraTickPastArgb = 0xFF8E9093;
+const int cameraTickAheadArgb = 0xFF3A78C8;
 
 /// The colour [role] wears: its frame, its cross and its label.
 int cameraKeyArgb(CameraKeyRole role) => switch (role) {

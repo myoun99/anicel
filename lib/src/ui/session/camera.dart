@@ -9,6 +9,7 @@ import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../services/camera_path.dart';
 import '../../services/camera_pose_resolver.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_cut_camera_command.dart';
@@ -322,6 +323,51 @@ class Camera {
         : timelineDragPreviewCarriedCamera(preview, cut.id);
     return _cameraKeysDragPreview ?? carried?.track ?? cut?.camera.track;
   }
+
+  /// The path the active cut's camera takes (I-89 ④), its frames [frameSize]
+  /// canvas pixels at zoom 1 — of the track the display reads
+  /// ([activeCutCameraTrack]), so it follows a camera edit in flight; null
+  /// where there is no cut or the camera moves nothing ([CameraPath.of]).
+  ///
+  /// Built again only for another track or size: the frames between its
+  /// keys are read as the canvas asks for them, and kept while it asks
+  /// again at every step of a scrub.
+  CameraPath? activeCutCameraPath(CanvasSize frameSize) {
+    final cut = _project.activeCutOrNull;
+    final track = activeCutCameraTrack;
+    if (cut == null || track == null) {
+      return null;
+    }
+    if (_path case (
+      track: final pathTrack,
+      canvasSize: final canvasSize,
+      frameSize: final pathFrameSize,
+      :final path,
+    ) when identical(pathTrack, track) &&
+        canvasSize == cut.canvasSize &&
+        pathFrameSize == frameSize) {
+      return path;
+    }
+    final path = CameraPath.of(
+      cut.copyWith(camera: CutCamera.fromTrack(track)),
+      frameSize,
+    );
+    _path = (
+      track: track,
+      canvasSize: cut.canvasSize,
+      frameSize: frameSize,
+      path: path,
+    );
+    return path;
+  }
+
+  ({
+    TransformTrack track,
+    CanvasSize canvasSize,
+    CanvasSize frameSize,
+    CameraPath? path,
+  })?
+  _path;
 
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag

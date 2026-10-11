@@ -331,7 +331,22 @@ void main() {
   /// measured along the axis it stands on. 🔬The scan against the lane's
   /// last commit (`bcceefcd2`, at 388) named that one added and nothing
   /// gone.
-  const wideSignatures = 389;
+  ///
+  /// ⚠️389 → 392 on 2026-10-12, four named as the rule above asks (I-89 ④,
+  /// the camera's path on the canvas). A camera's work is ONE drawing every
+  /// surface writes (`camera_work_marks.dart`, 유저 2026-09-30 「공용화 잘
+  /// 해주고」), so the sizes and the stratum the conte held as constants are
+  /// each surface's to say: `cameraCrossMarks` (six — the frame it stands
+  /// square to, where, its colour, its arm and its line, the stratum) and
+  /// `_label` (five — the words, the frame, the colour, the sizes, the
+  /// stratum). The canvas writes the path through `cameraPathMarks` (six —
+  /// the path, where a canvas point lies on the surface, the sizes, the
+  /// stratum and the frames it keeps to) and its crosses in time through
+  /// `cameraPathTicks` (nine — those but the sizes, how many frames apart,
+  /// the playhead they are coloured against, and their arm and line).
+  /// 🔬`clean_code_diff` against the lane's base (`7f40aad8e`, at 388)
+  /// named those four added and nothing gone.
+  const wideSignatures = 392;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

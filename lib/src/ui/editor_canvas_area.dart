@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/layer_effect.dart';
+import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
@@ -39,6 +40,8 @@ import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel, CanvasFloats;
 import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
+import 'camera/camera_path_overlay.dart';
+import 'camera/camera_path_settings_rows.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
@@ -78,10 +81,15 @@ import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart'
-    show TransformPose, TransformTrack, uniformScale;
+    show
+        TransformPose,
+        TransformPropertyId,
+        TransformTrack,
+        transformPropertyOfLaneId,
+        uniformScale;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
-    show LaneRowAddress, TimelineRowAddress;
+    show LaneRowAddress, LayerRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -1307,6 +1315,44 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
+  /// The camera frame's size as the canvas shows it: the size being dragged
+  /// while it is adjusted on the canvas (I-80), else the project camera's.
+  static CanvasSize _cameraFrameSizeShown(EditorSessionManager session) =>
+      session.canvasAdjust.cameraSizeShown ?? session.camera.cameraFrameSize;
+
+  /// The camera's path (I-89 ④) under its frame, as the canvas's camera path
+  /// settings say — at the size the frame is shown at, and around the
+  /// playhead the cursor moves.
+  Positioned _cameraPath(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) => Positioned.fill(
+    child: ValueListenableBuilder<CameraPathSettings>(
+      valueListenable: CameraPathSettings.settings,
+      builder: (context, settings, _) => settings.show == CameraPathShow.off
+          ? const SizedBox.shrink()
+          : ListenableBuilder(
+              listenable: Listenable.merge([
+                session.editingFrameCursor,
+                session.canvasAdjust,
+              ]),
+              builder: (context, _) {
+                final path = session.camera.activeCutCameraPath(
+                  _cameraFrameSizeShown(session),
+                );
+                return path == null
+                    ? const SizedBox.shrink()
+                    : CameraPathOverlay(
+                        path: path,
+                        playhead: session.currentFrameIndex,
+                        settings: settings,
+                        viewport: viewport,
+                      );
+              },
+            ),
+    ),
+  );
+
   /// The camera's frame — the dim outside it and its hairline — drawn for
   /// every row. It takes no press: on the camera row the frame's box does
   /// ([_cameraBox]), over the tools. While its size is adjusted on the
@@ -1323,9 +1369,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           session,
           (pose) => CameraFrameOverlay(
             pose: pose,
-            cameraFrameSize:
-                session.canvasAdjust.cameraSizeShown ??
-                session.camera.cameraFrameSize,
+            cameraFrameSize: _cameraFrameSizeShown(session),
             viewport: viewport,
             // Dim belongs to camera-view mode; plain manipulation keeps the
             // artwork undimmed.

@@ -7,8 +7,7 @@ import '../../models/canvas_size.dart';
 import '../../models/camera_work_marks.dart' show CameraKeyRole;
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
-import '../../models/key_range_move.dart'
-    show transformKeyNameUnion, unionMixedKeyName;
+import '../../models/key_range_move.dart' show transformKeyAgreedNames;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -139,7 +138,7 @@ ConteCellSource _cellSource({
 /// whatever the zoom, and a push-in's closer frame lies inside the wider.
 ///
 /// A key's label is its NAME — the name the camera row's header shows for
-/// it (`transformKeyNameUnion`): its lanes agree on it — else IN for the
+/// it (`transformKeyAgreedNames`): its lanes agree on it — else IN for the
 /// first and OUT for the last, the Storyboard Pro rule; a key whose lanes
 /// disagree («...») is unnamed (유저 2026-09-30: 「레인끼리 달라서 헤더가
 /// ...으로 표시되는 경우 … 이름 안정해진거랑 같은 규칙으로 IN OUT」).
@@ -162,7 +161,7 @@ ConteCameraWork? _cameraWorkIn(
   if (corners.every((frame) => listEquals(frame, corners.first))) {
     return null;
   }
-  final names = transformKeyNameUnion(cut.camera.track);
+  final names = transformKeyAgreedNames(cut.camera.track);
   return ConteCameraWork(
     screen: _widestFrame(corners),
     field: _wholePixelsAround(cameraFramesBounds(corners)),
@@ -170,15 +169,8 @@ ConteCameraWork? _cameraWorkIn(
       for (final (index, frame) in frames.indexed)
         _cameraKey(
           frame.corners,
-          index == 0
-              ? CameraKeyRole.first
-              : index == frames.length - 1
-              ? CameraKeyRole.last
-              : CameraKeyRole.between,
-          switch (names[frame.frameIndex]) {
-            null || unionMixedKeyName => null,
-            final name => name,
-          },
+          CameraKeyRole.at(index, frames.length),
+          names[frame.frameIndex],
         ),
     ],
     trails: cameraCornerTrails(corners),

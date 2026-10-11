@@ -356,6 +356,17 @@ enum AppStrings {
   /// An eased side's influence, AE's — 33% is its Easy Ease.
   String get keyEaseInfluence => _s('keyEaseInfluence');
 
+  /// The canvas's camera path settings (I-89 ④), words of the confirmed
+  /// spec's mock: what it shows, how much of it, and its numbers.
+  String get cameraPath => _s('cameraPath');
+  String get cameraPathOff => _s('cameraPathOff');
+  String get cameraPathSpace => _s('cameraPathSpace');
+  String get cameraPathSpaceTime => _s('cameraPathSpaceTime');
+  String get cameraPathAllKeys => _s('cameraPathAllKeys');
+  String get cameraPathAroundPlayhead => _s('cameraPathAroundPlayhead');
+  String get cameraPathTickEvery => _s('cameraPathTickEvery');
+  String get cameraPathAround => _s('cameraPathAround');
+
   // --- Convert to linked cut ---
   String get convertLinkedCutTitle => _s('convertLinkedCutTitle');
 
@@ -1882,6 +1893,14 @@ enum AppStrings {
     'keySideIncoming': 'In',
     'keySideOutgoing': 'Out',
     'keyEaseInfluence': 'Influence',
+    'cameraPath': 'Camera path',
+    'cameraPathOff': 'Off',
+    'cameraPathSpace': 'Space',
+    'cameraPathSpaceTime': 'Space + time',
+    'cameraPathAllKeys': 'All keys',
+    'cameraPathAroundPlayhead': 'Around playhead',
+    'cameraPathTickEvery': 'Dots every',
+    'cameraPathAround': 'Either side',
     'convertLinkedCutTitle': 'Convert to linked cut',
     'convertLinkedCutBodyTemplate':
         'Link "{cut}" (origin) with another cut. Layers with the SAME NAME '
@@ -3027,6 +3046,14 @@ enum AppStrings {
     'keySideKind.auto': 'スムーズ',
     'keySideKind.hold': 'ホールド',
     'keyEaseInfluence': '影響',
+    'cameraPath': 'カメラパス',
+    'cameraPathOff': 'オフ',
+    'cameraPathSpace': '空間',
+    'cameraPathSpaceTime': '空間＋時間',
+    'cameraPathAllKeys': '全キー',
+    'cameraPathAroundPlayhead': '再生ヘッド周辺',
+    'cameraPathTickEvery': '点の間隔',
+    'cameraPathAround': '前後',
     'convertLinkedCutTitle': '兼用カットに変換',
     'convertLinkedCutBodyTemplate':
         '「{cut}」（原本）を別のカットとリンクします。同じ名前のレイヤーが'
@@ -4508,6 +4535,14 @@ enum AppStrings {
     'keySideKind.auto': '부드럽게',
     'keySideKind.hold': '홀드',
     'keyEaseInfluence': '세기',
+    'cameraPath': '카메라 경로',
+    'cameraPathOff': '끄기',
+    'cameraPathSpace': '공간',
+    'cameraPathSpaceTime': '공간+시간',
+    'cameraPathAllKeys': '키 전체',
+    'cameraPathAroundPlayhead': '재생헤드 주변',
+    'cameraPathTickEvery': '점 간격',
+    'cameraPathAround': '앞뒤',
     'convertLinkedCutTitle': '겸용컷으로 변환',
     'convertLinkedCutBodyTemplate':
         '"{cut}"(원본)을 다른 컷과 링크합니다. 이름이 같은 레이어끼리 '
@@ -5988,6 +6023,14 @@ enum AppStrings {
     'keySideKind.auto': 'Fluide',
     'keySideKind.hold': 'Maintien',
     'keyEaseInfluence': 'Influence',
+    'cameraPath': 'Trajectoire de la caméra',
+    'cameraPathOff': 'Désactivé',
+    'cameraPathSpace': 'Espace',
+    'cameraPathSpaceTime': 'Espace + temps',
+    'cameraPathAllKeys': 'Toutes les clés',
+    'cameraPathAroundPlayhead': 'Autour de la tête',
+    'cameraPathTickEvery': 'Points tous les',
+    'cameraPathAround': 'De chaque côté',
     'convertLinkedCutTitle': 'Convertir en plan lié',
     'convertLinkedCutBodyTemplate':
         'Lier « {cut} » (origine) à un autre plan. Les calques de MÊME NOM '
@@ -7568,6 +7611,14 @@ enum AppStrings {
     'keySideKind.auto': '平滑',
     'keySideKind.hold': '保持',
     'keyEaseInfluence': '影响',
+    'cameraPath': '摄像机路径',
+    'cameraPathOff': '关',
+    'cameraPathSpace': '空间',
+    'cameraPathSpaceTime': '空间＋时间',
+    'cameraPathAllKeys': '全部关键帧',
+    'cameraPathAroundPlayhead': '播放头附近',
+    'cameraPathTickEvery': '点间隔',
+    'cameraPathAround': '前后',
     'convertLinkedCutTitle': '转换为链接镜头',
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',
