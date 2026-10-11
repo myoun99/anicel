@@ -108,6 +108,25 @@ void main() {
   });
 
   // I-89 (유저 10-11 「급하게 넣는거 좋으니 A로 가자」).
+  testWidgets('both rows offer 급하게, right after 천천히 — where the drawing '
+      'the user said yes to put it', (tester) async {
+    await pumpRows(tester, [straight]);
+    for (final (row, kinds) in [
+      ('in', ['linear', 'ease', 'fast', 'auto']),
+      ('out', ['linear', 'ease', 'fast', 'auto', 'hold']),
+    ]) {
+      final lefts = [
+        for (final kind in kinds)
+          tester
+              .getTopLeft(
+                find.byKey(ValueKey<String>('rename-key-$row-$kind')),
+              )
+              .dx,
+      ];
+      expect(lefts, orderedEquals([...lefts]..sort()), reason: row);
+    }
+  });
+
   testWidgets('picking 급하게 lights it and wakes the 세기 at AE\'s Easy Ease, '
       'the side leaving at twice its segment\'s average — on that side '
       'alone', (tester) async {
