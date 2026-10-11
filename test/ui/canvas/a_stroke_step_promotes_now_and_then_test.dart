@@ -28,7 +28,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
-import '../../helpers/temp_dir.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨A SNAPSHOT IS A FIXED PRICE WHATEVER ITS SIZE (2026-09-25, the real
 /// Windows app: 32×32 and 2448×1313 alike 1.6–2.0 ms of raster), and on a
@@ -215,7 +215,7 @@ void main() {
   /// A cache holding [runKey]'s image, made from a one-tile cel on disk.
   Future<LayerFrameImageCache> heldRunImage(WidgetTester tester) async {
     final dir = Directory.systemTemp.createTempSync('anicel-run-rows');
-    addTearDown(() => deleteTempQuietly(dir));
+    deleteAfterSessionEnds(dir);
     final surface = BitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
@@ -247,6 +247,45 @@ void main() {
     return cache;
   }
 
+  /// [frames] frames of [tree], each on another paper so each one composes
+  /// whole, with a turn of the event queue after each for a snapshot to land.
+  Future<void> showFrames(
+    WidgetTester tester, {
+    required List<CompositeNode<CanvasStackRow>> tree,
+    required LayerFrameImageCache imageCache,
+    required DisplayBufferCache buffers,
+    required BitmapSurfacePainter? painter,
+    required int frames,
+  }) => tester.runAsync(() async {
+    for (var index = 0; index < frames; index += 1) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 512,
+              height: 512,
+              child: CanvasLayerStackView(
+                nodes: tree,
+                imageCache: imageCache,
+                debugBufferCache: buffers,
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(),
+                activeSurfacePainter: painter,
+                paintPaper: true,
+                paperBackground: ProjectBackground.color(
+                  0xFF000000 | (index * 0x202020),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await Future<void>.delayed(Duration.zero);
+    }
+  });
+
   // A tree draws its live surface only with a live row in it AND a painter
   // to draw that row: a run's tree stands no row live
   // (`EditingCanvas.playingStack`) while the host still hands the canvas
@@ -265,38 +304,15 @@ void main() {
       final imageCache = run
           ? await heldRunImage(tester)
           : LayerFrameImageCache(frameStore: BrushFrameStore());
-      // Each frame here is another paper, so each one composes whole.
-      Future<void> frame(int index) => tester.pumpWidget(
-        MaterialApp(
-          home: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: 512,
-              height: 512,
-              child: CanvasLayerStackView(
-                nodes: run ? runRows : nodes,
-                imageCache: imageCache,
-                debugBufferCache: buffers,
-                canvasSize: canvasSize,
-                viewport: CanvasViewport(),
-                activeSurfacePainter: painted ? surfaces.first : null,
-                paintPaper: true,
-                paperBackground: ProjectBackground.color(
-                  0xFF000000 | (index * 0x202020),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
       const frames = 6;
-      await tester.runAsync(() async {
-        for (var index = 0; index < frames; index += 1) {
-          await frame(index);
-          await tester.pump();
-          await Future<void>.delayed(Duration.zero);
-        }
-      });
+      await showFrames(
+        tester,
+        tree: run ? runRows : nodes,
+        imageCache: imageCache,
+        buffers: buffers,
+        painter: painted ? surfaces.first : null,
+        frames: frames,
+      );
       if (run) {
         expect(
           imageCache.peek(

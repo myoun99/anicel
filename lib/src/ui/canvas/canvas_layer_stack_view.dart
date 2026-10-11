@@ -2170,6 +2170,15 @@ class _LayerStackPainter extends CustomPainter {
   /// Whether this tree draws the live surface — the one thing a later paint
   /// can patch over its buffer. (A live row with no painter to draw it never
   /// gets here: [_CanvasLayerStackViewState._paintRowFor] drops it.)
+  ///
+  /// 🚨NO LIVE SURFACE, NO SNAPSHOT ([_LayerStackPaintPass._keepMiss]). The
+  /// real base exists so a stroke's patches stand on something whole, and a
+  /// tree that draws no live surface is never patched — a run draws every
+  /// row from its made image (`EditingCanvas.playingStack`) and composes
+  /// whole again on its next frame. A run asked a snapshot on every frame
+  /// it showed, at 1.6–2.0 ms of raster each, and threw it away unread
+  /// (2026-10-11). A pan over such a tree carries from the head, under the
+  /// cache's chain budgets.
   bool get _drawsLive {
     for (final node in preorderNodes(nodes)) {
       if (node case CompositeLeaf(payload: _PaintActiveSurface())) {

@@ -1541,13 +1541,6 @@ class _LayerStackPaintPass {
   }) {
     final width = (rect.width / _levelStep).round();
     final height = (rect.height / _levelStep).round();
-    // 🚨NO LIVE SURFACE, NO SNAPSHOT. The real base exists so a stroke's
-    // patches stand on something whole, and a tree that draws no live
-    // surface is never patched — a run draws every row from its made image
-    // (`EditingCanvas.playingStack`) and composes whole again on its next
-    // frame. A run asked a snapshot on every frame it showed, at 1.6–2.0 ms
-    // of raster each, and threw it away unread (2026-10-11). A pan over such
-    // a tree carries from the head, under the cache's chain budgets.
     final snapshot =
         cache != null &&
         key != null &&
