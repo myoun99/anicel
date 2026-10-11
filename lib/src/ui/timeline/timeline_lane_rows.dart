@@ -105,10 +105,6 @@ const double _laneColumnEndPadding = 4;
 const double _laneChipSize = 9;
 const double _laneChipGap = 2;
 
-/// How a seated lane's name reads while its graph does not draw it — the
-/// mock's (5판).
-const double _laneUndrawnNameAlpha = 0.45;
-
 /// How far a member lane's PIN stands from the END of its cell along
 /// [axis] (I-89 ③): the cell's end padding, the value's slot and the gap
 /// before it — the rail's value column, turned on the sheet. What a
@@ -874,14 +870,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId);
     final ink = colorScheme.onSurfaceVariant;
     // A lane's name reads down its column on the sheet, through the shared
-    // vertical-writing table ([readableText]).
+    // vertical-writing table ([readableText]). One its graph does not draw
+    // reads OFF, in the app's one off language (the mock's 0.45, 5판).
     final label = readableText(
       widget.axis,
       lane.label,
       style: TextStyle(
         fontSize: 12,
         color: drawn == false
-            ? ink.withValues(alpha: _laneUndrawnNameAlpha)
+            ? ink.withValues(alpha: AppColors.offAlpha)
             : ink,
       ),
     );

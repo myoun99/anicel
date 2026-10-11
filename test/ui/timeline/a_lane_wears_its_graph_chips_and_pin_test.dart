@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
@@ -93,7 +94,7 @@ void main() {
     expect(_chips(tester, 'scale'), 0);
     expect(
       _alpha(tester, 'scale') / _alpha(tester, 'position'),
-      moreOrLessEquals(0.45, epsilon: 0.01),
+      moreOrLessEquals(AppColors.offAlpha, epsilon: 0.01),
     );
     expect(tester.getTopLeft(_name(tester, 'position')).dx, before);
 
