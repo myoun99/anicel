@@ -1135,8 +1135,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the chain would come and go and come again as the column grew.
   ///
   /// I-89 ③: the graph's pin and chips are paid after the chain, asked the
-  /// same way, so carrying them sheds nothing the column showed before they
-  /// came.
+  /// same way — of what the lane HAS, the value it will show among it — so
+  /// carrying them sheds nothing the column showed before they came.
+  /// ↩️Asked of what was showing, the pin stood in a column too short for
+  /// the value and went again as the column grew to take it — a window the
+  /// turned value column, as long as the rail's value cell is wide, opened
+  /// (2026-10-11).
   _StoodShows _stoodShows(
     double extent, {
     required bool hasValue,
@@ -1152,7 +1156,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final navigatorFloor = _laneLabelFloor + valueExtent;
     final linkFloor = navigatorFloor + navigatorExtent;
     final linked = value && hasLink;
-    final pinFloor = linkFloor + (linked ? _laneValueLinkExtent : 0.0);
+    final pinFloor =
+        _laneLabelFloor +
+        (hasValue ? valueSlot : 0.0) +
+        navigatorExtent +
+        (hasValue && hasLink ? _laneValueLinkExtent : 0.0);
     final graphs = widget.optionalColumns.graph;
     final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
     return (

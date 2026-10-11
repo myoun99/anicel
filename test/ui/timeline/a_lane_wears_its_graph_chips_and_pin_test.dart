@@ -331,6 +331,15 @@ void main() {
     /// The least room the name got at any height.
     var leastName = double.infinity;
 
+    /// Each control that showed in a column and was gone from a taller one —
+    /// all but the navigator. ⚠️The navigator is asked of the value SHOWING
+    /// (the gate pays the value first, 2026-08-08): since the value turned,
+    /// as long as the rail's value cell is wide (10-11), it stands in a
+    /// column too short for the value and makes way when the value comes —
+    /// reported on the card of the round that turned it (board:
+    /// tool-settings-panel-tidy).
+    final wentAgain = <String>[];
+
     /// The shortest column, from 60 up, that shows each of [keys].
     Future<Map<String, double?>> firstShown({required bool graphs}) async {
       final first = <String, double?>{for (final key in keys) key: null};
@@ -360,6 +369,8 @@ void main() {
           final shown = find.byKey(ValueKey<String>(key)).evaluate();
           if (first[key] == null && shown.isNotEmpty) {
             first[key] = height;
+          } else if (key != navigator && first[key] != null && shown.isEmpty) {
+            wentAgain.add('$key at $height${graphs ? ', graphs' : ''}');
           }
         }
         leastName = math.min(
@@ -385,6 +396,11 @@ void main() {
       greaterThanOrEqualTo(2 * timelineFrameCellWidth),
       reason: 'the name is paid first: whatever else stands, it keeps its '
           'floor of two frame rows',
+    );
+    expect(
+      wentAgain,
+      isEmpty,
+      reason: 'what a column grew to show stays as it grows on',
     );
     expect(without[pin], isNull);
     expect(without[chip], isNull);
