@@ -829,7 +829,7 @@ class _StillLayer extends OffsetLayer {
             if (bounds.overlaps(drawn)) {
               refused.putIfAbsent(
                 tick.tick,
-                () => 'covered at ${_spot(drawn)}',
+                () => 'covered at ${_spot(drawn)} by ${_maker(path)}',
               );
             }
           }
@@ -879,13 +879,19 @@ class _StillLayer extends OffsetLayer {
     }
     _owner._tickRefusals = [
       for (final MapEntry(key: tick, value: why) in refused.entries)
-        '${_spot(tick.offset & tick.size)}: $why',
+        '${_spot(tick.offset & tick.size)} (${tick.debugCreator}): $why',
     ];
     return [
       for (final (:tick, bounds: _) in found)
         if (!refused.containsKey(tick.tick)) tick,
     ];
   }
+
+  /// What made the layers along [path] — the nearest one a render object
+  /// says it made, in a debug build; nothing elsewhere.
+  static Object? _maker(List<ContainerLayer> path) => path.reversed
+      .map((layer) => layer.debugCreator)
+      .firstWhere((creator) => creator != null, orElse: () => null);
 
   /// [rect] in numbers — read the same in a profile build, where a [Rect]
   /// does not say what it is.
