@@ -140,6 +140,7 @@ void main() {
     'keyPath': (s) => s.keyPath,
     'keyPathStraight': (s) => s.keyPathStraight,
     'keyPathCurved': (s) => s.keyPathCurved,
+    'keyRoving': (s) => s.keyRoving,
     'cameraPath': (s) => s.cameraPath,
     'cameraPathOff': (s) => s.cameraPathOff,
     'cameraPathSpace': (s) => s.cameraPathSpace,

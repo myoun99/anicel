@@ -204,31 +204,53 @@ void main() {
       );
     });
 
-    test('the first and the last keep their time', () {
-      final ends = PropertyTrack(
+    test('the first and the last keep their time — and their flag, which is '
+        'their name\'s as much as theirs', () {
+      final flagged = PropertyTrack(
         keys: {
           0: PropertyKey(p(0, 0), roving: true),
           10: PropertyKey(p(100, 0), roving: true),
           20: PropertyKey(p(100, 300), roving: true),
         },
-      ).withRovingKeysSlotted(positionKeySpace);
+      );
+      final ends = flagged.withRovingKeysSlotted(positionKeySpace);
       expect(ends.keys.keys, [0, 5, 20]);
       expect([for (final key in ends.keys.values) key.roving], [
-        false,
         true,
-        false,
+        true,
+        true,
       ]);
+      expect([0, 5, 20].map(ends.keyCanRove), [false, true, false]);
+      for (final time in [0.0, 2.5, 5.0, 12.5, 20.0]) {
+        expect(at(ends, time), at(turning(), time), reason: '$time');
+      }
     });
 
-    test('a lane walking no path roves nothing', () {
+    test('a lane walking no path places nothing', () {
       final track = PropertyTrack(
         keys: {
           0: const PropertyKey(0.0),
           10: const PropertyKey(100.0, roving: true),
           20: const PropertyKey(400.0),
         },
-      ).withRovingKeysSlotted(doubleKeySpace);
-      expect(track.keyAt(10)!.roving, isFalse);
+      );
+      expect(
+        identical(track.withRovingKeysSlotted(doubleKeySpace), track),
+        isTrue,
+      );
+    });
+
+    test('a value edit leaves a roving key roving, and its run places it '
+        'again', () {
+      final placed = TransformTrack.empty().copyWith(position: turning());
+      expect(placed.position.keys.keys, [0, 5, 20], reason: '⛔전제');
+      final edited = placed.copyWith(
+        position: placed.position.withKey(5, p(300, 0)),
+      );
+      final moved = edited.position.keys.keys.elementAt(1);
+      expect(moved, isNot(5), reason: 'its way is longer: passed later');
+      expect(edited.position.keyAt(moved)!.roving, isTrue);
+      expect(edited.position.keyAt(moved)!.value, p(300, 0));
     });
 
     test('a transform track never holds a position key anywhere else', () {
@@ -277,6 +299,60 @@ void main() {
       final moved = movedNamedKeys(named, freed);
       expect(moved['A']?.roving, isTrue);
       expect(named.withNamedKeys(moved).keyAt(20)!.roving, isTrue);
+    });
+  });
+
+  group('the name link', () {
+    /// [turning] with its roving key named A, placed as a transform track
+    /// places it.
+    TransformTrack named() => TransformTrack.empty().copyWith(
+      position: turning().withKeyName(10, 'A'),
+    );
+
+    test('an edit of a roving key its run places elsewhere still hands the '
+        'link what it wrote', () {
+      final before = named();
+      expect(before.position.keyAt(5)!.name, 'A', reason: '⛔전제: placed');
+      final after = before.copyWith(
+        position: before.position.withKey(5, p(300, 0)),
+      );
+      expect(after.position.keyAt(5), isNull, reason: '⛔전제: it moved');
+      expect(
+        transformNamedKeyChanges(before, after).position['A']?.value,
+        p(300, 0),
+      );
+    });
+
+    test('an edit of another lane after it in the same write keeps what '
+        'the position\'s own edit wrote', () {
+      final before = named();
+      final after = before
+          .copyWith(position: before.position.withKey(5, p(300, 0)))
+          .copyWith(rotation: PropertyTrack<double>().withKey(0, 90));
+      expect(
+        transformNamedKeyChanges(before, after).position['A']?.value,
+        p(300, 0),
+      );
+    });
+
+    test('an end the link flags roving keeps its time and its flag — and '
+        'the link finds nothing to put back', () {
+      final roving = named().position.keyAt(5)!.held;
+      final ending = TransformTrack.empty().copyWith(
+        position: PropertyTrack(
+          keys: {
+            0: PropertyKey(p(0, 0), name: 'A'),
+            8: PropertyKey(p(50, 50)),
+          },
+        ).withNamedKeys({'A': roving}),
+      );
+      expect(ending.position.keys.keys, [0, 8]);
+      expect(ending.position.keyAt(0)!.roving, isTrue);
+      expect(ending.position.keyCanRove(0), isFalse);
+      final edited = ending.copyWith(
+        position: ending.position.withKey(8, p(60, 60)),
+      );
+      expect(transformNamedKeyChanges(ending, edited).position, isEmpty);
     });
   });
 

@@ -400,6 +400,7 @@ void main() {
           incoming: KeySide.linear,
           outgoing: KeySide.linear,
           path: KeyPath.auto,
+          roving: false,
         ),
       });
     });

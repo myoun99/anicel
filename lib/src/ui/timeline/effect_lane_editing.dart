@@ -54,43 +54,36 @@ List<LayerEffect>? effectsWithLaneKeyRemoved(
   });
 }
 
-/// [effects] with parameter lane [laneId]'s keys inside [frames] named
-/// [name] (null un-names them), all collapsed onto ONE value. Null when
+/// The key window's write on parameter lane [laneId] (F-17 · I-89): the
+/// keys inside [frames] named as [naming] says (a null name un-names them)
+/// — all collapsed onto ONE value, [adopted] where the name already holds
+/// one elsewhere in the naming space — and then given [pick]'s sides: an
+/// effect's keys walk no path ([KeyTypePick.sidesAlone]). ONE write of the
+/// lane ([PropertyTrack.withKeysWritten]), as a transform lane's. Null when
 /// nothing changed.
 ///
 /// The range form of naming — see [PropertyTrack.withRangeNamed] for why
-/// the collapse is the intent rather than a side effect. [adopted] supplies
-/// the value when the name is already held elsewhere in the naming space.
-List<LayerEffect>? effectsWithLaneRangeNamed(
+/// the collapse is the intent rather than a side effect.
+List<LayerEffect>? effectsWithLaneKeysWritten(
   List<LayerEffect> effects, {
   required String laneId,
   required Set<int> frames,
-  required String? name,
+  ({String? name, int? preferredFrame})? naming,
   PropertyKey<double>? adopted,
-  int? preferredFrame,
+  KeyTypePick pick = const KeyTypePick(),
 }) {
   return _editParameter(effects, laneId, (parameter, spec) {
-    final track = parameter.track.withRangeNamed(
+    final track = parameter.track.withKeysWritten(
       frames: frames,
-      name: name,
-      adopted: adopted,
-      preferredFrame: preferredFrame,
+      naming: naming == null
+          ? null
+          : (
+              name: naming.name,
+              adopted: adopted,
+              preferredFrame: naming.preferredFrame,
+            ),
+      pick: pick.sidesAlone,
     );
-    return track == null ? null : parameter.copyWith(track: track);
-  });
-}
-
-/// [effects] with parameter lane [laneId]'s keys inside [frames] given
-/// [edit]'s sides — the key window's TYPE (F-17), the range form of the
-/// naming next door. Null when nothing changed.
-List<LayerEffect>? effectsWithLaneKeySides(
-  List<LayerEffect> effects, {
-  required String laneId,
-  required Set<int> frames,
-  required KeySidesEdit edit,
-}) {
-  return _editParameter(effects, laneId, (parameter, spec) {
-    final track = parameter.track.withKeySides(frames: frames, edit: edit);
     return track == null ? null : parameter.copyWith(track: track);
   });
 }

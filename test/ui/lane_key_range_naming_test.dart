@@ -198,7 +198,7 @@ void main() {
 
     laneVerbs.setLaneKeyNamesForSelection(
       'A',
-      sides: KeySidesEdit.hold,
+      pick: const KeyTypePick(sides: KeySidesEdit.hold),
     );
     expect(rotation().keyAt(0)!.outgoing, KeyExit.hold);
     expect(rotation().keyAt(4)!.outgoing, KeyExit.hold);
@@ -219,7 +219,7 @@ void main() {
     selectRotationRange(4, 5);
     laneVerbs.setLaneKeyNamesForSelection('B');
     laneVerbs.setLaneKeyTypeForSelection(
-      sides: KeySidesEdit.hold,
+      const KeyTypePick(sides: KeySidesEdit.hold),
     );
     expect(rotation().keyAt(4)!.outgoing, KeyExit.hold);
     expect(
@@ -263,7 +263,7 @@ void main() {
 
     laneVerbs.setLaneKeyNamesForSelection(
       'Pan',
-      sides: KeySidesEdit.hold,
+      pick: const KeyTypePick(sides: KeySidesEdit.hold),
     );
 
     final track = session.activeCutOrNull!.camera.track;
@@ -327,7 +327,7 @@ void main() {
 
     laneVerbs.setLaneKeyNamesForSelection('B');
     laneVerbs.setLaneKeyTypeForSelection(
-      sides: KeySidesEdit.hold,
+      const KeyTypePick(sides: KeySidesEdit.hold),
     );
 
     final track = layer().effects.single.parameterOf('blurX').track;
@@ -393,7 +393,7 @@ void main() {
     selectRotationRange(0, 1);
     laneVerbs.setLaneKeyNamesForSelection(
       'A',
-      sides: KeySidesEdit.hold,
+      pick: const KeyTypePick(sides: KeySidesEdit.hold),
     );
 
     selectRotationRange(4, 5);

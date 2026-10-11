@@ -9,7 +9,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/key_side.dart' show KeySidesEdit;
+import 'package:anicel/src/models/property_track.dart'
+    show KeySidesEdit, KeyTypePick;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -41,7 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
 import 'package:anicel/src/ui/timeline/timeline_span_name.dart'
     show TimelineSpanName;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
-    show transformTrackWithLaneKeySides, transformTrackWithLaneRangeNamed;
+    show transformTrackWithLaneKeysWritten;
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 · 「카메라 행 범위는 키표시/이동/레인 등 모든거
@@ -87,21 +88,21 @@ void main() {
         'opacity',
       ]) {
         track =
-            transformTrackWithLaneRangeNamed(
+            transformTrackWithLaneKeysWritten(
               track,
               laneId: laneId,
               frames: {frame},
-              name: name,
+              naming: (name: name, preferredFrame: null),
             ) ??
             track;
       }
     }
     track =
-        transformTrackWithLaneKeySides(
+        transformTrackWithLaneKeysWritten(
           track,
           laneId: 'position',
           frames: held,
-          edit: KeySidesEdit.hold,
+          pick: const KeyTypePick(sides: KeySidesEdit.hold),
         ) ??
         track;
     return CutCamera.fromTrack(track);

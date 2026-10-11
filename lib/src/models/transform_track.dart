@@ -45,7 +45,8 @@ class TransformTrack {
       rotation = PropertyTrack(
         keys: _poseComponentKeys(keyframes, (pose) => pose.rotationDegrees),
       ),
-      opacity = PropertyTrack.empty();
+      opacity = PropertyTrack.empty(),
+      _written = null;
 
   /// The five lanes as given — but for [position]'s roving keys, each on
   /// the frame its run passes it nearest ([PropertyTrack.withRovingKeysSlotted],
@@ -57,12 +58,22 @@ class TransformTrack {
     required this.scale,
     required this.rotation,
     required this.opacity,
-  }) : position = position.withRovingKeysSlotted(positionKeySpace);
+  }) : position = position.withRovingKeysSlotted(positionKeySpace),
+       _written = position;
 
   factory TransformTrack.empty() => TransformTrack();
 
   final PropertyTrack<CanvasPoint> anchorPoint;
   final PropertyTrack<CanvasPoint> position;
+
+  /// [position] as the edit that made this track wrote it, before its
+  /// roving keys were placed — what the name link reads that edit by
+  /// ([transformNamedKeyChanges]). The link pairs a key with what it was
+  /// by its frame, and a roving key the edit changed may stand on another
+  /// frame once placed (I-89 ④): read off [position], the change would be
+  /// lost on the way to the keys its name links.
+  PropertyTrack<CanvasPoint> get writtenPosition => _written ?? position;
+  final PropertyTrack<CanvasPoint>? _written;
 
   /// The scale along each axis as ONE value — x across, y down, 1 being the
   /// size the layer has (`TransformPose.scale`).
@@ -79,7 +90,10 @@ class TransformTrack {
   }) {
     return TransformTrack.properties(
       anchorPoint: anchorPoint ?? this.anchorPoint,
-      position: position ?? this.position,
+      // The position as written, so an edit of another lane after it in
+      // the same verb leaves the link the position's own edit to read
+      // ([writtenPosition]); placed again, it stands as it stood.
+      position: position ?? writtenPosition,
       scale: scale ?? this.scale,
       rotation: rotation ?? this.rotation,
       opacity: opacity ?? this.opacity,
@@ -290,7 +304,7 @@ TransformNamedChanges transformNamedKeyChanges(
   TransformTrack after,
 ) => TransformNamedChanges(
   anchorPoint: movedNamedKeys(before.anchorPoint, after.anchorPoint),
-  position: movedNamedKeys(before.position, after.position),
+  position: movedNamedKeys(before.position, after.writtenPosition),
   scale: movedNamedKeys(before.scale, after.scale),
   rotation: movedNamedKeys(before.rotation, after.rotation),
   opacity: movedNamedKeys(before.opacity, after.opacity),
@@ -338,20 +352,37 @@ TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
 bool walksAPath(TransformPropertyId property) =>
     property == TransformPropertyId.position;
 
-/// [property]'s key at [frameIndex], or null — a lane's key read without
-/// knowing its value type, so its NAME and its TYPE (the key window's two
-/// halves) come off the same read.
+/// [property]'s lane of [track], read without knowing its value type — so
+/// a key's NAME and its TYPE (the key window's two halves) and whether it
+/// may rove come off the same read.
+PropertyTrack<Object?> transformLaneOf(
+  TransformTrack track,
+  TransformPropertyId property,
+) => switch (property) {
+  TransformPropertyId.anchorPoint => track.anchorPoint,
+  TransformPropertyId.position => track.position,
+  TransformPropertyId.scale => track.scale,
+  TransformPropertyId.rotation => track.rotation,
+  TransformPropertyId.opacity => track.opacity,
+};
+
+/// [property]'s key at [frameIndex], or null ([transformLaneOf]).
 PropertyKey<Object?>? transformLaneKeyAt(
   TransformTrack track,
   TransformPropertyId property,
   int frameIndex,
-) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.keyAt(frameIndex),
-  TransformPropertyId.position => track.position.keyAt(frameIndex),
-  TransformPropertyId.scale => track.scale.keyAt(frameIndex),
-  TransformPropertyId.rotation => track.rotation.keyAt(frameIndex),
-  TransformPropertyId.opacity => track.opacity.keyAt(frameIndex),
-};
+) => transformLaneOf(track, property).keyAt(frameIndex);
+
+/// Whether [property]'s key at [frameIndex] may give its time up (I-89 ④):
+/// a key between the first and the last ([PropertyTrack.keyCanRove]) of a
+/// lane whose keys walk a path ([walksAPath]).
+bool transformLaneKeyCanRove(
+  TransformTrack track,
+  TransformPropertyId property,
+  int frameIndex,
+) =>
+    walksAPath(property) &&
+    transformLaneOf(track, property).keyCanRove(frameIndex);
 
 /// Whether [name] is already used by [property]'s lane in [track] — the
 /// read a rename does before it commits.
@@ -362,28 +393,10 @@ bool transformLaneUsesName(
   TransformPropertyId property,
   String name, {
   Set<int> excludeFrames = const {},
-}) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.keyForName(
-    name,
-    excludeFrames: excludeFrames,
-  ),
-  TransformPropertyId.position => track.position.keyForName(
-    name,
-    excludeFrames: excludeFrames,
-  ),
-  TransformPropertyId.scale => track.scale.keyForName(
-    name,
-    excludeFrames: excludeFrames,
-  ),
-  TransformPropertyId.rotation => track.rotation.keyForName(
-    name,
-    excludeFrames: excludeFrames,
-  ),
-  TransformPropertyId.opacity => track.opacity.keyForName(
-    name,
-    excludeFrames: excludeFrames,
-  ),
-} != null;
+}) {
+  final lane = transformLaneOf(track, property);
+  return lane.keyForName(name, excludeFrames: excludeFrames) != null;
+}
 
 /// Samples an AE Opacity track as a 0..1 multiplier; 1 while the track is
 /// empty. Deliberately track-level and layer-agnostic — a layer's animated

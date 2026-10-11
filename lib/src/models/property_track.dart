@@ -41,7 +41,8 @@ class PropertyKey<T> {
   /// value walks the path through it at the pace those two set, and the
   /// key stands on the frame nearest where that walk passes it
   /// ([PropertyTrack.withRovingKeysSlotted]). A position lane's alone; the
-  /// first and the last key are fixed.
+  /// first and the last key keep their time whatever it says
+  /// ([PropertyTrack.keyCanRove]).
   final bool roving;
 
   /// The key's NAME, and with it a link: keys sharing a name inside one
@@ -220,6 +221,190 @@ double _timeAtShare(double share, KeyPace pace) {
   return (lo + hi) / 2;
 }
 
+/// HOW A TRACK'S VALUE WALKS IN TIME ([PropertyTrack.resolveAtTime]): which
+/// keys keep their time, the pace of each way between two of them, and the
+/// way itself — through every roving key between them (I-89 ④). Laid once
+/// a track, which never changes under it.
+///
+/// ↩️It was the track's own methods, and the roving keys took it past the
+/// long-class line (438 → 653, 2026-10-12): the keys and their edits are
+/// one question, how a value passes between them another.
+final class _TrackTime<T> {
+  _TrackTime(this.track);
+
+  final PropertyTrack<T> track;
+
+  SplayTreeMap<int, PropertyKey<T>> get keys => track.keys;
+
+  /// Whether a key roves here ([PropertyKey.roving]).
+  late final bool _anyRoving = keys.values.any((key) => key.roving);
+
+  /// The walk a [KeyValueSpace.walk] laid of each way asked along — a
+  /// segment, or a run through roving keys — by the frame it starts on: a
+  /// position's curve, measured once and read again for every point asked
+  /// along it (a trail or a header graph asks for hundreds).
+  Map<int, _RunWalk<T>>? _walked;
+
+  /// The value at [time] of a track with a key — a key that keeps its time
+  /// is only ever ON a frame: between two, the way they bound answers.
+  T valueAt(double time, KeyValueSpace<T> space) {
+    final walk = space.walk;
+    final roves = walk != null && _anyRoving;
+
+    final frame = time.floor();
+    if (frame == time) {
+      final exact = keys[frame];
+      if (exact != null && _keepsItsTime(frame, roves: roves)) {
+        return exact.value;
+      }
+    }
+
+    final previousIndex = _timedKeyBefore(frame + 1, roves: roves);
+    final nextIndex = _timedKeyAfter(frame, roves: roves);
+    if (previousIndex == null) {
+      return keys[nextIndex!]!.value;
+    }
+    if (nextIndex == null) {
+      return keys[previousIndex]!.value;
+    }
+
+    final from = keys[previousIndex]!;
+    // A hold freezes the segment on the key it leaves.
+    if (from.outgoing is! KeySide) {
+      return from.value;
+    }
+    final pace = _paceBetween(previousIndex, nextIndex, space, roves: roves);
+    final progress = segmentProgress(
+      (time - previousIndex) / (nextIndex - previousIndex),
+      leaving: pace.leaving,
+      arriving: pace.arriving,
+    );
+    if (walk == null) {
+      return space.lerp(from.value, keys[nextIndex]!.value, progress);
+    }
+    return _walkFrom(previousIndex, nextIndex, walk).at(progress);
+  }
+
+  /// Every run of roving keys: the keys that keep their time either side
+  /// of it ([from], [to]) and the [roving] ones between, in order.
+  Iterable<({int from, int to, List<int> roving})> runs() sync* {
+    for (var from = keys.firstKey(); from != null;) {
+      final to = _timedKeyAfter(from, roves: true);
+      if (to == null) {
+        return;
+      }
+      final roving = [
+        for (final (_, frame) in _stepsBetween(from, to))
+          if (frame != to) frame,
+      ];
+      if (roving.isNotEmpty) {
+        yield (from: from, to: to, roving: roving);
+      }
+      from = to;
+    }
+  }
+
+  /// [PropertyTrack.rovingTimes].
+  Map<int, double> rovingTimes(KeyValueSpace<T> space) {
+    final walk = space.walk;
+    final times = <int, double>{};
+    if (walk == null || !_anyRoving) {
+      return times;
+    }
+    for (final (:from, :to, :roving) in runs()) {
+      final stops = _walkFrom(from, to, walk).stops;
+      final pace = _paceBetween(from, to, space, roves: true);
+      for (var index = 0; index < roving.length; index += 1) {
+        times[roving[index]] =
+            from + (to - from) * _timeAtShare(stops[index + 1], pace);
+      }
+    }
+    return times;
+  }
+
+  /// Whether the key at [frame] keeps its own time: every key, but a
+  /// roving one between the first and the last
+  /// ([PropertyTrack.keyCanRove]) where keys [roves].
+  bool _keepsItsTime(int frame, {required bool roves}) =>
+      !roves || !keys[frame]!.roving || !track.keyCanRove(frame);
+
+  /// The last key before [frame] that keeps its own time.
+  int? _timedKeyBefore(int frame, {required bool roves}) =>
+      _timedFrom(keys.lastKeyBefore(frame), keys.lastKeyBefore, roves: roves);
+
+  /// The first key after [frame] that keeps its own time.
+  int? _timedKeyAfter(int frame, {required bool roves}) =>
+      _timedFrom(keys.firstKeyAfter(frame), keys.firstKeyAfter, roves: roves);
+
+  /// The first key from [at] on that keeps its own time, each [next] of
+  /// the one before — the keys before a frame or after it.
+  int? _timedFrom(
+    int? at,
+    int? Function(int frame) next, {
+    required bool roves,
+  }) {
+    var key = at;
+    while (key != null && !_keepsItsTime(key, roves: roves)) {
+      key = next(key);
+    }
+    return key;
+  }
+
+  /// The pace of the way from the timed key at [from] to the next, at
+  /// [to]: the leaving side of the one — straight where it holds, which a
+  /// hold's run is placed by ([rovingTimes]) — and the arriving side of the
+  /// other. An auto side reads the timed keys either side of the way, how
+  /// far along it they stand.
+  KeyPace _paceBetween(
+    int from,
+    int to,
+    KeyValueSpace<T> space, {
+    required bool roves,
+  }) {
+    final start = keys[from]!;
+    final end = keys[to]!;
+    final span = to - from;
+    double along(T value) => space.inverseLerp(start.value, end.value, value);
+    final leaving = start.outgoing;
+    return (
+      leaving: leaving is KeySide
+          ? keyHandleOf(leaving, () {
+              final before = _timedKeyBefore(from, roves: roves);
+              return before == null
+                  ? linearKeyHandle.speed
+                  : autoSideSpeed(
+                      (1 - along(keys[before]!.value)) * span / (to - before),
+                    );
+            })
+          : linearKeyHandle,
+      arriving: keyHandleOf(end.incoming, () {
+        final after = _timedKeyAfter(to, roves: roves);
+        return after == null
+            ? linearKeyHandle.speed
+            : autoSideSpeed(along(keys[after]!.value) * span / (after - from));
+      }),
+    );
+  }
+
+  /// The way from the timed key at [from] to the next, at [to], through
+  /// every key between — each of them roving — laid once ([_walked]).
+  _RunWalk<T> _walkFrom(int from, int to, SegmentWalker<T> walk) =>
+      (_walked ??= {})[from] ??= _RunWalk([
+        for (final (start, end) in _stepsBetween(from, to))
+          walk(keys, start, end),
+      ]);
+
+  /// Each key from [from] to [to] with the one after it, in order.
+  Iterable<(int, int)> _stepsBetween(int from, int to) sync* {
+    var at = from;
+    while (at < to) {
+      final next = keys.firstKeyAfter(at)!;
+      yield (at, next);
+      at = next;
+    }
+  }
+}
+
 /// A single animated property, keyed independently of every other property
 /// (the After Effects model: Position can carry three keys while Scale
 /// carries none).
@@ -242,20 +427,29 @@ class PropertyTrack<T> {
 
   final SplayTreeMap<int, PropertyKey<T>> keys;
 
-  /// The walk a [KeyValueSpace.walk] laid of each way asked along — a
-  /// segment, or a run through roving keys — by the frame it starts on: a
-  /// position's curve, measured once and read again for every point asked
-  /// along it (a trail or a header graph asks for hundreds). The keys never
-  /// change under it: an edit is a new track.
-  Map<int, _RunWalk<T>>? _walked;
-
-  /// Whether a key roves here ([PropertyKey.roving]).
-  late final bool _anyRoving = keys.values.any((key) => key.roving);
+  /// How the value walks in time ([resolveAtTime]), laid when it is first
+  /// asked and kept: the keys never change under it — an edit is a new
+  /// track.
+  late final _TrackTime<T> _time = _TrackTime(this);
 
   bool get isEmpty => keys.isEmpty;
   bool get isNotEmpty => keys.isNotEmpty;
 
   PropertyKey<T>? keyAt(int frameIndex) => keys[frameIndex];
+
+  /// Whether the key at [frame] may give its time up to its run (I-89 ①:
+  /// 「처음 · 끝 키 시간 고정」): a key between the first and the last.
+  ///
+  /// ⚠️An end flagged [PropertyKey.roving] keeps its time all the same, and
+  /// keeps the flag: the flag is the key's, so its name's too
+  /// ([PropertyKey.held]), and a name may stand at the end of one track and
+  /// between the keys of another. Cleared at the end, the link would put it
+  /// back on the next edit — and carry the cleared one off to the keys it
+  /// does rove on.
+  bool keyCanRove(int frame) =>
+      keys.containsKey(frame) &&
+      frame != keys.firstKey() &&
+      frame != keys.lastKey();
 
   PropertyTrack<T> withKey(
     int frameIndex,
@@ -276,10 +470,12 @@ class PropertyTrack<T> {
           // 홀드가 리니어로 돌아와」 — the camera's pose facade writes
           // through here with no type to hand over, and the hold was gone
           // on every drag. Its PATH survives it the same way: a key dragged
-          // across the canvas keeps the curve it was given (I-89 ④).
+          // across the canvas keeps the curve it was given (I-89 ④) — and
+          // a roving key still roves, its run placing it again.
           incoming: incoming ?? existing?.incoming ?? KeySide.linear,
           outgoing: outgoing ?? existing?.outgoing ?? KeySide.linear,
           path: path ?? existing?.path ?? KeyPath.straight,
+          roving: existing?.roving ?? false,
           name: existing?.name,
         ),
       },
@@ -479,18 +675,54 @@ class PropertyTrack<T> {
   /// The keys inside [frames] roving as [roving] says — the time half of
   /// the key window (I-89 ④-Q5, A′ while it is asked): a key's time left to
   /// its run to place ([PropertyKey.roving]), or held where it stands. The
-  /// first and the last key keep their time by where they are, and are
-  /// left. Values, sides, paths and names ride across untouched. Null when
-  /// nothing here changed.
+  /// first and the last key keep their time by where they are
+  /// ([keyCanRove]), and are left. Values, sides, paths and names ride
+  /// across untouched. Null when nothing here changed.
   PropertyTrack<T>? withKeysRoving({
     required Set<int> frames,
     required bool roving,
-  }) => isEmpty
-      ? null
-      : _withKeysAt(
-          frames.difference({keys.firstKey(), keys.lastKey()}),
-          (key) => key.roving == roving ? null : key.copyWith(roving: roving),
-        );
+  }) => _withKeysAt(
+    frames.where(keyCanRove).toSet(),
+    (key) => key.roving == roving ? null : key.copyWith(roving: roving),
+  );
+
+  /// The key window's write on the keys inside [frames] (F-17 · I-89):
+  /// named as [naming] says ([withRangeNamed]), then as [pick] leaves them —
+  /// their sides ([withKeySides]), their path ([withKeyPaths]) and their
+  /// time ([withKeysRoving]). Null when nothing here changed.
+  ///
+  /// ⚠️ONE write of the track, not four: the transform track it goes back
+  /// into places a roving key again whenever it is built (I-89 ④,
+  /// [withRovingKeysSlotted]), so written a step at a time, each step could
+  /// move a key and the next look for it on the frame it left.
+  PropertyTrack<T>? withKeysWritten({
+    required Set<int> frames,
+    KeyNaming<T>? naming,
+    KeyTypePick pick = const KeyTypePick(),
+  }) {
+    final KeyTypePick(:sides, :curved, :roving) = pick;
+    var next = this;
+    if (naming != null) {
+      next =
+          next.withRangeNamed(
+            frames: frames,
+            name: naming.name,
+            adopted: naming.adopted,
+            preferredFrame: naming.preferredFrame,
+          ) ??
+          next;
+    }
+    if (sides != null) {
+      next = next.withKeySides(frames: frames, edit: sides) ?? next;
+    }
+    if (curved != null) {
+      next = next.withKeyPaths(frames: frames, curved: curved) ?? next;
+    }
+    if (roving != null) {
+      next = next.withKeysRoving(frames: frames, roving: roving) ?? next;
+    }
+    return identical(next, this) ? null : next;
+  }
 
   /// The key at [frame] bending through as [path] says — a handle the hand
   /// placed on the canvas (I-89 ④). Its value, sides and name ride across
@@ -569,204 +801,41 @@ class PropertyTrack<T> {
     required double time,
     required T Function() orElse,
     required KeyValueSpace<T> space,
-  }) {
-    if (isEmpty) {
-      return orElse();
-    }
-    final walk = space.walk;
-    final roves = walk != null && _anyRoving;
-
-    final frame = time.floor();
-    if (frame == time) {
-      final exact = keys[frame];
-      if (exact != null && _keepsItsTime(frame, roves: roves)) {
-        return exact.value;
-      }
-    }
-
-    final previousIndex = _timedKeyBefore(frame + 1, roves: roves);
-    final nextIndex = _timedKeyAfter(frame, roves: roves);
-    if (previousIndex == null) {
-      return keys[nextIndex!]!.value;
-    }
-    if (nextIndex == null) {
-      return keys[previousIndex]!.value;
-    }
-
-    final from = keys[previousIndex]!;
-    // A hold freezes the segment on the key it leaves.
-    if (from.outgoing is! KeySide) {
-      return from.value;
-    }
-    final pace = _paceBetween(previousIndex, nextIndex, space, roves: roves);
-    final progress = segmentProgress(
-      (time - previousIndex) / (nextIndex - previousIndex),
-      leaving: pace.leaving,
-      arriving: pace.arriving,
-    );
-    if (walk == null) {
-      return space.lerp(from.value, keys[nextIndex]!.value, progress);
-    }
-    return _walkFrom(previousIndex, nextIndex, walk).at(progress);
-  }
-
-  /// Whether the key at [frame] keeps its own time: every key, but a
-  /// roving one between the first and the last where keys [roves].
-  bool _keepsItsTime(int frame, {required bool roves}) =>
-      !roves ||
-      !keys[frame]!.roving ||
-      frame == keys.firstKey() ||
-      frame == keys.lastKey();
-
-  /// The last key before [frame] that keeps its own time.
-  int? _timedKeyBefore(int frame, {required bool roves}) {
-    var at = keys.lastKeyBefore(frame);
-    while (at != null && !_keepsItsTime(at, roves: roves)) {
-      at = keys.lastKeyBefore(at);
-    }
-    return at;
-  }
-
-  /// The first key after [frame] that keeps its own time.
-  int? _timedKeyAfter(int frame, {required bool roves}) {
-    var at = keys.firstKeyAfter(frame);
-    while (at != null && !_keepsItsTime(at, roves: roves)) {
-      at = keys.firstKeyAfter(at);
-    }
-    return at;
-  }
-
-  /// The pace of the way from the timed key at [from] to the next, at
-  /// [to]: the leaving side of the one — straight where it holds, which a
-  /// hold's run is placed by ([rovingTimes]) — and the arriving side of the
-  /// other. An auto side reads the timed keys either side of the way, how
-  /// far along it they stand.
-  KeyPace _paceBetween(
-    int from,
-    int to,
-    KeyValueSpace<T> space, {
-    required bool roves,
-  }) {
-    final start = keys[from]!;
-    final end = keys[to]!;
-    final span = to - from;
-    double along(T value) => space.inverseLerp(start.value, end.value, value);
-    final leaving = start.outgoing;
-    return (
-      leaving: leaving is KeySide
-          ? keyHandleOf(leaving, () {
-              final before = _timedKeyBefore(from, roves: roves);
-              return before == null
-                  ? linearKeyHandle.speed
-                  : autoSideSpeed(
-                      (1 - along(keys[before]!.value)) * span / (to - before),
-                    );
-            })
-          : linearKeyHandle,
-      arriving: keyHandleOf(end.incoming, () {
-        final after = _timedKeyAfter(to, roves: roves);
-        return after == null
-            ? linearKeyHandle.speed
-            : autoSideSpeed(along(keys[after]!.value) * span / (after - from));
-      }),
-    );
-  }
-
-  /// The way from the timed key at [from] to the next, at [to], through
-  /// every key between — each of them roving — laid once ([_walked]).
-  _RunWalk<T> _walkFrom(int from, int to, SegmentWalker<T> walk) =>
-      (_walked ??= {})[from] ??= _RunWalk([
-        for (final (start, end) in _stepsBetween(from, to))
-          walk(keys, start, end),
-      ]);
-
-  /// Each key from [from] to [to] with the one after it, in order.
-  Iterable<(int, int)> _stepsBetween(int from, int to) sync* {
-    var at = from;
-    while (at < to) {
-      final next = keys.firstKeyAfter(at)!;
-      yield (at, next);
-      at = next;
-    }
-  }
+  }) => isEmpty ? orElse() : _time.valueAt(time, space);
 
   /// When the walk through each roving key's run passes it, by its frame
   /// ([resolveAtTime]): its share of the way, at the pace the run's timed
   /// ends set — a hold's run as if it did not hold, since its hold passes
   /// none of them. Empty where no key roves or [space] walks no path.
-  Map<int, double> rovingTimes(KeyValueSpace<T> space) {
-    final walk = space.walk;
-    final times = <int, double>{};
-    if (walk == null || !_anyRoving) {
-      return times;
-    }
-    for (var from = keys.firstKey(); from != null;) {
-      final to = _timedKeyAfter(from, roves: true);
-      if (to == null) {
-        break;
-      }
-      final stops = _walkFrom(from, to, walk).stops;
-      if (stops.length > 2) {
-        final pace = _paceBetween(from, to, space, roves: true);
-        var passed = 0;
-        for (final (_, frame) in _stepsBetween(from, to)) {
-          passed += 1;
-          if (frame != to) {
-            times[frame] =
-                from + (to - from) * _timeAtShare(stops[passed], pace);
-          }
-        }
-      }
-      from = to;
-    }
-    return times;
-  }
+  Map<int, double> rovingTimes(KeyValueSpace<T> space) =>
+      _time.rovingTimes(space);
 
   /// [this] with each roving key on the frame nearest when its run passes
   /// it ([rovingTimes]) — in their order, one to a frame, between the
-  /// run's timed ends — and the first and the last key, whose time is
-  /// their own (I-89 ①: 「처음 · 끝 키 시간 고정」), not roving. Where
-  /// [space] walks no path, no key roves. [this] where every key already
-  /// stands so.
+  /// run's timed ends. The first and the last stay where they are, flagged
+  /// or not ([keyCanRove]); where [space] walks no path nothing roves, and
+  /// nothing is placed. [this] where every key already stands so.
   ///
   /// It always fits: a run's keys stood on frames of their own between its
   /// ends. Where they go is read off the timed keys and the way's lengths
   /// alone, never off where they stood, so a placed track stays as it is.
   PropertyTrack<T> withRovingKeysSlotted(KeyValueSpace<T> space) {
-    if (!_anyRoving) {
+    final times = rovingTimes(space);
+    if (times.isEmpty) {
       return this;
     }
-    PropertyKey<T>? timed(PropertyKey<T> key) =>
-        key.roving ? key.copyWith(roving: false) : null;
-    if (space.walk == null) {
-      return _withKeysAt(keys.keys.toSet(), timed)!;
-    }
-    final ends = _withKeysAt({keys.firstKey()!, keys.lastKey()!}, timed);
-    if (ends != null) {
-      return ends.withRovingKeysSlotted(space);
-    }
-    final times = rovingTimes(space);
     final placed = <int, int>{};
-    for (var from = keys.firstKey(); from != null;) {
-      final to = _timedKeyAfter(from, roves: true);
-      if (to == null) {
-        break;
-      }
-      final run = [
-        for (final (_, frame) in _stepsBetween(from, to))
-          if (frame != to) frame,
-      ];
+    for (final (:from, :to, :roving) in _time.runs()) {
       var before = from;
-      for (var index = 0; index < run.length; index += 1) {
-        final nearest = times[run[index]]!.round();
+      for (var index = 0; index < roving.length; index += 1) {
+        final nearest = times[roving[index]]!.round();
         final within = math.min(
           math.max(nearest, from + index + 1),
-          to - (run.length - index),
+          to - (roving.length - index),
         );
         before = math.max(before + 1, within);
-        placed[run[index]] = before;
+        placed[roving[index]] = before;
       }
-      from = to;
     }
     if (placed.entries.every((entry) => entry.key == entry.value)) {
       return this;
@@ -858,6 +927,45 @@ typedef NamedKeyValue<T> = ({
   KeyPath path,
   bool roving,
 });
+
+/// The name half of the key window's write ([PropertyTrack.withKeysWritten]):
+/// the [name] to give (null takes it away), the key it already holds
+/// elsewhere to adopt ([adopted]), and the frame stood on ([preferredFrame])
+/// — [PropertyTrack.withRangeNamed]'s three.
+typedef KeyNaming<T> = ({
+  String? name,
+  PropertyKey<T>? adopted,
+  int? preferredFrame,
+});
+
+/// What the key window picks for the keys it covers beside their name
+/// (F-17 · I-89): their two [sides], whether the path bends through them
+/// ([curved]) and whether their time roves ([roving]) — each null until it
+/// is picked, and only a pick is ever written (09-12: confirming a join no
+/// longer hands the joiner's own type to every key the name reaches).
+class KeyTypePick {
+  const KeyTypePick({this.sides, this.curved, this.roving});
+
+  final KeySidesEdit? sides;
+  final bool? curved;
+  final bool? roving;
+
+  /// Whether nothing is picked.
+  bool get isEmpty => sides == null && curved == null && roving == null;
+
+  /// This pick with [sides], [curved] or [roving] picked too — a pick once
+  /// made stays made while the window is up.
+  KeyTypePick copyWith({KeySidesEdit? sides, bool? curved, bool? roving}) =>
+      KeyTypePick(
+        sides: sides ?? this.sides,
+        curved: curved ?? this.curved,
+        roving: roving ?? this.roving,
+      );
+
+  /// What of it a lane whose keys walk no path takes: its sides alone — a
+  /// path and a roving time are a position's (I-89 ④).
+  KeyTypePick get sidesAlone => KeyTypePick(sides: sides);
+}
 
 /// The named keys one track edit MOVED between [before] and [after] — what
 /// it hands the "same name, same key" link.

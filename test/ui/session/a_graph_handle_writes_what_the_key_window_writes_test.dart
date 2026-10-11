@@ -142,7 +142,7 @@ void main() {
       const EaseSide(),
       reason: 'one step took them all',
     );
-    laneVerbs.setLaneKeyTypeForSelection(sides: pulled);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(sides: pulled));
     expect(
       layerOf(row).transformTrack,
       pulledTrack,
@@ -284,7 +284,9 @@ void main() {
     }
     select(se, lanes: ['rotation'], start: cutStart + 2, end: cutStart + 3);
     laneVerbs.setLaneKeyTypeForSelection(
-      sides: const KeySidesEdit(outgoing: KeySideEdit(side: EaseSide())),
+      const KeyTypePick(
+        sides: KeySidesEdit(outgoing: KeySideEdit(side: EaseSide())),
+      ),
     );
     session.laneRangeSelection.value = null;
     KeyExit seLeaving() => session.activeTrack.seLayers.first.transformTrack

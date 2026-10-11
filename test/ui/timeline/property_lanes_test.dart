@@ -1152,11 +1152,11 @@ void main() {
             .withKeyName(3, 'A'),
       );
 
-      final held = transformTrackWithLaneKeySides(
+      final held = transformTrackWithLaneKeysWritten(
         track,
         laneId: 'rotation',
         frames: {3},
-        edit: KeySidesEdit.hold,
+        pick: const KeyTypePick(sides: KeySidesEdit.hold),
       )!;
       final key = held.rotation.keyAt(3)!;
       expect(key.outgoing, KeyExit.hold);
@@ -1168,11 +1168,11 @@ void main() {
         reason: 'outside the range, untouched',
       );
       expect(
-        transformTrackWithLaneKeySides(
+        transformTrackWithLaneKeysWritten(
           held,
           laneId: 'rotation',
           frames: {3},
-          edit: KeySidesEdit.hold,
+          pick: const KeyTypePick(sides: KeySidesEdit.hold),
         ),
         isNull,
         reason: 'already that type: nothing to write',

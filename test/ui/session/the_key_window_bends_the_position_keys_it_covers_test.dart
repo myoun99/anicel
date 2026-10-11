@@ -74,7 +74,13 @@ void main() {
       'were', () {
     keyPositionAndScale();
     select(['position', 'scale'], 0, 5);
-    expect(laneVerbs.setLaneKeyNamesForSelection('A', curved: true), isFalse);
+    expect(
+      laneVerbs.setLaneKeyNamesForSelection(
+        'A',
+        pick: const KeyTypePick(curved: true),
+      ),
+      isFalse,
+    );
     expect(position().keyAt(0)!.path, KeyPath.auto);
     expect(position().keyAt(4)!.path, KeyPath.auto);
     expect(position().keyAt(8)!.path, KeyPath.straight, reason: 'outside');
@@ -89,10 +95,10 @@ void main() {
   test('the type alone bends and straightens, each its own undo step', () {
     keyPositionAndScale();
     select(['position'], 4, 5);
-    laneVerbs.setLaneKeyTypeForSelection(curved: true);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: true));
     expect(position().keyAt(4)!.path, KeyPath.auto);
 
-    laneVerbs.setLaneKeyTypeForSelection(curved: false);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: false));
     expect(position().keyAt(4)!.path, KeyPath.straight);
 
     session.undo();
@@ -108,7 +114,7 @@ void main() {
     expect(position().keyAt(8)!.name, 'A', reason: '⛔전제');
 
     select(['position'], 0, 1);
-    laneVerbs.setLaneKeyTypeForSelection(curved: true);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: true));
     expect(position().keyAt(0)!.path, KeyPath.auto);
     expect(position().keyAt(8)!.path, KeyPath.auto);
     expect(position().keyAt(4)!.path, KeyPath.straight, reason: 'unnamed');
@@ -132,7 +138,7 @@ void main() {
       endIndexExclusive: 5,
     );
     expect(laneVerbs.laneKeyPathsForSelection, [KeyPath.straight]);
-    laneVerbs.setLaneKeyTypeForSelection(curved: true);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: true));
     expect(
       session.requireActiveCut.camera.track.position.keyAt(4)!.path,
       KeyPath.auto,

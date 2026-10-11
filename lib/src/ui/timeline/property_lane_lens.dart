@@ -7,6 +7,15 @@ import '../../models/property_track.dart';
 /// arm.
 typedef PropertyLaneEdit = PropertyTrack<U>? Function<U>(PropertyTrack<U> lane);
 
+/// A [PropertyLaneEdit] that reads the same lane of another track as well
+/// ([beside], null where there is none) — the key a name already holds on
+/// a 겸용 sibling's track, adopted by the keys that join it.
+typedef PropertyLaneEditBeside =
+    PropertyTrack<U>? Function<U>(
+      PropertyTrack<U> lane,
+      PropertyTrack<U>? beside,
+    );
+
 /// Where a lane LIVES on its track — the address a verb dispatches over.
 /// The property is data, the verb is written once (Blender's RNA property
 /// paths, Krita's keyframe-channel lookups: the same shape).
@@ -40,6 +49,16 @@ class PropertyLaneLens<Track, T> implements LaneLens<Track> {
   @override
   Track? update(Track track, PropertyLaneEdit edit) {
     final next = edit<T>(get(track));
+    return next == null ? null : set(track, next);
+  }
+
+  /// [update], [edit] handed this lane of [beside] too, as the same type.
+  Track? updateBeside(
+    Track track,
+    Track? beside,
+    PropertyLaneEditBeside edit,
+  ) {
+    final next = edit<T>(get(track), beside == null ? null : get(beside));
     return next == null ? null : set(track, next);
   }
 

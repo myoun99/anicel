@@ -6,7 +6,7 @@ import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/property_track.dart' show KeySidesEdit;
+import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/se_line_type.dart';
@@ -24,7 +24,7 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
-import 'key_path_row.dart' show KeyPathRow;
+import 'key_flag_row.dart' show KeyFlagRow;
 import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
@@ -791,11 +791,11 @@ Future<void> _renameLaneKey(
   // the joining key's own type to every key the name reaches — a join
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
-  KeySidesEdit? picked;
-  bool? curved;
+  var picked = const KeyTypePick();
   // The keys stand still while the window is up: read them once.
   final sides = session.laneVerbs.laneKeySidesForSelection;
   final paths = session.laneVerbs.laneKeyPathsForSelection;
+  final roving = session.laneVerbs.laneKeyRovingForSelection;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -810,14 +810,34 @@ Future<void> _renameLaneKey(
         children: [
           KeySidesRows(
             sides: sides,
-            picked: picked ?? const KeySidesEdit(),
-            onPicked: (edit) => setLocal(() => picked = edit),
+            picked: picked.sides ?? const KeySidesEdit(),
+            onPicked: (edit) =>
+                setLocal(() => picked = picked.copyWith(sides: edit)),
           ),
           const SizedBox(height: 10),
-          KeyPathRow(
-            paths: paths,
-            picked: curved,
-            onPicked: (bends) => setLocal(() => curved = bends),
+          KeyFlagRow(
+            label: strings.keyPath,
+            off: (
+              id: 'rename-key-path-straight',
+              word: strings.keyPathStraight,
+            ),
+            on: (id: 'rename-key-path-curved', word: strings.keyPathCurved),
+            flags: [for (final path in paths) path.curved],
+            picked: picked.curved,
+            onPicked: (bends) =>
+                setLocal(() => picked = picked.copyWith(curved: bends)),
+          ),
+          const SizedBox(height: 10),
+          // I-89 ④-Q5 (A′ while it is asked): After Effects' Rove Across
+          // Time, under the path it rides.
+          KeyFlagRow(
+            label: strings.keyRoving,
+            off: (id: 'rename-key-rove-off', word: strings.commonOff),
+            on: (id: 'rename-key-rove-on', word: strings.commonOn),
+            flags: roving,
+            picked: picked.roving,
+            onPicked: (roves) =>
+                setLocal(() => picked = picked.copyWith(roving: roves)),
           ),
         ],
       ),
@@ -831,8 +851,7 @@ Future<void> _renameLaneKey(
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
-            sides: picked,
-            curved: curved,
+            pick: picked,
           )
           ? trimmed
           : null;
@@ -844,19 +863,13 @@ Future<void> _renameLaneKey(
         session.repository.requireProject(),
         lane.layerId,
       ),
-      join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
-        name,
-        sides: picked,
-        curved: curved,
-      ),
+      join: (name) =>
+          session.laneVerbs.linkLaneKeyNamesForSelection(name, pick: picked),
       // The name stood down; a type the user picked in the same window was
       // still confirmed, so it lands.
       decline: () {
-        if (picked != null || curved != null) {
-          session.laneVerbs.setLaneKeyTypeForSelection(
-            sides: picked,
-            curved: curved,
-          );
+        if (!picked.isEmpty) {
+          session.laneVerbs.setLaneKeyTypeForSelection(picked);
         }
       },
     ),

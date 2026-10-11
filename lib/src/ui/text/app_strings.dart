@@ -361,6 +361,10 @@ enum AppStrings {
   String get keyPathStraight => _s('keyPathStraight');
   String get keyPathCurved => _s('keyPathCurved');
 
+  /// The key window's roving (I-89 ④-Q5): After Effects' Rove Across Time,
+  /// a position key's time left to its run.
+  String get keyRoving => _s('keyRoving');
+
   /// The canvas's camera path settings (I-89 ④), words of the confirmed
   /// spec's mock: what it shows, how much of it, and its numbers.
   String get cameraPath => _s('cameraPath');
@@ -1901,6 +1905,7 @@ enum AppStrings {
     'keyPath': 'Path',
     'keyPathStraight': 'Straight',
     'keyPathCurved': 'Curved',
+    'keyRoving': 'Roving',
     'cameraPath': 'Camera path',
     'cameraPathOff': 'Off',
     'cameraPathSpace': 'Space',
@@ -3057,6 +3062,7 @@ enum AppStrings {
     'keyPath': 'パス',
     'keyPathStraight': '直線',
     'keyPathCurved': '曲線',
+    'keyRoving': 'ロービング',
     'cameraPath': 'カメラパス',
     'cameraPathOff': 'オフ',
     'cameraPathSpace': '空間',
@@ -4549,6 +4555,7 @@ enum AppStrings {
     'keyPath': '경로',
     'keyPathStraight': '직선',
     'keyPathCurved': '곡선',
+    'keyRoving': '로빙',
     'cameraPath': '카메라 경로',
     'cameraPathOff': '끄기',
     'cameraPathSpace': '공간',
@@ -6040,6 +6047,7 @@ enum AppStrings {
     'keyPath': 'Trajectoire',
     'keyPathStraight': 'Droite',
     'keyPathCurved': 'Courbe',
+    'keyRoving': 'Itinérance',
     'cameraPath': 'Trajectoire de la caméra',
     'cameraPathOff': 'Désactivé',
     'cameraPathSpace': 'Espace',
@@ -7631,6 +7639,7 @@ enum AppStrings {
     'keyPath': '路径',
     'keyPathStraight': '直线',
     'keyPathCurved': '曲线',
+    'keyRoving': '漂浮',
     'cameraPath': '摄像机路径',
     'cameraPathOff': '关',
     'cameraPathSpace': '空间',

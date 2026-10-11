@@ -87,109 +87,48 @@ TransformTrack? transformTrackWithLaneKeyRemoved(
       lane.keyAt(frameIndex) == null ? null : lane.withoutKey(frameIndex),
 );
 
-/// [track] with lane [laneId]'s keys inside [frames] named [name] (null
-/// un-names them), all collapsed onto ONE value. Null when nothing changed.
+/// The key window's write on lane [laneId] (F-17 · I-89): the keys inside
+/// [frames] named as [naming] says (a null name un-names them) — all
+/// collapsed onto ONE value, the key the name already holds on [adoptFrom]
+/// where it holds one (this row's 겸용 sibling, or this very track) — and
+/// then as [pick] leaves them: its path and its roving time on a lane
+/// whose keys walk a path alone ([walksAPath]). ONE write of the lane
+/// ([PropertyTrack.withKeysWritten]). Null when nothing changed.
 ///
 /// The range form of naming — see [PropertyTrack.withRangeNamed] for why
-/// the collapse is the intent rather than a side effect. [adoptFrom]
-/// supplies the value when the name is already held elsewhere in the
-/// naming space (this row's 겸용 sibling, or this very track).
-TransformTrack? transformTrackWithLaneRangeNamed(
+/// the collapse is the intent rather than a side effect. The type it
+/// writes replaced a per-key Toggle Hold that only the camera's own key
+/// window ever called. That window is gone, and the common one says WHICH
+/// type rather than flipping whichever it was.
+TransformTrack? transformTrackWithLaneKeysWritten(
   TransformTrack track, {
   required String laneId,
   required Set<int> frames,
-  required String? name,
+  ({String? name, int? preferredFrame})? naming,
   TransformTrack? adoptFrom,
-  int? preferredFrame,
-}) {
-  PropertyKey<T>? held<T>(PropertyTrack<T> Function(TransformTrack) lane) {
-    if (name == null || adoptFrom == null) {
-      return null;
-    }
-    return lane(adoptFrom).keyForName(name);
-  }
-
-  switch (laneId) {
-    case 'anchor-point':
-      final lane = track.anchorPoint.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.anchorPoint),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(anchorPoint: lane);
-    case 'position':
-      final lane = track.position.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.position),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(position: lane);
-    case 'scale':
-      final lane = track.scale.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.scale),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(scale: lane);
-    case 'rotation':
-      final lane = track.rotation.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.rotation),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(rotation: lane);
-    case 'opacity':
-      final lane = track.opacity.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.opacity),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(opacity: lane);
-  }
-  return null;
-}
-
-/// Gives lane [laneId]'s keys inside [frames] [edit]'s sides — the key
-/// window's TYPE (F-17), in the range form every key verb takes. Null when
-/// nothing changed.
-///
-/// It replaced a per-key Toggle Hold that only the camera's own key window
-/// ever called. That window is gone, and the common one says WHICH type
-/// rather than flipping whichever it was.
-TransformTrack? transformTrackWithLaneKeySides(
-  TransformTrack track, {
-  required String laneId,
-  required Set<int> frames,
-  required KeySidesEdit edit,
-}) => transformLaneLens(laneId)?.update(
-  track,
-  <U>(PropertyTrack<U> lane) => lane.withKeySides(frames: frames, edit: edit),
-);
-
-/// [track] with lane [laneId]'s keys inside [frames] bending as [curved]
-/// says ([PropertyTrack.withKeyPaths]) — the key window's path (I-89 ④).
-/// Null on a lane whose keys walk no path ([walksAPath]), and where
-/// nothing changed.
-TransformTrack? transformTrackWithLaneKeyPaths(
-  TransformTrack track, {
-  required String laneId,
-  required Set<int> frames,
-  required bool curved,
+  KeyTypePick pick = const KeyTypePick(),
 }) {
   final property = transformPropertyOfLaneId(laneId);
-  if (property == null || !walksAPath(property)) {
-    return null;
-  }
-  return transformLaneLens(laneId)?.update(
-    track,
-    <U>(PropertyTrack<U> lane) =>
-        lane.withKeyPaths(frames: frames, curved: curved),
-  );
+  final picked = property != null && walksAPath(property)
+      ? pick
+      : pick.sidesAlone;
+  return transformLaneLens(laneId)?.updateBeside(track, adoptFrom, <U>(
+    PropertyTrack<U> lane,
+    PropertyTrack<U>? holder,
+  ) {
+    final name = naming?.name;
+    return lane.withKeysWritten(
+      frames: frames,
+      naming: naming == null
+          ? null
+          : (
+              name: name,
+              adopted: name == null ? null : holder?.keyForName(name),
+              preferredFrame: naming.preferredFrame,
+            ),
+      pick: picked,
+    );
+  });
 }
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
@@ -469,7 +408,7 @@ TransformTrack? transformTrackWithGroupReset(
 /// The transform family's lane table: where each lane id lives on the
 /// track. The single-lane range move is [LaneKeysShift.keysShifted] on
 /// this table; null for an id that is not a transform lane.
-LaneLens<TransformTrack>? transformLaneLens(String laneId) =>
+PropertyLaneLens<TransformTrack, Object?>? transformLaneLens(String laneId) =>
     switch (laneId) {
       'anchor-point' => PropertyLaneLens<TransformTrack, CanvasPoint>(
         get: (track) => track.anchorPoint,

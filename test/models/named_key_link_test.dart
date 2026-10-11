@@ -77,6 +77,7 @@ void main() {
           incoming: KeySide.linear,
           outgoing: KeyExit.hold,
           path: KeyPath.straight,
+          roving: false,
         ),
       });
     });
@@ -325,6 +326,7 @@ void main() {
           incoming: KeySide.linear,
           outgoing: KeySide.linear,
           path: KeyPath.straight,
+          roving: false,
         ),
       });
       expect(changes.position, isEmpty);
