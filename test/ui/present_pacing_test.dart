@@ -2,9 +2,19 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_display_timing.dart';
 import 'package:anicel/src/services/playback/present_slot.dart';
 import 'package:anicel/src/ui/look_only_frames.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/playback/looking_ticker.dart';
 import 'package:anicel/src/ui/present_pacing.dart';
 
 /// A display that says where its vblanks are, and remembers what it was
@@ -213,6 +223,84 @@ void main() {
         reason: 'look $look',
       );
     }
+  });
+
+  testWidgets('🚨a clock\'s time runs on the moments its frames are shown, '
+      'not on the engine\'s vsyncs', (tester) async {
+    await settle(tester);
+    final elapsed = <Duration>[];
+    final ticker = LookingTicker(elapsed.add);
+
+    ticker.start(const TestVSync());
+    // The engine's grid 7ms a step; the display's refresh 6.9486ms.
+    for (var look = 0; look < 8; look += 1) {
+      await tester.pump(const Duration(microseconds: 7000));
+    }
+    ticker.stop();
+
+    expect(elapsed.first, Duration.zero);
+    expect(
+      elapsed.last.inMicroseconds,
+      closeTo((elapsed.length - 1) * _Display.period, 2),
+      reason: 'one refresh a look — not the 7ms the engine stepped',
+    );
+  });
+
+  testWidgets('🚨a run tells the chain when its look changes the frame, and '
+      'the look after it takes back the lead its wait spent', (tester) async {
+    await settle(tester);
+    final read = <Duration>[];
+    var heard = 0;
+    final project = Project(
+      id: const ProjectId('paced'),
+      name: 'Paced',
+      createdAt: DateTime.utc(2026, 10, 11),
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Video',
+          cuts: [
+            Cut(
+              id: const CutId('cut'),
+              name: 'A',
+              duration: 10,
+              canvasSize: const CanvasSize(width: 64, height: 36),
+              layers: const [],
+            ),
+          ],
+        ),
+      ],
+    );
+    final controller =
+        CanvasPlaybackController(
+            resolveProject: () => project,
+            resolveActiveCutId: () => const CutId('cut'),
+            resolveActiveTrackId: () => const TrackId('track'),
+            resolveFrameRate: () => const ProjectFrameRate.integer(24),
+          )
+          ..resolveAudioClock = ({frameTime}) {
+            read.add(frameTime!);
+            return ClockReading(globalFrame: heard);
+          };
+    addTearDown(controller.dispose);
+    controller.attachTicker(const TestVSync());
+    controller.play(scope: PlaybackScope.activeCut);
+
+    const refresh = Duration(microseconds: 6949);
+    await tester.pump(refresh);
+    await tester.pump(refresh);
+    heard = 1;
+    await tester.pump(refresh);
+    // The frame the change was drawn in waited for its window and held the
+    // next look up: two refreshes pass.
+    await tester.pump(refresh * 2);
+    controller.stop();
+
+    expect(
+      (read.last - read[read.length - 2]).inMicroseconds,
+      closeTo(2 * _Display.period, 2),
+      reason: 'the vblank right after the change is passed over',
+    );
   });
 
   testWidgets('⛔where the engine\'s vsync is the display\'s there is no '

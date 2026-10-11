@@ -100,6 +100,16 @@ void main() {
     expect(shown[2] - shown[1], 1);
   });
 
+  test('a look after a change that comes late passes over one vblank still, '
+      'and no more — a change could be due at the next', () {
+    final claims = PresentClaims();
+    final at = vblank + 8000 * period + 2500;
+    final first = shownOn(claimAt(claims, at));
+    claims.changed();
+    final next = shownOn(claimAt(claims, at + 3 * period));
+    expect(next - first, 2);
+  });
+
   test('a look that comes long after the last — a run started again — '
       'starts the chain afresh, with its lead', () {
     final claims = PresentClaims();
