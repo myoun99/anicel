@@ -9,6 +9,7 @@ library;
 
 import 'dart:ui' show Offset, Rect, Size;
 
+import '../camera_work_marks.dart' show CameraKeyRole;
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../se_line_type.dart';
@@ -87,21 +88,6 @@ class ConteCameraWork {
   final List<List<Offset>> trails;
 }
 
-/// Where a camera key stands among the cell's keys — what its frame shows
-/// and which colour it wears.
-enum ConteCameraKeyRole {
-  /// The first key: its frame drawn, IN's green.
-  first,
-
-  /// A key between: no frame, only the turn of its trails — and its name,
-  /// where it has one (유저 2026-09-30, after Storyboard Pro: 「첫/끝 키
-  /// 말고 중간키는 실루엣을 안그려」).
-  between,
-
-  /// The last key: its frame drawn, OUT's red.
-  last,
-}
-
 /// One camera frame the sheet marks: a key, or the camera at the cell's
 /// first or last frame where no key stands (H54).
 class ConteCameraKey {
@@ -114,7 +100,9 @@ class ConteCameraKey {
   /// The camera's frame at the key, on the canvas: top-left first.
   final List<Offset> corners;
 
-  final ConteCameraKeyRole role;
+  /// Where it stands among the cell's keys: the cell's first frame, a key
+  /// between, its last frame.
+  final CameraKeyRole role;
 
   /// What the sheet writes at the frame's top-left: the key's name, else
   /// IN for the first and OUT for the last; null for an unnamed key between

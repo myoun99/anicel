@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset, Rect, Size;
 
+import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 
 /// A camera that moves [across] screens right and [down] screens down from
@@ -28,10 +29,10 @@ ConteCameraWork conteCameraPan({
     keys: [
       ConteCameraKey(
         corners: start,
-        role: ConteCameraKeyRole.first,
+        role: CameraKeyRole.first,
         label: first,
       ),
-      ConteCameraKey(corners: end, role: ConteCameraKeyRole.last, label: last),
+      ConteCameraKey(corners: end, role: CameraKeyRole.last, label: last),
     ],
     trails: [
       for (var corner = 0; corner < 4; corner += 1) [start[corner], end[corner]],

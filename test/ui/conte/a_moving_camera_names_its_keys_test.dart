@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -138,8 +139,8 @@ void main() {
       () {
     final work = cellOf(pan).camera!;
     expect(work.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.last,
     ]);
     expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
     expectPoints(work.keys.first.corners, const [
@@ -164,7 +165,7 @@ void main() {
       'OUT」', () {
     final work = cellOf(calledEverywhere(pan, 0, 'A')).camera!;
     expect(work.keys.map((key) => key.label), ['A', 'OUT']);
-    expect(work.keys.first.role, ConteCameraKeyRole.first);
+    expect(work.keys.first.role, CameraKeyRole.first);
   });
 
   test('a key between is written only when it has a name — its frame is '
@@ -174,9 +175,9 @@ void main() {
     );
     final unnamed = cellOf(three).camera!;
     expect(unnamed.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.between,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.between,
+      CameraKeyRole.last,
     ]);
     expect(unnamed.keys.map((key) => key.label), ['IN', null, 'OUT']);
     final named = cellOf(calledEverywhere(three, 6, 'B')).camera!;
@@ -225,9 +226,9 @@ void main() {
 
     final first = cells[0].camera!;
     expect(first.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.between,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.between,
+      CameraKeyRole.last,
     ]);
     expect(
       first.keys.map((key) => key.label),
@@ -280,8 +281,8 @@ void main() {
     );
     final work = cellOf(held).camera!;
     expect(work.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.last,
     ]);
     expect(
       work.keys.map((key) => key.label),

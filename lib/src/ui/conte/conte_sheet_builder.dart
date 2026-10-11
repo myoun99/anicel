@@ -4,6 +4,7 @@ import 'dart:ui' show Offset, Rect, Size;
 import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../models/canvas_size.dart';
+import '../../models/camera_work_marks.dart' show CameraKeyRole;
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/key_range_move.dart'
@@ -170,10 +171,10 @@ ConteCameraWork? _cameraWorkIn(
         _cameraKey(
           frame.corners,
           index == 0
-              ? ConteCameraKeyRole.first
+              ? CameraKeyRole.first
               : index == frames.length - 1
-              ? ConteCameraKeyRole.last
-              : ConteCameraKeyRole.between,
+              ? CameraKeyRole.last
+              : CameraKeyRole.between,
           switch (names[frame.frameIndex]) {
             null || unionMixedKeyName => null,
             final name => name,
@@ -217,7 +218,7 @@ Rect _wholePixelsAround(Rect region) {
 /// A key [named] or not, as the sheet labels it for its [role].
 ConteCameraKey _cameraKey(
   List<Offset> corners,
-  ConteCameraKeyRole role,
+  CameraKeyRole role,
   String? named,
 ) => ConteCameraKey(
   corners: corners,
@@ -225,9 +226,9 @@ ConteCameraKey _cameraKey(
   label:
       named ??
       switch (role) {
-        ConteCameraKeyRole.first => 'IN',
-        ConteCameraKeyRole.last => 'OUT',
-        ConteCameraKeyRole.between => null,
+        CameraKeyRole.first => 'IN',
+        CameraKeyRole.last => 'OUT',
+        CameraKeyRole.between => null,
       },
 );
 

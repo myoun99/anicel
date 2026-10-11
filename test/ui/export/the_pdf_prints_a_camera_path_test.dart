@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
@@ -139,12 +140,12 @@ void main() {
         keys: [
           ConteCameraKey(
             corners: first,
-            role: ConteCameraKeyRole.first,
+            role: CameraKeyRole.first,
             label: 'IN',
           ),
           ConteCameraKey(
             corners: last,
-            role: ConteCameraKeyRole.last,
+            role: CameraKeyRole.last,
             label: 'OUT',
           ),
         ],
