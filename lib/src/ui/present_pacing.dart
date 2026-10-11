@@ -225,9 +225,11 @@ mixin PresentPacing on WidgetsBinding {
     final period = _periodOf(timing);
     return quietBetweenHeldFrames(
       nowMicros: now,
-      lastReleaseMicros: released,
-      heldIntervalMicros: intervals[math.min(1, intervals.length - 1)],
-      sceneMicros: _rasterOverBy - released,
+      held: (
+        lastReleaseMicros: released,
+        sceneMicros: _rasterOverBy - released,
+        intervalMicros: intervals[math.min(1, intervals.length - 1)],
+      ),
       // The next release falls a refresh either side of where the interval
       // puts it — its claim's vblank comes off the chain — and its frame is
       // built the refresh before.

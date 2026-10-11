@@ -512,9 +512,11 @@ void main() {
         quietForBackgroundGpuWork(),
         quietBetweenHeldFrames(
           nowMicros: released.last,
-          lastReleaseMicros: released.last,
-          heldIntervalMicros: 41700,
-          sceneMicros: closes - released.last,
+          held: (
+            lastReleaseMicros: released.last,
+            sceneMicros: closes - released.last,
+            intervalMicros: 41700,
+          ),
           marginMicros: (2 * _Display.period).round() + 1000,
         ),
       );

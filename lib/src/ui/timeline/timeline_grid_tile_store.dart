@@ -223,7 +223,7 @@ class TimelineGridTileStore {
       painter.layer.id,
       painter.axis,
     );
-    final key = '$row:$spanStartIndex';
+    final key = _TileRequest.keyOf(row, spanStartIndex);
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _entries.remove(key);
     if (entry != null) {
@@ -355,9 +355,8 @@ class TimelineGridTileStore {
     _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
-        final key = _pending.keys.first;
-        final request = _pending.remove(key)!;
-        if (!await _rasterAndLand(engine, key, request, epoch, warm: false)) {
+        final request = _pending.remove(_pending.keys.first)!;
+        if (!await _rasterAndLand(engine, request, epoch, warm: false)) {
           return;
         }
       }
@@ -378,11 +377,11 @@ class TimelineGridTileStore {
   /// paint asked for it while it was in flight ([_askedWhileWarm]).
   Future<bool> _rasterAndLand(
     QaNativeEngine engine,
-    String key,
     _TileRequest request,
     int epoch, {
     required bool warm,
   }) async {
+    final key = request.key;
     // A dead-generation request is discarded, not rastered: its painter's
     // resolvers answer from the live session, which no longer describes its
     // rows. ⛔This check and the resolver reads are one synchronous block —
@@ -486,7 +485,7 @@ class TimelineGridTileStore {
         continue;
       }
       for (final (start, end) in painter.tileSpansOfTheNextPage) {
-        final key = '$row:$start';
+        final key = _TileRequest.keyOf(row, start);
         if (_inFlight.contains(key) ||
             _pending.containsKey(key) ||
             _warming.containsKey(key)) {
@@ -526,10 +525,9 @@ class TimelineGridTileStore {
                 _pending.isNotEmpty)) {
           return;
         }
-        final key = _warming.keys.first;
-        final request = _warming.remove(key)!;
+        final request = _warming.remove(_warming.keys.first)!;
         final started = warmUpQuiet.now();
-        if (!await _rasterAndLand(engine, key, request, epoch, warm: true)) {
+        if (!await _rasterAndLand(engine, request, epoch, warm: true)) {
           return;
         }
         _warmSpanMicros = math.max(
@@ -1028,6 +1026,11 @@ class _TileRequest {
   final int spanStartIndex;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
+
+  /// The store's key for the tile: the row and the frame its span starts on.
+  String get key => keyOf(row, spanStartIndex);
+
+  static String keyOf(String row, int spanStartIndex) => '$row:$spanStartIndex';
 }
 
 /// A row's side of the store's landing notices ([TimelineGridTileStore.

@@ -324,9 +324,11 @@ void main() {
     ({int fromMicros, int untilMicros}) quietAt(int now) =>
         quietBetweenHeldFrames(
           nowMicros: now,
-          lastReleaseMicros: release,
-          heldIntervalMicros: interval,
-          sceneMicros: scene,
+          held: (
+            lastReleaseMicros: release,
+            sceneMicros: scene,
+            intervalMicros: interval,
+          ),
           marginMicros: margin,
         );
 
@@ -361,9 +363,11 @@ void main() {
         'work waits; it is not let run beside the frames', () {
       final quiet = quietBetweenHeldFrames(
         nowMicros: release,
-        lastReleaseMicros: release,
-        heldIntervalMicros: 14000,
-        sceneMicros: scene,
+        held: (
+          lastReleaseMicros: release,
+          sceneMicros: scene,
+          intervalMicros: 14000,
+        ),
         marginMicros: 7500,
       );
       expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));

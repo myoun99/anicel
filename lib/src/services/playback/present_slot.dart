@@ -242,28 +242,36 @@ final class RasterSpread {
 /// against 3.3ms in the others — and those were the film frames shown a
 /// refresh late.
 ///
-/// The quiet a held frame leaves runs from its raster's end — [sceneMicros]
-/// after its release, where the latch's window for its vblank closes — to
-/// the next held frame's release, [heldIntervalMicros] after its own, less
-/// [marginMicros] for where that release falls and for the build before it.
+/// The quiet a held frame leaves runs from its raster's end — the [held]
+/// frames' scene after its release, where the latch's window for its
+/// vblank closes — to the next held frame's release, their interval after
+/// its own, less [marginMicros] for where that release falls and for the
+/// build before it.
 /// The answer is the first such quiet not over at [nowMicros]. Where the
 /// scenes leave no room it is EMPTY — it ends before it begins — and the
 /// work waits for one that has room: a quiet with no room is not leave to
 /// run beside the frames.
 ({int fromMicros, int untilMicros}) quietBetweenHeldFrames({
   required int nowMicros,
-  required int lastReleaseMicros,
-  required int heldIntervalMicros,
-  required int sceneMicros,
+  required HeldFrames held,
   required int marginMicros,
 }) {
-  final over =
-      nowMicros - (lastReleaseMicros + heldIntervalMicros - marginMicros);
+  final (:lastReleaseMicros, :sceneMicros, :intervalMicros) = held;
+  final over = nowMicros - (lastReleaseMicros + intervalMicros - marginMicros);
   final release =
       lastReleaseMicros +
-      (over < 0 ? 0 : over ~/ heldIntervalMicros + 1) * heldIntervalMicros;
+      (over < 0 ? 0 : over ~/ intervalMicros + 1) * intervalMicros;
   return (
     fromMicros: release + sceneMicros,
-    untilMicros: release + heldIntervalMicros - marginMicros,
+    untilMicros: release + intervalMicros - marginMicros,
   );
 }
+
+/// What a run's held frames say of the quiet they leave: when the last was
+/// let go, how long after that its raster is over, and the interval
+/// between two ([quietBetweenHeldFrames]).
+typedef HeldFrames = ({
+  int lastReleaseMicros,
+  int sceneMicros,
+  int intervalMicros,
+});
