@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
 import '../models/attached_layer_resolve.dart'
     show
@@ -113,6 +112,7 @@ import 'timeline/layer_row_drag.dart'
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'input/arena_tap_hold.dart';
+import 'input/hit_gate.dart';
 import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -5447,39 +5447,6 @@ double _storyboardCutsExtent(
           .map((entry) => scale.blockEndFor(entry.startFrame, entry.duration))
           .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth) +
       trailingPadding;
-}
-
-/// Admits pointers only where [claimsDx] says yes — the STRIP gesture's
-/// hit-test gate. An eager pan claims the arena the moment it is hit, so a
-/// gesture layer that would answer a position with nothing must not be hit
-/// there at all; refusing in the callbacks is too late.
-class _FrameHitGate extends SingleChildRenderObjectWidget {
-  const _FrameHitGate({required this.claimsDx, super.child});
-
-  /// Whether a pointer at this row-local x belongs to the gated child.
-  final bool Function(double dx) claimsDx;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderFrameHitGate(claimsDx);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderFrameHitGate renderObject,
-  ) {
-    renderObject.claimsDx = claimsDx;
-  }
-}
-
-class _RenderFrameHitGate extends RenderProxyBox {
-  _RenderFrameHitGate(this.claimsDx);
-
-  bool Function(double dx) claimsDx;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
-      claimsDx(position.dx) && super.hitTest(result, position: position);
 }
 
 // _StoryboardFrameLinesPainter is GONE (D8/D38 2026-08-18): it was a

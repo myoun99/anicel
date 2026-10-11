@@ -232,8 +232,9 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
     right: 0,
     top: upper ? 0 : height / 2,
     height: height / 2,
-    child: _FrameHitGate(
-      claimsDx: (dx) => _layerAt(_frameAtX(dx), upper: upper) != null,
+    child: HitGate(
+      admits: (position) =>
+          _layerAt(_frameAtX(position.dx), upper: upper) != null,
       child: Stack(
         children: [
           TimelineFrameRangeGestureLayer(

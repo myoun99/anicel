@@ -417,8 +417,8 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
     TimelineRangeGestureCallbacks stripGesture,
   ) => Positioned.fill(
     key: ValueKey<String>('storyboard-strip-gesture-slot-$_scope'),
-    child: _FrameHitGate(
-      claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
+    child: HitGate(
+      admits: (position) => _stripAt(_frameAtX(position.dx)) != null,
       // The gesture layer fills its Stack, so it needs one of its own here
       // — a second Positioned around it would be two ParentDataWidgets on
       // one render object.

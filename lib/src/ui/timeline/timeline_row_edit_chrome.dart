@@ -3,10 +3,10 @@ import 'dart:ui' show ClipOp;
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../input/eager_pan_gesture_recognizer.dart';
+import '../input/hit_gate.dart';
 import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
@@ -717,7 +717,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 /// and ONE gesture layer that routes by hit target.
 ///
 /// The layer fills the row but only ACCEPTS pointers that land on a target
-/// ([_ChromeHitGate]); everything else falls straight through to the range
+/// ([HitGate]); everything else falls straight through to the range
 /// gesture layer and the cells below, which is what the small per-affordance
 /// boxes used to do implicitly.
 /// The chrome layer's own grip hooks — identity-free on purpose.
@@ -1322,10 +1322,10 @@ class _TimelineRowEditChromeLayerState
         windowBucket: widget.windowBucket,
         viewportMainExtent: widget.viewportMainExtent,
       ),
-      child: _ChromeHitGate(
+      child: HitGate(
         // Off-target pixels belong to the cells: the gate keeps the
         // row-wide layer from swallowing seeks and range drags.
-        isTarget: (position) => _targetAt(position) != null,
+        admits: (position) => _targetAt(position) != null,
         child: MouseRegion(
           cursor: _cursor,
           // ENTER as well as hover: a pointer can come to rest on a target
@@ -1350,36 +1350,5 @@ class _TimelineRowEditChromeLayerState
         ),
       ),
     );
-  }
-}
-
-/// Passes a hit through only where the row actually has an affordance.
-class _ChromeHitGate extends SingleChildRenderObjectWidget {
-  const _ChromeHitGate({required this.isTarget, required super.child});
-
-  final bool Function(Offset position) isTarget;
-
-  @override
-  _RenderChromeHitGate createRenderObject(BuildContext context) =>
-      _RenderChromeHitGate(isTarget);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderChromeHitGate renderObject,
-  ) => renderObject.isTarget = isTarget;
-}
-
-class _RenderChromeHitGate extends RenderProxyBox {
-  _RenderChromeHitGate(this.isTarget);
-
-  bool Function(Offset position) isTarget;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    if (!size.contains(position) || !isTarget(position)) {
-      return false;
-    }
-    return super.hitTest(result, position: position);
   }
 }

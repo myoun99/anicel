@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_point.dart';
@@ -12,6 +11,7 @@ import '../../models/transform_track.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/transform_box_law.dart';
 import '../input/finger_mode_devices.dart';
+import '../input/hit_gate.dart';
 import '../repaint_props.dart';
 import '../theme/app_theme.dart';
 import '../timeline/memo_token.dart';
@@ -537,8 +537,9 @@ class _RowTransformBoxState extends State<RowTransformBox> {
   @override
   Widget build(BuildContext context) {
     final corners = _screenCorners;
-    return _BoxPressArea(
-      claims: _claims,
+    // A press the box does not claim falls to the tool beneath.
+    return HitGate(
+      admits: _claims,
       // PEN-13: raw contact tracking for the touch gate — the pan callbacks
       // alone cannot see the finger count.
       child: Listener(
@@ -654,38 +655,6 @@ class _BoxPanGestureRecognizer extends OwningPanGestureRecognizer {
     }
     return super.isPointerAllowed(event);
   }
-}
-
-/// A hit test that answers only where [claims] says the press is the box's
-/// — so a press it does not claim falls to the tool beneath.
-class _BoxPressArea extends SingleChildRenderObjectWidget {
-  const _BoxPressArea({required this.claims, super.child});
-
-  final bool Function(Offset local) claims;
-
-  @override
-  _RenderBoxPressArea createRenderObject(BuildContext context) =>
-      _RenderBoxPressArea(claims);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderBoxPressArea renderObject,
-  ) {
-    renderObject.claims = claims;
-  }
-}
-
-class _RenderBoxPressArea extends RenderProxyBox {
-  _RenderBoxPressArea(this.claims);
-
-  bool Function(Offset local) claims;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
-      size.contains(position) &&
-      claims(position) &&
-      super.hitTest(result, position: position);
 }
 
 class _RowBoxPainter extends CustomPainter with RepaintOnProps {
