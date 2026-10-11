@@ -143,6 +143,43 @@ void main() {
         'keys on each of its numbers, and the Blur\'s two');
   });
 
+  testWidgets('an edit in flight shows in it as its rows show it — its own '
+      'lane\'s and a guest\'s — and goes with it', (tester) async {
+    final s = await _pump(tester);
+    await _pinTheBlur(tester, s);
+    List<double> own() => _painter(tester).own.single.lane.curve!.at(8);
+    List<double> guest() => _painter(tester).guests.single.lane.curve!.at(8);
+    expect(own(), [180, 10]);
+    expect(guest(), [16]);
+
+    s.laneVerbs.previewLaneValueAt(
+      _drawId,
+      'position',
+      8,
+      '300, 200',
+      frameIsGlobal: false,
+      scaleLinked: false,
+    );
+    await tester.pump();
+    expect(own(), [300, 200], reason: 'the stood lane, as the drag shows it');
+
+    s.laneVerbs.previewLaneValueAt(
+      _drawId,
+      _blurWidth,
+      8,
+      '30',
+      frameIsGlobal: false,
+      scaleLinked: false,
+    );
+    await tester.pump();
+    expect(guest(), [30], reason: 'the pin, as the drag shows it');
+
+    s.laneVerbs.endLaneEditPreview();
+    await tester.pump();
+    expect(own(), [180, 10]);
+    expect(guest(), [16]);
+  });
+
   testWidgets('the sheet draws the same graph, turned on its side', (
     tester,
   ) async {

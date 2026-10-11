@@ -17,6 +17,8 @@ import 'lane_graph_seats.dart'
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'property_lane_model.dart';
 import 'timeline_cells_row_facts.dart' show TimelineCellsRowGrid;
+import 'timeline_drag_preview.dart'
+    show TimelineDragPreview, timelineDragPreviewLayerFor;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
@@ -94,6 +96,7 @@ class TimelineLaneGraph extends StatelessWidget {
   Widget build(BuildContext context) {
     final guests = _guests();
     final standing = grid.hooks.currentRowHooks?.currentRow;
+    final preview = grid.hooks.dragPreview;
     return Stack(
       children: [
         TimelineFrameAxisBox(
@@ -101,12 +104,13 @@ class TimelineLaneGraph extends StatelessWidget {
           crossAxisExtent: crossExtent,
           axis: grid.axis,
           child: RepaintBoundary(
-            child: standing == null
-                ? _picture(null, guests)
-                : ValueListenableBuilder<TimelineRowAddress?>(
-                    valueListenable: standing,
-                    builder: (context, row, _) => _picture(row, guests),
-                  ),
+            child: ListenableBuilder(
+              listenable: Listenable.merge([standing, preview]),
+              builder: (context, _) => _picture(
+                standing?.value,
+                preview?.value,
+              ),
+            ),
           ),
         ),
         Positioned.fill(
@@ -159,16 +163,32 @@ class TimelineLaneGraph extends StatelessWidget {
     ];
   }
 
-  Widget _picture(TimelineRowAddress? standing, List<LaneGraphLine> guests) {
+  /// The picture as it stands with [standing] stood on and [preview] in
+  /// flight: each of its own lanes as its row of cells would show it
+  /// ([previewedLaneRow]), and every guest as the host reads it then.
+  Widget _picture(TimelineRowAddress? standing, TimelineDragPreview? preview) {
     final drawn = laneGraphDrawnLanes(seat, standing);
+    final lanesForLayer = grid.hooks.lanesForLayer;
     return CustomPaint(
       painter: TimelineLaneGraphPainter(
         own: [
           for (final row in lanes)
             if (drawn.contains(row.lane!.laneId))
-              (layer: row.layer, lane: row.lane!),
+              if (timelineDragPreviewLayerFor(preview, row.layer.id)
+                  case final layer?)
+                (
+                  layer: layer,
+                  lane: previewedLaneRow(
+                    row: row,
+                    previewLayer: layer,
+                    lanesForLayer: (layer) =>
+                        lanesForLayer?.call(layer) ?? const [],
+                  ),
+                )
+              else
+                (layer: row.layer, lane: row.lane!),
         ],
-        guests: guests,
+        guests: _guests(),
         grid: grid,
       ),
     );

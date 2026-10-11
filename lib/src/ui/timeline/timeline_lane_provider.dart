@@ -6,6 +6,7 @@ import 'lane_graph_seats.dart' show LaneGraphLine;
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
 import 'timeline_current_row.dart' show laneGroupOf;
+import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'transform_lane_policy.dart'
     show cameraPropertyLanes, cameraUnionHeader;
 
@@ -136,6 +137,10 @@ PropertyLaneRow? timelineCameraUnionLane({
 /// a pin in a folded group still reaches every graph. ⚠️The round's own
 /// answer, put to the user 2026-10-11 as I-89 ③ Q4 (A, this; B, a fold
 /// hides its pins too).
+///
+/// Read as a drag in flight shows its row — the one substitution every drag
+/// makes ([timelineDragPreviewLayerFor]) — so a pin follows a handle pulled
+/// on it, as its own row does.
 LaneGraphLine? timelineLaneGraphLine(
   String key, {
   required EditorSessionManager session,
@@ -144,10 +149,12 @@ LaneGraphLine? timelineLaneGraphLine(
   if (pinned == null) {
     return null;
   }
-  for (final layer in session.layers) {
-    if (layer.id != pinned.layerId) {
+  for (final row in session.layers) {
+    if (row.id != pinned.layerId) {
       continue;
     }
+    final layer =
+        timelineDragPreviewLayerFor(session.dragPreview.value, row.id) ?? row;
     final group = laneGroupOf(pinned.laneId);
     final lanes = timelineLanesForLayer(
       layer: layer,
