@@ -112,6 +112,20 @@ class _LayerGridRailRows {
     mainExtent: null,
   );
 
+  /// Row [index]'s rail row where [edges] lay [rows], keyed to its layer —
+  /// none for a row of no extent: an open graph the enlarged one folds
+  /// stands as its first lane's strip (I-89 ③D).
+  Widget? _railRowAt(
+    List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
+    int index,
+  ) => edges.extentOf(index) > 0
+      ? KeyedSubtree(
+          key: _railRowKey(rows[index]),
+          child: _railRowMemoized(rows[index]),
+        )
+      : null;
+
   /// The rail row's element key — ONE builder for the window loop and the
   /// A5 pin site, so the two can never drift and the pinned element
   /// re-matches the same State when the window returns.
@@ -226,6 +240,8 @@ class _LayerGridRailRows {
         laneGraphs: _state.widget.hooks.laneGraphs,
         laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
         seat: row.graph,
+        height: timelineDisplayRowExtent(row, _state._metrics),
+        folded: row.folded,
       ),
     );
   }
@@ -314,10 +330,7 @@ class _LayerGridRailRows {
                       if (pinnedBefore) ...[
                         if (edges.startOf(pinnedIndex) > 0)
                           SizedBox(height: edges.startOf(pinnedIndex)),
-                        KeyedSubtree(
-                          key: _railRowKey(rows[pinnedIndex]),
-                          child: _railRowMemoized(rows[pinnedIndex]),
-                        ),
+                        ?_railRowAt(rows, edges, pinnedIndex),
                         if (leadingRowSpacerHeight - edges.endOf(pinnedIndex) >
                             0)
                           SizedBox(
@@ -332,10 +345,7 @@ class _LayerGridRailRows {
                         index < rowWindow.endIndexExclusive;
                         index += 1
                       ) ...[
-                        KeyedSubtree(
-                          key: _railRowKey(rows[index]),
-                          child: _railRowMemoized(rows[index]),
-                        ),
+                        ?_railRowAt(rows, edges, index),
                         // An open graph's room, after its last lane: no
                         // row, so nothing of a row's is built in it.
                         if (edges.roomOf(index) > 0)
@@ -350,10 +360,7 @@ class _LayerGridRailRows {
                                 edges.startOf(pinnedIndex) -
                                 edges.startOf(rowWindow.endIndexExclusive),
                           ),
-                        KeyedSubtree(
-                          key: _railRowKey(rows[pinnedIndex]),
-                          child: _railRowMemoized(rows[pinnedIndex]),
-                        ),
+                        ?_railRowAt(rows, edges, pinnedIndex),
                         if (edges.total - edges.endOf(pinnedIndex) > 0)
                           SizedBox(
                             height: edges.total - edges.endOf(pinnedIndex),

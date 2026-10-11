@@ -72,7 +72,7 @@ class _XSheetGridHeaders {
           lanesForLayer: _state._lanesFor,
         ),
         metrics: _state._metrics,
-        width: _state._metrics.layerRowHeight,
+        width: timelineDisplayRowExtent(entry, _state._metrics),
         // Laid out at the natural extent like every other header; the
         // rail window above is what cuts it.
         height: naturalHeaderExtent,
@@ -89,6 +89,7 @@ class _XSheetGridHeaders {
         laneGraphs: _state.widget.hooks.laneGraphs,
         laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
         seat: entry.graph,
+        folded: entry.folded,
       ),
     );
   }
@@ -129,13 +130,14 @@ class _XSheetGridHeaders {
   final Map<LayerId, KeptLayerControlsRow> _kept = {};
 
   /// Every column's [header] where [edges] puts it — the room after a
-  /// graph's last lane left empty, as the rail leaves it (I-89 ③).
+  /// graph's last lane left empty, and a column of no extent no box, as
+  /// the rail leaves them (I-89 ③).
   List<Widget> headers(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
   ) => [
     for (var index = 0; index < entries.length; index += 1) ...[
-      header(entries[index]),
+      if (edges.extentOf(index) > 0) header(entries[index]),
       if (edges.roomOf(index) > 0) SizedBox(width: edges.roomOf(index)),
     ],
   ];

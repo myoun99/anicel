@@ -147,6 +147,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.seat,
+    this.folded = false,
   });
 
   final Layer layer;
@@ -202,6 +203,12 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// [TimelineDisplayRow.graph] — or null. A seated lane wears its curve's
   /// chips while the graph draws it, and its name fades while it does not.
   final TimelineGraphSeat? seat;
+
+  /// Whether the enlarged graph folds this lane to a thin strip — its row's
+  /// [TimelineDisplayRow.folded]: its plate alone, still the lane's to
+  /// stand on (the mock's 5판 empties a thinned lane's rail and keeps it
+  /// pressable).
+  final bool folded;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -863,6 +870,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     Color plate,
     TimelineRowAddress? currentRow,
   ) {
+    if (widget.folded) {
+      return _cellBox(
+        plate: plate,
+        colorScheme: colorScheme,
+        padding: EdgeInsets.zero,
+        child: const SizedBox.shrink(),
+      );
+    }
     final valueLabel = lane.valueLabel?.call(_frame);
     final seat = widget.seat;
     final drawn = seat == null
@@ -1316,7 +1331,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     _crossExtent,
     frameCellExtent: _cellExtent,
   );
-  double get _hitSize => (_markerSize + 8).clamp(14.0, _crossExtent).toDouble();
+  /// The floor yields to the room, as a mark's does ([_squareInCell]): a
+  /// lane the enlarged graph folds is thinner than it (I-89 ③D).
+  double get _hitSize => (_markerSize + 8)
+      .clamp(math.min(14.0, _crossExtent), _crossExtent)
+      .toDouble();
 
   bool _inWindow(int frame) =>
       frame >= frameStartIndex && frame < frameEndIndexExclusive;

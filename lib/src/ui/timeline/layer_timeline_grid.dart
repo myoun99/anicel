@@ -560,6 +560,44 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// cut from, so the scroll's crossing reads it too.
   TimelineRowEdges _drawnEdges = TimelineRowEdges.uniform(0, 0);
 
+  /// What [_dragEdges] and [_drawnEdges] were laid from ([_layRows]).
+  ({
+    List<TimelineDisplayRow> rows,
+    List<TimelineDisplayRow> drawn,
+    double view,
+    TimelineGridMetrics metrics,
+  })?
+  _laid;
+
+  /// Lays [rows] into [_dragEdges] and [drawn] — the rows the pass DRAWS —
+  /// into [_drawnEdges], along a view [view] long; the drawn edges back.
+  ///
+  /// Laid where the view is measured, since an enlarged graph stands as far
+  /// as the view lets one (I-89 ③D) — and once per pass and view: a row
+  /// crossing rebuilds the builder that asks, never the rows.
+  TimelineRowEdges _layRows(
+    List<TimelineDisplayRow> rows,
+    List<TimelineDisplayRow> drawn,
+    double view,
+  ) {
+    if (_laid case (
+      rows: final laidRows,
+      drawn: final laidDrawn,
+      view: final laidView,
+      metrics: final laidMetrics,
+    ) when identical(laidRows, rows) &&
+        identical(laidDrawn, drawn) &&
+        laidView == view &&
+        laidMetrics == _metrics) {
+      return _drawnEdges;
+    }
+    _laid = (rows: rows, drawn: drawn, view: view, metrics: _metrics);
+    _dragEdges = timelineRowEdgesOf(rows, _metrics, view: view);
+    return _drawnEdges = identical(drawn, rows)
+        ? _dragEdges
+        : timelineRowEdgesOf(drawn, _metrics, view: view);
+  }
+
   /// The row, made draggable. The wrapper is built fresh every pass and the
   /// memoized row travels through it untouched — the drag state lives in a
   /// notifier the wrapper subscribes to, so a caret moving does not
@@ -895,15 +933,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // how many rows sit between two fx headers (their members may be
     // twirled open). Held for the wrappers built below in the same pass.
     _dragRows = rows;
-    _dragEdges = timelineRowEdgesOf(rows, _metrics);
-    // ⚠️AFTER the line above, never before: a file held over the layer area
-    // is DRAWN as a row in its gap, and the gap it stands in is counted on
-    // the list that does not have it ([rowsWithSilhouette] says why).
+    // ⚠️The drag's edges are laid from [rows], never from these: a file
+    // held over the layer area is DRAWN as a row in its gap, and the gap it
+    // stands in is counted on the list that does not have it
+    // ([rowsWithSilhouette] says why).
     final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
-    final drawnEdges = identical(drawnRows, rows)
-        ? _dragEdges
-        : timelineRowEdgesOf(drawnRows, _metrics);
-    _drawnEdges = drawnEdges;
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
@@ -988,6 +1022,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           .toDouble()
                                     : viewportHeight;
                                 _rowViewportExtent = bodyViewportHeight;
+                                final drawnEdges = _layRows(
+                                  rows,
+                                  drawnRows,
+                                  bodyViewportHeight,
+                                );
                                 // The rows reach where their edges end — an
                                 // open graph's room included (I-89 ③).
                                 //

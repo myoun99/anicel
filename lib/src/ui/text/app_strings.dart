@@ -1711,6 +1711,8 @@ enum AppStrings {
   String get railLanePin => _s('railLanePin');
   String get laneGraphValue => _s('laneGraphValue');
   String get laneGraphSpeed => _s('laneGraphSpeed');
+  String get laneGraphEnlarge => _s('laneGraphEnlarge');
+  String get laneGraphEnlargeOn => _s('laneGraphEnlargeOn');
   String get railFillReferenceOn => _s('railFillReferenceOn');
   String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
@@ -2780,6 +2782,8 @@ enum AppStrings {
     'railLanePin': 'Pin to every graph',
     'laneGraphValue': 'Value',
     'laneGraphSpeed': 'Speed',
+    'laneGraphEnlarge': 'Enlarge',
+    'laneGraphEnlargeOn': 'Enlarge (on)',
     'railFillReferenceOn': 'Fill reference layer (on)',
     'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
@@ -4219,6 +4223,8 @@ enum AppStrings {
     'railLanePin': 'すべてのグラフに表示',
     'laneGraphValue': '値',
     'laneGraphSpeed': '速度',
+    'laneGraphEnlarge': '拡大表示',
+    'laneGraphEnlargeOn': '拡大表示（オン）',
     'railFillReferenceOn': '塗り参照レイヤー（オン）',
     'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
@@ -5689,6 +5695,8 @@ enum AppStrings {
     'railLanePin': '모든 그래프에 고정',
     'laneGraphValue': '값',
     'laneGraphSpeed': '속도',
+    'laneGraphEnlarge': '크게 보기',
+    'laneGraphEnlargeOn': '크게 보기 (켜짐)',
     'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
     'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
@@ -7291,6 +7299,8 @@ enum AppStrings {
     'railLanePin': 'Épingler à tous les graphiques',
     'laneGraphValue': 'Valeur',
     'laneGraphSpeed': 'Vitesse',
+    'laneGraphEnlarge': 'Agrandir',
+    'laneGraphEnlargeOn': 'Agrandir (activé)',
     'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
     'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
@@ -8697,6 +8707,8 @@ enum AppStrings {
     'railLanePin': '固定到所有图表',
     'laneGraphValue': '值',
     'laneGraphSpeed': '速度',
+    'laneGraphEnlarge': '放大',
+    'laneGraphEnlargeOn': '放大（开）',
     'railFillReferenceOn': '填充参考图层（开）',
     'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',

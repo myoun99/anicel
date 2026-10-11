@@ -20,6 +20,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart' show TimelineLaneFrameRow;
+import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 import 'timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 
 /// What a grid's CELLS row is built from beyond its drawing — the key both
@@ -313,6 +314,15 @@ Widget timelineLaneRowFrom(
   final audioLane = hooks.audioLane;
   final onSetClipOffset = audioLane?.onSetClipOffset;
   final onSetClipFades = audioLane?.onSetClipFades;
+  // A lane the enlarged graph folds is laid as a row of its strip (I-89
+  // ③D) — the metrics are what carry a lane row's extent across — so its
+  // keys stay in the strip, as small as a cell that tight makes any mark
+  // (D39-2): the mock's 5판 keeps a thinned lane's keys.
+  final metrics = row.folded
+      ? grid.metrics.copyWith(
+          layerRowHeight: timelineDisplayRowExtent(row, grid.metrics),
+        )
+      : grid.metrics;
   return laneIsSeAudio(row.lane!)
       ? SeAudioLaneFrameRow(
           axis: grid.axis,
@@ -322,7 +332,7 @@ Widget timelineLaneRowFrom(
           frameEndIndexExclusive: span.endIndexExclusive,
           leadingFrameSpacerWidth: span.leadingSpacer,
           trailingFrameSpacerWidth: span.trailingSpacer,
-          metrics: grid.metrics,
+          metrics: metrics,
           frameRate: hooks.projectFrameRate,
           audioPeaksFor: hooks.audioPeaksFor,
           spillInLeadFrames: hooks.spillInLeadFrames[layer.id],
@@ -352,7 +362,7 @@ Widget timelineLaneRowFrom(
           frameEndIndexExclusive: span.endIndexExclusive,
           leadingFrameSpacerWidth: span.leadingSpacer,
           trailingFrameSpacerWidth: span.trailingSpacer,
-          metrics: grid.metrics,
+          metrics: metrics,
           laneRange: span.laneRange,
         );
 }

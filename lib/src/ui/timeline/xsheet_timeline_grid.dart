@@ -1098,7 +1098,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // The row drag counts COLUMNS and lands on slots; only this
             // list knows how many columns sit between two fx headers.
             _dragRows = entries;
-            _dragEdges = timelineRowEdgesOf(entries, _metrics);
+            // The columns' view: the sheet less the frame-number rail and
+            // the scrollbar column beside it (the row of three below) —
+            // as far as an enlarged graph stands (I-89 ③D).
+            final columnsView = constraints.hasBoundedWidth
+                ? math.max(
+                    0.0,
+                    constraints.maxWidth -
+                        _metrics.layerControlsWidth -
+                        _metrics.verticalScrollbarWidth,
+                  )
+                : 0.0;
+            _dragEdges = timelineRowEdgesOf(
+              entries,
+              _metrics,
+              view: columnsView,
+            );
             // ⚠️AFTER the line above: the sheet draws the silhouette column
             // the timeline draws, and the gap is counted on the list
             // without it ([rowsWithSilhouette]).
@@ -1111,7 +1126,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // pushed along.
             final columnEdges = identical(drawnEntries, entries)
                 ? _dragEdges
-                : timelineRowEdgesOf(drawnEntries, _metrics);
+                : timelineRowEdgesOf(
+                    drawnEntries,
+                    _metrics,
+                    view: columnsView,
+                  );
             // The bundles are FIELDS here (the x-sheet reads them from more
             // than one builder), so the assignment stays and only the
             // construction moved.

@@ -257,6 +257,21 @@ void main() {
       expect(laneGraphAcross(0, range, 196, Axis.vertical), 16);
       expect(laneGraphAcross(100, range, 196, Axis.vertical), 196 - 16);
     });
+
+    // I-89 ③D: the mock's 16 a side turned the values over in a graph
+    // shallower than 32 — a one-lane group's, gripped down to its lane.
+    test('a graph too shallow for its padding keeps a quarter a side, the '
+        'right way up', () {
+      expect(laneGraphAcross(0, range, 24, Axis.horizontal), 24 - 6);
+      expect(laneGraphAcross(100, range, 24, Axis.horizontal), 6);
+      expect(laneGraphAcross(0, range, 24, Axis.vertical), 6);
+      expect(laneGraphAcross(100, range, 24, Axis.vertical), 24 - 6);
+      expect(
+        laneGraphAcross(100, range, 64, Axis.horizontal),
+        16,
+        reason: 'deep enough, the padding is the mock\'s',
+      );
+    });
   });
 
   test('a graph\'s guests are the pins of every other group, in the order '

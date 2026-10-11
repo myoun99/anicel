@@ -14,6 +14,8 @@ import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../widgets/app_icon_button.dart'
+    show AppIconButton, AppIconButtonSize;
 import '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 import '../widgets/owning_axis_grip.dart' show OwningAxisGrip;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
@@ -43,7 +45,7 @@ typedef TimelineLaidRows = ({
 
 /// What [grid] lays on the frame side for [laid]: each row's own [cells],
 /// and an open graph's lanes as ONE [TimelineLaneGraph] across their whole
-/// unit (I-89 ③).
+/// unit (I-89 ③) — or, folded by the enlarged one, as its empty strip.
 List<Widget> timelineFrameSide(
   TimelineLaidRows laid,
   TimelineCellsRowGrid grid, {
@@ -52,7 +54,13 @@ List<Widget> timelineFrameSide(
   final (:rows, :first, :edges) = laid;
   return [
     for (final unit in edges.unitsIn(first, first + rows.length))
-      if (rows[unit.first - first].graph case final seat?)
+      // The mock's 5판 draws nothing in a folded graph's strip.
+      if (rows[unit.first - first] case TimelineDisplayRow(
+        graph: _?,
+        folded: true,
+      ))
+        acrossBox(grid.axis, edges.unitSpanOf(unit.first).extent)
+      else if (rows[unit.first - first].graph case final seat?)
         TimelineLaneGraph(
           key: ValueKey<String>(
             '${grid.keyPrefix}-lane-graph-${seat.groupKey}',
@@ -63,6 +71,7 @@ List<Widget> timelineFrameSide(
           crossExtent: edges.unitSpanOf(unit.first).extent,
           lanesExtent:
               edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
+          mostExtent: edges.graphMost,
         )
       else ...[
         cells(rows[unit.first - first]),
@@ -91,6 +100,7 @@ class TimelineLaneGraph extends StatelessWidget {
     required this.grid,
     required this.crossExtent,
     required this.lanesExtent,
+    required this.mostExtent,
   });
 
   final TimelineGraphSeat seat;
@@ -108,6 +118,10 @@ class TimelineLaneGraph extends StatelessWidget {
   /// How far its lanes alone reach across the frames: the least its grip
   /// makes it.
   final double lanesExtent;
+
+  /// The most its grip makes it — what an enlarged graph stands
+  /// ([TimelineRowEdges.graphMost]).
+  final double mostExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +165,10 @@ class TimelineLaneGraph extends StatelessWidget {
             onPlot: verbs == null
                 ? null
                 : (mode) => verbs.plot(seat.groupKey, mode),
+            enlarged: seat.enlarged,
+            onEnlarge: verbs == null
+                ? null
+                : () => verbs.enlarge(seat.groupKey),
           ),
         ),
         if (guests.isNotEmpty)
@@ -181,6 +199,7 @@ class TimelineLaneGraph extends StatelessWidget {
       axis: grid.axis,
       extent: crossExtent,
       least: lanesExtent,
+      most: mostExtent,
       onResize: (extent) => verbs?.resize(seat.groupKey, extent),
     ),
   );
@@ -390,25 +409,28 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
 /// A graph's GRIP (I-89 ③, the mock's 5판): its cross end — the
 /// timeline's bottom edge, the sheet's right — pulled to make it taller or
-/// shorter, never shorter than its lanes. The app's one splitter
-/// ([DockEdgeSplitter]): what it cannot use of the travel is the drag's
-/// to pay back, and a pull that reaches the view's edge pans it.
+/// shorter, never shorter than its lanes nor taller than an enlarged graph
+/// stands (`Math.max(lanes × 28, Math.min(360, …))`). The app's one
+/// splitter ([DockEdgeSplitter]): what it cannot use of the travel is the
+/// drag's to pay back, and a pull that reaches the view's edge pans it.
 class LaneGraphGrip extends StatefulWidget {
   const LaneGraphGrip({
     super.key,
     required this.axis,
     required this.extent,
     required this.least,
+    required this.most,
     required this.onResize,
   });
 
   /// The grid's frame axis: the graph stands across it.
   final Axis axis;
 
-  /// How far the graph reaches across the frames now, and the least its
-  /// grip makes it.
+  /// How far the graph reaches across the frames now, and the least and
+  /// the most its grip makes it — the least winning where the two cross.
   final double extent;
   final double least;
+  final double most;
 
   /// The extent a pull has reached.
   final ValueChanged<double> onResize;
@@ -423,7 +445,10 @@ class _LaneGraphGripState extends State<LaneGraphGrip> {
   double _reached = 0;
 
   double _pull(double delta) {
-    final next = math.max(widget.least, _reached + delta);
+    final next = math.max(
+      widget.least,
+      math.min(widget.most, _reached + delta),
+    );
     final used = next - _reached;
     _reached = next;
     if (used != 0) {
@@ -443,13 +468,16 @@ class _LaneGraphGripState extends State<LaneGraphGrip> {
 }
 
 /// What a graph's tools keep clear of the view's start along the frames
-/// and of the graph's edge across them, and what their well keeps around
-/// the pills (the mock's, 5판).
+/// and of the graph's edge across them, what their well keeps around the
+/// pills, and what stands between the pills and the enlarge button (the
+/// mock's, 5판).
 const double _graphToolsInset = 6;
 const double _graphToolsPadding = 2;
+const double _graphToolsGap = 6;
 
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
-/// it plots — its values, or how fast they change.
+/// it plots — its values, or how fast they change — and the button that
+/// enlarges it over every other row or lets it back (③D).
 class LaneGraphTools extends StatelessWidget {
   const LaneGraphTools({
     super.key,
@@ -457,6 +485,8 @@ class LaneGraphTools extends StatelessWidget {
     required this.groupKey,
     required this.mode,
     required this.onPlot,
+    required this.enlarged,
+    required this.onEnlarge,
   });
 
   /// The grid's key prefix and the graph's group, which its pills' keys
@@ -469,6 +499,13 @@ class LaneGraphTools extends StatelessWidget {
   /// Null where the host hands the graph no verbs: the pills keep their
   /// place and take no press.
   final ValueChanged<LaneGraphMode>? onPlot;
+
+  /// Whether the graph is the enlarged one — its button on, wearing the
+  /// glyph that lets it back, as the mock's does.
+  final bool enlarged;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onEnlarge;
 
   @override
   Widget build(BuildContext context) {
@@ -487,10 +524,28 @@ class LaneGraphTools extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(_graphToolsPadding),
-        child: PillStrip(
-          items: [
-            pill(LaneGraphMode.value, strings.laneGraphValue),
-            pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PillStrip(
+              items: [
+                pill(LaneGraphMode.value, strings.laneGraphValue),
+                pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+              ],
+            ),
+            const SizedBox(width: _graphToolsGap),
+            AppIconButton(
+              keyValue: '$keyPrefix-lane-graph-enlarge-$groupKey',
+              tooltip: enlarged
+                  ? strings.laneGraphEnlargeOn
+                  : strings.laneGraphEnlarge,
+              size: AppIconButtonSize.strip,
+              isSelected: enlarged,
+              icon: Icon(
+                enlarged ? Icons.close_fullscreen : Icons.open_in_full,
+              ),
+              onPressed: onEnlarge,
+            ),
           ],
         ),
       ),
@@ -907,6 +962,10 @@ List<LaneGraphRange> laneGraphSpeedRanges(LaneCurve curve, List<int> keyed) {
 /// inside its padding: higher up the timeline's graph, and — the sheet
 /// being the timeline turned a quarter clockwise, as its key marks are —
 /// further right across the sheet's.
+///
+/// The padding is at most a quarter of the depth (I-89 ③D): the mock's
+/// own 16 turned the values over in a graph shallower than 32 — a one-lane
+/// group's, gripped down to its lane.
 double laneGraphAcross(
   double value,
   LaneGraphRange range,
@@ -914,10 +973,11 @@ double laneGraphAcross(
   Axis axis,
 ) {
   final share = (value - range.low) / (range.high - range.low);
-  final room = extent - 2 * _laneGraphPadding;
+  final padding = math.min(_laneGraphPadding, extent / 4);
+  final room = extent - 2 * padding;
   return axis == Axis.horizontal
-      ? extent - _laneGraphPadding - share * room
-      : _laneGraphPadding + share * room;
+      ? extent - padding - share * room
+      : padding + share * room;
 }
 
 /// The times a line is read at across [window], its frames [cell] long:
