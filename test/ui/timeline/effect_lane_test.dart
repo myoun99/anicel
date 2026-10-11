@@ -376,6 +376,34 @@ void main() {
       );
     });
 
+    test("the key window's write gives an effect's keys a pick's sides "
+        "alone: a path and a roving time are a position's", () {
+      final laneId = effectLaneId(const EffectId('e1'), 'blurX');
+      var effects = [blur(x: 6)];
+      for (final frame in [0, 4, 8]) {
+        effects = effectsWithLaneKeyToggled(
+          effects,
+          laneId: laneId,
+          frameIndex: frame,
+        )!;
+      }
+      final written = effectsWithLaneKeysWritten(
+        effects,
+        laneId: laneId,
+        frames: {0, 4, 8},
+        pick: const KeyTypePick(
+          sides: KeySidesEdit.hold,
+          curved: true,
+          roving: true,
+        ),
+      )!;
+      for (final key in written.single.parameterOf('blurX').track.keys.values) {
+        expect(key.outgoing, KeyExit.hold);
+        expect(key.path, KeyPath.straight);
+        expect(key.roving, isFalse);
+      }
+    });
+
     test('an edit leaves the OTHER effects identical', () {
       final effects = [blur(x: 6, id: 'a'), hue(id: 'b')];
       final edited = effectsWithLaneValueEdited(
