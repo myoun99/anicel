@@ -346,7 +346,19 @@ void main() {
   /// the playhead they are coloured against, and their arm and line).
   /// 🔬`clean_code_diff` against the lane's base (`7f40aad8e`, at 388)
   /// named those four added and nothing gone.
-  const wideSignatures = 392;
+  ///
+  /// ⚠️392 → 393 on 2026-10-12, named as the rule above asks (I-89 ④, a
+  /// position key bends its path). `cubicAt` (five — the parameter and the
+  /// four control values) is the ONE Bernstein cubic a key's ease, a
+  /// TVPaint camera's profile and path, and a position's path in space
+  /// evaluate; TVPaint's own (`bez`, the same five) went into it.
+  /// `PropertyTrack.withKey` (five) takes the key's path beside its two
+  /// sides — the key's own fields, which `PropertyKey`'s constructor
+  /// (excluded here) takes as well — so a name collapsing a range lands one
+  /// path with its value. 🔬`clean_code_diff` against the lane's last
+  /// commit before it (`91c98de18`, at 392) named those two added and `bez`
+  /// gone.
+  const wideSignatures = 393;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

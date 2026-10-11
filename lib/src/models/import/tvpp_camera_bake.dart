@@ -358,14 +358,13 @@ double _scalarAt(
 }
 
 /// The point [s] of the WAY along the spatial curve from [a] to [b], each
-/// key's handle reaching out of it ([alongCubic]).
+/// key's handle reaching out of it ([CubicWalk]).
 (double, double) _alongPath(TvppCameraPoint a, TvppCameraPoint b, double s) {
-  final at = alongCubic(
+  final at = CubicWalk(
     Offset(a.x, a.y),
     Offset(a.x + a.bezierAfterX, a.y + a.bezierAfterY),
     Offset(b.x + b.bezierBeforeX, b.y + b.bezierBeforeY),
     Offset(b.x, b.y),
-    s,
-  );
+  ).at(s);
   return (at.dx, at.dy);
 }

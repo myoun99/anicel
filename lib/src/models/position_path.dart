@@ -5,28 +5,11 @@ import '../core/cubic_curve.dart';
 import 'canvas_point.dart';
 import 'property_track.dart';
 
-/// Where the segment from the key at frame [from] to the key at frame [to]
-/// of a position lane's [keys] stands at a [progress] of its way: along the
-/// path the two keys' handles bend ([keyPathHandle]), walked by distance
-/// ([CubicWalk]) — the line between them where neither bends (I-89 ④).
-///
-/// [walked] keeps the segment's measured curve for the next point asked
-/// along it ([KeyValueSpace.walk]).
-CanvasPoint positionAlongPath(
-  SplayTreeMap<int, PropertyKey<CanvasPoint>> keys,
-  int from,
-  int to,
-  double progress, [
-  Map<int, Object>? walked,
-]) {
-  final kept = walked?[from];
-  final walk = kept is CubicWalk ? kept : _segmentWalk(keys, from, to);
-  walked?[from] = walk;
-  final at = walk.at(progress);
-  return CanvasPoint(x: at.dx, y: at.dy);
-}
-
-CubicWalk _segmentWalk(
+/// The walk along the segment from the key at frame [from] to the key at
+/// frame [to] of a position lane's [keys]: along the path the two keys'
+/// handles bend ([keyPathHandle]), by distance ([CubicWalk]) — the line
+/// between them where neither bends (I-89 ④).
+SegmentWalk<CanvasPoint> positionPathBetween(
   SplayTreeMap<int, PropertyKey<CanvasPoint>> keys,
   int from,
   int to,
@@ -35,12 +18,16 @@ CubicWalk _segmentWalk(
   final b = keys[to]!.value;
   final start = Offset(a.x, a.y);
   final end = Offset(b.x, b.y);
-  return CubicWalk(
+  final walk = CubicWalk(
     start,
     start + keyPathHandle(keys, from, ahead: true),
     end + keyPathHandle(keys, to, ahead: false),
     end,
   );
+  return (progress) {
+    final at = walk.at(progress);
+    return CanvasPoint(x: at.dx, y: at.dy);
+  };
 }
 
 /// How far, and which way, the path's handle at the key at [frame] of

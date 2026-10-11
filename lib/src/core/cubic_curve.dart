@@ -17,16 +17,6 @@ double cubicAt(double u, double c0, double c1, double c2, double c3) {
       u * u * u * c3;
 }
 
-/// The point [s] of the WAY along the cubic Bézier from [from] to [to]
-/// through the controls [leaving] and [arriving] ([CubicWalk.at]).
-Offset alongCubic(
-  Offset from,
-  Offset leaving,
-  Offset arriving,
-  Offset to,
-  double s,
-) => CubicWalk(from, leaving, arriving, to).at(s);
-
 /// The cubic Bézier from [from] to [to] through the controls [leaving] and
 /// [arriving], walked by distance: its length is measured once, and [at]
 /// reads it for every point asked along it — a position's trail asks for
@@ -39,10 +29,7 @@ Offset alongCubic(
 /// give). ↩️It was the TVPaint camera's own (`_alongPath`), and a position
 /// lane walks a path in space the same way (I-89 ④).
 final class CubicWalk {
-  CubicWalk(this.from, this.leaving, this.arriving, this.to)
-    : _lengths = leaving == from && arriving == to
-          ? null
-          : _lengthsAlong(from, leaving, arriving, to);
+  CubicWalk(this.from, this.leaving, this.arriving, this.to);
 
   final Offset from;
   final Offset leaving;
@@ -50,22 +37,19 @@ final class CubicWalk {
   final Offset to;
 
   /// How far along the curve each of its [_steps] + 1 even steps of the
-  /// curve's parameter stands — null for the straight line, which has no
-  /// need of them.
-  final Float64List? _lengths;
+  /// curve's parameter stands, measured when the first point is asked —
+  /// null for the straight line, which has no need of them.
+  late final Float64List? _lengths = leaving == from && arriving == to
+      ? null
+      : _lengthsAlong();
 
   static const int _steps = 256;
 
-  static Float64List _lengthsAlong(
-    Offset from,
-    Offset leaving,
-    Offset arriving,
-    Offset to,
-  ) {
+  Float64List _lengthsAlong() {
     final lengths = Float64List(_steps + 1);
     var before = from;
     for (var k = 1; k <= _steps; k++) {
-      final point = _curve(from, leaving, arriving, to, k / _steps);
+      final point = _curve(k / _steps);
       final dx = point.dx - before.dx;
       final dy = point.dy - before.dy;
       lengths[k] = lengths[k - 1] + math.sqrt(dx * dx + dy * dy);
@@ -74,13 +58,8 @@ final class CubicWalk {
     return lengths;
   }
 
-  static Offset _curve(
-    Offset from,
-    Offset leaving,
-    Offset arriving,
-    Offset to,
-    double u,
-  ) => Offset(
+  /// The curve at its parameter [u].
+  Offset _curve(double u) => Offset(
     cubicAt(u, from.dx, leaving.dx, arriving.dx, to.dx),
     cubicAt(u, from.dy, leaving.dy, arriving.dy, to.dy),
   );
@@ -107,8 +86,8 @@ final class CubicWalk {
     }
     final segment = lengths[hi] - lengths[lo];
     final f = segment <= 0 ? 0.0 : (target - lengths[lo]) / segment;
-    final a = _curve(from, leaving, arriving, to, lo / _steps);
-    final b = _curve(from, leaving, arriving, to, hi / _steps);
+    final a = _curve(lo / _steps);
+    final b = _curve(hi / _steps);
     return Offset(a.dx + (b.dx - a.dx) * f, a.dy + (b.dy - a.dy) * f);
   }
 }

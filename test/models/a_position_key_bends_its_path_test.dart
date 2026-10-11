@@ -33,9 +33,10 @@ void main() {
         'every straight pin was written on', () {
       const from = Offset(0.1, 0.2);
       const to = Offset(10.7, -3.3);
+      final walk = CubicWalk(from, from, to, to);
       for (final s in [0.0, 0.3, 0.7, 1.0]) {
         expect(
-          alongCubic(from, from, to, to, s),
+          walk.at(s),
           Offset(
             from.dx + (to.dx - from.dx) * s,
             from.dy + (to.dy - from.dy) * s,
@@ -78,15 +79,12 @@ void main() {
         isNot(closeTo(0.5, 0.05)),
         reason: '⛔전제: the curve\'s own parameter does not pace it evenly',
       );
+      final walk = CubicWalk(from, leaving, arriving, to);
       for (final s in [0.1, 0.25, 0.5, 0.75, 0.9]) {
-        expect(
-          shareOfLength(alongCubic(from, leaving, arriving, to, s)),
-          closeTo(s, 0.001),
-          reason: 's $s',
-        );
+        expect(shareOfLength(walk.at(s)), closeTo(s, 0.001), reason: 's $s');
       }
-      expectNear(alongCubic(from, leaving, arriving, to, 0), from);
-      expectNear(alongCubic(from, leaving, arriving, to, 1), to);
+      expectNear(walk.at(0), from);
+      expectNear(walk.at(1), to);
     });
   });
 
@@ -240,30 +238,50 @@ void main() {
       expect(at(track, 15).x, greaterThan(100), reason: 'and the way out');
       expect(
         at(track, 5),
-        positionAlongPath(SplayTreeMap.of(keys), 0, 10, 0.5),
+        positionPathBetween(SplayTreeMap.of(keys), 0, 10)(0.5),
       );
     });
 
-    test('a track keeps what it measured of a bent segment, and the track '
-        'an edit leaves measures its own', () {
-      final keys = {
-        0: PropertyKey(p(0, 0)),
-        10: PropertyKey(p(100, 0), path: KeyPath.auto),
-        20: PropertyKey(p(100, 100)),
-      };
-      final track = moving(keys);
-      final before = at(track, 5);
-      expect(at(track, 5), before, reason: 'read again, the same');
+    test('a track lays a bent segment\'s walk once for every point asked '
+        'along it, and the track an edit leaves lays its own', () {
+      final laid = <int>[];
+      final space = KeyValueSpace<CanvasPoint>(
+        lerp: CanvasPoint.lerp,
+        inverseLerp: CanvasPoint.inverseLerp,
+        walk: (keys, from, to) {
+          laid.add(from);
+          return positionPathBetween(keys, from, to);
+        },
+      );
+      CanvasPoint along(PropertyTrack<CanvasPoint> track, int frame) =>
+          track.resolveAt(
+            frameIndex: frame,
+            orElse: () => p(0, 0),
+            space: space,
+          );
+      final track = PropertyTrack(
+        keys: {
+          0: PropertyKey(p(0, 0)),
+          10: PropertyKey(p(100, 0), path: KeyPath.auto),
+          20: PropertyKey(p(100, 100)),
+        },
+      );
+      final first = [
+        for (var frame = 1; frame < 10; frame++) along(track, frame),
+      ];
+      expect(laid, [0], reason: 'nine points, one walk');
+      along(track, 15);
+      expect(laid, [0, 10], reason: 'the next segment lays its own');
+      expect(along(track, 5), first[4]);
+      expect(laid, [0, 10], reason: 'read again, not laid again');
 
-      final edited = track.copyWith(
-        position: track.position.withKey(10, p(100, -60)),
-      );
-      expect(edited.position.keyAt(10)!.path, KeyPath.auto, reason: '⛔전제');
+      final edited = track.withKey(10, p(100, -60));
+      expect(edited.keyAt(10)!.path, KeyPath.auto, reason: '⛔전제');
       expect(
-        at(edited, 5),
-        positionAlongPath(SplayTreeMap.of(edited.position.keys), 0, 10, 0.5),
+        along(edited, 5),
+        positionPathBetween(SplayTreeMap.of(edited.keys), 0, 10)(0.5),
       );
-      expect(at(edited, 5), isNot(before));
+      expect(laid, [0, 10, 0]);
     });
 
     test('a bent segment keeps the pace its keys\' sides give: it is as far '
@@ -284,10 +302,7 @@ void main() {
         at(moving(line), 3),
       );
       expect(progress, isNot(closeTo(0.3, 0.01)), reason: '⛔전제: eased');
-      final expected = positionAlongPath(
-        SplayTreeMap.of(bent),
-        0,
-        10,
+      final expected = positionPathBetween(SplayTreeMap.of(bent), 0, 10)(
         progress,
       );
       final actual = at(moving(bent), 3);

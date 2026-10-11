@@ -98,22 +98,22 @@ class KeyValueSpace<T> {
   /// are one value and there is no line to fall on.
   final double Function(T a, T b, T value) inverseLerp;
 
-  /// Where the segment from the key at frame `from` to the key at frame
-  /// `to` of [keys] stands at a [progress] of its way, where the values walk
-  /// a path the keys shape (a position lane's, I-89 ④) — [lerp] between the
-  /// two values where it is null.
-  ///
-  /// `walked` is the track's own keeping for what the walk measures of a
-  /// segment, by the frame it starts on: the keys never change under it.
-  final T Function(
+  /// The walk along the segment from the key at frame `from` to the key at
+  /// frame `to` of [keys], where the values walk a path the keys shape (a
+  /// position lane's, I-89 ④) — [lerp] between the two values where it is
+  /// null. A track lays a segment's walk once and asks it for every point
+  /// along it ([PropertyTrack.resolveAtTime]).
+  final SegmentWalk<T> Function(
     SplayTreeMap<int, PropertyKey<T>> keys,
     int from,
     int to,
-    double progress,
-    Map<int, Object> walked,
   )?
   walk;
 }
+
+/// Where a segment between two keys stands at a `progress` of its way
+/// ([KeyValueSpace.walk]).
+typedef SegmentWalk<T> = T Function(double progress);
 
 /// A single animated property, keyed independently of every other property
 /// (the After Effects model: Position can carry three keys while Scale
@@ -137,11 +137,12 @@ class PropertyTrack<T> {
 
   final SplayTreeMap<int, PropertyKey<T>> keys;
 
-  /// What a [KeyValueSpace.walk] measured of the segments it walked — a
-  /// position's curve and its length, read again for every point asked
-  /// along it (a trail or a header graph asks for hundreds). Made on the
-  /// first walk.
-  Map<int, Object>? _walked;
+  /// The walk a [KeyValueSpace.walk] laid of each segment asked along, by
+  /// the frame the segment starts on — a position's curve, measured once
+  /// and read again for every point asked along it (a trail or a header
+  /// graph asks for hundreds). The keys never change under it: an edit is
+  /// a new track.
+  Map<int, SegmentWalk<T>>? _walked;
 
   bool get isEmpty => keys.isEmpty;
   bool get isNotEmpty => keys.isNotEmpty;
@@ -300,7 +301,8 @@ class PropertyTrack<T> {
   /// Which KEY they land on, in order: [adopted] when the name already
   /// holds one somewhere (joining adopts, the frame-link rule), else the
   /// key at [preferredFrame] — the one you are standing on — else the
-  /// earliest key in range. Its SIDES ride across with its value.
+  /// earliest key in range. Its SIDES ride across with its value, and its
+  /// path (I-89 ④).
   ///
   /// ⛔This REVERSES "interpolation rides across untouched; adopting a
   /// value must not restyle the segment leaving a key" (mine, no user
@@ -490,9 +492,13 @@ class PropertyTrack<T> {
       }),
     );
     final walk = space.walk;
-    return walk == null
-        ? space.lerp(from.value, to.value, progress)
-        : walk(keys, previousIndex, nextIndex, progress, _walked ??= {});
+    if (walk == null) {
+      return space.lerp(from.value, to.value, progress);
+    }
+    final walked = _walked ??= {};
+    return (walked[previousIndex] ??= walk(keys, previousIndex, nextIndex))(
+      progress,
+    );
   }
 
   List<Map<String, dynamic>> toJson(Object? Function(T value) encodeValue) => [

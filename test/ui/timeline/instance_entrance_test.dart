@@ -347,6 +347,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(pill('hold').selected, isTrue, reason: 'the pick shows at once');
     expect(pill('linear').selected, isFalse);
+    // I-89 ④: and the path its position walks through it.
+    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    await tester.ensureVisible(curved);
+    expect(tester.widget<Pill>(curved).selected, isFalse, reason: '⛔전제');
+    await tester.tap(curved);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Pill>(curved).selected, isTrue);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-ok-button')),
     );
@@ -365,6 +372,13 @@ void main() {
         reason: 'and types every member (「일괄변경」)',
       );
     }
+    expect(
+      track.position.keyAt(2)!.path,
+      KeyPath.auto,
+      reason: 'and bends the member that walks a path',
+    );
+    expect(track.scale.keyAt(2)!.path, KeyPath.straight, reason: 'no other');
+    expect(track.rotation.keyAt(2)!.path, KeyPath.straight);
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
@@ -375,6 +389,7 @@ void main() {
       KeySide.linear,
       reason: '…and the type with it',
     );
+    expect(undone.path, KeyPath.straight, reason: '…and the path');
   });
 
   testWidgets('toolbar Add on the camera layer keys the current pose at '

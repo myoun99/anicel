@@ -491,6 +491,22 @@ void main() {
       expect(result.keyAt(0)!.outgoing, KeySide.linear);
     });
 
+    test('and ONE path: the keys a name gathers walk one way through the '
+        'key it is (I-89 ④)', () {
+      final handle = HandledPath(CanvasPoint(x: 4, y: 4));
+      final subject = PropertyTrack<CanvasPoint>(
+        keys: {
+          0: PropertyKey(CanvasPoint(x: 0, y: 0), path: handle),
+          5: PropertyKey(CanvasPoint(x: 0, y: 0)),
+        },
+      );
+
+      final result = subject.withRangeNamed(frames: {0, 5}, name: 'A');
+
+      expect(result!.keyAt(5)!.path, handle, reason: 'the earliest speaks');
+      expect(result.keyAt(0)!.path, handle);
+    });
+
     test('keyForName can EXCLUDE the keys that are joining', () {
       final subject = track({0: (1, 'A'), 5: (2, null)});
 

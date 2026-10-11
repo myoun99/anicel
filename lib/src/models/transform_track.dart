@@ -439,11 +439,11 @@ const KeyValueSpace<CanvasPoint> pointKeySpace = KeyValueSpace(
 );
 
 /// Position's [KeyValueSpace]: a point's, its segments walking the path in
-/// space their keys bend ([positionAlongPath], I-89 ④).
+/// space their keys bend ([positionPathBetween], I-89 ④).
 const KeyValueSpace<CanvasPoint> positionKeySpace = KeyValueSpace(
   lerp: CanvasPoint.lerp,
   inverseLerp: CanvasPoint.inverseLerp,
-  walk: positionAlongPath,
+  walk: positionPathBetween,
 );
 
 /// An ARGB colour's [KeyValueSpace], channel by channel like [lerpArgb].

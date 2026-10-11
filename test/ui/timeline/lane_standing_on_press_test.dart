@@ -365,6 +365,66 @@ void main() {
     );
   });
 
+  /// I-89 ④: the path row is the window's as the type rows are — what was
+  /// picked in it is confirmed with the name, whatever the name does.
+  Future<void> nameItAWithACurve(WidgetTester tester) async {
+    await doubleTapBand(tester, 'position', 8.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    await tester.ensureVisible(curved);
+    await tester.tap(curved);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a taken name the user does NOT join still takes the PATH '
+      'picked with it', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await tester.pumpAndSettle();
+
+    await nameItAWithACurve(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final key = positionOf(s).keyAt(8)!;
+    expect(key.name, isNull, reason: 'the name stood down');
+    expect(key.path, KeyPath.auto, reason: 'the path did not');
+    expect(positionOf(s).keyAt(0)!.path, KeyPath.straight);
+  });
+
+  /// ⚠️What the key holding the name does is not pinned: a pick made as a
+  /// key joins lands on the joining keys alone, the type's since 2026-09-12
+  /// and the path's with it, which splits the name — card
+  /// `key-window-join-with-a-pick-splits-the-name`.
+  testWidgets('a path picked as a key joins a name lands on the key that '
+      'joins', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await tester.pumpAndSettle();
+
+    await nameItAWithACurve(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(positionOf(s).keyAt(8)!.name, 'A', reason: '⛔전제: joined');
+    expect(positionOf(s).keyAt(8)!.path, KeyPath.auto);
+  });
+
   testWidgets('a TAP inside the lane selection clears it on the release — '
       "the cells' release rule, which the band rides (H18)", (tester) async {
     final s = await pumpHost(tester);
