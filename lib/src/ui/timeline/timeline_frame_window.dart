@@ -18,6 +18,11 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// Consumers treat the returned window as CONTENT-SPACE frame indices
 /// (the UI-R15 full-bounds contract: frame 0 at offset 0) and clamp to
 /// their own bounds.
+///
+/// 🚨Every painter that follows the bucket stands on a layer of its own:
+/// a crossing repaints it, and whatever shares its layer is recorded again
+/// with it. The row edit chrome did not, and every page turn re-recorded
+/// every row whole (2026-10-11).
 
 /// Cells per bucket span (the repaint cadence in cells).
 const int timelineFrameWindowSpanCells = 4;
