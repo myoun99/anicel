@@ -27,6 +27,10 @@ class CameraPath {
     : _frames = List<List<Offset>?>.filled(
         keys.last.frameIndex - keys.first.frameIndex + 1,
         null,
+      ),
+      _trail = List<Offset?>.filled(
+        2 * (keys.last.frameIndex - keys.first.frameIndex) + 1,
+        null,
       );
 
   /// [cut]'s camera path, its frames [frameSize] canvas pixels at zoom 1 —
@@ -79,6 +83,24 @@ class CameraPath {
         _frameSize,
         frameIndex,
       );
+
+  /// The camera's centre every half frame from [firstFrame] to [lastFrame],
+  /// read as it is asked for.
+  final List<Offset?> _trail;
+
+  /// The trail the camera's centre draws from frame [from] to frame [to]:
+  /// its centre at every frame and at the half between, as the confirmed
+  /// spec's mock draws it (5판) — so a path bent through its keys (I-89 ④)
+  /// reads as the curve it walks, not as a frame's chords.
+  Iterable<Offset> trailBetween(int from, int to) sync* {
+    for (var half = 2 * from; half <= 2 * to; half++) {
+      yield _trail[half - 2 * firstFrame] ??= cameraFrameCentre(
+        half.isEven
+            ? frameAt(half ~/ 2)
+            : cameraFrameShownAtTime(_cut, _frameSize, half / 2),
+      );
+    }
+  }
 }
 
 /// [path] as the canvas and the export write it (I-89 ④⑥, 유저 2026-10-11:
@@ -107,11 +129,7 @@ Iterable<SheetMark> cameraPathMarks(
   final last = math.min(path.lastFrame, to ?? path.lastFrame);
   return cameraWorkMarks(
     trails: [
-      if (first < last)
-        [
-          for (var frame = first; frame <= last; frame += 1)
-            place(cameraFrameCentre(path.frameAt(frame))),
-        ],
+      if (first < last) [...path.trailBetween(first, last).map(place)],
     ],
     keys: [
       for (final key in path.keys)

@@ -10,6 +10,8 @@
 /// 아주 초기단계니까 다 갈아엎어도되고」.
 library;
 
+import '../core/cubic_curve.dart';
+
 /// What the side LEAVING a key does: shape the segment the way any side
 /// can ([KeySide]), or [hold] the key's value until the next key.
 ///
@@ -376,10 +378,7 @@ double segmentProgress(
   }
   final (x: x1, y: y1) = keyHandlePoint(leaving, leaving: true);
   final (x: x2, y: y2) = keyHandlePoint(arriving, leaving: false);
-  double bezier(double t, double p1, double p2) {
-    final u = 1 - t;
-    return 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t;
-  }
+  double bezier(double t, double p1, double p2) => cubicAt(t, 0, p1, p2, 1);
 
   // Newton's step where it lands inside the bracket, a halving where it
   // does not: with both handles' times inside the segment the curve's time

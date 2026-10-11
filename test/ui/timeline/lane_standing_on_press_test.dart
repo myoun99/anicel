@@ -336,8 +336,8 @@ void main() {
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
     s.laneVerbs.setLaneKeyNamesForSelection('A');
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 8);
-    s.laneVerbs.setLaneKeySidesForSelection(
-      KeySidesEdit.hold,
+    s.laneVerbs.setLaneKeyTypeForSelection(
+      sides: KeySidesEdit.hold,
     );
     await tester.pumpAndSettle();
 

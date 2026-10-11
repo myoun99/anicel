@@ -99,6 +99,7 @@ void main() {
         value: 2.0,
         incoming: linear,
         outgoing: linear,
+        path: KeyPath.straight,
       ));
       expect(next.keys[0]!.value, 2.0, reason: 'was 1.0, changes');
       expect(next.keys[8]!.value, 2.0, reason: 'already 2.0, untouched');
@@ -109,6 +110,7 @@ void main() {
             value: 2.0,
             incoming: linear,
             outgoing: linear,
+            path: KeyPath.straight,
           )),
           track,
         ),
@@ -118,9 +120,10 @@ void main() {
 
     test('withNamedKeys applies each name once, changed keys only', () {
       const linear = KeySide.linear;
+      const straight = KeyPath.straight;
       final next = track.withNamedKeys({
-        'a': (value: 5.0, incoming: linear, outgoing: linear),
-        'zz': (value: 9.0, incoming: linear, outgoing: linear),
+        'a': (value: 5.0, incoming: linear, outgoing: linear, path: straight),
+        'zz': (value: 9.0, incoming: linear, outgoing: linear, path: straight),
       });
       expect(next.keys[0]!.value, 5.0);
       expect(next.keys[8]!.value, 5.0);
@@ -128,7 +131,12 @@ void main() {
       expect(
         identical(
           track.withNamedKeys({
-            'b': (value: 2.0, incoming: linear, outgoing: linear),
+            'b': (
+              value: 2.0,
+              incoming: linear,
+              outgoing: linear,
+              path: straight,
+            ),
           }),
           track,
         ),

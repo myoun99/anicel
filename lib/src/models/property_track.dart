@@ -1,9 +1,11 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'key_path.dart';
 import 'key_side.dart';
 import 'non_negative_index_map.dart';
 
+export 'key_path.dart';
 export 'key_side.dart';
 
 /// One keyframe of a single property.
@@ -12,6 +14,7 @@ class PropertyKey<T> {
     this.value, {
     this.incoming = KeySide.linear,
     this.outgoing = KeySide.linear,
+    this.path = KeyPath.straight,
     this.name,
   });
 
@@ -26,6 +29,10 @@ class PropertyKey<T> {
   /// SLIDE notation is that hold).
   final KeyExit outgoing;
 
+  /// How the path the value walks in space passes through the key — a
+  /// position lane's (I-89 ④); every other lane's keys are straight.
+  final KeyPath path;
+
   /// The key's NAME, and with it a link: keys sharing a name inside one
   /// naming space hold the same value, exactly the way frame names mean
   /// "the same drawing" (user 2026-07-30). Null is the ordinary unnamed
@@ -35,20 +42,23 @@ class PropertyKey<T> {
   /// DERIVED from the name; there is no identity to keep somewhere else.
   final String? name;
 
-  /// What a name hands every key it links: the number and both sides.
+  /// What a name hands every key it links: the number, both sides and the
+  /// path through it.
   NamedKeyValue<T> get held =>
-      (value: value, incoming: incoming, outgoing: outgoing);
+      (value: value, incoming: incoming, outgoing: outgoing, path: path);
 
   PropertyKey<T> copyWith({
     T? value,
     KeySide? incoming,
     KeyExit? outgoing,
+    KeyPath? path,
     String? Function()? name,
   }) {
     return PropertyKey(
       value ?? this.value,
       incoming: incoming ?? this.incoming,
       outgoing: outgoing ?? this.outgoing,
+      path: path ?? this.path,
       // A closure so a key can be UNnamed (the plain-nullable convention
       // cannot say "clear it").
       name: name == null ? this.name : name(),
@@ -61,11 +71,12 @@ class PropertyKey<T> {
       other is PropertyKey<T> && other.held == held && other.name == name;
 
   @override
-  int get hashCode => Object.hash(value, incoming, outgoing, name);
+  int get hashCode => Object.hash(value, incoming, outgoing, path, name);
 
   @override
   String toString() =>
       'PropertyKey($value, $incoming → $outgoing'
+      '${path == KeyPath.straight ? '' : ', $path'}'
       '${name == null ? '' : ', $name'})';
 }
 
@@ -75,13 +86,33 @@ class PropertyKey<T> {
 /// side reads its neighbours. One object, so the two answers cannot come
 /// from different spaces.
 class KeyValueSpace<T> {
-  const KeyValueSpace({required this.lerp, required this.inverseLerp});
+  const KeyValueSpace({
+    required this.lerp,
+    required this.inverseLerp,
+    this.walk,
+  });
 
   final T Function(T a, T b, double t) lerp;
 
   /// Where [value] falls along the line from [a] to [b] — 0 when the two
   /// are one value and there is no line to fall on.
   final double Function(T a, T b, T value) inverseLerp;
+
+  /// Where the segment from the key at frame `from` to the key at frame
+  /// `to` of [keys] stands at a [progress] of its way, where the values walk
+  /// a path the keys shape (a position lane's, I-89 ④) — [lerp] between the
+  /// two values where it is null.
+  ///
+  /// `walked` is the track's own keeping for what the walk measures of a
+  /// segment, by the frame it starts on: the keys never change under it.
+  final T Function(
+    SplayTreeMap<int, PropertyKey<T>> keys,
+    int from,
+    int to,
+    double progress,
+    Map<int, Object> walked,
+  )?
+  walk;
 }
 
 /// A single animated property, keyed independently of every other property
@@ -106,6 +137,12 @@ class PropertyTrack<T> {
 
   final SplayTreeMap<int, PropertyKey<T>> keys;
 
+  /// What a [KeyValueSpace.walk] measured of the segments it walked — a
+  /// position's curve and its length, read again for every point asked
+  /// along it (a trail or a header graph asks for hundreds). Made on the
+  /// first walk.
+  Map<int, Object>? _walked;
+
   bool get isEmpty => keys.isEmpty;
   bool get isNotEmpty => keys.isNotEmpty;
 
@@ -116,6 +153,7 @@ class PropertyTrack<T> {
     T value, {
     KeySide? incoming,
     KeyExit? outgoing,
+    KeyPath? path,
   }) {
     final existing = keys[frameIndex];
     return PropertyTrack(
@@ -128,9 +166,11 @@ class PropertyTrack<T> {
           // 2026-09-12: 「홀드인상태서 캔버스쪽 직접 컨트롤해서 값 바꾸면
           // 홀드가 리니어로 돌아와」 — the camera's pose facade writes
           // through here with no type to hand over, and the hold was gone
-          // on every drag.
+          // on every drag. Its PATH survives it the same way: a key dragged
+          // across the canvas keeps the curve it was given (I-89 ④).
           incoming: incoming ?? existing?.incoming ?? KeySide.linear,
           outgoing: outgoing ?? existing?.outgoing ?? KeySide.linear,
+          path: path ?? existing?.path ?? KeyPath.straight,
           name: existing?.name,
         ),
       },
@@ -212,6 +252,7 @@ class PropertyTrack<T> {
           value: linked.value,
           incoming: linked.incoming,
           outgoing: linked.outgoing,
+          path: linked.path,
         );
         changed = true;
         continue;
@@ -294,6 +335,7 @@ class PropertyTrack<T> {
             landing.value,
             incoming: landing.incoming,
             outgoing: landing.outgoing,
+            path: landing.path,
           );
         }
       }
@@ -312,24 +354,41 @@ class PropertyTrack<T> {
   PropertyTrack<T>? withKeySides({
     required Set<int> frames,
     required KeySidesEdit edit,
-  }) {
+  }) => _withKeysAt(frames, (key) {
+    final sides = edit.applyTo(incoming: key.incoming, outgoing: key.outgoing);
+    return sides.incoming == key.incoming && sides.outgoing == key.outgoing
+        ? null
+        : key.copyWith(incoming: sides.incoming, outgoing: sides.outgoing);
+  });
+
+  /// The keys inside [frames] bending through as [curved] says — the PATH
+  /// half of the key window (I-89 ④-Q4, A while it is asked): a corner
+  /// made a curve is laid smooth by its neighbours ([KeyPath.auto]), a key
+  /// already curved keeps its handle, and a straight one has none. Values,
+  /// sides and names ride across untouched. Null when nothing here changed.
+  PropertyTrack<T>? withKeyPaths({
+    required Set<int> frames,
+    required bool curved,
+  }) => _withKeysAt(
+    frames,
+    (key) => key.path.curved == curved
+        ? null
+        : key.copyWith(path: curved ? KeyPath.auto : KeyPath.straight),
+  );
+
+  /// The keys inside [frames] as [edit] leaves each — null where it changes
+  /// it not — or null when it changed none.
+  PropertyTrack<T>? _withKeysAt(
+    Set<int> frames,
+    PropertyKey<T>? Function(PropertyKey<T> key) edit,
+  ) {
     Map<int, PropertyKey<T>>? next;
     for (final frame in frames) {
       final key = keys[frame];
-      if (key == null) {
-        continue;
+      final edited = key == null ? null : edit(key);
+      if (edited != null) {
+        (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = edited;
       }
-      final sides = edit.applyTo(
-        incoming: key.incoming,
-        outgoing: key.outgoing,
-      );
-      if (sides.incoming == key.incoming && sides.outgoing == key.outgoing) {
-        continue;
-      }
-      (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = key.copyWith(
-        incoming: sides.incoming,
-        outgoing: sides.outgoing,
-      );
     }
     return next == null ? null : PropertyTrack(keys: next);
   }
@@ -430,7 +489,10 @@ class PropertyTrack<T> {
               );
       }),
     );
-    return space.lerp(from.value, to.value, progress);
+    final walk = space.walk;
+    return walk == null
+        ? space.lerp(from.value, to.value, progress)
+        : walk(keys, previousIndex, nextIndex, progress, _walked ??= {});
   }
 
   List<Map<String, dynamic>> toJson(Object? Function(T value) encodeValue) => [
@@ -442,6 +504,7 @@ class PropertyTrack<T> {
           'in': entry.value.incoming.toJson(),
         if (entry.value.outgoing != KeySide.linear)
           'out': entry.value.outgoing.toJson(),
+        if (entry.value.path.toJson() case final Object path) 'path': path,
         if (entry.value.name != null) 'name': entry.value.name,
       },
   ];
@@ -467,6 +530,7 @@ class PropertyTrack<T> {
         outgoing: outgoing == null
             ? KeySide.linear
             : KeyExit.fromJson(outgoing),
+        path: KeyPath.fromJson(entry['path']),
         name: entry['name'] as String?,
       );
     }
@@ -487,13 +551,18 @@ class PropertyTrack<T> {
   String toString() => 'PropertyTrack(keys: $keys)';
 }
 
-/// What a named key hands its link: the number AND both of its sides
-/// ([PropertyKey.held]).
+/// What a named key hands its link: the number AND both of its sides AND
+/// the path through it ([PropertyKey.held]).
 ///
 /// 🗣️유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 링크안되는건가?
 /// 싹다링크해야하는데」 — a name is ONE key seen in several places, so they
 /// travel together or the link is only half there.
-typedef NamedKeyValue<T> = ({T value, KeySide incoming, KeyExit outgoing});
+typedef NamedKeyValue<T> = ({
+  T value,
+  KeySide incoming,
+  KeyExit outgoing,
+  KeyPath path,
+});
 
 /// The named keys one track edit MOVED between [before] and [after] — what
 /// it hands the "same name, same key" link.

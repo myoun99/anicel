@@ -171,6 +171,27 @@ TransformTrack? transformTrackWithLaneKeySides(
   <U>(PropertyTrack<U> lane) => lane.withKeySides(frames: frames, edit: edit),
 );
 
+/// [track] with lane [laneId]'s keys inside [frames] bending as [curved]
+/// says ([PropertyTrack.withKeyPaths]) — the key window's path (I-89 ④).
+/// Null on a lane whose keys walk no path ([walksAPath]), and where
+/// nothing changed.
+TransformTrack? transformTrackWithLaneKeyPaths(
+  TransformTrack track, {
+  required String laneId,
+  required Set<int> frames,
+  required bool curved,
+}) {
+  final property = transformPropertyOfLaneId(laneId);
+  if (property == null || !walksAPath(property)) {
+    return null;
+  }
+  return transformLaneLens(laneId)?.update(
+    track,
+    <U>(PropertyTrack<U> lane) =>
+        lane.withKeyPaths(frames: frames, curved: curved),
+  );
+}
+
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
 /// playhead), preserving an existing key's sides. Accepted input

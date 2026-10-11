@@ -1,5 +1,6 @@
-import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
+import '../../core/cubic_curve.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
 import 'tvpp_parse.dart';
@@ -189,23 +190,15 @@ class TvppCameraProfile {
     var hi = 1.0;
     for (var step = 0; step < 32; step++) {
       final mid = (lo + hi) / 2;
-      if (_bez(mid, a.x, p1x, p2x, b.x) < t) {
+      if (cubicAt(mid, a.x, p1x, p2x, b.x) < t) {
         lo = mid;
       } else {
         hi = mid;
       }
     }
     final u = (lo + hi) / 2;
-    return _bez(u, a.y, p1y, p2y, b.y).clamp(0.0, 1.0);
+    return cubicAt(u, a.y, p1y, p2y, b.y).clamp(0.0, 1.0);
   }
-}
-
-double _bez(double u, double c0, double c1, double c2, double c3) {
-  final v = 1 - u;
-  return v * v * v * c0 +
-      3 * v * v * u * c1 +
-      3 * v * u * u * c2 +
-      u * u * u * c3;
 }
 
 class TvppCameraProfilePoint {
@@ -364,47 +357,15 @@ double _scalarAt(
   return a + (read(points[bi]) - a) * eased;
 }
 
-/// The point [s] of the WAY along the spatial curve from [a] to [b].
-///
-/// Progress is a fraction of distance travelled, so a curved segment is
-/// walked by arc length; with zero spatial handles the path is a
-/// straight line and this is a plain lerp (feeding the fraction in as
-/// the bezier parameter would add a phantom ease on top of the profile).
+/// The point [s] of the WAY along the spatial curve from [a] to [b], each
+/// key's handle reaching out of it ([alongCubic]).
 (double, double) _alongPath(TvppCameraPoint a, TvppCameraPoint b, double s) {
-  final straight =
-      a.bezierAfterX == 0 &&
-      a.bezierAfterY == 0 &&
-      b.bezierBeforeX == 0 &&
-      b.bezierBeforeY == 0;
-  if (straight) {
-    return (a.x + (b.x - a.x) * s, a.y + (b.y - a.y) * s);
-  }
-  const steps = 256;
-  final xs = List<double>.filled(steps + 1, 0);
-  final ys = List<double>.filled(steps + 1, 0);
-  final lens = List<double>.filled(steps + 1, 0);
-  for (var k = 0; k <= steps; k++) {
-    final u = k / steps;
-    xs[k] = _bez(u, a.x, a.x + a.bezierAfterX, b.x + b.bezierBeforeX, b.x);
-    ys[k] = _bez(u, a.y, a.y + a.bezierAfterY, b.y + b.bezierBeforeY, b.y);
-    if (k > 0) {
-      final dx = xs[k] - xs[k - 1];
-      final dy = ys[k] - ys[k - 1];
-      lens[k] = lens[k - 1] + math.sqrt(dx * dx + dy * dy);
-    }
-  }
-  final target = s * lens[steps];
-  var lo = 0;
-  var hi = steps;
-  while (lo + 1 < hi) {
-    final mid = (lo + hi) ~/ 2;
-    if (lens[mid] < target) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  final segment = lens[hi] - lens[lo];
-  final f = segment <= 0 ? 0.0 : (target - lens[lo]) / segment;
-  return (xs[lo] + (xs[hi] - xs[lo]) * f, ys[lo] + (ys[hi] - ys[lo]) * f);
+  final at = alongCubic(
+    Offset(a.x, a.y),
+    Offset(a.x + a.bezierAfterX, a.y + a.bezierAfterY),
+    Offset(b.x + b.bezierBeforeX, b.y + b.bezierBeforeY),
+    Offset(b.x, b.y),
+    s,
+  );
+  return (at.dx, at.dy);
 }

@@ -65,6 +65,18 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v14 (2026-10-12, I-89 ④ — the path a position walks in space, After
+/// Effects' spatial interpolation): a key says how the path bends through
+/// it — `path` on a key (`PropertyTrack.toJson`): `auto`, or the handle's
+/// `tangent`, written only where it bends (`KeyPath.toJson`). A v13 build
+/// reads a key without the word: it walks every bent path in straight
+/// lines, and its next save writes the keys back without it. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a key that does not say is a straight
+/// one at THIS version too, so a v13 file was such a document.
+///
 /// v13 (2026-10-10, I-89 — 유저 10-10 「키 양쪽. 업계 표준인 전문 툴대로
 /// 하고싶어. 그게 ae고」): a key eases with two sides, After Effects'
 /// incoming and outgoing temporal interpolation — `in` and `out` on a key
@@ -221,7 +233,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 13;
+const int anicelFormatVersion = 14;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

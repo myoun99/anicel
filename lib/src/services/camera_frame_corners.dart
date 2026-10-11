@@ -45,11 +45,19 @@ List<Offset> cameraFrameShownAt(
   Cut cut,
   CanvasSize cameraFrameSize,
   int frameIndex,
+) => cameraFrameShownAtTime(cut, cameraFrameSize, frameIndex.toDouble());
+
+/// [cameraFrameShownAt] at a [time] between frames as well — where the
+/// camera's path is drawn between them (I-89 ④).
+List<Offset> cameraFrameShownAtTime(
+  Cut cut,
+  CanvasSize cameraFrameSize,
+  double time,
 ) => cameraFrameCornersInCanvas(
-  pose: resolveCameraPoseAt(
+  pose: resolveCameraPoseAtTime(
     camera: cut.camera,
     canvasSize: cut.canvasSize,
-    frameIndex: frameIndex,
+    time: time,
   ),
   cameraFrameSize: cameraFrameSize,
 );

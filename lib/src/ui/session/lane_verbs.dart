@@ -11,7 +11,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show ReferenceRedraw;
 import '../../models/property_track.dart'
-    show KeyExit, KeySide, KeySidesEdit, PropertyKey;
+    show KeyExit, KeyPath, KeySide, KeySidesEdit, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -41,6 +41,7 @@ import '../timeline/transform_lane_editing.dart'
         poseWithLaneValueEdited,
         transformLaneKeyFrames,
         transformTrackWithGroupReset,
+        transformTrackWithLaneKeyPaths,
         transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeySides,
         transformTrackWithLaneKeyToggled,
@@ -1161,13 +1162,13 @@ class LaneVerbs {
     );
   }
 
-  /// The keys the LANE RANGE covers, one entry per key. Empty when the
-  /// range holds no key at all.
+  /// The keys the LANE RANGE covers, one entry per key, each with the lane
+  /// it is on. Empty when the range holds no key at all.
   ///
   /// The naming gates and the key window's TYPE all read this, so "can I
   /// name here", "what do they already say" and "what type are they"
   /// cannot disagree about which keys the range covers.
-  List<PropertyKey<Object?>> _laneRangeKeys() {
+  List<({String laneId, PropertyKey<Object?> key})> _laneRangeKeys() {
     final lane = laneVerbRange;
     if (lane == null) {
       return const [];
@@ -1178,7 +1179,7 @@ class LaneVerbs {
     }
     final layer = scope.layer;
     final targets = scope.targets;
-    final keys = <PropertyKey<Object?>>[];
+    final keys = <({String laneId, PropertyKey<Object?> key})>[];
     if (scope.effectLanes) {
       for (final laneId in targets) {
         final address = parseEffectLaneId(laneId);
@@ -1196,7 +1197,7 @@ class LaneVerbs {
           }
           for (final entry in track.keys.entries) {
             if (lane.contains(entry.key)) {
-              keys.add(entry.value);
+              keys.add((laneId: laneId, key: entry.value));
             }
           }
         }
@@ -1212,7 +1213,7 @@ class LaneVerbs {
       for (final frame in transformLaneKeyFrames(track, laneId)) {
         final key = transformLaneKeyAt(track, property, frame);
         if (key != null && lane.contains(frame)) {
-          keys.add(key);
+          keys.add((laneId: laneId, key: key));
         }
       }
     }
@@ -1221,7 +1222,7 @@ class LaneVerbs {
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
-    for (final key in _laneRangeKeys()) key.name,
+    for (final (:key, laneId: _) in _laneRangeKeys()) key.name,
   };
 
   /// Whether the lane range has a key to name — Edit Instance's gate on a
@@ -1245,8 +1246,19 @@ class LaneVerbs {
   /// the rule the name above follows (and the ○ the group header draws
   /// where its members disagree).
   List<({KeySide incoming, KeyExit outgoing})> get laneKeySidesForSelection => [
-    for (final key in _laneRangeKeys())
+    for (final (:key, laneId: _) in _laneRangeKeys())
       (incoming: key.incoming, outgoing: key.outgoing),
+  ];
+
+  /// The paths of the keys the range covers on a lane whose keys walk one
+  /// ([walksAPath]) — what the key window's path row opens with (I-89 ④),
+  /// lit where they agree as the sides are. Empty where no covered key
+  /// walks a path: the row is offered and refused.
+  List<KeyPath> get laneKeyPathsForSelection => [
+    for (final (:laneId, :key) in _laneRangeKeys())
+      if (transformPropertyOfLaneId(laneId) case final property?
+          when walksAPath(property))
+        key.path,
   ];
 
   /// Names every key the LANE RANGE covers, on every lane it spans — the
@@ -1268,28 +1280,37 @@ class LaneVerbs {
   /// NOTHING was written — the caller asks ONCE for the whole range and
   /// then calls [linkLaneKeyNamesForSelection].
   ///
-  /// [sides], when given, lands on the same keys in the same undo step —
-  /// the key window's TYPE (F-17, 유저 2026-09-01: 「이름변경이랑 오른쪽에
-  /// 유니언 타입 변경 두개 존재하도록」).
-  bool setLaneKeyNamesForSelection(String? name, {KeySidesEdit? sides}) =>
-      _writeLaneKeysForSelection(
-        naming: (name: name, adopt: false),
-        sides: sides,
-      );
+  /// [sides] and [curved], when given, land on the same keys in the same
+  /// undo step — the key window's TYPE (F-17, 유저 2026-09-01: 「이름변경이랑
+  /// 오른쪽에 유니언 타입 변경 두개 존재하도록」), its path half on the keys
+  /// that walk one (I-89 ④).
+  bool setLaneKeyNamesForSelection(
+    String? name, {
+    KeySidesEdit? sides,
+    bool? curved,
+  }) => _writeLaneKeysForSelection(
+    naming: (name: name, adopt: false),
+    sides: sides,
+    curved: curved,
+  );
 
   /// Joins [name] across the range, ADOPTING the value it already holds —
   /// the answer to the "합칠까요?" [setLaneKeyNamesForSelection] raises.
-  void linkLaneKeyNamesForSelection(String name, {KeySidesEdit? sides}) =>
-      _writeLaneKeysForSelection(
-        naming: (name: name, adopt: true),
-        sides: sides,
-      );
+  void linkLaneKeyNamesForSelection(
+    String name, {
+    KeySidesEdit? sides,
+    bool? curved,
+  }) => _writeLaneKeysForSelection(
+    naming: (name: name, adopt: true),
+    sides: sides,
+    curved: curved,
+  );
 
   /// The TYPE alone, on the keys the range covers — what the key window
   /// still owes when its name stood down (a taken name the user chose not
   /// to join): the type was confirmed in the same window.
-  void setLaneKeySidesForSelection(KeySidesEdit sides) =>
-      _writeLaneKeysForSelection(sides: sides);
+  void setLaneKeyTypeForSelection({KeySidesEdit? sides, bool? curved}) =>
+      _writeLaneKeysForSelection(sides: sides, curved: curved);
 
   /// The shared body: [_laneKeysWriteOver] the lane range, committed as one
   /// undo step — or nothing, and true, when a name is taken. Stopping
@@ -1298,12 +1319,18 @@ class LaneVerbs {
   bool _writeLaneKeysForSelection({
     _LaneKeyNaming? naming,
     KeySidesEdit? sides,
+    bool? curved,
   }) {
     final lane = laneVerbRange;
     if (lane == null) {
       return false;
     }
-    final write = _laneKeysWriteOver(lane, naming: naming, sides: sides);
+    final write = _laneKeysWriteOver(
+      lane,
+      naming: naming,
+      sides: sides,
+      curved: curved,
+    );
     if (write.taken) {
       return true;
     }
@@ -1324,11 +1351,13 @@ class LaneVerbs {
   /// the FIRST lane whose name is taken, unless the [naming] adopts what
   /// holds it: then there is no edit either.
   ///
-  /// No [naming] leaves every name as it is: the TYPE alone.
+  /// No [naming] leaves every name as it is: the TYPE alone — its [sides],
+  /// and its path ([curved]) on the lanes whose keys walk one.
   ({bool taken, ({Layer layer, _LaneEdit edit})? edit}) _laneKeysWriteOver(
     TimelineLaneSelection lane, {
     _LaneKeyNaming? naming,
     KeySidesEdit? sides,
+    bool? curved,
   }) {
     final scope = _laneVerbScope(lane);
     if (scope == null) {
@@ -1449,7 +1478,15 @@ class LaneVerbs {
               frames: read.frames,
               edit: sides,
             );
-      return typed ?? named;
+      final bent = curved == null
+          ? null
+          : transformTrackWithLaneKeyPaths(
+              typed ?? named ?? value,
+              laneId: laneId,
+              frames: read.frames,
+              curved: curved,
+            );
+      return bent ?? typed ?? named;
     });
     return (
       taken: false,

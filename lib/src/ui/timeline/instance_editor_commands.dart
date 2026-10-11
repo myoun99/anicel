@@ -24,6 +24,7 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
+import 'key_path_row.dart' show KeyPathRow;
 import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
@@ -791,8 +792,10 @@ Future<void> _renameLaneKey(
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
   KeySidesEdit? picked;
+  bool? curved;
   // The keys stand still while the window is up: read them once.
   final sides = session.laneVerbs.laneKeySidesForSelection;
+  final paths = session.laneVerbs.laneKeyPathsForSelection;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -801,10 +804,22 @@ Future<void> _renameLaneKey(
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
-      extra: (setLocal) => KeySidesRows(
-        sides: sides,
-        picked: picked ?? const KeySidesEdit(),
-        onPicked: (edit) => setLocal(() => picked = edit),
+      extra: (setLocal) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          KeySidesRows(
+            sides: sides,
+            picked: picked ?? const KeySidesEdit(),
+            onPicked: (edit) => setLocal(() => picked = edit),
+          ),
+          const SizedBox(height: 10),
+          KeyPathRow(
+            paths: paths,
+            picked: curved,
+            onPicked: (bends) => setLocal(() => curved = bends),
+          ),
+        ],
       ),
     )),
     // The RANGE form is the only one called: a single key is the one-frame
@@ -817,6 +832,7 @@ Future<void> _renameLaneKey(
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
             sides: picked,
+            curved: curved,
           )
           ? trimmed
           : null;
@@ -828,14 +844,19 @@ Future<void> _renameLaneKey(
         session.repository.requireProject(),
         lane.layerId,
       ),
-      join: (name) =>
-          session.laneVerbs.linkLaneKeyNamesForSelection(name, sides: picked),
+      join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
+        name,
+        sides: picked,
+        curved: curved,
+      ),
       // The name stood down; a type the user picked in the same window was
       // still confirmed, so it lands.
       decline: () {
-        final edit = picked;
-        if (edit != null) {
-          session.laneVerbs.setLaneKeySidesForSelection(edit);
+        if (picked != null || curved != null) {
+          session.laneVerbs.setLaneKeyTypeForSelection(
+            sides: picked,
+            curved: curved,
+          );
         }
       },
     ),

@@ -206,8 +206,8 @@ void main() {
       LaneRowAddress(cameraOf(pair.source).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeySidesForSelection(
-      KeySidesEdit.hold,
+    session.laneVerbs.setLaneKeyTypeForSelection(
+      sides: KeySidesEdit.hold,
     );
     keyCameraIn(pair.linked, {0: CanvasPoint(x: 1, y: 1)});
     joinName(pair.linked, 0, 'A');
@@ -243,8 +243,8 @@ void main() {
       LaneRowAddress(cameraOf(pair.linked).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeySidesForSelection(
-      KeySidesEdit.hold,
+    session.laneVerbs.setLaneKeyTypeForSelection(
+      sides: KeySidesEdit.hold,
     );
 
     expect(

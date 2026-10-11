@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'camera_pose.dart';
 import 'canvas_point.dart';
+import 'position_path.dart';
 import 'property_track.dart';
 import 'transform_pose.dart';
 
@@ -171,7 +172,7 @@ class TransformTrack {
       center: position.resolveAtTime(
         time: time,
         orElse: () => fallback().center,
-        space: pointKeySpace,
+        space: positionKeySpace,
       ),
       scaleX: scales.x,
       scaleY: scales.y,
@@ -326,6 +327,12 @@ TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
       _ => null,
     };
 
+/// Whether [property]'s keys walk a path in space ([KeyPath], I-89 ④) —
+/// Position's alone: it resolves through [positionKeySpace], and no other
+/// lane's key is offered a path.
+bool walksAPath(TransformPropertyId property) =>
+    property == TransformPropertyId.position;
+
 /// [property]'s key at [frameIndex], or null — a lane's key read without
 /// knowing its value type, so its NAME and its TYPE (the key window's two
 /// halves) come off the same read.
@@ -425,11 +432,18 @@ const KeyValueSpace<double> doubleKeySpace = KeyValueSpace(
   inverseLerp: inverseLerpDouble,
 );
 
-/// A point's [KeyValueSpace] — Position's, Anchor Point's, and Scale's two
-/// numbers.
+/// A point's [KeyValueSpace] — Anchor Point's, and Scale's two numbers.
 const KeyValueSpace<CanvasPoint> pointKeySpace = KeyValueSpace(
   lerp: CanvasPoint.lerp,
   inverseLerp: CanvasPoint.inverseLerp,
+);
+
+/// Position's [KeyValueSpace]: a point's, its segments walking the path in
+/// space their keys bend ([positionAlongPath], I-89 ④).
+const KeyValueSpace<CanvasPoint> positionKeySpace = KeyValueSpace(
+  lerp: CanvasPoint.lerp,
+  inverseLerp: CanvasPoint.inverseLerp,
+  walk: positionAlongPath,
 );
 
 /// An ARGB colour's [KeyValueSpace], channel by channel like [lerpArgb].

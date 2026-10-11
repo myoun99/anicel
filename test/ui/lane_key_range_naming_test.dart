@@ -218,8 +218,8 @@ void main() {
     keyRotation({0: 10, 4: 20});
     selectRotationRange(4, 5);
     laneVerbs.setLaneKeyNamesForSelection('B');
-    laneVerbs.setLaneKeySidesForSelection(
-      KeySidesEdit.hold,
+    laneVerbs.setLaneKeyTypeForSelection(
+      sides: KeySidesEdit.hold,
     );
     expect(rotation().keyAt(4)!.outgoing, KeyExit.hold);
     expect(
@@ -326,8 +326,8 @@ void main() {
     expect(session.cellInstances.createInstancesForSelection(), isTrue);
 
     laneVerbs.setLaneKeyNamesForSelection('B');
-    laneVerbs.setLaneKeySidesForSelection(
-      KeySidesEdit.hold,
+    laneVerbs.setLaneKeyTypeForSelection(
+      sides: KeySidesEdit.hold,
     );
 
     final track = layer().effects.single.parameterOf('blurX').track;

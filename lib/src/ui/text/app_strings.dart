@@ -356,6 +356,11 @@ enum AppStrings {
   /// An eased side's influence, AE's — 33% is its Easy Ease.
   String get keyEaseInfluence => _s('keyEaseInfluence');
 
+  /// The key window's path (I-89 ④): a position key's corner or curve.
+  String get keyPath => _s('keyPath');
+  String get keyPathStraight => _s('keyPathStraight');
+  String get keyPathCurved => _s('keyPathCurved');
+
   /// The canvas's camera path settings (I-89 ④), words of the confirmed
   /// spec's mock: what it shows, how much of it, and its numbers.
   String get cameraPath => _s('cameraPath');
@@ -1893,6 +1898,9 @@ enum AppStrings {
     'keySideIncoming': 'In',
     'keySideOutgoing': 'Out',
     'keyEaseInfluence': 'Influence',
+    'keyPath': 'Path',
+    'keyPathStraight': 'Straight',
+    'keyPathCurved': 'Curved',
     'cameraPath': 'Camera path',
     'cameraPathOff': 'Off',
     'cameraPathSpace': 'Space',
@@ -3046,6 +3054,9 @@ enum AppStrings {
     'keySideKind.auto': 'スムーズ',
     'keySideKind.hold': 'ホールド',
     'keyEaseInfluence': '影響',
+    'keyPath': 'パス',
+    'keyPathStraight': '直線',
+    'keyPathCurved': '曲線',
     'cameraPath': 'カメラパス',
     'cameraPathOff': 'オフ',
     'cameraPathSpace': '空間',
@@ -4535,6 +4546,9 @@ enum AppStrings {
     'keySideKind.auto': '부드럽게',
     'keySideKind.hold': '홀드',
     'keyEaseInfluence': '세기',
+    'keyPath': '경로',
+    'keyPathStraight': '직선',
+    'keyPathCurved': '곡선',
     'cameraPath': '카메라 경로',
     'cameraPathOff': '끄기',
     'cameraPathSpace': '공간',
@@ -6023,6 +6037,9 @@ enum AppStrings {
     'keySideKind.auto': 'Fluide',
     'keySideKind.hold': 'Maintien',
     'keyEaseInfluence': 'Influence',
+    'keyPath': 'Trajectoire',
+    'keyPathStraight': 'Droite',
+    'keyPathCurved': 'Courbe',
     'cameraPath': 'Trajectoire de la caméra',
     'cameraPathOff': 'Désactivé',
     'cameraPathSpace': 'Espace',
@@ -7611,6 +7628,9 @@ enum AppStrings {
     'keySideKind.auto': '平滑',
     'keySideKind.hold': '保持',
     'keyEaseInfluence': '影响',
+    'keyPath': '路径',
+    'keyPathStraight': '直线',
+    'keyPathCurved': '曲线',
     'cameraPath': '摄像机路径',
     'cameraPathOff': '关',
     'cameraPathSpace': '空间',

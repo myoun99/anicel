@@ -11,6 +11,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/services/camera_path.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart'
+    show resolveCameraPoseAtTime;
 
 /// I-89 ④⑥ — a camera's path as the canvas and the export write it (유저
 /// 2026-10-11: 「캔버스랑 출력쪽은 키마다 전부 사각형 그리는거야. 사각형이랑
@@ -180,19 +182,51 @@ void main() {
   });
 
   test('the trail runs through the camera\'s centre at every frame from its '
-      'first key to its last, as playback shows it', () {
+      'first key to its last, and at the half between, as playback shows '
+      'it', () {
     final trails = [
       for (final mark in marksOf(pathOf(three)))
         if (mark is SheetStroke && mark.argb == cameraTrailArgb) mark,
     ];
     expect(trails, hasLength(1), reason: 'the centre\'s — not four corners');
     final trail = trails.single;
-    expect(trail.points, hasLength(25));
+    expect(trail.points, hasLength(49));
     expect(trail.width, sizes.trailWidth);
-    expect(trail.points[6].dx, closeTo(200, 1e-9));
-    expect(trail.points[6].dy, closeTo(45, 1e-9));
-    expect(trail.points[18].dx, closeTo(320, 1e-9));
-    expect(trail.points[18].dy, closeTo(112.5, 1e-9));
+    expectPoints(
+      [for (final half in [12, 13, 36, 37]) trail.points[half]],
+      const [
+        Offset(200, 45),
+        Offset(210, 45),
+        Offset(320, 112.5),
+        Offset(320, 118.125),
+      ],
+    );
+  });
+
+  test('along a path bent through its keys, a half between two frames '
+      'stands where the camera does then — off the line the two frames '
+      'draw', () {
+    final bent = CutCamera.fromTrack(
+      three.track.copyWith(
+        position: three.track.position.withKeyPaths(
+          frames: {12},
+          curved: true,
+        ),
+      ),
+    );
+    expect(bent.track.position.keyAt(12)!.path.curved, isTrue, reason: '⛔전제');
+    final trail = marksOf(pathOf(bent)).whereType<SheetStroke>().firstWhere(
+      (mark) => mark.argb == cameraTrailArgb,
+    );
+    final half = trail.points[2 * 10 + 1];
+    final camera = resolveCameraPoseAtTime(
+      camera: bent,
+      canvasSize: cutWith(bent).canvasSize,
+      time: 10.5,
+    ).center;
+    expectPoints([half], [Offset(camera.x, camera.y)]);
+    final chord = (trail.points[2 * 10] + trail.points[2 * 11]) / 2;
+    expect((half - chord).distance, greaterThan(0.01));
   });
 
   test('a camera that frames one place at every key — or has one key, or '
@@ -212,15 +246,15 @@ void main() {
     expect(wordsIn(marks).map((label) => label.text), ['13f']);
     final trail = marks.whereType<SheetStroke>().first;
     expect(trail.argb, cameraTrailArgb);
-    expect(trail.points, hasLength(13));
+    expect(trail.points, hasLength(25), reason: 'frames 6 to 18, every half');
     expect(trail.points.first.dx, closeTo(200, 1e-9));
 
     final early = marksOf(pathOf(three), from: -6, to: 6);
     expect(wordsIn(early).map((label) => label.text), ['1f']);
     expect(
       early.whereType<SheetStroke>().first.points,
-      hasLength(7),
-      reason: 'frames 0 to 6 — nothing before the first key',
+      hasLength(13),
+      reason: 'frames 0 to 6, every half — nothing before the first key',
     );
 
     expect(marksOf(pathOf(three), from: 30, to: 40), isEmpty);
@@ -242,7 +276,7 @@ void main() {
     ]);
     final trail = marks.whereType<SheetStroke>().first;
     expect(trail.argb, cameraTrailArgb, reason: '⛔전제');
-    expectPoints([trail.points[6]], [laid(const Offset(200, 45))]);
+    expectPoints([trail.points[12]], [laid(const Offset(200, 45))]);
     final topLeft = laid(frameAround(320, 45).first);
     expect(wordsIn(marks)[1].slot.left, closeTo(topLeft.dx + 4, 1e-9));
     expect(wordsIn(marks)[1].slot.top, closeTo(topLeft.dy + 4, 1e-9));

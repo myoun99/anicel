@@ -35,6 +35,7 @@ void main() {
         value: 9,
         incoming: KeySide.linear,
         outgoing: KeyExit.hold,
+        path: KeyPath.straight,
       ));
 
       expect(result.keyAt(0)!.value, 9);
@@ -70,7 +71,12 @@ void main() {
       )!;
 
       expect(movedNamedKeys(before, after), {
-        'A': (value: 1, incoming: KeySide.linear, outgoing: KeyExit.hold),
+        'A': (
+          value: 1,
+          incoming: KeySide.linear,
+          outgoing: KeyExit.hold,
+          path: KeyPath.straight,
+        ),
       });
     });
 
@@ -196,7 +202,12 @@ void main() {
           effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
-          held: (value: 9, incoming: KeySide.linear, outgoing: KeyExit.hold),
+          held: (
+            value: 9,
+            incoming: KeySide.linear,
+            outgoing: KeyExit.hold,
+            path: KeyPath.straight,
+          ),
         ),
       ]);
 
@@ -245,7 +256,12 @@ void main() {
           effectId: const EffectId('other'),
           parameterId: radiusId,
           name: 'A',
-          held: (value: 9, incoming: KeySide.linear, outgoing: KeySide.linear),
+          held: (
+            value: 9,
+            incoming: KeySide.linear,
+            outgoing: KeySide.linear,
+            path: KeyPath.straight,
+          ),
         ),
       ]);
 
@@ -264,7 +280,12 @@ void main() {
           effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
-          held: (value: 9, incoming: KeySide.linear, outgoing: KeySide.linear),
+          held: (
+            value: 9,
+            incoming: KeySide.linear,
+            outgoing: KeySide.linear,
+            path: KeyPath.straight,
+          ),
         ),
       ]);
 
@@ -295,7 +316,12 @@ void main() {
       );
 
       expect(changes.rotation, {
-        'A': (value: 45.0, incoming: KeySide.linear, outgoing: KeySide.linear),
+        'A': (
+          value: 45.0,
+          incoming: KeySide.linear,
+          outgoing: KeySide.linear,
+          path: KeyPath.straight,
+        ),
       });
       expect(changes.position, isEmpty);
     });
@@ -314,7 +340,12 @@ void main() {
         lanes(rotation: track({0: (10, 'A'), 5: (20, null), 9: (30, 'A')})),
         const TransformNamedChanges(
           rotation: {
-            'A': (value: 45, incoming: KeySide.linear, outgoing: KeyExit.hold),
+            'A': (
+              value: 45,
+              incoming: KeySide.linear,
+              outgoing: KeyExit.hold,
+              path: KeyPath.straight,
+            ),
           },
         ),
       );
@@ -347,6 +378,7 @@ void main() {
               value: 45,
               incoming: KeySide.linear,
               outgoing: KeySide.linear,
+              path: KeyPath.straight,
             ),
           },
         ),
