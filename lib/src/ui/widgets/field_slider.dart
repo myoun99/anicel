@@ -255,26 +255,6 @@ class FieldSlider extends StatefulWidget {
   /// step, so Shift asks for no finer one on a bar that has them.
   final List<double>? stops;
 
-  /// The stop next past [value] [direction] (+1 up, −1 down); null past
-  /// the last.
-  ///
-  /// ⚠️A stop the bar WRITES [value] as is not the next one: a drag that
-  /// left 10.03 reads 「10.0」, and a step from it to 10 would be a press
-  /// that shows nothing.
-  double? _stopPast(double value, int direction) {
-    final shown = _textFor(value);
-    double? next;
-    for (final stop in stops!) {
-      if (_textFor(stop) == shown || (stop > value) != (direction > 0)) {
-        continue;
-      }
-      if (next == null || (stop < next) == (direction > 0)) {
-        next = stop;
-      }
-    }
-    return next;
-  }
-
   /// The value the filled bar grows FROM; null means [min], which is what a
   /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
   /// offset — passes its neutral value instead, so the fill leaves centre
@@ -428,6 +408,77 @@ class FieldSlider extends StatefulWidget {
     return valueTextBuilder?.call(value, derived) ?? derived;
   }
 
+  // The bar's own arithmetic — where a value sits along the track, the
+  // value at a place on it, where a step lands. Read off the bar's
+  // settings alone, so it lives with them, as [_textFor] does.
+
+  /// Where [value] sits along the track, 0..1.
+  double _tFor(double value) {
+    final double t;
+    switch (scale) {
+      case FieldSliderScale.linear:
+        t = (value - min) / (max - min);
+      case FieldSliderScale.exponential:
+        t = math.log(value / min) / math.log(max / min);
+    }
+    return t.clamp(0.0, 1.0);
+  }
+
+  /// The value at [t] along the track, snapped to [divisions].
+  double _valueFor(double t) {
+    final clamped = t.clamp(0.0, 1.0);
+    double value;
+    switch (scale) {
+      case FieldSliderScale.linear:
+        value = min + clamped * (max - min);
+      case FieldSliderScale.exponential:
+        value = min * math.pow(max / min, clamped);
+    }
+    final divisions = this.divisions;
+    if (divisions != null) {
+      final step = (max - min) / divisions;
+      value = min + ((value - min) / step).round() * step;
+    }
+    return value.clamp(min, max);
+  }
+
+  /// Where one step [direction] from [value] lands: the next of the
+  /// [stops], or one notch along the track — a [fine] one when Shift is
+  /// held. Null when the stops run out that way.
+  double? _stepFrom(double value, int direction, {required bool fine}) {
+    if (stops != null) {
+      return _stopPast(value, direction)?.clamp(min, max).toDouble();
+    }
+    final divisions = this.divisions;
+    final double step;
+    if (divisions != null) {
+      step = 1.0 / divisions;
+    } else {
+      step = fine ? 0.001 : 0.01;
+    }
+    return _valueFor((_tFor(value) + direction * step).clamp(0.0, 1.0));
+  }
+
+  /// The stop next past [value] [direction] (+1 up, −1 down); null past
+  /// the last.
+  ///
+  /// ⚠️A stop the bar WRITES [value] as is not the next one: a drag that
+  /// left 10.03 reads 「10.0」, and a step from it to 10 would be a press
+  /// that shows nothing.
+  double? _stopPast(double value, int direction) {
+    final shown = _textFor(value);
+    double? next;
+    for (final stop in stops!) {
+      if (_textFor(stop) == shown || (stop > value) != (direction > 0)) {
+        continue;
+      }
+      if (next == null || (stop < next) == (direction > 0)) {
+        next = stop;
+      }
+    }
+    return next;
+  }
+
   /// The style a bar writes its value in — the theme's `labelSmall`, set
   /// solid.
   static TextStyle? valueStyleIn(BuildContext context) =>
@@ -557,7 +608,7 @@ class _FieldSliderState extends State<FieldSlider> {
       return;
     }
     final kept = (typed / widget.displayScale).clamp(widget.min, widget.max);
-    final value = _valueFor(_tFor(kept));
+    final value = widget._valueFor(widget._tFor(kept));
     _emit(value);
     widget.onChangeEnd?.call(value);
   }
@@ -611,34 +662,6 @@ class _FieldSliderState extends State<FieldSlider> {
         keys.contains(LogicalKeyboardKey.shift);
   }
 
-  double _tFor(double value) {
-    final double t;
-    switch (widget.scale) {
-      case FieldSliderScale.linear:
-        t = (value - widget.min) / (widget.max - widget.min);
-      case FieldSliderScale.exponential:
-        t = math.log(value / widget.min) / math.log(widget.max / widget.min);
-    }
-    return t.clamp(0.0, 1.0);
-  }
-
-  double _valueFor(double t) {
-    final clamped = t.clamp(0.0, 1.0);
-    double value;
-    switch (widget.scale) {
-      case FieldSliderScale.linear:
-        value = widget.min + clamped * (widget.max - widget.min);
-      case FieldSliderScale.exponential:
-        value = widget.min * math.pow(widget.max / widget.min, clamped);
-    }
-    final divisions = widget.divisions;
-    if (divisions != null) {
-      final step = (widget.max - widget.min) / divisions;
-      value = widget.min + ((value - widget.min) / step).round() * step;
-    }
-    return value.clamp(widget.min, widget.max);
-  }
-
   void _emit(double value) => widget.onChanged?.call(value);
 
   void _handleDown(DragDownDetails details) {
@@ -654,14 +677,14 @@ class _FieldSliderState extends State<FieldSlider> {
     setState(() {
       _gestureT = _trackT(details.localPosition);
     });
-    _emit(_valueFor(_gestureT!));
+    _emit(widget._valueFor(_gestureT!));
   }
 
   void _handleUpdate(DragUpdateDetails details) {
     if (!_enabled || _trackExtent <= 0) {
       return;
     }
-    final current = _gestureT ?? _tFor(widget.value);
+    final current = _gestureT ?? widget._tFor(widget.value);
     setState(() {
       if (_shiftHeld) {
         _gestureT = (current + _deltaT(details.delta) / 10).clamp(0.0, 1.0);
@@ -669,14 +692,14 @@ class _FieldSliderState extends State<FieldSlider> {
         _gestureT = _trackT(details.localPosition);
       }
     });
-    _emit(_valueFor(_gestureT!));
+    _emit(widget._valueFor(_gestureT!));
   }
 
   void _handleEnd(DragEndDetails details) {
     final t = _gestureT;
     setState(() => _gestureT = null);
     if (t != null) {
-      widget.onChangeEnd?.call(_valueFor(t));
+      widget.onChangeEnd?.call(widget._valueFor(t));
     }
   }
 
@@ -745,7 +768,7 @@ class _FieldSliderState extends State<FieldSlider> {
     // receives, not an error path. Pointer-down already emitted the value;
     // only the commit is owed.
     if (t != null) {
-      widget.onChangeEnd?.call(_valueFor(t));
+      widget.onChangeEnd?.call(widget._valueFor(t));
     }
   }
 
@@ -770,33 +793,16 @@ class _FieldSliderState extends State<FieldSlider> {
     if (!_enabled) {
       return;
     }
-    final value = _stepFrom(direction);
+    final value = widget._stepFrom(
+      widget.value,
+      direction,
+      fine: _shiftHeld,
+    );
     if (value == null) {
       return;
     }
     _emit(value);
     widget.onChangeEnd?.call(value);
-  }
-
-  /// Where one step [direction] lands: the next of the bar's
-  /// [FieldSlider.stops], or one notch along the track. Null when the
-  /// stops run out that way.
-  double? _stepFrom(int direction) {
-    if (widget.stops != null) {
-      return widget
-          ._stopPast(widget.value, direction)
-          ?.clamp(widget.min, widget.max)
-          .toDouble();
-    }
-    final divisions = widget.divisions;
-    final double step;
-    if (divisions != null) {
-      step = 1.0 / divisions;
-    } else {
-      step = _shiftHeld ? 0.001 : 0.01;
-    }
-    final t = (_tFor(widget.value) + direction * step).clamp(0.0, 1.0);
-    return _valueFor(t);
   }
 
   double get _radius => FieldSlider.radiusFor(widget.height);
@@ -805,7 +811,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// value for a balance ([FieldSlider.fillOrigin]).
   double get _originFraction => widget.fillOrigin == null
       ? 0.0
-      : _tFor(widget.fillOrigin!).clamp(0.0, 1.0);
+      : widget._tFor(widget.fillOrigin!).clamp(0.0, 1.0);
 
   @override
   Widget build(BuildContext context) {
@@ -816,9 +822,11 @@ class _FieldSliderState extends State<FieldSlider> {
     // otherwise display derives from widget.value (fully controlled).
     final gestureT = _gestureT;
     final dragging = gestureT != null;
-    final t = dragging ? _tFor(_valueFor(gestureT)) : _tFor(widget.value);
+    final t = dragging
+        ? widget._tFor(widget._valueFor(gestureT))
+        : widget._tFor(widget.value);
     final valueText = dragging
-        ? widget._textFor(_valueFor(gestureT))
+        ? widget._textFor(widget._valueFor(gestureT))
         : widget.restingText ?? widget._textFor(widget.value);
     if (_typing) {
       return _withHands(

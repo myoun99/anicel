@@ -135,6 +135,20 @@ void main() {
     expect(value.value, moreOrLessEquals(0.49, epsilon: 0.001));
   });
 
+  testWidgets('with Shift held, a wheel notch is a tenth of one', (
+    tester,
+  ) async {
+    final value = ValueNotifier<double>(0.5);
+    await tester.pumpWidget(harness(value: value));
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(tester.getCenter(trackOf(sliderKey)));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -40)));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(value.value, moreOrLessEquals(0.501, epsilon: 0.0001));
+  });
+
   testWidgets('divisions snap dragged values to whole steps', (tester) async {
     final value = ValueNotifier<double>(0);
     await tester.pumpWidget(
