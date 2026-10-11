@@ -57,7 +57,12 @@ class KeySidesRows extends StatelessWidget {
           id: 'in',
           label: strings.keySideIncoming,
           leaving: false,
-          choices: const [KeySide.linear, EaseSide(), KeySide.auto],
+          choices: const [
+            KeySide.linear,
+            EaseSide(),
+            EaseSide(speed: EaseSide.fastSpeed),
+            KeySide.auto,
+          ],
           current: [for (final side in sides) side.incoming],
           picked: picked.incoming,
           onPicked: (edit) => onPicked(
@@ -72,6 +77,7 @@ class KeySidesRows extends StatelessWidget {
           choices: const [
             KeySide.linear,
             EaseSide(),
+            EaseSide(speed: EaseSide.fastSpeed),
             KeySide.auto,
             KeyExit.hold,
           ],
@@ -118,7 +124,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
     final together = keySidesTogether([
       for (final side in current) picked?.applyTo(side) ?? side,
     ]);
-    final eases = together.kind == KeySideKind.ease;
+    final eases = together.eases;
     return AppWindowField(
       label: label,
       child: Column(

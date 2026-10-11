@@ -445,6 +445,34 @@ void main() {
       );
     });
 
+    testWidgets('「급하게」 is half a four-pointed STAR — a diamond\'s point, '
+        'its sides drawn in toward the middle', (tester) async {
+      final drawn = await pumpMarker(
+        tester,
+        sides(KeySideKind.fast, KeySideKind.fast),
+      );
+      expect(
+        drawn,
+        paints
+          ..path(
+            includes: const [
+              Offset(1, 6),
+              Offset(11, 6),
+              Offset(6, 1),
+              Offset(6, 11),
+              Offset(4, 6),
+            ],
+            // Inside the straight side's diamond, outside the star.
+            excludes: const [
+              Offset(3.5, 3.5),
+              Offset(8.5, 3.5),
+              Offset(3.5, 8.5),
+              Offset(8.5, 8.5),
+            ],
+          ),
+      );
+    });
+
     testWidgets('a smooth pass is half a DISC', (tester) async {
       final drawn = await pumpMarker(
         tester,
@@ -492,6 +520,7 @@ void main() {
       for (final incoming in [
         KeySideKind.linear,
         KeySideKind.ease,
+        KeySideKind.fast,
         KeySideKind.auto,
       ]) {
         for (final outgoing in KeySideKind.values) {

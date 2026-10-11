@@ -114,6 +114,12 @@ final class EaseSide extends KeySide {
   /// AE's Easy Ease: a third of the segment, 33.33%.
   static const double easeInfluence = 1 / 3;
 
+  /// 「급하게」's speed at its key: twice its segment's average (유저 10-11
+  /// 「기본속도는 추천대로」) — against 「천천히」 on the far side the speed
+  /// then falls, or rises, evenly all the way: a thrown thing sliding to
+  /// rest, a dropped one falling.
+  static const double fastSpeed = 2;
+
   /// The least influence a side is given: 1%, the floor the key window's
   /// 세기 has stood at since I-89 ② (mine — AE's own goes down to 0.1%) and
   /// a graph's handle (③) stops at, so the two ways to set it stop alike.
@@ -155,8 +161,14 @@ enum KeySideKind {
   /// AE's Linear — half a diamond.
   linear('Linear'),
 
-  /// AE's Bezier, 「천천히」 — half an hourglass.
+  /// AE's Bezier, 「천천히」: no faster at the key than its segment's
+  /// average — half an hourglass.
   ease('Ease'),
+
+  /// AE's Bezier faster at the key than its segment's average, 「급하게」
+  /// (유저 10-11 「급하게는 역시 필요하네」 — AE draws it as an ease) — half
+  /// a four-pointed star.
+  fast('Fast'),
 
   /// AE's Auto Bezier, 「부드럽게 지나감」 — half a disc.
   auto('Smooth'),
@@ -172,8 +184,14 @@ enum KeySideKind {
 }
 
 /// [side]'s kind.
+///
+/// An ease is 「급하게」 FASTER than its segment's average at the key (유저
+/// 10-11, A안: 「그 쪽 속도가 구간 평균보다 큰 쪽」) and 「천천히」 otherwise —
+/// the average itself too — so one side is one kind, whatever a handle
+/// pulls its speed to (「겹치지만 않으면되니 알아서해줘」).
 KeySideKind keySideKindOf(KeyExit side) => switch (side) {
   LinearSide() => KeySideKind.linear,
+  EaseSide(:final speed) when speed > 1 => KeySideKind.fast,
   EaseSide() => KeySideKind.ease,
   AutoSide() => KeySideKind.auto,
   KeyHold() => KeySideKind.hold,
@@ -252,17 +270,19 @@ class KeySidesEdit {
 }
 
 /// What [sides] say TOGETHER — a row of the key window, over every key it
-/// covers (I-89 ②): the kind they all are, null where they differ; and
-/// where they are all eases, the influence they all take, null where those
-/// differ. The rule the window's name follows (「다르면 …」): it shows what
-/// the keys agree on.
-({KeySideKind? kind, double? influence}) keySidesTogether(
-  Iterable<KeyExit> sides,
+/// covers (I-89 ②): the kind they all are, null where they differ; whether
+/// they are all [eases] — 「천천히」 and 「급하게」 alike, each with an
+/// influence to take — and then the influence they all take, null where
+/// those differ. The rule the window's name follows (「다르면 …」): it shows
+/// what the keys agree on.
+({KeySideKind? kind, bool eases, double? influence}) keySidesTogether(
+  List<KeyExit> sides,
 ) {
-  final kind = {for (final side in sides) keySideKindOf(side)}.singleOrNull;
+  final eases = sides.isNotEmpty && sides.every((side) => side is EaseSide);
   return (
-    kind: kind,
-    influence: kind == KeySideKind.ease
+    kind: {for (final side in sides) keySideKindOf(side)}.singleOrNull,
+    eases: eases,
+    influence: eases
         ? {
             for (final side in sides)
               if (side is EaseSide) side.influence,

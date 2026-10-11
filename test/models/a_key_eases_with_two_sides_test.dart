@@ -496,6 +496,77 @@ void main() {
         reason: 'sides of different kinds have no influence to agree on',
       );
     });
+
+    test('「천천히」 and 「급하게」 are two kinds, and both of them eases: the '
+        'influence they all take is still theirs to agree on', () {
+      final slowAndFast = keySidesTogether([
+        const EaseSide(),
+        const EaseSide(speed: EaseSide.fastSpeed),
+      ]);
+      expect(slowAndFast.kind, isNull, reason: 'two kinds');
+      expect(slowAndFast.eases, isTrue);
+      expect(slowAndFast.influence, EaseSide.easeInfluence);
+      expect(
+        keySidesTogether([KeySide.linear, const EaseSide()]).eases,
+        isFalse,
+      );
+      expect(keySidesTogether([]).eases, isFalse, reason: 'no key, no ease');
+    });
+  });
+
+  // I-89 (유저 10-11 「급하게 넣는거 좋으니 A로 가자」): a side faster at its
+  // key than its segment's average.
+  group('「급하게」', () {
+    test('an ease past the average speed at its key is 「급하게」, and one at '
+        'it or under it 「천천히」 — whatever its influence', () {
+      for (final (side, kind) in [
+        (const EaseSide(speed: 2), KeySideKind.fast),
+        (const EaseSide(influence: 0.9, speed: 1.0001), KeySideKind.fast),
+        (const EaseSide(influence: 0.01, speed: 40), KeySideKind.fast),
+        (const EaseSide(speed: 1), KeySideKind.ease),
+        (const EaseSide(speed: 0.5), KeySideKind.ease),
+        (const EaseSide(speed: -1), KeySideKind.ease),
+      ]) {
+        expect(keySideKindOf(side), kind, reason: '$side');
+      }
+    });
+
+    test('picked, a side of another kind leaves at twice its segment\'s '
+        'average speed and keeps the influence picked with it; a side that '
+        'is 「급하게」 already keeps its own numbers', () {
+      const fast = KeySideEdit<KeyExit>(
+        side: EaseSide(speed: EaseSide.fastSpeed),
+      );
+      expect(fast.applyTo(KeySide.linear), const EaseSide(speed: 2));
+      expect(fast.applyTo(ownEase), const EaseSide(speed: 2));
+      expect(fast.applyTo(KeyExit.hold), const EaseSide(speed: 2));
+      const ownFast = EaseSide(influence: 0.5, speed: 3);
+      expect(fast.applyTo(ownFast), ownFast);
+      expect(
+        const KeySideEdit<KeyExit>(
+          side: EaseSide(speed: EaseSide.fastSpeed),
+          influence: 0.6,
+        ).applyTo(KeySide.linear),
+        const EaseSide(influence: 0.6, speed: 2),
+      );
+      expect(
+        const KeySideEdit<KeyExit>(side: EaseSide()).applyTo(ownFast),
+        const EaseSide(),
+        reason: '「천천히」 picked on it eases it from a standstill',
+      );
+    });
+
+    test('against 「천천히」 on the far side, it slows evenly the whole way — '
+        'a thrown thing sliding to rest', () {
+      const leaving = (influence: 1 / 3, speed: EaseSide.fastSpeed);
+      for (final x in [0.1, 0.25, 0.5, 0.75, 0.9]) {
+        expect(
+          progress(leaving, easyEase, x),
+          closeTo(1 - (1 - x) * (1 - x), 1e-9),
+          reason: 'easeOutQuad at $x',
+        );
+      }
+    });
   });
 }
 

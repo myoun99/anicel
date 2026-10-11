@@ -10,8 +10,9 @@ import '../../models/key_side.dart' show KeySideKind;
 ///
 /// After Effects' shapes, a half for each side (유저 10-10 「ae식
 /// 반반등은 검증된 업계기준이라 아주 마음에들어」): the LEFT half is the side
-/// arriving at the key, the RIGHT half the side leaving it. 🗣️All four
-/// share ONE [size]-square box (유저 10-10 「모양의 크기는 동일한 느낌이
+/// arriving at the key, the RIGHT half the side leaving it — and a star's
+/// point for 「급하게」, which AE has no shape of its own for. 🗣️Every shape
+/// shares ONE [size]-square box (유저 10-10 「모양의 크기는 동일한 느낌이
 /// 좋으니 찬성」), so a diamond's points touch the box's edges — the halves
 /// of two shapes could not meet down the middle otherwise.
 ///
@@ -119,6 +120,10 @@ void _walkHalf(
     case KeySideKind.ease:
       // An hourglass's halves meet at its waist, in the middle.
       through([at(0, 0), at(6, 6), at(0, 12)]);
+    case KeySideKind.fast:
+      // A diamond's sides drawn in toward its middle: the star's point is
+      // sharper than the straight side's, as its speed is past the average.
+      through([at(4.5, 4.5), at(0, 6), at(4.5, 7.5)]);
     case KeySideKind.auto:
       // Round the outside, whichever way the half walks.
       path.arcToPoint(
