@@ -564,8 +564,18 @@ void main() {
       while (watch.elapsedMilliseconds < 8000 && justWrapped.length < 4) {
         final clock = device.readClock();
         final status = transport.clockStatus();
+        final after = device.readClock();
         final point = clock.point;
         if (point == null || status == null) {
+          continue;
+        }
+        // ⚠️ONE MOMENT OR NONE. The status reads the clock itself, a moment
+        // after this reading; a runner that stalls between the two lines
+        // answers for a later moment than the one judged below — the mac
+        // runner read frame 0 so (10-08: `[0, 9, 9, 9]`), the lap's end
+        // heard past by the time the status looked. A reading a callback
+        // or 2ms came between is not one.
+        if (after.point != point || after.nowMicros - clock.nowMicros > 2000) {
           continue;
         }
         if (point.positionSamples > 40000) {
