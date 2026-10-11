@@ -229,7 +229,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter
   }
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final style = labelStyle;
     for (final label in runLabelsInWindow()) {
       // Clipped to its OWN block: a number wider than one cell spills back

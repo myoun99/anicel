@@ -338,8 +338,8 @@ _Cover _coverOf(double from, double length, int extent) {
 ///
 /// While the exact bake is in flight the word is drawn from the last bake
 /// of it at another narrowing, if there is one; only a word never baked is
-/// handed back to be painted plainly. [BakedWords.landed] says when to
-/// paint again.
+/// handed back to be painted plainly. Whoever is painting
+/// ([BakedWords.paintAs]) is woken when the exact one lands.
 bool paintBakedWord(
   Canvas canvas,
   TextPainter painter,
@@ -397,26 +397,58 @@ bool paintBakedWord(
   return true;
 }
 
-/// A painter that may set a narrowed word ([paintBakedWord]) — it paints
-/// again when a bake lands ([BakedWords.landed]), on top of whatever else
-/// it repaints on.
+/// What draws a narrowed word from a stand-in — another narrowing's bake,
+/// or the word as the rasteriser sets it — and is to be painted again when
+/// THAT word's bake lands ([BakedWords.paintAs]).
+abstract interface class WordBakeWaiter {
+  void wordBakeLanded();
+}
+
+/// A painter that may set a narrowed word ([paintBakedWord]) — painted
+/// again when a word it drew from a stand-in has its bake land, on top of
+/// whatever else it repaints on. What it paints is [paintWords].
 ///
-/// ⚠️EVERY such painter, not the one whose word landed: a bake lands once
-/// a word and narrowing — a burst while a zoom settles or a scroll brings
-/// new words in, when these painters are painting anyway — where a tile
-/// lands once a span and row on every scroll (I-22 ③ keeps those to their
-/// own row).
-mixin RepaintOnWordBakes on CustomPainter {
+/// 🚨★★★ONLY THE PAINTER THAT WAITS FOR THE WORD
+/// (playback-making-pictures-shakes-the-frames, 10-11). ↩️Every such painter
+/// was painted again on every landing, on the reading that bakes land in a
+/// burst while a zoom settles or a scroll brings new words in, when these
+/// painters are painting anyway. One painter bringing new words alone
+/// breaks that reading, and the playhead's number does on every frame of a
+/// first pass through a cut: 🔬each landing painted nine rail rows, the
+/// frame viewport and the rulers again — about 1,300 render objects. A word
+/// answers 「어디가 바뀌었나」 itself.
+///
+/// ⛔A painter mixing this in overrides [paintWords], never [paint]: [paint]
+/// is what makes it the one waiting
+/// (`test/architecture/a_word_painter_paints_its_words_test.dart`).
+mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
+  /// Who listens to each painter — the render objects it is painted for.
+  static final Expando<List<VoidCallback>> _listeners = Expando();
+
   @override
   void addListener(VoidCallback listener) {
     super.addListener(listener);
-    BakedWords.instance.landed.addListener(listener);
+    (_listeners[this] ??= []).add(listener);
   }
 
   @override
   void removeListener(VoidCallback listener) {
     super.removeListener(listener);
-    BakedWords.instance.landed.removeListener(listener);
+    _listeners[this]?.remove(listener);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      BakedWords.instance.paintAs(this, () => paintWords(canvas, size));
+
+  /// What [paint] is to any other painter.
+  void paintWords(Canvas canvas, Size size);
+
+  @override
+  void wordBakeLanded() {
+    for (final listener in [...?_listeners[this]]) {
+      listener();
+    }
   }
 }
 
@@ -455,15 +487,39 @@ final class BakedWords {
   /// drawn from while the bake for a new narrowing is in flight.
   final Map<_Word, _Bake> _latestOf = {};
 
-  final ValueNotifier<int> _landed = ValueNotifier(0);
-  bool _landingScheduled = false;
+  /// Who is painting now ([paintAs]) — the one a stand-in drawn now waits
+  /// for.
+  WordBakeWaiter? _painting;
 
-  /// Bumps once in a frame in which bakes landed: a painter that drew a
-  /// word before its bake listens to this to draw it again.
-  ValueListenable<int> get landed => _landed;
+  /// Who drew each word from a stand-in, waiting for its bake.
+  final Map<_Word, Set<WordBakeWaiter>> _waiting = {};
+
+  /// The waiters the next frame wakes: those whose word's bake finished.
+  final Set<WordBakeWaiter> _toWake = {};
+  bool _wakeScheduled = false;
+
+  /// How many frames have woken waiters or followed a landing — what a test
+  /// waits on.
+  @visibleForTesting
+  int get debugLandingFrames => _landingFrames;
+  int _landingFrames = 0;
+
+  /// Runs [paint] as [waiter]: a word it draws from a stand-in wakes it —
+  /// and only it — when that word's bake lands.
+  void paintAs(WordBakeWaiter waiter, VoidCallback paint) {
+    final outer = _painting;
+    _painting = waiter;
+    try {
+      paint();
+    } finally {
+      _painting = outer;
+    }
+  }
 
   /// [word]'s bake at [fit] once it landed, else its latest at another
-  /// narrowing (null: none yet) — asking [bake] for the exact one.
+  /// narrowing (null: none yet) — asking [bake] for the exact one, and
+  /// putting whoever paints down as waiting for it. ⛔Not for a bake that
+  /// is done and came to nothing: nothing will land.
   ui.Image? _bakeFor(
     _Word word,
     ({double x, double y}) fit,
@@ -474,8 +530,14 @@ final class BakedWords {
     if (exact != null) {
       return exact;
     }
-    if (!_baking.contains(word)) {
-      unawaited(_images.ensure(key, () => _land(key, bake)));
+    if (!_images.isDone(key)) {
+      final waiter = _painting;
+      if (waiter != null) {
+        (_waiting[word] ??= {}).add(waiter);
+      }
+      if (!_baking.contains(word)) {
+        unawaited(_images.ensure(key, () => _land(key, bake)));
+      }
     }
     final latest = _latestOf[word];
     return latest == null ? null : _images.peek(latest);
@@ -486,11 +548,15 @@ final class BakedWords {
   /// through are drawn from the bake it has instead of each baked in turn.
   final Set<_Word> _baking = {};
 
+  /// The bake of [key], and its waiters woken once it is done — landed, or
+  /// come to nothing: a waiter for another narrowing of the word asks for
+  /// its own when it paints again.
   Future<ui.Image?> _land(
     _Bake key,
     Future<BakedWordCoverage?> Function() bake,
   ) async {
     _baking.add(key.word);
+    var landed = false;
     try {
       final coverage = await bake();
       if (coverage == null) {
@@ -503,25 +569,38 @@ final class BakedWords {
         _latestOf.clear();
       }
       _latestOf[key.word] = key;
-      _announceLanding();
+      landed = true;
       return image;
     } on Object {
       // A bake the engine refused leaves the word painted as it always was.
       return null;
     } finally {
       _baking.remove(key.word);
+      final waiters = _waiting.remove(key.word);
+      if (waiters != null) {
+        _toWake.addAll(waiters);
+      }
+      if (landed || waiters != null) {
+        _wakeNextFrame();
+      }
     }
   }
 
-  void _announceLanding() {
-    if (_landingScheduled) {
+  /// Wakes [_toWake] in one frame — as many bakes as finish before it.
+  void _wakeNextFrame() {
+    if (_wakeScheduled) {
       return;
     }
-    _landingScheduled = true;
+    _wakeScheduled = true;
     SchedulerBinding.instance
       ..scheduleFrameCallback((_) {
-        _landingScheduled = false;
-        _landed.value += 1;
+        _wakeScheduled = false;
+        _landingFrames += 1;
+        final woken = List.of(_toWake);
+        _toWake.clear();
+        for (final waiter in woken) {
+          waiter.wordBakeLanded();
+        }
       })
       ..scheduleFrame();
   }

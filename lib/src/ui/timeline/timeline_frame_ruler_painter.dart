@@ -170,7 +170,7 @@ class TimelineFrameRulerPainter extends CustomPainter
   final TimelineRulerScale scale;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
     final linePaint = Paint()..strokeWidth = 1;
 

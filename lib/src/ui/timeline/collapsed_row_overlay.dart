@@ -756,7 +756,7 @@ class _CollapsedStripPainter extends CustomPainter
   final int frameStartIndex;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     if (pixelsPerFrame <= 0) {
       return;
     }

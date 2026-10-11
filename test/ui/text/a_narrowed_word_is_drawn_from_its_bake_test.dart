@@ -43,7 +43,7 @@ class _WordPainter extends CustomPainter with RepaintOnWordBakes {
   final ValueNotifier<int> painted;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     painted.value += 1;
     paintFittedText(canvas, word, Offset.zero, fit);
   }
@@ -78,6 +78,24 @@ Future<Color> _inkOf(void Function(Canvas) paint, Size size) async {
 }
 
 String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
+
+/// The body of class [name] in [source], braces matched.
+String _classBody(String source, String name) {
+  final head = RegExp('class $name\\b').firstMatch(source)!;
+  final open = source.indexOf('{', head.end);
+  var depth = 0;
+  for (var i = open; i < source.length; i += 1) {
+    if (source[i] == '{') {
+      depth += 1;
+    } else if (source[i] == '}') {
+      depth -= 1;
+      if (depth == 0) {
+        return source.substring(open, i + 1);
+      }
+    }
+  }
+  return source.substring(open);
+}
 
 void main() {
   testWidgets('a word narrowed under the legible size is drawn from its '
@@ -184,6 +202,66 @@ void main() {
       expect(ink.g, lessThan(0.05), reason: reason);
       expect(ink.b, lessThan(0.05), reason: reason);
     });
+  });
+
+  testWidgets('🚨a landing paints again the painter that drew that word '
+      'from a stand-in — and no other word painter', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const fit = (x: 0.25, y: 1.0);
+    final standing = ValueNotifier(0);
+    final waiting = ValueNotifier(0);
+    // One painter whose word has landed already…
+    final standingPainter = _WordPainter(
+      _word('たって', fontSize: 12),
+      fit,
+      standing,
+    );
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: standingPainter,
+        ),
+      ),
+    );
+    await pumpUntilAWordBakeLands(tester);
+    await tester.pump();
+    // …and one beside it whose word has not.
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CustomPaint(size: const Size(40, 20), painter: standingPainter),
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('まつ', fontSize: 12), fit, waiting),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final stood = standing.value;
+    final waited = waiting.value;
+
+    await pumpUntilAWordBakeLands(tester);
+
+    expect(
+      waiting.value,
+      waited + 1,
+      reason: 'fixture: the painter that drew the word from a stand-in '
+          'paints it again from its bake',
+    );
+    expect(
+      standing.value,
+      stood,
+      reason: '↩️every word painter in the app painted again on every '
+          "landing — the playhead's number landing on each frame of a first "
+          'pass through a cut',
+    );
   });
 
   testWidgets('a word bakes one narrowing at a time — a zoom passes the '
@@ -359,7 +437,7 @@ void main() {
   });
 
   test('every painter that sets a narrowed word paints again when its '
-      'bake lands', () {
+      'bake lands — painting its words as the one waiting', () {
     // A CENSUS: the files that reach a narrowed word — set it themselves,
     // or hand it to the strips' placed words (`TimelineGlyphPlacement`,
     // `paintWindow`) or to the glyph on its ground. A file that starts to
@@ -402,18 +480,38 @@ void main() {
       final declared = RegExp(
         'class${painter}extendsCustomPainterwith[^{]*RepaintOnWordBakes',
       );
+      final source = File(path).readAsStringSync();
       expect(
-        _squash(File(path).readAsStringSync()),
+        _squash(source),
         matches(declared),
         reason: '$painter repaints when a bake lands',
       );
+      // ⛔The mixin's paint is what makes the painter the one waiting; a
+      // painter that paints itself draws its stand-ins for nobody.
+      final body = _classBody(source, painter);
+      expect(
+        body,
+        contains('void paintWords(Canvas canvas, Size size)'),
+        reason: '$painter paints its words',
+      );
+      expect(
+        body,
+        isNot(contains('void paint(Canvas canvas, Size size)')),
+        reason: '$painter leaves paint to the mixin',
+      );
     }
+    final built = _squash(
+      File('lib/src/ui/timeline/timeline_block_word.dart').readAsStringSync(),
+    );
     expect(
-      _squash(
-        File('lib/src/ui/timeline/timeline_block_word.dart').readAsStringSync(),
-      ),
-      contains('BakedWords.instance.landed.addListener(markNeedsPaint)'),
-      reason: 'the built word repaints when a bake lands',
+      built,
+      contains('RenderTimelineBuiltWordextendsRenderBoximplementsWordBakeWaiter'),
+      reason: 'the built word waits for its bakes',
+    );
+    expect(
+      built,
+      contains('BakedWords.instance.paintAs(this,'),
+      reason: 'and paints its word as the one waiting',
     );
   });
 }

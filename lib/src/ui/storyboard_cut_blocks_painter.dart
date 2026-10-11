@@ -706,7 +706,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       );
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     for (final block in blocks()) {
       _paintBlock(canvas, block);
     }

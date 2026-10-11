@@ -471,7 +471,7 @@ class _VerticalWritingPainter extends CustomPainter
   final VerticalTextOverflow overflow;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final fontSize = style.fontSize ?? 12;
     paintVerticalText(
       canvas,

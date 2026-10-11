@@ -1406,7 +1406,7 @@ class XSheetFrameRailPainter extends CustomPainter
   final TimelineRulerScale scale;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
     final linePaint = Paint()..strokeWidth = 1;
     // D8 (2026-08-18): the rail used to stroke a faint RECT around every

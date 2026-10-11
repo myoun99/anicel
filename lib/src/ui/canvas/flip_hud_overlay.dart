@@ -347,7 +347,7 @@ class FlipHudPainter extends CustomPainter
   static const List<double> _railWashStops = [0, 0.38, 1];
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     if (snapshot.isEmpty) {
       return;
     }

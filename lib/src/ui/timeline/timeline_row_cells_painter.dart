@@ -682,7 +682,7 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   @override
-  void paint(Canvas canvas, Size size) =>
+  void paintWords(Canvas canvas, Size size) =>
       readInOnePass(() => _paint(canvas, size));
 
   void _paint(Canvas canvas, Size size) {

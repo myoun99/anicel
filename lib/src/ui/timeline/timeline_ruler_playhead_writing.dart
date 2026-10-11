@@ -196,7 +196,7 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
   }
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final frame = writtenFrame();
     if (frame == null) {
       return;

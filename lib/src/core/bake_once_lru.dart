@@ -32,6 +32,11 @@ class BakeOnceLru<K, V> {
     return value;
   }
 
+  /// Whether [key]'s bake has finished — a null value included: a key
+  /// [peek] answers null for may still be on its way, or may be done and
+  /// have come to nothing, and nobody waits for the second.
+  bool isDone(K key) => _done.containsKey(key);
+
   /// The value for [key]: the cached one, the bake already in flight, or
   /// a new bake from [bake].
   Future<V> ensure(K key, Future<V> Function() bake) {

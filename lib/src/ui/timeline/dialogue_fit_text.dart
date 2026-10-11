@@ -80,7 +80,7 @@ class _DialogueFitPainter extends CustomPainter
   final TextStyle style;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     if (axis == Axis.vertical) {
       paintDialogueFitColumn(
         canvas,
