@@ -114,6 +114,11 @@ final class EaseSide extends KeySide {
   /// AE's Easy Ease: a third of the segment, 33.33%.
   static const double easeInfluence = 1 / 3;
 
+  /// The least influence a side is given: 1%, the floor the key window's
+  /// 세기 has stood at since I-89 ② (mine — AE's own goes down to 0.1%) and
+  /// a graph's handle (③) stops at, so the two ways to set it stop alike.
+  static const double leastInfluence = 0.01;
+
   static const String _json = 'ease';
 
   /// How far into the segment the side reaches, 0 < influence ≤ 1 — AE's
@@ -174,25 +179,34 @@ KeySideKind keySideKindOf(KeyExit side) => switch (side) {
   KeyHold() => KeySideKind.hold,
 };
 
-/// A write to ONE side of a key, as the key window gives it (I-89 ②): the
-/// KIND the side becomes and the INFLUENCE its ease takes, either or both —
-/// each only what the user picked.
+/// A write to ONE side of a key, as the key window and a graph's handle
+/// give it (I-89 ② ③): the KIND the side becomes, and the INFLUENCE and
+/// the SPEED its ease takes, any of them — each only what was picked.
 ///
 /// A side already of [side]'s kind keeps its own — an ease its influence
 /// and its speed — so picking the kind a key has changes nothing, which is
 /// what lights a choice: by kind, as the key's mark draws it, not by its
 /// numbers.
 final class KeySideEdit<S extends KeyExit> {
-  const KeySideEdit({this.side, this.influence})
-    : assert(influence == null || (influence > 0 && influence <= 1));
+  const KeySideEdit({this.side, this.influence, this.speed})
+    : assert(influence == null || (influence > 0 && influence <= 1)),
+      assert(
+        speed == null ||
+            (speed > double.negativeInfinity && speed < double.infinity),
+      );
 
   /// What a side of another kind becomes — the kind picked, at its
   /// defaults (an ease is AE's Easy Ease). Null leaves the kind as it is.
   final S? side;
 
-  /// The influence an ease takes, its speed kept — AE's influence % alone.
-  /// Null leaves it as it is; a side that is no ease has none to take.
+  /// The influence an ease takes — AE's influence %. Null leaves it as it
+  /// is; a side that is no ease has none to take.
   final double? influence;
+
+  /// The speed an ease takes, as a multiple of its segment's average — AE's
+  /// Keyframe Velocity, which a graph's handle sets with the influence.
+  /// Null leaves it as it is; a side that is no ease has none to take.
+  final double? speed;
 
   /// [current] with this edit on it.
   S applyTo(S current) {
@@ -200,10 +214,9 @@ final class KeySideEdit<S extends KeyExit> {
     final kept = side == null || keySideKindOf(side) == keySideKindOf(current)
         ? current
         : side;
-    final influence = this.influence;
-    return influence != null && kept is EaseSide
+    return kept is EaseSide && (influence != null || speed != null)
         // An ease is a KeySide, so it is an S whichever side this edits.
-        ? kept.copyWith(influence: influence) as S
+        ? kept.copyWith(influence: influence, speed: speed) as S
         : kept;
   }
 }

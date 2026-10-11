@@ -139,7 +139,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
             key: ValueKey<String>('rename-key-$id-influence'),
             label: AppText.strings.keyEaseInfluence,
             value: together.influence ?? EaseSide.easeInfluence,
-            min: 0.01,
+            min: EaseSide.leastInfluence,
             max: 1,
             divisions: 99,
             displayScale: 100,

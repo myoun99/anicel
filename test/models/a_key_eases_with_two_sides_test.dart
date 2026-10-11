@@ -348,6 +348,30 @@ void main() {
       );
     });
 
+    // I-89 ③: a graph's handle says a side's two numbers at once — how far
+    // into its segment it reaches and how fast the value moves at the key.
+    test('a speed keeps the influence; given both, the side takes both; '
+        'neither is anything to a side that does not ease', () {
+      expect(
+        const KeySideEdit<KeySide>(speed: 2).applyTo(ownEase),
+        const EaseSide(influence: 0.5, speed: 2),
+      );
+      expect(
+        const KeySideEdit<KeySide>(influence: 0.2, speed: -1).applyTo(ownEase),
+        const EaseSide(influence: 0.2, speed: -1),
+      );
+      expect(
+        const KeySideEdit<KeySide>(speed: 2).applyTo(KeySide.auto),
+        KeySide.auto,
+      );
+      expect(
+        const KeySideEdit<KeyExit>(influence: 0.2, speed: 2).applyTo(
+          KeyExit.hold,
+        ),
+        KeyExit.hold,
+      );
+    });
+
     test('a range of keys is written key by key, each keeping what the '
         'pick does not say', () {
       final track = PropertyTrack<double>()
