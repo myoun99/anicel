@@ -436,6 +436,11 @@ void main() {
       lessThanOrEqualTo(tester.getRect(_tools('timeline')).right),
     );
     expect(
+      tester.getRect(_tools('timeline')).right,
+      moreOrLessEquals(view.right - 6),
+      reason: 'no wider than the view, kept off its end as off its start',
+    );
+    expect(
       tester.getRect(_tags('timeline')).left,
       moreOrLessEquals(tester.getRect(_tools('timeline')).right + 8),
       reason: 'it starts after the tools and runs out past the view\'s end',
