@@ -245,24 +245,32 @@ class SessionRowButtonPresses {
     } else {
       open.removeWhere((key, _) => everyUse.contains(key));
     }
-    // A graph shut is let back first, as the mock's 5판 lets it.
-    final letBack = !opening && everyUse.contains(graphs.value.enlarged);
-    graphs.value = graphs.value.copyWith(
-      open: open,
-      enlarged: letBack ? () => null : null,
-    );
+    graphs.value = graphs.value.copyWith(open: open);
     if (opening) {
       _openGroupOf(groupKey);
     }
   }
 
-  /// A group's open graph ENLARGED over every other row, or let back — the
-  /// one its button was pressed on, alone: one graph is enlarged at a time
-  /// (I-89 ③D, the mock's 5판). View state, as its twirl: no undo.
+  /// A group's open graph ENLARGED over every other row, or let back — on
+  /// every use of its row, as what it plots and how far it stands are; and
+  /// every other graph let back with it: one group's graph is enlarged at
+  /// a time (I-89 ③D, the mock's 5판). A graph that is shut stays shut.
+  /// View state, as its twirl: no undo.
   void enlargeLaneGraph(String groupKey) {
     final graphs = session.railView.laneGraphs;
-    final enlarged = graphs.value.enlarged == groupKey ? null : groupKey;
-    graphs.value = graphs.value.copyWith(enlarged: () => enlarged);
+    final open = graphs.value.open;
+    final pressed = open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    final enlarging = !pressed.enlarged;
+    final everyUse = _everyUseOf(groupKey);
+    graphs.value = graphs.value.copyWith(
+      open: {
+        for (final MapEntry(:key, value: graph) in open.entries)
+          key: graph.copyWith(enlarged: enlarging && everyUse.contains(key)),
+      },
+    );
   }
 
   /// A lane PINNED to every open graph, or let go, by the lane's own key —

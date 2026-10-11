@@ -131,10 +131,15 @@ void main() {
   });
 
   // I-89 ③: a graph and a pin are keyed by a row's lane, as an open group
-  // is — so they follow a link group by the one rule.
+  // is — so they follow a link group by the one rule; the graph with all
+  // it keeps, its enlarging (③D) among it.
   test('an open GRAPH and a PIN follow the canonical row lane by lane, as '
       'its groups do', () {
-    const graph = LaneGraph(extent: 140, mode: LaneGraphMode.speed);
+    const graph = LaneGraph(
+      extent: 140,
+      mode: LaneGraphMode.speed,
+      enlarged: true,
+    );
     final view = rail()
       ..laneGraphs.value = LaneGraphsView(
         open: {

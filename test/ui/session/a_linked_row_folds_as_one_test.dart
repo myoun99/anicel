@@ -320,8 +320,9 @@ void main() {
       expect(pinned.value.pinned, isEmpty);
     });
 
-    test('🚨what a graph plots and how far it stands is on every use of its '
-        'row — and a graph that is shut stays shut', () {
+    test('🚨what a graph plots, how far it stands and whether it is '
+        'enlarged is on every use of its row — and a graph that is shut '
+        'stays shut', () {
       final r = _Rig()..linkACut();
       final graphs = r.s.railView.laneGraphs;
       final group = transformGroupHeaderLane.laneId;
@@ -331,21 +332,63 @@ void main() {
 
       r.presses.plotLaneGraph(here, LaneGraphMode.speed);
       r.presses.resizeLaneGraph(there, 300);
+      r.presses.enlargeLaneGraph(here);
       for (final key in [here, there]) {
         expect(graphs.value.open[key], const LaneGraph(
           extent: 300,
           mode: LaneGraphMode.speed,
+          enlarged: true,
         ), reason: key);
       }
 
       r.presses.toggleLaneGraph(here);
       r.presses.plotLaneGraph(here, LaneGraphMode.value);
       r.presses.resizeLaneGraph(here, 120);
+      r.presses.enlargeLaneGraph(here);
       expect(graphs.value.open, isEmpty);
     });
 
-    test('a graph, a pin, what it plots and how far it stands are view state '
-        '— no undo step', () {
+    test('one group\'s graph is enlarged at a time: enlarging another lets '
+        'the first back, and pressed again it is let back itself', () {
+      final r = _Rig();
+      final graphs = r.s.railView.laneGraphs;
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      final camera = laneGroupKey(r.camera, transformGroupHeaderLane.laneId);
+      r.presses.toggleLaneGraph(key);
+      r.presses.toggleLaneGraph(camera);
+      Set<String> enlarged() => {
+        for (final MapEntry(:key, value: graph) in graphs.value.open.entries)
+          if (graph.enlarged) key,
+      };
+
+      r.presses.enlargeLaneGraph(key);
+      expect(enlarged(), {key});
+      r.presses.enlargeLaneGraph(camera);
+      expect(enlarged(), {camera});
+      r.presses.enlargeLaneGraph(camera);
+      expect(enlarged(), isEmpty);
+      expect(
+        graphs.value.open.keys.toSet(),
+        {key, camera},
+        reason: 'let back, not shut',
+      );
+    });
+
+    test('a graph shut while enlarged opens again as it opened first', () {
+      final r = _Rig();
+      final graphs = r.s.railView.laneGraphs;
+      final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
+      r.presses.toggleLaneGraph(key);
+      r.presses.enlargeLaneGraph(key);
+
+      r.presses.toggleLaneGraph(key);
+      r.presses.toggleLaneGraph(key);
+
+      expect(graphs.value.open[key], const LaneGraph());
+    });
+
+    test('a graph, a pin, what it plots, how far it stands and whether it '
+        'is enlarged are view state — no undo step', () {
       final r = _Rig();
       final key = laneGroupKey(r.plain, transformGroupHeaderLane.laneId);
       r.presses.toggleLaneGroup(key);
@@ -355,11 +398,16 @@ void main() {
       r.presses.toggleLanePin(laneGroupKey(r.plain, 'position'));
       r.presses.plotLaneGraph(key, LaneGraphMode.speed);
       r.presses.resizeLaneGraph(key, 300);
+      r.presses.enlargeLaneGraph(key);
 
       expect(r.s.historyManager.undoCount, depth);
       expect(
         r.s.railView.laneGraphs.value.open[key],
-        const LaneGraph(extent: 300, mode: LaneGraphMode.speed),
+        const LaneGraph(
+          extent: 300,
+          mode: LaneGraphMode.speed,
+          enlarged: true,
+        ),
         reason: '⛔전제',
       );
     });

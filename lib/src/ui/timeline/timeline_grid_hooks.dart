@@ -569,24 +569,27 @@ class TimelineGridHooks {
   /// clone scan, 2026-09-06); a grid that forgot one showed rows the other
   /// hid. What is a surface's own stays a parameter: its lane provider and
   /// which side of the layer its lanes open on ([lanesPrecedeLayer], R9
-  /// #23 — the sheet's open LEFTWARD).
+  /// #23 — the sheet's open LEFTWARD: [laneRunsMovedAhead], laid on the
+  /// rows once they are seated).
   List<TimelineDisplayRow> displayRows(
     List<Layer> layers, {
     required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
     bool lanesPrecedeLayer = false,
-  }) => seatLaneGraphs(
-    buildTimelineDisplayRows(
-      layers: layers,
-      expandedLayerIds: expandedLaneLayerIds,
-      lanesForLayer: lanesForLayer,
-      hiddenSections: hiddenSections,
-      rowFilter: rowFilter,
-      collapsedAttachBaseIds: collapsedAttachBaseIds,
-      activeLayerId: activeLayerId,
-      fxEnabledOf: isLayerFxEnabled,
-      lanesPrecedeLayer: lanesPrecedeLayer,
-    ),
-    laneGraphs,
-    selection: selectedRows,
-  );
+  }) {
+    final rows = seatLaneGraphs(
+      buildTimelineDisplayRows(
+        layers: layers,
+        expandedLayerIds: expandedLaneLayerIds,
+        lanesForLayer: lanesForLayer,
+        hiddenSections: hiddenSections,
+        rowFilter: rowFilter,
+        collapsedAttachBaseIds: collapsedAttachBaseIds,
+        activeLayerId: activeLayerId,
+        fxEnabledOf: isLayerFxEnabled,
+      ),
+      laneGraphs,
+      selection: selectedRows,
+    );
+    return lanesPrecedeLayer ? laneRunsMovedAhead(rows) : rows;
+  }
 }

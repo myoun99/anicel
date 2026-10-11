@@ -117,13 +117,15 @@ void main() {
   testWidgets('a pull that reaches the foot of the view pans the rows, and '
       'the edge stays under the hand', (tester) async {
     // Rows under the graph: room for the pull to pan into, so an edge that
-    // did not take the pan in would fall a long way behind the hand.
-    final s = await _pump(tester, under: 12);
+    // did not take the pan in would fall a long way behind the hand — and
+    // rows over it, so it pans all the way before it stands at its most.
+    final s = await _pump(tester, under: 12, over: 5);
     await _openTheGraph(tester, s);
     final rows = _rowsScroll(tester);
     rows.jumpTo(0);
     await tester.pump();
     final view = _viewOf(tester, rows);
+    final most = view.height - _rowExtent(tester);
     expect(
       rows.maxScrollExtent,
       greaterThan(100),
@@ -145,6 +147,58 @@ void main() {
       tester.getRect(_grip('timeline')).center.dy,
       moreOrLessEquals(hand.dy, epsilon: 1),
       reason: 'the pan is folded into the pull — the edge did not slide off',
+    );
+    expect(
+      tester.getRect(_graph('timeline')).height,
+      lessThan(most),
+      reason: '⛔전제: it never stood at its most',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('at its most it pans no further — the edge stays where the '
+      'pull left it, not carried off up the view', (tester) async {
+    final s = await _pump(tester, under: 12);
+    await _openTheGraph(tester, s);
+    final rows = _rowsScroll(tester);
+    rows.jumpTo(0);
+    await tester.pump();
+    final view = _viewOf(tester, rows);
+    final most = view.height - _rowExtent(tester);
+
+    final gesture = await _grab(tester, 'timeline');
+    var hand = tester.getRect(_grip('timeline')).center;
+    hand = Offset(hand.dx, view.bottom - 4);
+    Future<void> reach(int steps) async {
+      for (var step = 0; step < steps; step += 1) {
+        hand = hand.translate(0, 0.5);
+        await gesture.moveTo(hand);
+        await tester.pump();
+      }
+    }
+
+    await gesture.moveTo(hand);
+    await tester.pump();
+    await reach(6);
+    expect(
+      tester.getRect(_graph('timeline')).height,
+      moreOrLessEquals(most),
+      reason: 'it stands at its most: the view less its header\'s row',
+    );
+    final panned = rows.pixels;
+    final edge = tester.getRect(_grip('timeline')).center.dy;
+    expect(panned, greaterThan(0), reason: 'the pull panned to get there');
+    await reach(6);
+    expect(
+      rows.pixels,
+      panned,
+      reason: 'nothing left to grow into, nothing to pan for',
+    );
+    expect(
+      tester.getRect(_grip('timeline')).center.dy,
+      moreOrLessEquals(edge),
+      reason: 'the edge stays where the pull left it',
     );
     await gesture.up();
     await tester.pumpAndSettle();
@@ -264,17 +318,20 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 /// [tall]: a surface twice as tall, the dock at its cap of half of it —
-/// the sheet stands the rail up as its header. [under]: that many layers'
-/// rows under the drawing's.
+/// the sheet stands the rail up as its header. [under], [over]: that many
+/// layers' rows under the drawing's, and over it.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool tall = false,
   int under = 0,
+  int over = 0,
 }) async {
   await tester.binding.setSurfaceSize(Size(1400, tall ? 2400 : 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project(under: under))),
+    MaterialApp(
+      home: HomePage(initialProject: _project(under: under, over: over)),
+    ),
   );
   await tester.pumpAndSettle();
   await tester.drag(
@@ -285,7 +342,18 @@ Future<EditorSessionManager> _pump(
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 }
 
-Project _project({required int under}) => Project(
+/// How tall one of the timeline's rows stands — the drawing's Position
+/// lane's.
+double _rowExtent(WidgetTester tester) => tester
+    .getRect(
+      find.byKey(const ValueKey<String>('timeline-lane-label-draw-position')),
+    )
+    .height;
+
+Layer _empty(String id) =>
+    Layer(id: LayerId(id), name: id, frames: const []);
+
+Project _project({required int under, required int over}) => Project(
   id: const ProjectId('graph-grip'),
   name: 'Graph Grip',
   createdAt: DateTime.utc(2026, 10, 11),
@@ -303,11 +371,7 @@ Project _project({required int under}) => Project(
           layers: [
             // The list runs bottom up: these stand under the drawing.
             for (var index = 0; index < under; index += 1)
-              Layer(
-                id: LayerId('under-$index'),
-                name: 'Under $index',
-                frames: const [],
-              ),
+              _empty('under-$index'),
             Layer(
               id: _drawId,
               name: 'Drawing',
@@ -318,6 +382,8 @@ Project _project({required int under}) => Project(
                     .withKey(8, CanvasPoint(x: 180, y: 10)),
               ),
             ),
+            for (var index = 0; index < over; index += 1)
+              _empty('over-$index'),
           ],
         ),
       ],

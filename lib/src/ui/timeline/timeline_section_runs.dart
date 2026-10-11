@@ -134,7 +134,7 @@ TimelineRowEdges timelineRowEdgesOf(
     final seat = block.seat;
     final stands = switch (rows[block.start].folded) {
       true => 0.0,
-      false when seat.enlarged && most.isFinite => most,
+      false when seat.graph.enlarged && most.isFinite => most,
       false => math.min(seat.graph.extentAt(rowExtent), most),
     };
     slots[last] = (

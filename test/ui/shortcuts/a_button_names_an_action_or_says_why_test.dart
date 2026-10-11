@@ -60,6 +60,11 @@ const ledger = <String, Why>{
   // it stands on).
   'timeline/layer_rail_columns.dart | keyValue': Why.aRow,
   'timeline/layer_rail_columns.dart | key': Why.aRow,
+  // A header graph's own button (I-89 ③D): it enlarges the graph it
+  // stands in over every other row, or lets it back.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-enlarge-\$groupKey'":
+      Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,

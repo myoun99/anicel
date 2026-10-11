@@ -165,7 +165,7 @@ class TimelineLaneGraph extends StatelessWidget {
             onPlot: verbs == null
                 ? null
                 : (mode) => verbs.plot(seat.groupKey, mode),
-            enlarged: seat.enlarged,
+            enlarged: seat.graph.enlarged,
             onEnlarge: verbs == null
                 ? null
                 : () => verbs.enlarge(seat.groupKey),
@@ -475,6 +475,13 @@ const double _graphToolsInset = 6;
 const double _graphToolsPadding = 2;
 const double _graphToolsGap = 6;
 
+/// The narrowest the tools are laid out: the enlarge button with none of
+/// the pills beside it — narrower, and their row overflows.
+final double _graphToolsLeastWidth =
+    2 * _graphToolsPadding +
+    _graphToolsGap +
+    AppIconButtonSize.strip.maxWidth;
+
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
 /// it plots — its values, or how fast they change — and the button that
 /// enlarges it over every other row or lets it back (③D).
@@ -527,11 +534,13 @@ class LaneGraphTools extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            PillStrip(
-              items: [
-                pill(LaneGraphMode.value, strings.laneGraphValue),
-                pill(LaneGraphMode.speed, strings.laneGraphSpeed),
-              ],
+            Flexible(
+              child: PillStrip(
+                items: [
+                  pill(LaneGraphMode.value, strings.laneGraphValue),
+                  pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+                ],
+              ),
             ),
             const SizedBox(width: _graphToolsGap),
             AppIconButton(
@@ -585,6 +594,9 @@ enum _LaneGraphCorner { tools, guests }
 /// start, which [ScrollStill] keeps at the view's while it scrolls: so
 /// nothing here moves with the scroll, and a scroll lays nothing out.
 ///
+/// The tools are no wider than the view, their pills giving width up
+/// first; never narrower than their enlarge button.
+///
 /// The tags never stand before the tools' end: no wider than the room the
 /// view leaves them on the timeline — the graph's on the sheet — so a long
 /// name ends in an ellipsis; never narrower than a tag's dash and pin.
@@ -618,7 +630,7 @@ class _LaneGraphCorners extends MultiChildLayoutDelegate {
       _LaneGraphCorner.tools,
       BoxConstraints(
         maxWidth: math.max(
-          0,
+          _graphToolsLeastWidth,
           (axis == Axis.horizontal ? view : size.width) - 2 * _graphToolsInset,
         ),
         maxHeight: size.height,

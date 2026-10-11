@@ -323,14 +323,16 @@ void main() {
     // one, another open graph thinned whole, every header and layer row
     // left standing.
     group('an enlarged graph folds every other lane', () {
+      /// [open], the graph of [enlarged] among them enlarged.
       List<TimelineDisplayRow> seatEnlarged(
         Map<String, LaneGraph> open,
         String enlarged,
-      ) => seatLaneGraphs(
-        rows,
-        LaneGraphsView(open: open, enlarged: enlarged),
-        selection: const {},
-      );
+      ) => seatOpen({
+        ...open,
+        enlarged: (open[enlarged] ?? const LaneGraph()).copyWith(
+          enlarged: true,
+        ),
+      });
       const view = 400.0;
       final most = laneGraphMostExtent(view, row);
 
@@ -348,7 +350,7 @@ void main() {
           false,
           true,
         ]);
-        expect([for (final row in seated) row.graph?.enlarged], [
+        expect([for (final row in seated) row.graph?.graph.enlarged], [
           null,
           null,
           true,
@@ -367,9 +369,13 @@ void main() {
       });
 
       test('a graph enlarged where it is not drawn folds nothing', () {
-        final seated = seatEnlarged({transformKey: const LaneGraph()}, blurKey);
+        // Open on a row these are not — another cut's.
+        final elsewhere = laneGroupKey(const LayerId('x'), 'transform-group');
+        final seated = seatEnlarged({
+          transformKey: const LaneGraph(),
+        }, elsewhere);
         expect([for (final row in seated) row.folded], everyElement(isFalse));
-        expect([for (final row in seated) row.graph?.enlarged], [
+        expect([for (final row in seated) row.graph?.graph.enlarged], [
           null,
           null,
           false,

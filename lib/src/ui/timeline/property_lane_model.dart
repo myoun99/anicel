@@ -708,17 +708,6 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   /// membership is resolved against it so nesting reads the same in every
   /// orientation. Defaults to [layers].
   List<Layer>? stack,
-
-  /// R9 #23/#24 — ONE rule for where a twirled-down lane sits: **further
-  /// from the layer means applied later**.
-  ///
-  /// On the horizontal axis "further" is DOWN, so the lanes follow their
-  /// layer in pipeline order (effects, then Transform last) and this stays
-  /// false. On the x-sheet the rows are COLUMNS and the user's direction is
-  /// LEFTWARD, so the same list is emitted BEFORE the layer and reversed —
-  /// the last-applied lane ends up furthest left. Deciding the two
-  /// separately is how they came to disagree in the first place.
-  bool lanesPrecedeLayer = false,
 }) {
   final rows = <TimelineDisplayRow>[];
   // 🚨F-249 (유저 2026-10-01): 「과거 결정 번복. 역시 변형 펼칠땐 어태치레이어의
@@ -800,19 +789,31 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
       rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
     }
   }
-  if (!lanesPrecedeLayer) {
-    return List.unmodifiable(rows);
-  }
-  return List.unmodifiable(_laneRunsMovedAhead(rows));
+  return List.unmodifiable(rows);
 }
 
-/// Flips each lane RUN to the near side of its owner's row and reverses it
-/// — the x-sheet's leftward reading of "further means later" (R9 #23).
+/// [rows] — the timeline's, built by [buildTimelineDisplayRows] — with each
+/// lane RUN flipped to the near side of its owner's row and reversed: the
+/// x-sheet's.
+///
+/// R9 #23/#24 — ONE rule for where a twirled-down lane sits: **further
+/// from the layer means applied later**. On the horizontal axis "further"
+/// is DOWN, so the lanes follow their layer in pipeline order (effects,
+/// then Transform last). On the x-sheet the rows are COLUMNS and the
+/// user's direction is LEFTWARD, so the same list stands BEFORE the layer
+/// and reversed — the last-applied lane ends up furthest left. Deciding
+/// the two separately is how they came to disagree in the first place.
+///
+/// ⚠️Flipped AFTER the rows' graphs are seated (I-89 ③D): a seat lists
+/// its lanes as the rail draws them, so the sheet's graph — the strip a
+/// folded one thins to, the order its lines are drawn in — is the
+/// timeline's turned on its side. Seated after, a folded graph's strip
+/// was its first lane's on the timeline and its last's on the sheet.
 ///
 /// ↩️It moved the run past the owner's WHOLE attach group, mirroring R26
 /// #36 on the horizontal axis. F-249 (유저 2026-10-01) put a base's lanes
 /// right under its own row there, so here they sit right beside it.
-List<TimelineDisplayRow> _laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
+List<TimelineDisplayRow> laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
   final out = <TimelineDisplayRow>[];
   var index = 0;
   while (index < rows.length) {
@@ -835,7 +836,7 @@ List<TimelineDisplayRow> _laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
     );
     out.insertAll(owner < 0 ? out.length : owner, run.reversed);
   }
-  return out;
+  return List.unmodifiable(out);
 }
 
 /// 🚨T13 — where a lane SELECTION SPAN ends, given the rows the rail draws.

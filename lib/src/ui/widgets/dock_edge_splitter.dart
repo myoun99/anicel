@@ -142,19 +142,22 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     if (!_dragging) {
       return;
     }
+    _applyDelta(
+      _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
+    );
     // An edge inside the content it sizes stands in a scroll of its own
     // axis — a header graph's (I-89 ③), the storyboard's V rows' — and a
     // pull that reaches the view's edge pans it, the pan folded into the
-    // travel as every drag-borne edge pan's is. The panels' and the rails'
-    // edges stand in no such scroll, so for them this is nothing.
-    final panned = edgeAutoPanApply(
+    // travel as every drag-borne edge pan's is: as far as the edge follows
+    // and no further, so an edge at its ceiling stays under the hand
+    // (I-89 ③D). The pan moves the hand no more than the edge, so it owes
+    // the drag nothing. The panels' and the rails' edges stand in no such
+    // scroll, so for them this is nothing.
+    edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
       axis: _dragAxis,
-    );
-    _applyDelta(
-      (_dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy) +
-          panned,
+      follow: widget.onDragDelta,
     );
   }
 

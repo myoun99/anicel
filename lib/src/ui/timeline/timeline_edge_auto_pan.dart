@@ -279,6 +279,12 @@ double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
 /// pointer moving over stationary content, so a travel that ignores it
 /// freezes the moment the view begins to scroll.
 ///
+/// [follow] folds it in FIRST, for a travel with an end — an edge pulled
+/// to its floor or its ceiling (I-89 ③D): it is handed the pan, returns
+/// how much of it the travel took, and the view pans that far and no
+/// further. A pan the travel cannot take would only carry what it moves
+/// off from under the hand.
+///
 /// Per POINTER MOVE, no timer (the row drag's convention): holding still
 /// at the edge holds still; it is the reaching that scrolls. Clamped at
 /// BOTH extents — the ruler/rail scrubs that deliberately overshoot to
@@ -287,6 +293,7 @@ double edgeAutoPanApply({
   required BuildContext context,
   required Offset globalPosition,
   required Axis axis,
+  double Function(double pan)? follow,
 }) {
   final scrollable = Scrollable.maybeOf(context, axis: axis);
   final viewport = scrollable?.context.findRenderObject();
@@ -307,11 +314,12 @@ double edgeAutoPanApply({
     position.minScrollExtent,
     position.maxScrollExtent,
   );
-  final applied = target - position.pixels;
+  final reach = target - position.pixels;
+  final applied = reach == 0 || follow == null ? reach : follow(reach);
   if (applied == 0) {
     return 0;
   }
-  position.jumpTo(target);
+  position.jumpTo(position.pixels + applied);
   return applied;
 }
 

@@ -408,7 +408,7 @@ void main() {
   });
 
   testWidgets('in a view too narrow for any name, a tag keeps its dash and '
-      'its pin whole', (tester) async {
+      'its pin whole, and the tools their enlarge button', (tester) async {
     final s = await _pump(tester, frames: 600, width: 1040);
     await _pinTheBlur(tester, s);
 
@@ -421,6 +421,20 @@ void main() {
       reason: '⛔전제: the view leaves less than a tag\'s dash and pin',
     );
     expect(tester.takeException(), isNull, reason: 'its row did not overflow');
+    final enlarge = tester.getRect(
+      find.byKey(
+        ValueKey<String>('timeline-lane-graph-enlarge-$_transformGroup'),
+      ),
+    );
+    expect(
+      enlarge.width,
+      greaterThanOrEqualTo(20),
+      reason: 'the pills give their width up, the button none of its own',
+    );
+    expect(
+      enlarge.right,
+      lessThanOrEqualTo(tester.getRect(_tools('timeline')).right),
+    );
     expect(
       tester.getRect(_tags('timeline')).left,
       moreOrLessEquals(tester.getRect(_tools('timeline')).right + 8),

@@ -34,15 +34,28 @@ double laneGraphMostExtent(double view, double rowExtent) =>
     view - rowExtent > 0 ? view - rowExtent : 0;
 
 /// ONE group's open header graph (I-89 ③): how far it stands along the
-/// rail, and what it plots.
+/// rail, what it plots, and whether it is enlarged over the rest.
 @immutable
 class LaneGraph {
-  const LaneGraph({this.extent, this.mode = LaneGraphMode.value});
+  const LaneGraph({
+    this.extent,
+    this.mode = LaneGraphMode.value,
+    this.enlarged = false,
+  });
 
   /// The grip's extent; null until a grip has said one.
   final double? extent;
 
   final LaneGraphMode mode;
+
+  /// Whether it is ENLARGED over every other row (I-89 ③D, the mock's 5판)
+  /// — it stands as far as the view lets one ([laneGraphMostExtent]), and
+  /// every other row is folded to a strip. Kept with the graph, as its
+  /// extent and its mode are: a graph shut is let back with it, and every
+  /// use of its row wears it (F-302). ⛔A key of its own, beside
+  /// [LaneGraphsView.open], outlived the graph it named and followed no
+  /// row.
+  final bool enlarged;
 
   /// How far the graph stands on a rail of [rowExtent] rows: the grip's,
   /// or [laneGraphOpeningRows] rows — so a graph nobody has sized follows
@@ -50,20 +63,26 @@ class LaneGraph {
   double extentAt(double rowExtent) =>
       extent ?? laneGraphOpeningRows * rowExtent;
 
-  LaneGraph copyWith({double? extent, LaneGraphMode? mode}) =>
-      LaneGraph(extent: extent ?? this.extent, mode: mode ?? this.mode);
+  LaneGraph copyWith({double? extent, LaneGraphMode? mode, bool? enlarged}) =>
+      LaneGraph(
+        extent: extent ?? this.extent,
+        mode: mode ?? this.mode,
+        enlarged: enlarged ?? this.enlarged,
+      );
 
   @override
   bool operator ==(Object other) =>
-      other is LaneGraph && other.extent == extent && other.mode == mode;
+      other is LaneGraph &&
+      other.extent == extent &&
+      other.mode == mode &&
+      other.enlarged == enlarged;
 
   @override
-  int get hashCode => Object.hash(extent, mode);
+  int get hashCode => Object.hash(extent, mode, enlarged);
 }
 
 /// THE RAIL'S HEADER GRAPHS (I-89 ③) — view state, as the twirls are: which
-/// lane groups stand open as a graph, the lanes pinned to every graph, and
-/// the one graph enlarged over the rest.
+/// lane groups stand open as a graph, and the lanes pinned to every graph.
 ///
 /// 🗣️유저 2026-10-10: 「그래프누르면 해당 fx에서만 작동하도록」 · 「그래프를
 /// 누른 레일만 상태변경」 — [open] is keyed by the group (`laneGroupKey`), so
@@ -72,11 +91,7 @@ class LaneGraph {
 /// one way another group's lane reaches one.
 @immutable
 class LaneGraphsView {
-  const LaneGraphsView({
-    this.open = const {},
-    this.pinned = const {},
-    this.enlarged,
-  });
+  const LaneGraphsView({this.open = const {}, this.pinned = const {}});
 
   static const LaneGraphsView none = LaneGraphsView();
 
@@ -86,25 +101,16 @@ class LaneGraphsView {
   /// The pinned lanes, by the `laneGroupKey` of their own (layer, lane).
   final Set<String> pinned;
 
-  /// The group whose graph is enlarged over every other row, or null.
-  final String? enlarged;
-
   LaneGraphsView copyWith({
     Map<String, LaneGraph>? open,
     Set<String>? pinned,
-    String? Function()? enlarged,
-  }) => LaneGraphsView(
-    open: open ?? this.open,
-    pinned: pinned ?? this.pinned,
-    enlarged: enlarged == null ? this.enlarged : enlarged(),
-  );
+  }) => LaneGraphsView(open: open ?? this.open, pinned: pinned ?? this.pinned);
 
   @override
   bool operator ==(Object other) =>
       other is LaneGraphsView &&
       mapEquals(other.open, open) &&
-      setEquals(other.pinned, pinned) &&
-      other.enlarged == enlarged;
+      setEquals(other.pinned, pinned);
 
   @override
   int get hashCode => Object.hash(
@@ -113,7 +119,6 @@ class LaneGraphsView {
         Object.hash(key, value),
     ]),
     Object.hashAllUnordered(pinned),
-    enlarged,
   );
 }
 
@@ -134,7 +139,6 @@ class TimelineGraphSeat {
     required this.lanes,
     required this.picked,
     required this.pinned,
-    this.enlarged = false,
   });
 
   /// The group's view-state key (`laneGroupKey`): a header's — or, on the
@@ -154,11 +158,6 @@ class TimelineGraphSeat {
   /// the same order.
   final List<String> pinned;
 
-  /// Whether the graph is the one enlarged over every other row
-  /// ([LaneGraphsView.enlarged]) — it stands as far as the view lets one
-  /// ([laneGraphMostExtent]).
-  final bool enlarged;
-
   @override
   bool operator ==(Object other) =>
       other is TimelineGraphSeat &&
@@ -166,8 +165,7 @@ class TimelineGraphSeat {
       other.graph == graph &&
       listEquals(other.lanes, lanes) &&
       listEquals(other.picked, picked) &&
-      listEquals(other.pinned, pinned) &&
-      other.enlarged == enlarged;
+      listEquals(other.pinned, pinned);
 
   @override
   int get hashCode => Object.hash(
@@ -176,6 +174,5 @@ class TimelineGraphSeat {
     Object.hashAll(lanes),
     Object.hashAll(picked),
     Object.hashAll(pinned),
-    enlarged,
   );
 }

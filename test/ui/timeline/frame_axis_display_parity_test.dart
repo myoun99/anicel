@@ -52,11 +52,12 @@ void main() {
 
     test('the x-sheet puts the same list BEFORE the layer, reversed — the '
         'last-applied reads furthest LEFT', () {
-      final rows = buildTimelineDisplayRows(
-        layers: [owner],
-        expandedLayerIds: {owner.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final rows = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: [owner],
+          expandedLayerIds: {owner.id},
+          lanesForLayer: lanes,
+        ),
       );
 
       expect(rows.map(nameOf), ['transform-position', 'fx-blur', 'A']);
@@ -96,11 +97,12 @@ void main() {
         'A-above',
       ]);
 
-      final sheet = buildTimelineDisplayRows(
-        layers: stack,
-        expandedLayerIds: {owner.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final sheet = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: stack,
+          expandedLayerIds: {owner.id},
+          lanesForLayer: lanes,
+        ),
       );
       expect(sheet.map(nameOf), [
         'A-below',
@@ -119,11 +121,12 @@ void main() {
         kind: LayerKind.animation,
       );
 
-      final sheet = buildTimelineDisplayRows(
-        layers: [owner, second],
-        expandedLayerIds: {owner.id, second.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final sheet = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: [owner, second],
+          expandedLayerIds: {owner.id, second.id},
+          lanesForLayer: lanes,
+        ),
       );
 
       expect(sheet.map(nameOf), [

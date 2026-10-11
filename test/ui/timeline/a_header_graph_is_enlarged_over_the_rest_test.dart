@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/lane_graph.dart'
     show LaneGraph, laneGraphFoldedExtent, laneGraphOpeningRows;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
@@ -44,7 +45,7 @@ void main() {
     await _openEverything(tester);
     await _tap(tester, _enlarge('timeline', _draw));
 
-    expect(s.railView.laneGraphs.value.enlarged, _group(_draw));
+    expect(_enlarged(s), {_group(_draw)});
     final row = _rowExtent(tester);
     final view = _viewOf(tester, _rowsScroll(tester));
     expect(
@@ -135,6 +136,7 @@ void main() {
     final row = _rowExtent(tester);
     await _reach(tester, _enlarge('timeline', _draw));
     expect(_face(tester, _draw).isSelected, isFalse);
+    expect(_face(tester, _draw).tooltip, AppText.strings.laneGraphEnlarge);
     expect(
       find.descendant(
         of: _enlarge('timeline', _draw),
@@ -145,6 +147,7 @@ void main() {
 
     await _tap(tester, _enlarge('timeline', _draw));
     expect(_face(tester, _draw).isSelected, isTrue);
+    expect(_face(tester, _draw).tooltip, AppText.strings.laneGraphEnlargeOn);
     expect(
       find.descendant(
         of: _enlarge('timeline', _draw),
@@ -154,7 +157,7 @@ void main() {
     );
 
     await _tap(tester, _enlarge('timeline', _draw));
-    expect(s.railView.laneGraphs.value.enlarged, isNull);
+    expect(_enlarged(s), isEmpty);
     expect(
       tester.getRect(_label('timeline', _side, 'position')).height,
       moreOrLessEquals(row),
@@ -175,7 +178,7 @@ void main() {
     await _tap(tester, _graphButton(_side));
 
     expect(s.railView.laneGraphs.value.open, contains(_group(_side)));
-    expect(s.railView.laneGraphs.value.enlarged, _group(_draw));
+    expect(_enlarged(s), {_group(_draw)});
     expect(_graph('timeline', _side), findsNothing);
     expect(_enlarge('timeline', _side), findsNothing);
     expect(
@@ -191,13 +194,13 @@ void main() {
     await _tap(tester, _enlarge('timeline', _draw));
     await _tap(tester, _graphButton(_more));
     expect(
-      s.railView.laneGraphs.value.enlarged,
-      _group(_draw),
+      _enlarged(s),
+      {_group(_draw)},
       reason: 'another graph shut leaves it',
     );
 
     await _tap(tester, _graphButton(_draw));
-    expect(s.railView.laneGraphs.value.enlarged, isNull);
+    expect(_enlarged(s), isEmpty);
     await _tap(tester, _graphButton(_draw));
     final row = _rowExtent(tester);
     await _reach(tester, _graph('timeline', _draw));
@@ -247,6 +250,28 @@ void main() {
     expect(graphs.value.open[_group(_draw)]?.extent, 5000);
   });
 
+  testWidgets('the panel resized, it stands the new view less its header\'s '
+      'row', (tester) async {
+    await _pump(tester);
+    await _openEverything(tester);
+    await _tap(tester, _enlarge('timeline', _draw));
+    final row = _rowExtent(tester);
+    final before = _viewOf(tester, _rowsScroll(tester)).height;
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, 120),
+    );
+    await tester.pumpAndSettle();
+    final view = _viewOf(tester, _rowsScroll(tester));
+    expect(view.height, lessThan(before - 60), reason: '⛔전제: it shrank');
+    await _reach(tester, _graph('timeline', _draw));
+    expect(
+      tester.getRect(_graph('timeline', _draw)).height,
+      moreOrLessEquals(view.height - row),
+    );
+  });
+
   testWidgets('on the sheet it is enlarged across, the columns\' view less '
       'its header\'s column', (tester) async {
     await _pump(tester, tall: true);
@@ -278,6 +303,16 @@ void main() {
       moreOrLessEquals(laneGraphFoldedExtent),
     );
     expect(_graph('xsheet', _more), findsNothing);
+    expect(
+      tester.getRect(_label('xsheet', _more, 'anchor-point')).width,
+      moreOrLessEquals(laneGraphFoldedExtent),
+      reason: 'another graph: ONE strip, its first lane\'s header',
+    );
+    expect(
+      _label('xsheet', _more, 'position'),
+      findsNothing,
+      reason: 'a row of no extent builds no header',
+    );
   });
 }
 
@@ -289,6 +324,13 @@ const _draw = LayerId('draw');
 
 String get _transform => transformGroupHeaderLane.laneId;
 String _group(LayerId layer) => laneGroupKey(layer, _transform);
+
+/// The groups whose graphs stand enlarged.
+Set<String> _enlarged(EditorSessionManager s) => {
+  for (final MapEntry(:key, value: graph)
+      in s.railView.laneGraphs.value.open.entries)
+    if (graph.enlarged) key,
+};
 
 Finder _graph(String grid, LayerId layer) =>
     find.byKey(ValueKey<String>('$grid-lane-graph-${_group(layer)}'));
