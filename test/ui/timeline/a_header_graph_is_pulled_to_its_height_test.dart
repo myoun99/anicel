@@ -97,6 +97,12 @@ void main() {
       moreOrLessEquals(lanes),
       reason: 'its five lanes, and no room after them',
     );
+    expect(
+      _graphOf(s)?.extent,
+      moreOrLessEquals(lanes),
+      reason: 'the view state holds no graph shorter than its lanes — the '
+          'pull past them is the drag\'s, not the row\'s',
+    );
     await gesture.moveBy(const Offset(0, 30));
     await tester.pump();
     await gesture.up();
@@ -110,11 +116,19 @@ void main() {
 
   testWidgets('a pull that reaches the foot of the view pans the rows, and '
       'the edge stays under the hand', (tester) async {
-    final s = await _pump(tester);
+    // Rows under the graph: room for the pull to pan into, so an edge that
+    // did not take the pan in would fall a long way behind the hand.
+    final s = await _pump(tester, under: 12);
     await _openTheGraph(tester, s);
     final rows = _rowsScroll(tester);
+    rows.jumpTo(0);
+    await tester.pump();
     final view = _viewOf(tester, rows);
-    expect(rows.pixels, 0, reason: '⛔전제');
+    expect(
+      rows.maxScrollExtent,
+      greaterThan(100),
+      reason: '⛔전제: rows to pan into',
+    );
 
     final gesture = await _grab(tester, 'timeline');
     var hand = tester.getRect(_grip('timeline')).center;
@@ -250,15 +264,17 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 /// [tall]: a surface twice as tall, the dock at its cap of half of it —
-/// the sheet stands the rail up as its header.
+/// the sheet stands the rail up as its header. [under]: that many layers'
+/// rows under the drawing's.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool tall = false,
+  int under = 0,
 }) async {
   await tester.binding.setSurfaceSize(Size(1400, tall ? 2400 : 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(home: HomePage(initialProject: _project(under: under))),
   );
   await tester.pumpAndSettle();
   await tester.drag(
@@ -269,7 +285,7 @@ Future<EditorSessionManager> _pump(
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 }
 
-Project _project() => Project(
+Project _project({required int under}) => Project(
   id: const ProjectId('graph-grip'),
   name: 'Graph Grip',
   createdAt: DateTime.utc(2026, 10, 11),
@@ -285,6 +301,13 @@ Project _project() => Project(
           canvasSize: const CanvasSize(width: 640, height: 360),
           camera: CutCamera.empty(),
           layers: [
+            // The list runs bottom up: these stand under the drawing.
+            for (var index = 0; index < under; index += 1)
+              Layer(
+                id: LayerId('under-$index'),
+                name: 'Under $index',
+                frames: const [],
+              ),
             Layer(
               id: _drawId,
               name: 'Drawing',
