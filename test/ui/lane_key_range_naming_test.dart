@@ -103,6 +103,18 @@ void main() {
     expect(rotation().keyAt(8)!.name, isNull);
   });
 
+  test('the key the playhead stands on speaks for the range, over the '
+      'earliest', () {
+    keyRotation({0: 10, 4: 20, 8: 30});
+    session.selectFrameIndex(4);
+    selectRotationRange(0, 9);
+
+    expect(laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
+
+    expect(rotation().keyAt(0)!.value, 20);
+    expect(rotation().keyAt(8)!.value, 20);
+  });
+
   test('a name held OUTSIDE the range is a collision, asked ONCE', () {
     keyRotation({0: 10, 4: 20, 8: 30});
 

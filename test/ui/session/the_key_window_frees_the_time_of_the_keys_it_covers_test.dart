@@ -1,10 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 
 /// I-89 ④-Q5 (A′ while it is asked): the key window's roving row frees the
 /// time of the position keys its range covers between the first and the
@@ -72,6 +75,26 @@ void main() {
     expect(laneVerbs.laneKeyRovingForSelection, isEmpty, reason: 'last');
     select(['scale'], 0, 9);
     expect(laneVerbs.laneKeyRovingForSelection, isEmpty, reason: 'scale');
+  });
+
+  test("an effect lane offers the row no key: an effect's keys walk no "
+      'path', () {
+    final layerId = session.activeLayer!.id;
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    final effect = session.activeLayer!.effects.single;
+    final parameter = effect.parameterOf('blurX');
+    session.effectsAndFx.updateLayerEffects(layerId, [
+      effect.withParameter(
+        'blurX',
+        EffectParameter(
+          value: parameter.value,
+          track: parameter.track.withKey(0, 1).withKey(2, 5).withKey(8, 3),
+        ),
+      ),
+    ]);
+    select([effectLaneId(effect.id, 'blurX')], 0, 9);
+    expect(laneVerbs.canNameLaneKeys, isTrue, reason: '⛔전제: it covers them');
+    expect(laneVerbs.laneKeyRovingForSelection, isEmpty);
   });
 
   test('the type alone frees the key between, which stands where its run '
