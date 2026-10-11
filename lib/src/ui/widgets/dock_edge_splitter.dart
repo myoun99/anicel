@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../theme/app_theme.dart';
+import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'owning_axis_grip.dart';
 
 /// A draggable divider between two areas that share an extent.
@@ -62,7 +63,15 @@ class DockEdgeSplitter extends StatefulWidget {
     this.onDragEnd,
     this.onDoubleTap,
     this.tooltip,
+    this.edgePans = false,
   });
+
+  /// Whether a drag reaching the edge of the scrollable the splitter stands
+  /// in pans it along the drag, the pan folded into the travel as every
+  /// drag-borne edge pan's is ([edgeAutoPanApply]) — for an edge inside the
+  /// content it sizes, a header graph's (I-89 ③). The panels' and the
+  /// rails' edges stand in no scroll of their own axis.
+  final bool edgePans;
 
   /// [Axis.vertical] separates side-by-side areas (drag left-right);
   /// [Axis.horizontal] separates stacked ones (drag up-down).
@@ -141,8 +150,16 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     if (!_dragging) {
       return;
     }
+    final panned = widget.edgePans
+        ? edgeAutoPanApply(
+            context: context,
+            globalPosition: details.globalPosition,
+            axis: _dragAxis,
+          )
+        : 0.0;
     _applyDelta(
-      _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
+      (_dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy) +
+          panned,
     );
   }
 

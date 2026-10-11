@@ -9,6 +9,7 @@ import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'axis_turn.dart'
     show acrossBox, extentAcross, extentAlong, offsetAlong;
@@ -54,6 +55,8 @@ List<Widget> timelineFrameSide(
           lanes: rows.sublist(unit.first - first, unit.last - first + 1),
           grid: grid,
           crossExtent: edges.unitSpanOf(unit.first).extent,
+          lanesExtent:
+              edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
         )
       else ...[
         cells(rows[unit.first - first]),
@@ -81,6 +84,7 @@ class TimelineLaneGraph extends StatelessWidget {
     required this.lanes,
     required this.grid,
     required this.crossExtent,
+    required this.lanesExtent,
   });
 
   final TimelineGraphSeat seat;
@@ -94,6 +98,10 @@ class TimelineLaneGraph extends StatelessWidget {
   /// How far it reaches across the frames — its lanes and the room after
   /// them.
   final double crossExtent;
+
+  /// How far its lanes alone reach across the frames: the least its grip
+  /// makes it.
+  final double lanesExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +153,22 @@ class TimelineLaneGraph extends StatelessWidget {
                   ),
               ],
             ),
+          ),
+        ),
+        // Its cross end: the timeline's bottom, the sheet's right.
+        Positioned(
+          left: grid.axis == Axis.horizontal ? 0 : null,
+          top: grid.axis == Axis.horizontal ? null : 0,
+          right: 0,
+          bottom: 0,
+          child: LaneGraphGrip(
+            key: ValueKey<String>(
+              '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
+            ),
+            axis: grid.axis,
+            extent: crossExtent,
+            least: lanesExtent,
+            onResize: (extent) => verbs?.resize(seat.groupKey, extent),
           ),
         ),
       ],
@@ -210,6 +234,61 @@ class TimelineLaneGraph extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A graph's GRIP (I-89 ③, the mock's 5판): its cross end — the
+/// timeline's bottom edge, the sheet's right — pulled to make it taller or
+/// shorter, never shorter than its lanes. The app's one splitter
+/// ([DockEdgeSplitter]): what it cannot use of the travel is the drag's
+/// to pay back, and a pull that reaches the view's edge pans it.
+class LaneGraphGrip extends StatefulWidget {
+  const LaneGraphGrip({
+    super.key,
+    required this.axis,
+    required this.extent,
+    required this.least,
+    required this.onResize,
+  });
+
+  /// The grid's frame axis: the graph stands across it.
+  final Axis axis;
+
+  /// How far the graph reaches across the frames now, and the least its
+  /// grip makes it.
+  final double extent;
+  final double least;
+
+  /// The extent a pull has reached.
+  final ValueChanged<double> onResize;
+
+  @override
+  State<LaneGraphGrip> createState() => _LaneGraphGripState();
+}
+
+class _LaneGraphGripState extends State<LaneGraphGrip> {
+  /// Where the pull has taken the graph — the drag's own, so a move that
+  /// comes before the last one's rebuild goes on from where it reached.
+  double _reached = 0;
+
+  double _pull(double delta) {
+    final next = math.max(widget.least, _reached + delta);
+    final used = next - _reached;
+    _reached = next;
+    if (used != 0) {
+      widget.onResize(next);
+    }
+    return used;
+  }
+
+  // The timeline's graph and the rows after it are stacked; the sheet's
+  // stand side by side — the splitter's axis is the frames'.
+  @override
+  Widget build(BuildContext context) => DockEdgeSplitter(
+    axis: widget.axis,
+    edgePans: true,
+    onDragStart: () => _reached = widget.extent,
+    onDragDelta: _pull,
+  );
 }
 
 /// What a graph's tools keep clear of the view's start along the frames
