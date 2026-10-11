@@ -263,6 +263,45 @@ void main() {
     });
   });
 
+  /// Q④-7 (A while it is asked): a time move moves the keys it holds as it
+  /// moves any, and a roving key's frame is its run's to give — the run
+  /// places it again where it is passed.
+  group('a time move', () {
+    /// [turning], placed, with the keys in [[from], [to]) moved by [delta].
+    PropertyTrack<CanvasPoint> moved(int from, int to, int delta) {
+      final placed = TransformTrack.empty().copyWith(position: turning());
+      final shifted = placed.position.withRangedKeysShifted(
+        rangeStartIndex: from,
+        rangeEndIndexExclusive: to,
+        frameDelta: delta,
+      );
+      expect(shifted, isNotNull, reason: '⛔전제: the move is not refused');
+      return placed.copyWith(position: shifted).position;
+    }
+
+    test('of a timed end places the roving keys of its run again', () {
+      expect(moved(20, 21, 20).keys.keys, [0, 10, 40]);
+    });
+
+    test('of every key moves the run as it is', () {
+      final all = moved(0, 21, 4);
+      expect(all.keys.keys, [4, 9, 24]);
+      expect(all.keyAt(9)!.roving, isTrue);
+    });
+
+    test('of a roving key alone leaves it where its run places it', () {
+      expect(moved(5, 6, 3).keys.keys, [0, 5, 20]);
+    });
+
+    test('past a roving key reorders the keys as it would any — and the '
+        'end that key becomes keeps its time', () {
+      final past = moved(20, 21, -17);
+      expect(past.keys.keys, [0, 3, 5]);
+      expect(past.keyAt(5)!.roving, isTrue);
+      expect(past.keyCanRove(5), isFalse);
+    });
+  });
+
   group('the key window\'s write', () {
     test('frees the keys it covers but the first and the last', () {
       final still = PropertyTrack(

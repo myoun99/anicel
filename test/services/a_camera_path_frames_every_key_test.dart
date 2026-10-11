@@ -10,6 +10,7 @@ import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/camera_path.dart';
 import 'package:anicel/src/services/camera_pose_resolver.dart'
     show resolveCameraPoseAtTime;
@@ -227,6 +228,29 @@ void main() {
     expectPoints([half], [Offset(camera.x, camera.y)]);
     final chord = (trail.points[2 * 10] + trail.points[2 * 11]) / 2;
     expect((half - chord).distance, greaterThan(0.01));
+  });
+
+  test('a key whose time roves is framed where the camera passes it — at '
+      'its value — and labelled by the cell it stands on', () {
+    final roving = CutCamera.fromTrack(
+      TransformTrack.empty().copyWith(
+        position: three.track.position.withKeysRoving(
+          frames: {12},
+          roving: true,
+        ),
+      ),
+    );
+    final path = pathOf(roving);
+    // The way from 0 to 24 is 240 + 135 long and the key 240 along it:
+    // passed at 24 × 240 / 375 = 15.36, the cell nearest is 15.
+    expect(
+      [for (final key in path.keys) key.frameIndex],
+      [0, 15, 24],
+      reason: '⛔전제: placed',
+    );
+    final marks = marksOf(path);
+    expectPoints(framesIn(marks)[1].points, frameAround(320, 45));
+    expect(wordsIn(marks)[1].text, '16f');
   });
 
   test('a camera that frames one place at every key — or has one key, or '

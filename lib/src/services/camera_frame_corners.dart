@@ -8,6 +8,7 @@ import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/transform_track.dart' show positionKeySpace;
 import 'camera_pose_resolver.dart';
 import 'camera_projection_matrix.dart';
 
@@ -82,15 +83,25 @@ List<Offset> cameraFrameShownAtTime(
 /// the corner of the canvas and back (F-310, 유저 2026-10-06: 「카메라가
 /// 움직이지 않는데 콘티용지에 IN OUT이 찍혀있고, 사각실루엣이 카메라밖만큼
 /// 커져있음」).
+///
+/// A key whose time roves (I-89 ④) is framed where the camera passes it —
+/// its value, on the path — not on the frame it stands on, which only
+/// says the cell nearest that time: the frame it stands on would put its
+/// cross off the knobs drawn at its value.
 List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   Cut cut,
   CanvasSize cameraFrameSize, {
   required int first,
   required int last,
 }) {
+  final passed = cut.camera.track.position.rovingTimes(positionKeySpace);
   ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
     frameIndex: frameIndex,
-    corners: cameraFrameShownAt(cut, cameraFrameSize, frameIndex),
+    corners: cameraFrameShownAtTime(
+      cut,
+      cameraFrameSize,
+      passed[frameIndex] ?? frameIndex.toDouble(),
+    ),
   );
   final keys = [
     for (final frame in cut.camera.track.keyedFrames)
