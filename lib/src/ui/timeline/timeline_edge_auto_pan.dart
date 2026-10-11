@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import 'timeline_grid_tile_store.dart';
 import 'timeline_row_edges.dart';
 
 /// How far a drag at [pos] has pushed past either end of a [extent]-long
@@ -429,10 +430,14 @@ RevealedItem _itemAt(int at, double extent) =>
 /// Every surface that follows the playhead calls THIS — the timeline's
 /// frames, the x-sheet's (which run down, not across) and the storyboard's
 /// global strip — so the page law has one home, as the walk does.
+///
+/// And the page after the one it stands on is baked while it stands there
+/// ([TimelineGridTileStore.warmTheNextPage]): the turn finds it warm.
 void pageToPlayhead(RevealedStep axis) => _turnAfterThisFrame(() {
   if (_axisCanMove(axis)) {
     jumpToPage(axis.controller, _itemOf(axis));
   }
+  TimelineGridTileStore.instance.warmTheNextPage();
 });
 
 /// 🚨A PAGE TURNS ON THE FRAME AFTER THE ONE THAT CARRIED THE PLAYHEAD OUT.

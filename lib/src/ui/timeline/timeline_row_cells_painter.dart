@@ -803,6 +803,29 @@ class TimelineRowCellsPainter extends CustomPainter
     return [...grid.shown, ...grid.ahead];
   }
 
+  /// The page a turn brings: a viewport's frames from where the window
+  /// ends ([pageScrollOffset] puts the frame the playhead leaves by at the
+  /// window's start) — or, once the window reaches the last frame, from the
+  /// first, where a looping run turns back to.
+  @override
+  List<(int, int)> get tileSpansOfTheNextPage {
+    if (frameCellExtent <= 0 || viewportMainExtent <= 0) {
+      return const [];
+    }
+    final shown = visibleFrameWindow();
+    final from = shown.endIndexExclusive >= frameEndIndexExclusive
+        ? frameStartIndex
+        : shown.endIndexExclusive;
+    final to = math.min(
+      frameEndIndexExclusive,
+      from + (viewportMainExtent / frameCellExtent).ceil(),
+    );
+    if (to <= from) {
+      return const [];
+    }
+    return _tileGridIn((startIndex: from, endIndexExclusive: to)).shown;
+  }
+
   /// The Dart glyph/dash pass over every cell in [window] whose span no
   /// fresh tile covers (T3: a tiled span already carries its ink).
   ///

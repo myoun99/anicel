@@ -150,6 +150,12 @@ abstract interface class TimelineTileRasterSource {
   /// queue had no room for this row.
   List<(int, int)> get tileSpans;
 
+  /// The spans a page turn brings under this row's window next — the page
+  /// after the one shown, and after the last the first: what a run warms
+  /// while it plays the page before
+  /// ([TimelineGridTileStore.warmTheNextPage]).
+  List<(int, int)> get tileSpansOfTheNextPage;
+
   /// Runs [reads] as ONE pass: however often they ask for a cell, it is
   /// resolved once — what a paint does, and what a tile bakes of a span.
   /// ⛔Never across an `await`: the answers come from the live session.

@@ -93,6 +93,25 @@ class TimelineGridTileStore {
   final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
   bool _drainScheduled = false;
 
+  /// The latest painter each row's paint asked through, with the device
+  /// pixel ratio it asked at — whom a warm-up asks for its next page
+  /// ([warmTheNextPage]).
+  final Map<String, ({TimelineTileRasterSource painter, double ratio})>
+  _askedBy = <String, ({TimelineTileRasterSource painter, double ratio})>{};
+
+  /// The next pages' spans, rastered while no shown span waits.
+  final LinkedHashMap<String, _TileRequest> _warming =
+      LinkedHashMap<String, _TileRequest>();
+
+  /// The keys a warm-up has in flight, and of those the ones a paint asked
+  /// for meanwhile — whose landing tells the row, as a shown one's does.
+  final Set<String> _warmInFlight = <String>{};
+  final Set<String> _askedWhileWarm = <String>{};
+
+  /// The frame the last warm-up began in: one a frame, however many
+  /// surfaces turn their pages in it.
+  int? _warmedIn;
+
   /// The keys a drain has taken off the queue and not landed yet.
   final Set<String> _inFlight = <String>{};
 
@@ -152,6 +171,10 @@ class TimelineGridTileStore {
     _pending.clear();
     _starved.clear();
     _inFlight.clear();
+    _warming.clear();
+    _warmInFlight.clear();
+    _askedWhileWarm.clear();
+    _warmedIn = null;
     _drainsRunning = 0;
     _epoch += 1;
   }
@@ -201,6 +224,7 @@ class TimelineGridTileStore {
       painter.axis,
     );
     final key = '$row:$spanStartIndex';
+    _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _entries.remove(key);
     if (entry != null) {
       _entries[key] = entry;
@@ -231,7 +255,10 @@ class TimelineGridTileStore {
     // another repaint. Measured in the pin: 900 rasters of 19 tiles, 450
     // drains beside each other. Its landing repaints the row, which asks
     // then if the look moved meanwhile.
+    // A span a warm-up still holds becomes a shown one's to raster first; one
+    // a warm-up has in flight tells this row when it lands.
     if (!_inFlight.contains(key)) {
+      _warming.remove(key);
       _enqueue(
         key,
         _TileRequest(
@@ -242,6 +269,8 @@ class TimelineGridTileStore {
           devicePixelRatio: devicePixelRatio,
         ),
       );
+    } else if (_warmInFlight.contains(key)) {
+      _askedWhileWarm.add(key);
     }
     // Stale-while-revalidate (UI-R20 #6, widened for R26 #27): WHATEVER
     // went stale — a look flip or a content edit (a new layer instance) —
@@ -328,70 +357,177 @@ class TimelineGridTileStore {
       while (_pending.isNotEmpty) {
         final key = _pending.keys.first;
         final request = _pending.remove(key)!;
-        // A dead-generation request is discarded, not rastered: its
-        // painter's resolvers answer from the live session, which no longer
-        // describes its rows. ⛔This check and the resolver reads are one
-        // synchronous block — `_raster` emits the substrate and collects
-        // the glyph cells before its first await — so nothing can change
-        // the session between the check and the answers it guards.
-        if (request.painter.substrateGeneration != _liveGeneration) {
-          continue;
-        }
-        _inFlight.add(key);
-        final _Rastered? rastered;
-        try {
-          rastered = await _raster(engine, request);
-        } finally {
-          if (epoch == _epoch) {
-            _inFlight.remove(key);
-          }
-        }
-        if (epoch != _epoch) {
-          rastered?.image.dispose();
+        if (!await _rasterAndLand(engine, key, request, epoch, warm: false)) {
           return;
         }
-        if (rastered == null) {
-          continue;
-        }
-        _entries.remove(key)?.image.dispose();
-        _entries[key] = _TileEntry(
-          substrateGeneration: request.painter.substrateGeneration,
-          layer: request.painter.layer,
-          coverageIdentity: request.painter.coverageIdentity,
-          frameCellExtent: request.painter.frameCellExtent,
-          crossAxisExtent: request.painter.crossAxisExtent,
-          colorScheme: request.painter.colorScheme,
-          exposureStateForLayer: request.painter.exposureStateForLayer,
-          frameNameForLayer: request.painter.frameNameForLayer,
-          celHasContentForLayer: request.painter.celHasContentForLayer,
-          // ⛔The revision the RASTER sampled, never a live read. `_raster`
-          // suspends between its content reads and this landing (the glyph
-          // A8 bake, the ImmutableBuffer upload are real awaits), so a
-          // crossing that bumps the revision inside that window would give
-          // pixels of revision N a stamp of N+1 — and `matches()` compares
-          // the NUMBER, so the poisoned tile was served as fresh forever
-          // (the LRU survives cut trips and the 'projectId:cutId' string is
-          // reproduced exactly on return; only the NEXT bump healed it).
-          celContentRevision: rastered.celContentRevision,
-          substrate: rastered.substrate,
-          baseTextStyle: request.painter.baseTextStyle,
-          spanEndIndexExclusive: request.spanEndIndexExclusive,
-          devicePixelRatio: request.devicePixelRatio,
-          paperGround: request.painter.paperGround,
-          blockFrameLines: request.painter.blockFrameLines,
-          framesPerSecond: request.painter.framesPerSecond,
-          image: rastered.image,
-        );
-        while (_entries.length > capacity) {
-          _entries.remove(_entries.keys.first)!.image.dispose();
-        }
-        revision.value += 1;
-        // A row whose tile lands asks again for itself when it repaints —
-        // coming back to it could only find an older painter.
-        _starved.remove(request.row);
-        _noticeLanding(request.row);
       }
       _revisitStarved();
+    } finally {
+      if (epoch == _epoch) {
+        _drainsRunning -= 1;
+      }
+    }
+  }
+
+  /// Rasters [request] and lands its tile — false when a [clear] fenced the
+  /// drain off while it was in flight.
+  ///
+  /// A shown span's landing tells its row, which repaints with it. A warm
+  /// one's tells nobody — the span is a page away, and a repaint of a row
+  /// for a tile it does not show is a frame drawn for nothing — unless a
+  /// paint asked for it while it was in flight ([_askedWhileWarm]).
+  Future<bool> _rasterAndLand(
+    QaNativeEngine engine,
+    String key,
+    _TileRequest request,
+    int epoch, {
+    required bool warm,
+  }) async {
+    // A dead-generation request is discarded, not rastered: its painter's
+    // resolvers answer from the live session, which no longer describes its
+    // rows. ⛔This check and the resolver reads are one synchronous block —
+    // `_raster` emits the substrate and collects the glyph cells before its
+    // first await — so nothing can change the session between the check and
+    // the answers it guards.
+    if (request.painter.substrateGeneration != _liveGeneration) {
+      return true;
+    }
+    _inFlight.add(key);
+    if (warm) {
+      _warmInFlight.add(key);
+    }
+    final _Rastered? rastered;
+    try {
+      rastered = await _raster(engine, request);
+    } finally {
+      if (epoch == _epoch) {
+        _inFlight.remove(key);
+        _warmInFlight.remove(key);
+      }
+    }
+    if (epoch != _epoch) {
+      rastered?.image.dispose();
+      return false;
+    }
+    if (rastered == null) {
+      return true;
+    }
+    _entries.remove(key)?.image.dispose();
+    _entries[key] = _TileEntry(
+      substrateGeneration: request.painter.substrateGeneration,
+      layer: request.painter.layer,
+      coverageIdentity: request.painter.coverageIdentity,
+      frameCellExtent: request.painter.frameCellExtent,
+      crossAxisExtent: request.painter.crossAxisExtent,
+      colorScheme: request.painter.colorScheme,
+      exposureStateForLayer: request.painter.exposureStateForLayer,
+      frameNameForLayer: request.painter.frameNameForLayer,
+      celHasContentForLayer: request.painter.celHasContentForLayer,
+      // ⛔The revision the RASTER sampled, never a live read. `_raster`
+      // suspends between its content reads and this landing (the glyph A8
+      // bake, the ImmutableBuffer upload are real awaits), so a crossing
+      // that bumps the revision inside that window would give pixels of
+      // revision N a stamp of N+1 — and `matches()` compares the NUMBER, so
+      // the poisoned tile was served as fresh forever (the LRU survives cut
+      // trips and the 'projectId:cutId' string is reproduced exactly on
+      // return; only the NEXT bump healed it).
+      celContentRevision: rastered.celContentRevision,
+      substrate: rastered.substrate,
+      baseTextStyle: request.painter.baseTextStyle,
+      spanEndIndexExclusive: request.spanEndIndexExclusive,
+      devicePixelRatio: request.devicePixelRatio,
+      paperGround: request.painter.paperGround,
+      blockFrameLines: request.painter.blockFrameLines,
+      framesPerSecond: request.painter.framesPerSecond,
+      image: rastered.image,
+    );
+    while (_entries.length > capacity) {
+      _entries.remove(_entries.keys.first)!.image.dispose();
+    }
+    revision.value += 1;
+    if (!warm || _askedWhileWarm.remove(key)) {
+      // A row whose tile lands asks again for itself when it repaints —
+      // coming back to it could only find an older painter.
+      _starved.remove(request.row);
+      _noticeLanding(request.row);
+    }
+    return true;
+  }
+
+  /// 🚨A RUN'S NEXT PAGE IS BAKED WHILE IT PLAYS THE PAGE BEFORE (유저
+  /// 2026-10-11: 「144hz든 몇이든 확실하게 근본/구조적으로 해결하도록」).
+  ///
+  /// A page turn used to bring every row's next spans under the window at
+  /// once, cold: 🔬40-odd tiles and their words rastered, baked and
+  /// uploaded in the frames right after the turn (profile, 144Hz, a cut of
+  /// 132 frames, first loop) — the raster thread held 20–35ms, the UI
+  /// thread long enough that the clock's next look came a refresh late, and
+  /// a film frame shown seven refreshes long beside one five long at every
+  /// turn. Asked for here instead, a few spans at a time, after each frame a
+  /// clock's look changed what it shows: what they cost on the UI thread
+  /// comes straight after that frame, and on the raster thread straight
+  /// after its picture, a film frame's length before the next is due.
+  ///
+  /// [tiles] at most a call and one call a frame, however many surfaces
+  /// turn their pages in it; only while no shown span waits — what is on
+  /// the screen is rastered first ([tileFor] takes a span over from here).
+  void warmTheNextPage({int tiles = 6}) {
+    final engine = QaNativeEngine.instance;
+    if (engine == null) {
+      return;
+    }
+    final frame = WidgetsBinding.instance.platformDispatcher.frameData
+        .frameNumber;
+    if (_warmedIn == frame) {
+      return;
+    }
+    _warmedIn = frame;
+    for (final MapEntry(key: row, value: (:painter, :ratio))
+        in _askedBy.entries) {
+      if (!_shown.containsKey(row) ||
+          painter.substrateGeneration != _liveGeneration) {
+        continue;
+      }
+      for (final (start, end) in painter.tileSpansOfTheNextPage) {
+        final key = '$row:$start';
+        if (_inFlight.contains(key) ||
+            _pending.containsKey(key) ||
+            _warming.containsKey(key)) {
+          continue;
+        }
+        final entry = _entries[key];
+        if (entry != null && entry.matches(painter, end, ratio)) {
+          continue;
+        }
+        _warming[key] = _TileRequest(
+          row: row,
+          painter: painter,
+          spanStartIndex: start,
+          spanEndIndexExclusive: end,
+          devicePixelRatio: ratio,
+        );
+      }
+    }
+    if (_warming.isNotEmpty && _pending.isEmpty && _drainsRunning == 0) {
+      unawaited(_drainWarm(engine, tiles));
+    }
+  }
+
+  Future<void> _drainWarm(QaNativeEngine engine, int tiles) async {
+    final epoch = _epoch;
+    _drainsRunning += 1;
+    try {
+      for (
+        var done = 0;
+        done < tiles && _warming.isNotEmpty && _pending.isEmpty;
+        done += 1
+      ) {
+        final key = _warming.keys.first;
+        final request = _warming.remove(key)!;
+        if (!await _rasterAndLand(engine, key, request, epoch, warm: true)) {
+          return;
+        }
+      }
     } finally {
       if (epoch == _epoch) {
         _drainsRunning -= 1;
@@ -847,6 +983,7 @@ class _RowNotices implements Listenable {
     listeners.remove(listener);
     if (listeners.isEmpty) {
       _store._shown.remove(_row);
+      _store._askedBy.remove(_row);
     }
   }
 }
