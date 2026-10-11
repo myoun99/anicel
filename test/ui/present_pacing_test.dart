@@ -276,7 +276,7 @@ void main() {
             resolveProject: () => project,
             resolveActiveCutId: () => const CutId('cut'),
             resolveActiveTrackId: () => const TrackId('track'),
-            resolveFrameRate: () => const ProjectFrameRate.integer(24),
+            resolveFrameRate: () => ProjectFrameRate.fps24,
           )
           ..resolveAudioClock = ({frameTime}) {
             read.add(frameTime!);

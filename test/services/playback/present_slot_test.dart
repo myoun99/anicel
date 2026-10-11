@@ -9,7 +9,8 @@ void main() {
   const vblank = 5000000;
   const period = 6948.6; // a 143.9Hz screen, as DWM says it
   const budget = 3000;
-  const low = 3500, high = 7500;
+  const low = 3500;
+  const high = 7500;
 
   int vblankIndexOf(num micros) => ((micros - vblank) / period).round();
 
@@ -79,7 +80,7 @@ void main() {
   test('🚨a look a little late — a jittered tick — still fills the vblank '
       'after the last: the run\'s lead covers it', () {
     final claims = PresentClaims();
-    final at = vblank + 3000 * period + 100;
+    const at = vblank + 3000 * period + 100;
     final first = shownOn(claimAt(claims, at));
     final late = shownOn(claimAt(claims, at + period + 0.9 * period));
     expect(late, first + 1);
@@ -88,7 +89,7 @@ void main() {
   test('🚨the look after a change takes the lead back — passing over one '
       'vblank, the one right after the change, and no more', () {
     final claims = PresentClaims();
-    final at = vblank + 4000 * period + 2500;
+    const at = vblank + 4000 * period + 2500;
     final shown = [shownOn(claimAt(claims, at))];
     // A look that waited for its hand-off: the look after it comes two
     // vsyncs on and has spent the lead.
@@ -103,7 +104,7 @@ void main() {
   test('a look after a change that comes late passes over one vblank still, '
       'and no more — a change could be due at the next', () {
     final claims = PresentClaims();
-    final at = vblank + 8000 * period + 2500;
+    const at = vblank + 8000 * period + 2500;
     final first = shownOn(claimAt(claims, at));
     claims.changed();
     final next = shownOn(claimAt(claims, at + 3 * period));
@@ -115,7 +116,7 @@ void main() {
     final claims = PresentClaims();
     claimAt(claims, vblank + 5000 * period);
     final fresh = PresentClaims();
-    final later = vblank + 6000 * period + 1000;
+    const later = vblank + 6000 * period + 1000;
     expect(
       shownOn(claimAt(claims, later)),
       shownOn(claimAt(fresh, later)),
@@ -125,7 +126,7 @@ void main() {
   test('a look that comes early claims the last vblank again, never one '
       'more than the reserve past what it can make', () {
     final claims = PresentClaims();
-    final at = vblank + 7000 * period + 3000;
+    const at = vblank + 7000 * period + 3000;
     final first = shownOn(claimAt(claims, at));
     // Two looks within the same refresh: the second claims the same.
     final again = shownOn(claimAt(claims, at + 10));
