@@ -157,6 +157,27 @@ void main() {
     }
   });
 
+  test('a ring come round still weighs its newest most', () {
+    final steady = [for (var i = 0; i < 6; i += 1) 4000 + i * 100];
+    final claim = claimAt(
+      PresentClaims(),
+      vblank + 660 * period + 300,
+      handOff: handOffOf([
+        for (var i = 0; i < 16; i += 1) 12000 + (i % 7) * 100,
+        ...steady,
+      ], capacity: 16),
+    );
+    for (final length in steady) {
+      expect(
+        endOf(claim, claim.handOffFromMicros, length),
+        inInclusiveRange(
+          presentLatchEarlyMicros,
+          period - presentLatchLateMicros,
+        ),
+      );
+    }
+  });
+
   test('🚨looks a period apart fill vblanks one after another — at every '
       'phase the engine\'s vsync can stand at', () {
     for (var phase = 0.0; phase < period; phase += 400) {
