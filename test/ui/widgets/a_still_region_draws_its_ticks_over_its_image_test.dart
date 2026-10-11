@@ -260,6 +260,49 @@ void main() {
     );
   });
 
+  testWidgets('🚨the frame the rest of the region changes, a tick inside a '
+      'layer of its own still shows — the image\'s scene left it out of that '
+      'layer, and the next scene builds the layer again', (tester) async {
+    final at = ValueNotifier<double>(0);
+    final elsewhere = ValueNotifier<Color>(_ground);
+    addTearDown(at.dispose);
+    addTearDown(elsewhere.dispose);
+    await _pump(
+      tester,
+      _regionWith(
+        at,
+        wrap: (tick) => RepaintBoundary(child: tick),
+        after: Positioned(
+          left: 0,
+          top: 120,
+          width: 100,
+          height: 40,
+          child: RepaintBoundary(
+            child: ValueListenableBuilder<Color>(
+              valueListenable: elsewhere,
+              builder: (context, color, child) => ColoredBox(color: color),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _untilImage(tester);
+    expect(_region(tester).debugDrawnFromImage, isTrue, reason: '⛔premise');
+
+    elsewhere.value = _cover;
+    await tester.pump();
+
+    expect(_region(tester).debugDrawnFromImage, isFalse, reason: '⛔premise');
+    expect(
+      _pixelAt(
+        tester,
+        await captureBytes(tester),
+        const Offset(_left + 5, _top + 5),
+      ),
+      _mark,
+    );
+  });
+
   testWidgets('a region moved onto a new spot every frame is taken no more '
       'than it was — a move is a change, ticks or none', (tester) async {
     final at = ValueNotifier<double>(0);
