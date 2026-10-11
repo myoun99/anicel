@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart'
 /// What a grid's header graphs are told (I-89 ③), each by the key of the
 /// group or the lane it was pressed on (`laneGroupKey`): a group's graph
 /// on or off, a lane pinned to every graph or let go, what a graph plots,
-/// and how far it stands along the rail.
+/// how far it stands along the rail, and a graph enlarged over every other
+/// row or let back.
 typedef LaneGraphVerbs = ({
   ValueChanged<String> toggle,
   ValueChanged<String> togglePin,
   void Function(String groupKey, LaneGraphMode mode) plot,
   void Function(String groupKey, double extent) resize,
+  ValueChanged<String> enlarge,
 });
 
 /// What a header graph plots: the values, or how fast they change.
@@ -17,6 +19,19 @@ enum LaneGraphMode { value, speed }
 
 /// How many rows tall a graph opens — before its grip says otherwise.
 const int laneGraphOpeningRows = 7;
+
+/// How far a row stands while a graph is enlarged over it — a lane, or an
+/// other graph whole: the thin strip of the mock's 5판 (「크게 보기는 다른
+/// 행을 얇은 띠로 접어 패널 대부분을 이 그래프에 줍니다」).
+const double laneGraphFoldedExtent = 8;
+
+/// The most a graph stands along a rail whose view is [view] long, its
+/// rows [rowExtent] each: the view less its header's row — what an
+/// ENLARGED graph stands (I-89 ③D), so its header and it fill the panel,
+/// and the most its grip pulls it to: the mock's grip stops where its
+/// enlarged graph stands (`Math.min(360, …)` · `big ? 360`), ONE value.
+double laneGraphMostExtent(double view, double rowExtent) =>
+    view - rowExtent > 0 ? view - rowExtent : 0;
 
 /// ONE group's open header graph (I-89 ③): how far it stands along the
 /// rail, and what it plots.
@@ -119,6 +134,7 @@ class TimelineGraphSeat {
     required this.lanes,
     required this.picked,
     required this.pinned,
+    this.enlarged = false,
   });
 
   /// The group's view-state key (`laneGroupKey`): a header's — or, on the
@@ -138,6 +154,11 @@ class TimelineGraphSeat {
   /// the same order.
   final List<String> pinned;
 
+  /// Whether the graph is the one enlarged over every other row
+  /// ([LaneGraphsView.enlarged]) — it stands as far as the view lets one
+  /// ([laneGraphMostExtent]).
+  final bool enlarged;
+
   @override
   bool operator ==(Object other) =>
       other is TimelineGraphSeat &&
@@ -145,7 +166,8 @@ class TimelineGraphSeat {
       other.graph == graph &&
       listEquals(other.lanes, lanes) &&
       listEquals(other.picked, picked) &&
-      listEquals(other.pinned, pinned);
+      listEquals(other.pinned, pinned) &&
+      other.enlarged == enlarged;
 
   @override
   int get hashCode => Object.hash(
@@ -154,5 +176,6 @@ class TimelineGraphSeat {
     Object.hashAll(lanes),
     Object.hashAll(picked),
     Object.hashAll(pinned),
+    enlarged,
   );
 }

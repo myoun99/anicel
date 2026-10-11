@@ -317,5 +317,137 @@ void main() {
         reason: 'an anchor that is not drawn reaches nothing',
       );
     });
+
+    // I-89 ③D, the mock's 5판: 「크게 보기는 다른 행을 얇은 띠로 접어 패널
+    // 대부분을 이 그래프에 줍니다」 — a shut group's lanes thinned one by
+    // one, another open graph thinned whole, every header and layer row
+    // left standing.
+    group('an enlarged graph folds every other lane', () {
+      List<TimelineDisplayRow> seatEnlarged(
+        Map<String, LaneGraph> open,
+        String enlarged,
+      ) => seatLaneGraphs(
+        rows,
+        LaneGraphsView(open: open, enlarged: enlarged),
+        selection: const {},
+      );
+      const view = 400.0;
+      final most = laneGraphMostExtent(view, row);
+
+      test('its own lanes stand, every other lane folds, every header and '
+          'layer row stands', () {
+        final seated = seatEnlarged({
+          transformKey: const LaneGraph(),
+          blurKey: const LaneGraph(),
+        }, transformKey);
+        expect([for (final row in seated) row.folded], [
+          false,
+          false,
+          false,
+          false,
+          false,
+          true,
+        ]);
+        expect([for (final row in seated) row.graph?.enlarged], [
+          null,
+          null,
+          true,
+          true,
+          null,
+          false,
+        ], reason: 'the enlarged graph knows it is, the folded one too');
+        final shut = seatEnlarged({
+          transformKey: const LaneGraph(),
+        }, transformKey);
+        expect(
+          [for (final row in shut) row.folded],
+          [false, false, false, false, false, true],
+          reason: 'a lane of a shut group folds as one of an open graph',
+        );
+      });
+
+      test('a graph enlarged where it is not drawn folds nothing', () {
+        final seated = seatEnlarged({transformKey: const LaneGraph()}, blurKey);
+        expect([for (final row in seated) row.folded], everyElement(isFalse));
+        expect([for (final row in seated) row.graph?.enlarged], [
+          null,
+          null,
+          false,
+          false,
+          null,
+          null,
+        ]);
+      });
+
+      test('it stands as far as the view lets one — the view less its '
+          'header\'s row', () {
+        expect(most, view - row);
+        final edges = timelineRowEdgesOf(
+          seatEnlarged({transformKey: const LaneGraph()}, transformKey),
+          metrics,
+          view: view,
+        );
+        expect(edges.extentOf(2) + edges.extentOf(3) + edges.roomOf(3), most);
+        expect(edges.graphMost, most, reason: 'the grip\'s ceiling, carried');
+        expect(
+          timelineRowEdgesOf(
+            seatEnlarged({transformKey: const LaneGraph()}, transformKey),
+            metrics,
+          ).roomOf(3),
+          (laneGraphOpeningRows - 2) * row,
+          reason: 'laid along no view, as its grip says',
+        );
+        expect(laneGraphMostExtent(row / 2, row), 0);
+      });
+
+      test('a folded lane is a thin strip; a folded graph ONE strip, its '
+          'first lane\'s, and no room', () {
+        final edges = timelineRowEdgesOf(
+          seatEnlarged({
+            transformKey: const LaneGraph(extent: 300),
+            blurKey: const LaneGraph(),
+          }, blurKey),
+          metrics,
+          view: view,
+        );
+        expect(edges.extentOf(2), laneGraphFoldedExtent);
+        expect(edges.extentOf(3), 0);
+        expect(edges.roomOf(3), 0);
+        expect(edges.unitSpanOf(2).extent, laneGraphFoldedExtent);
+        expect(edges.extentOf(1), row, reason: 'its header stands');
+        expect(edges.extentOf(5) + edges.roomOf(5), most);
+        final shut = timelineRowEdgesOf(
+          seatEnlarged({blurKey: const LaneGraph()}, blurKey),
+          metrics,
+          view: view,
+        );
+        expect(
+          [shut.extentOf(2), shut.extentOf(3)],
+          [laneGraphFoldedExtent, laneGraphFoldedExtent],
+          reason: 'a shut group\'s lanes, each its own strip',
+        );
+      });
+
+      test('a graph kept taller than the view lets one stands at the most',
+          () {
+        final open = {transformKey: const LaneGraph(extent: 5000)};
+        final seated = seatLaneGraphs(
+          rows,
+          LaneGraphsView(open: open),
+          selection: const {},
+        );
+        final edges = timelineRowEdgesOf(seated, metrics, view: view);
+        expect(edges.extentOf(2) + edges.extentOf(3) + edges.roomOf(3), most);
+        expect(
+          timelineRowEdgesOf(seated, metrics).roomOf(3),
+          5000 - 2 * row,
+          reason: 'laid along no view, nothing caps it',
+        );
+        expect(
+          timelineRowEdgesOf(seated, metrics).graphMost,
+          double.infinity,
+        );
+      });
+    });
   });
 }

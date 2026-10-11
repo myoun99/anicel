@@ -218,6 +218,7 @@ class SessionRowButtonPresses {
     togglePin: toggleLanePin,
     plot: plotLaneGraph,
     resize: resizeLaneGraph,
+    enlarge: enlargeLaneGraph,
   );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
@@ -244,10 +245,24 @@ class SessionRowButtonPresses {
     } else {
       open.removeWhere((key, _) => everyUse.contains(key));
     }
-    graphs.value = graphs.value.copyWith(open: open);
+    // A graph shut is let back first, as the mock's 5판 lets it.
+    final letBack = !opening && everyUse.contains(graphs.value.enlarged);
+    graphs.value = graphs.value.copyWith(
+      open: open,
+      enlarged: letBack ? () => null : null,
+    );
     if (opening) {
       _openGroupOf(groupKey);
     }
+  }
+
+  /// A group's open graph ENLARGED over every other row, or let back — the
+  /// one its button was pressed on, alone: one graph is enlarged at a time
+  /// (I-89 ③D, the mock's 5판). View state, as its twirl: no undo.
+  void enlargeLaneGraph(String groupKey) {
+    final graphs = session.railView.laneGraphs;
+    final enlarged = graphs.value.enlarged == groupKey ? null : groupKey;
+    graphs.value = graphs.value.copyWith(enlarged: () => enlarged);
   }
 
   /// A lane PINNED to every open graph, or let go, by the lane's own key —

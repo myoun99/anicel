@@ -234,13 +234,15 @@ class TimelineDisplayRow {
     required this.layerIndex,
     this.depth = 0,
   }) : lane = null,
-       graph = null;
+       graph = null,
+       folded = false;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
     this.graph,
+    this.folded = false,
   }) : depth = 0;
 
   /// The owning layer. A FOLDER row is just a layer row whose layer is a
@@ -259,14 +261,25 @@ class TimelineDisplayRow {
   /// lane of a group whose graph is shut, every header, every layer row.
   final TimelineGraphSeat? graph;
 
-  /// This lane, seated in [seat] — the same row, drawn in its group's graph.
-  TimelineDisplayRow seatedIn(TimelineGraphSeat seat) =>
-      TimelineDisplayRow.lane(
-        layer,
-        lane!,
-        layerIndex: layerIndex,
-        graph: seat,
-      );
+  /// Whether this lane is FOLDED to a thin strip under a graph enlarged
+  /// over it (I-89 ③D) — what it, or the other graph it is drawn in,
+  /// stands while that graph has the panel. Every header and every layer
+  /// row stand whole (the mock's 5판).
+  final bool folded;
+
+  /// This lane as a header graph draws it — the same row, drawn in its
+  /// group's graph where [seat] is one, and [folded] where one enlarged
+  /// over it says so.
+  TimelineDisplayRow seatedIn(
+    TimelineGraphSeat? seat, {
+    bool folded = false,
+  }) => TimelineDisplayRow.lane(
+    layer,
+    lane!,
+    layerIndex: layerIndex,
+    graph: seat,
+    folded: folded,
+  );
 
   // R10: a folder row carried its union runs and its members here, for a
   // private band painter that no longer exists. The union is the band

@@ -365,6 +365,7 @@ void main() {
                     togglePin: (_) {},
                     plot: (_, _) {},
                     resize: (_, _) {},
+                    enlarge: (_) {},
                   ),
                   seat: graphs ? seat : null,
                 ),

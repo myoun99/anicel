@@ -34,6 +34,12 @@ String? lanePinOf(Layer layer, PropertyLaneRow? lane) =>
 /// Only a lane is seated: a header heads its graph from outside it, and the
 /// rows a seat changes nothing about — what is stood on, selected and walked
 /// — are the same rows (「서는곳 법 그대로」).
+///
+/// The graph [graphs] ENLARGES, where it is drawn, folds every other lane
+/// to a thin strip — a lane of a shut group, or of another graph — and
+/// every header and every layer row stand whole: the mock's 5판, whose
+/// enlarged graph thins the lanes of every other group and leaves their
+/// rows (「다른 행을 얇은 띠로 접어 패널 대부분을 이 그래프에 줍니다」).
 List<TimelineDisplayRow> seatLaneGraphs(
   List<TimelineDisplayRow> rows,
   LaneGraphsView graphs, {
@@ -65,13 +71,20 @@ List<TimelineDisplayRow> seatLaneGraphs(
             ),
           ),
         ),
+        enlarged: key == graphs.enlarged,
       ),
   };
+  final enlarged = seats.containsKey(graphs.enlarged);
   return List.unmodifiable([
     for (final row in rows)
-      switch (seats[_graphKeyOf(row)]) {
-        final seat? => row.seatedIn(seat),
-        null => row,
+      switch ((seats[_graphKeyOf(row)], row.lane)) {
+        (final seat, final lane?)
+            when enlarged &&
+                !lane.isGroupHeader &&
+                seat?.enlarged != true =>
+          row.seatedIn(seat, folded: true),
+        (final seat?, _) => row.seatedIn(seat),
+        _ => row,
       },
   ]);
 }

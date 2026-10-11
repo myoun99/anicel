@@ -23,8 +23,12 @@ typedef TimelineRowSlot = ({double extent, double room, bool joinsNext});
 /// Rows that join are one UNIT: drawn as one on the frame side, never cut
 /// by a window ([window]).
 class TimelineRowEdges {
-  /// The rows' slots, in draw order.
-  factory TimelineRowEdges(List<TimelineRowSlot> slots) {
+  /// The rows' slots, in draw order, and the most a graph stands among
+  /// them ([graphMost]).
+  factory TimelineRowEdges(
+    List<TimelineRowSlot> slots, {
+    double graphMost = double.infinity,
+  }) {
     final count = slots.length;
     final starts = Float64List(count + 1);
     final extents = Float64List(count);
@@ -46,7 +50,13 @@ class TimelineRowEdges {
           ? unitLast[index + 1]
           : index;
     }
-    return TimelineRowEdges._(starts, extents, unitFirst, unitLast);
+    return TimelineRowEdges._(
+      starts,
+      extents,
+      unitFirst,
+      unitLast,
+      graphMost,
+    );
   }
 
   /// [count] rows of one [extent] each, with no room between them.
@@ -61,6 +71,7 @@ class TimelineRowEdges {
     this._extents,
     this._unitFirst,
     this._unitLast,
+    this.graphMost,
   );
 
   /// Where each row begins; one past the last is where the rows end.
@@ -68,6 +79,13 @@ class TimelineRowEdges {
   final Float64List _extents;
   final Int32List _unitFirst;
   final Int32List _unitLast;
+
+  /// The most a header graph stands among these rows — what the view they
+  /// were laid along lets one (`laneGraphMostExtent`, I-89 ③D): what the
+  /// enlarged graph stands, what caps every other, and the most a grip
+  /// pulls one to, carried with the rows so the three cannot part.
+  /// Unbounded for rows laid along no view.
+  final double graphMost;
 
   int get count => _extents.length;
 
