@@ -1218,12 +1218,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
           span.from >= window.endIndexExclusive) {
         continue;
       }
-      final eases = [
-        if (curve.sides[span.from]?.outgoing case final EaseSide side)
-          (side: side, leaving: true),
-        if (curve.sides[span.to]?.incoming case final EaseSide side)
-          (side: side, leaving: false),
-      ];
+      final eases = _easesToward(curve, span);
       if (eases.isEmpty) {
         continue;
       }
@@ -1261,6 +1256,18 @@ class TimelineLaneGraphPainter extends CustomPainter {
       }
     }
   }
+
+  /// The sides of [span]'s two keys that ease toward each other — the
+  /// first's leaving and the last's arriving, each where it is an ease.
+  static List<({EaseSide side, bool leaving})> _easesToward(
+    LaneCurve curve,
+    ({int from, int to}) span,
+  ) => [
+    if (curve.sides[span.from]?.outgoing case final EaseSide side)
+      (side: side, leaving: true),
+    if (curve.sides[span.to]?.incoming case final EaseSide side)
+      (side: side, leaving: false),
+  ];
 
   /// Draws every number [plot]'s line holds through [pass], in dashes for
   /// a guest, and gives back the marks its keys in the window take — none
