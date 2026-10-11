@@ -110,11 +110,17 @@ void main() {
 
     test('and what an eased stretch passes beyond its keys', () {
       final range = laneGraphRange(
-        line((time) => [10 + 50 * time / 8 + 30 * math.sin(math.pi * time / 8)]),
+        line(
+          (time) => [10 + 50 * time / 8 + 30 * math.sin(math.pi * time / 8)],
+        ),
         [0, 8],
         0,
       );
-      expect(range.high, greaterThan(60 + 50 * 0.12));
+      // Its middle stands at 65, over both keys (10 and 60): the range
+      // reaches that with its spare. ↩️Asked only to pass the keys' own 66,
+      // it passed with nothing read between them — the sine's rounding at 8
+      // put the keys' range a hair over 66.
+      expect(range.high, greaterThanOrEqualTo(65 + (65 - 10) * 0.12));
     });
 
     test('a line that never moves is given one either way first', () {
