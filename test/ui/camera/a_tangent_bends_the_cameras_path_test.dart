@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 /// I-89 ④ 3b — a curved key's handle on the canvas, the mock's 5판: shown
 /// with the camera's path in time, its tangent carried by the hand bends
@@ -60,8 +61,14 @@ void main() {
     return (s, row);
   }
 
-  Future<void> pumpArea(WidgetTester tester, EditorSessionManager s) async {
-    final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+  Future<void> pumpArea(
+    WidgetTester tester,
+    EditorSessionManager s, {
+    CanvasTool tool = CanvasTool.brush,
+  }) async {
+    final brushTool = ValueNotifier<BrushToolState>(
+      BrushToolState.defaults.copyWith(tool: tool),
+    );
     final cameraView = ValueNotifier<bool>(true);
     final cameraDim = ValueNotifier<double>(0.5);
     addTearDown(brushTool.dispose);
@@ -103,8 +110,36 @@ void main() {
     tester,
   ).viewport.viewportDeltaToCanvasDelta(dx: screen.dx, dy: screen.dy);
 
-  KeyPath pathAt5(EditorSessionManager s) =>
-      s.requireActiveCut.camera.track.position.keyAt(5)!.path;
+  KeyPath pathAt(EditorSessionManager s, int frame) =>
+      s.requireActiveCut.camera.track.position.keyAt(frame)!.path;
+
+  KeyPath pathAt5(EditorSessionManager s) => pathAt(s, 5);
+
+  /// The camera's keys at [frames] made smooth as well.
+  void curve(EditorSessionManager s, Set<int> frames) {
+    final track = s.camera.activeCutCameraTrack!;
+    s.camera.updateActiveCutCameraTrack(
+      track.copyWith(
+        position: track.position.withKeyPaths(frames: frames, curved: true),
+      ),
+    );
+  }
+
+  /// Carries the knob at [from] by [travel] on the screen, and lets go.
+  Future<void> carry(
+    WidgetTester tester,
+    CanvasPoint from,
+    Offset travel,
+  ) async {
+    final gesture = await tester.startGesture(
+      onScreen(tester, from),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(travel / 2);
+    await gesture.moveBy(travel / 2);
+    await gesture.up();
+    await tester.pump();
+  }
 
   void expectNear(CanvasPoint actual, CanvasPoint expected, String what) {
     expect(actual.x, closeTo(expected.x, 1e-6), reason: '$what x');
@@ -133,6 +168,34 @@ void main() {
       'behind',
     );
 
+    // Drawn as the mock draws it: the grey line through the key, the passive
+    // end behind (r 4, white, edged in the grey), the knob ahead (r 6.5,
+    // white, edged in the accent).
+    const grey = Color(0xFF7C8184);
+    final view = box(tester).viewport;
+    final knob = view.canvasToViewportOffset(shown.single.at);
+    final end = view.canvasToViewportOffset(shown.single.behind);
+    expect(
+      find
+          .descendant(
+            of: find.byType(RowTransformBox),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
+      paints
+        ..line(p1: end, p2: knob, color: grey)
+        ..circle(x: end.dx, y: end.dy, radius: 4, color: Colors.white)
+        ..circle(x: end.dx, y: end.dy, radius: 4, color: grey)
+        ..circle(x: knob.dx, y: knob.dy, radius: 6.5, color: Colors.white)
+        ..circle(
+          x: knob.dx,
+          y: knob.dy,
+          radius: 6.5,
+          color: AppColors.accent,
+          strokeWidth: 2,
+        ),
+    );
+
     await drain(tester);
   });
 
@@ -142,8 +205,13 @@ void main() {
   ) async {
     final (s, _) = turning();
     addTearDown(s.dispose);
+    // The first key smooth too: its handle, of no length, stands on it —
+    // and is the first of two.
+    curve(s, {0});
     await pumpArea(tester, s);
-    final from = tangents(tester).single.at;
+    expect(tangents(tester), hasLength(2), reason: '⛔전제');
+    expectNear(tangents(tester).first.at, c0, 'the end key\'s, on it');
+    final from = tangents(tester).last.at;
     final trailBefore = tester
         .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
         .path
@@ -161,7 +229,7 @@ void main() {
 
     final carried = onCanvas(tester, travel);
     final reached = CanvasPoint(x: from.x + carried.x, y: from.y + carried.y);
-    expectNear(tangents(tester).single.at, reached, 'the knob follows');
+    expectNear(tangents(tester).last.at, reached, 'the knob follows');
     expect(
       tester
           .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
@@ -184,12 +252,13 @@ void main() {
       'the tangent',
     );
     expectNear(
-      tangents(tester).single.behind,
+      tangents(tester).last.behind,
       CanvasPoint(x: c5.x - tangent.x, y: c5.y - tangent.y),
       'the mirror',
     );
     final key = s.requireActiveCut.camera.track.position.keyAt(5)!;
     expect(key.value, c5, reason: 'the key stays where it is');
+    expect(pathAt(s, 0), KeyPath.auto, reason: 'the other key is as it was');
 
     s.undo();
     await tester.pump();
@@ -225,6 +294,19 @@ void main() {
     await drain(tester);
   });
 
+  testWidgets('under a tool that draws an area on the empty canvas the knob '
+      'is still the box\'s, as its cross and its corners are', (tester) async {
+    final (s, _) = turning();
+    addTearDown(s.dispose);
+    await pumpArea(tester, s, tool: CanvasTool.select);
+    expect(tangents(tester), hasLength(1), reason: '⛔전제');
+
+    await carry(tester, tangents(tester).single.at, const Offset(30, -20));
+    expect(pathAt5(s), isA<HandledPath>());
+
+    await drain(tester);
+  });
+
   testWidgets('no handle in space alone, nor off the frames the path is '
       'drawn for, nor where the path is not drawn', (tester) async {
     final (s, row) = turning();
@@ -254,6 +336,18 @@ void main() {
     s.standOnRow(LaneRowAddress(row, 'position'));
     await tester.pump();
     expect(tangents(tester), hasLength(1), reason: 'on it');
+
+    // Every key where the first is: the camera moves nothing, and no path
+    // is drawn for the smooth key at 5 to wear its handle on.
+    final track = s.camera.activeCutCameraTrack!;
+    var still = track.position;
+    for (final frame in [5, 10]) {
+      still = still.withKey(frame, c0);
+    }
+    s.camera.updateActiveCutCameraTrack(track.copyWith(position: still));
+    await tester.pump();
+    expect(pathAt5(s), KeyPath.auto, reason: '⛔전제: still smooth');
+    expect(tangents(tester), isEmpty, reason: 'no path drawn');
 
     await drain(tester);
   });

@@ -1115,7 +1115,7 @@ class _HostFrame {
   final bool cameraPathShown;
 
   /// Whether the row's box takes every press on the canvas, rather than its
-  /// cross and corners alone ([RowTransformBox.claimsCanvas]).
+  /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).
   ///
   /// 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」: standing on the
   /// row, the box takes the empty canvas under every tool but the two that

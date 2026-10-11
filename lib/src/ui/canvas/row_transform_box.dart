@@ -109,8 +109,8 @@ typedef RowBoxTangent = ({
 /// ⚠️[claimsCanvas] says whose the empty canvas is. Standing on the row, the
 /// box takes every press under every tool but the two that draw an area on
 /// the empty canvas (F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」):
-/// under those it takes its cross and its corners alone, and the rest falls
-/// to the tool beneath.
+/// under those it takes its cross, its corners and a path's knobs alone, and
+/// the rest falls to the tool beneath.
 class RowTransformBox extends StatefulWidget {
   const RowTransformBox({
     super.key,
