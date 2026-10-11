@@ -827,7 +827,10 @@ class _StillLayer extends OffsetLayer {
           final drawn = MatrixUtils.transformRect(toRegion, canvasBounds);
           for (final (:tick, :bounds) in found) {
             if (bounds.overlaps(drawn)) {
-              refused.putIfAbsent(tick.tick, () => 'covered at $drawn');
+              refused.putIfAbsent(
+                tick.tick,
+                () => 'covered at ${_spot(drawn)}',
+              );
             }
           }
         case ContainerLayer():
@@ -876,13 +879,19 @@ class _StillLayer extends OffsetLayer {
     }
     _owner._tickRefusals = [
       for (final MapEntry(key: tick, value: why) in refused.entries)
-        '${tick.offset & tick.size}: $why',
+        '${_spot(tick.offset & tick.size)}: $why',
     ];
     return [
       for (final (:tick, bounds: _) in found)
         if (!refused.containsKey(tick.tick)) tick,
     ];
   }
+
+  /// [rect] in numbers — read the same in a profile build, where a [Rect]
+  /// does not say what it is.
+  static String _spot(Rect rect) =>
+      '(${rect.left.round()}, ${rect.top.round()}) '
+      '${rect.width.round()}×${rect.height.round()}';
 
   /// Whether [_addTicks] can put a tick back under [layer] as the region
   /// had it.
