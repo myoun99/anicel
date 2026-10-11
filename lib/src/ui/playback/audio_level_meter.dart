@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'canvas_playback_controller.dart';
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
+import '../widgets/tick_layer.dart';
 
 /// The playback level meter (AUDIO-PRO R2): two thin bars fed by the
 /// device transport's PRE-CLIP bus peaks. Green through the working
@@ -31,28 +32,38 @@ class AudioLevelMeter extends StatelessWidget {
   /// up with that scope's sound.
   final bool metering;
 
+  /// 🚨THE METER IS A TICK LAYER OF ITS OWN
+  /// (playback-making-pictures-shakes-the-frames, 10-11). It is built again
+  /// on every frame played, and built bare it was built in the scope of the
+  /// tab strip's tick layer above it: every frame laid out and repainted the
+  /// whole strip, tabs and all — 🔬90 render objects a frame in the strip of
+  /// the panel playing, 52 in a strip whose meter was only saying silence.
+  /// Its seat is fixed (F-111), so its own layer keeps the tick to its bars;
+  /// and a meter that is not metering hears no frame at all.
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int?>(
-      valueListenable: controller.globalFrameIndexListenable,
-      builder: (context, frame, _) {
-        final peaks = frame == null || !metering
-            ? (left: 0.0, right: 0.0)
-            : resolvePeaks();
-        return Semantics(
-          label: AppText.strings.audioLevelMeter,
-          child: SizedBox(
-            key: const ValueKey<String>('audio-level-meter'),
-            width: 6,
-            height: 24,
-            child: CustomPaint(
-              painter: _MeterPainter(left: peaks.left, right: peaks.right),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    key: const ValueKey<String>('audio-level-meter'),
+    width: 6,
+    height: 24,
+    child: TickLayer(
+      child: Semantics(
+        label: AppText.strings.audioLevelMeter,
+        child: metering
+            ? ValueListenableBuilder<int?>(
+                valueListenable: controller.globalFrameIndexListenable,
+                builder: (context, frame, _) {
+                  final peaks = frame == null
+                      ? (left: 0.0, right: 0.0)
+                      : resolvePeaks();
+                  return CustomPaint(
+                    painter: _MeterPainter(left: peaks.left, right: peaks.right),
+                  );
+                },
+              )
+            : const CustomPaint(painter: _MeterPainter(left: 0, right: 0)),
+      ),
+    ),
+  );
 }
 
 class _MeterPainter extends CustomPainter with RepaintOnProps {
