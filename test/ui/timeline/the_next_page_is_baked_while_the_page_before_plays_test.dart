@@ -294,6 +294,132 @@ void main() {
     );
   });
 
+  group('🚨a warm span is rastered in the quiet between two held frames', () {
+    var clock = 0;
+    ({int fromMicros, int untilMicros})? quiet;
+    final waits = <(Duration, Completer<void>)>[];
+    var uploads = 0;
+
+    setUp(() {
+      clock = 0;
+      quiet = null;
+      waits.clear();
+      uploads = 0;
+      store.warmUpQuiet = WarmUpQuiet(
+        quiet: () => quiet,
+        now: () => clock,
+        wait: (duration) {
+          final begun = Completer<void>();
+          waits.add((duration, begun));
+          return begun.future;
+        },
+      );
+    });
+
+    tearDown(() {
+      store.warmUpQuiet = const WarmUpQuiet();
+      debugRawRgbaUploader = null;
+    });
+
+    /// A row shown and painted, its shown spans landed; every upload after
+    /// it counted, each [taking] that long on the warm-up's clock.
+    Future<TimelineRowCellsPainter> shownRow(
+      String id, {
+      int taking = 0,
+    }) async {
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(bucket.dispose);
+      final painter = painterFor(id, bucket);
+      show(painter);
+      paintRow(painter);
+      await idle();
+      debugRawRgbaUploader =
+          (rgba, {required width, required height, targetWidth, targetHeight}) {
+            uploads += 1;
+            clock += taking;
+            return Future.value(tiny());
+          };
+      return painter;
+    }
+
+    test('nothing is uploaded before the quiet begins — and in it the '
+        'warm-up goes on', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final painter = await shownRow('quiet');
+      quiet = (fromMicros: 5000, untilMicros: 1000000);
+
+      store.warmTheNextPage(tiles: 64);
+      await pumpEventQueue();
+
+      expect(uploads, 0, reason: 'the quiet has not begun');
+      expect(waits.single.$1, const Duration(microseconds: 5000));
+      clock = 5000;
+      waits.single.$2.complete();
+      await idle();
+      expect(nextPageIsWarm(painter), isTrue);
+    });
+
+    test('a span that would land past the quiet\'s end waits for the next '
+        'quiet', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final painter = await shownRow('fits', taking: 30000);
+      expect(
+        painter.tileSpansOfTheNextPage.length,
+        greaterThanOrEqualTo(3),
+        reason: '⛔premise: two spans to warm past the one a paint keeps',
+      );
+      quiet = (fromMicros: 0, untilMicros: 50000);
+
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+      expect(uploads, 1, reason: 'a second 30ms span would end at 60ms');
+
+      quiet = (fromMicros: clock, untilMicros: clock + 1000000);
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+      expect(uploads, greaterThan(1), reason: 'the next quiet takes it on');
+    });
+
+    test('a span longer than a quiet once does not shut the warm-up out for '
+        'good', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await shownRow('decays', taking: 30000);
+      quiet = (fromMicros: 0, untilMicros: 50000);
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+      expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
+
+      quiet = (fromMicros: clock, untilMicros: clock + 25000);
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+
+      expect(uploads, 2, reason: 'a quiet of 25ms still takes one');
+    });
+
+    test('with nothing held there is no quiet to wait for', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await shownRow('free');
+
+      store.warmTheNextPage(tiles: 2);
+      await idle();
+
+      expect(uploads, 2);
+      expect(waits, isEmpty);
+    });
+  });
+
   testWidgets('🚨the page law warms the next page after the frame it turns in '
       '— every surface that follows the playhead', (tester) async {
     if (!available) {

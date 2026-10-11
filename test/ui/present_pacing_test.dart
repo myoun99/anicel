@@ -466,4 +466,68 @@ void main() {
 
     expect(display.waits, [claim!.handOffFromMicros]);
   });
+
+  group('the quiet between held frames', () {
+    /// Holds [changes] frames a film frame apart, each its look's change;
+    /// answers the moments they were let go.
+    Future<List<int>> holdChanges(
+      WidgetTester tester,
+      ValueNotifier<int> shown,
+      int changes,
+    ) async {
+      final released = <int>[];
+      for (var change = 0; change < changes; change += 1) {
+        lookNext((_) {
+          expectedClaim();
+          frameShownAt();
+          shown.value += 1;
+          changedInTheLook();
+        });
+        await tester.pump(const Duration(microseconds: 41700));
+        released.add(display.seamNow);
+      }
+      return released;
+    }
+
+    testWidgets('🚨runs from the last held frame\'s raster\'s end to before '
+        'the next is let go — read off the frames held', (tester) async {
+      final shown = await settle(tester);
+      expect(quietForBackgroundGpuWork(), isNull, reason: 'nothing held yet');
+
+      final released = await holdChanges(tester, shown, 3);
+
+      expect(
+        quietForBackgroundGpuWork(),
+        quietBetweenHeldFrames(
+          nowMicros: released.last,
+          lastReleaseMicros: released.last,
+          heldIntervalMicros: released[2] - released[1],
+          sceneMicros: RasterSpread.unmeasuredHighMicros,
+          marginMicros: _Display.period.round() + 1000,
+        ),
+      );
+    });
+
+    testWidgets('no clock looking for a while: nothing will be held, and '
+        'there is no quiet to keep', (tester) async {
+      final shown = await settle(tester);
+      await holdChanges(tester, shown, 2);
+      expect(quietForBackgroundGpuWork(), isNotNull, reason: '⛔premise');
+
+      binding.scheduleFrame();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(quietForBackgroundGpuWork(), isNull);
+    });
+
+    testWidgets('⛔where the display says nothing, there is no quiet either', (
+      tester,
+    ) async {
+      final shown = await settle(tester);
+      await holdChanges(tester, shown, 2);
+      binding.display = null;
+
+      expect(quietForBackgroundGpuWork(), isNull);
+    });
+  });
 }

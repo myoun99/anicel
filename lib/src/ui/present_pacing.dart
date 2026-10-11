@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui show FramePhase, FrameTiming, SceneBuilder;
 
 import 'package:flutter/foundation.dart' show protected, visibleForTesting;
@@ -30,6 +31,15 @@ void lookChangedWhatItShows() {
   if (binding is PresentPacing) {
     binding._changedInALook();
   }
+}
+
+/// When background GPU work — an upload, a bake — can run without running
+/// beside a held frame's raster, on the frame clock
+/// ([quietBetweenHeldFrames] has why): null where nothing is held — no
+/// display that says, or no clock running.
+({int fromMicros, int untilMicros})? quietForBackgroundGpuWork() {
+  final binding = SchedulerBinding.instance;
+  return binding is PresentPacing ? binding._quiet() : null;
 }
 
 /// 🚨A CLOCK'S LOOK CLAIMS A REAL VBLANK, AND ITS FRAME HANDS ITS SCENE TO
@@ -89,6 +99,16 @@ mixin PresentPacing on WidgetsBinding {
 
   TimingsCallback? _learning;
 
+  /// When a clock last looked, when the last held frame was let go, and
+  /// the last intervals between two let go — what the quiet between held
+  /// frames is read off ([quietForBackgroundGpuWork]).
+  int? _lookedAt;
+  int? _released;
+  final List<int> _heldIntervals = <int>[];
+
+  /// No look for this long and no clock is running: nothing is held.
+  static const int _runGoneMicros = 100000;
+
   /// A test's own run starts where a run starts — every test replays the
   /// same frame times, and a chain left by the test before would go on, and
   /// the lengths it taught would place the window.
@@ -97,6 +117,9 @@ mixin PresentPacing on WidgetsBinding {
     _claims.forget();
     _spread = RasterSpread();
     _paced.clear();
+    _lookedAt = null;
+    _released = null;
+    _heldIntervals.clear();
   }
 
   @override
@@ -122,8 +145,9 @@ mixin PresentPacing on WidgetsBinding {
     if (timing == null || grid == null) {
       return null;
     }
+    final now = _lookedAt = timing.nowMicros;
     return _claims.claim(
-      nowMicros: timing.nowMicros,
+      nowMicros: now,
       vblankMicros: grid.vblankMicros,
       periodMicros: grid.periodMicros,
       budgetMicros: budgetMicros,
@@ -158,7 +182,42 @@ mixin PresentPacing on WidgetsBinding {
     if (_paced.length > 256) {
       _paced.clear();
     }
-    _paced[platformDispatcher.frameData.frameNumber] = timing.nowMicros;
+    final released = timing.nowMicros;
+    _paced[platformDispatcher.frameData.frameNumber] = released;
+    final before = _released;
+    if (before != null) {
+      if (_heldIntervals.length == 8) {
+        _heldIntervals.removeAt(0);
+      }
+      _heldIntervals.add(released - before);
+    }
+    _released = released;
+  }
+
+  ({int fromMicros, int untilMicros})? _quiet() {
+    final timing = displayTiming;
+    final lookedAt = _lookedAt;
+    final released = _released;
+    if (timing == null ||
+        lookedAt == null ||
+        released == null ||
+        _heldIntervals.isEmpty) {
+      return null;
+    }
+    final now = timing.nowMicros;
+    if (now - lookedAt > _runGoneMicros) {
+      return null;
+    }
+    // The next release falls a refresh either side of where the shortest
+    // interval puts it: its claim's vblank comes off the chain.
+    final period = timing.vblankGrid()?.periodMicros ?? 1e6 / 60;
+    return quietBetweenHeldFrames(
+      nowMicros: now,
+      lastReleaseMicros: released,
+      heldIntervalMicros: _heldIntervals.reduce(math.min),
+      sceneMicros: _spread.longestMicros,
+      marginMicros: period.round() + 1000,
+    );
   }
 
   void _learn(List<ui.FrameTiming> timings) {

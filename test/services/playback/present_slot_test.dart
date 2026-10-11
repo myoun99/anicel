@@ -314,4 +314,67 @@ void main() {
       'lengths these pins spread', () {
     expect(width, greaterThan(4000));
   });
+
+  group('the quiet between two held frames', () {
+    const release = 1000;
+    const interval = 41700; // 24 film frames a second
+    const scene = 7000;
+    const margin = 8000;
+
+    ({int fromMicros, int untilMicros})? quietAt(int now) =>
+        quietBetweenHeldFrames(
+          nowMicros: now,
+          lastReleaseMicros: release,
+          heldIntervalMicros: interval,
+          sceneMicros: scene,
+          marginMicros: margin,
+        );
+
+    test('🚨runs from the held frame\'s raster\'s end to the next held '
+        'release, less the margin', () {
+      expect(quietAt(release), (
+        fromMicros: release + scene,
+        untilMicros: release + interval - margin,
+      ));
+      expect(
+        quietAt(release + scene + 100),
+        quietAt(release),
+        reason: 'the quiet it is in',
+      );
+    });
+
+    test('past its end, the next quiet is the one after the next held '
+        'frame', () {
+      const next = (
+        fromMicros: release + interval + scene,
+        untilMicros: release + 2 * interval - margin,
+      );
+      expect(quietAt(release + interval - margin + 1), next);
+      expect(quietAt(release + interval + scene + 1), next);
+      expect(
+        quietAt(release + 2 * interval - margin + 1)!.fromMicros,
+        release + 2 * interval + scene,
+      );
+    });
+
+    test('scenes as long as the frames come leave no quiet to keep', () {
+      expect(
+        quietBetweenHeldFrames(
+          nowMicros: release,
+          lastReleaseMicros: release,
+          heldIntervalMicros: 14000,
+          sceneMicros: scene,
+          marginMicros: 7000,
+        ),
+        isNull,
+      );
+    });
+
+    test('a held raster is over by the longest of the recent lengths', () {
+      final spread = RasterSpread();
+      expect(spread.longestMicros, RasterSpread.unmeasuredHighMicros);
+      [4000, 9000, 5000, 4500, 4200, 4100, 4300, 4400].forEach(spread.add);
+      expect(spread.longestMicros, 9000);
+    });
+  });
 }

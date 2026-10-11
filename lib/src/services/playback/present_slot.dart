@@ -192,6 +192,11 @@ final class RasterSpread {
     }
   }
 
+  /// The longest of the recent lengths: by when, after its hand-off, a
+  /// scene's raster is over at the latest ([quietBetweenHeldFrames]).
+  int get longestMicros =>
+      _recent.length < 8 ? unmeasuredHighMicros : _recent.reduce(math.max);
+
   /// Where to hand a scene over, against the vblank its raster is to end
   /// past, on a display of [periodMicros]: the window of the latch's width
   /// that holds the most of the recent lengths — the middle one of those
@@ -231,4 +236,40 @@ final class RasterSpread {
       byMicros: presentLatchEarlyMicros - low,
     );
   }
+}
+
+/// 🚨BACKGROUND GPU WORK RUNS IN THE QUIET BETWEEN TWO HELD FRAMES (10-12,
+/// read off the screen's own first loop): a texture uploaded on the io
+/// thread while a held frame rasters slows that raster down — the two
+/// threads' GL calls take turns on one device. 🔬Four of a first loop's
+/// five change rasters over 7ms had 12–19ms of io-thread uploads beside
+/// them (the next page's tiles, warming), their scene encoding 5.7ms
+/// against 3.3ms in the others — and those were the film frames shown a
+/// refresh late.
+///
+/// The quiet a held frame leaves runs from its raster's end — its release
+/// plus [sceneMicros], the longest scene of late — to the next held
+/// frame's release, [heldIntervalMicros] after its own, less [marginMicros]
+/// for where that release falls. The answer is the first such quiet not
+/// over at [nowMicros] — or null where the scenes leave none, and nothing
+/// can be kept clear of them.
+({int fromMicros, int untilMicros})? quietBetweenHeldFrames({
+  required int nowMicros,
+  required int lastReleaseMicros,
+  required int heldIntervalMicros,
+  required int sceneMicros,
+  required int marginMicros,
+}) {
+  if (heldIntervalMicros - sceneMicros - marginMicros <= 0) {
+    return null;
+  }
+  final over =
+      nowMicros - (lastReleaseMicros + heldIntervalMicros - marginMicros);
+  final release =
+      lastReleaseMicros +
+      (over < 0 ? 0 : over ~/ heldIntervalMicros + 1) * heldIntervalMicros;
+  return (
+    fromMicros: release + sceneMicros,
+    untilMicros: release + heldIntervalMicros - marginMicros,
+  );
 }
