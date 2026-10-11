@@ -66,6 +66,24 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
           scaleLinked: scaleLinked(),
         ),
     onEndPreview: session.laneVerbs.endLaneEditPreview,
+    // I-89 ③: a header graph's handle — the key window's write of the type,
+    // shown while the drag lasts.
+    onSetKeySides: (layer, lane, frameIndex, sides) =>
+        session.laneVerbs.setLaneKeySidesAt(
+          layer.id,
+          lane.laneId,
+          frameIndex,
+          sides,
+          frameIsGlobal: frameIsGlobal,
+        ),
+    onPreviewKeySides: (layer, lane, frameIndex, sides) =>
+        session.laneVerbs.previewLaneKeySidesAt(
+          layer.id,
+          lane.laneId,
+          frameIndex,
+          sides,
+          frameIsGlobal: frameIsGlobal,
+        ),
   );
 }
 

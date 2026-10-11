@@ -358,15 +358,20 @@ class LaneVerbs {
       };
 
   /// The row you are STANDING on, as a one-frame span at the playhead.
-  TimelineLaneSelection _standingSpan(LayerId layerId, String laneId) {
-    final frame = _laneVerbFrameFor(layerId);
-    return TimelineLaneSelection(
-      layerId: layerId,
-      laneId: laneId,
-      startIndex: frame,
-      endIndexExclusive: frame + 1,
-    );
-  }
+  TimelineLaneSelection _standingSpan(LayerId layerId, String laneId) =>
+      _oneFrameSpan(layerId, laneId, _laneVerbFrameFor(layerId));
+
+  /// [laneId] of [layerId] at [frame] alone, on the row's own axis.
+  TimelineLaneSelection _oneFrameSpan(
+    LayerId layerId,
+    String laneId,
+    int frame,
+  ) => TimelineLaneSelection(
+    layerId: layerId,
+    laneId: laneId,
+    startIndex: frame,
+    endIndexExclusive: frame + 1,
+  );
 
   bool _isCameraRow(LayerId layerId) =>
       laneVerbLayerFor(layerId)?.kind == LayerKind.camera;
@@ -1290,12 +1295,10 @@ class LaneVerbs {
   void setLaneKeySidesForSelection(KeySidesEdit sides) =>
       _writeLaneKeysForSelection(names: false, sides: sides, adopt: false);
 
-  /// The shared body: walks the spanned lanes, and stops at the FIRST lane
-  /// whose name is taken unless [adopt] says the user already agreed.
-  /// Stopping before any commit is what makes the confirmation honest —
-  /// nothing is half-written while the dialog is up.
-  ///
-  /// [names] false leaves every name as it is: the TYPE alone.
+  /// The shared body: [_laneKeysWriteOver] the lane range, committed as one
+  /// undo step — or nothing, and true, when a name is taken. Stopping
+  /// before any commit is what makes the confirmation honest — nothing is
+  /// half-written while the dialog is up.
   bool _writeLaneKeysForSelection({
     required bool names,
     String? name,
@@ -1306,19 +1309,49 @@ class LaneVerbs {
     if (lane == null) {
       return false;
     }
+    final write = _laneKeysWriteOver(
+      lane,
+      names: names,
+      name: name,
+      sides: sides,
+      adopt: adopt,
+    );
+    if (write.taken) {
+      return true;
+    }
+    _commitLaneEdit(
+      write.edit,
+      description: !names
+          ? 'Set key type'
+          : name == null
+          ? 'Unname keys'
+          : 'Name keys',
+    );
+    return false;
+  }
+
+  /// What naming and typing the keys [lane] covers leaves its row at, on
+  /// every lane it spans — the key window's write, and a graph handle's
+  /// (I-89 ③) — or no edit where it changes nothing. [taken] stops it at
+  /// the FIRST lane whose name is taken, unless [adopt] says the user
+  /// already agreed: then there is no edit either.
+  ///
+  /// [names] false leaves every name as it is: the TYPE alone.
+  ({bool taken, ({Layer layer, _LaneEdit edit})? edit}) _laneKeysWriteOver(
+    TimelineLaneSelection lane, {
+    required bool names,
+    String? name,
+    KeySidesEdit? sides,
+    required bool adopt,
+  }) {
     final scope = _laneVerbScope(lane);
     if (scope == null) {
-      return false;
+      return (taken: false, edit: null);
     }
     final layer = scope.layer;
     final cutId = _timeline.editingSession.activeCutId;
     final asked = names ? name : null;
     final preferred = _laneVerbFrameFor(lane.layerId);
-    final why = !names
-        ? 'Set key type'
-        : name == null
-        ? 'Unname keys'
-        : 'Name keys';
 
     // Every lane is READ before any is written — the keys it covers, and
     // what already holds the name — so a taken name stops the verb while
@@ -1350,39 +1383,36 @@ class LaneVerbs {
                 excludeFramesOnSource: frames,
               );
         if (adopted != null && !adopt) {
-          return true;
+          return (taken: true, edit: null);
         }
         reads[laneId] = (frames: frames, adopted: adopted);
       }
-      _commitLaneFold(
-        layer.effects,
-        reads.keys,
-        (effects, laneId) {
-          final read = reads[laneId]!;
-          final named = !names
-              ? null
-              : effectsWithLaneRangeNamed(
-                  effects,
-                  laneId: laneId,
-                  frames: read.frames,
-                  name: name,
-                  adopted: read.adopted,
-                  preferredFrame: preferred,
-                );
-          final typed = sides == null
-              ? null
-              : effectsWithLaneKeySides(
-                  named ?? effects,
-                  laneId: laneId,
-                  frames: read.frames,
-                  edit: sides,
-                );
-          return typed ?? named;
-        },
-        commit: (effects) =>
-            _commitLaneEffects(layer, effects, description: why),
+      final next = _foldedEdits(layer.effects, reads.keys, (effects, laneId) {
+        final read = reads[laneId]!;
+        final named = !names
+            ? null
+            : effectsWithLaneRangeNamed(
+                effects,
+                laneId: laneId,
+                frames: read.frames,
+                name: name,
+                adopted: read.adopted,
+                preferredFrame: preferred,
+              );
+        final typed = sides == null
+            ? null
+            : effectsWithLaneKeySides(
+                named ?? effects,
+                laneId: laneId,
+                frames: read.frames,
+                edit: sides,
+              );
+        return typed ?? named;
+      });
+      return (
+        taken: false,
+        edit: next == null ? null : (layer: layer, edit: _EffectsEdit(next)),
       );
-      return false;
     }
 
     final track = _laneTransformTrackOf(layer);
@@ -1408,39 +1438,108 @@ class LaneVerbs {
               excludeFrames: frames,
             );
       if (holder != null && !adopt) {
-        return true;
+        return (taken: true, edit: null);
       }
       reads[laneId] = (frames: frames, holder: holder);
     }
-    _commitLaneFold(
-      track,
-      reads.keys,
-      (value, laneId) {
-        final read = reads[laneId]!;
-        final named = !names
-            ? null
-            : transformTrackWithLaneRangeNamed(
-                value,
-                laneId: laneId,
-                frames: read.frames,
-                name: name,
-                adoptFrom: read.holder,
-                preferredFrame: preferred,
-              );
-        final typed = sides == null
-            ? null
-            : transformTrackWithLaneKeySides(
-                named ?? value,
-                laneId: laneId,
-                frames: read.frames,
-                edit: sides,
-              );
-        return typed ?? named;
-      },
-      commit: (value) =>
-          _commitTransformTrack(layer, value, description: why),
+    final next = _foldedEdits(track, reads.keys, (value, laneId) {
+      final read = reads[laneId]!;
+      final named = !names
+          ? null
+          : transformTrackWithLaneRangeNamed(
+              value,
+              laneId: laneId,
+              frames: read.frames,
+              name: name,
+              adoptFrom: read.holder,
+              preferredFrame: preferred,
+            );
+      final typed = sides == null
+          ? null
+          : transformTrackWithLaneKeySides(
+              named ?? value,
+              laneId: laneId,
+              frames: read.frames,
+              edit: sides,
+            );
+      return typed ?? named;
+    });
+    return (
+      taken: false,
+      edit: next == null ? null : (layer: layer, edit: _TransformEdit(next)),
     );
-    return false;
+  }
+
+  /// A handle of a header graph let go (I-89 ③): [sides] on the key of
+  /// [laneId] at [frameIndex] — and, when the lane range holds that key, on
+  /// every key it covers (I-89-Q-b), by the key window's own write — one
+  /// undo, the drag's preview dropped with it. [frameIsGlobal]: see
+  /// [_laneVerbFrameAt].
+  void setLaneKeySidesAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex,
+    KeySidesEdit sides, {
+    required bool frameIsGlobal,
+  }) => _commitLaneEdit(
+    _handleEdit(
+      layerId,
+      laneId,
+      frameIndex,
+      sides,
+      frameIsGlobal: frameIsGlobal,
+    ),
+    description: 'Set key type',
+  );
+
+  /// A handle mid-drag: the edit [setLaneKeySidesAt] would write at the
+  /// release, shown and not written (F-195 — the same edit, not a
+  /// look-alike).
+  void previewLaneKeySidesAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex,
+    KeySidesEdit sides, {
+    required bool frameIsGlobal,
+  }) => _previewLaneEdit(
+    _handleEdit(
+      layerId,
+      laneId,
+      frameIndex,
+      sides,
+      frameIsGlobal: frameIsGlobal,
+    ),
+  );
+
+  /// The write a handle's drag makes: [sides] over the lane range when it
+  /// holds the handle's key, else over that key alone, as a one-frame span
+  /// on its lane.
+  ({Layer layer, _LaneEdit edit})? _handleEdit(
+    LayerId layerId,
+    String laneId,
+    int frameIndex,
+    KeySidesEdit sides, {
+    required bool frameIsGlobal,
+  }) {
+    final frame = _laneVerbFrameAt(
+      layerId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+    );
+    final range = laneVerbRange;
+    final span =
+        range != null &&
+            range.layerId == layerId &&
+            range.contains(frame) &&
+            (_laneVerbScope(range)?.targets.contains(laneId) ?? false)
+        ? range
+        : _oneFrameSpan(layerId, laneId, frame);
+    return _laneKeysWriteOver(
+      span,
+      names: false,
+      sides: sides,
+      adopt: false,
+    ).edit;
   }
 
   /// AE's group Reset (R5, user 2026-08-09): puts a GROUP HEADER's members

@@ -3,7 +3,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../models/key_mark.dart';
-import '../../models/key_side.dart' show KeyExit, KeySide;
+import '../../models/key_side.dart' show KeyExit, KeySide, KeySidesEdit;
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -345,6 +345,8 @@ class PropertyLaneEditCallbacks {
     this.onSetValue,
     this.onPreviewValue,
     this.onEndPreview,
+    this.onSetKeySides,
+    this.onPreviewKeySides,
     this.valueLink,
   });
 
@@ -390,8 +392,29 @@ class PropertyLaneEditCallbacks {
   onPreviewValue;
 
   /// A scrub that went away without a release: what [onPreviewValue]
-  /// showed is dropped.
+  /// showed is dropped — and what [onPreviewKeySides] showed.
   final VoidCallback? onEndPreview;
+
+  /// A header graph's handle let go (I-89 ③): the key of [lane] at
+  /// [frameIndex] — and every key the lane range covers, when it holds that
+  /// one — eased as [sides] say.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    KeySidesEdit sides,
+  )?
+  onSetKeySides;
+
+  /// A handle mid-drag: what [onSetKeySides] would write, to be SHOWN while
+  /// the drag lasts, as [onPreviewValue] shows a scrub.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    KeySidesEdit sides,
+  )?
+  onPreviewKeySides;
 
   /// The chain of the lanes whose value is a linked pair — null leaves it
   /// off their rows.
@@ -404,6 +427,8 @@ class PropertyLaneEditCallbacks {
   PropertyLaneEditCallbacks landingOn(Layer layer) {
     final setValue = onSetValue;
     final previewValue = onPreviewValue;
+    final setKeySides = onSetKeySides;
+    final previewKeySides = onPreviewKeySides;
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) =>
           onToggleKeyAt(layer, lane, frameIndex),
@@ -416,6 +441,14 @@ class PropertyLaneEditCallbacks {
           : (_, lane, frameIndex, input) =>
                 previewValue(layer, lane, frameIndex, input),
       onEndPreview: onEndPreview,
+      onSetKeySides: setKeySides == null
+          ? null
+          : (_, lane, frameIndex, sides) =>
+                setKeySides(layer, lane, frameIndex, sides),
+      onPreviewKeySides: previewKeySides == null
+          ? null
+          : (_, lane, frameIndex, sides) =>
+                previewKeySides(layer, lane, frameIndex, sides),
       valueLink: valueLink,
     );
   }
