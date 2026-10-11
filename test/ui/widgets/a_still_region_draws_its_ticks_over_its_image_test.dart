@@ -286,8 +286,16 @@ void main() {
         ),
       ),
     );
-    await _untilImage(tester);
-    expect(_region(tester).debugDrawnFromImage, isTrue, reason: '⛔premise');
+    // The frame right after the image is taken, before any frame has drawn
+    // from it: the layer around the tick is the image's scene's own.
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (_region(tester).debugCaptureCount > 0) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(_region(tester).debugCaptureCount, 1, reason: '⛔premise');
+    expect(_region(tester).debugDrawnFromImage, isFalse, reason: '⛔premise');
 
     elsewhere.value = _cover;
     await tester.pump();
