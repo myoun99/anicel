@@ -155,6 +155,7 @@ void main() {
     // 유저 2026-10-09: 「브러시 사이즈의 + -버튼인 한걸음 조정 버튼, 툴 사이즈
     // 패널의 프리셋을 그대로 따름」.
     var value = 3.3;
+    final ends = <double>[];
     late StateSetter hold;
     await pump(
       tester,
@@ -170,6 +171,7 @@ void main() {
             label: 'Size',
             unit: ' px',
             onChanged: (next) => setState(() => value = next),
+            onChangeEnd: ends.add,
           );
         },
       ),
@@ -189,6 +191,12 @@ void main() {
     await press(down);
     await press(down);
     expect(value, 1, reason: 'and below the first there is nothing to step to');
+    expect(
+      ends,
+      [5, 10, 5, 2, 1],
+      reason: 'each step a complete edit, as along the track — and the step '
+          'to nowhere tells nothing',
+    );
 
     // A value a drag left a hair off a stop stands on it.
     hold(() => value = 10.004);

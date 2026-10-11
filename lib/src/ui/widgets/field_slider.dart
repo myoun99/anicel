@@ -772,16 +772,25 @@ class _FieldSliderState extends State<FieldSlider> {
     if (!_enabled) {
       return;
     }
+    final value = _stepFrom(direction);
+    if (value == null) {
+      return;
+    }
+    _emit(value);
+    widget.onChangeEnd?.call(value);
+  }
+
+  /// Where one step [direction] lands: the next of the bar's
+  /// [FieldSlider.stops], or one notch along the track. Null when the
+  /// stops run out that way.
+  double? _stepFrom(int direction) {
     final stops = widget.stops;
     if (stops != null) {
-      final next = FieldSlider.stopPast(stops, widget.value, direction);
-      if (next == null) {
-        return;
-      }
-      final value = next.clamp(widget.min, widget.max).toDouble();
-      _emit(value);
-      widget.onChangeEnd?.call(value);
-      return;
+      return FieldSlider.stopPast(
+        stops,
+        widget.value,
+        direction,
+      )?.clamp(widget.min, widget.max).toDouble();
     }
     final divisions = widget.divisions;
     final double step;
@@ -791,9 +800,7 @@ class _FieldSliderState extends State<FieldSlider> {
       step = _shiftHeld ? 0.001 : 0.01;
     }
     final t = (_tFor(widget.value) + direction * step).clamp(0.0, 1.0);
-    final value = _valueFor(t);
-    _emit(value);
-    widget.onChangeEnd?.call(value);
+    return _valueFor(t);
   }
 
   double get _radius => FieldSlider.radiusFor(widget.height);
