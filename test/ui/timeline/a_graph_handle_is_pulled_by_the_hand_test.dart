@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,12 +39,18 @@ void main() {
   tearDown(debugClearValueControlPointers);
 
   testWidgets('pulled, a handle stays under the hand and shows its ease '
-      'without writing it; let go of, it writes what it showed, in one '
-      'undo', (tester) async {
+      'without writing it — though it bends its line past what the line was '
+      'fitted to; let go of, it writes what it showed, in one undo', (
+    tester,
+  ) async {
     final s = await _pump(tester);
     await _openTheGraph(tester, s);
+    final taken = _handleOf(tester, 'timeline');
     final start = _handleOnScreen(tester, 'timeline');
-    const pull = Offset(24, -36);
+    // Along the segment, and three times its rise across: the far key's
+    // value is left behind.
+    final (:from, :to) = taken.across;
+    final pull = Offset(24, from + 3 * (to - from) - taken.at.dy);
 
     final gesture = await tester.startGesture(
       // Off its middle: the handle goes as far as the hand does, and does
@@ -58,6 +66,16 @@ void main() {
 
     expect(s.dragPreview.value, isA<LaneEditPreview>());
     expect(_leaving(s), const EaseSide(), reason: 'shown, not written');
+    final bent = _graphOf(tester, 'timeline').painter.own.single.lane.curve!;
+    expect(
+      [
+        for (var frame = 1; frame < 8; frame += 1)
+          bent.at(frame.toDouble()).single,
+      ].reduce(math.max),
+      greaterThan(45),
+      reason: '⛔전제: bent past the far key\'s value, where a line fitted '
+          'again would stretch to take it in',
+    );
     expect(
       _handleOnScreen(tester, 'timeline'),
       offsetMoreOrLessEquals(start + pull, epsilon: 0.5),
@@ -201,8 +219,11 @@ const _drawId = LayerId('draw');
 String get _transformGroup =>
     laneGroupKey(_drawId, transformGroupHeaderLane.laneId);
 
-/// Where [grid]'s graph shows its one handle — Rotation's key on 0, leaving.
-Offset _handleOnScreen(WidgetTester tester, String grid) {
+/// [grid]'s graph as it is drawn: the painter, and the box it paints.
+({TimelineLaneGraphPainter painter, RenderBox box}) _graphOf(
+  WidgetTester tester,
+  String grid,
+) {
   final paint = find.descendant(
     of: find.descendant(
       of: find.byKey(ValueKey<String>('$grid-lane-graph-$_transformGroup')),
@@ -210,13 +231,24 @@ Offset _handleOnScreen(WidgetTester tester, String grid) {
     ),
     matching: find.byType(CustomPaint),
   );
-  final painter =
-      tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter;
-  final box = tester.renderObject<RenderBox>(paint);
+  return (
+    painter:
+        tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter,
+    box: tester.renderObject<RenderBox>(paint),
+  );
+}
+
+/// [grid]'s graph's one handle — Rotation's key on 0, leaving.
+LaneGraphHandle _handleOf(WidgetTester tester, String grid) {
+  final (:painter, :box) = _graphOf(tester, grid);
   final handle = painter.handlesIn(box.size).single;
   expect((handle.frame, handle.leaving), (0, true), reason: '⛔전제');
-  return box.localToGlobal(handle.at);
+  return handle;
 }
+
+/// Where [grid]'s graph shows its one handle, on the screen.
+Offset _handleOnScreen(WidgetTester tester, String grid) =>
+    _graphOf(tester, grid).box.localToGlobal(_handleOf(tester, grid).at);
 
 KeyExit _leaving(EditorSessionManager s) => s.requireActiveCut.layers
     .byId(_drawId)!

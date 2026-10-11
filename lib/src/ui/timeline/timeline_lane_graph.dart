@@ -1005,7 +1005,8 @@ KeySidesEdit laneGraphPull(
       ? (position.dx, position.dy)
       : (position.dy, position.dx);
   final span = handle.frames;
-  final x = (laneGraphTimeAt(along, frames) - span.from) / (span.to - span.from);
+  final x =
+      (laneGraphTimeAt(along, frames) - span.from) / (span.to - span.from);
   final rise = handle.across.to - handle.across.from;
   final level = rise == 0;
   final (:influence, :speed) = keyHandleAt(
@@ -1213,7 +1214,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
         laneGraphAcross(value, ranges.single, extent, axis);
     for (var index = 0; index + 1 < keyed.length; index += 1) {
       final span = (from: keyed[index], to: keyed[index + 1]);
-      if (span.to < window.startIndex || span.from >= window.endIndexExclusive) {
+      if (span.to < window.startIndex ||
+          span.from >= window.endIndexExclusive) {
         continue;
       }
       final eases = [
@@ -1231,10 +1233,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
       );
       final ends = (from: across(values.from), to: across(values.to));
       for (final (:side, :leaving) in eases) {
-        final (:x, :y) = keyHandlePoint((
-          influence: side.influence,
-          speed: side.speed,
-        ), leaving: leaving);
+        final (:x, :y) = keyHandlePoint(
+          (influence: side.influence, speed: side.speed),
+          leaving: leaving,
+        );
         final frame = leaving ? span.from : span.to;
         yield (
           line: line,
@@ -1242,7 +1244,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
           leaving: leaving,
           at: offsetAlong(
             axis,
-            along: laneGraphAlong(span.from + x * (span.to - span.from), frames),
+            along: laneGraphAlong(
+              span.from + x * (span.to - span.from),
+              frames,
+            ),
             across: across(values.from + y * (values.to - values.from)),
           ),
           key: offsetAlong(

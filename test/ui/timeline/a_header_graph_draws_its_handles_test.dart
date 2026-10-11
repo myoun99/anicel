@@ -237,27 +237,36 @@ void main() {
     );
   });
 
-  test('a zoom, a scroll or a taller graph reads its handles again', () {
+  test('a zoom, a scroll or a taller graph reads its handles again — each '
+      'of them alone', () {
     final size = sizeFor(Axis.horizontal);
     final painter = painterOf([lineOf('rotation')]);
     List<Offset> drawn(TimelineLaneGraphPainter painter, Size size) => [
       for (final handle in painter.handlesIn(size)) handle.at,
     ];
+    const all = (startIndex: 0, endIndexExclusive: 48);
     final before = drawn(painter, size);
+    expect(painter.visibleFrameWindow(), all, reason: '⛔전제');
 
+    // A zoom the window does not see: the cut's 48 frames bound it at
+    // either zoom.
     geometry.value = const TimelineFrameGeometry(
-      frameCellExtent: 20,
+      frameCellExtent: 14,
       frameStartIndex: 0,
       frameEndIndexExclusive: 48,
     );
-    expect(drawn(painter, size), isNot(before), reason: '⛔전제');
+    expect(painter.visibleFrameWindow(), all, reason: '⛔전제');
+    expect(drawn(painterOf([lineOf('rotation')]), size), isNot(before));
     expect(drawn(painter, size), drawn(painterOf([lineOf('rotation')]), size));
+
     final taller = Size(size.width, size.height + 40);
     expect(
       drawn(painter, taller),
       drawn(painterOf([lineOf('rotation')]), taller),
     );
-    // Five frames to a step at this zoom: the window from 23 on.
+
+    expect(drawn(painter, size), isNotEmpty, reason: '⛔전제');
+    // Seven frames to a step at this zoom: the window from 33 on.
     bucket.value = 5;
     expect(painter.handlesIn(size), isEmpty, reason: 'past every segment');
   });
@@ -359,7 +368,11 @@ void main() {
         final written = handle.leaving ? edit.outgoing : edit.incoming;
         final side = sideOf(handle);
         final reason = '${handle.frame} ${handle.leaving ? 'out' : 'in'}';
-        expect(written!.influence, closeTo(side.influence, 1e-9), reason: reason);
+        expect(
+          written!.influence,
+          closeTo(side.influence, 1e-9),
+          reason: reason,
+        );
         expect(written.speed, closeTo(side.speed, 1e-9), reason: reason);
         expect(
           handle.leaving ? edit.incoming : edit.outgoing,
@@ -370,6 +383,21 @@ void main() {
       }
     });
   }
+
+  test('the time read off a point of the picture is the time the picture '
+      'draws there — though its cells, no whole pixels, are each a pixel '
+      'off their zoom\'s width here and there', () {
+    final frames = geometry.value;
+    final end = laneGraphAlong(48, frames);
+    final off = [
+      for (var along = -10.0; along < end; along += 0.05)
+        if ((laneGraphAlong(laneGraphTimeAt(along, frames), frames) - along)
+                .abs() >
+            1e-9)
+          along,
+    ];
+    expect(off, isEmpty);
+  });
 
   test('a pull reads the time along and the height across off the picture '
       '— held to the segment\'s own reach', () {
