@@ -95,6 +95,16 @@ class StillRaster extends SingleChildRenderObjectWidget {
   /// the wait, up to this.
   static const int maxStillFrames = 48;
 
+  /// The frames an image has to live to pay for itself — the snapshot that
+  /// took it is a fixed price, whatever the region waited before it.
+  ///
+  /// ↩️It was twice the wait: a region backed off to [maxStillFrames] had to
+  /// keep an image 96 frames before its wait came down again, and a playing
+  /// timeline turns a page every ~65 — it waited 48 frames after every
+  /// page, and drew from its image on 261 frames of 1,562 (10-12, cut 302,
+  /// 144Hz).
+  static const int framesToPay = 2 * stillFrames;
+
   /// Whether the engine keeps no raster cache of its own — the one engine
   /// fact [StaticRaster.capturePays] reads too, asked as its own question:
   /// that one is "does a capture on every change pay", this one is "does a
@@ -418,7 +428,7 @@ class _StillLayer extends OffsetLayer {
       // region on the raster thread. Counted from the CAPTURE, so an image
       // thrown away before it was ever drawn counts as the waste it is.
       final lived = _frame - capturedAt;
-      _stillFramesNeeded = lived < 2 * _stillFramesNeeded
+      _stillFramesNeeded = lived < StillRaster.framesToPay
           ? (_stillFramesNeeded * 2).clamp(
               StillRaster.stillFrames,
               StillRaster.maxStillFrames,
@@ -460,7 +470,8 @@ class _StillLayer extends OffsetLayer {
       _owner._standDown = StillStandDown.none;
       return;
     }
-    if (_image != null) {
+    final dropped = _image != null;
+    if (dropped) {
       _drop();
     }
     // 🚨A re-add only a tick asked for changed nothing the strata would
@@ -472,6 +483,18 @@ class _StillLayer extends OffsetLayer {
     if (signature == null ||
         !listEquals(signature, _lastSignature) ||
         fit != _lastFit) {
+      // 🚨A region that stood still long enough for an image taken at the
+      // shortest wait to have paid, and was waiting longer, waits that
+      // shortest wait again — an image it never took could not say so
+      // ([_drop]). Backed off past its own stillness, a region stays there:
+      // a playing timeline turned a page every ~65 frames at 144Hz (10-12),
+      // and the same page at a lower refresh rate is fewer frames than the
+      // most a region waits.
+      if (!dropped &&
+          _frame - _changedAt >=
+              StillRaster.stillFrames + StillRaster.framesToPay) {
+        _stillFramesNeeded = StillRaster.stillFrames;
+      }
       _changedAt = _frame;
     }
     _lastSignature = signature;
@@ -597,8 +620,15 @@ class _StillLayer extends OffsetLayer {
   /// tick changes every few refreshes, a row's tile landing once.
   static const int _movingFor = StillRaster.maxStillFrames;
 
-  /// Whether [tick] changed what it holds in the last [_movingFor] frames.
-  bool _moving(TickSceneLayer tick) => _frame - tick._changedAt <= _movingFor;
+  /// Whether [tick] changed what it holds in the last [_movingFor] frames
+  /// WHILE THE REST OF THE REGION STOOD STILL — after the region's own last
+  /// change. One that changed with it moved with the region, and is taken
+  /// with the rest: a playing timeline's rows each hold a tick that a page
+  /// turn moves with the page, and nothing else. ↩️Read live for the 48
+  /// frames after every page, they were taken into the strata in an image
+  /// of their own when those ran out — two images a page (10-12, cut 302).
+  bool _moving(TickSceneLayer tick) =>
+      tick._changedAt > _changedAt && _frame - tick._changedAt <= _movingFor;
 
   void _watch() {
     if (_watching) {
@@ -697,26 +727,18 @@ class _StillLayer extends OffsetLayer {
     final ticks = <_Tick>[];
     final refusals = <String>[];
     final path = <ContainerLayer>[];
-    // A tick a moving tick stands inside is added again with it whatever it
-    // holds itself, so it reads as moving too: the one drawn live is the
-    // innermost, and what the outer one holds beside it is in the strata.
-    bool holdsLive(ContainerLayer layer) {
-      for (var child = layer.firstChild;
-          child != null;
-          child = child.nextSibling) {
-        if (child is TickSceneLayer && live(child)) {
-          return true;
-        }
-        if (child is ContainerLayer && holdsLive(child)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
+    // A tick moving is drawn live WHOLE, the ticks inside it with it. One
+    // that moves only because a tick inside it does is not moving — a tick
+    // is asked what it draws itself ([_signatureOf]) — and the walk goes on
+    // into it to that one. ↩️The innermost moving tick was always the one
+    // drawn live, and an outer tick that moved on its own was taken into
+    // the strata it left again on its next move: the timeline's command
+    // bar, changing with every film frame, held ticks that moved too, and
+    // the playing timeline took its image five times in fifteen frames
+    // (10-12).
     void visit(Layer layer, Matrix4 toRegion) {
       switch (layer) {
-        case TickSceneLayer() when live(layer) && !holdsLive(layer):
+        case TickSceneLayer() when live(layer):
           final under = path.where((above) => !_splits(above));
           if (under.isNotEmpty) {
             refusals.add(
@@ -1006,27 +1028,37 @@ class _StillLayer extends OffsetLayer {
   /// content that can change with no layer knowing — then there is nothing
   /// to vouch for.
   ///
-  /// Each tick it passes is told what it holds ([TickSceneLayer._looked]) —
-  /// how the region knows which of its ticks move.
+  /// Each tick it passes is told what it draws ITSELF
+  /// ([TickSceneLayer._looked]) — a tick inside it counted by itself and its
+  /// place, not by what it draws — which is how the region knows which of
+  /// its ticks move: one moves when its own drawing changes, whichever ticks
+  /// inside it the region draws live. ↩️It was told what it held as the walk
+  /// counted it, the ticks inside it in or out by [live], so an outer tick
+  /// read as moved whenever two walks asked with different ticks live.
   List<Object?>? _signatureOf(bool Function(TickSceneLayer tick) live) {
     final region = <Object?>[];
-    bool walk(Layer layer, List<Object?> out) {
+    // [own]: what the nearest tick around [layer] draws itself.
+    bool walk(Layer layer, List<Object?> out, List<Object?>? own) {
+      own?.add(layer);
       out.add(layer);
+      if (layer case TickSceneLayer(:final offset)) {
+        final held = <Object?>[offset];
+        final itsOwn = <Object?>[offset];
+        for (var child = layer.firstChild;
+            child != null;
+            child = child.nextSibling) {
+          if (!walk(child, held, itsOwn)) {
+            return false;
+          }
+        }
+        layer._looked(itsOwn, _frame);
+        if (!live(layer)) {
+          out.addAll(held);
+        }
+        return true;
+      }
+      final from = out.length;
       switch (layer) {
-        case TickSceneLayer(:final offset):
-          final held = <Object?>[offset];
-          for (var child = layer.firstChild;
-              child != null;
-              child = child.nextSibling) {
-            if (!walk(child, held)) {
-              return false;
-            }
-          }
-          layer._looked(held, _frame);
-          if (!live(layer)) {
-            out.addAll(held);
-          }
-          return true;
         case PictureLayer(:final picture):
           out.add(picture);
         // A backdrop filter draws what is BEHIND the region, which an
@@ -1091,11 +1123,12 @@ class _StillLayer extends OffsetLayer {
           // draws in a way nothing here would compare.
           return false;
       }
+      own?.addAll(out.getRange(from, out.length));
       if (layer is ContainerLayer) {
         for (var child = layer.firstChild;
             child != null;
             child = child.nextSibling) {
-          if (!walk(child, out)) {
+          if (!walk(child, out, own)) {
             return false;
           }
         }
@@ -1104,7 +1137,7 @@ class _StillLayer extends OffsetLayer {
     }
 
     for (var child = firstChild; child != null; child = child.nextSibling) {
-      if (!walk(child, region)) {
+      if (!walk(child, region, null)) {
         return null;
       }
     }

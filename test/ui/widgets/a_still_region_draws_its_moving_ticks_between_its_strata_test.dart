@@ -509,6 +509,206 @@ void main() {
 
     expect(_region(tester).debugCaptureCount, 0);
   });
+
+  testWidgets('🚨an outer tick moving on its own is drawn live WHOLE, the '
+      'tick moving inside it with it — not taken into the strata it leaves '
+      'on its next move', (tester) async {
+    final at = ValueNotifier<double>(0);
+    final outer = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    addTearDown(outer.dispose);
+    // The outer tick paints a mark of its own beside the inner one.
+    Widget inside(Widget tick) => SizedBox(
+      width: 200,
+      height: 40,
+      child: TickLayer(
+        child: Stack(
+          children: [
+            Positioned.fill(child: CustomPaint(painter: _Mark(outer))),
+            Positioned(left: 0, top: 20, width: 140, height: 20, child: tick),
+          ],
+        ),
+      ),
+    );
+    Future<void> step() async {
+      at.value = (at.value + 1) % 130;
+      outer.value = (outer.value + 1) % 190;
+      await tester.pump();
+    }
+
+    await _pump(tester, _regionWith(at, wrap: inside));
+    final region = _region(tester);
+    for (var i = 0; i < StillRaster.maxStillFrames * 4; i += 1) {
+      if (region.debugDrawnFromImage) {
+        break;
+      }
+      await step();
+    }
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise: still');
+    expect(region.debugLiveTicks, [const Size(200, 40)]);
+    final taken = region.debugCaptureCount;
+    for (var i = 0; i < 12; i += 1) {
+      await step();
+    }
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(region.debugCaptureCount, taken, reason: 'not taken again');
+    final bytes = await captureBytes(tester);
+    expect(
+      _pixelAt(tester, bytes, Offset(_left + outer.value + 5, _top + 5)),
+      _mark,
+    );
+    expect(
+      _pixelAt(tester, bytes, Offset(_left + at.value + 5, _top + 25)),
+      _mark,
+    );
+  });
+
+  group('the wait before an image follows how long the region stands '
+      'still', () {
+    /// [_regionWith]'s region with a ground that changes on [ground] — a
+    /// change of the region's own, as a page turn is.
+    Widget regionOf(ValueNotifier<Color> ground, ValueNotifier<double> at) =>
+        StillRaster(
+          debugLabel: 'test',
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: ValueListenableBuilder<Color>(
+                    valueListenable: ground,
+                    builder: (context, color, _) => ColoredBox(color: color),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: 0,
+                width: 200,
+                height: 40,
+                child: TickLayer(child: CustomPaint(painter: _Mark(at))),
+              ),
+            ],
+          ),
+        );
+
+    /// The frames until the region is drawn from its image — null when it
+    /// is not within [limit].
+    Future<int?> framesUntilDrawn(WidgetTester tester, int limit) async {
+      for (var frame = 1; frame <= limit; frame += 1) {
+        await _frame(tester);
+        if (_region(tester).debugDrawnFromImage) {
+          return frame;
+        }
+      }
+      return null;
+    }
+
+    var shade = 0;
+    Future<void> change(WidgetTester tester, ValueNotifier<Color> ground) {
+      shade += 1;
+      ground.value = Color(0xFF000000 | shade);
+      return tester.pump();
+    }
+
+    /// Images thrown away the frame after they are first drawn, until the
+    /// region waits the most it waits.
+    Future<void> backOff(
+      WidgetTester tester,
+      ValueNotifier<Color> ground,
+    ) async {
+      for (var round = 0; round < 6; round += 1) {
+        expect(
+          await framesUntilDrawn(tester, StillRaster.maxStillFrames * 2),
+          isNotNull,
+          reason: '⛔premise: taken',
+        );
+        await change(tester, ground);
+      }
+    }
+
+    testWidgets('🚨an image that lived long enough to pay brings the wait '
+        'back to the shortest, however long it was', (tester) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      await backOff(tester, ground);
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames - 8),
+        isNull,
+        reason: '⛔premise: it waits the most',
+      );
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+      );
+      for (var frame = 0; frame < StillRaster.framesToPay; frame += 1) {
+        await _frame(tester);
+      }
+
+      await change(tester, ground);
+      expect(
+        await framesUntilDrawn(tester, StillRaster.stillFrames + 2),
+        isNotNull,
+        reason: 'it paid: the shortest wait again',
+      );
+    });
+
+    testWidgets('🚨a region that changes sooner than it waits is taken again '
+        'once it stood still long enough for an image to have paid', (
+      tester,
+    ) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      await backOff(tester, ground);
+
+      // A page every 20 frames — less than the most it waits.
+      expect(
+        await framesUntilDrawn(tester, 19),
+        isNull,
+        reason: '⛔premise: it waits the most',
+      );
+      await change(tester, ground);
+      expect(await framesUntilDrawn(tester, 19), isNotNull);
+    });
+
+    testWidgets('🚨a tick that moved with the rest of the region is taken '
+        'into the strata with it — not drawn live', (tester) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken',
+      );
+
+      // A page turn: the region and its tick change in the same frame.
+      ground.value = _cover;
+      at.value = 60;
+      await tester.pump();
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+      );
+      expect(_region(tester).debugLiveTicks, isEmpty);
+      expect(
+        _pixelAt(
+          tester,
+          await captureBytes(tester),
+          const Offset(_left + 65, _top + 5),
+        ),
+        _mark,
+        reason: 'drawn from the stratum where it stood',
+      );
+    });
+  });
 }
 
 class _LeftHalf extends CustomClipper<Rect> {
