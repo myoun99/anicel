@@ -92,13 +92,13 @@ void main() {
       'the conte start rings six frames in — where the picture is there', () {
     final s = session();
     addTearDown(s.dispose);
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
     );
-    expect(playlist.single.mediaLead, 6);
+    expect(window!.trackStart, 18, reason: 'b\'s conte start 24, less 6');
 
     final scheduled = buildAudioPlaybackSchedule(
-      playlist: playlist,
+      window: window,
       project: s.repository.requireProject(),
       rate: s.projectSettings.projectFrameRate,
       durationSecondsFor: (_) => 100,
@@ -110,13 +110,13 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
     s.selectCut(const CutId('a'));
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
     );
-    expect(playlist.single.mediaLead, 0);
+    expect(window!.trackStart, 0);
     expect(
       buildAudioPlaybackSchedule(
-        playlist: playlist,
+        window: window,
         project: s.repository.requireProject(),
         rate: s.projectSettings.projectFrameRate,
         durationSecondsFor: (_) => 100,

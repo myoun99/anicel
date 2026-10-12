@@ -112,10 +112,9 @@ class FrameScrub {
       return;
     }
     final axis = _timeline.trackFrameAxis();
-    if (axis.isEmpty) {
-      return;
-    }
     final owner = axis.ownerOf(globalFrame);
+    // A track with no cut is all gap (F-341) — the scrub parks on it like
+    // anywhere else a cut is not.
     if (axis.isGap(globalFrame) || owner == null) {
       _parkInTheGap(globalFrame);
       return;
@@ -165,6 +164,12 @@ class FrameScrub {
     if ((parked != null && parked != globalFrame || _stoodOnACut) &&
         !active.value) {
       active.value = true;
+    }
+    if (parked != globalFrame) {
+      // The crossed frame plays its slice of the track's sound, as on a
+      // cut: a sound row is the track's, and is there where no cut is
+      // (F-341).
+      _playbackRig.audioScrubber.onScrubTrackFrame(globalFrame);
     }
     _timeline.editingSession.gapGlobalFrame = globalFrame;
     // D6: the gap EDGE — only while the gesture is live (a tap's

@@ -3300,11 +3300,15 @@ class EditorSessionManager extends ChangeNotifier
   /// ⛔THE park. A stop in a gap and the V-row eye wrote these steps out
   /// for themselves and missed the settle and the live-stroke hold this
   /// one keeps (2026-09-29); they come through here now.
+  ///
+  /// 🚨A track with no cut is ALL gap, and parks like one (F-341): the
+  /// storyboard's playhead, its rows and its run stand on the track's axis,
+  /// which a cut does not make. ↩️An empty axis refused the park — a guard
+  /// the first global seek needed for its `entries.first` (R15-1), outlived
+  /// by the gap parking that replaced that line: a run stopped on a track
+  /// with no cut left no playhead behind.
   void parkGlobalFrame(int globalFrame) {
     if (strokeInFlight) {
-      return;
-    }
-    if (trackFrameAxis().isEmpty) {
       return;
     }
     historyManager.places.settle();
@@ -3330,12 +3334,10 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final axis = onAxis ?? trackFrameAxis();
-    if (axis.isEmpty) {
-      return;
-    }
     final local = axis.localOf(globalFrame);
     if (local == null || axis.isGap(globalFrame)) {
-      // A GAP (leading or mid-track): no cut there — park + deselect.
+      // A GAP (leading, mid-track, or a track with no cut — F-341): no cut
+      // there — park + deselect.
       parkGlobalFrame(globalFrame);
       return;
     }

@@ -24,7 +24,6 @@ import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../../services/playback/heard_on_the_device.dart';
-import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
 import '../../models/audio_sync_settings.dart';
@@ -156,7 +155,7 @@ class AudioDeviceTransport {
       return;
     }
     final schedule = buildAudioPlaybackSchedule(
-      playlist: controller.playlist,
+      window: controller.window,
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
@@ -257,7 +256,7 @@ class AudioDeviceTransport {
     }
     _rate = resolveFrameRate();
     final schedule = buildAudioPlaybackSchedule(
-      playlist: controller.playlist,
+      window: controller.window,
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
@@ -299,19 +298,10 @@ class AudioDeviceTransport {
     if (!armed.uploaded) {
       return;
     }
-    _totalFrames = _playbackTotalFrames();
+    // The run's own length — ↩️this kept a copy of the controller's
+    // arithmetic, which answered nothing for a track with no cut (F-341).
+    _totalFrames = controller.totalFrames;
     _carrying = true;
-  }
-
-  /// The playback run's total frames — the playlist plus, for all-cuts
-  /// runs, the movie's trailing gap (the controller's own total, same
-  /// arithmetic).
-  int _playbackTotalFrames() {
-    var total = playlistTotalFrames(controller.playlist);
-    if (total > 0 && controller.scope == PlaybackScope.allCuts) {
-      total += resolveProject()?.trailingFrames ?? 0;
-    }
-    return total;
   }
 
   void _arm(int frame) {
