@@ -54,13 +54,12 @@ class TickLayer extends StatelessWidget {
   /// alone, as a tick is, for the same reasons — that a still region keeps
   /// in its image like the rest of the region: it changes on its panel's
   /// edits, not on a tick, and what ticks INSIDE it is what the region
-  /// draws over its image ([TickSceneLayer]).
+  /// draws live between its strata ([TickSceneLayer]).
   ///
   /// 🔬Taken for a tick, the timeline's host — the whole panel, 808×287 —
   /// was the region's one tick, every tick of the panel inside it out of
-  /// sight, and covered by the panel's chrome painted after it; so it stayed
-  /// in the image and the region was never still while a cut played
-  /// (10-12).
+  /// sight (10-12). A host changed by its panel's edits would read as a
+  /// tick moving, and the whole panel would be drawn live.
   const TickLayer.host({super.key, required this.child})
     : _drawnOverStill = false;
 
@@ -88,9 +87,9 @@ class TickLayer extends StatelessWidget {
   }
 }
 
-/// A tick's repaint boundary, whose layer a still region draws over its
-/// image rather than in it ([TickSceneLayer]) — so a region holding a tick
-/// stays still between its ticks.
+/// A tick's repaint boundary, whose layer a still region draws live
+/// between its strata rather than in them ([TickSceneLayer]) — so a region
+/// holding a tick stays still while it moves.
 class _TickBoundary extends SingleChildRenderObjectWidget {
   const _TickBoundary({required super.child});
 
