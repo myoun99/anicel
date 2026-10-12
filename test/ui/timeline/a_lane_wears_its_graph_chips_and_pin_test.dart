@@ -25,7 +25,10 @@ import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerLanePinSlotWidth, layerRailColumnWidthsAtOne;
+    show
+        layerLaneChipsSlotWidth,
+        layerLanePinSlotWidth,
+        layerRailColumnWidthsAtOne;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -335,6 +338,9 @@ void main() {
     /// The least room the name got at any height.
     var leastName = double.infinity;
 
+    /// The room it got in the tallest column, with graphs and without.
+    final tallestName = <bool, double>{};
+
     /// Each control that showed in a column and was gone from a taller one —
     /// all but the navigator. ⚠️The navigator is asked of the value SHOWING
     /// (the gate pays the value first, 2026-08-08): since the value turned,
@@ -384,17 +390,16 @@ void main() {
             wentAgain.add('$key at $height${graphs ? ', graphs' : ''}');
           }
         }
-        leastName = math.min(
-          leastName,
-          tester
-              .getSize(
-                find.descendant(
-                  of: _cell('xsheet', 'scale'),
-                  matching: find.byType(VerticalWritingText),
-                ),
-              )
-              .height,
-        );
+        final name = tester
+            .getSize(
+              find.descendant(
+                of: _cell('xsheet', 'scale'),
+                matching: find.byType(VerticalWritingText),
+              ),
+            )
+            .height;
+        leastName = math.min(leastName, name);
+        tallestName[graphs] = name;
       }
       return first;
     }
@@ -421,6 +426,12 @@ void main() {
     expect(carried[link], greaterThan(carried[navigator]!));
     expect(carried[pin], greaterThan(carried[link]!));
     expect(carried[chip], greaterThan(carried[pin]!));
+    expect(
+      tallestName[false]! - tallestName[true]!,
+      moreOrLessEquals(layerLanePinSlotWidth + layerLaneChipsSlotWidth),
+      reason: 'a rail that draws no graph keeps no room for its pin and '
+          'chips: the name has it',
+    );
   });
 }
 
