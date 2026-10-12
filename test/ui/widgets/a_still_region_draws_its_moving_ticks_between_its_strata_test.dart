@@ -170,6 +170,35 @@ void main() {
     expect(region.debugCaptureCount, taken, reason: 'not retaken');
   });
 
+  testWidgets('🚨a stratum is cut to the region — a child laid out past it '
+      'costs the image no pixel the region cannot show', (tester) async {
+    // A picture's bounds are its boundary's whole box: a row of a timeline
+    // is as wide as its whole run, the region shows a page of it.
+    await _pump(
+      tester,
+      const StillRaster(
+        debugLabel: 'test',
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: _width * 8,
+          maxWidth: _width * 8,
+          child: RepaintBoundary(child: ColoredBox(color: _ground)),
+        ),
+      ),
+    );
+    final region = _region(tester);
+    for (var i = 0; i < StillRaster.stillFrames + 2; i += 1) {
+      await _frame(tester);
+    }
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise: still');
+    final ratio = tester.view.devicePixelRatio;
+    // The region's own device pixels, and one more each way for where it
+    // sits on the grid.
+    final most =
+        ((_width * ratio).ceil() + 1) * ((_height * ratio).ceil() + 1) * 4;
+    expect(region.rasterBytes, inInclusiveRange(1, most));
+  });
+
   testWidgets('🚨a tick something painted after it covers is drawn UNDER it '
       '— the strata keep the order the region paints in', (tester) async {
     final at = ValueNotifier<double>(0);
