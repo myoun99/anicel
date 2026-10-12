@@ -143,7 +143,8 @@ class ScheduledAudioClip {
       'fadeCurve: ${fadeCurve.name}, volumeKeys: $volumeKeys)';
 }
 
-/// Clamps [endFrameExclusive] to the file's own audible length.
+/// The frames a file covers at [rate], read off [durationSecondsFor] —
+/// null while its length is not known yet.
 ///
 /// Rounding UP is deliberate — a file ending mid-frame still has audio
 /// in that frame, and truncating would clip real sound. What must not
@@ -151,23 +152,25 @@ class ScheduledAudioClip {
 /// computes as 48.000000000000004, and a bare `.ceil()` would hand it a
 /// 49th frame of silence. [ProjectFrameRate.framesCoveringSeconds]
 /// treats a value within a millionth of a frame of whole as whole.
+int? Function(String filePath) _fileFramesAt(
+  ProjectFrameRate rate,
+  double? Function(String filePath) durationSecondsFor,
+) => (filePath) {
+  final seconds = durationSecondsFor(filePath);
+  return seconds == null ? null : rate.framesCoveringSeconds(seconds);
+};
+
+/// Clamps [endFrameExclusive] to the file's own audible length: its
+/// [fileFrames], the first [offsetFrames] of them skipped. A file whose
+/// length is not known yet is not clamped.
 int _clampToFileLength({
   required int startFrame,
   required int endFrameExclusive,
-  required String filePath,
   required int offsetFrames,
-  required ProjectFrameRate rate,
-  required double? Function(String filePath) durationSecondsFor,
-}) {
-  final seconds = durationSecondsFor(filePath);
-  if (seconds == null) {
-    return endFrameExclusive;
-  }
-  return math.min(
-    endFrameExclusive,
-    startFrame + rate.framesCoveringSeconds(seconds) - offsetFrames,
-  );
-}
+  required int? fileFrames,
+}) => fileFrames == null
+    ? endFrameExclusive
+    : math.min(endFrameExclusive, startFrame + fileFrames - offsetFrames);
 
 /// Lays the project's track-owned SE spans onto a run's frame axis: the
 /// rows of [window]'s track, as much of each span as falls inside it.
@@ -214,6 +217,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
             .where((track) => track.id == window.trackId)
             .firstOrNull;
   if (window != null && track != null) {
+    final fileFramesOf = _fileFramesAt(rate, durationSecondsFor);
     for (final layer in track.seLayers) {
       final audible =
           !layer.muted &&
@@ -227,8 +231,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
           span,
           layer: layer,
           window: window,
-          rate: rate,
-          durationSecondsFor: durationSecondsFor,
+          fileFramesOf: fileFramesOf,
         );
         if (clip != null) {
           schedule.add(clip);
@@ -250,8 +253,7 @@ ScheduledAudioClip? _spanInWindow(
   SeAudioSpan span, {
   required Layer layer,
   required PlaybackWindow window,
-  required ProjectFrameRate rate,
-  required double? Function(String filePath) durationSecondsFor,
+  required int? Function(String filePath) fileFramesOf,
 }) {
   final windowEnd = window.trackStart + window.frames;
   if (span.startFrame >= windowEnd ||
@@ -267,10 +269,8 @@ ScheduledAudioClip? _spanInWindow(
       window.frames,
       startFrame + span.lengthFrames - clippedLead,
     ),
-    filePath: span.clip.filePath,
     offsetFrames: offsetFrames,
-    rate: rate,
-    durationSecondsFor: durationSecondsFor,
+    fileFrames: fileFramesOf(span.clip.filePath),
   );
   if (endFrameExclusive <= startFrame) {
     return null;

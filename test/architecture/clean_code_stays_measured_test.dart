@@ -377,7 +377,13 @@ void main() {
   /// its labels' size and gap, already counted. 🔬`clean_code_diff` against
   /// the lane's base (`07101e54a`, at 394) named that one added and nothing
   /// gone.
-  const wideSignatures = 395;
+  ///
+  /// ⚠️395 → 394 on 2026-10-12, following one down (F-341, a track's sound
+  /// plays where no cut is): the schedule reads a run's sound through ONE
+  /// window onto its track, and asks a file's length as one question — the
+  /// rate and the lookup bound once (`_fileFramesAt`) — which took
+  /// `_clampToFileLength` (six) under the line.
+  const wideSignatures = 394;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
