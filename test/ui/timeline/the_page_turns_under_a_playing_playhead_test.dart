@@ -166,15 +166,27 @@ void main() {
   /// sixty past the red line.
   const drawn = frames + 60;
 
+  /// The rows [tester] shows that bake their cells as tiles.
+  List<TimelineRowCellsPainter> tiledRows(WidgetTester tester) => [
+    for (final paint in tester.widgetList<CustomPaint>(
+      find.byType(CustomPaint),
+    ))
+      if (paint.painter case final TimelineRowCellsPainter row
+          when row.tileStore != null)
+        row,
+  ];
+
   /// ⑤ The rows that bake their cells as tiles are told where a run's NEXT
-  /// turn stands [axis] — by one asker for all of them, so a warm-up asks
-  /// it once — and the run it asks for is the drawn one: on the last page
-  /// built, a run to the red line wraps to the first, and this one turns
-  /// on.
+  /// turn stands [axis] — by one asker for all of them, however many builds
+  /// laid them, so a warm-up asks it once — and the run it asks for is the
+  /// drawn one: on the last page built, a run to the red line wraps to the
+  /// first, and this one turns on. [show] lays the surface over its rows.
   Future<void> rowsAreToldTheNextTurn(
     WidgetTester tester, {
+    required Future<void> Function(List<Layer> shown) show,
     required ScrollPosition Function() axis,
   }) async {
+    await show(layers);
     axis().jumpTo(axis().maxScrollExtent);
     await tester.pump();
     int turnsTo({required int runFrames}) => timelineFrameWindowBucketOf(
@@ -188,14 +200,7 @@ void main() {
     expect(turnsTo(runFrames: frames), 0, reason: '⛔premise: it wraps here');
     expect(turnsTo(runFrames: drawn), isNot(0), reason: '⛔premise: turns on');
 
-    final rows = [
-      for (final paint in tester.widgetList<CustomPaint>(
-        find.byType(CustomPaint),
-      ))
-        if (paint.painter case final TimelineRowCellsPainter row
-            when row.tileStore != null)
-          row,
-    ];
+    final rows = tiledRows(tester);
     expect(rows, isNotEmpty, reason: '⛔premise: rows that bake tiles');
     expect(
       {for (final row in rows) row.nextPage},
@@ -203,6 +208,22 @@ void main() {
       reason: 'one asker for every row the axis lays',
     );
     expect(rows.first.nextPage?.call()?.bucket, turnsTo(runFrames: drawn));
+
+    // One row's layer comes back new: that row is laid again and the rest
+    // are kept, so the rows are of two builds.
+    await show([layer('draw-0', LayerKind.animation), ...layers.skip(1)]);
+    final again = tiledRows(tester);
+    expect(again.where(rows.contains), isNotEmpty, reason: '⛔premise: kept');
+    expect(
+      again.where((row) => !rows.contains(row)),
+      isNotEmpty,
+      reason: '⛔premise: a row laid again',
+    );
+    expect(
+      {for (final row in again) row.nextPage},
+      hasLength(1),
+      reason: 'rows laid in two builds still share the one asker',
+    );
   }
 
   testWidgets('the rail turns its page under a playing playhead, once per '
@@ -325,27 +346,33 @@ void main() {
     final playing = ValueNotifier<int?>(null);
     addTearDown(cursor.dispose);
     addTearDown(playing.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: LayerTimelineGrid(
-            hooks: hooks(
-              cursor: cursor,
-              playback: playing,
-              noriShiro: () => (drawnFrameCount: drawn, label: ''),
-            ),
-            layers: layers,
-            metrics: TimelineGridMetrics.defaults.copyWith(
-              frameCellWidth: cell,
-            ),
-          ),
-        ),
-      ),
+
+    // One host's hooks for both builds: a host's callbacks are its own, the
+    // same from one build to the next.
+    final grid = hooks(
+      cursor: cursor,
+      playback: playing,
+      noriShiro: () => (drawnFrameCount: drawn, label: ''),
     );
-    await tester.pumpAndSettle();
 
     await rowsAreToldTheNextTurn(
       tester,
+      show: (shown) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LayerTimelineGrid(
+                hooks: grid,
+                layers: shown,
+                metrics: TimelineGridMetrics.defaults.copyWith(
+                  frameCellWidth: cell,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      },
       axis: () => positionOf(tester, 'timeline-frame-scroll-viewport'),
     );
   });
@@ -358,27 +385,31 @@ void main() {
     final playing = ValueNotifier<int?>(null);
     addTearDown(cursor.dispose);
     addTearDown(playing.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: XSheetTimelineGrid(
-            hooks: hooks(
-              cursor: cursor,
-              playback: playing,
-              noriShiro: () => (drawnFrameCount: drawn, label: ''),
-            ),
-            layers: layers,
-            metrics: XSheetTimelineGrid.defaultMetrics.copyWith(
-              frameCellWidth: cell,
-            ),
-          ),
-        ),
-      ),
+
+    final grid = hooks(
+      cursor: cursor,
+      playback: playing,
+      noriShiro: () => (drawnFrameCount: drawn, label: ''),
     );
-    await tester.pumpAndSettle();
 
     await rowsAreToldTheNextTurn(
       tester,
+      show: (shown) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: XSheetTimelineGrid(
+                hooks: grid,
+                layers: shown,
+                metrics: XSheetTimelineGrid.defaultMetrics.copyWith(
+                  frameCellWidth: cell,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      },
       axis: () => positionOf(tester, 'xsheet-frame-vertical-viewport'),
     );
   });

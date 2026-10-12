@@ -421,6 +421,34 @@ void main() {
             'lets the room it grew go',
       );
     });
+
+    testWidgets('the axis is built to what the view needs to read papered, '
+        'however few frames the content holds', (tester) async {
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 4,
+        viewportFillFrames: () => 20,
+        rebuild: (fn) => fn(),
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+      follower.handleScroll();
+
+      expect(follower.renderedFrameCount, 20);
+      expect(
+        follower.nextPage(runFrames: 4)?.builtFrames,
+        20,
+        reason: 'and so it is where a run\'s next turn stands it',
+      );
+    });
   });
 
   group('keepWhereShown — the one write both axes keep theirs through', () {

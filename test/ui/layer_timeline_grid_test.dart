@@ -2071,12 +2071,12 @@ void main() {
   testWidgets('body frame content width stays aligned with ruler width', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 320));
+    await tester.binding.setSurfaceSize(const Size(2000, 320));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       _grid(
-        width: 1600,
+        width: 2000,
         playbackFrameCount: 12,
         currentFrameIndex: 2,
         layers: _layersWith(layer1: {2: _block('layer-1', 3)}),
@@ -2089,14 +2089,20 @@ void main() {
       minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
     );
 
-    // UI-R12 #16: the viewport papers itself — with the 1600px surface
+    // UI-R12 #16: the viewport papers itself — with the 2000px surface
     // wider than the base cells, the rendered extent is the FILL count.
     final fillFrames = endlessViewportFillFrames(
       viewportExtent:
-          1600 -
+          2000 -
           _testMetrics.layerControlsWidth -
+          LayerRailSplitter.thickness -
           _testMetrics.verticalScrollbarWidth,
       frameCellExtent: _testMetrics.frameCellWidth,
+    );
+    expect(
+      fillFrames,
+      greaterThan(expectedFrameRange.visibleFrameCount),
+      reason: '⛔premise: what is left beside the rail outreaches the cells',
     );
     final expectedContentWidth =
         math.max(expectedFrameRange.visibleFrameCount, fillFrames) *
