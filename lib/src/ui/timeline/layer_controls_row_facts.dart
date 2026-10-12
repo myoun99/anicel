@@ -201,6 +201,7 @@ Widget layerControlsRowFrom(
     onOpenLayerMixer: hooks.onOpenLayerMixer,
     onOpenLayerReference: hooks.onOpenLayerReference,
     onOpenLayerLinks: hooks.onOpenLayerLinks,
+    onOpenCameraPath: hooks.onOpenCameraPath,
     isReferenceSourceShort: facts.isReferenceSourceShort,
     isLayerSoloed: facts.soloed,
     attachArrowPlacement: facts.attachArrow,

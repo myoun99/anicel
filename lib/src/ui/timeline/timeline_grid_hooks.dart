@@ -97,6 +97,7 @@ class TimelineGridHooks {
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
+    this.onOpenCameraPath,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
@@ -305,6 +306,10 @@ class TimelineGridHooks {
   /// picture.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
+
+  /// The camera row's path button: how the canvas shows the camera's path
+  /// (I-89 ④). Null mounts no button.
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
 
   /// Whether that row asks its file for more than the file can show — the
   /// button goes red and the popover says by how much (유저 2026-09-12).

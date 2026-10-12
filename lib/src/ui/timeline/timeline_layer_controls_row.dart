@@ -159,6 +159,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
+    this.onOpenCameraPath,
     this.isReferenceSourceShort = false,
     this.isLayerSoloed = false,
     this.hasLanes = false,
@@ -266,6 +267,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// button that unlinks it. Null leaves the badge a picture.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
+
+  /// The camera row's path button ([CameraPathButton], I-89 ④): how the
+  /// canvas shows the camera's path, opened under the button. Null mounts
+  /// none.
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
 
   /// Whether this row asks its file for more film than the file has — the
   /// button turns red, and its popover says by how much.
@@ -695,6 +701,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
             ),
           ),
           ?_referenceButton(),
+          ?_cameraPathButton(),
           alongBox(axis, layerLaneToggleSlotWidth, child: _foldTwirl()),
         ],
       ),
@@ -755,6 +762,19 @@ class TimelineLayerControlsRow extends StatelessWidget {
       keyValue: '$keyPrefix-layer-reference-${layer.id}',
       isSourceShort: isReferenceSourceShort,
       onOpen: (anchorContext) => onOpen(anchorContext, layer.id),
+    );
+  }
+
+  /// The camera row's path button (I-89 ④) where a reference row's file
+  /// button stands — the camera's row is never a reference row.
+  Widget? _cameraPathButton() {
+    final onOpen = onOpenCameraPath;
+    if (!layer.kind.carriesCameraPath || onOpen == null) {
+      return null;
+    }
+    return CameraPathButton(
+      keyValue: '$keyPrefix-layer-camera-path-${layer.id}',
+      onOpen: onOpen,
     );
   }
 

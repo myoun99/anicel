@@ -165,6 +165,22 @@ void main() {
       );
     });
 
+    testWidgets('it carries the camera\'s path button, which opens how the '
+        'canvas shows the path (I-89 ④)', (tester) async {
+      await pumpPanel(tester, before: (session) => standIn(session, 30));
+      final button = find.descendant(
+        of: label,
+        matching: key('storyboard-layer-camera-path-b-cam'),
+      );
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(key('camera-path-show'), findsOneWidget);
+      await tester.tapAt(const Offset(1590, 750));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('🚨it is lit only while its row is stood on, and a press on '
         'it stands there', (tester) async {
       final session = await pumpPanel(

@@ -13,6 +13,7 @@ import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
 import '../services/import/import_layer_spot.dart';
+import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
@@ -1095,6 +1096,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         layerId: layerId,
                       ),
                     ),
+                    onOpenCameraPath: (anchorContext) =>
+                        showCameraPathSettings(
+                          anchorContext,
+                          _session.appSettings.setCameraPathSettings,
+                        ),
                     isLayerSoloed: (layerId) => _session
                         .visibilitySolo
                         .soloedSeLayerIds

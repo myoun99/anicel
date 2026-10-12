@@ -622,6 +622,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSetCutFade,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
+    this.onOpenCameraPath,
     this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -1190,6 +1191,10 @@ class StoryboardPanel extends StatefulWidget {
   /// storyboard rail stops being the one that can only mute.
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
+
+  /// The camera row's path button — the timeline's camera row's, which this
+  /// rail's camera row is (I-89 ④).
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
 
   /// Whether that row is soloed (the speaker's accent tint).
   final bool Function(LayerId layerId)? isLayerSoloed;

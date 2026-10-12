@@ -509,6 +509,7 @@ class _StoryboardRowsAndLabels {
         fxState:
             _state.widget.layerFxStateOf?.call(head.id) ?? LayerFxState.on,
         onToggleLayerFx: verbs.toggleFx,
+        onOpenCameraPath: _state.widget.onOpenCameraPath,
       ),
     );
   }

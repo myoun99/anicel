@@ -1833,3 +1833,61 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
     );
   }
 }
+
+/// THE CAMERA ROW'S PATH BUTTON (I-89 ④, 유저 2026-10-12: 「카메라
+/// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
+/// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
+/// it opens how the canvas shows the camera's path under itself — one value
+/// for every open project, as the row's eye and its dim are.
+///
+/// It stands where a reference row's button does and wears that button's
+/// dress — outlined, lit while its list is open: the camera's row is never
+/// a reference row. ⚠️Lit-while-open is [LayerReferenceButton]'s state a
+/// second time; a third button that keeps it folds the three into one.
+class CameraPathButton extends StatefulWidget {
+  const CameraPathButton({
+    super.key,
+    required this.keyValue,
+    required this.onOpen,
+  });
+
+  /// The full widget key string ('timeline-layer-camera-path-camera').
+  final String keyValue;
+
+  /// Opens the list under THIS button's context. The button stays lit until
+  /// the future completes — until the list has closed.
+  final Future<void> Function(BuildContext anchorContext) onOpen;
+
+  @override
+  State<CameraPathButton> createState() => _CameraPathButtonState();
+}
+
+class _CameraPathButtonState extends State<CameraPathButton> {
+  bool _isOpen = false;
+
+  void _openList() {
+    setState(() => _isOpen = true);
+    unawaited(
+      widget.onOpen(context).whenComplete(() {
+        if (mounted) {
+          setState(() => _isOpen = false);
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => RailGlyphButton(
+    keyValue: widget.keyValue,
+    tooltip: AppText.strings.cameraPath,
+    size: const AppIconButtonBox(
+      width: LayerReferenceButton.side,
+      height: LayerReferenceButton.side,
+      iconSize: 12,
+    ),
+    glyph: const RailIconGlyph(Icons.route),
+    isSelected: _isOpen,
+    outlined: true,
+    onPressed: _openList,
+  );
+}

@@ -332,6 +332,7 @@ class _WorkspaceCollapsedRows {
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
       onOpenLayerLinks: (_, _) async {},
+      onOpenCameraPath: (_) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
     // Its eye is the rail's, a folder above that hides the row included

@@ -811,6 +811,12 @@ enum LayerKind {
   /// settings' bucket for the active layer (I-36) both ask this.
   bool get carriesFillReference => this == LayerKind.animation;
 
+  /// Whether a row of this kind carries the button that opens how the canvas
+  /// shows the camera's path (I-89 ④, 유저 2026-10-12: 「카메라 경로표시
+  /// 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」) — the camera's
+  /// alone.
+  bool get carriesCameraPath => this == LayerKind.camera;
+
   /// Whether this kind is a FIXED kind — one the user can neither convert a
   /// layer into nor convert away from (the camera fixture, folders and
   /// adjustments, whose kind IS their structure; instruction rows carry

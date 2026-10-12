@@ -11,9 +11,9 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 /// is one at least (유저 2026-10-10: 「점은 1f2f3f 정하는게아니라 커스텀으로
 /// … 6f든 뭐든」).
 ///
-/// ⚠️Where the list opens from is asked (④-Q1, 2026-10-12): the canvas's ⚙
-/// it was first meant for does not stand on a wide floor (유저 확정
-/// 2026-08-13), so here the rows open from a trigger of their own.
+/// The list opens from the camera row's path button (④-Q1, 유저 2026-10-12:
+/// 「카메라 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」);
+/// here the rows open from a trigger of their own.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
