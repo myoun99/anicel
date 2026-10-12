@@ -18,6 +18,9 @@ import 'transform_track.dart';
 /// 하나 그대로」), which this writes to both axes and reads back as the one
 /// it is.
 class CutCamera {
+  /// [keyframes] as keys running straight between them, as an import bakes
+  /// a camera ([TransformTrack.new]); a key written new is smooth
+  /// ([withKeyframe]).
   CutCamera({Map<int, CameraPose>? keyframes})
     : track = TransformTrack(
         keyframes: keyframes == null

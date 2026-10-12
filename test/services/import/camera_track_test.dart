@@ -95,6 +95,19 @@ void main() {
     expectPlaysBack(poses);
   });
 
+  test('a move that turns a corner keeps it: the keys it is kept in run '
+      'straight between them, as the frames they stand for did', () {
+    final poses = baked(
+      41,
+      (f) => f <= 20
+          ? pose(100 + 40.0 * f, 80)
+          : pose(900, 80 + 40.0 * (f - 20)),
+    );
+
+    expect(cutCameraOfFramePoses(poses).keyframes.keys, [0, 20, 40]);
+    expectPlaysBack(poses);
+  });
+
   test('a long move keeps a key at least every 512 frames', () {
     final keys = cutCameraOfFramePoses(
       baked(2000, (f) => pose(f * 1.0, 0)),

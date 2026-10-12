@@ -347,13 +347,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(pill('hold').selected, isTrue, reason: 'the pick shows at once');
     expect(pill('linear').selected, isFalse);
-    // I-89 ④: and the path its position walks through it.
+    // I-89 ④: and the path its position walks through it — smooth as the
+    // key was made (I-89-Q10 B), a corner picked here.
     final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
-    await tester.ensureVisible(curved);
-    expect(tester.widget<Pill>(curved).selected, isFalse, reason: '⛔전제');
-    await tester.tap(curved);
+    final corner = find.byKey(
+      const ValueKey<String>('rename-key-path-straight'),
+    );
+    await tester.ensureVisible(corner);
+    expect(tester.widget<Pill>(curved).selected, isTrue, reason: '⛔전제');
+    await tester.tap(corner);
     await tester.pumpAndSettle();
-    expect(tester.widget<Pill>(curved).selected, isTrue);
+    expect(tester.widget<Pill>(corner).selected, isTrue);
+    expect(tester.widget<Pill>(curved).selected, isFalse);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-ok-button')),
     );
@@ -374,11 +379,9 @@ void main() {
     }
     expect(
       track.position.keyAt(2)!.path,
-      KeyPath.auto,
-      reason: 'and bends the member that walks a path',
+      KeyPath.straight,
+      reason: 'and straightens the member that walks a path',
     );
-    expect(track.scale.keyAt(2)!.path, KeyPath.straight, reason: 'no other');
-    expect(track.rotation.keyAt(2)!.path, KeyPath.straight);
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
@@ -389,7 +392,7 @@ void main() {
       KeySide.linear,
       reason: '…and the type with it',
     );
-    expect(undone.path, KeyPath.straight, reason: '…and the path');
+    expect(undone.path, KeyPath.auto, reason: '…and the path');
   });
 
   testWidgets('toolbar Add on the camera layer keys the current pose at '

@@ -220,7 +220,7 @@ void main() {
       expect(track.scale.keyAt(3)!.value, CanvasPoint(x: 2, y: -1));
       expect(track.keyframeAt(3), pose);
       expect(track.keyframes, {3: pose});
-      expect(TransformTrack(keyframes: {3: pose}), track);
+      expect(TransformTrack(keyframes: {3: pose}).scale, track.scale);
     });
 
     test('the two scales are saved as ONE two-number value, like Position', () {
@@ -252,9 +252,14 @@ void main() {
       expect(track.position.keys.keys, [4, 9]);
       expect(track.scale.keys.keys, [4, 9]);
       expect(track.rotation.keys.keys, [4, 9]);
-      // Round-tripping through the pose view is lossless while writes are
-      // pose-synchronized (the cut-duplicate path relies on this).
-      expect(TransformTrack(keyframes: Map.of(track.keyframes)), track);
+      // The poses come back through the pose view while writes are
+      // pose-synchronized. A key's path does not: the view has none, and a
+      // pose map's keys run straight (an import's baked camera), where a
+      // key written is new and smooth (I-89-Q10 B).
+      expect(
+        TransformTrack(keyframes: Map.of(track.keyframes)).keyframes,
+        track.keyframes,
+      );
     });
   });
 }

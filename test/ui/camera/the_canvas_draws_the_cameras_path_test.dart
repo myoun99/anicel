@@ -208,8 +208,9 @@ void main() {
     expect(armsOf(tester), 4 + 8, reason: 'two keys, and frames 1 to 4');
     expect(
       tickLabels(tester),
-      ['2f', '3f', '4f', '5f'],
-      reason: '유저 2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호」',
+      ['2f', '3f', '4f', '5f', '1f', '6f'],
+      reason: '유저 2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호」 — and '
+          'the keys\' own crosses (I-89-Q16 B 「키의 십자에도」)',
     );
     // The mock's sizes (5판): a key's cross reaches 5 screen pixels either
     // way, a frame's 3.
