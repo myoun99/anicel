@@ -422,7 +422,7 @@ class TimelineGridHooks {
   final LaneGraphsView laneGraphs;
 
   /// What the header graphs' buttons tell — a group's graph on or off, a
-  /// lane pinned or let go. Null draws no graph column.
+  /// lane pinned or let go. Null mounts none of them.
   final LaneGraphVerbs? laneGraphVerbs;
 
   /// A LIVE read of the header graphs, when the host can give one — what
@@ -559,7 +559,6 @@ class TimelineGridHooks {
   /// host handed over its verb. Read here once for the rows, the legend,
   /// the swipe and the sheet's header block alike.
   LayerRailOptionalColumns get optionalRailColumns => (
-    graph: laneGraphVerbs != null,
     onion: onToggleLayerOnionSkin != null,
     blend: onLayerBlendModeSelected != null,
   );

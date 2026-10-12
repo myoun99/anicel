@@ -30,8 +30,6 @@ import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
         layerBlendSlotWidth,
-        layerLaneChipsSlotWidth,
-        layerLanePinSlotWidth,
         layerLaneValueHandsWidth,
         layerLaneValueSlotWidth,
         layerOpacitySlotWidth,
@@ -102,16 +100,16 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// ([layerLaneValueHandsWidth], 76) — 「레일도 그만큼 넓어집니다」, asked and
 /// answered 「문제없는데」 — so a lane's name keeps the room it had.
 /// 519 → 563 (I-89 ③, 2026-10-11): the header graph's — a member lane's
-/// colour chips and pin ([layerLaneChipsSlotWidth],
-/// [layerLanePinSlotWidth]) and a header's graph button. The rail pays the
-/// lanes' 44 and the header's 22 comes out of it, so no row's name gets
+/// colour chips and pin and a header's graph button. The rail paid the
+/// lanes' 44 and the header's 22 came out of it, so no row's name got
 /// narrower: the user's own rule for the hands, put to them again as I-89
 /// Q1 (A, this; B, +22 and the lanes' names 22 narrower).
-const double timelineLayerControlsWidth =
-    443 +
-    layerLaneValueHandsWidth +
-    layerLaneChipsSlotWidth +
-    layerLanePinSlotWidth;
+/// 563 → 519 (I-89 Q1, 유저 2026-10-12): a row's own buttons take their
+/// room out of its name, at its end, and the rail pays none of it —
+/// 「추가로 공간 만드는게아니라 이름공간을 줄여서 오른쪽정렬로 두는방식으로
+/// … 레이어의 가로길이도 전처럼 줄이자 … 즉 레이어 이름행이 2개분
+/// 줄어드는거지」. The graph's column went, and the legend's head over it.
+const double timelineLayerControlsWidth = 443 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth

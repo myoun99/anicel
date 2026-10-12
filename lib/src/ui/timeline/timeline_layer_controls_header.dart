@@ -293,16 +293,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     );
   }
 
-  /// The header graph's column (I-89 ③), named over it. A heading and no
-  /// flyout: nothing was asked of it that would act on every row.
-  Widget? _buildGraph(bool hasGraph, Color restColor) => !hasGraph
-      ? null
-      : _cell(
-          keyValue: 'legend-graph',
-          tooltip: AppText.strings.tlColGraph,
-          child: _legendIcon(Icons.show_chart, restColor: restColor),
-        );
-
   Widget? _buildOnion(
     TimelineLegendMenus menus,
     bool hasOnion,
@@ -524,7 +514,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     axis: axis,
                     columns: metrics.railColumns,
                     optionalColumns: optional,
-                    graph: _buildGraph(optional.graph, restColor),
                     fillReference: _buildFillReference(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the

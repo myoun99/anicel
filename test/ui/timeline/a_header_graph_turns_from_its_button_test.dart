@@ -17,9 +17,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLaneToggleSlotWidth;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -34,8 +35,8 @@ import '../../helpers/app_icon_button_probe.dart';
 /// 누른 레일만 상태변경」 — the button sits on each group's header and on the
 /// camera row (㉙), never on a toolbar. What a press DOES is the session's
 /// and is pinned there (`a_linked_row_folds_as_one_test`); this is the rail
-/// handing each button the key of the group it heads, in one column, on
-/// both grids.
+/// handing each button the key of the group it heads, at the end of its
+/// row's name, on both grids.
 void main() {
   // The claim set is global: a sweep's pointer left claimed would read the
   // next case's press as already handled.
@@ -79,54 +80,49 @@ void main() {
     expect(_isOn(tester, 'timeline-layer-graph-cam'), isTrue);
   });
 
-  testWidgets('the legend, a header and the camera row put the button in '
-      'ONE column, left of the reset', (tester) async {
+  testWidgets('a header\'s button ends its name, where a layer row\'s name '
+      'ends; the camera row\'s ends its own, a fold slot short, the path '
+      'button before it — and no legend heads a graph', (tester) async {
     await _pump(tester);
     await _openLanes(tester, _drawId);
 
-    final legend = find.byKey(const ValueKey<String>('legend-graph'));
-    final header = find.byKey(
-      ValueKey<String>(_headerGraph('timeline', _transform)),
-    );
-    final camera = find.byKey(
-      const ValueKey<String>('timeline-layer-graph-cam'),
-    );
-    // From each row's RIGHT edge, as the fx column is measured: the rows do
-    // not share a left origin, and the trailing run is anchored right.
-    double trailingInsetOf(Finder control, Finder row) =>
-        tester.getTopRight(row).dx - tester.getCenter(control).dx;
-    final cameraInset = trailingInsetOf(
-      camera,
-      find.byKey(const ValueKey<String>('timeline-layer-row-cam')),
-    );
+    Rect rectOf(String key) =>
+        tester.getRect(find.byKey(ValueKey<String>(key)));
+    final cameraRow = rectOf('timeline-layer-row-cam');
+    final cameraName = rectOf('timeline-layer-name-cam');
+    final camera = rectOf('timeline-layer-graph-cam');
+    final header = rectOf(_headerGraph('timeline', _transform));
 
+    // 유저 2026-10-12: 「추가로 공간 만드는게아니라 이름공간을 줄여서
+    // 오른쪽정렬로」 — out of the name, at its end. [twirl][name][graph]
+    // [reset][fx] — the mock's header.
     expect(
-      trailingInsetOf(
-        header,
-        find.byKey(
-          ValueKey<String>('timeline-lane-label-draw-$_transform'),
-        ),
+      rectOf('timeline-lane-label-draw-$_transform').right - header.right,
+      moreOrLessEquals(cameraRow.right - cameraName.right, epsilon: 0.5),
+      reason: 'a header\'s ends its name where a layer row\'s name ends',
+    );
+    expect(
+      camera.right,
+      moreOrLessEquals(
+        cameraName.right - layerLaneToggleSlotWidth,
+        epsilon: 0.5,
       ),
-      moreOrLessEquals(cameraInset, epsilon: 0.5),
+      reason: 'a layer row\'s name ends in its fold slot, whatever the row '
+          'folds (F-29)',
     );
     expect(
-      trailingInsetOf(
-        legend,
-        find.ancestor(
-          of: legend,
-          matching: find.byType(TimelineLayerControlsHeader),
-        ),
-      ),
-      moreOrLessEquals(cameraInset, epsilon: 0.5),
-      reason: 'the heading stands over its column',
-    );
-    // [twirl][name][graph][reset][fx] — the mock's header.
-    final reset = find.byKey(
-      ValueKey<String>('timeline-lane-group-reset-draw-$_transform'),
+      rectOf('timeline-layer-camera-path-cam').right,
+      moreOrLessEquals(camera.left, epsilon: 0.5),
     );
     expect(
-      tester.getCenter(header).dx,
-      lessThan(tester.getCenter(reset).dx),
+      find.byKey(const ValueKey<String>('legend-layer')),
+      findsOneWidget,
+      reason: 'LIVENESS: the legend is up',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('legend-graph')),
+      findsNothing,
+      reason: '「레전드에 있는 그래프버튼 삭제」',
     );
   });
 
@@ -174,6 +170,68 @@ void main() {
     });
   });
 
+  testWidgets('a swipe from the camera row\'s button sweeps the column too — '
+      'from either edge of it, a fold slot further in than a header\'s — '
+      'and from the fold slot past it, nothing', (tester) async {
+    // No effect: the Transform header is the one header under the camera
+    // row, and the window is tall enough to keep it in view while the
+    // camera's group opens above it.
+    final s = await _pump(tester, blur: false, height: 1600);
+    await _openLanes(tester, _drawId);
+    final header = find.byKey(
+      ValueKey<String>(_headerGraph('timeline', _transform)),
+    );
+    final rowHeight = tester
+        .getRect(find.byKey(const ValueKey<String>('timeline-layer-row-cam')))
+        .height;
+
+    /// From [across] on the camera row DOWN to the Transform header, a row
+    /// at a time, the header read again at each step: a press opens what
+    /// it opens below its row — the camera's group with its graph (㉙) —
+    /// and every row under it moves.
+    Future<void> sweepFrom(double Function(Rect button) across) async {
+      final button = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-layer-graph-cam')),
+      );
+      expect(
+        button.center.dy,
+        lessThan(tester.getCenter(header).dy),
+        reason: '⛔전제: the camera row stands above the headers',
+      );
+      var at = Offset(across(button), button.center.dy);
+      final gesture = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var step = 0; step < 40; step += 1) {
+        final gap = tester.getCenter(header).dy - at.dy;
+        if (gap.abs() < rowHeight / 2) {
+          break;
+        }
+        final move = Offset(0, gap.clamp(-rowHeight, rowHeight));
+        await gesture.moveBy(move);
+        at += move;
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    final both = {
+      laneGroupKey(_camId, _transform),
+      laneGroupKey(_drawId, _transform),
+    };
+    await sweepFrom((button) => button.left + 1);
+    expect(_graphs(s).toSet(), both);
+    await sweepFrom((button) => button.right - 1);
+    expect(_graphs(s), isEmpty);
+
+    // ⛔Not from the fold slot, where a header's button stands a row over:
+    // the column is where ITS row lays the button.
+    await sweepFrom((button) => button.right + 2);
+    expect(_graphs(s), isEmpty);
+  });
+
   testWidgets('the X-sheet\'s stood-up headers carry the same buttons', (
     tester,
   ) async {
@@ -192,43 +250,15 @@ void main() {
       laneGroupKey(_camId, _transform),
     });
     expect(
-      find.byKey(const ValueKey<String>('legend-graph')),
+      find.byType(TimelineLayerControlsHeader),
       findsOneWidget,
-      reason: 'the sheet\'s corner heads the column too',
+      reason: 'LIVENESS: the sheet\'s corner is up',
     );
-  });
-
-  testWidgets('the storyboard rail carries no graph column yet — its camera '
-      'row\'s graph is a later round (I-89 ③)', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: _project());
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
     expect(
-      find.byKey(const ValueKey<String>('legend-layer')),
-      findsOneWidget,
-      reason: 'LIVENESS: the legend is up',
+      find.byKey(const ValueKey<String>('legend-graph')),
+      findsNothing,
+      reason: 'and heads no graph: the button is a row\'s own',
     );
-    expect(find.byKey(const ValueKey<String>('legend-graph')), findsNothing);
   });
 }
 
@@ -242,7 +272,7 @@ String get _blur => effectGroupLaneId(_blurId);
 String _headerGraph(String grid, String laneId) =>
     '$grid-lane-group-graph-draw-$laneId';
 
-Project _project() => Project(
+Project _project({bool blur = true}) => Project(
   id: const ProjectId('header-graph'),
   name: 'Header Graph',
   createdAt: DateTime.utc(2026, 10, 11),
@@ -262,7 +292,9 @@ Project _project() => Project(
               id: _drawId,
               name: 'Drawing',
               frames: const [],
-              effects: [LayerEffect(id: _blurId, kind: EffectKind.blur)],
+              effects: [
+                if (blur) LayerEffect(id: _blurId, kind: EffectKind.blur),
+              ],
             ),
             Layer(
               id: _camId,
@@ -277,11 +309,15 @@ Project _project() => Project(
   ],
 );
 
-Future<EditorSessionManager> _pump(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1200));
+Future<EditorSessionManager> _pump(
+  WidgetTester tester, {
+  bool blur = true,
+  double height = 1200,
+}) async {
+  await tester.binding.setSurfaceSize(Size(1400, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(home: HomePage(initialProject: _project(blur: blur))),
   );
   await tester.pumpAndSettle();
   await tester.drag(

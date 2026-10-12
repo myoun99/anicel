@@ -850,7 +850,6 @@ void main() {
     'tlColFx': (s) => s.tlColFx,
     'tlColMark': (s) => s.tlColMark,
     'tlColFillReference': (s) => s.tlColFillReference,
-    'tlColGraph': (s) => s.tlColGraph,
     'tlColTimesheet': (s) => s.tlColTimesheet,
     'tlOpenOnionPanel': (s) => s.tlOpenOnionPanel,
     'tlApplyOnionToDisplayed': (s) => s.tlApplyOnionToDisplayed,

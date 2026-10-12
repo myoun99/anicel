@@ -36,6 +36,7 @@ void main() {
     Future<void> Function(BuildContext, LayerId)? onOpen,
     PressFire fireOn = PressFire.upInside,
     bool isSourceShort = false,
+    List<String> linkPartners = const [],
   }) => MaterialApp(
     home: Material(
       child: PressFireScope(
@@ -51,6 +52,7 @@ void main() {
           onLayerMarkSelected: (_, _) {},
           onOpenLayerReference: onOpen,
           isReferenceSourceShort: isSourceShort,
+          linkPartners: linkPartners,
         ),
       ),
     ),
@@ -97,6 +99,40 @@ void main() {
     expect(
       tester.getRect(button('ref')).right,
       closeTo(area.right - layerLaneToggleSlotWidth, 0.01),
+    );
+  });
+
+  testWidgets('a linked row\'s badge stands there too, not after the '
+      'letters — and beside the button on a row that is both (I-89 Q1: '
+      '「참조/링크가 동시에 될수있는거 말되니까 … 중복되도록」)', (tester) async {
+    Rect area(String id) => tester.getRect(
+      find.byKey(ValueKey<String>('timeline-layer-name-$id')),
+    );
+    Rect badge(String id) => tester.getRect(
+      find.byKey(ValueKey<String>('timeline-layer-link-badge-$id')),
+    );
+
+    await tester.pumpWidget(row(layerNamed('a'), linkPartners: const ['b']));
+    expect(
+      badge('a').right,
+      closeTo(area('a').right - layerLaneToggleSlotWidth, 0.01),
+    );
+
+    await tester.pumpWidget(
+      row(
+        layerNamed('ref', file: 'bg.png'),
+        onOpen: (_, _) async {},
+        linkPartners: const ['b'],
+      ),
+    );
+    expect(
+      tester.getRect(button('ref')).right,
+      closeTo(area('ref').right - layerLaneToggleSlotWidth, 0.01),
+      reason: 'the reference keeps its place by the fold slot',
+    );
+    expect(
+      badge('ref').right,
+      closeTo(tester.getRect(button('ref')).left, 0.01),
     );
   });
 

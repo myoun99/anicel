@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerLanePinSlotWidth, layerRailColumnWidthsAtOne;
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
     show railSwipeColumns;
@@ -209,7 +211,7 @@ void main() {
       crossExtent: 300,
       leadingOrigin: 0,
       columns: layerRailColumnWidthsAtOne,
-      optionalColumns: (graph: true, onion: false, blend: false),
+      optionalColumns: noOptionalRailColumns,
       lanePin: (toggle: (valueOf: (_) => false, toggle: (_) {}), inset: 40),
     );
     expect(columns.single.bandAt(0), (
@@ -359,14 +361,15 @@ void main() {
                   metrics: XSheetTimelineGrid.defaultMetrics,
                   width: XSheetTimelineGrid.defaultMetrics.layerRowHeight,
                   height: height,
-                  optionalColumns: (graph: graphs, onion: false, blend: false),
-                  laneGraphVerbs: (
-                    toggle: (_) {},
-                    togglePin: (_) {},
-                    plot: (_, _) {},
-                    resize: (_, _) {},
-                    enlarge: (_) {},
-                  ),
+                  laneGraphVerbs: graphs
+                      ? (
+                          toggle: (_) {},
+                          togglePin: (_) {},
+                          plot: (_, _) {},
+                          resize: (_, _) {},
+                          enlarge: (_) {},
+                        )
+                      : null,
                   seat: graphs ? seat : null,
                 ),
               ),

@@ -62,7 +62,7 @@ class _Rail {
       last = values.length - 1;
     }
     return [
-      for (var row = first; row <= last; row += 1) (row: row, depth: 0, id: row),
+      for (var row = first; row <= last; row += 1) (row: row, id: row),
     ];
   }
 }

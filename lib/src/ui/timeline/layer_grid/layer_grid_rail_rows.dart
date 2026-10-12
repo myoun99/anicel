@@ -60,7 +60,6 @@ class _LayerGridRailRows {
   /// BOTH.
   RailSwipeRow<TimelineDisplayRow> _railSwipeRow(TimelineDisplayRow row) => (
     row: row,
-    depth: row.depth,
     id: '${row.layer.id.value}/${row.lane?.laneId ?? ''}',
   );
 

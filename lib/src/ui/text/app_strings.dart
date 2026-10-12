@@ -1690,7 +1690,6 @@ enum AppStrings {
   String get tlColFx => _s('tlColFx');
   String get tlColMark => _s('tlColMark');
   String get tlColFillReference => _s('tlColFillReference');
-  String get tlColGraph => _s('tlColGraph');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlShowXSheet => _s('tlShowXSheet');
   String get tlShowTimeline => _s('tlShowTimeline');
@@ -2779,7 +2778,6 @@ enum AppStrings {
     'tlColFx': 'FX column',
     'tlColMark': 'Mark column',
     'tlColFillReference': 'Fill reference column',
-    'tlColGraph': 'Graph column',
     'tlColTimesheet': 'Timesheet column',
     'tlShowXSheet': 'Show X-sheet',
     'tlShowTimeline': 'Show timeline',
@@ -4232,7 +4230,6 @@ enum AppStrings {
     'tlColFx': 'FX列',
     'tlColMark': 'マーク列',
     'tlColFillReference': '塗り参照列',
-    'tlColGraph': 'グラフ列',
     'tlColTimesheet': 'タイムシート列',
     'tlShowXSheet': 'Xシートで表示',
     'tlShowTimeline': 'タイムラインで表示',
@@ -5716,7 +5713,6 @@ enum AppStrings {
     'tlColFx': 'FX 열',
     'tlColMark': '마크 열',
     'tlColFillReference': '채색 참조 열',
-    'tlColGraph': '그래프 열',
     'tlColTimesheet': '타임시트 열',
     'tlShowXSheet': 'X시트로 보기',
     'tlShowTimeline': '타임라인으로 보기',
@@ -7331,7 +7327,6 @@ enum AppStrings {
     'tlColFx': 'Colonne FX',
     'tlColMark': 'Colonne repère',
     'tlColFillReference': 'Colonne référence de remplissage',
-    'tlColGraph': 'Colonne graphique',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlShowXSheet': "Afficher en feuille d'exposition",
     'tlShowTimeline': 'Afficher en timeline',
@@ -8752,7 +8747,6 @@ enum AppStrings {
     'tlColFx': 'FX 列',
     'tlColMark': '标记列',
     'tlColFillReference': '填充参考列',
-    'tlColGraph': '图表列',
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',
     'tlShowTimeline': '以时间轴显示',

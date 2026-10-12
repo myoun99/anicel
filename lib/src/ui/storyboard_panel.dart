@@ -742,12 +742,8 @@ class StoryboardPanel extends StatefulWidget {
   /// Which optional columns this rail's rows keep — the host's answer every
   /// row and the legend above them read ([layerRailTrailingCells]): a BLEND
   /// slot after the opacity's, which a row with no blend to show reserves,
-  /// empty, as it does every column it has nothing in; no onion; and no
-  /// header graph yet — its camera row's graph is a later round (I-89 ③,
-  /// put to the user 2026-10-11), and this rail's width stays 519 until it
-  /// comes.
+  /// empty, as it does every column it has nothing in; and no onion.
   static const LayerRailOptionalColumns optionalRailColumns = (
-    graph: false,
     onion: false,
     blend: true,
   );

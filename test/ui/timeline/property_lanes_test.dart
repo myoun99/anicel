@@ -113,9 +113,7 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   // 1280 → 1360 wide (tool-settings-panel-tidy, 2026-10-10): the rail took
   // 76 for its lane values' hands, which the frames beside it gave up — a
   // key dragged two frames right then reached the edge that scrolls.
-  // 1360 → 1404 (I-89 ③, 2026-10-11): that edge again — the rail took 44
-  // for a member lane's colour chips and pin.
-  await tester.binding.setSurfaceSize(const Size(1404, 2200));
+  await tester.binding.setSurfaceSize(const Size(1360, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();

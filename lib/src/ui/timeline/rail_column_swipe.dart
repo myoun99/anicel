@@ -19,27 +19,31 @@ import '../widgets/axis_gesture_detector.dart';
 import 'timeline_row_edges.dart';
 import 'timeline_visible_range.dart';
 
-/// A column a rail can SWIPE: where its band sits at a given row depth,
-/// what value a row shows there, and how to flip that row.
+/// A column a rail can SWIPE: where its band sits on a given row, what
+/// value a row shows there, and how to flip that row.
 ///
-/// 🚨A band RESOLVER rather than a fixed x-range (I-1): a leading column
-/// sits after the folder indent, so where it is depends on the row under
-/// the press. That is also why the swipe paints by column IDENTITY once it
-/// has latched — one drag can cross rows at different depths without ever
-/// leaving its column.
+/// 🚨A band RESOLVER rather than a fixed x-range: a button at the end of a
+/// row's NAME stands where that row's name ends — a layer row keeps its
+/// fold slot last (F-29), a header has none — so where the column is
+/// depends on the row under the press (I-89 Q1). That is also why the
+/// swipe paints by column IDENTITY once it has latched — one drag can
+/// cross rows whose buttons stand at different places without ever
+/// leaving its column. ↩️It was asked the row's DEPTH, for the leading
+/// columns the folder indent used to push (I-1); the indent lives in the
+/// name now, and no band read it.
 ///
 /// [valueOf] returns null for a row that HAS NO control in this column (an
 /// attach row's sheet slot holds an arrow, a laneless row has no twirl).
 /// Null is skipped: a swipe cannot paint what a tap could not.
 typedef RailToggleColumn<TRow> = ({
-  ({double start, double end}) Function(int depth) bandAt,
+  ({double start, double end}) Function(TRow row) bandAt,
   bool? Function(TRow row) valueOf,
   void Function(TRow row) toggle,
 });
 
-/// A row the swipe landed on: the subject, its indent depth, and the
-/// identity the sweep dedupes by so one drag paints each row once.
-typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
+/// A row the swipe landed on: the subject, and the identity the sweep
+/// dedupes by so one drag paints each row once.
+typedef RailSwipeRow<TRow> = ({TRow row, Object id});
 
 /// [RailColumnSwipe.rowsIn] for a strip whose rows sit at [edges]: the rows
 /// a segment covers ([TimelineRowEdges.rowsIn] — every row from the one
@@ -328,7 +332,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     }
     final across = _across(local);
     for (var index = 0; index < widget.columns.length; index += 1) {
-      final band = widget.columns[index].bandAt(row.depth);
+      final band = widget.columns[index].bandAt(row.row);
       if (across >= band.start && across <= band.end) {
         return index;
       }
@@ -609,7 +613,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  RailToggle<TRow>? graph,
+  ({RailToggle<TRow> toggle, double Function(TRow row) after})? graph,
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
@@ -617,35 +621,36 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   RailToggle<TRow>? laneToggle,
   ({RailToggle<TRow> toggle, double inset})? lanePin,
 }) {
-  /// A LEADING column's x depends on the row: the nesting indent falls
-  /// between the mark and the twirl, so the twirl and the sheet toggle move
-  /// one whole slot per level. A rail that does not nest passes rows of
-  /// depth 0 and gets the same band every time.
-  ({double start, double end}) Function(int depth) leadingBand(
+  /// A LEADING column, read off the slot skeleton from the row's start.
+  ({double start, double end}) Function(TRow row) leadingBand(
     LayerRailLeadingSlot slot,
-  ) => (depth) {
+  ) {
     // The row plate's left border comes before its first cell, so a column
     // measured from the row's edge is that much further in than the slot
     // skeleton alone says.
     final start = leadingOrigin + layerRailLeadingWidthTo(to: slot);
-    return (start: start, end: start + layerRailLeadingSlotWidth(slot));
-  };
+    final at = (start: start, end: start + layerRailLeadingSlotWidth(slot));
+    return (_) => at;
+  }
 
-  /// Everything from [after] onward is what sits to this column's right,
-  /// read off the slot skeleton — so adding a column cannot put the bands
-  /// out of date.
-  ({double start, double end}) Function(int depth) trailingBand(
+  /// Where [from] begins: everything from it onward is what sits to its
+  /// right, read off the slot skeleton — so adding a column cannot put the
+  /// bands out of date.
+  double trailingEdge(LayerRailTrailingSlot from) =>
+      crossExtent -
+      _railTrailingPadding -
+      layerRailTrailingWidth(
+        columns: columns,
+        from: from,
+        optionalColumns: optionalColumns,
+      );
+
+  /// The column right before [after].
+  ({double start, double end}) Function(TRow row) trailingBand(
     LayerRailTrailingSlot after,
     double width,
   ) {
-    final edge =
-        crossExtent -
-        _railTrailingPadding -
-        layerRailTrailingWidth(
-          columns: columns,
-          from: after,
-          optionalColumns: optionalColumns,
-        );
+    final edge = trailingEdge(after);
     // A little tolerance so a thin band is easy to hit with a pen.
     //
     // ⛔None on the leading bands: the twirl and the sheet toggle are
@@ -661,7 +666,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   /// lays it, which no slot skeleton does. ⛔No slack either side: the
   /// chain, or the name a press stands on, is before it, and the value a
   /// gap after.
-  ({double start, double end}) Function(int depth) laneEndBand(
+  ({double start, double end}) Function(TRow row) laneEndBand(
     double inset,
     double width,
   ) {
@@ -670,8 +675,23 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     return (_) => at;
   }
 
+  /// A button at the END OF A ROW'S NAME (I-89 Q1), [after] short of the
+  /// trailing run on that row — what its row lays past it there. ⛔No slack
+  /// either side: the name, or a button of the name's, is before it, and a
+  /// slot after.
+  ({double start, double end}) Function(TRow row) nameEndBand(
+    double Function(TRow row) after,
+    double width,
+  ) {
+    final edge = trailingEdge(LayerRailTrailingSlot.fillReference);
+    return (row) {
+      final end = edge - after(row);
+      return (start: end - width, end: end);
+    };
+  }
+
   RailToggleColumn<TRow> column(
-    ({double start, double end}) Function(int depth) bandAt,
+    ({double start, double end}) Function(TRow row) bandAt,
     RailToggle<TRow> toggle,
   ) => (bandAt: bandAt, valueOf: toggle.valueOf, toggle: toggle.toggle);
 
@@ -689,10 +709,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     if (fx != null)
       column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
     if (graph != null)
-      column(
-        trailingBand(LayerRailTrailingSlot.fillReference, layerGraphSlotWidth),
-        graph,
-      ),
+      column(nameEndBand(graph.after, layerGraphSlotWidth), graph.toggle),
     if (lanePin != null)
       column(
         laneEndBand(lanePin.inset, layerLanePinSlotWidth),

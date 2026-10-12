@@ -166,16 +166,13 @@ void main() {
     // short dock cuts its tail, and the speaker is in that tail. This test
     // is about the DOOR being the same in both orientations, so give the
     // dock the height a user working in the sheet would.
-    // -300 → -322 (I-89 ③, 2026-10-11): the header took the graph column's
-    // 22, and the speaker stands after it. The hand stops the dock at half
-    // the window (결정 8), so the window pays twice that: 1000 → 1044.
-    await tester.binding.setSurfaceSize(const Size(1200, 1044));
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -322),
+      const Offset(0, -300),
     );
     await tester.pumpAndSettle();
 

@@ -630,7 +630,6 @@ class _StoryboardRailRows {
         if (subject != null && top + row.height > lo) {
           rows.add((
             row: subject,
-            depth: 0,
             id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
           ));
         }

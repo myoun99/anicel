@@ -726,6 +726,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // start at the same place on every header, and shrink-wrapping
           // the name is what made it start wherever a name happened to end.
           Expanded(child: _headerLabel(colorScheme)),
+          ?_groupGraph(),
           ..._headerTrailing(context, colorScheme),
         ],
       ),
@@ -776,7 +777,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
-        graph: _groupGraph(),
         fillReference: _groupReset(colorScheme),
         fx: _groupFx(context),
         optionalColumns: widget.optionalColumns,
@@ -784,7 +784,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
 
   /// I-89 ③: the group's graph button — its lanes as one graph, in their
-  /// own place, and back.
+  /// own place, and back — at the end of the header's name, out of its room
+  /// (I-89 Q1: 「이름공간을 줄여서 오른쪽정렬로」).
   Widget? _groupGraph() {
     final verbs = widget.laneGraphVerbs;
     final key = laneGraphHeadedBy(layer, lane);
@@ -948,13 +949,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// before the name and the pin before the value, each in a slot every
   /// lane keeps, so the names and the pins stand in one column whichever
   /// lanes wear them.
+  ///
+  /// ↩️The rail paid the two slots, 44 wider, from 2026-10-11 to 10-12: a
+  /// row's own buttons come out of its name (I-89 Q1, 「이름공간을 줄여서
+  /// 오른쪽정렬로 … 즉 레이어 이름행이 2개분 줄어드는거지」).
   Widget _memberRow(
     ColorScheme colorScheme,
     Widget label,
     String? valueLabel,
     bool? drawn,
   ) {
-    final graphs = widget.optionalColumns.graph;
+    final graphs = _drawsGraphs;
     return Row(
       children: [
         if (lane.showsKeyNavigator) ...[
@@ -1039,6 +1044,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ],
     );
   }
+
+  /// Whether this rail draws header graphs at all (I-89 ③) — what keeps a
+  /// member's chips and pin slots, whichever lanes wear them.
+  bool get _drawsGraphs => widget.laneGraphVerbs != null;
 
   /// I-89 ③: the lane PINNED to every open graph, or let go — AE's graph
   /// editor set, the one way a lane reaches another group's graph. On a
@@ -1176,7 +1185,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         (hasValue ? valueSlot : 0.0) +
         navigatorExtent +
         (hasValue && hasLink ? _laneValueLinkExtent : 0.0);
-    final graphs = widget.optionalColumns.graph;
+    final graphs = _drawsGraphs;
     final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
     return (
       value: value,

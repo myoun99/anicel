@@ -361,12 +361,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueListenable<double>? opacityOverride;
 
   /// The header graphs' verbs (I-89 ③) — the HOST's, the same on every
-  /// row: null carries no graph column at all.
+  /// row: null mounts no graph button.
   final LaneGraphVerbs? laneGraphVerbs;
 
   /// The header graph this row heads, by its key — the camera row's, the
   /// row being its own Transform group (㉙) — and whether it stands open.
-  /// Null heads none, and the row's graph slot stays empty.
+  /// Null heads none, and the name keeps the button's room.
   final String? graphKey;
   final bool graphOpen;
 
@@ -685,23 +685,26 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the rows that do fold all sit on one line (one axis over: a column that
   /// folds nothing used to drop it, which pulled every cell below up by
   /// 20px).
+  ///
+  /// I-89 Q1 (유저 2026-10-12): a row's own buttons take their room out of
+  /// the name, right-aligned before the fold slot — 「추가로 공간
+  /// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로」 — the link among them,
+  /// beside the reference when a row has both (「참조/링크가 동시에
+  /// 될수있는거 말되니까 그런식으로 중복되는 상황은 중복되도록」). The order
+  /// was left to me (「버튼별 순서는 알아서 맡김」): the graph last, so it
+  /// ends the name as a header's does. ↩️The link trailed the name's
+  /// letters, wherever a name happened to end.
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
     child: KeyedSubtree(
       key: ValueKey<String>('$keyPrefix-layer-name-${layer.id}'),
       child: Flex(
         direction: axis,
         children: [
-          Expanded(
-            child: Flex(
-              direction: axis,
-              children: [
-                Flexible(child: _nameText(context)),
-                ?_linkBadge(colorScheme),
-              ],
-            ),
-          ),
+          Expanded(child: _nameText(context)),
+          ?_linkBadge(colorScheme),
           ?_referenceButton(),
           ?_cameraPathButton(),
+          ?_graphToggle(),
           alongBox(axis, layerLaneToggleSlotWidth, child: _foldTwirl()),
         ],
       ),
@@ -765,8 +768,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  /// The camera row's path button (I-89 ④) where a reference row's file
-  /// button stands — the camera's row is never a reference row.
+  /// The camera row's path button (I-89 ④), among the name's buttons — the
+  /// camera's row is never a reference row, so the two never stand
+  /// together.
   Widget? _cameraPathButton() {
     final onOpen = onOpenCameraPath;
     if (!layer.kind.carriesCameraPath || onOpen == null) {
@@ -775,6 +779,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return CameraPathButton(
       keyValue: '$keyPrefix-layer-camera-path-${layer.id}',
       onOpen: onOpen,
+    );
+  }
+
+  /// The camera row's graph button (I-89 ③) — the row being its own
+  /// Transform group (㉙), the button its header's.
+  Widget? _graphToggle() {
+    final verbs = laneGraphVerbs;
+    final key = graphKey;
+    if (verbs == null || key == null) return null;
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.graph,
+      keyValue: '$keyPrefix-layer-graph-${layer.id}',
+      axis: axis,
+      on: graphOpen,
+      onToggle: () => verbs.toggle(key),
     );
   }
 
@@ -801,11 +820,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
         axis: axis,
         columns: metrics.railColumns,
         optionalColumns: (
-          graph: laneGraphVerbs != null,
           onion: onToggleLayerOnionSkin != null,
           blend: onLayerBlendModeSelected != null,
         ),
-        graph: _graphToggle(),
         fillReference: _fillReferenceToggle(),
         fx: _fxSwitch(),
         onion: _onionToggle(colorScheme),
@@ -814,21 +831,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
         opacity: _opacitySlot(),
         blend: _blendChip(),
       );
-
-  /// The camera row's graph button (I-89 ③) — the row being its own
-  /// Transform group (㉙), the button its header's.
-  Widget? _graphToggle() {
-    final verbs = laneGraphVerbs;
-    final key = graphKey;
-    if (verbs == null || key == null) return null;
-    return LaneGraphToggle(
-      kind: LaneGraphToggleKind.graph,
-      keyValue: '$keyPrefix-layer-graph-${layer.id}',
-      axis: axis,
-      on: graphOpen,
-      onToggle: () => verbs.toggle(key),
-    );
-  }
 
   /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
   /// reserves the slot so the legend header's column icons line up over one

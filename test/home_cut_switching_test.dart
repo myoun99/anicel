@@ -155,12 +155,6 @@ void main() {
   testWidgets(
     'blank and mark edits after switching to Cut 2 do not affect Cut 1',
     (WidgetTester tester) async {
-      // The rail stands 563 wide (I-89 ③), so at the 800px test default the
-      // frames have about 120px of view: the end grip's two-frame pull
-      // below reaches the edge band, and the view scrolling under it grows
-      // the block past the [1,4) it is asked for.
-      await tester.binding.setSurfaceSize(const Size(1600, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(const AnicelApp());
       final second = await createSecondCutWithADrawingRow(tester);
 

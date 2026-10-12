@@ -145,7 +145,7 @@ class TimelineTabHost extends StatefulWidget {
 
   /// The HEADER GRAPHS standing in a group's lanes' place, and their
   /// buttons (I-89 ③) — view state as the twirls are, kept by the session's
-  /// rail view. Null [laneGraphVerbs] draws no graph column.
+  /// rail view. Null [laneGraphVerbs] mounts no graph button.
   final LaneGraphsView laneGraphs;
   final LaneGraphVerbs? laneGraphVerbs;
 

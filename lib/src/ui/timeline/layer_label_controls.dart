@@ -375,10 +375,11 @@ const String _laneValueWidest = 'X -0000.00';
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
 
-/// The HEADER GRAPH's column (I-89 ③) — first of the trailing run, before
-/// the fill reference: a Transform or effect header's graph button, the
-/// camera row's (the row being its own Transform group, ㉙), reserved on
-/// every other row (유저 2026-10-10 시안: [twirl][name][graph][reset][fx]).
+/// The HEADER GRAPH's button (I-89 ③) — a Transform or effect header's,
+/// the camera row's (the row being its own Transform group, ㉙) — at the
+/// end of its row's name (유저 2026-10-10 시안: [twirl][name][graph][reset]
+/// [fx]). ↩️A column of the trailing run, reserved on every row, until
+/// 2026-10-12: a row's own buttons come out of its name (I-89 Q1).
 const double layerGraphSlotWidth = 22;
 
 /// A member lane's COLOUR CHIPS (I-89 ③): one 9×9 swatch per number its
@@ -1840,10 +1841,11 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
 /// it opens how the canvas shows the camera's path under itself — one value
 /// for every open project, as the row's eye and its dim are.
 ///
-/// It stands where a reference row's button does and wears that button's
-/// dress — outlined, lit while its list is open: the camera's row is never
-/// a reference row. ⚠️Lit-while-open is [LayerReferenceButton]'s state a
-/// second time; a third button that keeps it folds the three into one.
+/// It stands among the name's buttons, as a reference row's does, and
+/// wears that button's dress — outlined, lit while its list is open: the
+/// camera's row is never a reference row. ⚠️Lit-while-open is
+/// [LayerReferenceButton]'s state a second time; a third button that keeps
+/// it folds the three into one.
 class CameraPathButton extends StatefulWidget {
   const CameraPathButton({
     super.key,

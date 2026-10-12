@@ -37,11 +37,7 @@ class _XSheetGridColumns {
       startIndex: 0,
       endIndexExclusive: entries.length,
     ),
-    rowAt: (index) => (
-      row: entries[index],
-      depth: entries[index].depth,
-      id: entries[index].address,
-    ),
+    rowAt: (index) => (row: entries[index], id: entries[index].address),
   );
 
   /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),

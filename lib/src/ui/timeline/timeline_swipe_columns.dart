@@ -48,7 +48,10 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   leadingOrigin: leadingOrigin,
   columns: columns,
   optionalColumns: hooks.optionalRailColumns,
-  graph: _graph(hooks),
+  graph: switch (_graph(hooks)) {
+    final toggle? => (toggle: toggle, after: _pastTheGraph),
+    null => null,
+  },
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
@@ -81,6 +84,12 @@ RailToggle<TimelineDisplayRow>? _graph(TimelineGridHooks hooks) {
     },
   );
 }
+
+/// What a row lays past its graph button at the end of its name (I-89 Q1):
+/// a layer row its fold slot, which always ends its name (F-29); a header
+/// nothing.
+double _pastTheGraph(TimelineDisplayRow row) =>
+    row.isLane ? 0 : layerLaneToggleSlotWidth;
 
 /// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
 /// swept as it is pressed and read live, as the graph's button is.
@@ -184,9 +193,7 @@ RailToggle<TimelineDisplayRow> _timesheet(TimelineGridHooks hooks) => (
   toggle: (row) => hooks.onToggleLayerTimesheet(row.layer.id),
 );
 
-/// A row with no lanes draws no twirl — and its cell is what the nesting
-/// indent pushes, so this is also the column most likely to be crossed at
-/// two different depths in one drag.
+/// A row with no lanes draws no twirl.
 ///
 /// 🚨The twirl's state is the LIVE read when the host gives one
 /// ([TimelineGridHooks.laneOpenOf]): the set is a widget property, a frame

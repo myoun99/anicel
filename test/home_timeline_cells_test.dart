@@ -141,12 +141,6 @@ void main() {
   testWidgets('selection status and toolbar state distinguish held cells', (
     WidgetTester tester,
   ) async {
-    // The rail stands 563 wide (I-89 ③), so at the 800px test default the
-    // frames have about 120px of view: the end grip's two-frame pull below
-    // reaches the edge band, and the view scrolling under it grows the
-    // block two frames past the hold it is asked for.
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     // From an EMPTY row: the bare project (the app opens on a cel, F-211).
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),

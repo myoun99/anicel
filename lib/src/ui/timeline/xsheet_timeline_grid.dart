@@ -203,23 +203,13 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// cut its tail, the SE speaker and the opacity and blend columns with it
   /// (2026-10-11). Asked with the rail's full length on offer, the user
   /// kept this one (유저 2026-10-11 「여쭐것 둘다 문제없음」).
-  ///
-  /// The same for what the rail pays a lane's row for its graph (I-89 ③):
-  /// its colour chips and its pin stand inside the lane's own column. ⚠️And
-  /// the graph column's slot is NOT taken off: the rail's 44 for those two
-  /// paid a header's graph button and left the layer rows' names 22 more —
-  /// the lanes' gift, the hands' kind, which the sheet does not take. The
-  /// block pays the slot itself, as it pays every column it carries, and
-  /// the name keeps the room it had.
   static double _naturalNameExtent(LayerRailColumnWidths columns) =>
       timelineLayerControlsWidthFor(columns) -
       layerLaneValueHandsWidth -
-      layerLaneChipsSlotWidth -
-      layerLanePinSlotWidth -
       layerRailLeadingWidth -
       layerRailTrailingWidth(
         columns: columns,
-        optionalColumns: (graph: false, onion: true, blend: true),
+        optionalColumns: (onion: true, blend: true),
       );
 
   /// The column header's own hairlines, top and bottom.

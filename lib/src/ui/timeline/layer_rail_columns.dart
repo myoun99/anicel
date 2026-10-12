@@ -414,7 +414,6 @@ List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  Widget? graph,
   Widget? fillReference,
   Widget? fx,
   Widget? onion,
@@ -425,7 +424,6 @@ List<Widget> layerRailTrailingCells({
   Widget? trailingRegion,
 }) {
   return [
-    if (optionalColumns.graph) layerRailSlot(axis, layerGraphSlotWidth, graph),
     layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
@@ -458,7 +456,6 @@ List<Widget> layerRailTrailingCells({
 /// them. Naming them lets a host LOCATE a column instead of re-adding the
 /// widths in a comment — see [layerRailTrailingWidth].
 enum LayerRailTrailingSlot {
-  graph,
   fillReference,
   fx,
   onion,
@@ -471,7 +468,7 @@ enum LayerRailTrailingSlot {
 /// Which of the rail's OPTIONAL columns a HOST carries — its answer, as
 /// distinct from a row that merely has nothing to put in one: a null cell
 /// reserves its slot, a column the host does not carry is not there at all
-/// (the storyboard rail carries no onion, and no graph yet).
+/// (the storyboard rail carries no onion).
 ///
 /// ONE answer to every question asked of the run — the cells a row lays
 /// out, what the run costs, where a swipe finds a column, how tall the
@@ -480,13 +477,15 @@ enum LayerRailTrailingSlot {
 /// what they were handed ([TimelineGridHooks.optionalRailColumns]); each
 /// of their surfaces used to write that reading out again.
 ///
-/// [graph] is the header graph's (I-89 ③) as a whole: the headers' graph
-/// column, and on member rows the chips and the pin a graph is read by.
-typedef LayerRailOptionalColumns = ({bool graph, bool onion, bool blend});
+/// ↩️It carried the header graph's (I-89 ③) as a column of its own, the
+/// legend's graph over it, from 2026-10-11 to 10-12: a graph's button is
+/// a row's own, at the end of its name (유저 2026-10-12: 「추가로 공간
+/// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로 두는방식으로. 그러니까
+/// 레전드에 있는 그래프버튼 삭제」).
+typedef LayerRailOptionalColumns = ({bool onion, bool blend});
 
 /// A host that carries none of them.
 const LayerRailOptionalColumns noOptionalRailColumns = (
-  graph: false,
   onion: false,
   blend: false,
 );
@@ -496,7 +495,6 @@ extension LayerRailCarries on LayerRailOptionalColumns {
   /// Whether [slot] is in the host's run — every slot that is not optional
   /// is.
   bool carries(LayerRailTrailingSlot slot) => switch (slot) {
-    LayerRailTrailingSlot.graph => graph,
     LayerRailTrailingSlot.onion => onion,
     LayerRailTrailingSlot.blend => blend,
     _ => true,
@@ -507,7 +505,6 @@ double _trailingSlotWidth(
   LayerRailTrailingSlot slot,
   LayerRailColumnWidths columns,
 ) => switch (slot) {
-  LayerRailTrailingSlot.graph => layerGraphSlotWidth,
   LayerRailTrailingSlot.fillReference => layerFillReferenceSlotWidth,
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
@@ -526,7 +523,7 @@ double _trailingSlotWidth(
 double layerRailTrailingWidth({
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  LayerRailTrailingSlot from = LayerRailTrailingSlot.graph,
+  LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
 }) {
   var total = 0.0;
   for (final slot in LayerRailTrailingSlot.values) {
