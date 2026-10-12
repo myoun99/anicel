@@ -66,45 +66,57 @@ void main() {
 
   tearDown(() => deleteTempQuietly(tempDir));
 
-  /// A store whose [from] row holds one blue, FILE-BACKED cel of eight tiles
-  /// — file-backed because the image cache refuses a cel without a drawing
-  /// state at its first gate.
-  BrushFrameStore blueStore() {
-    final tiles = <TileCoord, BitmapTile>{};
-    for (var x = 0; x < tileCount; x += 1) {
-      final pixels = Uint8List(tileSize * tileSize * 4);
-      for (var i = 0; i < pixels.length; i += 4) {
-        pixels[i + 2] = 0xFF;
-        pixels[i + 3] = 0xFF;
+  /// A store whose cels are each one opaque, FILE-BACKED cel of eight tiles,
+  /// full in the colour channel [channelOf] names (0 red, 2 blue) — file-
+  /// backed because the image cache refuses a cel without a drawing state
+  /// at its first gate.
+  BrushFrameStore celStore(Map<BrushFrameKey, int> channelOf) {
+    final refs = <BrushFrameKey, AnicelCelFileRef>{};
+    for (final MapEntry(:key, value: channel) in channelOf.entries) {
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var x = 0; x < tileCount; x += 1) {
+        final pixels = Uint8List(tileSize * tileSize * 4);
+        for (var i = 0; i < pixels.length; i += 4) {
+          pixels[i + channel] = 0xFF;
+          pixels[i + 3] = 0xFF;
+        }
+        tiles[TileCoord(x: x, y: 0)] = BitmapTile(
+          size: tileSize,
+          pixels: pixels,
+        );
       }
-      tiles[TileCoord(x: x, y: 0)] = BitmapTile(size: tileSize, pixels: pixels);
-    }
-    final blob = AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(
-        from,
-        BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles),
-      ),
-    );
-    final file = File('${tempDir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
-    return BrushFrameStore()..restoreFromFile({
-      from: AnicelCelFileRef(
+      final blob = AnicelCelBlob.encode(
+        AnicelCelEntry.fromSurface(
+          key,
+          BitmapSurface(
+            canvasSize: canvasSize,
+            tileSize: tileSize,
+            tiles: tiles,
+          ),
+        ),
+      );
+      final file = File('${tempDir.path}/${key.layerId.value}.bin')
+        ..writeAsBytesSync(blob.bytes);
+      refs[key] = AnicelCelFileRef(
         filePath: file.path,
         dataOffset: 0,
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: tileSize,
-      ),
-    });
+      );
+    }
+    return BrushFrameStore()..restoreFromFile(refs);
   }
 
   /// [key]'s cel as an image row — or, with [active], as the row the brush
-  /// is on, painted from its tiles.
+  /// is on, painted from its tiles — over [under]'s, an image row too.
   Future<void> pumpRow(
     WidgetTester tester,
     LayerFrameImageCache images,
     BrushFrameKey key, {
     required double zoom,
     BitmapSurfacePainter? active,
+    BrushFrameKey? under,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -117,6 +129,10 @@ void main() {
                 height: viewSize.height,
                 child: CanvasLayerStackView(
                   nodes: [
+                    if (under != null)
+                      CompositeLeaf<CanvasStackRow>(
+                        CanvasLayerImageRequest(frameKey: under, opacity: 1),
+                      ),
                     CompositeLeaf<CanvasStackRow>(
                       active == null
                           ? CanvasLayerImageRequest(frameKey: key, opacity: 1)
@@ -173,7 +189,7 @@ void main() {
   }) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final store = blueStore();
+    final store = celStore({from: 2});
     final images = LayerFrameImageCache(frameStore: store);
     addTearDown(images.dispose);
 
@@ -230,5 +246,31 @@ void main() {
           '(a_cel_entering_the_active_slot_draws_the_level_it_had_test)',
     );
     expect(TilePyramid.instance.debugTileCountOf(lineage), 0);
+  });
+
+  testWidgets('a picture the view held under the key the cel lands on is let '
+      'go — its pin with it — and the cel is what that key shows', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // A red cel under the key the blue one is carried to.
+    final store = celStore({from: 2, to: 0});
+    final images = LayerFrameImageCache(frameStore: store);
+    addTearDown(images.dispose);
+    await pumpRow(tester, images, from, zoom: 1, under: to);
+    await landEverything(tester);
+
+    store.rekeyFrames([(from, to)]);
+    await pumpRow(tester, images, to, zoom: 1);
+    expect(await blueColumns(tester, 1), viewSize.width.toInt());
+
+    await tester.pumpWidget(const SizedBox());
+    expect(
+      images.pinnedBytes,
+      0,
+      reason: 'every picture the view held is let go with the view — the one '
+          'the carried cel took the key of as well',
+    );
   });
 }
