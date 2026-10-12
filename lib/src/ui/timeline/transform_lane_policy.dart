@@ -23,7 +23,6 @@ import '../theme/lane_curve_palette.dart';
 import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
-import 'timeline_span_name.dart' show timelineInstructionInk;
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
 /// the twirl-down's structural spine: Transform first, Effects stack below
@@ -107,9 +106,9 @@ PropertyLaneRow transformUnionHeader({
 
 /// THE CAMERA ROW'S LANE — its keys' union ([transformUnionHeader]) with,
 /// over the line between them, the move each stretch makes
-/// ([cameraMoves], I-73 ⑤) by its name in the vocabulary [defById] reads
-/// and in its ink ([timelineInstructionInk]): the timeline's camera row
-/// and the storyboard's draw this one lane.
+/// ([cameraMoves], I-73 ⑤) by its name in the vocabulary [defById] reads,
+/// in the row's key colour (`timelineStretchWordSpan`): the timeline's
+/// camera row and the storyboard's draw this one lane.
 PropertyLaneRow cameraUnionHeader(
   TransformTrack track, {
   required CameraInstructionDef? Function(String id) defById,
@@ -122,7 +121,6 @@ PropertyLaneRow cameraUnionHeader(
         from: move.from,
         to: move.to,
         word: instructionTermName(move.term, defById(move.term)),
-        ink: timelineInstructionInk(defById(move.term)),
       ),
   ],
 );

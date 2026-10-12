@@ -1814,6 +1814,11 @@ TimelineFrameSpan timelineLaneKeySpan({
 /// ([TimelineSpanName]), so the word sits over the line's middle. A row
 /// that draws its keys somewhere other than their own frames hands the
 /// stretch over where it draws it (the storyboard's camera row, I-73 ④).
+///
+/// The word wears the row's key colour, as its keys' line does (유저
+/// 2026-10-12: 「카메라 키 사이 PAN 표시되는거, 보이는데 너무 연해서
+/// 있는지도몰랏어. 키 색(즉 색라벨 색)이랑 똑같이」) — ↩️it wore its term's
+/// ink from the vocabulary, as a direction row's span does.
 TimelineFrameSpan timelineStretchWordSpan({
   required String keyPrefix,
   required Layer layer,
@@ -1828,7 +1833,11 @@ TimelineFrameSpan timelineStretchWordSpan({
     endIndexExclusive: stretch.to + 1,
   ),
   child: IgnorePointer(
-    child: TimelineSpanName(axis: axis, text: stretch.word, ink: stretch.ink),
+    child: TimelineSpanName(
+      axis: axis,
+      text: stretch.word,
+      ink: layerMarkColor(layer.mark),
+    ),
   ),
 );
 

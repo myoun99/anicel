@@ -339,7 +339,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
         from >= window.endIndexExclusive) {
       return null;
     }
-    return (from: from, to: to, word: stretch.word, ink: stretch.ink);
+    return (from: from, to: to, word: stretch.word);
   }
 
   /// One [key]'s mark — ringed while its lane selection holds it — on the

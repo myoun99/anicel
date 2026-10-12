@@ -188,8 +188,8 @@ class PropertyLaneRow {
 }
 
 /// A word over the stretch of a lane from its key on [from] to the next, on
-/// [to] — written in [ink].
-typedef LaneStretchWord = ({int from, int to, String word, Color ink});
+/// [to] — written in its row's key colour (`timelineStretchWordSpan`).
+typedef LaneStretchWord = ({int from, int to, String word});
 
 /// A lane as a header graph draws it ([PropertyLaneRow.curve]): the numbers
 /// it holds [at] a time — a frame, or a time between two — each drawn in

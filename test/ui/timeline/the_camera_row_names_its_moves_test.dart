@@ -55,7 +55,6 @@ void main() {
       expect(lane.stretchWords, hasLength(1), reason: '6 → 10 does not move');
       final word = lane.stretchWords.single;
       expect((word.from, word.to, word.word), (0, 6, 'TRACK UP'));
-      expect(word.ink, const Color(0xFF3366CC));
     });
 
     test('a term the vocabulary has lost is written by its id', () {
@@ -89,6 +88,18 @@ void main() {
       );
       final name = (word.child as IgnorePointer).child! as TimelineSpanName;
       expect((name.text, name.axis), ('PAN', Axis.horizontal));
+      // In the keys' own colour, the row's colour label (유저 2026-10-12:
+      // 「너무 연해서 있는지도몰랏어. 키 색(즉 색라벨 색)이랑 똑같이」).
+      final line = spans[0].child as TimelineLaneKeysLine;
+      expect(name.ink, line.color);
+      final termInk = timelineInstructionInk(
+        CameraInstructionSet.standard.defById('pan'),
+      );
+      expect(
+        name.ink,
+        isNot(termInk),
+        reason: '⛔전제: the term\'s own ink is another colour',
+      );
     });
   });
 
