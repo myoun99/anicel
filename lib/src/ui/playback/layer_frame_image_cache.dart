@@ -200,7 +200,9 @@ typedef LayerImageWantedAt =
 /// plumbing. [invalidateFrame] additionally drops entries eagerly on sink
 /// events to free memory sooner.
 class LayerFrameImageCache {
-  LayerFrameImageCache({required this.frameStore});
+  LayerFrameImageCache({required this.frameStore}) {
+    frameStore.addRekeyListener(_travelWithTheirCels);
+  }
 
   final BrushFrameStore frameStore;
   final Map<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry> _entries =
@@ -643,12 +645,13 @@ class LayerFrameImageCache {
     final entry = _entries[at]!;
     entry.settling = real.then<void>(
       (snapshot) {
-        if (!identical(_entries[at], entry)) {
+        final slot = _slotHolding(entry, at);
+        if (slot == null) {
           // Replaced, dropped, or the cache is gone: nobody wants it.
           snapshot.dispose();
           return;
         }
-        _entries[at] = _LayerFrameImageEntry(
+        _entries[slot] = _LayerFrameImageEntry(
           positioned: LayerFrameImage(
             image: snapshot,
             worldRect: entry.positioned.worldRect,
@@ -675,6 +678,43 @@ class LayerFrameImageCache {
     for (final quality in PlaybackQuality.values) {
       _dropEntry((key, quality));
     }
+  }
+
+  /// Carries every quality's picture of a cel to the key a rekey moved its
+  /// pixels to ([BrushFrameStore.addRekeyListener]): the same pixels, so
+  /// the same picture, valid there as it was here.
+  ///
+  /// ⛔The pins stay where they are: each is a holder's, released at the
+  /// slot it was taken on.
+  void _travelWithTheirCels(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final (from, to) in pairs) {
+      for (final quality in PlaybackQuality.values) {
+        final entry = _entries.remove((from, quality));
+        if (entry != null) {
+          _dropEntry((to, quality));
+          _entries[(to, quality)] = entry;
+        }
+      }
+    }
+  }
+
+  /// The slot [entry] is held at now — where it was banked, or wherever a
+  /// rekey carried it since ([_travelWithTheirCels]); null once it is gone.
+  (BrushFrameKey, PlaybackQuality)? _slotHolding(
+    _LayerFrameImageEntry entry,
+    (BrushFrameKey, PlaybackQuality) banked,
+  ) {
+    if (identical(_entries[banked], entry)) {
+      return banked;
+    }
+    for (final MapEntry(:key, :value) in _entries.entries) {
+      if (identical(value, entry)) {
+        return key;
+      }
+    }
+    return null;
   }
 
   int get estimatedBytes {
@@ -758,6 +798,7 @@ class LayerFrameImageCache {
   }
 
   void dispose() {
+    frameStore.removeRekeyListener(_travelWithTheirCels);
     for (final key in _entries.keys.toList()) {
       _dropEntry(key);
     }

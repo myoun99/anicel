@@ -1197,10 +1197,31 @@ class BrushFrameStore {
   /// written beside the project file.
   Future<void> drainTiering() => drainCooling();
 
+  /// Told the pairs [rekeyFrames] moved, once they are moved: every picture
+  /// made of a cel travels with its pixels, as the display cache does here.
+  ///
+  /// 🚨F-313 (유저 2026-10-08: 「… 싹 삭제하고 법 통일. 항상 보여야함」):
+  /// the image cache's pictures stayed under the key the move left, so a cel
+  /// carried onto another row went blank on the frame it landed and came
+  /// back with the asynchronous build — 🔬0 of 32 columns on that frame, at
+  /// 50% and at 100%, in
+  /// `a_cel_carried_onto_another_row_shows_on_the_frame_it_lands_test`.
+  final List<void Function(List<(BrushFrameKey from, BrushFrameKey to)>)>
+  _rekeyListeners = [];
+
+  void addRekeyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _rekeyListeners.add(listener);
+
+  void removeRekeyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _rekeyListeners.remove(listener);
+
   /// Re-homes stored drawings under new keys (a cross-layer block move,
   /// R10-④b): content is untouched, so the display cache travels along and
-  /// stays valid. Missing sources are skipped (an empty cel moved). The
-  /// inverse pair list undoes the move exactly.
+  /// stays valid — and so do the pictures made of it ([addRekeyListener]).
+  /// Missing sources are skipped (an empty cel moved). The inverse pair
+  /// list undoes the move exactly.
   void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
     for (final (from, to) in pairs) {
       final state = _frames.remove(from);
@@ -1241,6 +1262,9 @@ class BrushFrameStore {
       // kept answering for the old world. No-ops when nothing crossed.
       _noteCelContent(from);
       _noteCelContent(to);
+    }
+    for (final listener in List.of(_rekeyListeners)) {
+      listener(pairs);
     }
   }
 

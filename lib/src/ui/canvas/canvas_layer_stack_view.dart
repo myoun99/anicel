@@ -473,6 +473,43 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // images at needs the effective ratio, which is a dependency.
     InputInspector.visible.addListener(_rebuildForInspector);
     widget.run?.landings.addListener(_takeWhatLanded);
+    widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
+  }
+
+  /// What this view holds of a cel is held under the key a rekey moved its
+  /// pixels to as well ([BrushFrameStore.addRekeyListener]) — the same
+  /// picture, so the frame it lands on draws it as the frame before did: an
+  /// image row adopts it, and the row the brush is on is handed it
+  /// ([_handToTheActiveRow]).
+  ///
+  /// ⛔UNDER BOTH KEYS until the next sweep keeps the one its rows ask for:
+  /// a paint before this view's rebuild still asks under the key the move
+  /// left.
+  void _travelWithTheirCels(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final (from, to) in pairs) {
+      final held = _images[from];
+      if (held == null) {
+        continue;
+      }
+      final there = _images.remove(to);
+      if (there != null) {
+        _dropImage(to, there);
+      }
+      widget.imageCache.retainPin(to, held.quality);
+      _holdImage(to, (
+        source: held.source,
+        clone: held.clone.clone(),
+        worldRect: held.worldRect,
+        extent: held.extent,
+        revision: held.revision,
+        quality: held.quality,
+        content: held.content,
+        madeFrom: held.madeFrom,
+        laidBack: LaidBackWhole(),
+      ));
+    }
   }
 
   /// A picture of the run's landed: the rows it brought are taken, and the
@@ -506,6 +543,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         oldWidget.imageCache.releasePin(entry.key, entry.value.quality);
         widget.imageCache.retainPin(entry.key, entry.value.quality);
       }
+      oldWidget.imageCache.frameStore.removeRekeyListener(
+        _travelWithTheirCels,
+      );
+      widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
     }
     // The active row that left takes the image it was handed with it.
     final leftLineage = oldWidget.activeSurfacePainter?.lineage;
@@ -681,6 +722,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
     widget.run?.landings.removeListener(_takeWhatLanded);
+    widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);

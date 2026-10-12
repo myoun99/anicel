@@ -715,7 +715,17 @@ void main() {
   /// whole film plays on the canvas's own pictures, and the composite cache
   /// went (playback-plays-the-screen-material). 🔬`clean_code_diff` between
   /// the lane's base and the lane names that one gone and none added.
-  const longClasses = 60;
+  ///
+  /// ⚠️60 → 61 on 2026-10-12, ONE name: `LayerFrameImageCache` crossed
+  /// (576 → 617) in F-313 — a cel's pictures travel with its pixels when a
+  /// move re-keys them, so the frame a carried cel lands on draws it
+  /// (🔬0 of 32 columns there before). The move is the cache's own map, and
+  /// the settle that finds an entry where a rekey carried it is the cache's
+  /// own settle. 🔬`clean_code_diff` between the lane's base (`3ef2f8da7`)
+  /// and the lane names this one and no other class. ⛔Not split to fit: a
+  /// seam cut for it would put the re-homing of the entries in a different
+  /// file from the map that holds them.
+  const longClasses = 61;
 
   late CleanCodeScan scan;
   setUpAll(() {
