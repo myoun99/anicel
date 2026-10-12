@@ -28,6 +28,7 @@ class CameraPathOverlay extends StatelessWidget {
     required this.settings,
     required this.viewport,
     required this.standing,
+    this.toCanvas,
   });
 
   /// How large the canvas writes a camera's work, in screen pixels (the
@@ -62,11 +63,17 @@ class CameraPathOverlay extends StatelessWidget {
   /// 상태를 보여줌」).
   final bool standing;
 
+  /// Where a point of [path] stands on the canvas — a layer's position
+  /// through the folders over it (I-89-Q9). A camera's frames are on the
+  /// canvas already.
+  final CanvasPoint Function(CanvasPoint point)? toCanvas;
+
   /// What it draws, in screen pixels.
   List<SheetMark> get marks {
-    Offset place(Offset point) => viewport.canvasToViewportOffset(
-      CanvasPoint(x: point.dx, y: point.dy),
-    );
+    Offset place(Offset point) {
+      final at = CanvasPoint(x: point.dx, y: point.dy);
+      return viewport.canvasToViewportOffset(toCanvas?.call(at) ?? at);
+    }
     final (:from, :to) = settings.framesShownAt(playhead);
     return [
       ...cameraPathMarks(

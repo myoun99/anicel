@@ -94,9 +94,12 @@ class CameraMarkedKey {
     required this.role,
     required this.framed,
     required this.label,
+    this.beside = const [],
   });
 
-  /// The camera's frame at the key, on the surface: top-left first.
+  /// The camera's frame at the key, on the surface: top-left first — or
+  /// the one point a layer's position stands at, which has no frame to
+  /// draw (I-89-Q9).
   final List<Offset> corners;
 
   final CameraKeyRole role;
@@ -105,8 +108,14 @@ class CameraMarkedKey {
   final bool framed;
 
   /// What is written at its frame's top-left corner, inside it and turned
-  /// with it ([cameraKeyLabel]).
+  /// with it ([cameraKeyLabel]) — or, a point having no corner to write it
+  /// in, beside its cross off the path [beside] it ([cameraCrossLabel]:
+  /// I-89-Q9, 유저 2026-10-12 「이름 내가 카메라에서 말한대로
+  /// 오른쪽아래,왼쪽아래 이런순으로 두려고 시도」).
   final String label;
+
+  /// Where the path runs either side of a point's cross.
+  final List<Offset> beside;
 }
 
 /// How large a surface writes a camera's marks, in its own units.
@@ -128,7 +137,8 @@ class CameraMarkSizes {
   final double crossArm;
   final double crossWidth;
 
-  /// How far a label sits inside its frame's corner, along both sides.
+  /// How far a label sits inside its frame's corner, along both sides — and
+  /// off a point's cross.
   final double labelInset;
 }
 
@@ -150,7 +160,7 @@ Iterable<SheetMark> cameraWorkMarks({
   }
   for (final key in keys) {
     final argb = cameraKeyArgb(key.role);
-    if (key.framed) {
+    if (key.framed && !cameraPlaceIsAPoint(key.corners)) {
       yield SheetStroke(
         layer,
         points: key.corners,
@@ -159,21 +169,39 @@ Iterable<SheetMark> cameraWorkMarks({
         closed: true,
       );
     }
+    final at = cameraFrameCentre(key.corners);
     yield* cameraCrossMarks(
       key.corners,
-      at: cameraFrameCentre(key.corners),
+      at: at,
       argb: argb,
       arm: sizes.crossArm,
       width: sizes.crossWidth,
       layer: layer,
     );
-    yield _label(key.label, key.corners, argb, sizes, layer);
+    yield cameraPlaceIsAPoint(key.corners)
+        ? cameraCrossLabel(
+            key.label,
+            key.corners,
+            at: at,
+            taken: key.beside,
+            argb: argb,
+            size: sizes.labelSize,
+            gap: sizes.labelInset,
+            layer: layer,
+          )
+        : _label(key.label, key.corners, argb, sizes, layer);
   }
 }
 
-/// The middle of the frame [corners] draw — where the camera is.
-Offset cameraFrameCentre(List<Offset> corners) =>
-    (corners[0] + corners[2]) / 2;
+/// Whether [corners] are one point — a layer's position, where a camera
+/// has its frame (I-89-Q9).
+bool cameraPlaceIsAPoint(List<Offset> corners) => corners.length == 1;
+
+/// The middle of the frame [corners] draw — where the camera is — or the
+/// point they are.
+Offset cameraFrameCentre(List<Offset> corners) => cameraPlaceIsAPoint(corners)
+    ? corners.single
+    : (corners[0] + corners[2]) / 2;
 
 /// A cross at [at], square to the frame [corners] draw — it turns with the
 /// frame as the label does: two strokes, each reaching [arm] either way.
@@ -215,7 +243,10 @@ const double _crossLabelLetters = 4;
 /// [taken] lies — the crosses either side of it along the camera's path,
 /// so the label stands off the way the path runs ([_labelQuarters]). With
 /// every quarter taken, it stands below and right. [gap] keeps it off the
-/// cross's arms.
+/// cross's arms. [after] labels already stand beside the cross, in the
+/// first quarters this order gives: this one takes the quarter after
+/// theirs, a taken one once the free run out (a named point's frame,
+/// beside its name — I-89-Q9).
 SheetWords cameraCrossLabel(
   String label,
   List<Offset> corners, {
@@ -225,6 +256,7 @@ SheetWords cameraCrossLabel(
   required double size,
   required double gap,
   required SheetPaintLayer layer,
+  int after = 0,
 }) {
   final (:right, :down, :turn) = _frameAxes(corners);
   bool holds(({bool left, bool above}) quarter, Offset point) {
@@ -233,10 +265,15 @@ SheetWords cameraCrossLabel(
     return (quarter.left ? x < 0 : x > 0) && (quarter.above ? y < 0 : y > 0);
   }
 
-  final quarter = _labelQuarters.firstWhere(
-    (quarter) => !taken.any((point) => holds(quarter, point)),
-    orElse: () => _labelQuarters.first,
-  );
+  bool free(({bool left, bool above}) quarter) =>
+      !taken.any((point) => holds(quarter, point));
+  // The free quarters in turn, then the taken ones: a label after others
+  // never stands on theirs.
+  final quarters = [
+    ..._labelQuarters.where(free),
+    ..._labelQuarters.where((quarter) => !free(quarter)),
+  ];
+  final quarter = quarters[after % quarters.length];
   final width = size * _crossLabelLetters;
   final height = size * 1.25;
   final origin =
@@ -261,8 +298,12 @@ double _dot(Offset a, Offset b) => a.dx * b.dx + a.dy * b.dy;
 
 /// Which way the frame [corners] draw runs from its top-left corner —
 /// along its top side ([right]) and down its left ([down]), at [turn]
-/// radians — for what stands square to a turned frame.
+/// radians — for what stands square to a turned frame. A point stands
+/// square to the surface, as After Effects marks a motion path's keys.
 ({Offset right, Offset down, double turn}) _frameAxes(List<Offset> corners) {
+  if (cameraPlaceIsAPoint(corners)) {
+    return (right: const Offset(1, 0), down: const Offset(0, 1), turn: 0);
+  }
   final along = corners[1] - corners[0];
   final turn = math.atan2(along.dy, along.dx);
   return (

@@ -266,12 +266,15 @@ class _InteractiveCanvasBuild {
     // computed above would answer the row you left. Same trap the
     // stroke gate two lines down was written to avoid.
     final standing = session.standing.currentRowListenable.value;
-    final manipulators =
+    final standingLane =
         canPoseActiveLayer &&
             standing is LaneRowAddress &&
             standing.layerId == activeLayer.id
-        ? canvasManipulatorsForLane(standing.laneId)
-        : const <CanvasManipulator>{};
+        ? standing.laneId
+        : null;
+    final manipulators = standingLane == null
+        ? const <CanvasManipulator>{}
+        : canvasManipulatorsForLane(standingLane);
     final boxGrabbable = manipulators.contains(CanvasManipulator.transformBox);
     // The box frames the layer's INK — or, on a blank cel, the canvas
     // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]).
@@ -292,6 +295,13 @@ class _InteractiveCanvasBuild {
       crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
       referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
+      walksAPath: switch (standingLane) {
+        final lane? => switch (transformPropertyOfLaneId(lane)) {
+          final property? => walksAPath(property),
+          null => false,
+        },
+        null => false,
+      },
     );
     return MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
@@ -850,6 +860,8 @@ class _InteractiveCanvasBuild {
               context,
               throughCamera: shot != null,
             ),
+          if (editing && frame.walksAPath)
+            _state._positionPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
@@ -893,12 +905,18 @@ class _InteractiveCanvasBuild {
   /// frame (I-80) — stands in the row's box's place while it is open: its
   /// handles are the edges then, and a row's box under them would take the
   /// presses that are theirs.
+  ///
+  /// The camera path settings say which handles of a path a box wears
+  /// (`_EditorCanvasAreaState._pathTangents`), whichever row's box it is.
   Widget _controls(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
   ) => ListenableBuilder(
-    listenable: frame.session.canvasAdjust,
+    listenable: Listenable.merge([
+      frame.session.canvasAdjust,
+      CameraPathSettings.settings,
+    ]),
     builder: (context, _) =>
         _canvasAdjust(context, viewport, frame) ??
         _followingDragAndRun(
@@ -1063,6 +1081,7 @@ class _HostFrame {
     required this.crossGrabbable,
     required this.referenceBox,
     required this.isCameraLayerActive,
+    required this.walksAPath,
   });
 
   final EditorSessionManager session;
@@ -1089,6 +1108,11 @@ class _HostFrame {
   final ({int left, int top, int rightExclusive, int bottomExclusive})?
   inkBounds;
   final bool isCameraLayerActive;
+
+  /// One stands on the active layer's lane whose keys walk a path — its
+  /// position — where the box that moves its keys is: the path is drawn,
+  /// and its handles worked (I-89-Q9).
+  final bool walksAPath;
 
   /// Whether the row's box takes every press on the canvas, rather than its
   /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).

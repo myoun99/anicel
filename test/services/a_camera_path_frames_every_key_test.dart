@@ -450,8 +450,8 @@ void main() {
 
     test('a key\'s own cross wears its frame too, by the same rule, in the '
         'key\'s colour (I-89-Q16 B, 유저 2026-10-12: 「키의 십자에도」)', () {
-      // A peak at 12, (320, 45): frame 7 below and left of it, 17 below and
-      // right — the frame stands above and right.
+      // A peak at 12, (320, 45): the path off it either side — frame 11
+      // below and left of it, 13 below and right — leaves above and right.
       final peak = CutCamera(
         keyframes: {0: at(80, 180), 12: at(320, 45), 24: at(560, 180)},
       );
@@ -479,8 +479,8 @@ void main() {
         every: 5,
         playhead: 0,
       ).singleWhere((label) => label.text == '16f');
-      // Passed at (320, 45), 15.36 — frame 10 level before it, 20 straight
-      // below. The camera at frame 15 is short of the corner, with 20 below
+      // Passed at (320, 45), 15.36 — frame 14 level before it, 16 straight
+      // below. The camera at frame 15 is short of the corner, with 16 below
       // and right of it.
       expectPoints([key.slot.topLeft], const [Offset(322, 47)]);
     });
