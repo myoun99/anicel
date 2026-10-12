@@ -95,6 +95,55 @@ void main() {
     select([effectLaneId(effect.id, 'blurX')], 0, 9);
     expect(laneVerbs.canNameLaneKeys, isTrue, reason: '⛔전제: it covers them');
     expect(laneVerbs.laneKeyRovingForSelection, isEmpty);
+    expect(
+      laneVerbs.laneKeySidesCountForSelection(true),
+      isTrue,
+      reason: "an effect's key keeps its time, so its sides count",
+    );
+  });
+
+  /// 유저 2026-10-12: 「의미가 없다면 비활성화 시키는게 맞겟고」 — the sides of
+  /// a key whose time roves set nothing: its run's timed ends pace it.
+  test("a key between that roves wears no sides: the window's two rows "
+      'count on it only while its time is its own', () {
+    keyAWalk();
+    select(['position'], 2, 3);
+    final between = laneVerbs.laneKeySidesCountForSelection;
+    expect(between(null), isTrue, reason: 'its time is its own');
+    expect(between(false), isTrue);
+    expect(between(true), isFalse, reason: 'picked to rove');
+  });
+
+  test('a key that roves takes its sides back as it is picked to keep its '
+      'time', () {
+    keyAWalk(roving: true);
+    select(['position'], 6, 7);
+    final roving = laneVerbs.laneKeySidesCountForSelection;
+    expect(roving(null), isFalse);
+    expect(roving(false), isTrue);
+  });
+
+  test('the rows count while any key the window covers keeps its time — '
+      'an end, or a lane that walks no path', () {
+    keyAWalk(roving: true);
+    select(['position'], 0, 9);
+    expect(
+      laneVerbs.laneKeySidesCountForSelection(true),
+      isTrue,
+      reason: 'the first and the last keep their time',
+    );
+    select(['position'], 2, 7);
+    expect(
+      laneVerbs.laneKeySidesCountForSelection(true),
+      isFalse,
+      reason: '⛔전제: the position key it covers roves',
+    );
+    select(['position', 'scale'], 2, 7);
+    expect(
+      laneVerbs.laneKeySidesCountForSelection(true),
+      isTrue,
+      reason: 'the scale key at 2 keeps its time',
+    );
   });
 
   test('the type alone frees the key between, which stands where its run '

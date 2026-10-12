@@ -1274,6 +1274,22 @@ class LaneVerbs {
       if (canRove) key.roving,
   ];
 
+  /// Whether the sides the key window picks count on a key the range
+  /// covers, the window's roving row picked as [roves] says — on every key
+  /// but one whose time roves: the pace through it is the one its run's
+  /// timed ends set, and its mark is the roving dot, no sides. Where they
+  /// count on none, the window's two rows are offered and refused (유저
+  /// 2026-10-12: 「설정한 시작/끝 보간이 의미가 있다면 비활성화 안되는게
+  /// 맞고. 의미가 없다면 비활성화 시키는게 맞겟고」).
+  ///
+  /// The keys are read once: the window asks again at every pick.
+  bool Function(bool? roves) get laneKeySidesCountForSelection {
+    final keys = _laneRangeKeys();
+    return (roves) => keys.any(
+      (covered) => !covered.canRove || !(roves ?? covered.key.roving),
+    );
+  }
+
   /// Names every key the LANE RANGE covers, on every lane it spans — the
   /// range form of [setLaneKeyName], committed as ONE undo step.
   ///

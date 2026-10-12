@@ -796,6 +796,7 @@ Future<void> _renameLaneKey(
   final sides = session.laneVerbs.laneKeySidesForSelection;
   final paths = session.laneVerbs.laneKeyPathsForSelection;
   final roving = session.laneVerbs.laneKeyRovingForSelection;
+  final sidesCount = session.laneVerbs.laneKeySidesCountForSelection;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -808,11 +809,16 @@ Future<void> _renameLaneKey(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // A key whose time roves wears no sides: where every key the
+          // window covers would, its two rows stand refused — at once as the
+          // roving row is picked, and back as it is picked off.
           KeySidesRows(
             sides: sides,
             picked: picked.sides ?? const KeySidesEdit(),
-            onPicked: (edit) =>
-                setLocal(() => picked = picked.copyWith(sides: edit)),
+            onPicked: sidesCount(picked.roving)
+                ? (edit) =>
+                      setLocal(() => picked = picked.copyWith(sides: edit))
+                : null,
           ),
           const SizedBox(height: 10),
           KeyFlagRow(

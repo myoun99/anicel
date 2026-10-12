@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/the_classic_rail.dart';
@@ -477,6 +478,53 @@ void main() {
       off: false,
       on: true,
     ));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  /// Whether the key window's arrival (`in`) and departure (`out`) rows
+  /// take a pick — a kind, and the 세기 of an ease.
+  ({bool kinds, bool influence}) sideTakes(WidgetTester tester, String side) {
+    final linear = find.byKey(ValueKey<String>('rename-key-$side-linear'));
+    final influence = find.byKey(
+      ValueKey<String>('rename-key-$side-influence'),
+    );
+    return (
+      kinds: tester.widget<Pill>(linear).onTap != null,
+      influence: tester.widget<FieldSlider>(influence).onChanged != null,
+    );
+  }
+
+  /// 유저 2026-10-12: 「의미가 없다면 비활성화 시키는게 맞겟고」 — the sides of
+  /// a key whose time roves set nothing: its run's timed ends pace it.
+  testWidgets("a key whose time roves wears no sides: the window's two rows "
+      'stand refused as the roving row is picked on, and back as it is '
+      'picked off', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    final ease = find.byKey(const ValueKey<String>('rename-key-in-ease'));
+    await tester.ensureVisible(ease);
+    await tester.tap(ease);
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: true, influence: true));
+    expect(sideTakes(tester, 'out'), (kinds: true, influence: false));
+
+    final on = find.byKey(const ValueKey<String>('rename-key-rove-on'));
+    await tester.ensureVisible(on);
+    await tester.tap(on);
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: false, influence: false));
+    expect(sideTakes(tester, 'out'), (kinds: false, influence: false));
+
+    await tester.tap(find.byKey(const ValueKey<String>('rename-key-rove-off')));
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: true, influence: true));
+    expect(sideTakes(tester, 'out'), (kinds: true, influence: false));
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );

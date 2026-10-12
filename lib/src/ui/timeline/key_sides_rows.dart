@@ -30,6 +30,9 @@ import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 /// 세기 writes the influence all of them take — `...` where they take
 /// different ones — standing disabled in its place while the side is no
 /// ease.
+///
+/// With no [onPicked] the two rows are offered and refused: the sides
+/// count on none of the keys (I-89 ④ — every one roves).
 class KeySidesRows extends StatelessWidget {
   const KeySidesRows({
     super.key,
@@ -44,11 +47,12 @@ class KeySidesRows extends StatelessWidget {
   /// What the user picked so far — only that is ever written.
   final KeySidesEdit picked;
 
-  final ValueChanged<KeySidesEdit> onPicked;
+  final ValueChanged<KeySidesEdit>? onPicked;
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
+    final onPicked = this.onPicked;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -65,9 +69,11 @@ class KeySidesRows extends StatelessWidget {
           ],
           current: [for (final side in sides) side.incoming],
           picked: picked.incoming,
-          onPicked: (edit) => onPicked(
-            KeySidesEdit(incoming: edit, outgoing: picked.outgoing),
-          ),
+          onPicked: onPicked == null
+              ? null
+              : (edit) => onPicked(
+                  KeySidesEdit(incoming: edit, outgoing: picked.outgoing),
+                ),
         ),
         const SizedBox(height: 10),
         _SideRow<KeyExit>(
@@ -83,9 +89,11 @@ class KeySidesRows extends StatelessWidget {
           ],
           current: [for (final side in sides) side.outgoing],
           picked: picked.outgoing,
-          onPicked: (edit) => onPicked(
-            KeySidesEdit(incoming: picked.incoming, outgoing: edit),
-          ),
+          onPicked: onPicked == null
+              ? null
+              : (edit) => onPicked(
+                  KeySidesEdit(incoming: picked.incoming, outgoing: edit),
+                ),
         ),
       ],
     );
@@ -116,11 +124,14 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
 
   final List<S> current;
   final KeySideEdit<S>? picked;
-  final ValueChanged<KeySideEdit<S>> onPicked;
+
+  /// Null where the row is offered and refused ([KeySidesRows.onPicked]).
+  final ValueChanged<KeySideEdit<S>>? onPicked;
 
   @override
   Widget build(BuildContext context) {
     final picked = this.picked;
+    final onPicked = this.onPicked;
     final together = keySidesTogether([
       for (final side in current) picked?.applyTo(side) ?? side,
     ]);
@@ -155,7 +166,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
             restingText: eases && together.influence == null
                 ? unionMixedKeyName
                 : null,
-            onChanged: eases
+            onChanged: eases && onPicked != null
                 ? (influence) => onPicked(
                     KeySideEdit(side: picked?.side, influence: influence),
                   )
@@ -168,12 +179,16 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
 
   PillItem _choice(S choice, {required bool lit}) {
     final kind = keySideKindOf(choice);
+    final onPicked = this.onPicked;
     return PillItem(
       keyValue: 'rename-key-$id-${kind.name}',
       label: kind.labelFor(AppText.language),
       selected: lit,
-      onTap: () =>
-          onPicked(KeySideEdit(side: choice, influence: picked?.influence)),
+      onTap: onPicked == null
+          ? null
+          : () => onPicked(
+              KeySideEdit(side: choice, influence: picked?.influence),
+            ),
       leading: CustomPaint(
         size: const Size.square(_glyphSize),
         painter: _KeySidePainter(kind, leaving: leaving),
