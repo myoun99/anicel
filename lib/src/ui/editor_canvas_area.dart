@@ -125,6 +125,14 @@ typedef _ShownSpace = ({
   CanvasPoint Function(CanvasPoint point) fromCanvas,
 });
 
+/// A row's position [lane] as the canvas shows it: its frames [axisOffset]
+/// ahead of the cut's, its points shown through [space].
+typedef _PositionShown = ({
+  PropertyTrack<CanvasPoint> lane,
+  int axisOffset,
+  _ShownSpace space,
+});
+
 /// The backdrop's share of the editing canvas over the live cut once the
 /// O.L's other cuts are laid above it: the live cut keeps [cutFadeOpacity],
 /// each partner its own share ([partnerShares] — its ramp, the unit alpha
@@ -1391,7 +1399,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return _pathTangents(
       session,
       cameraRowId,
-      track.position,
+      (lane: track.position, axisOffset: 0, space: _shownThrough(null)),
       description: 'Bend camera path',
     );
   }
@@ -1412,9 +1420,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return _pathTangents(
       session,
       layer.id,
-      lane,
-      space: space,
-      axisOffset: axisOffset,
+      (lane: lane, axisOffset: axisOffset, space: space),
       description: 'Bend ${layer.name} path',
     );
   }
@@ -1422,26 +1428,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// The handles of a row's curved [position] keys on its path (I-89 ④):
   /// drawn with it in time (유저 2026-10-10, 「공간 + 시간」 — the mock's
   /// 5판 draws them there), over the frames it is drawn for, each tangent
-  /// carried bending its key — one undo where it is let go. [space] shows
-  /// the row's position on the canvas (a camera's is on it already), and
-  /// [position]'s frames run [axisOffset] ahead of the cut's.
+  /// carried bending its key — one undo where it is let go — where the
+  /// canvas shows the row's position (a camera's is on it already).
   List<RowBoxTangent> _pathTangents(
     EditorSessionManager session,
     LayerId rowId,
-    PropertyTrack<CanvasPoint> position, {
+    _PositionShown position, {
     required String description,
-    _ShownSpace? space,
-    int axisOffset = 0,
   }) {
     final settings = CameraPathSettings.settings.value;
     if (settings.show != CameraPathShow.spaceAndTime) {
       return const [];
     }
-    final shown = space ?? _shownThrough(null);
+    final (:lane, :axisOffset, space: shown) = position;
     final (:from, :to) = settings.framesShownAt(session.currentFrameIndex);
     return [
       for (final knob in keyPathKnobs(
-        position.keys,
+        lane.keys,
         from: from == null ? null : from + axisOffset,
         to: to == null ? null : to + axisOffset,
       ))

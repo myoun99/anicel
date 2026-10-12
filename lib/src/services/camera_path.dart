@@ -318,11 +318,10 @@ Iterable<SheetMark> cameraPathTicks(
     yield frameBeside(frame, corners, argb, by: every);
   }
   for (final key in path.keys) {
-    final named = key.name != null;
     final point = cameraPlaceIsAPoint(key.corners);
     if (key.frameIndex >= first &&
         key.frameIndex <= last &&
-        (named || !point)) {
+        (key.name != null || !point)) {
       yield frameBeside(
         key.frameIndex,
         [for (final corner in key.corners) place(corner)],
