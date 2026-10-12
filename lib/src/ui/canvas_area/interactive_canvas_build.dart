@@ -851,11 +851,7 @@ class _InteractiveCanvasBuild {
               throughCamera: shot != null,
             ),
           if (editing && _cameraOverlayVisible)
-            _state._cameraPath(
-              frame.session,
-              viewport,
-              standing: frame.isCameraLayerActive,
-            ),
+            _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
         ],

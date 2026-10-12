@@ -1368,31 +1368,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// 보여주는 규칙 그대로 경로도」 — ↩️ it was drawn standing on the camera
   /// row or its position lane alone), as the canvas's camera path settings
   /// say — at the size the frame is shown at, around the playhead the cursor
-  /// moves, and nowhere in a gap. [standing] on the camera's row it is drawn
-  /// in time as well; elsewhere as the export writes it ([CameraPathOverlay]).
+  /// moves, and nowhere in a gap. Standing on the camera's row, where its
+  /// box is ([_cameraBox]), it is drawn in time as well; elsewhere as the
+  /// export writes it ([CameraPathOverlay.standing]).
   Positioned _cameraPath(
-    EditorSessionManager session,
-    CanvasViewport viewport, {
-    required bool standing,
-  }) => Positioned.fill(
+    _HostFrame frame,
+    CanvasViewport viewport,
+  ) => Positioned.fill(
     child: ValueListenableBuilder<CameraPathSettings>(
       valueListenable: CameraPathSettings.settings,
       builder: (context, settings, _) => settings.show == CameraPathShow.off
           ? const SizedBox.shrink()
           : ListenableBuilder(
-              listenable: session.canvasAdjust,
-              builder: (context, _) => _atTheCameraPose(session, (_) {
-                final path = session.camera.activeCutCameraPath(
-                  _cameraFrameSizeShown(session),
+              listenable: frame.session.canvasAdjust,
+              builder: (context, _) => _atTheCameraPose(frame.session, (_) {
+                final path = frame.session.camera.activeCutCameraPath(
+                  _cameraFrameSizeShown(frame.session),
                 );
                 return path == null
                     ? const SizedBox.shrink()
                     : CameraPathOverlay(
                         path: path,
-                        playhead: session.currentFrameIndex,
+                        playhead: frame.session.currentFrameIndex,
                         settings: settings,
                         viewport: viewport,
-                        standing: standing,
+                        standing: frame.isCameraLayerActive,
                       );
               }),
             ),
