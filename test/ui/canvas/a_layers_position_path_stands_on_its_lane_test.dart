@@ -328,6 +328,16 @@ void main() {
     );
     await tester.pump();
     expect(box(tester).tangents, hasLength(2));
+    // And back from it: four either side of 10 keep the key at 10 alone,
+    // the cut's 0 and 5 before its 6.
+    s.selectFrameIndex(10);
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      range: CameraPathRange.aroundPlayhead,
+      around: 4,
+    );
+    await tester.pump();
+    expect(box(tester).tangents, hasLength(1));
+    s.selectFrameIndex(0);
     reset();
     await tester.pump();
 
