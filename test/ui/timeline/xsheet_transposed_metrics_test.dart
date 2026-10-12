@@ -135,9 +135,13 @@ void main() {
       // 있는거 싹다 넣어. 뭐 빼지말고." — every control. The room the rail
       // pays a lane's value hands is a need ALONG it: on the sheet a lane's
       // value row, turned (유저 2026-10-11), fits in the lane's own column
-      // under its name — paid, the block outgrew the tallest dock.
+      // under its name — paid, the block outgrew the tallest dock. And it
+      // keeps the 22 a header graph's slot gave it, where a stood-up lane
+      // stands its pin and chips (I-89-Q17 A: 「시트 머리는 지금 높이
+      // 그대로(+22)」).
       const carried = timelineLayerControlsWidth -
           layerLaneValueHandsWidth +
+          22 +
           2;
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
@@ -146,7 +150,7 @@ void main() {
         ),
         carried,
       );
-      expect(carried, 443 + 2);
+      expect(carried, 443 + 22 + 2);
       // A host that declines the optional columns costs exactly them less
       // — the legend beside the headers sizes from the same call, so the
       // two cannot part.
@@ -175,7 +179,10 @@ void main() {
           columns: grown,
           optionalColumns: (onion: true, blend: true),
         ),
-        timelineLayerControlsWidthFor(grown) - layerLaneValueHandsWidth + 2,
+        timelineLayerControlsWidthFor(grown) -
+            layerLaneValueHandsWidth +
+            22 +
+            2,
       );
     });
 

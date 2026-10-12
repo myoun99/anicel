@@ -177,11 +177,20 @@ class XSheetTimelineGrid extends StatefulWidget {
       _sectionBandHeight +
       (layerRailLeadingWidth - layerSectionLabelSlotWidth) +
       _naturalNameExtent(columns) +
+      _laneGraphRoom +
       layerRailTrailingWidth(
         columns: columns,
         optionalColumns: optionalColumns,
       ) +
       _headerBorderExtent;
+
+  /// What the block keeps past the rail stood up (I-89-Q17 A, 유저
+  /// 2026-10-12: 「시트 머리는 지금 높이 그대로(+22)」): a header graph's
+  /// slot gave it this room from 10-11, a stood-up lane stands its pin and
+  /// chips in it, and the rail's answer to I-89 Q1 took the slot and left
+  /// the room. Taken off, the lanes shed both — the pin and chips are what
+  /// a column pays last.
+  static const double _laneGraphRoom = 22;
 
   /// The NAME's share of the rail — what the horizontal row's `Expanded`
   /// resolves to once every slot has been served, the onion's and the

@@ -35,7 +35,10 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
     show railSwipeColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
-    show timelineFrameCellWidth;
+    show
+        TimelineGridMetrics,
+        timelineFrameCellWidth,
+        timelineLayerControlsWidth;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -432,6 +435,141 @@ void main() {
       reason: 'a rail that draws no graph keeps no room for its pin and '
           'chips: the name has it',
     );
+  });
+
+  testWidgets('a lane\'s name starts right after its key buttons, the '
+      'graph\'s chips at its end — on both axes', (tester) async {
+    // I-89-Q17 (유저 2026-10-12): 「키쪽에 기준점같은 이름 텍스트 딱
+    // 붙여서 공간만듬」 — the chips' slot stood between the two.
+    await tester.binding.setSurfaceSize(const Size(800, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final layer = Layer(id: _drawId, name: 'Drawing', frames: const []);
+    final lane = PropertyLaneRow(
+      laneId: 'position',
+      label: 'Position',
+      keyMarks: const {},
+      valueLabel: (_) => '320.0, 180.0',
+      curve: (
+        parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
+        at: (_) => const [320.0, 180.0],
+        sides: const {},
+      ),
+    );
+    final seat = TimelineGraphSeat(
+      groupKey: laneGroupKey(_drawId, _transform),
+      graph: const LaneGraph(),
+      lanes: const ['position'],
+      picked: const [],
+      pinned: const [],
+    );
+
+    /// How far past its key buttons the name starts.
+    Future<double> gapAfterKeys(Axis axis, {required bool graphs}) async {
+      final horizontal = axis == Axis.horizontal;
+      final grid = horizontal ? 'timeline' : 'xsheet';
+      final metrics = horizontal
+          ? TimelineGridMetrics.defaults
+          : XSheetTimelineGrid.defaultMetrics;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: TimelineLaneControlsRow(
+                axis: axis,
+                keyPrefix: grid,
+                layer: layer,
+                lane: lane,
+                laneEdit: PropertyLaneEditCallbacks(
+                  onToggleKeyAt: (_, _, _) {},
+                ),
+                metrics: metrics,
+                width: horizontal
+                    ? timelineLayerControlsWidth
+                    : metrics.layerRowHeight,
+                height: horizontal ? metrics.layerRowHeight : 480,
+                laneGraphVerbs: graphs
+                    ? (
+                        toggle: (_) {},
+                        togglePin: (_) {},
+                        plot: (_, _) {},
+                        resize: (_, _) {},
+                        enlarge: (_) {},
+                      )
+                    : null,
+                seat: graphs ? seat : null,
+              ),
+            ),
+          ),
+        ),
+      );
+      final keys = tester.getRect(
+        find.byKey(ValueKey<String>('$grid-lane-next-key-draw-position')),
+      );
+      final name = tester.getRect(
+        horizontal
+            ? find.text('Position')
+            : find.descendant(
+                of: _cell(grid, 'position'),
+                matching: find.byType(VerticalWritingText),
+              ),
+      );
+      if (graphs) {
+        final chip = tester.getRect(
+          find.byKey(ValueKey<String>('$grid-lane-chip-draw-position-0')),
+        );
+        expect(
+          horizontal ? chip.left : chip.top,
+          greaterThanOrEqualTo(horizontal ? name.right : name.bottom),
+          reason: '$axis: the chips stand at the end of the name',
+        );
+      }
+      return horizontal ? name.left - keys.right : name.top - keys.bottom;
+    }
+
+    for (final axis in Axis.values) {
+      final carried = await gapAfterKeys(axis, graphs: true);
+      final without = await gapAfterKeys(axis, graphs: false);
+      expect(carried, moreOrLessEquals(without), reason: '$axis');
+    }
+  });
+
+  testWidgets('the sheet\'s lane names stand on one line across a group\'s '
+      'columns', (tester) async {
+    // I-89-Q17 (유저 2026-10-12): 「x시트만 뒤죽박죽인데 일정하게
+    // 위쪽정렬되도록」 — the chips' slot stood over the name in the columns
+    // long enough to pay it, and a chained lane's column is not.
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(_cell('xsheet', 'position'));
+    await tester.pumpAndSettle();
+    expect(
+      _chips(tester, 'position', grid: 'xsheet'),
+      2,
+      reason: '⛔전제: a column that wears its chips',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-lane-value-link-draw-scale')),
+      findsOneWidget,
+      reason: '⛔전제: and one whose chain is paid before them',
+    );
+
+    double top(String laneId) => tester
+        .getTopLeft(
+          find.descendant(
+            of: _cell('xsheet', laneId),
+            matching: find.byType(VerticalWritingText),
+          ),
+        )
+        .dy;
+    for (final laneId in ['anchor-point', 'scale', 'rotation', 'opacity']) {
+      expect(top(laneId), moreOrLessEquals(top('position')), reason: laneId);
+    }
   });
 }
 

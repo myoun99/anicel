@@ -946,11 +946,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// left over, and names are not the same length.
   ///
   /// I-89 ③: on a rail that carries the header graphs, the curve's chips
-  /// before the name and the pin before the value, each in a slot every
-  /// lane keeps, so the names and the pins stand in one column whichever
-  /// lanes wear them.
+  /// and the pin at the end of the name, before the value, each in a slot
+  /// every lane keeps — so the name starts right after the key buttons and
+  /// the chips and the pins stand in one column whichever lanes wear them
+  /// (I-89-Q17, 유저 2026-10-12: 「키쪽에 기준점같은 이름 텍스트 딱 붙여서
+  /// 공간만듬」). On both axes ([_memberColumn]).
   ///
-  /// ↩️The rail paid the two slots, 44 wider, from 2026-10-11 to 10-12: a
+  /// ↩️The chips stood before the name, between it and the key buttons,
+  /// and the rail paid the two slots, 44 wider, from 2026-10-11 to 10-12: a
   /// row's own buttons come out of its name (I-89 Q1, 「이름공간을 줄여서
   /// 오른쪽정렬로 … 즉 레이어 이름행이 2개분 줄어드는거지」).
   Widget _memberRow(
@@ -966,14 +969,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           _navigator(colorScheme),
           const SizedBox(width: 6),
         ],
-        if (graphs)
-          SizedBox(
-            width: layerLaneChipsSlotWidth,
-            child: _curveChips(drawn),
-          ),
         Expanded(child: label),
         ?_valueLink(),
-        if (graphs) SizedBox(width: layerLanePinSlotWidth, child: _lanePin()),
+        if (graphs) ...[
+          SizedBox(width: layerLaneChipsSlotWidth, child: _curveChips(drawn)),
+          SizedBox(width: layerLanePinSlotWidth, child: _lanePin()),
+        ],
         const SizedBox(width: _laneValueGap),
         SizedBox(
           // As wide as its boxes' widest number where the rail is shown: a
@@ -1096,6 +1097,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// 2026-10-11 「여쭐것 둘다 문제없음」).
   /// ↩️Stood up: two small boxes one under the other, each with its pencil
   /// under it, and no ± (2026-10-10).
+  ///
+  /// The name starts right under the key buttons, on one line across a
+  /// group's columns (I-89-Q17, 유저 2026-10-12: 「x시트만 뒤죽박죽인데
+  /// 일정하게 위쪽정렬되도록」): the chips stand at its end with the pin.
+  /// ↩️Above it, they pushed it down in the columns long enough to pay them
+  /// and not in the rest — a chained lane pays them later.
   Widget _memberColumn(
     ColorScheme colorScheme,
     Widget label,
@@ -1117,16 +1124,16 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               _navigator(colorScheme),
               const SizedBox(height: _laneStoodNavigatorGap),
             ],
-            if (shows.chips)
-              SizedBox(
-                height: layerLaneChipsSlotWidth,
-                child: _curveChips(drawn),
-              ),
             Expanded(child: label),
             if (shows.link)
               SizedBox(
                 height: _laneValueLinkExtent,
                 child: Center(child: link),
+              ),
+            if (shows.chips)
+              SizedBox(
+                height: layerLaneChipsSlotWidth,
+                child: _curveChips(drawn),
               ),
             if (shows.pin)
               SizedBox(
