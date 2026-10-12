@@ -85,8 +85,9 @@ String cameraFrameLabel(int frameIndex) => '${frameIndex + 1}f';
 /// the camera is, and its [label] at the frame's top-left corner — on every
 /// surface alike (유저 2026-10-12: 「아까처럼 중앙에 두자 … 이 궤도 시스템은
 /// 콘티용지패널이랑 정확히 동일. 즉 법 통일」). ↩️The conte crossed a named
-/// key between alone, at its corner (H55), and its ends not at all; for a
-/// while that day every surface crossed a key at its corner.
+/// key between alone, at its corner (H55), and its ends not at all. A cross
+/// on every key's corner, to stand with its label, was asked for and taken
+/// back the same day (「그냥 일단 십자가쪽 왼쪽위로 옮기자」 → 「취소할게」).
 class CameraMarkedKey {
   const CameraMarkedKey({
     required this.corners,
