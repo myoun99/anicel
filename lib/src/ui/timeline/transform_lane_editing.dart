@@ -43,7 +43,11 @@ TransformTrack? transformTrackWithLaneKeyToggled(
       return track.copyWith(
         position: track.position.keyAt(frameIndex) != null
             ? track.position.withoutKey(frameIndex)
-            : track.position.withKey(frameIndex, resolvedPose.center),
+            : positionLaneKeyed(
+                track.position,
+                frameIndex,
+                resolvedPose.center,
+              ),
       );
     case 'scale':
       return track.copyWith(
@@ -168,10 +172,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        position: track.position.withKey(
-          frameIndex,
-          point,
-        ),
+        position: positionLaneKeyed(track.position, frameIndex, point),
       );
     case 'scale':
       // What the lane shows at the frame is what the typed value is read
@@ -225,10 +226,7 @@ TransformTrack transformTrackWithPositionDragged(
   required CanvasPoint position,
 }) {
   return track.copyWith(
-    position: track.position.withKey(
-      frameIndex,
-      position,
-    ),
+    position: positionLaneKeyed(track.position, frameIndex, position),
   );
 }
 
@@ -365,7 +363,12 @@ TransformTrack? transformTrackWithGroupReset(
     return null;
   }
 
-  PropertyTrack<T>? reset<T>(PropertyTrack<T> lane, T value) {
+  PropertyTrack<T>? reset<T>(
+    PropertyTrack<T> lane,
+    T value, [
+    PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
+        keyed,
+  ]) {
     // Untouched by design: no keys means the lane already resolves to its
     // default everywhere.
     if (lane.isEmpty) {
@@ -376,16 +379,13 @@ TransformTrack? transformTrackWithGroupReset(
       if (keyedFramesOnly && lane.keyAt(frame) == null) {
         continue;
       }
-      next = next.withKey(
-        frame,
-        value,
-      );
+      next = keyed?.call(next, frame, value) ?? next.withKey(frame, value);
     }
     return next == lane ? null : next;
   }
 
   final anchor = reset(track.anchorPoint, defaultAnchorPoint);
-  final position = reset(track.position, identity.center);
+  final position = reset(track.position, identity.center, positionLaneKeyed);
   final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);

@@ -147,7 +147,7 @@ class TransformTrack {
   /// POSE FACADE: keys position+scale+rotation together at [frameIndex].
   TransformTrack withKeyframe(int frameIndex, TransformPose pose) {
     return copyWith(
-      position: position.withKey(frameIndex, pose.center),
+      position: positionLaneKeyed(position, frameIndex, pose.center),
       scale: scale.withKey(frameIndex, pose.scale),
       rotation: rotation.withKey(frameIndex, pose.rotationDegrees),
     );
@@ -351,6 +351,23 @@ TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
 /// lane's key is offered a path.
 bool walksAPath(TransformPropertyId property) =>
     property == TransformPropertyId.position;
+
+/// [lane] — a position lane — with [value] keyed at [frameIndex]: the one
+/// write of a position key. A key new there is smooth through its
+/// neighbours ([KeyPath.auto]), as After Effects lays a new key on a motion
+/// path (I-89-Q10 B, 유저 2026-10-12: 「AE 처럼 처음부터 곡선」) — a move of
+/// two keys still runs straight, one of three or more bends. A key already
+/// there keeps the path it was given. ↩️A new key was a corner, the key
+/// window making it a curve (④-Q4 A).
+PropertyTrack<CanvasPoint> positionLaneKeyed(
+  PropertyTrack<CanvasPoint> lane,
+  int frameIndex,
+  CanvasPoint value,
+) => lane.withKey(
+  frameIndex,
+  value,
+  path: lane.keyAt(frameIndex) == null ? KeyPath.auto : null,
+);
 
 /// [property]'s lane of [track], read without knowing its value type — so
 /// a key's NAME and its TYPE (the key window's two halves) and whether it

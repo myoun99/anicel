@@ -32,8 +32,10 @@ void main() {
   late CanvasPoint c5;
   late CanvasPoint c10;
 
-  /// A cut whose camera turns a corner at frame 5, made smooth there, stood
-  /// on at frame 0 on its camera row.
+  /// A cut whose camera turns a corner at frame 5, smooth there, stood on
+  /// at frame 0 on its camera row. Its keys are smooth as they are made
+  /// (I-89-Q10 B) — the ends are made corners again, so the key at 5 alone
+  /// wears a handle of any length.
   (EditorSessionManager, LayerId) turning() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final camera = s.camera;
@@ -50,7 +52,7 @@ void main() {
     final track = camera.activeCutCameraTrack!;
     camera.updateActiveCutCameraTrack(
       track.copyWith(
-        position: track.position.withKeyPaths(frames: {5}, curved: true),
+        position: track.position.withKeyPaths(frames: {0, 10}, curved: false),
       ),
     );
     s.selectFrameIndex(0);

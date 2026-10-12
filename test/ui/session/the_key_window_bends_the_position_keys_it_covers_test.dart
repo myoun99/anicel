@@ -120,7 +120,8 @@ void main() {
     expect(position().keyAt(4)!.path, KeyPath.straight, reason: 'unnamed');
   });
 
-  test('the camera\'s position keys bend the same way', () {
+  test('the camera\'s position keys straighten and bend the same way — '
+      'smooth as they are made (I-89-Q10 B)', () {
     final camera = cameraOf(session);
     for (final frame in [0, 4, 8]) {
       session.selectFrameIndex(frame);
@@ -137,12 +138,13 @@ void main() {
       startIndex: 4,
       endIndexExclusive: 5,
     );
-    expect(laneVerbs.laneKeyPathsForSelection, [KeyPath.straight]);
+    KeyPath pathAt4() =>
+        session.requireActiveCut.camera.track.position.keyAt(4)!.path;
+    expect(laneVerbs.laneKeyPathsForSelection, [KeyPath.auto]);
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: false));
+    expect(pathAt4(), KeyPath.straight);
     laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: true));
-    expect(
-      session.requireActiveCut.camera.track.position.keyAt(4)!.path,
-      KeyPath.auto,
-    );
+    expect(pathAt4(), KeyPath.auto);
   });
 }
 

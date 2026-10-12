@@ -4,11 +4,12 @@ import 'canvas_point.dart';
 /// beside how fast it travels there ([KeySide]), After Effects' spatial
 /// interpolation.
 ///
-/// I-89 ④-Q4, the recommendation (A) while it is asked: a key is a corner
-/// by default — a pan runs straight — and the key window turns it into a
-/// curve, smooth through the key as its neighbours lay it (AE's auto
-/// bezier); a handle pulled on the canvas then stays where it was left,
-/// the other side following as its mirror.
+/// A key new on a position lane is smooth through the key as its
+/// neighbours lay it, AE's auto bezier (I-89-Q10 B — the one write is
+/// `positionLaneKeyed`); the key window turns it into a corner and back,
+/// and a handle pulled on the canvas then stays where it was left, the
+/// other side following as its mirror (④-Q4 A). ↩️A key was a corner by
+/// default — a pan runs straight — the key window making it a curve.
 ///
 /// ⚠️Only a position lane's keys walk a path; every other key is
 /// [straight] and is never offered another.
