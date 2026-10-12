@@ -464,6 +464,27 @@ void main() {
       expect((key.h, key.v), (SheetAlign.start, SheetAlign.end));
     });
 
+    test('a roving key\'s frame stands beside its cross, where the camera '
+        'passes it — not where the cell it stands on would put it', () {
+      final roving = CutCamera.fromTrack(
+        TransformTrack.empty().copyWith(
+          position: three.track.position.withKeysRoving(
+            frames: {12},
+            roving: true,
+          ),
+        ),
+      );
+      final key = labelsOf(
+        pathOf(roving),
+        every: 5,
+        playhead: 0,
+      ).singleWhere((label) => label.text == '16f');
+      // Passed at (320, 45), 15.36 — frame 10 level before it, 20 straight
+      // below. The camera at frame 15 is short of the corner, with 20 below
+      // and right of it.
+      expectPoints([key.slot.topLeft], const [Offset(322, 47)]);
+    });
+
     test('where the path takes the quarter below and right, the frame stands '
         'in the first free of below-left, above-right and above-left (「십자가 '
         '오른쪽아래,왼쪽아래,오른쪽위,왼쪽위 우선순위는 이 순서대로 '
