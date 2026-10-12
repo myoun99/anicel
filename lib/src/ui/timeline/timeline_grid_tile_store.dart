@@ -674,10 +674,10 @@ class TimelineGridTileStore {
   /// 🚨A WARM SPAN IS RASTERED, BAKED AND UPLOADED IN THE QUIET BETWEEN TWO
   /// HELD FRAMES ([quietBetweenHeldFrames] has the measurement): waits for
   /// [quiet] to begin, and answers false — the warm-up goes on after the
-  /// next held frame — when it has no room at all, when it ends before one
-  /// more span would land, or when a [clear] came meanwhile. A span longer
-  /// than the quiet once does not shut the warm-up out: each turned-away
-  /// look shortens what is asked.
+  /// next held frame — when it has no room at all, when it is over, when it
+  /// ends before one more span would land, or when a [clear] came
+  /// meanwhile. A span longer than the quiet once does not shut the warm-up
+  /// out: each look turned away by a quiet too short shortens what is asked.
   ///
   /// With nothing held there is no quiet to keep, and a warm span is taken
   /// in the same turn as the call that asked for it, as it always was.
@@ -685,10 +685,10 @@ class TimelineGridTileStore {
     ({int fromMicros, int untilMicros}) quiet,
     int epoch,
   ) async {
-    if (quiet.untilMicros <= quiet.fromMicros) {
+    final now = warmUpQuiet.now();
+    if (quiet.untilMicros <= quiet.fromMicros || now >= quiet.untilMicros) {
       return false;
     }
-    final now = warmUpQuiet.now();
     if (now < quiet.fromMicros) {
       await warmUpQuiet.wait(Duration(microseconds: quiet.fromMicros - now));
       if (epoch != _epoch) {

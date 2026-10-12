@@ -275,36 +275,46 @@ final class RasterSpread {
 /// against 3.3ms in the others — and those were the film frames shown a
 /// refresh late.
 ///
-/// The quiet a held frame leaves runs from its raster's end — the [held]
-/// frames' scene after its release, where the latch's window for its
-/// vblank closes — to the next held frame's release, their interval after
-/// its own, less [marginMicros] for where that release falls and for the
-/// build before it.
-/// The answer is the first such quiet not over at [nowMicros]. Where the
-/// scenes leave no room it is EMPTY — it ends before it begins — and the
-/// work waits for one that has room: a quiet with no room is not leave to
-/// run beside the frames.
+/// The quiet a held frame leaves runs from its raster's end — where the
+/// latch's window for the vblank it claimed closes — to the next held
+/// frame's hand-off, less [marginMicros] for the work that frame still does
+/// before it. Held frames claim VBLANKS, so the next stands a whole number
+/// of refreshes past this one — at least the [held] gap — and is handed
+/// over no sooner than its claim's window opens: the quiet ends on the
+/// vblank grid, not on when a frame happened to be let go.
+///
+/// ↩️It was read off the moments the held frames were let go: their
+/// interval after the last, less two refreshes for where the next release
+/// falls and the build before it. 🧮At 60Hz a 24fps film is held two
+/// refreshes and three by turns, and two refreshes and a millisecond are
+/// more than the shorter — every quiet was EMPTY and nothing warmed while
+/// a cut played there (10-12); at 144Hz that margin took 15ms of 42.
+///
+/// Where the scenes leave no room it is EMPTY — it ends before it begins —
+/// and the work waits for a held frame that leaves some: a quiet with no
+/// room is not leave to run beside the frames. Once over it stays over:
+/// when the held frame after next comes is known once the next has.
 ({int fromMicros, int untilMicros}) quietBetweenHeldFrames({
-  required int nowMicros,
   required HeldFrames held,
   required int marginMicros,
 }) {
-  final (:lastReleaseMicros, :sceneMicros, :intervalMicros) = held;
-  final over = nowMicros - (lastReleaseMicros + intervalMicros - marginMicros);
-  final release =
-      lastReleaseMicros +
-      (over < 0 ? 0 : over ~/ intervalMicros + 1) * intervalMicros;
+  final (:vblankMicros, :periodMicros, :gap, :handOffFromMicros) = held;
   return (
-    fromMicros: release + sceneMicros,
-    untilMicros: release + intervalMicros - marginMicros,
+    fromMicros: (vblankMicros + periodMicros - presentLatchLateMicros)
+        .round(),
+    untilMicros:
+        (vblankMicros + gap * periodMicros + handOffFromMicros).round() -
+        marginMicros,
   );
 }
 
-/// What a run's held frames say of the quiet they leave: when the last was
-/// let go, how long after that its raster is over, and the interval
-/// between two ([quietBetweenHeldFrames]).
+/// What a run's held frames say of the quiet they leave: the vblank the
+/// last claimed and the refresh period, the fewest refreshes the next can
+/// stand past it, and where against its vblank a frame is handed over
+/// ([quietBetweenHeldFrames]).
 typedef HeldFrames = ({
-  int lastReleaseMicros,
-  int sceneMicros,
-  int intervalMicros,
+  double vblankMicros,
+  double periodMicros,
+  int gap,
+  double handOffFromMicros,
 });

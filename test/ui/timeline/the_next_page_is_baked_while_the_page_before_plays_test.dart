@@ -620,6 +620,30 @@ void main() {
       expect(uploads, 2, reason: 'a quiet of 25ms still takes one');
     });
 
+    test('a quiet that is over turns the warm-up away and shortens nothing '
+        '— the next held frame\'s quiet asks for the span it '
+        'learned', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await shownRow('over', taking: 30000);
+      quiet = (fromMicros: 0, untilMicros: 1000000);
+      store.warmTheNextPage(tiles: 1);
+      await idle();
+      expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
+
+      quiet = (fromMicros: 0, untilMicros: clock - 1);
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+      expect(uploads, 1, reason: 'it is over');
+
+      quiet = (fromMicros: clock, untilMicros: clock + 25000);
+      store.warmTheNextPage(tiles: 4);
+      await idle();
+      expect(uploads, 1, reason: 'a 30ms span does not fit 25ms');
+    });
+
     test('🚨a quiet with no room holds the warm-up back — a run that leaves '
         'none is not leave to run beside its frames', () async {
       if (!available) {

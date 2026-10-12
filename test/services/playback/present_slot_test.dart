@@ -365,60 +365,42 @@ void main() {
   });
 
   group('the quiet between two held frames', () {
-    const release = 1000;
-    const interval = 41700; // 24 film frames a second
-    const scene = 7000;
-    const margin = 8000;
+    const held = 5000000.0; // the vblank the last held frame claimed
+    const handOffFrom = -3200.0;
+    const margin = 4000;
 
-    ({int fromMicros, int untilMicros}) quietAt(int now) =>
-        quietBetweenHeldFrames(
-          nowMicros: now,
-          held: (
-            lastReleaseMicros: release,
-            sceneMicros: scene,
-            intervalMicros: interval,
-          ),
-          marginMicros: margin,
-        );
+    ({int fromMicros, int untilMicros}) quietAfter({
+      int gap = 6,
+      double periodMicros = period,
+      double handOffFromMicros = handOffFrom,
+    }) => quietBetweenHeldFrames(
+      held: (
+        vblankMicros: held,
+        periodMicros: periodMicros,
+        gap: gap,
+        handOffFromMicros: handOffFromMicros,
+      ),
+      marginMicros: margin,
+    );
 
-    test('🚨runs from the held frame\'s raster\'s end to the next held '
-        'release, less the margin', () {
-      expect(quietAt(release), (
-        fromMicros: release + scene,
-        untilMicros: release + interval - margin,
+    test('🚨runs from where the held frame\'s latch window closes to the '
+        'next held frame\'s hand-off, less the margin — on the vblank '
+        'grid', () {
+      expect(quietAfter(), (
+        fromMicros: (held + period - presentLatchLateMicros).round(),
+        untilMicros: (held + 6 * period + handOffFrom).round() - margin,
       ));
-      expect(
-        quietAt(release + scene + 100),
-        quietAt(release),
-        reason: 'the quiet it is in',
-      );
     });
 
-    test('past its end, the next quiet is the one after the next held '
-        'frame', () {
-      const next = (
-        fromMicros: release + interval + scene,
-        untilMicros: release + 2 * interval - margin,
-      );
-      expect(quietAt(release + interval - margin + 1), next);
-      expect(quietAt(release + interval + scene + 1), next);
-      expect(
-        quietAt(release + 2 * interval - margin + 1).fromMicros,
-        release + 2 * interval + scene,
-      );
+    test('🚨at 60Hz a film held two refreshes and three by turns leaves '
+        'room after each — reckoned for the two', () {
+      final quiet = quietAfter(gap: 2, periodMicros: 1e6 / 60);
+      expect(quiet.untilMicros, greaterThan(quiet.fromMicros + 8000));
     });
 
     test('🚨scenes as long as the frames come leave an EMPTY quiet — the '
         'work waits; it is not let run beside the frames', () {
-      final quiet = quietBetweenHeldFrames(
-        nowMicros: release,
-        held: (
-          lastReleaseMicros: release,
-          sceneMicros: scene,
-          intervalMicros: 14000,
-        ),
-        marginMicros: 7500,
-      );
+      final quiet = quietAfter(gap: 1, handOffFromMicros: -6000);
       expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));
     });
   });

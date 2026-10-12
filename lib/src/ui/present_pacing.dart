@@ -100,14 +100,12 @@ mixin PresentPacing on WidgetsBinding {
 
   TimingsCallback? _learning;
 
-  /// When a clock last looked, when the last held frame was let go and by
-  /// when its raster is over — where the latch's window for its vblank
-  /// closes — and the last intervals between two let go: what the quiet
-  /// between held frames is read off ([quietForBackgroundGpuWork]).
+  /// When a clock last looked, the vblank the last held frame claimed, and
+  /// how many refreshes apart the last held frames claimed theirs: what the
+  /// quiet between held frames is read off ([quietForBackgroundGpuWork]).
   int? _lookedAt;
-  int? _released;
-  int _rasterOverBy = 0;
-  final List<int> _heldIntervals = <int>[];
+  double? _heldVblank;
+  final List<int> _heldGaps = <int>[];
 
   /// No look for this long and no clock is running: nothing is held.
   static const int _runGoneMicros = 100000;
@@ -121,9 +119,8 @@ mixin PresentPacing on WidgetsBinding {
     _spread = RasterSpread();
     _paced.clear();
     _lookedAt = null;
-    _released = null;
-    _rasterOverBy = 0;
-    _heldIntervals.clear();
+    _heldVblank = null;
+    _heldGaps.clear();
   }
 
   @override
@@ -186,20 +183,17 @@ mixin PresentPacing on WidgetsBinding {
     if (_paced.length > 256) {
       _paced.clear();
     }
-    final released = timing.nowMicros;
-    _paced[platformDispatcher.frameData.frameNumber] = released;
-    final before = _released;
+    _paced[platformDispatcher.frameData.frameNumber] = timing.nowMicros;
+    final period = _periodOf(timing);
+    final vblank = claim.shownAtMicros - presentShownAfterVblanks * period;
+    final before = _heldVblank;
     if (before != null) {
-      if (_heldIntervals.length == 8) {
-        _heldIntervals.removeAt(0);
+      if (_heldGaps.length == 8) {
+        _heldGaps.removeAt(0);
       }
-      _heldIntervals.add(released - before);
+      _heldGaps.add(((vblank - before) / period).round());
     }
-    _released = released;
-    _rasterOverBy =
-        claim.shownAtMicros -
-        ((presentShownAfterVblanks - 1) * _periodOf(timing)).round() -
-        presentLatchLateMicros;
+    _heldVblank = vblank;
   }
 
   double _periodOf(DisplayTiming timing) =>
@@ -208,32 +202,30 @@ mixin PresentPacing on WidgetsBinding {
   ({int fromMicros, int untilMicros})? _quiet() {
     final timing = displayTiming;
     final lookedAt = _lookedAt;
-    final released = _released;
+    final vblank = _heldVblank;
     if (timing == null ||
         lookedAt == null ||
-        released == null ||
-        _heldIntervals.isEmpty) {
+        vblank == null ||
+        _heldGaps.isEmpty) {
       return null;
     }
-    final now = timing.nowMicros;
-    if (now - lookedAt > _runGoneMicros) {
+    if (timing.nowMicros - lookedAt > _runGoneMicros) {
       return null;
     }
-    // The second shortest of the last intervals: one odd one — the loop's
-    // wrap, a run's first frames — does not shut every quiet after it.
-    final intervals = [..._heldIntervals]..sort();
+    // The second fewest of the last gaps: one odd one — the loop's wrap, a
+    // run's first frames — does not shut every quiet after it.
+    final gaps = [..._heldGaps]..sort();
     final period = _periodOf(timing);
     return quietBetweenHeldFrames(
-      nowMicros: now,
       held: (
-        lastReleaseMicros: released,
-        sceneMicros: _rasterOverBy - released,
-        intervalMicros: intervals[math.min(1, intervals.length - 1)],
+        vblankMicros: vblank,
+        periodMicros: period,
+        gap: gaps[math.min(1, gaps.length - 1)],
+        handOffFromMicros: _spread.handOffFor(period).fromMicros,
       ),
-      // The next release falls a refresh either side of where the interval
-      // puts it — its claim's vblank comes off the chain — and its frame is
-      // built the refresh before.
-      marginMicros: (2 * period).round() + 1000,
+      // What the next held frame's own work may still take before its
+      // hand-off ([budgetMicros]), and a millisecond.
+      marginMicros: budgetMicros + 1000,
     );
   }
 

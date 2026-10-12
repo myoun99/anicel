@@ -469,14 +469,12 @@ void main() {
 
   group('the quiet between held frames', () {
     /// Holds a frame a film frame apart for each of [intervals], each its
-    /// look's change; answers the moments they were let go, and the last
-    /// one's claim.
-    Future<({List<int> released, PresentClaim last})> holdChanges(
+    /// look's change; answers the last one's claim.
+    Future<PresentClaim> holdChanges(
       WidgetTester tester,
       ValueNotifier<int> shown,
       List<int> intervals,
     ) async {
-      final released = <int>[];
       PresentClaim? last;
       for (final interval in intervals) {
         lookNext((_) {
@@ -486,55 +484,49 @@ void main() {
           changedInTheLook();
         });
         await tester.pump(Duration(microseconds: interval));
-        released.add(display.seamNow);
       }
-      return (released: released, last: last!);
+      return last!;
     }
 
+    /// The quiet after a held frame that claimed [last], the next standing
+    /// [gap] refreshes past it.
+    ({int fromMicros, int untilMicros}) quietAfter(
+      PresentClaim last, {
+      required int gap,
+    }) => quietBetweenHeldFrames(
+      held: (
+        vblankMicros:
+            last.shownAtMicros - presentShownAfterVblanks * _Display.period,
+        periodMicros: _Display.period,
+        gap: gap,
+        handOffFromMicros: RasterSpread()
+            .handOffFor(_Display.period)
+            .fromMicros,
+      ),
+      marginMicros: PresentPacing.budgetMicros + 1000,
+    );
+
     testWidgets('🚨runs from where the last held frame\'s latch window '
-        'closes to before the next is let go — read off the frames held', (
-      tester,
-    ) async {
+        'closes to before the next is handed over — read off the vblanks '
+        'the frames held claimed', (tester) async {
       final shown = await settle(tester);
       expect(quietForBackgroundGpuWork(), isNull, reason: 'nothing held yet');
 
-      final (:released, :last) = await holdChanges(
-        tester,
-        shown,
-        [41700, 41700, 41700],
-      );
+      final last = await holdChanges(tester, shown, [41700, 41700, 41700]);
 
-      final closes =
-          last.shownAtMicros -
-          _Display.period.round() -
-          presentLatchLateMicros;
-      expect(
-        quietForBackgroundGpuWork(),
-        quietBetweenHeldFrames(
-          nowMicros: released.last,
-          held: (
-            lastReleaseMicros: released.last,
-            sceneMicros: closes - released.last,
-            intervalMicros: 41700,
-          ),
-          marginMicros: (2 * _Display.period).round() + 1000,
-        ),
-      );
+      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
     });
 
-    testWidgets('🚨one odd interval — a loop\'s wrap — does not shorten the '
+    testWidgets('🚨one odd gap — a loop\'s wrap — does not shorten the '
         'quiets after it', (tester) async {
       final shown = await settle(tester);
-      final (:released, last: _) = await holdChanges(
+      final last = await holdChanges(
         tester,
         shown,
         [41700, 13900, 41700, 41700],
       );
 
-      expect(
-        quietForBackgroundGpuWork()!.untilMicros,
-        released.last + 41700 - (2 * _Display.period).round() - 1000,
-      );
+      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
     });
 
     testWidgets('no clock looking for a while: nothing will be held, and '
