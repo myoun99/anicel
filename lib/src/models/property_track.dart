@@ -157,21 +157,29 @@ typedef SegmentWalk<T> = ({T Function(double progress) at, double length});
 /// them (I-89 ④), by distance: each segment's share of the way is its
 /// length's. A run of one segment is that segment, read as it is.
 final class _RunWalk<T> {
-  _RunWalk(this.segments) : stops = _stopsAlong(segments);
+  _RunWalk(List<SegmentWalk<T>> segments)
+    : this._(
+        segments,
+        segments.fold(0.0, (sum, segment) => sum + segment.length),
+      );
+
+  _RunWalk._(this.segments, this.length)
+    : stops = _stopsAlong(segments, length);
 
   final List<SegmentWalk<T>> segments;
+
+  /// How long the whole way is.
+  final double length;
 
   /// The share of the way at which the walk passes each key it goes
   /// through — the first 0, the last 1; evenly spaced where the way has no
   /// length to share.
   final List<double> stops;
 
-  /// How long the whole way is.
-  double get length =>
-      segments.fold(0.0, (sum, segment) => sum + segment.length);
-
-  static List<double> _stopsAlong(List<SegmentWalk<Object?>> segments) {
-    final total = segments.fold(0.0, (sum, segment) => sum + segment.length);
+  static List<double> _stopsAlong(
+    List<SegmentWalk<Object?>> segments,
+    double total,
+  ) {
     if (total <= 0) {
       return [
         for (var index = 0; index <= segments.length; index += 1)
