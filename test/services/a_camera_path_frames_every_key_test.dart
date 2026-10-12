@@ -291,6 +291,12 @@ void main() {
       reason: 'frames 0 to 6, every half — nothing before the first key',
     );
 
+    // Asked for frames past either end, the trails keep to the path's.
+    final asked = pathOf(three).cornerTrailsBetween(-6, 30);
+    expect(asked, hasLength(4));
+    expect(asked.first, hasLength(49), reason: 'frames 0 to 24, every half');
+    expect(pathOf(three).cornerTrailsBetween(-6, 0), isEmpty);
+
     final touching = marksOf(pathOf(three), from: 24, to: 30);
     expect(wordsIn(touching).map((label) => label.text), ['25f']);
     expect(
