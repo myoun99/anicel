@@ -757,6 +757,40 @@ void main() {
     }
   });
 
+  test('native premultiply == Dart reference over EVERY colour at EVERY '
+      'alpha — four pixels a step and the scalar tail alike', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    // Pixel i holds colour i & 0xFF in red, its inverse in green, its
+    // half in blue, at alpha i >> 8: all 65,536 pairs the formula takes,
+    // in one 256px tile — and a 255px one, whose rows end three pixels
+    // into a step, so the tail meets them too.
+    for (final size in [256, 255]) {
+      final bytes = Uint8List(size * size * 4);
+      for (var i = 0; i < size * size; i += 1) {
+        final pair = i & 0xFFFF;
+        bytes[i * 4] = pair & 0xFF;
+        bytes[i * 4 + 1] = 255 - (pair & 0xFF);
+        bytes[i * 4 + 2] = (pair & 0xFF) >> 1;
+        bytes[i * 4 + 3] = pair >> 8;
+      }
+      final tile = BitmapTile(size: size, pixels: bytes);
+
+      QaNativeEngine.debugForceDartFallback = true;
+      final dartUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
+      QaNativeEngine.debugForceDartFallback = false;
+      final nativeUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
+      final dartResult = Uint8List.fromList(dartUpload.view);
+      final nativeResult = Uint8List.fromList(nativeUpload.view);
+      dartUpload.free();
+      nativeUpload.free();
+
+      expect(nativeResult, dartResult, reason: '${size}x$size');
+    }
+  });
+
   test('native premultiply == Dart reference, byte for byte (randomized)', () {
     if (!available) {
       markTestSkipped('qa_engine.dll not built');

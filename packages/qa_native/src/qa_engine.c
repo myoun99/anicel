@@ -1225,63 +1225,100 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 // alpha to premultiplied with Skia's own SkMulDiv255Round so uploads
 // round identically to Skia's rasterization. Pure integer math, ported
 // verbatim from the Dart reference.
-QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
-  for (int32_t i = 0; i < pixel_count; i += 1) {
-    uint8_t* p = pixels + (ptrdiff_t)i * 4;
-    const int32_t alpha = p[3];
-    if (alpha == 255) {
-      continue;
-    }
-    if (alpha == 0) {
-      p[0] = 0;
-      p[1] = 0;
-      p[2] = 0;
-      continue;
-    }
-    // SkMulDiv255Round: round(value * alpha / 255) for bytes.
-    int32_t product = p[0] * alpha + 128;
-    p[0] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = p[1] * alpha + 128;
-    p[1] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = p[2] * alpha + 128;
-    p[2] = (uint8_t)((product + (product >> 8)) >> 8);
-  }
+//
+// FOUR PIXELS A STEP where the build has the SIMD (2026-10-12): a tile's
+// premultiply was ~14% of the UI thread while playback made the camera
+// view's pictures (board playback-plays-the-screen-material), one byte at a
+// time behind a branch per pixel. The formula needs no branch — alpha 255
+// gives the byte back and alpha 0 gives 0, whatever the colour — so the
+// fast paths were only that, and every lane takes the same steps: the
+// product and its 128 fit sixteen bits (65,153 at most), and so does the
+// rounding added to it (65,407), so the bytes are the scalar's.
+//
+// ⛔Not spread across the worker pool: a run of tiles staged in one pooled
+// call (lane tile-pictures-in-one-call, 10-12) made the camera view's
+// making SLOWER — the composes that give way between pictures took the one
+// staging block from each other, and a loaded machine staged one run 945
+// times for 72 (12.8 s against 0.8).
+static inline void qa_premultiply_pixel(uint8_t* d, const uint8_t* s) {
+  const int32_t alpha = s[3];
+  // SkMulDiv255Round: round(value * alpha / 255) for bytes.
+  int32_t product = s[0] * alpha + 128;
+  d[0] = (uint8_t)((product + (product >> 8)) >> 8);
+  product = s[1] * alpha + 128;
+  d[1] = (uint8_t)((product + (product >> 8)) >> 8);
+  product = s[2] * alpha + 128;
+  d[2] = (uint8_t)((product + (product >> 8)) >> 8);
+  d[3] = (uint8_t)alpha;
 }
+
+#if defined(QA_SSE2)
+static inline __m128i qa_premultiply4(__m128i px) {
+  const __m128i zero = _mm_setzero_si128();
+  const __m128i half = _mm_set1_epi16(128);
+  const __m128i alpha_bytes = _mm_set1_epi32((int32_t)0xFF000000u);
+  __m128i lo = _mm_unpacklo_epi8(px, zero);
+  __m128i hi = _mm_unpackhi_epi8(px, zero);
+  const __m128i alpha_lo = _mm_shufflehi_epi16(
+      _mm_shufflelo_epi16(lo, _MM_SHUFFLE(3, 3, 3, 3)),
+      _MM_SHUFFLE(3, 3, 3, 3));
+  const __m128i alpha_hi = _mm_shufflehi_epi16(
+      _mm_shufflelo_epi16(hi, _MM_SHUFFLE(3, 3, 3, 3)),
+      _MM_SHUFFLE(3, 3, 3, 3));
+  lo = _mm_add_epi16(_mm_mullo_epi16(lo, alpha_lo), half);
+  hi = _mm_add_epi16(_mm_mullo_epi16(hi, alpha_hi), half);
+  lo = _mm_srli_epi16(_mm_add_epi16(lo, _mm_srli_epi16(lo, 8)), 8);
+  hi = _mm_srli_epi16(_mm_add_epi16(hi, _mm_srli_epi16(hi, 8)), 8);
+  const __m128i colour = _mm_packus_epi16(lo, hi);
+  return _mm_or_si128(_mm_and_si128(px, alpha_bytes),
+                      _mm_andnot_si128(alpha_bytes, colour));
+}
+#elif defined(QA_NEON)
+static inline uint8x16_t qa_premultiply4(uint8x16_t px) {
+  static const uint8_t alpha_of[16] = {3,  3,  3,  3,  7,  7,  7,  7,
+                                       11, 11, 11, 11, 15, 15, 15, 15};
+  const uint8x16_t alpha = vqtbl1q_u8(px, vld1q_u8(alpha_of));
+  const uint16x8_t half = vdupq_n_u16(128);
+  uint16x8_t lo = vaddq_u16(vmull_u8(vget_low_u8(px), vget_low_u8(alpha)),
+                            half);
+  uint16x8_t hi = vaddq_u16(vmull_high_u8(px, alpha), half);
+  lo = vaddq_u16(lo, vshrq_n_u16(lo, 8));
+  hi = vaddq_u16(hi, vshrq_n_u16(hi, 8));
+  const uint8x16_t colour =
+      vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
+  return vbslq_u8(vreinterpretq_u8_u32(vdupq_n_u32(0xFF000000u)), px,
+                  colour);
+}
+#endif
 
 // Fused copy + premultiply (R19-Z): reads straight-alpha [src], writes
 // premultiplied bytes into [dst] in one pass - the decode-start path
-// used to pay a copy AND an in-place premultiply. Same SkMulDiv255Round
-// math as qa_premultiply_rgba (byte-identical output by construction).
+// used to pay a copy AND an in-place premultiply. [dst] may be [src]: a
+// step reads its pixels before it writes them.
 QA_EXPORT void qa_premultiply_rgba_copy(
     uint8_t* dst,
     const uint8_t* src,
     int32_t pixel_count) {
-  for (int32_t i = 0; i < pixel_count; i += 1) {
-    const uint8_t* s = src + (ptrdiff_t)i * 4;
-    uint8_t* d = dst + (ptrdiff_t)i * 4;
-    const int32_t alpha = s[3];
-    if (alpha == 255) {
-      d[0] = s[0];
-      d[1] = s[1];
-      d[2] = s[2];
-      d[3] = 255;
-      continue;
-    }
-    if (alpha == 0) {
-      d[0] = 0;
-      d[1] = 0;
-      d[2] = 0;
-      d[3] = 0;
-      continue;
-    }
-    int32_t product = s[0] * alpha + 128;
-    d[0] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = s[1] * alpha + 128;
-    d[1] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = s[2] * alpha + 128;
-    d[2] = (uint8_t)((product + (product >> 8)) >> 8);
-    d[3] = (uint8_t)alpha;
+  int32_t i = 0;
+#if defined(QA_SSE2)
+  for (; i + 4 <= pixel_count; i += 4) {
+    const ptrdiff_t at = (ptrdiff_t)i * 4;
+    const __m128i px = _mm_loadu_si128((const __m128i*)(src + at));
+    _mm_storeu_si128((__m128i*)(dst + at), qa_premultiply4(px));
   }
+#elif defined(QA_NEON)
+  for (; i + 4 <= pixel_count; i += 4) {
+    const ptrdiff_t at = (ptrdiff_t)i * 4;
+    vst1q_u8(dst + at, qa_premultiply4(vld1q_u8(src + at)));
+  }
+#endif
+  for (; i < pixel_count; i += 1) {
+    qa_premultiply_pixel(dst + (ptrdiff_t)i * 4, src + (ptrdiff_t)i * 4);
+  }
+}
+
+QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
+  qa_premultiply_rgba_copy(pixels, pixels, pixel_count);
 }
 
 // Plain memcpy exposed to Dart (R19-Z): native-to-native tile staging at
