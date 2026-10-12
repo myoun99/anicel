@@ -100,9 +100,18 @@ void main() {
   List<SheetMark> marks(WidgetTester tester) =>
       tester.widget<CameraPathOverlay>(path()).marks;
 
+  /// What the keys are written as — at the size a key's label takes.
   List<String> labels(WidgetTester tester) => [
     for (final mark in marks(tester))
-      if (mark is SheetWords) mark.text,
+      if (mark is SheetWords && mark.size == CameraPathOverlay.sizes.labelSize)
+        mark.text,
+  ];
+
+  /// The frames the crosses in time wear beside them.
+  List<String> tickLabels(WidgetTester tester) => [
+    for (final mark in marks(tester))
+      if (mark is SheetWords && mark.size == CameraPathOverlay.tickLabelSize)
+        mark.text,
   ];
 
   /// The two-point strokes — the arms of the keys' and the ticks' crosses —
@@ -190,13 +199,18 @@ void main() {
   });
 
   testWidgets('it writes every key by its frame, and shown in time a cross '
-      'at every frame between them; in space alone, the keys\' crosses only '
-      '— and off, nothing', (tester) async {
+      'at every frame between them with that frame beside it; in space '
+      'alone, the keys\' crosses only — and off, nothing', (tester) async {
     final (s, _) = panning();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
     expect(labels(tester), ['1f', '6f']);
     expect(armsOf(tester), 4 + 8, reason: 'two keys, and frames 1 to 4');
+    expect(
+      tickLabels(tester),
+      ['2f', '3f', '4f', '5f'],
+      reason: '유저 2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호」',
+    );
     // The mock's sizes (5판): a key's cross reaches 5 screen pixels either
     // way, a frame's 3.
     expect(arms(tester), [
@@ -209,6 +223,8 @@ void main() {
     );
     await tester.pump();
     expect(armsOf(tester), 4);
+    expect(tickLabels(tester), isEmpty);
+    expect(labels(tester), ['1f', '6f']);
 
     CameraPathSettings.settings.value = const CameraPathSettings(
       show: CameraPathShow.off,

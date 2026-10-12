@@ -13,11 +13,11 @@ import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../effective_device_pixel_ratio.dart';
 import '../sheet_painting.dart';
 
-/// The camera's path over the canvas (I-89 ④): the trail its centre draws,
-/// every key's frame with its cross and its label ([cameraPathMarks]) and,
-/// shown in time while one is [standing], a cross every so many frames
-/// ([cameraPathTicks]) — as [settings] say, around [playhead] where they
-/// keep to it.
+/// The camera's path over the canvas (I-89 ④): the trail each corner of its
+/// frame draws, every key's frame with its cross and its label
+/// ([cameraPathMarks]) and, shown in time while one is [standing], a cross
+/// every so many frames with the frame beside it ([cameraPathTicks]) — as
+/// [settings] say, around [playhead] where they keep to it.
 ///
 /// It only draws, at the size the screen reads it whatever the zoom.
 class CameraPathOverlay extends StatelessWidget {
@@ -44,6 +44,11 @@ class CameraPathOverlay extends StatelessWidget {
   /// A cross in time: smaller than a key's — it marks a frame, not a key.
   static const double tickArm = 3;
   static const double tickWidth = 1.1;
+
+  /// The frame a cross in time wears beside it: smaller than a key's label,
+  /// as its cross is, and clear of the cross's line.
+  static const double tickLabelSize = 10;
+  static const double tickLabelGap = 2;
 
   final CameraPath path;
   final int playhead;
@@ -80,6 +85,8 @@ class CameraPathOverlay extends StatelessWidget {
           playhead: playhead,
           arm: tickArm,
           width: tickWidth,
+          labelSize: tickLabelSize,
+          labelGap: tickLabelGap,
           layer: SheetPaintLayer.picture,
           from: from,
           to: to,

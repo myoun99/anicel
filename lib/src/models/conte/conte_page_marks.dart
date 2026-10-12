@@ -44,9 +44,11 @@ const int _blockLength = 0xFF8C8C8C;
 const CameraMarkSizes _cameraSizes = CameraMarkSizes(
   frameWidth: 1.2,
   trailWidth: 0.8,
-  labelSize: 8,
-  // A key between's cross: small — it has one point to show (H55 「좀
-  // 작아도 알기쉬우니 작고」).
+  // Smaller, nearer the canvas's against its frame (유저 2026-10-12: 「IN
+  // OUT 이런 글자 크니까 카메라 출력궤도랑 비슷하게 좀 더 작게」) — ↩️8.
+  labelSize: 6,
+  // A key's cross: small — it has one point to show (H55 「좀 작아도
+  // 알기쉬우니 작고」).
   crossArm: 2.5,
   crossWidth: 0.8,
   labelInset: 2,
@@ -427,14 +429,22 @@ int contePictureRenderWidth(
 /// The camera's work written on [cell]'s picture (유저 2026-09-30) — printed
 /// over the picture, and over a live picture again, where it covers it.
 ///
-/// The trail each corner of the frame draws key to key (「궤도는
+/// The trail each corner of the frame draws, the canvas's own (「궤도는
 /// 중앙이아니라 각 꼭짓점 4개 전부야」); the first key's frame in IN's green
 /// and the last's in OUT's red, and no frame for a key between (「첫/끝 키
-/// 말고 중간키는 실루엣을 안그려」); every label at its frame's top-left
-/// corner, turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」) —
-/// a key between is labelled where its frame would be (「원래
-/// 위치해야할곳에 위치시키고 틀만 안보이게」), its corner crossed there in
-/// black (H55). Labels may overlap (「글자 겹치는거 어쩔수없는거니까」).
+/// 말고 중간키는 실루엣을 안그려」, kept 2026-10-12 — I-89-Q14 B); every key
+/// crossed at its frame's centre and labelled at its top-left corner,
+/// turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」), as the
+/// canvas and the export write a key (유저 2026-10-12: 「카메라
+/// 출력궤도랑 완전통일해서 … 중간키들도 표시하고」 · 「아까처럼 중앙에 두자 …
+/// 즉 법 통일」) — a key between where its frame would be (「원래
+/// 위치해야할곳에 위치시키고 틀만 안보이게」). Labels may overlap (「글자
+/// 겹치는거 어쩔수없는거니까」).
+///
+/// ↩️Only a named key between was crossed, at its corner (유저 2026-10-01,
+/// H55: 「s가 어딨는지 … 알기어렵잖아. 그래서 무언가 s의 꼭짓점에
+/// 표시하고싶어서. 해당 위치 꼭짓점에 십자가」) — its label now stands at
+/// that corner, by the trail the corner draws.
 Iterable<SheetMark> conteCameraMarksOf(
   ContePlacedCell cell,
   ConteSheetMetrics m,
@@ -455,15 +465,6 @@ Iterable<SheetMark> conteCameraMarksOf(
           corners: onPaper(key.corners),
           role: key.role,
           framed: key.role != CameraKeyRole.between,
-          // The corner a key between's name stands at, crossed — where a
-          // trail runs straight through it, nothing else says where on the
-          // trail the name belongs (유저 2026-10-01, H55: 「s가 어딨는지 …
-          // 알기어렵잖아. 그래서 무언가 s의 꼭짓점에 표시하고싶어서. 해당
-          // 위치 꼭짓점에 십자가」). It goes with the name, and turns with
-          // the frame as the name does.
-          cross: key.role == CameraKeyRole.between && key.label != null
-              ? CameraKeyCross.corner
-              : CameraKeyCross.none,
           label: key.label,
         ),
     ],

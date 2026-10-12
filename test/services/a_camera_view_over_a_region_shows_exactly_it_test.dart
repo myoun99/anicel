@@ -65,19 +65,11 @@ void main() {
     );
   });
 
-  test('each corner draws its own trail through every key — four, top-left '
-      'first — and the canvas they sweep holds every corner', () {
+  test('the canvas frames sweep holds every corner of every one', () {
     final frames = [
       for (final pose in [at(80, 45), at(160, 90, turn: 90), at(240, 45)])
         cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: size),
     ];
-    final trails = cameraCornerTrails(frames);
-    expect(trails, hasLength(4));
-    for (var corner = 0; corner < 4; corner += 1) {
-      expectPoints(trails[corner], [
-        for (final frame in frames) frame[corner],
-      ]);
-    }
     final bounds = cameraFramesBounds(frames);
     for (final frame in frames) {
       for (final corner in frame) {

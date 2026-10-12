@@ -36,7 +36,6 @@ void main() {
         corners: corners,
         role: CameraKeyRole.first,
         framed: true,
-        cross: CameraKeyCross.centre,
         label: label,
       ),
     ],

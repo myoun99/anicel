@@ -18,8 +18,9 @@ import 'package:anicel/src/services/camera_pose_resolver.dart'
 /// I-89 ④⑥ — a camera's path as the canvas and the export write it (유저
 /// 2026-10-11: 「캔버스랑 출력쪽은 키마다 전부 사각형 그리는거야. 사각형이랑
 /// 십자랑 한 세트로. 위치도 다 통일」 · 「24f도 사각형존재하게되니까
-/// 왼쪽위」): the trail its centre draws, and at every key its frame, the
-/// cross at its centre and its label — and on the canvas, crosses in time.
+/// 왼쪽위」): the trail each corner of its frame draws, and at every key its
+/// frame, the cross at its centre and its label — and on the canvas, crosses
+/// in time, each with its frame beside it.
 void main() {
   /// A 160×90 camera over a 640×360 canvas.
   const frameSize = CanvasSize(width: 160, height: 90);
@@ -182,26 +183,31 @@ void main() {
     ]);
   });
 
-  test('the trail runs through the camera\'s centre at every frame from its '
-      'first key to its last, and at the half between, as playback shows '
-      'it', () {
+  test('each corner of the frame draws a trail — four, top-left first, the '
+      'conte\'s (I-89-Q13 「콘티처럼 꼭짓점 4개 궤적」 · 「이 궤도 시스템은 '
+      '콘티용지패널이랑 정확히 동일」) — through every frame from the first '
+      'key to the last, and the half between, as playback shows it', () {
     final trails = [
       for (final mark in marksOf(pathOf(three)))
         if (mark is SheetStroke && mark.argb == cameraTrailArgb) mark,
     ];
-    expect(trails, hasLength(1), reason: 'the centre\'s — not four corners');
-    final trail = trails.single;
-    expect(trail.points, hasLength(49));
-    expect(trail.width, sizes.trailWidth);
-    expectPoints(
-      [for (final half in [12, 13, 36, 37]) trail.points[half]],
-      const [
-        Offset(200, 45),
-        Offset(210, 45),
-        Offset(320, 112.5),
-        Offset(320, 118.125),
-      ],
-    );
+    expect(trails, hasLength(4), reason: 'a corner each — not the centre');
+    for (final (corner, trail) in trails.indexed) {
+      expect(trail.points, hasLength(49), reason: 'corner $corner');
+      expect(trail.width, sizes.trailWidth);
+      expectPoints(
+        [for (final half in [12, 13, 36, 37]) trail.points[half]],
+        [
+          for (final centre in const [
+            Offset(200, 45),
+            Offset(210, 45),
+            Offset(320, 112.5),
+            Offset(320, 118.125),
+          ])
+            frameAround(centre.dx, centre.dy)[corner],
+        ],
+      );
+    }
   });
 
   test('along a path bent through its keys, a half between two frames '
@@ -225,7 +231,7 @@ void main() {
       canvasSize: cutWith(bent).canvasSize,
       time: 10.5,
     ).center;
-    expectPoints([half], [Offset(camera.x, camera.y)]);
+    expectPoints([half], [frameAround(camera.x, camera.y).first]);
     final chord = (trail.points[2 * 10] + trail.points[2 * 11]) / 2;
     expect((half - chord).distance, greaterThan(0.01));
   });
@@ -271,7 +277,11 @@ void main() {
     final trail = marks.whereType<SheetStroke>().first;
     expect(trail.argb, cameraTrailArgb);
     expect(trail.points, hasLength(25), reason: 'frames 6 to 18, every half');
-    expect(trail.points.first.dx, closeTo(200, 1e-9));
+    expect(
+      trail.points.first.dx,
+      closeTo(200 - 80, 1e-9),
+      reason: 'the top-left corner at frame 6',
+    );
 
     final early = marksOf(pathOf(three), from: -6, to: 6);
     expect(wordsIn(early).map((label) => label.text), ['1f']);
@@ -279,6 +289,16 @@ void main() {
       early.whereType<SheetStroke>().first.points,
       hasLength(13),
       reason: 'frames 0 to 6, every half — nothing before the first key',
+    );
+
+    final touching = marksOf(pathOf(three), from: 24, to: 30);
+    expect(wordsIn(touching).map((label) => label.text), ['25f']);
+    expect(
+      touching.whereType<SheetStroke>().where(
+        (mark) => mark.argb == cameraTrailArgb,
+      ),
+      isEmpty,
+      reason: 'the last key alone: no travel, no trail',
     );
 
     expect(marksOf(pathOf(three), from: 30, to: 40), isEmpty);
@@ -300,7 +320,7 @@ void main() {
     ]);
     final trail = marks.whereType<SheetStroke>().first;
     expect(trail.argb, cameraTrailArgb, reason: '⛔전제');
-    expectPoints([trail.points[12]], [laid(const Offset(200, 45))]);
+    expectPoints([trail.points[12]], [laid(frameAround(200, 45).first)]);
     final topLeft = laid(frameAround(320, 45).first);
     expect(wordsIn(marks)[1].slot.left, closeTo(topLeft.dx + 4, 1e-9));
     expect(wordsIn(marks)[1].slot.top, closeTo(topLeft.dy + 4, 1e-9));
@@ -310,16 +330,23 @@ void main() {
       closeTo(2 * sizes.crossArm, 1e-9),
       reason: 'an arm as long however the canvas is laid',
     );
-    final tick = cameraPathTicks(
+    final ticks = cameraPathTicks(
       path,
       place: laid,
       every: 5,
       playhead: 0,
       arm: 3,
       width: 1.1,
+      labelSize: 10,
+      labelGap: 2,
       layer: SheetPaintLayer.picture,
-    ).cast<SheetStroke>().first;
+    ).toList();
+    final tick = ticks.whereType<SheetStroke>().first;
     expectPoints([middleOf(tick)], [laid(const Offset(180, 45))]);
+    expectPoints(
+      [ticks.whereType<SheetWords>().first.slot.topLeft],
+      [laid(const Offset(180, 45)) + const Offset(2, 2)],
+    );
   });
 
   group('in time', () {
@@ -328,7 +355,7 @@ void main() {
     const grey = 0xFF8E9093;
     const blue = 0xFF3A78C8;
 
-    List<SheetStroke> ticksOf(
+    List<SheetMark> inTime(
       CameraPath path, {
       required int every,
       required int playhead,
@@ -341,10 +368,32 @@ void main() {
       playhead: playhead,
       arm: 3,
       width: 1.1,
+      labelSize: 10,
+      labelGap: 2,
       layer: SheetPaintLayer.picture,
       from: from,
       to: to,
-    ).cast<SheetStroke>().toList();
+    ).toList();
+
+    List<SheetStroke> ticksOf(
+      CameraPath path, {
+      required int every,
+      required int playhead,
+      int? from,
+      int? to,
+    }) => inTime(
+      path,
+      every: every,
+      playhead: playhead,
+      from: from,
+      to: to,
+    ).whereType<SheetStroke>().toList();
+
+    List<SheetWords> labelsOf(
+      CameraPath path, {
+      required int every,
+      required int playhead,
+    }) => wordsIn(inTime(path, every: every, playhead: playhead));
 
     test('a cross every N frames — none where a key wears its own — grey '
         'where the playhead has passed, blue where it is yet to go, ink '
@@ -364,6 +413,50 @@ void main() {
         isEmpty,
         reason: 'every tick on a key',
       );
+    });
+
+    test('each wears the frame it stands on, in its own colour (유저 '
+        '2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호 아까말한대로 '
+        '보여주도록」) — below and right of it, where the crosses either side '
+        'leave that free', () {
+      final labels = labelsOf(pathOf(three), every: 5, playhead: 10);
+      expect(labels.map((label) => label.text), ['6f', '11f', '16f', '21f']);
+      expect(labels.map((label) => label.argb), [
+        grey,
+        cameraBetweenArgb,
+        blue,
+        blue,
+      ]);
+      // Frame 5 at (180, 45): 0 and 10 level with it.
+      expectPoints([labels[0].slot.topLeft], const [Offset(182, 47)]);
+      expect((labels[0].h, labels[0].v), (SheetAlign.start, SheetAlign.start));
+      expect(labels[0].size, 10);
+      // Frame 15 at (320, 78.75): 10 above and left of it, 20 below it.
+      expectPoints([labels[2].slot.topLeft], const [Offset(322, 80.75)]);
+    });
+
+    test('where the path takes the quarter below and right, the frame stands '
+        'in the first free of below-left, above-right and above-left (「십자가 '
+        '오른쪽아래,왼쪽아래,오른쪽위,왼쪽위 우선순위는 이 순서대로 '
+        '빈공간에」)', () {
+      // Frame 10 at (280, 45): 5 level on its left, 15 below and right —
+      // past the turn at 12.
+      final turning = labelsOf(pathOf(three), every: 5, playhead: 0)[1];
+      expect(turning.text, '11f', reason: '⛔전제');
+      expect(turning.slot.right, closeTo(280 - 2, 1e-9));
+      expect(turning.slot.top, closeTo(45 + 2, 1e-9));
+      expect((turning.h, turning.v), (SheetAlign.end, SheetAlign.start));
+
+      // A peak at 12: frame 10 at (280, 67.5) has 5 below and left of it
+      // and 15 below and right.
+      final peak = CutCamera(
+        keyframes: {0: at(80, 180), 12: at(320, 45), 24: at(560, 180)},
+      );
+      final top = labelsOf(pathOf(peak), every: 5, playhead: 0)[1];
+      expect(top.text, '11f', reason: '⛔전제');
+      expect(top.slot.left, closeTo(280 + 2, 1e-9));
+      expect(top.slot.bottom, closeTo(67.5 - 2, 1e-9));
+      expect((top.h, top.v), (SheetAlign.start, SheetAlign.end));
     });
 
     test('counted from the cut\'s first frame, not the camera\'s first key',
@@ -394,7 +487,8 @@ void main() {
     });
 
     test('a turned camera\'s crosses turn with its frame, a key\'s and a '
-        'tick\'s alike — the set stands square', () {
+        'tick\'s alike, and a tick\'s frame with them — the set stands '
+        'square', () {
       final turned = CutCamera(
         keyframes: {0: at(80, 45, turn: 30), 12: at(320, 45, turn: 30)},
       );
@@ -409,6 +503,16 @@ void main() {
         final run = arm.points[1] - arm.points[0];
         expect(math.atan2(run.dy, run.dx), closeTo(turn, 1e-9));
       }
+      // Frame 6 at (200, 45), between keys level with it: below and right
+      // as the frame stands, two along its sides.
+      final label = labelsOf(path, every: 6, playhead: 0).single;
+      expect(label.turn, closeTo(turn, 1e-9));
+      final right = Offset(math.cos(turn), math.sin(turn));
+      final down = Offset(-math.sin(turn), math.cos(turn));
+      expectPoints(
+        [label.slot.topLeft],
+        [const Offset(200, 45) + (right + down) * 2],
+      );
     });
   });
 }

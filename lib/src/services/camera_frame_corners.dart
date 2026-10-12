@@ -118,19 +118,6 @@ List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   ];
 }
 
-/// The trail each corner of the camera's frame draws across [frames], from
-/// the first to the last — four polylines, top-left first.
-///
-/// How a camera's travel reads (유저 2026-09-30, after Storyboard Pro:
-/// 「키마다 궤도? 를 그려둬서 어떻게 진행되는지 알게해줘. 그냥 단순하게
-/// 선으로」 · 「궤도는 중앙이아니라 각 꼭짓점 4개 전부야」): a simple line
-/// per corner, key to key — one through the centre shows no turn and no
-/// push-in.
-List<List<Offset>> cameraCornerTrails(List<List<Offset>> frames) => [
-  for (var corner = 0; corner < 4; corner += 1)
-    [for (final frame in frames) frame[corner]],
-];
-
 /// The canvas region [frames] cover together — the bounds of every corner
 /// of every one ([pointsBounds]).
 Rect cameraFramesBounds(Iterable<List<Offset>> frames) =>

@@ -71,7 +71,11 @@ void main() {
     );
     final strokes = pdfStrokes(pdf);
     final expected = marks.whereType<SheetStroke>().toList();
-    expect(expected, hasLength(6), reason: 'fixture: four trails, two frames');
+    expect(
+      expected,
+      hasLength(10),
+      reason: 'fixture: four trails, two frames and their crosses',
+    );
     for (final mark in expected) {
       final printed = strokes.where(
         (stroke) =>
@@ -86,7 +90,7 @@ void main() {
       expect(
         printed,
         hasLength(1),
-        reason: '${mark.closed ? 'a frame' : 'a trail'} at ${mark.points}',
+        reason: '${mark.closed ? 'a frame' : 'a line'} at ${mark.points}',
       );
     }
   });
@@ -99,7 +103,14 @@ void main() {
       conteCameraPan(across: 0.3, down: 0.5),
     );
     final strokes = pdfStrokes(pdf);
-    final trails = strokes.where((stroke) => !stroke.closed).toList();
+    // A key's cross arm is 5 long on the paper; the trails are longer.
+    final trails = strokes
+        .where(
+          (stroke) =>
+              !stroke.closed &&
+              (stroke.points.last - stroke.points.first).distance > 5 + 1e-6,
+        )
+        .toList();
     expect(trails, hasLength(4), reason: 'fixture: four trails');
     expect(
       trails.map((trail) => trail.state),

@@ -28,7 +28,7 @@ class CameraPath {
         keys.last.frameIndex - keys.first.frameIndex + 1,
         null,
       ),
-      _trail = List<Offset?>.filled(
+      _halves = List<List<Offset>?>.filled(
         2 * (keys.last.frameIndex - keys.first.frameIndex) + 1,
         null,
       );
@@ -84,36 +84,55 @@ class CameraPath {
         frameIndex,
       );
 
-  /// The camera's centre every half frame from [firstFrame] to [lastFrame],
+  /// The camera's frame every half frame from [firstFrame] to [lastFrame],
   /// read as it is asked for.
-  final List<Offset?> _trail;
+  final List<List<Offset>?> _halves;
 
-  /// The trail the camera's centre draws from frame [from] to frame [to]:
-  /// its centre at every frame and at the half between, as the confirmed
-  /// spec's mock draws it (5판) — so a path bent through its keys (I-89 ④)
-  /// reads as the curve it walks, not as a frame's chords.
-  Iterable<Offset> trailBetween(int from, int to) sync* {
-    for (var half = 2 * from; half <= 2 * to; half++) {
-      yield _trail[half - 2 * firstFrame] ??= cameraFrameCentre(
-        half.isEven
+  /// The trail each corner of the camera's frame draws over the frames
+  /// [from] to [to] the path covers — four polylines, top-left first; none
+  /// where those frames hold no travel.
+  ///
+  /// How a camera's travel reads (유저 2026-09-30, after Storyboard Pro:
+  /// 「키마다 궤도? 를 그려둬서 어떻게 진행되는지 알게해줘. 그냥 단순하게
+  /// 선으로」 · 「궤도는 중앙이아니라 각 꼭짓점 4개 전부야」 — one through
+  /// the centre shows no turn and no push-in), on every surface alike
+  /// (2026-10-12, I-89-Q13 「콘티처럼 꼭짓점 4개 궤적」 · 「이 궤도 시스템은
+  /// 콘티용지패널이랑 정확히 동일. 즉 법 통일」): each corner at every frame
+  /// and at the half between, as the confirmed spec's mock draws a trail
+  /// (5판) — so a path bent through its keys (I-89 ④) reads as the curve it
+  /// walks, not as a frame's chords. ↩️The canvas drew one trail, through
+  /// the centre; the conte drew its four straight from key to key.
+  List<List<Offset>> cornerTrailsBetween(int from, int to) {
+    final first = math.max(from, firstFrame);
+    final last = math.min(to, lastFrame);
+    if (first >= last) {
+      return const [];
+    }
+    final frames = [
+      for (var half = 2 * first; half <= 2 * last; half++)
+        _halves[half - 2 * firstFrame] ??= half.isEven
             ? frameAt(half ~/ 2)
             : cameraFrameShownAtTime(_cut, _frameSize, half / 2),
-      );
-    }
+    ];
+    return [
+      for (var corner = 0; corner < 4; corner += 1)
+        [for (final frame in frames) frame[corner]],
+    ];
   }
 }
 
 /// [path] as the canvas and the export write it (I-89 ④⑥, 유저 2026-10-11:
 /// 「캔버스랑 출력쪽은 키마다 전부 사각형 그리는거야. 사각형이랑 십자랑 한
-/// 세트로. 위치도 다 통일」): the trail the camera's centre draws, and at
-/// every key its frame with the cross at its centre and its label at the
-/// frame's top-left corner, in the colour its place among all the camera's
-/// keys gives it. The conte's paper frames its first and last alone
+/// 세트로. 위치도 다 통일」): the trail each corner of its frame draws
+/// ([CameraPath.cornerTrailsBetween]), and at every key its frame with the
+/// cross at its centre and its label at its top-left corner
+/// ([CameraMarkedKey]), in the colour its place among all the camera's keys
+/// gives it. The conte's paper frames its first and last alone
 /// (`conteCameraMarksOf`).
 ///
-/// A label is the key's name, else the frame it stands on as the frame
-/// cursor counts it (「사각형있는건 A가 왼쪽위인거처럼 24f도 사각형존재하게
-/// 되니까 왼쪽위」).
+/// A label is the key's name, else the frame it stands on
+/// ([cameraKeyLabel]; 「사각형있는건 A가 왼쪽위인거처럼 24f도
+/// 사각형존재하게 되니까 왼쪽위」).
 ///
 /// [place] lays a canvas point on the surface. Only the frames [from] to
 /// [to] are written, where a surface keeps to some.
@@ -129,7 +148,8 @@ Iterable<SheetMark> cameraPathMarks(
   final last = math.min(path.lastFrame, to ?? path.lastFrame);
   return cameraWorkMarks(
     trails: [
-      if (first < last) [...path.trailBetween(first, last).map(place)],
+      for (final trail in path.cornerTrailsBetween(first, last))
+        [for (final point in trail) place(point)],
     ],
     keys: [
       for (final key in path.keys)
@@ -138,8 +158,7 @@ Iterable<SheetMark> cameraPathMarks(
             corners: [for (final corner in key.corners) place(corner)],
             role: key.role,
             framed: true,
-            cross: CameraKeyCross.centre,
-            label: key.name ?? '${key.frameIndex + 1}f',
+            label: cameraKeyLabel(key.name, key.frameIndex),
           ),
     ],
     sizes: sizes,
@@ -154,6 +173,11 @@ Iterable<SheetMark> cameraPathMarks(
 /// grey where the [playhead] has passed, blue where it is yet to go, in ink
 /// where it stands. A key wears its own cross where a tick would fall.
 ///
+/// Each wears the frame it stands on beside it, in its colour, off the way
+/// the path runs ([cameraCrossLabel]: 유저 2026-10-12 「궤도 십자가? 보이는
+/// 경우가 있잖아. 출력용말고 편집할때. 그 상황에서 십자가쪽에도 프레임번호
+/// 아까말한대로 보여주도록」) — the crosses either side of it are the path.
+///
 /// [place], [from] and [to] as [cameraPathMarks] takes them.
 Iterable<SheetMark> cameraPathTicks(
   CameraPath path, {
@@ -162,10 +186,15 @@ Iterable<SheetMark> cameraPathTicks(
   required int playhead,
   required double arm,
   required double width,
+  required double labelSize,
+  required double labelGap,
   required SheetPaintLayer layer,
   int? from,
   int? to,
 }) sync* {
+  Offset centreAt(int frame) => cameraFrameCentre([
+    for (final corner in path.frameAt(frame)) place(corner),
+  ]);
   final first = math.max(path.firstFrame, from ?? path.firstFrame);
   final last = math.min(path.lastFrame, to ?? path.lastFrame);
   final keyed = {for (final key in path.keys) key.frameIndex};
@@ -178,16 +207,31 @@ Iterable<SheetMark> cameraPathTicks(
       continue;
     }
     final corners = [for (final corner in path.frameAt(frame)) place(corner)];
+    final at = cameraFrameCentre(corners);
+    final argb = frame < playhead
+        ? cameraTickPastArgb
+        : frame > playhead
+        ? cameraTickAheadArgb
+        : cameraBetweenArgb;
     yield* cameraCrossMarks(
       corners,
-      at: cameraFrameCentre(corners),
-      argb: frame < playhead
-          ? cameraTickPastArgb
-          : frame > playhead
-          ? cameraTickAheadArgb
-          : cameraBetweenArgb,
+      at: at,
+      argb: argb,
       arm: arm,
       width: width,
+      layer: layer,
+    );
+    yield cameraCrossLabel(
+      cameraFrameLabel(frame),
+      corners,
+      at: at,
+      taken: [
+        for (final side in [frame - every, frame + every])
+          centreAt(side.clamp(path.firstFrame, path.lastFrame)),
+      ],
+      argb: argb,
+      size: labelSize,
+      gap: labelGap,
       layer: layer,
     );
   }

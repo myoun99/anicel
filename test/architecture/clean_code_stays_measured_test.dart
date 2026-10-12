@@ -366,7 +366,18 @@ void main() {
   /// the display's real vblank) landed unnamed — so the lane's five come on
   /// top of it. 🔬`clean_code_diff` between the lane's base (`7f40aad8e`, at
   /// 388) and that master named it added and nothing gone.
-  const wideSignatures = 394;
+  ///
+  /// ⚠️394 → 395 on 2026-10-12, named as the rule above asks (I-89 ④, a
+  /// cross in time wears its frame — 유저 2026-10-12: 「그 상황에서
+  /// 십자가쪽에도 프레임번호 아까말한대로 보여주도록」). `cameraCrossLabel`
+  /// (eight — the words, the frame it stands square to, the cross it stands
+  /// by, the crosses it keeps clear of, its colour, its size, its gap off
+  /// the cross, the stratum): each surface says its sizes and its stratum,
+  /// as for `cameraCrossMarks` and `_label` above. `cameraPathTicks` took
+  /// its labels' size and gap, already counted. 🔬`clean_code_diff` against
+  /// the lane's base (`07101e54a`, at 394) named that one added and nothing
+  /// gone.
+  const wideSignatures = 395;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

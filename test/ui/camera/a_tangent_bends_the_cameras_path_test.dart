@@ -221,7 +221,7 @@ void main() {
     final trailBefore = tester
         .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
         .path
-        .trailBetween(0, 10)
+        .cornerTrailsBetween(0, 10)
         .toList();
     final paintedBefore = painter(tester);
     final cornersBefore = box(tester).corners;
@@ -252,7 +252,7 @@ void main() {
       tester
           .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
           .path
-          .trailBetween(0, 10)
+          .cornerTrailsBetween(0, 10)
           .toList(),
       isNot(trailBefore),
       reason: 'the path follows it',
