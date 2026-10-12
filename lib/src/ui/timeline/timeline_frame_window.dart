@@ -132,6 +132,12 @@ int timelineFrameWindowBucketOf({
   );
 }
 
+/// Where a run's next page turn stands a frame axis: the bucket its windows
+/// are cut by there ([frameWindowAtBucket]), and the frames the axis is
+/// built for there — where a row's spans end
+/// ([TimelineFrameAxisFollower.nextPage]).
+typedef TimelineNextPage = ({int bucket, int builtFrames});
+
 /// Whether [frame] lies in [window] — what every playhead-driven layer asks
 /// before it marks a frame: the body's cursor, the ruler's tint and the
 /// playhead's writing (I-16). One answer, so the three cannot mark

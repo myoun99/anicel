@@ -353,9 +353,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _rangeGestures.frameRangePolicy.visibleFrameCount,
+    viewportFillFrames: () => _viewportFillFrameCells,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
+
+  /// Where the playing run's next turn stands the frame axis — what the
+  /// columns bake that page's tiles for while it plays this one.
+  TimelineNextPage? _nextPage() =>
+      _frameAxis.nextPage(runFrames: widget.hooks.runFrames);
 
   /// UI-R9 #9, transposed to y: the frame axis pulled to the offset the
   /// layout resolved, one frame later — the rail's object.

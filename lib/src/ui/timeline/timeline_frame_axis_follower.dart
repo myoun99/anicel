@@ -33,6 +33,7 @@ class TimelineFrameAxisFollower {
     required this.frameWindowBucket,
     required this.cellExtent,
     required this.baseFrameCount,
+    required this.viewportFillFrames,
     required this.rebuild,
     required this.isMounted,
   }) {
@@ -54,6 +55,10 @@ class TimelineFrameAxisFollower {
   /// The frames the content holds before the endless trailing room.
   final int Function() baseFrameCount;
 
+  /// The frames the viewport needs to read papered
+  /// ([endlessViewportFillFrames]) — recorded by the host's layout.
+  final int Function() viewportFillFrames;
+
   /// The host's setState, for the rare relayout.
   final void Function(VoidCallback fn) rebuild;
 
@@ -62,6 +67,54 @@ class TimelineFrameAxisFollower {
   /// The endless room past the content's end, in frames — grown as the
   /// user scrolls past the end, shrunk back once the scroll settles.
   int trailingFrames = 0;
+
+  /// The frames the axis is BUILT for (UI-R12 #16): the cells scrolled
+  /// into existence — the content and the endless room past it — and never
+  /// fewer than the viewport needs to read as one continuous sheet. No
+  /// runway beyond that: the scrollbar and the scroll physics clamp here,
+  /// and only a ruler's edge-drag overshoots and grows it.
+  ///
+  /// 🚨ONE law for the rail, the sheet and the storyboard: each spelled it
+  /// beside its follower, and a run's next page asks it again for where
+  /// the turn will stand the axis ([nextPage]).
+  int get renderedFrameCount => _builtWith(trailingFrames);
+
+  int _builtWith(int trailing) =>
+      math.max(baseFrameCount() + trailing, viewportFillFrames());
+
+  /// 🚨WHERE A PLAYING RUN'S NEXT PAGE TURN STANDS THIS AXIS: the bucket
+  /// its windows are cut by there, and the frames it is built for there —
+  /// what a row bakes that page's tiles for while the run plays the page
+  /// before ([TimelineRowCellsPainter.tileSpansOfThePage]). Where the
+  /// turn goes is the page law's ([nextPageScrollOffset]) — on, or back to
+  /// the first frame once a run of [runFrames] wraps before it leaves the
+  /// window — and the axis stands there by its own cut ([_standAt]): a
+  /// page past the built end grows the endless room under it, and a wrap
+  /// may shrink it.
+  ///
+  /// ↩️A row guessed the turn off its bucket, and took a window that
+  /// reached the built end for a run about to wrap: the last page before
+  /// the cut's end was never baked, and the turn to it grew the axis, so
+  /// even its spans cut at the old end were not the ones the turn showed.
+  /// 🔬Cut 302 at 144Hz, first loop (10-12): every row's last three spans
+  /// landed cold after that turn, and the rows were laid out again.
+  ///
+  /// Null while the axis is not laid out.
+  TimelineNextPage? nextPage({required int runFrames}) {
+    if (!controller.hasClients ||
+        !controller.position.hasViewportDimension) {
+      return null;
+    }
+    final position = controller.position;
+    final (:bucket, :trailing) = _cutAt(
+      nextPageScrollOffset(
+        (offset: position.pixels, viewport: position.viewportDimension),
+        extent: cellExtent(),
+        runSteps: runFrames,
+      ),
+    );
+    return (bucket: bucket, builtFrames: _builtWith(trailing));
+  }
 
   ScrollPosition? _watchedPosition;
 
@@ -147,25 +200,33 @@ class TimelineFrameAxisFollower {
   /// The windows and the endless room, cut for the scrollable standing at
   /// [offset].
   void _standAt(double offset) {
-    final bucket = timelineFrameWindowBucketOf(
-      offset: offset,
-      cellExtent: cellExtent(),
-    );
+    final (:bucket, :trailing) = _cutAt(offset);
     if (bucket != frameWindowBucket.value) {
       frameWindowBucket.value = bucket;
     }
-    final position = controller.position;
-    final next = endlessTrailingFrames(
-      baseFrameCount: baseFrameCount(),
-      currentTrailingFrames: trailingFrames,
-      scrollOffset: offset,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: cellExtent(),
-      allowShrink: !position.isScrollingNotifier.value,
-    );
-    if (next != trailingFrames) {
-      rebuild(() => trailingFrames = next);
+    if (trailing != trailingFrames) {
+      rebuild(() => trailingFrames = trailing);
     }
+  }
+
+  /// The bucket and the endless room the axis takes standing at [offset]:
+  /// what [_standAt] writes, and what [nextPage] reads before a turn.
+  ({int bucket, int trailing}) _cutAt(double offset) {
+    final position = controller.position;
+    return (
+      bucket: timelineFrameWindowBucketOf(
+        offset: offset,
+        cellExtent: cellExtent(),
+      ),
+      trailing: endlessTrailingFrames(
+        baseFrameCount: baseFrameCount(),
+        currentTrailingFrames: trailingFrames,
+        scrollOffset: offset,
+        viewportExtent: position.viewportDimension,
+        frameCellExtent: cellExtent(),
+        allowShrink: !position.isScrollingNotifier.value,
+      ),
+    );
   }
 
   /// Re-reads the position once this frame's layout is done.

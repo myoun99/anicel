@@ -16,6 +16,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
@@ -122,6 +123,10 @@ typedef TimelineCellsRowGrid = ({
   // them (I-89 ③). Null where the host has none: the view stands at the
   // frames' start.
   ScrollController? frameAxisController,
+  // Where a playing run's next turn stands the frame axis — what the rows
+  // bake that page's tiles for while it plays this one
+  // ([TimelineFrameAxisFollower.nextPage]). Null where no run turns it.
+  TimelineNextPage? Function()? nextPage,
   // The range select/move gesture bundle (UI-R8 — the block-body move
   // handle's successor); null keeps rows display-only.
   TimelineRangeGestureCallbacks? rangeGesture,
@@ -244,6 +249,7 @@ Widget timelineCellsRowFrom(
     spillInLeadFrames: hooks.spillInLeadFrames[layer.id],
     windowBucket: grid.windowBucket,
     viewportMainExtent: grid.viewportMainExtent,
+    nextPage: grid.nextPage,
     substrateGeneration: hooks.substrateGeneration,
     // Resolved from the GATE's layer, per rebuild — a drag step
     // re-derives the union like the lanes re-derive (B4).

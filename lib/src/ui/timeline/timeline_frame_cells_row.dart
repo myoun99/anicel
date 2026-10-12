@@ -20,6 +20,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
@@ -74,6 +75,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.spillInLeadFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.nextPage,
     this.substrateGeneration = '',
     this.unionLane,
   });
@@ -127,6 +129,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// pre-windowed contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// Where a playing run's next turn stands the frame axis
+  /// ([TimelineCellsRowGrid.nextPage]) — the page the painter bakes ahead.
+  final TimelineNextPage? Function()? nextPage;
+
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -564,6 +571,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    nextPage: nextPage,
     substrateGeneration: substrateGeneration,
     foregroundPainter: _runLabelsPainter(context),
     // Instruction-carrying rows have no timeline entries — their events

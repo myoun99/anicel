@@ -9,7 +9,8 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
-import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
+import 'timeline_frame_window.dart'
+    show TimelineNextPage, timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_graph.dart';
 import 'timeline_row_edges.dart';
@@ -41,6 +42,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.frameAxisController,
+    this.nextPage,
   });
 
   /// What the session answers to the rows — the grid's ONE bundle, which
@@ -60,6 +62,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The frame axis' scrollable, which the rows' header graphs keep their
   /// guest tags in the view by ([TimelineCellsRowGrid.frameAxisController]).
   final ScrollController? frameAxisController;
+
+  /// Where a playing run's next turn stands the frame axis
+  /// ([TimelineCellsRowGrid.nextPage]).
+  final TimelineNextPage? Function()? nextPage;
 
   /// Display rows: layer rows interleaved with expanded property lanes.
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
@@ -242,6 +248,7 @@ class _TimelineFrameRowsScrollBodyState
     windowBucket: widget.windowBucket,
     viewportMainExtent: widget.viewportMainExtent,
     frameAxisController: widget.frameAxisController,
+    nextPage: widget.nextPage,
     rangeGesture: widget.rangeGesture,
     axis: Axis.horizontal,
     keyPrefix: 'timeline',

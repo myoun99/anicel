@@ -95,6 +95,7 @@ void main() {
       windowBucket: null,
       viewportMainExtent: 400.0,
       frameAxisController: null,
+      nextPage: null,
       rangeGesture: null,
       axis: axis,
       keyPrefix: keyPrefix,

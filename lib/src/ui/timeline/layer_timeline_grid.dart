@@ -12,6 +12,7 @@ import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
@@ -259,9 +260,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _visibleFrameCount,
+    viewportFillFrames: () => _viewportFillFrameCells,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
+
+  /// Where the playing run's next turn stands the frame axis — what the
+  /// rows bake that page's tiles for while it plays this one.
+  TimelineNextPage? _nextPage() =>
+      _frameAxis.nextPage(runFrames: widget.hooks.runFrames);
 
   /// UI-R9 #9: each axis pulled to the offset the layout resolved, one
   /// frame later — one object per axis, the same one the sheet holds.
@@ -451,15 +458,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// offsets. Zero until the first layout.
   int _viewportFillFrameCells = 0;
 
-  /// Render extent (UI-R12 #16 contract): the cells the user has scrolled
-  /// into existence PLUS whatever the viewport needs to read as one
-  /// continuous sheet — never a runway beyond that. The scrollbar and
-  /// scroll physics clamp here; only the ruler edge-drag overshoots (and
-  /// the growth listener then materializes what the view needs).
-  int get _renderedFrameCount => math.max(
-    _visibleFrameCount + _frameAxis.trailingFrames,
-    _viewportFillFrameCells,
-  );
+  /// Render extent (UI-R12 #16 contract) — the follower's
+  /// ([TimelineFrameAxisFollower.renderedFrameCount]).
+  int get _renderedFrameCount => _frameAxis.renderedFrameCount;
 
   // ── the ruler scrub: the SHARED object ──────────────────────────────
   //
@@ -758,6 +759,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
       frameAxisController: _horizontalScrollController,
+      nextPage: _nextPage,
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,

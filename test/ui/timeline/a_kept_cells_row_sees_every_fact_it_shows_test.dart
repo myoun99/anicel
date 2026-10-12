@@ -134,6 +134,7 @@ void main() {
       windowBucket: null,
       viewportMainExtent: viewportMainExtent,
       frameAxisController: null,
+      nextPage: null,
       rangeGesture: range,
       axis: Axis.horizontal,
       keyPrefix: 'timeline',

@@ -1553,6 +1553,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         buildStoryboardTimelineLayout(widget.project),
       ),
     ),
+    viewportFillFrames: () => _viewportFillFrameCells,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
@@ -1925,15 +1926,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// [LayerRailExtent.windowExtent]); null in an unbounded host.
   double? _availableRailWidth;
 
-  /// Render extent (UI-R12 #16 contract, unified with the timeline
-  /// grids): the cells scrolled/panned into existence PLUS the viewport
-  /// fill — the old always-120 resting runway is gone, so past-content
-  /// cells vanish once out of view and the scrollbar stops at the built
-  /// cells. Only the ruler edge-drag overshoots and grows the extent.
-  int _renderedFramesFor(int totalFrames) => math.max(
-    _restingFramesOf(totalFrames) + _frameAxis.trailingFrames,
-    _viewportFillFrameCells,
-  );
+  /// Render extent (UI-R12 #16 contract) — the follower's
+  /// ([TimelineFrameAxisFollower.renderedFrameCount]). ↩️The old always-120
+  /// resting runway is gone, so past-content cells vanish once out of view
+  /// and the scrollbar stops at the built cells.
+  int get _renderedFrames => _frameAxis.renderedFrameCount;
 
   /// The frames the strips' axis RESTS at before its endless room: the
   /// movie's end line and the post-cut allowance past it — asked of the one
@@ -1951,16 +1948,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// growth listener keeps chasing (the block term keeps its grip
   /// overhang; cells simply materialize under it once).
   double _contentWidthFor(
-    Project project,
     List<StoryboardTimelineLayoutEntry> layoutEntries,
     TimelineScale scale,
   ) {
-    final renderedFrames = _renderedFramesFor(
-      _totalFrames(project, layoutEntries),
-    );
     return math.max(
       _timelineContentWidth(layoutEntries, scale),
-      scale.leftForFrame(renderedFrames),
+      scale.leftForFrame(_renderedFrames),
     );
   }
 
@@ -1976,8 +1969,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // Endless frame axis (UI-R12 #16): cells cover the view — the cuts,
     // whatever the viewport needs to read papered, and whatever the ruler
     // edge-drag has materialized. No resting runway beyond that.
-    final renderedFrames = _renderedFramesFor(totalFrames);
-    final contentWidth = _contentWidthFor(project, layoutEntries, scale);
+    final renderedFrames = _renderedFrames;
+    final contentWidth = _contentWidthFor(layoutEntries, scale);
     // The playhead + green bar repaint through their own listenables (the
     // cursor-layer pattern) — the ruler's overlay PAINTER and the playhead
     // overlay subscribe below, nothing else in this build does.

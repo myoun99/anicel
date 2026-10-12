@@ -78,6 +78,7 @@ void main() {
           windowBucket: bucket,
           viewportMainExtent: 240.0,
           frameAxisController: null,
+          nextPage: null,
           rangeGesture: null,
           axis: Axis.horizontal,
           keyPrefix: 'timeline',

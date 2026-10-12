@@ -96,6 +96,29 @@ double pageScrollOffset(ScrollWindow window, RevealedItem item) {
   return inside ? window.offset : item.start;
 }
 
+/// Where a playing run's NEXT turn pages [window] ([pageScrollOffset]): the
+/// first of its [extent]-long steps the playhead leaves the window by,
+/// going on, comes to its start — unless a run of [runSteps] wraps before
+/// it gets there, and then its first step's page is the next: [window]
+/// itself while that step is inside it, where no turn comes.
+///
+/// ⚠️A run behind its clock drops frames ([playheadWay]) and may leave by a
+/// later step: that turn is not told before it comes.
+double nextPageScrollOffset(
+  ScrollWindow window, {
+  required double extent,
+  required int runSteps,
+}) {
+  if (extent <= 0) {
+    return window.offset;
+  }
+  final leaving = ((window.offset + window.viewport) / extent).floor();
+  return pageScrollOffset(
+    window,
+    _itemAt(leaving < runSteps ? leaving : 0, extent),
+  );
+}
+
 /// Applies [law] to [controller]'s live position, within the scrollable's
 /// own range, and not at all when it would not move.
 ///

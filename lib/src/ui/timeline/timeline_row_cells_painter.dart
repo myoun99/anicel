@@ -107,6 +107,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.axis = Axis.horizontal,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.nextPage,
     this.tileStore,
     this.substrateGeneration = '',
     this.devicePixelRatio = 1.0,
@@ -226,6 +227,10 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The scroll viewport's main-axis extent for the self-windowing path.
   final double viewportMainExtent;
+
+  /// ⛔Not a paint input: it never repaints the row.
+  @override
+  final TimelineNextPage? Function()? nextPage;
 
   /// The substrate TILE store (UI-R18 O7 T2): with it set, span-sized
   /// pre-rastered images replace the substrate's canvas work —
@@ -719,7 +724,7 @@ class TimelineRowCellsPainter extends CustomPainter
     TimelineGridTileStore store,
   ) {
     final tiledSpans = <(int, int)>[];
-    final grid = _tileGridIn(window);
+    final grid = _tileGridIn(window, frameEndIndexExclusive);
     final tilePaint = Paint()..filterQuality = FilterQuality.low;
     for (final (spanStart, spanEnd) in grid.shown) {
       final image = store.tileFor(
@@ -775,15 +780,17 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one
-  /// past each edge a paint keeps warm (`ahead`) — the grid rides the SHARED
-  /// window policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  /// past each edge a paint keeps warm (`ahead`), the last cut at the
+  /// [builtFrames] the axis ends at — the grid rides the SHARED window
+  /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
   ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
     ({int startIndex, int endIndexExclusive}) window,
+    int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
     (int, int)? spanAt(int tile) {
       final start = tile * span;
-      final end = math.min(start + span, frameEndIndexExclusive);
+      final end = math.min(start + span, builtFrames);
       return start < 0 || end <= start ? null : (start, end);
     }
 
@@ -800,52 +807,38 @@ class TimelineRowCellsPainter extends CustomPainter
 
   @override
   ({List<(int, int)> shown, List<(int, int)> ahead}) get tileSpans =>
-      _tileGridIn(visibleFrameWindow());
+      _tileGridIn(visibleFrameWindow(), frameEndIndexExclusive);
 
-  /// Every span a paint of this row asks for once the page turns: the
-  /// window the turn brings and the span past each of its edges
-  /// ([tileSpans]). A turn stands the frame the playhead leaves by — the
-  /// one under the viewport's far edge — at the window's start
-  /// ([pageScrollOffset]), and where in its bucket the viewport stands now
-  /// the bucket does not say, so this is the windows of every bucket that
-  /// frame can fall in. Once the window reaches the last frame, the turn
-  /// is a looping run's back to the first.
+  /// A row that windows itself off no bucket paints every span already,
+  /// and has no page to turn to.
   ///
   /// ↩️It was a viewport's frames from where the window ends: a window
   /// reaches past the viewport by its bucket and its overscan, so the
   /// turn's window ended a span later than what was warmed, and the span
   /// past that edge was never warmed at all — 🔬two spans a row landed cold
   /// after every turn and repainted their rows (10-12, cut 302 at 144Hz).
+  /// ↩️Then each row guessed the turn from its own bucket, and took a window
+  /// that reached the built end for a run about to wrap
+  /// ([TimelineFrameAxisFollower.nextPage] has what that cost).
   @override
-  List<(int, int)> get tileSpansOfTheNextPage {
-    final bucket = windowBucket;
-    if (bucket == null || frameCellExtent <= 0 || viewportMainExtent <= 0) {
+  List<(int, int)> tileSpansOfThePage(TimelineNextPage page) {
+    if (windowBucket == null ||
+        frameCellExtent <= 0 ||
+        viewportMainExtent <= 0) {
       return const [];
     }
-    final span = timelineFrameWindowSpanFor(frameCellExtent);
-    final viewportCells = viewportMainExtent / frameCellExtent;
-    final int firstLeft;
-    final int lastLeft;
-    if (visibleFrameWindow().endIndexExclusive >= frameEndIndexExclusive) {
-      firstLeft = lastLeft = frameStartIndex;
-    } else {
-      firstLeft = (bucket.value * span + viewportCells).floor();
-      lastLeft = ((bucket.value + 1) * span + viewportCells).ceil() - 1;
-    }
-    ({int startIndex, int endIndexExclusive}) windowAt(int frame) =>
-        frameWindowAtBucket(
-          frame ~/ span,
-          viewportMainExtent: viewportMainExtent,
-          cellExtent: frameCellExtent,
-          frames: (
-            startIndex: frameStartIndex,
-            endIndexExclusive: frameEndIndexExclusive,
-          ),
-        );
-    final grid = _tileGridIn((
-      startIndex: windowAt(firstLeft).startIndex,
-      endIndexExclusive: windowAt(lastLeft).endIndexExclusive,
-    ));
+    final grid = _tileGridIn(
+      frameWindowAtBucket(
+        page.bucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: frameCellExtent,
+        frames: (
+          startIndex: frameStartIndex,
+          endIndexExclusive: page.builtFrames,
+        ),
+      ),
+      page.builtFrames,
+    );
     return [...grid.shown, ...grid.ahead];
   }
 
@@ -1359,6 +1352,7 @@ Widget timelineRowCellsPaintArea({
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
+  TimelineNextPage? Function()? nextPage,
   Object? coverageIdentity,
   String substrateGeneration = '',
 }) {
@@ -1376,6 +1370,7 @@ Widget timelineRowCellsPaintArea({
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    nextPage: nextPage,
     // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
     // by itself when the native engine is unavailable (tests, web).
     //

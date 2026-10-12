@@ -60,22 +60,43 @@ void main() {
     },
   );
 
-  TimelineRowCellsPainter painterFor(String id, ValueListenable<int> bucket) =>
-      TimelineRowCellsPainter(
-        layer: rowLayer(id),
-        geometry: testFrameGeometry(
-          frameCellExtent: cell,
-          frameEndIndexExclusive: frames,
-        ),
-        crossAxisExtent: 28,
-        exposureStateForLayer: exposureOf,
-        colorScheme: const ColorScheme.dark(),
-        baseTextStyle: const TextStyle(fontSize: 11),
-        tileStore: store,
-        substrateGeneration: 'warm',
-        windowBucket: bucket,
-        viewportMainExtent: viewport,
-      );
+  /// Where a run of all [frames] turns the axis next from where [bucket]
+  /// stands it — the page law's own answer ([nextPageScrollOffset]), on an
+  /// axis built to [frames].
+  TimelineNextPage turnFrom(ValueListenable<int> bucket) {
+    final spanPx = timelineFrameWindowSpanFor(cell) * cell;
+    final offset = nextPageScrollOffset(
+      (offset: bucket.value * spanPx, viewport: viewport),
+      extent: cell,
+      runSteps: frames,
+    );
+    return (
+      bucket: timelineFrameWindowBucketOf(offset: offset, cellExtent: cell),
+      builtFrames: frames,
+    );
+  }
+
+  TimelineRowCellsPainter painterFor(
+    String id,
+    ValueListenable<int> bucket, {
+    int builtFrames = frames,
+    TimelineNextPage? Function()? nextPage,
+  }) => TimelineRowCellsPainter(
+    layer: rowLayer(id),
+    geometry: testFrameGeometry(
+      frameCellExtent: cell,
+      frameEndIndexExclusive: builtFrames,
+    ),
+    crossAxisExtent: 28,
+    exposureStateForLayer: exposureOf,
+    colorScheme: const ColorScheme.dark(),
+    baseTextStyle: const TextStyle(fontSize: 11),
+    tileStore: store,
+    substrateGeneration: 'warm',
+    windowBucket: bucket,
+    viewportMainExtent: viewport,
+    nextPage: nextPage ?? () => turnFrom(bucket),
+  );
 
   void paintRow(TimelineRowCellsPainter painter) {
     final recorder = ui.PictureRecorder();
@@ -106,12 +127,16 @@ void main() {
     }
   }
 
+  /// Every span [painter] asks for on the page its axis turns to next.
+  List<(int, int)> nextPageOf(TimelineRowCellsPainter painter) =>
+      painter.tileSpansOfThePage(painter.nextPage!()!);
+
   /// The spans of [painter]'s next page its paint does not ask for now —
   /// the ones a warm-up of that page rasters, in the order it takes them.
   List<(int, int)> coldOfTheNextPage(TimelineRowCellsPainter painter) {
     final (:shown, :ahead) = painter.tileSpans;
     return [
-      for (final span in painter.tileSpansOfTheNextPage)
+      for (final span in nextPageOf(painter))
         if (!shown.contains(span) && !ahead.contains(span)) span,
     ];
   }
@@ -119,7 +144,9 @@ void main() {
   /// Whether every span [painter] would show on its next page is a fresh
   /// tile already — asked for, it is handed over and nothing is queued.
   bool nextPageIsWarm(TimelineRowCellsPainter painter) {
-    for (final (start, end) in painter.tileSpansOfTheNextPage) {
+    final next = nextPageOf(painter);
+    expect(next, isNotEmpty, reason: '⛔premise: a page to turn to');
+    for (final (start, end) in next) {
       final tile = store.tileFor(
         painter: painter,
         spanStartIndex: start,
@@ -147,40 +174,87 @@ void main() {
     store.clear();
   });
 
-  test('🚨a row\'s next page is every span its paint asks for once the page '
-      'turns, wherever in its bucket the viewport stood — and past the last '
-      'frame, the first page', () {
+  test('🚨a row\'s page is every span its paint asks for once the axis stands '
+      'there — cut where the axis is built to there, past the end it is '
+      'built to now', () {
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
+    // The last page: the turn stands the axis in bucket 28 and builds it
+    // to 130 frames, past the 120 it is built to.
+    const turn = (bucket: 28, builtFrames: 130);
     final painter = painterFor('pages', bucket);
-    final span = timelineFrameWindowSpanFor(cell);
+    final turned = ValueNotifier<int>(turn.bucket);
+    addTearDown(turned.dispose);
+    final there = painterFor(
+      'pages',
+      turned,
+      builtFrames: turn.builtFrames,
+    );
 
-    for (var at = 0; at < 3; at += 1) {
-      bucket.value = at;
-      final next = painter.tileSpansOfTheNextPage.toSet();
-      for (var px = at * span * cell; px < (at + 1) * span * cell; px += 1) {
-        // The turn stands the frame under the far edge at the window's
-        // start ([pageScrollOffset]).
-        final left = ((px + viewport) / cell).floor();
-        bucket.value = timelineFrameWindowBucketOf(
-          offset: left * cell,
-          cellExtent: cell,
-        );
-        final (:shown, :ahead) = painter.tileSpans;
-        expect(
-          next.containsAll([...shown, ...ahead]),
-          isTrue,
-          reason: 'bucket $at, the viewport at ${px}px',
-        );
-        bucket.value = at;
-      }
+    final (:shown, :ahead) = there.tileSpans;
+    final page = painter.tileSpansOfThePage(turn);
+    expect(page, [...shown, ...ahead]);
+    expect(
+      page.last,
+      (128, 130),
+      reason: 'the span at the end is cut where the turn builds the axis to',
+    );
+  });
+
+  test('🚨an axis is asked where its turn stands it once a warm-up, however '
+      'many rows it lays', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    var asked = 0;
+    TimelineNextPage owner() {
+      asked += 1;
+      return turnFrom(bucket);
     }
 
-    bucket.value = 1000;
+    final rows = [
+      for (var row = 0; row < 3; row += 1)
+        painterFor('laid-$row', bucket, nextPage: owner),
+    ];
+    for (final painter in rows) {
+      show(painter);
+      paintRow(painter);
+    }
+    await idle();
+
+    store.warmTheNextPage(tiles: 64);
+    await idle();
+
+    expect(asked, 1);
+    for (final painter in rows) {
+      expect(nextPageIsWarm(painter), isTrue, reason: painter.layer.id.value);
+    }
+  });
+
+  test('a row that windows off no bucket has no page to turn to', () {
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final unbucketed = TimelineRowCellsPainter(
+      layer: rowLayer('whole'),
+      geometry: testFrameGeometry(
+        frameCellExtent: cell,
+        frameEndIndexExclusive: frames,
+      ),
+      crossAxisExtent: 28,
+      exposureStateForLayer: exposureOf,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      tileStore: store,
+      viewportMainExtent: viewport,
+      nextPage: () => turnFrom(bucket),
+    );
     expect(
-      painter.tileSpansOfTheNextPage.first.$1,
-      0,
-      reason: 'a looping run turns back to its first page',
+      unbucketed.tileSpansOfThePage(turnFrom(bucket)),
+      isEmpty,
+      reason: 'it paints every span already',
     );
   });
 

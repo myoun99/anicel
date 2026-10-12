@@ -142,6 +142,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) {
           rebuilds += 1;
           fn();
@@ -177,6 +178,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -212,6 +214,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -258,6 +261,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 200,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -302,6 +306,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 4,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -327,6 +332,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 4,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -364,6 +370,55 @@ void main() {
         follower.trailingFrames,
         lessThan(grown),
         reason: 'the settle is the one moment it may shrink',
+      );
+    });
+
+    testWidgets('🚨a run\'s next page is where the turn stands the axis, '
+        'built as its own cut builds it there: grown under the last page '
+        'before the cut\'s end, and shrunk back by the wrap', (tester) async {
+      // A 400px viewport of 20px cells — twenty frames a page — over 30
+      // frames of content, with a run of 32: two frames of handle past it.
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 30,
+        viewportFillFrames: () => 20,
+        rebuild: (fn) => fn(),
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+      // The window spans five cells a bucket: 100px.
+      controller.jumpTo(200);
+      follower.handleScroll();
+      expect(follower.renderedFrameCount, 30, reason: '⛔premise: built to 30');
+
+      expect(
+        follower.nextPage(runFrames: 32),
+        (bucket: 6, builtFrames: 50),
+        reason: 'frame 30 leaves the window first, and the turn standing it '
+            'at 600px builds the axis to the view\'s end',
+      );
+      expect(
+        (follower.trailingFrames, bucket.value),
+        (0, 2),
+        reason: 'asking where the turn stands it moves nothing',
+      );
+
+      controller.jumpTo(600);
+      follower.handleScroll();
+      expect(follower.renderedFrameCount, 50, reason: '⛔premise: the turn');
+      expect(
+        follower.nextPage(runFrames: 32),
+        (bucket: 0, builtFrames: 30),
+        reason: 'the run wraps before it leaves this page, and the first page '
+            'lets the room it grew go',
       );
     });
   });
@@ -539,6 +594,35 @@ void main() {
       const none = (offset: 40.0, viewport: 0.0);
       expect(revealScrollOffset(none, justPast), 40);
       expect(pageScrollOffset(none, justPast), 40);
+    });
+  });
+
+  group('the page a run turns to next — the page law asked ahead', () {
+    // Ten-pixel steps under a hundred-pixel window.
+    double next(double offset, {required int runSteps, double view = 100}) =>
+        nextPageScrollOffset(
+          (offset: offset, viewport: view),
+          extent: 10,
+          runSteps: runSteps,
+        );
+
+    test('the step the playhead leaves by comes to the window\'s start', () {
+      expect(next(0, runSteps: 50), 100);
+      expect(
+        next(0, runSteps: 50, view: 95),
+        90,
+        reason: 'the step straddling the far edge is the one it leaves by',
+      );
+    });
+
+    test('🚨the last page before the run\'s end is turned to — the run '
+        'wraps only once it leaves that one', () {
+      expect(next(300, runSteps: 45), 400);
+      expect(next(400, runSteps: 45), 0);
+    });
+
+    test('a run that wraps inside the window turns no page', () {
+      expect(next(0, runSteps: 8), 0);
     });
   });
 }

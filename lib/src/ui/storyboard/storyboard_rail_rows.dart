@@ -2479,11 +2479,7 @@ class _StoryboardRailRows {
   List<List<Widget>> _trackGlobalStripRowsByTrack() {
     final layoutEntries = buildStoryboardTimelineLayout(_state.widget.project);
     final scale = _state._scale;
-    final contentWidth = _state._contentWidthFor(
-      _state.widget.project,
-      layoutEntries,
-      scale,
-    );
+    final contentWidth = _state._contentWidthFor(layoutEntries, scale);
     return [
       for (var index = 0; index < _state.widget.project.tracks.length; index++)
         [

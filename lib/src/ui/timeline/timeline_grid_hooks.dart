@@ -195,6 +195,11 @@ class TimelineGridHooks {
   /// (`ruler-norishiro-follows-drags`).
   final TimelineNoriShiro Function()? noriShiro;
 
+  /// How many frames a run of the cut plays before it wraps: every frame it
+  /// is DRAWN for ([noriShiro]) — F-227, 「재생도 타임라인패널의 재생이면
+  /// 여백까지 재생」 — its 尺 where nothing crosses it.
+  int get runFrames => noriShiro?.call().drawnFrameCount ?? playbackFrameCount;
+
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
 

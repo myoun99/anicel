@@ -505,16 +505,27 @@ class TimelineGridTileStore {
   /// surfaces that turn their pages in one frame start one warm-up between
   /// them, and what is on the screen is rastered first ([tileFor] takes a
   /// span over from here), and what is past it next ([warmAhead]).
+  ///
+  /// Where the turn stands an axis is asked of its owner once a call, and
+  /// every row it lays cuts its spans from that one answer
+  /// ([TimelineTileRasterSource.nextPage]) — the run's end it reads is the
+  /// cut's drawn length, worked out again at each asking.
   void warmTheNextPage({int tiles = 6}) {
     if (QaNativeEngine.instance == null) {
       return;
     }
+    final pages = <TimelineNextPage? Function(), TimelineNextPage?>{};
     for (final MapEntry(key: row, value: (:painter, :ratio))
         in _askedBy.entries) {
-      if (!_showsLive(row, painter)) {
+      final ask = painter.nextPage;
+      if (ask == null || !_showsLive(row, painter)) {
         continue;
       }
-      for (final (start, end) in painter.tileSpansOfTheNextPage) {
+      final page = pages.putIfAbsent(ask, ask);
+      if (page == null) {
+        continue;
+      }
+      for (final (start, end) in painter.tileSpansOfThePage(page)) {
         _warm(
           _warming,
           _TileRequest(

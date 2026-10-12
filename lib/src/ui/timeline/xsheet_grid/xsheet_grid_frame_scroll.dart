@@ -50,17 +50,9 @@ class _XSheetGridFrameScroll {
     return _state._windowedFrameGeometry;
   }
 
-  int get _visibleFrameCount =>
-      _state._rangeGestures.frameRangePolicy.visibleFrameCount;
-
-  /// Render extent (UI-R12 #16 contract): the cells scrolled into
-  /// existence PLUS the viewport fill — no runway beyond. Scroll physics
-  /// and the rail clamp here; the frame-rail edge-drag overshoots and the
-  /// growth listener materializes what the overshot view needs.
-  int get renderedFrameCount => math.max(
-    _visibleFrameCount + _state._frameAxis.trailingFrames,
-    _state._viewportFillFrameCells,
-  );
+  /// Render extent (UI-R12 #16 contract) — the follower's
+  /// ([TimelineFrameAxisFollower.renderedFrameCount]).
+  int get renderedFrameCount => _state._frameAxis.renderedFrameCount;
 
   double get _totalFrameContentHeight =>
       timelineFrameEdge(renderedFrameCount, _state._metrics.frameCellWidth);

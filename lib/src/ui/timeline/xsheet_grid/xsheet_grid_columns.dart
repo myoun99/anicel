@@ -111,6 +111,7 @@ class _XSheetGridColumns {
     windowBucket: _state._frameWindowBucket,
     viewportMainExtent: viewportExtent,
     frameAxisController: _state._frameScrollController,
+    nextPage: _state._nextPage,
     rangeGesture: _state._rangeGesture,
     axis: Axis.vertical,
     keyPrefix: 'xsheet',

@@ -122,6 +122,7 @@ void main() {
       windowBucket: bucket,
       viewportMainExtent: 48 * cell,
       frameAxisController: null,
+      nextPage: null,
       rangeGesture: null,
       axis: axis,
       keyPrefix: 'timeline',
