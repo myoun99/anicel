@@ -20,6 +20,7 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart'
     show debugRawRgbaUploader;
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -105,6 +106,16 @@ void main() {
     }
   }
 
+  /// The spans of [painter]'s next page its paint does not ask for now —
+  /// the ones a warm-up of that page rasters, in the order it takes them.
+  List<(int, int)> coldOfTheNextPage(TimelineRowCellsPainter painter) {
+    final (:shown, :ahead) = painter.tileSpans;
+    return [
+      for (final span in painter.tileSpansOfTheNextPage)
+        if (!shown.contains(span) && !ahead.contains(span)) span,
+    ];
+  }
+
   /// Whether every span [painter] would show on its next page is a fresh
   /// tile already — asked for, it is handed over and nothing is queued.
   bool nextPageIsWarm(TimelineRowCellsPainter painter) {
@@ -136,16 +147,34 @@ void main() {
     store.clear();
   });
 
-  test('a row\'s next page is the viewport\'s frames from where its window '
-      'ends — and past the last frame, the first', () {
+  test('🚨a row\'s next page is every span its paint asks for once the page '
+      'turns, wherever in its bucket the viewport stood — and past the last '
+      'frame, the first page', () {
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('pages', bucket);
-    final window = painter.visibleFrameWindow();
+    final span = timelineFrameWindowSpanFor(cell);
 
-    final next = painter.tileSpansOfTheNextPage;
-    expect(next.first.$1, lessThanOrEqualTo(window.endIndexExclusive));
-    expect(next.last.$2, greaterThanOrEqualTo(window.endIndexExclusive + 10));
+    for (var at = 0; at < 3; at += 1) {
+      bucket.value = at;
+      final next = painter.tileSpansOfTheNextPage.toSet();
+      for (var px = at * span * cell; px < (at + 1) * span * cell; px += 1) {
+        // The turn stands the frame under the far edge at the window's
+        // start ([pageScrollOffset]).
+        final left = ((px + viewport) / cell).floor();
+        bucket.value = timelineFrameWindowBucketOf(
+          offset: left * cell,
+          cellExtent: cell,
+        );
+        final (:shown, :ahead) = painter.tileSpans;
+        expect(
+          next.containsAll([...shown, ...ahead]),
+          isTrue,
+          reason: 'bucket $at, the viewport at ${px}px',
+        );
+        bucket.value = at;
+      }
+    }
 
     bucket.value = 1000;
     expect(
@@ -194,9 +223,7 @@ void main() {
     final before = repaints();
 
     store.warmTheNextPage(tiles: 1);
-    // The next page's first span is the one past the window a paint keeps
-    // warm itself; the warm-up's first is the one after it.
-    final (start, end) = painter.tileSpansOfTheNextPage[1];
+    final (start, end) = coldOfTheNextPage(painter).first;
     // The page turns before the warm tile lands: a paint asks for it.
     store.tileFor(
       painter: painter,
@@ -233,7 +260,7 @@ void main() {
     await pumpEventQueue();
     // Every shown span but the last landed: none waits in the queue, one
     // is still being rastered.
-    final shown = painter.tileSpans.length;
+    final shown = painter.tileSpans.shown.length;
     for (var landed = 0; landed < shown - 1; landed += 1) {
       held.removeAt(0).complete(tiny());
       await pumpEventQueue();
@@ -244,13 +271,89 @@ void main() {
     await pumpEventQueue();
 
     expect(uploads, shown, reason: 'the warm-up waits for the shown spans');
-    while (held.isNotEmpty) {
-      held.removeAt(0).complete(tiny());
+    while (store.debugBusy) {
+      if (held.isNotEmpty) {
+        held.removeAt(0).complete(tiny());
+      }
       await pumpEventQueue();
     }
-    final shownUploads = uploads;
+    expect(
+      uploads,
+      shown + painter.tileSpans.ahead.length,
+      reason: 'the spans past the window go on once they are rastered, and '
+          'the next page only when it is asked for again',
+    );
+  });
+
+  test('🚨the span past each edge of the window is warmed: rastered, and its '
+      'landing repaints nothing', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final painter = painterFor('ahead', bucket);
+    final repaints = show(painter);
+    paintRow(painter);
     await idle();
-    expect(uploads, shownUploads, reason: 'and starts only when asked again');
+
+    final (:shown, :ahead) = painter.tileSpans;
+    expect(ahead, isNotEmpty, reason: '⛔premise: a span past the window');
+    expect(
+      repaints(),
+      shown.length,
+      reason: 'only a shown span\'s landing repaints the row',
+    );
+    for (final (start, end) in ahead) {
+      expect(
+        store.tileFor(
+          painter: painter,
+          spanStartIndex: start,
+          spanEndIndexExclusive: end,
+          devicePixelRatio: 1,
+        ),
+        isNotNull,
+        reason: 'the span past the window is warm',
+      );
+    }
+  });
+
+  test('🚨at rest every span past the windows is warmed, not the few a run '
+      'asks for each frame', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    // Away from the first frame: a span past both edges of every window.
+    final bucket = ValueNotifier<int>(2);
+    addTearDown(bucket.dispose);
+    final painters = [
+      for (var row = 0; row < 5; row += 1) painterFor('rest-$row', bucket),
+    ];
+    for (final painter in painters) {
+      show(painter);
+      paintRow(painter);
+    }
+    await idle();
+
+    final ahead = [
+      for (final painter in painters)
+        for (final span in painter.tileSpans.ahead) (painter, span),
+    ];
+    expect(ahead.length, greaterThan(6), reason: '⛔premise: past a frame\'s');
+    for (final (painter, (start, end)) in ahead) {
+      expect(
+        store.tileFor(
+          painter: painter,
+          spanStartIndex: start,
+          spanEndIndexExclusive: end,
+          devicePixelRatio: 1,
+        ),
+        isNotNull,
+        reason: '${painter.layer.id.value}, the span from $start',
+      );
+    }
   });
 
   test('a span a paint takes over from the warm-up is rastered once', () async {
@@ -274,7 +377,9 @@ void main() {
 
     // Queued, none rastered yet: the shown paint below takes one over.
     store.warmTheNextPage(tiles: 0);
-    final (start, end) = painter.tileSpansOfTheNextPage[1];
+    final cold = coldOfTheNextPage(painter);
+    expect(cold.length, greaterThan(1), reason: '⛔premise: more to warm');
+    final (start, end) = cold.first;
     store.tileFor(
       painter: painter,
       spanStartIndex: start,
@@ -282,16 +387,52 @@ void main() {
       devicePixelRatio: 1,
     );
     await idle();
-    final afterTheShownOne = uploads;
+    expect(uploads, 1, reason: 'the shown one, and the next page waits');
     store.warmTheNextPage(tiles: 64);
     await idle();
 
     expect(
       uploads,
-      afterTheShownOne + painter.tileSpansOfTheNextPage.length - 2,
-      reason: 'every span of the next page but the one past the window a '
-          'paint keeps warm and the one the paint took over',
+      cold.length,
+      reason: 'each span of the next page once, the one the paint took over '
+          'with them',
     );
+  });
+
+  test('a span the next page\'s warm-up holds is rastered once when a paint '
+      'asks for it past its window', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final painter = painterFor('moved-up', bucket);
+    show(painter);
+    paintRow(painter);
+    await idle();
+    var uploads = 0;
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          uploads += 1;
+          return Future.value(tiny());
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+
+    // Queued, none rastered yet.
+    store.warmTheNextPage(tiles: 0);
+    final queued = coldOfTheNextPage(painter);
+    // The row scrolls a span on: the first of them is past its window now.
+    bucket.value = 1;
+    expect(painter.tileSpans.ahead, contains(queued.first), reason: '⛔premise');
+    paintRow(painter);
+    await idle();
+    expect(uploads, 1, reason: 'the span past the window, at rest');
+    final rest = {...queued.skip(1), ...coldOfTheNextPage(painter)};
+    store.warmTheNextPage(tiles: 64);
+    await idle();
+
+    expect(uploads, 1 + rest.length, reason: 'and not again with the rest');
   });
 
   group('🚨a warm span is rastered in the quiet between two held frames', () {
@@ -362,6 +503,80 @@ void main() {
       expect(nextPageIsWarm(painter), isTrue);
     });
 
+    test('🚨the span past the window waits for the quiet as well — only the '
+        'shown spans are rastered at once', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      debugRawRgbaUploader =
+          (rgba, {required width, required height, targetWidth, targetHeight}) {
+            uploads += 1;
+            return Future.value(tiny());
+          };
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(bucket.dispose);
+      final painter = painterFor('ahead-quiet', bucket);
+      show(painter);
+      quiet = (fromMicros: 5000, untilMicros: 1000000);
+
+      paintRow(painter);
+      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
+        await pumpEventQueue();
+      }
+
+      final (:shown, :ahead) = painter.tileSpans;
+      expect(uploads, shown.length, reason: 'the shown spans, at once');
+      expect(waits.single.$1, const Duration(microseconds: 5000));
+      clock = 5000;
+      waits.single.$2.complete();
+      await idle();
+      expect(uploads, shown.length + ahead.length);
+    });
+
+    test('a span past the window that a scroll shows before the quiet is '
+        'rastered at once, and once', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      debugRawRgbaUploader =
+          (rgba, {required width, required height, targetWidth, targetHeight}) {
+            uploads += 1;
+            return Future.value(tiny());
+          };
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(bucket.dispose);
+      final painter = painterFor('ahead-shown', bucket);
+      show(painter);
+      quiet = (fromMicros: 5000, untilMicros: 1000000);
+      paintRow(painter);
+      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
+        await pumpEventQueue();
+      }
+      final shownBefore = painter.tileSpans.shown.length;
+      final waiting = painter.tileSpans.ahead.single;
+      expect(uploads, shownBefore, reason: '⛔premise: it waits for the quiet');
+
+      // The row scrolls a span on before the quiet begins.
+      bucket.value = 1;
+      expect(painter.tileSpans.shown, contains(waiting), reason: '⛔premise');
+      paintRow(painter);
+      for (var turn = 0; turn < 200 && uploads == shownBefore; turn += 1) {
+        await pumpEventQueue();
+      }
+      expect(uploads, shownBefore + 1, reason: 'shown now: at once');
+      clock = 5000;
+      waits.single.$2.complete();
+      await idle();
+
+      expect(
+        uploads,
+        shownBefore + 1 + painter.tileSpans.ahead.length,
+        reason: 'and the warm-up takes the span past the new edge only',
+      );
+    });
+
     test('a span that would land past the quiet\'s end waits for the next '
         'quiet', () async {
       if (!available) {
@@ -370,9 +585,9 @@ void main() {
       }
       final painter = await shownRow('fits', taking: 30000);
       expect(
-        painter.tileSpansOfTheNextPage.length,
-        greaterThanOrEqualTo(3),
-        reason: '⛔premise: two spans to warm past the one a paint keeps',
+        coldOfTheNextPage(painter).length,
+        greaterThanOrEqualTo(2),
+        reason: '⛔premise: two spans to warm',
       );
       quiet = (fromMicros: 0, untilMicros: 50000);
 

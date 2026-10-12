@@ -183,7 +183,10 @@ void main() {
     expect(store.debugBusy, isFalse, reason: 'the row still shown is warm');
     expect(
       [
-        for (final (start, end) in gone.tileSpans)
+        for (final (start, end) in [
+          ...gone.tileSpans.shown,
+          ...gone.tileSpans.ahead,
+        ])
           store.tileFor(
             painter: gone,
             spanStartIndex: start,
@@ -270,7 +273,10 @@ void main() {
 
     expect(
       [
-        for (final (start, end) in old.tileSpans)
+        for (final (start, end) in [
+          ...old.tileSpans.shown,
+          ...old.tileSpans.ahead,
+        ])
           store.tileFor(
             painter: old,
             spanStartIndex: start,

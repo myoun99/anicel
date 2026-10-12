@@ -145,10 +145,11 @@ abstract interface class TimelineTileRasterSource {
   TimelineRowCellModel cellModelAt(int frameIndex);
 
   /// The spans `[start, end)` a paint of this row asks the store for, in
-  /// the order it asks: those under its window NOW, then the one past each
-  /// edge it keeps warm. The store asks for them again itself when its
-  /// queue had no room for this row.
-  List<(int, int)> get tileSpans;
+  /// the order it asks: those under its window NOW (`shown`), then the one
+  /// past each edge it keeps warm (`ahead`,
+  /// [TimelineGridTileStore.warmAhead]). The store asks for them again
+  /// itself when its queue had no room for this row.
+  ({List<(int, int)> shown, List<(int, int)> ahead}) get tileSpans;
 
   /// The spans a page turn brings under this row's window next — the page
   /// after the one shown, and after the last the first: what a run warms

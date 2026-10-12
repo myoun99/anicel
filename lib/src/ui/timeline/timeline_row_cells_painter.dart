@@ -760,10 +760,11 @@ class TimelineRowCellsPainter extends CustomPainter
       );
     }
     // PREFETCH one span beyond both window edges (scroll warm-up):
-    // requesting is enough — the raster lands before the crossing
-    // reveals it, so steady scrolling never hits the fallback.
+    // warming is enough — the raster lands before the crossing reveals
+    // it, so steady scrolling never hits the fallback, and its landing
+    // repaints nothing this row shows.
     for (final (spanStart, spanEnd) in grid.ahead) {
-      store.tileFor(
+      store.warmAhead(
         painter: this,
         spanStartIndex: spanStart,
         spanEndIndexExclusive: spanEnd,
@@ -798,32 +799,54 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   @override
-  List<(int, int)> get tileSpans {
-    final grid = _tileGridIn(visibleFrameWindow());
-    return [...grid.shown, ...grid.ahead];
-  }
+  ({List<(int, int)> shown, List<(int, int)> ahead}) get tileSpans =>
+      _tileGridIn(visibleFrameWindow());
 
-  /// The page a turn brings: a viewport's frames from where the window
-  /// ends ([pageScrollOffset] puts the frame the playhead leaves by at the
-  /// window's start) — or, once the window reaches the last frame, from the
-  /// first, where a looping run turns back to.
+  /// Every span a paint of this row asks for once the page turns: the
+  /// window the turn brings and the span past each of its edges
+  /// ([tileSpans]). A turn stands the frame the playhead leaves by — the
+  /// one under the viewport's far edge — at the window's start
+  /// ([pageScrollOffset]), and where in its bucket the viewport stands now
+  /// the bucket does not say, so this is the windows of every bucket that
+  /// frame can fall in. Once the window reaches the last frame, the turn
+  /// is a looping run's back to the first.
+  ///
+  /// ↩️It was a viewport's frames from where the window ends: a window
+  /// reaches past the viewport by its bucket and its overscan, so the
+  /// turn's window ended a span later than what was warmed, and the span
+  /// past that edge was never warmed at all — 🔬two spans a row landed cold
+  /// after every turn and repainted their rows (10-12, cut 302 at 144Hz).
   @override
   List<(int, int)> get tileSpansOfTheNextPage {
-    if (frameCellExtent <= 0 || viewportMainExtent <= 0) {
+    final bucket = windowBucket;
+    if (bucket == null || frameCellExtent <= 0 || viewportMainExtent <= 0) {
       return const [];
     }
-    final shown = visibleFrameWindow();
-    final from = shown.endIndexExclusive >= frameEndIndexExclusive
-        ? frameStartIndex
-        : shown.endIndexExclusive;
-    final to = math.min(
-      frameEndIndexExclusive,
-      from + (viewportMainExtent / frameCellExtent).ceil(),
-    );
-    if (to <= from) {
-      return const [];
+    final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final viewportCells = viewportMainExtent / frameCellExtent;
+    final int firstLeft;
+    final int lastLeft;
+    if (visibleFrameWindow().endIndexExclusive >= frameEndIndexExclusive) {
+      firstLeft = lastLeft = frameStartIndex;
+    } else {
+      firstLeft = (bucket.value * span + viewportCells).floor();
+      lastLeft = ((bucket.value + 1) * span + viewportCells).ceil() - 1;
     }
-    return _tileGridIn((startIndex: from, endIndexExclusive: to)).shown;
+    ({int startIndex, int endIndexExclusive}) windowAt(int frame) =>
+        frameWindowAtBucket(
+          frame ~/ span,
+          viewportMainExtent: viewportMainExtent,
+          cellExtent: frameCellExtent,
+          frames: (
+            startIndex: frameStartIndex,
+            endIndexExclusive: frameEndIndexExclusive,
+          ),
+        );
+    final grid = _tileGridIn((
+      startIndex: windowAt(firstLeft).startIndex,
+      endIndexExclusive: windowAt(lastLeft).endIndexExclusive,
+    ));
+    return [...grid.shown, ...grid.ahead];
   }
 
   /// The Dart glyph/dash pass over every cell in [window] whose span no

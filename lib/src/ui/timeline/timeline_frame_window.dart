@@ -98,15 +98,35 @@ int timelineFrameWindowBucketOf({
       endIndexExclusive: frameEndIndexExclusive,
     );
   }
+  return frameWindowAtBucket(
+    bucket.value,
+    viewportMainExtent: viewportMainExtent,
+    cellExtent: cellExtent,
+    frames: (
+      startIndex: frameStartIndex,
+      endIndexExclusive: frameEndIndexExclusive,
+    ),
+  );
+}
+
+/// The window a painter draws while the offset stands in [bucket]
+/// ([timelineFrameWindowFor]), clipped to its [frames] — the one a scroll
+/// there gives it ([visibleFrameWindowFor]).
+({int startIndex, int endIndexExclusive}) frameWindowAtBucket(
+  int bucket, {
+  required double viewportMainExtent,
+  required double cellExtent,
+  required ({int startIndex, int endIndexExclusive}) frames,
+}) {
   final window = timelineFrameWindowFor(
-    bucket: bucket.value,
+    bucket: bucket,
     cellExtent: cellExtent,
     viewportExtent: viewportMainExtent,
   );
   return (
-    startIndex: math.max(frameStartIndex, window.startIndex),
+    startIndex: math.max(frames.startIndex, window.startIndex),
     endIndexExclusive: math.min(
-      frameEndIndexExclusive,
+      frames.endIndexExclusive,
       window.endIndexExclusive,
     ),
   );
