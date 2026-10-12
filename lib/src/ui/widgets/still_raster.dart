@@ -583,12 +583,22 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Whether the strata still show the region: the gate is open, the
-  /// region sits on the same device pixels, and the layer tree under it is
-  /// the one they were taken of, its live ticks aside.
+  /// region sits on the same device pixels, the layer tree under it is the
+  /// one they were taken of, its live ticks aside — and every tick drawn
+  /// live still moves: one that stood still for [_movingFor] frames is
+  /// taken into its stratum with the next strata.
   bool _stillShowsImage() =>
       _owner._gate() == StillStandDown.none &&
       _owner._gridFit() == _imageFit &&
-      listEquals(_signatureOf(_live.contains), _imageSignature);
+      listEquals(_signatureOf(_live.contains), _imageSignature) &&
+      _live.every(_moving);
+
+  /// How long a tick that changed stays one that moves: a film frame's
+  /// tick changes every few refreshes, a row's tile landing once.
+  static const int _movingFor = StillRaster.maxStillFrames;
+
+  /// Whether [tick] changed what it holds in the last [_movingFor] frames.
+  bool _moving(TickSceneLayer tick) => _frame - tick._changedAt <= _movingFor;
 
   void _watch() {
     if (_watching) {
@@ -622,16 +632,16 @@ class _StillLayer extends OffsetLayer {
   /// part of ONE image, aligned to the device pixel grid — for the next
   /// frame to show.
   ///
-  /// The ticks drawn live are the ones that moved while the rest of the
-  /// region stood still; a tick that did not is painted into its stratum
-  /// like anything else, and its moving later is a change of the region's.
+  /// The ticks drawn live are the ones moving ([_moving]): a tick that
+  /// is not is painted into its stratum like anything else, and its
+  /// moving later is a change of the region's.
   void _capture() {
     final fit = _owner._gridFit();
     if (fit == null) {
       _owner._standDown = StillStandDown.unlocatable;
       return;
     }
-    final layout = _strataOf((tick) => tick._addedAt > _changedAt);
+    final layout = _strataOf(_moving);
     final live = {
       for (final (:tick, path: _) in layout?.ticks ?? const <_Tick>[]) tick,
     };
@@ -995,12 +1005,27 @@ class _StillLayer extends OffsetLayer {
   /// itself and its place, not by what it draws. Null when the tree holds
   /// content that can change with no layer knowing — then there is nothing
   /// to vouch for.
+  ///
+  /// Each tick it passes is told what it holds ([TickSceneLayer._looked]) —
+  /// how the region knows which of its ticks move.
   List<Object?>? _signatureOf(bool Function(TickSceneLayer tick) live) {
-    final out = <Object?>[];
-    bool walk(Layer layer) {
+    final region = <Object?>[];
+    bool walk(Layer layer, List<Object?> out) {
       out.add(layer);
       switch (layer) {
-        case TickSceneLayer() when live(layer):
+        case TickSceneLayer(:final offset):
+          final held = <Object?>[offset];
+          for (var child = layer.firstChild;
+              child != null;
+              child = child.nextSibling) {
+            if (!walk(child, held)) {
+              return false;
+            }
+          }
+          layer._looked(held, _frame);
+          if (!live(layer)) {
+            out.addAll(held);
+          }
           return true;
         case PictureLayer(:final picture):
           out.add(picture);
@@ -1070,7 +1095,7 @@ class _StillLayer extends OffsetLayer {
         for (var child = layer.firstChild;
             child != null;
             child = child.nextSibling) {
-          if (!walk(child)) {
+          if (!walk(child, out)) {
             return false;
           }
         }
@@ -1079,11 +1104,11 @@ class _StillLayer extends OffsetLayer {
     }
 
     for (var child = firstChild; child != null; child = child.nextSibling) {
-      if (!walk(child)) {
+      if (!walk(child, region)) {
         return null;
       }
     }
-    return out;
+    return region;
   }
 
   /// [rect] in numbers — read the same in a profile build, where a [Rect]
@@ -1102,26 +1127,36 @@ class _StillLayer extends OffsetLayer {
 /// on none; with the timeline folded, a playing frame's raster ran about
 /// 1.5ms shorter (the user's layout, cut 302, 144Hz).
 ///
-/// A still region is cut at every tick that moved while the rest of it
-/// stood still, and each part between two of them is a part of the one
-/// image the region keeps — so everything is drawn in the order it was
-/// painted in, the ticks live in their places. ↩️The first way drew every
-/// tick OVER one image of everything else, and a tick something painted
-/// after it covered had to stay in the image: a picture layer's bounds are
-/// its boundary's whole box, not what it drew, so nearly every tick in the
-/// timeline read as covered and the region was never still (10-12).
+/// A still region is cut at every tick that is moving — that changed what
+/// it holds within the last few dozen frames — and each part between two of
+/// them is a part of the one image the region keeps, so everything is drawn
+/// in the order it was painted in, the ticks live in their places. ↩️The
+/// first way drew every tick OVER one image of everything else, and a tick
+/// something painted after it covered had to stay in the image: a picture
+/// layer's bounds are its boundary's whole box, not what it drew, so nearly
+/// every tick in the timeline read as covered and the region was never
+/// still (10-12).
 class TickSceneLayer extends OffsetLayer {
   /// The box the tick paints in, at [offset] — for the region's
   /// diagnostics.
   Size size = Size.zero;
 
-  /// The frame this tick was last added to a scene in — the frame it last
-  /// changed, or was drawn live.
-  int _addedAt = -1;
+  /// What the tick held the last time its region looked — its place, its
+  /// layers and their pictures, as values — and the frame that changed it.
+  ///
+  /// ⛔Not the frames it was added to a scene in: a tick is added again
+  /// whenever anything under it changes, and a region drawing it live adds
+  /// it on every frame itself.
+  List<Object?>? _held;
+  int _changedAt = -_StillLayer._movingFor - 1;
 
-  @override
-  void addToScene(ui.SceneBuilder builder) {
-    _addedAt = _StillLayer._frame;
-    super.addToScene(builder);
+  void _looked(List<Object?> held, int frame) {
+    if (!listEquals(held, _held)) {
+      // The first look sees what it holds; it is no change.
+      if (_held != null) {
+        _changedAt = frame;
+      }
+      _held = held;
+    }
   }
 }

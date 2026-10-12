@@ -384,6 +384,36 @@ void main() {
     );
   });
 
+  testWidgets('🚨a live tick that stops moving is taken into its stratum — a '
+      'row\'s tile lands once, a film frame\'s counter changes every few '
+      'refreshes', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+
+    // It stands still for longer than a moving tick is ever still.
+    for (var i = 0; i < StillRaster.maxStillFrames * 3; i += 1) {
+      await _frame(tester);
+      if (region.debugDrawnFromImage && region.debugLiveTicks.isEmpty) {
+        break;
+      }
+    }
+    expect(region.debugLiveTicks, isEmpty, reason: 'taken into its stratum');
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(
+      _pixelAt(
+        tester,
+        await captureBytes(tester),
+        Offset(_left + at.value + 5, _top + 5),
+      ),
+      _mark,
+      reason: 'drawn from the stratum where it stood',
+    );
+  });
+
   testWidgets('something painted after a tick but beside it lets the region '
       'be still', (tester) async {
     final at = ValueNotifier<double>(0);
