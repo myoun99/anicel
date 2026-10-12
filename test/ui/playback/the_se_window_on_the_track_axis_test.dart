@@ -208,6 +208,33 @@ void main() {
     );
   });
 
+  // Asking a file's length starts its conform on the first ask
+  // (`AudioConformStore.durationSecondsFor`): a scrub over one cut must not
+  // set every sound on the track decoding.
+  test('a sound outside the window is never looked up — on either side', () {
+    final project = projectWith(
+      cuts: [cut('c1')],
+      sound: (start: 15, length: 10),
+    );
+    final asked = <String>[];
+    for (final outside in [
+      window(trackStart: 0, frames: 15),
+      window(trackStart: 25, frames: 5),
+    ]) {
+      buildAudioPlaybackSchedule(
+        window: outside,
+        project: project,
+        rate: rate,
+        durationSecondsFor: (path) {
+          asked.add(path);
+          return 100;
+        },
+      );
+    }
+
+    expect(asked, isEmpty);
+  });
+
   test('⛔a MUTED row is silent', () {
     final project = projectWith(
       cuts: [cut('c1')],

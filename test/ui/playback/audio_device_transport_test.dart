@@ -398,6 +398,69 @@ void main() {
     store.dispose();
   }, skip: skip);
 
+  group('🗣️F-341: a track with no cut — the device carries the track\'s '
+      'sound to the movie\'s end line', () {
+    /// [_project]'s sound on a track whose cut was deleted: the end line
+    /// stays, held by the trailing frames — 20 frames at fps 10.
+    final noCut = _project.copyWith(
+      trailingFrames: 20,
+      tracks: [_project.tracks.single.copyWith(cuts: const [])],
+    );
+
+    ({CanvasPlaybackController controller, AudioDeviceTransport transport})
+    rigFor(AudioConformStore store) {
+      final controller = CanvasPlaybackController(
+        resolveProject: () => noCut,
+        resolveActiveCutId: () => null,
+        resolveActiveTrackId: () => const TrackId('track'),
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      );
+      final transport = AudioDeviceTransport(
+        controller: controller,
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+        resolveProject: () => noCut,
+        conformStore: store,
+        resolveDevice: () => QaAudioDevice.instance,
+      )..attach();
+      return (controller: controller, transport: transport);
+    }
+
+    test('the sound is heard', () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final rig = rigFor(store);
+
+      rig.controller.play(scope: PlaybackScope.allCuts);
+      expect(rig.transport.carryingPlayback, isTrue);
+      expect(await _waitFor(() => device.peakFor(0) > 0.03), isTrue);
+      rig.controller.stop();
+      rig.transport.dispose();
+      rig.controller.dispose();
+      store.dispose();
+    }, skip: skip);
+
+    test('played once, the device runs out at the end line', () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final rig = rigFor(store);
+
+      rig.controller.loopMode = PlaybackLoopMode.once;
+      rig.controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 18);
+      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      final status = rig.transport.clockStatus();
+      expect(status!.ended, isTrue);
+      expect(status.globalFrame, 19, reason: 'the movie\'s last frame');
+      rig.controller.stop();
+      rig.transport.dispose();
+      rig.controller.dispose();
+      store.dispose();
+    }, skip: skip);
+  });
+
   test('a loop armed mid-timeline re-arms from zero after its first pass — '
       'and from then on the C wrap owns the seam', () async {
     final device = openNullDevice();
