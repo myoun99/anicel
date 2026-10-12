@@ -619,6 +619,12 @@ void main() {
         'wraps only once it leaves that one', () {
       expect(next(300, runSteps: 45), 400);
       expect(next(400, runSteps: 45), 0);
+      expect(
+        next(350, runSteps: 45),
+        0,
+        reason: 'the run\'s last step is the window\'s last: it wraps from '
+            'there, and no step past it is turned to',
+      );
     });
 
     test('a run that wraps inside the window turns no page', () {
