@@ -380,6 +380,131 @@ void main() {
     });
   });
 
+  // F-313: a move that carries a cel onto another row re-keys its pixels,
+  // and the pictures made of them go with them — the frame it lands on
+  // draws it, rather than waiting for the same picture to be made again.
+  group('a rekey carries a cel\'s pictures with its pixels', () {
+    /// 'frame-a' — the cel [storeWithStroke] drew — on another row.
+    final carried = BrushFrameKey(
+      projectId: const ProjectId('project'),
+      trackId: const TrackId('track'),
+      cutId: const CutId('cut'),
+      layerId: const LayerId('other-row'),
+      frameId: const FrameId('frame-a'),
+    );
+
+    LayerFrameImage? validAt(
+      LayerFrameImageCache cache,
+      BrushFrameKey at,
+      PlaybackQuality quality,
+    ) => cache.validImageOrNull(
+      at,
+      quality,
+      canvasSize: canvasSize,
+      sourceEffects: const [],
+    );
+
+    testWidgets('every quality\'s picture is the very image under the key '
+        'the pixels moved to, and none is left under the old', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        final cache = LayerFrameImageCache(frameStore: store);
+        final made = {
+          for (final quality in [PlaybackQuality.full, PlaybackQuality.half])
+            quality: (await cache.prepare(
+              key: key('frame-a'),
+              canvasSize: canvasSize,
+              quality: quality,
+              sourceEffects: const [],
+            ))!,
+        };
+
+        store.rekeyFrames([(key('frame-a'), carried)]);
+
+        for (final MapEntry(key: quality, value: image) in made.entries) {
+          expect(identical(validAt(cache, carried, quality), image), isTrue);
+          expect(validAt(cache, key('frame-a'), quality), isNull);
+        }
+        cache.dispose();
+      });
+    });
+
+    testWidgets('a picture the new key held is let go, not lost', (
+      tester,
+    ) async {
+      final (cache, held) = (await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        BrushFrameEditingCoordinator(
+          initialFrameKey: carried,
+          frameStore: store,
+          sessionStore: BrushFrameEditSessionStore(
+            canvasSize: canvasSize,
+            tileSize: 4,
+          ),
+          historyPolicy: const BrushHistoryPolicy(),
+        ).commitSourceStroke(sourceDabs: [dab(x: 5, y: 5)]);
+        final cache = LayerFrameImageCache(frameStore: store);
+        await cache.prepare(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        );
+        final there = await cache.prepare(
+          key: carried,
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        );
+        store.rekeyFrames([(key('frame-a'), carried)]);
+        return (cache, there!.image);
+      }))!;
+      // The disposal waits out the frames that may still sample it.
+      for (var i = 0; i < 4; i += 1) {
+        await tester.pump();
+      }
+      expect(held.debugDisposed, isTrue);
+      cache.dispose();
+    });
+
+    testWidgets('a picture made in the frame settles where the rekey carried '
+        'it', (tester) async {
+      await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        final cache = LayerFrameImageCache(frameStore: store);
+        final now = cache.prepareSyncOrNull(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          makePictures: true,
+        )!;
+
+        store.rekeyFrames([(key('frame-a'), carried)]);
+
+        final kept = (await cache.prepare(
+          key: carried,
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+        ))!;
+        expect(
+          identical(kept.image, now.image),
+          isFalse,
+          reason: 'the plain snapshot took the deferred image\'s place',
+        );
+        expect(
+          identical(kept.content, now.content),
+          isTrue,
+          reason: 'of the same picture — not made a second time',
+        );
+        cache.dispose();
+      });
+    });
+  });
+
   Future<List<int>> bytesOf(ui.Image image) async {
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     return data!.buffer.asUint8List();

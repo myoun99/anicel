@@ -520,6 +520,7 @@ void main() {
       session.selectFrameIndex(0);
       final cel = celAt(session, a, 0);
       paint(session, a, cel);
+      paint(session, b, celAt(session, b, 3));
 
       expect(
         session.drawingBlockMove.beginDrawingBlockMoveDrag(
@@ -536,6 +537,11 @@ void main() {
 
       expect(pictureOf(session, cel), [true]);
       expect(blockDrawn(session, b, 0), isTrue);
+      expect(
+        blockDrawn(session, b, 3),
+        isTrue,
+        reason: 'a cel of B\'s own, beside the carried one, is under B',
+      );
 
       session.drawingBlockMove.endDrawingBlockMoveDrag();
       expect(
