@@ -55,6 +55,33 @@ void main() {
     expect(binding.drawnFrames, drawn);
   });
 
+  testWidgets('🚨a frame a clock asked to look in says so to what runs in it '
+      '— drawn for a turn as well or not — and one nobody looks in does '
+      'not', (tester) async {
+    final shown = ValueNotifier<int>(0);
+    await settle(tester, shown);
+    bool? looking;
+    void askAfterTheFrame() => SchedulerBinding.instance.addPostFrameCallback(
+      (_) => looking = aClockLooksInThisFrame(),
+    );
+
+    lookNext((_) {});
+    askAfterTheFrame();
+    await tester.pump(vsync);
+    expect(looking, isTrue, reason: 'only to look');
+
+    lookNext((_) {});
+    shown.value = 1;
+    askAfterTheFrame();
+    await tester.pump(vsync);
+    expect(looking, isTrue, reason: 'to look, and to draw a turn');
+
+    shown.value = 2;
+    askAfterTheFrame();
+    await tester.pump(vsync);
+    expect(looking, isFalse, reason: 'only to draw');
+  });
+
   testWidgets('🚨what the look changes is drawn in the frame that looked', (
     tester,
   ) async {

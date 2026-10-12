@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../debug/measurement_mode.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../look_only_frames.dart' show aClockLooksInThisFrame;
 import 'raster_grid_fit.dart';
 import 'static_raster.dart';
 
@@ -54,8 +55,9 @@ import 'static_raster.dart';
 /// scene exactly the layers under which something changed, and retains the
 /// rest. A region that is re-added has changed (or was moved, which the
 /// grid fit judges); a region that is retained has not. The image is taken
-/// after [stillFrames] frames of being retained, and dropped the moment the
-/// region is re-added with a different layer tree
+/// after [stillFrames] frames of being retained — in the frame it changed
+/// in while a clock looks ([_StillLayer._waitNow]) — and dropped the moment
+/// the region is re-added with a different layer tree
 /// ([_StillLayer._signatureOf] says what "different" covers).
 ///
 /// Content that changes without the layer tree knowing — an external
@@ -629,6 +631,25 @@ class _StillLayer extends OffsetLayer {
     _changedTicks.clear();
   }
 
+  /// The frames the region stands still before its image is taken.
+  ///
+  /// 🚨WHILE A CLOCK LOOKS, THE SHORTEST WAIT IS NONE (유저 2026-10-11:
+  /// 「144hz든 몇이든 확실하게 근본/구조적으로 해결하도록」). A page turn is
+  /// drawn the frame after the film frame that carried the playhead out,
+  /// and the next film frame can come the refresh after it — at 60Hz a
+  /// 24fps film changes every two or three — so an image taken after a wait
+  /// comes after that film frame, and it draws the whole region live.
+  /// 🔬10-12, cut 302 at 144Hz: the first film frame after a turn came 2–5
+  /// frames after it, the image 4 — 22 of 24 drawn live, their raster p50
+  /// 12ms against 6 from the image. Taken in the turn's own frame, the image
+  /// is rendered right after that frame, in the quiet before the film's.
+  /// What a wait guards — a region changed again a frame or two later — the
+  /// back-off still does: only the shortest wait is taken off, and a region
+  /// a run keeps changing waits what its thrown-away image taught it.
+  int get _waitNow =>
+      _stillFramesNeeded -
+      (aClockLooksInThisFrame() ? StillRaster.stillFrames : 0);
+
   void _watch() {
     if (_watching) {
       return;
@@ -645,7 +666,7 @@ class _StillLayer extends OffsetLayer {
       // `>`: the frame clock ticks after the scene is built, so the frame
       // the region changed in already reads one here. And one image a
       // frame across every region ([StillRaster._lastCaptureFrame]).
-      if (_frame - _changedAt > _stillFramesNeeded &&
+      if (_frame - _changedAt > _waitNow &&
           StillRaster._lastCaptureFrame != _frame) {
         _capture();
         return;

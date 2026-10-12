@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/look_test_binding.dart';
 import '../../helpers/raster_parity.dart';
 
 /// 🚨WHAT A TICK MOVES IS DRAWN LIVE BETWEEN A STILL REGION'S STRATA
@@ -125,10 +126,10 @@ Future<void> _pump(WidgetTester tester, Widget region, {double left = _left}) =>
     pumpSurface(tester, region, left: left, width: _width, height: _height);
 
 void main() {
-  setUpAll(() {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    StaticRaster.ensureFrameClock();
-  });
+  // The app's own frame law, for a running clock's look to be the real one.
+  final binding = LookTestBinding.ensureInitialized();
+
+  setUpAll(StaticRaster.ensureFrameClock);
 
   setUp(() {
     StillRaster.debugCachePaysOverride = true;
@@ -672,12 +673,25 @@ void main() {
       return null;
     }
 
+    /// Frames enough for the image on screen to pay for itself: the next
+    /// change finds the region at the shortest wait.
+    Future<void> letItPay(WidgetTester tester) async {
+      for (var frame = 0; frame < StillRaster.framesToPay; frame += 1) {
+        await _frame(tester);
+      }
+    }
+
     var shade = 0;
     Future<void> change(WidgetTester tester, ValueNotifier<Color> ground) {
       shade += 1;
       ground.value = Color(0xFF000000 | shade);
       return tester.pump();
     }
+
+    /// The frame to come is one a clock looks in — every frame is, while a
+    /// cut plays.
+    void aClockLooks() =>
+        binding.askingOnlyToLook(() => binding.scheduleFrameCallback((_) {}));
 
     /// Images thrown away the frame after they are first drawn, until the
     /// region waits the most it waits.
@@ -712,9 +726,7 @@ void main() {
         await framesUntilDrawn(tester, StillRaster.maxStillFrames),
         isNotNull,
       );
-      for (var frame = 0; frame < StillRaster.framesToPay; frame += 1) {
-        await _frame(tester);
-      }
+      await letItPay(tester);
 
       await change(tester, ground);
       expect(
@@ -814,6 +826,76 @@ void main() {
       await film();
       expect(region.debugDrawnFromImage, isTrue);
       expect(region.debugCaptureCount, taken, reason: 'not retaken');
+    });
+
+    testWidgets('with no clock looking, a changed region waits the shortest '
+        'wait before its image — an edit may change it again', (tester) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken',
+      );
+      await letItPay(tester);
+
+      await change(tester, ground);
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        StillRaster.stillFrames + 1,
+      );
+    });
+
+    testWidgets('🚨while a clock looks, a region is taken in the frame it '
+        'changed in — the film frame right after a page turn is drawn from '
+        'its image, at any refresh rate', (tester) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken',
+      );
+      await letItPay(tester);
+
+      aClockLooks();
+      await change(tester, ground);
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        1,
+        reason: 'taken in the frame of the turn',
+      );
+    });
+
+    testWidgets('🚨while a clock looks, a region changed on every frame is '
+        'taken once, then waits what its thrown-away image taught it', (
+      tester,
+    ) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken',
+      );
+      await letItPay(tester);
+      final region = _region(tester);
+      final taken = region.debugCaptureCount;
+
+      for (var frame = 0; frame < 20; frame += 1) {
+        aClockLooks();
+        await change(tester, ground);
+      }
+      expect(region.debugCaptureCount, taken + 1);
     });
   });
 }

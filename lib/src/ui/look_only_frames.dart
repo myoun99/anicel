@@ -66,6 +66,10 @@ mixin LookOnlyFrames on WidgetsBinding {
   /// Whether the frame under way is drawn.
   bool _draws = true;
 
+  /// Whether a clock asked to look in the frame under way
+  /// ([aClockLooksInThisFrame]).
+  bool _looks = false;
+
   /// Runs [asks]; a frame it asks the scheduler for is asked for only to
   /// LOOK — to be called back in, on the vsync.
   void askingOnlyToLook(VoidCallback asks) {
@@ -104,6 +108,7 @@ mixin LookOnlyFrames on WidgetsBinding {
 
   @override
   void handleBeginFrame(Duration? rawTimeStamp) {
+    _looks = _lookAsked;
     _draws = _drawAsked || !_lookAsked;
     _drawAsked = false;
     _lookAsked = false;
@@ -116,4 +121,12 @@ mixin LookOnlyFrames on WidgetsBinding {
       super.drawFrame();
     }
   }
+}
+
+/// Whether a clock asked to look in the frame under way — every frame is,
+/// while one runs ([LookOnlyFrames.askingOnlyToLook]); false where the
+/// binding does not tell a look from a draw.
+bool aClockLooksInThisFrame() {
+  final binding = WidgetsBinding.instance;
+  return binding is LookOnlyFrames && binding._looks;
 }
