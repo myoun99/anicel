@@ -2854,7 +2854,6 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     retime: this,
     dragPreview: dragPreview,
-    renderCaches: renderCaches,
   );
 
   /// The door a collaborator announces through — `notifyListeners` is

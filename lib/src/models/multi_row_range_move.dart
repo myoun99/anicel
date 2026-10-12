@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'cel_bank_lanes.dart';
+import 'cel_rekey.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -20,9 +21,9 @@ class MultiRowRangeMovePlan {
   /// omitted.
   final Map<LayerId, Layer> layersAfter;
 
-  /// (from, to, frameId) triples: a cel that changed owning layer, so its
-  /// brush frame must re-key from the source row to the target row.
-  final List<({LayerId from, LayerId to, FrameId frameId})> rekeys;
+  /// The cels that changed owning layer, so their brush frames re-key from
+  /// the source row to the target row ([CelRekey]).
+  final List<CelRekey> rekeys;
 }
 
 /// Plans a MULTI-ROW range move (UI-R23 #9): the selected blocks on a
@@ -109,9 +110,8 @@ class _MultiRowRangeMovePlanner {
   final frameIdsByLayer = <LayerId, Set<FrameId>>{};
   final sourceIndexes = <int>{};
 
-  /// (from, to, frameId) triples the rebuild writes: a cel that changed
-  /// owning layer, so its brush frame must re-key.
-  final rekeys = <({LayerId from, LayerId to, FrameId frameId})>[];
+  /// The cels the rebuild carries onto another row ([CelRekey]).
+  final rekeys = <CelRekey>[];
 
   /// Phase 1: each source row's selected blocks + travelling cels,
   /// validating the block-snap and the link-safety of every cel that

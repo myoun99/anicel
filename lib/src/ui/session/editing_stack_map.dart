@@ -11,6 +11,8 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../../services/import/raster_cel_import.dart' show pictureMoved;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../canvas/canvas_layer_stack_view.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, celPixelsRowOf;
 import 'opacity_verbs.dart';
 import 'session_roles.dart';
 
@@ -34,6 +36,7 @@ class EditingStackMap {
     required this.frameIndex,
     required this.activeLayerId,
     required TransformPose? Function(BrushFrameKey key) movieLaidAt,
+    this.dragPreview,
   }) : _opacityVerbs = opacityVerbs,
        _project = project,
        _movieLaidAt = movieLaidAt;
@@ -44,6 +47,10 @@ class EditingStackMap {
   final Cut stackCut;
   final int frameIndex;
   final LayerId? activeLayerId;
+
+  /// The drag [stackCut] shows, if any: a cel it carries onto another row
+  /// shows the pixels still under the row it came from ([celPixelsRowOf]).
+  final TimelineDragPreview? dragPreview;
 
   /// Where a movie cel's picture was laid, while one is installed
   /// (`MovieCelHydrator.laidAt`) — a moved reference fx shows the picture
@@ -177,12 +184,12 @@ class EditingStackMap {
             );
       activeSourceEffects = splitSourceEffects(entry.effects).source;
     }
+    final key = _project.brushFrameKeyForCut(
+      cut,
+      celPixelsRowOf(dragPreview, entry.layer.id, entry.frame.id),
+      entry.frame.id,
+    );
     if (!active || entry.frame.id != _heldCel) {
-      final key = _project.brushFrameKeyForCut(
-        cut,
-        entry.layer.id,
-        entry.frame.id,
-      );
       return CanvasLayerImageRequest(
         frameKey: key,
         opacity: entry.opacity,
@@ -197,12 +204,10 @@ class EditingStackMap {
       // asks with. The build in which this cel leaves the active slot, the
       // stack reads it off the widget it replaces and composes the cel's
       // image on the spot, so the row does not go blank for the frames an
-      // asynchronous build takes ([CanvasActiveLayerRow.frameKey]).
-      frameKey: _project.brushFrameKeyForCut(
-        cut,
-        entry.layer.id,
-        entry.frame.id,
-      ),
+      // asynchronous build takes ([CanvasActiveLayerRow.frameKey]). A drag
+      // that carries the cel onto another row keeps it: the image there is
+      // asked under the row the cel came from ([celPixelsRowOf]).
+      frameKey: key,
       // The SAME entry the image branch above reads it from. It was
       // dropped right here — five fields arrived and four were forwarded,
       // so standing on a multiply row silently made it normal on the

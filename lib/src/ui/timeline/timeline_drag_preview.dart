@@ -3,9 +3,11 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/mapped_or_same.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/cel_rekey.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -83,6 +85,7 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
+    this.rekeys = const [],
     this.previewGlobalLayers = const {},
     this.previewTrackEffects,
     this.cameraCutId,
@@ -91,6 +94,12 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   });
 
   final Map<LayerId, Layer> previewLayers;
+
+  /// The cels [previewLayers] carry onto another row — the very list the
+  /// release re-keys their pixels by ([CelRekey]). Until then each one's
+  /// pixels are under the row it came from, where whatever shows it reads
+  /// them ([celPixelsRowOf]).
+  final List<CelRekey> rekeys;
 
   /// Track-owned moves only (C2 2026-08-17 — the SE rows, and the
   /// transition row since 2026-09-25): the GLOBAL-axis form of each moved
@@ -123,6 +132,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   bool operator ==(Object other) =>
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
+      listEquals(other.rekeys, rekeys) &&
       mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
       mapOfListsEquals(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
@@ -132,6 +142,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   @override
   int get hashCode => Object.hash(
     mapHash(previewLayers),
+    Object.hashAll(rekeys),
     mapHash(previewGlobalLayers),
     mapOfListsHash(previewTrackEffects),
     cameraCutId,
@@ -541,6 +552,31 @@ Layer? timelineDragPreviewLayerFor(
     return preview.row?.id == layerId ? preview.row : null;
   }
   return null;
+}
+
+/// The row whose pixels [layerId]'s cel [frameId] shows while [preview] is
+/// in flight: [layerId] itself, but for a cel the drag carries onto it from
+/// another row — its pixels stay under that row until the release re-keys
+/// them ([BlockMoveDragPreview.rekeys]).
+///
+/// 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로 만드는
+/// 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」): what showed such
+/// a cel — the canvas, its onion ghost, its block's 「no picture」 grey —
+/// asked the row the drag holds it on, where there were no pixels yet, so
+/// it went blank until the release.
+LayerId celPixelsRowOf(
+  TimelineDragPreview? preview,
+  LayerId layerId,
+  FrameId frameId,
+) {
+  if (preview is BlockMoveDragPreview) {
+    for (final rekey in preview.rekeys) {
+      if (rekey.to == layerId && rekey.frameId == frameId) {
+        return rekey.from;
+      }
+    }
+  }
+  return layerId;
 }
 
 /// The EFFECT chain [preview] shows for [trackId]'s V row, or null when it

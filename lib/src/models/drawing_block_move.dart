@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'block_run_move.dart';
 import 'cel_bank_lanes.dart';
+import 'cel_rekey.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -60,6 +61,16 @@ class DrawingBlockMovePlan {
   final int destinationStartIndex;
 
   bool get isCrossLayer => targetBefore != null;
+
+  /// [movedFrameIds] as the cels the move carries from the source row onto
+  /// the target ([CelRekey]) — none for a slide along one row. The release
+  /// re-keys them; until then the drag shows each in its source row's
+  /// pixels.
+  List<CelRekey> get rekeys => [
+    if (targetAfter case final target?)
+      for (final frameId in movedFrameIds)
+        (from: sourceAfter.id, to: target.id, frameId: frameId),
+  ];
 }
 
 /// Plans moving EVERY drawing block inside [rangeStartIndex,

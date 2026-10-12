@@ -167,6 +167,7 @@ class DrawingBlockMoveDrag {
                   drawnFrameCount: drawn,
                 ),
             },
+            rekeys: plan.rekeys,
           );
   }
 

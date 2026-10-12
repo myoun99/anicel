@@ -188,6 +188,7 @@ class EditingCanvas {
     final drawn = stackAt(
       cut: cut,
       stackCut: stackCut,
+      dragPreview: dragPreview,
       frameIndex: frameIndex,
       drawingLayerId: drawingLayerId,
     );
@@ -220,7 +221,8 @@ class EditingCanvas {
   /// [stackCut] is [cut] as it composites right now (the drag in flight, the
   /// canvas's opacity drag preview); [cut] is what the brush holds. The live
   /// row stands in the tree only when it takes brush input and shows the cel
-  /// the brush holds; otherwise it composites like any other.
+  /// the brush holds; otherwise it composites like any other. [dragPreview]
+  /// is the drag [stackCut] shows, if any ([EditingStackMap.dragPreview]).
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -229,6 +231,7 @@ class EditingCanvas {
   stackAt({
     required Cut cut,
     Cut? stackCut,
+    TimelineDragPreview? dragPreview,
     required int frameIndex,
     required LayerId? drawingLayerId,
   }) {
@@ -238,6 +241,7 @@ class EditingCanvas {
       project: _project,
       cut: cut,
       stackCut: shown,
+      dragPreview: dragPreview,
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
       movieLaidAt: _movieLaidAt,

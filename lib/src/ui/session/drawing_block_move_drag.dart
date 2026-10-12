@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
+import '../timeline/timeline_drag_preview.dart'
+    show BlockMoveDragPreview, TimelineDragPreview;
 import 'drags/drawing_block_move_drag.dart';
+import '../../models/cel_rekey.dart';
+import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/drawing_block_move.dart';
@@ -141,8 +144,8 @@ class DrawingBlockMoveDragVerbs {
   /// this way — same plan type, same three pieces, same collapse to a bare
   /// command when there is only one. They differed in the undo LABEL and
   /// nothing else, so that is all this takes. (The multi-row rigid move is
-  /// a different shape: SE row pairs, instruction and camera riders, and a
-  /// rekey list built from the plan instead of the moved frame ids.)
+  /// a different shape: SE row pairs, instruction and camera riders — its
+  /// cels cross by [celRekeyCommand] all the same.)
 
   Command singleRowMoveCommand(
     DrawingBlockMovePlan plan, {
@@ -168,22 +171,26 @@ class DrawingBlockMoveDragVerbs {
           ),
         ),
     ];
-    if (plan.isCrossLayer && plan.movedFrameIds.isNotEmpty) {
-      final cut = _project.requireActiveCut;
-      commands.add(
-        RekeyBrushFramesCommand(
-          store: _renderCaches.brushFrameStore,
-          pairs: [
-            for (final frameId in plan.movedFrameIds)
-              (
-                _project.brushFrameKeyForCut(cut, source.id, frameId),
-                _project.brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
-              ),
-          ],
-        ),
-      );
+    if (plan.rekeys.isNotEmpty) {
+      commands.add(celRekeyCommand(_project.requireActiveCut, plan.rekeys));
     }
     // Never empty: the source row's rewrite is always the first.
     return oneStepOf(description, commands)!;
   }
+
+  /// The brush-frame rekey that carries [rekeys]' cels onto the rows they
+  /// land on in [cut] — every move that carries cels across lands its
+  /// pixels by it, from the list its drag showed them by
+  /// ([BlockMoveDragPreview.rekeys]).
+  RekeyBrushFramesCommand celRekeyCommand(Cut cut, List<CelRekey> rekeys) =>
+      RekeyBrushFramesCommand(
+        store: _renderCaches.brushFrameStore,
+        pairs: [
+          for (final rekey in rekeys)
+            (
+              _project.brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
+              _project.brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
+            ),
+        ],
+      );
 }

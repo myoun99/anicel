@@ -50,7 +50,6 @@ void main() {
           retime: s,
           dragPreview: s.dragPreview,
           blockMove: s.drawingBlockMove,
-          renderCaches: s.renderCaches,
           camera: s.camera,
           transitions: s.transitions,
           trackSe: s.trackSe,

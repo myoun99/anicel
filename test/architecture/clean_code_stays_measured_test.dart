@@ -391,7 +391,18 @@ void main() {
   /// which its constructor (excluded here) takes as well, as for
   /// `PropertyTrack.withKey` above. 🔬`clean_code_diff` against master
   /// (`d0baee08e`, at 394) named that one added and nothing gone.
-  const wideSignatures = 395;
+  ///
+  /// ⚠️395 → 396 on 2026-10-12, named as the rule above asks (F-313, a cel
+  /// carried onto another row shows its own picture before the release —
+  /// 유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로 만드는 로직
+  /// 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」).
+  /// `EditingCanvas.stackAt` (five) takes the drag its shown cut shows beside
+  /// that cut: the cut says which cel stands where, and only the drag says
+  /// whose row a carried cel's pixels are still under — the list the
+  /// release re-keys them by. Read back off the two cuts it would be a
+  /// second answer to that question. 🔬`clean_code_diff` against master
+  /// (`3ef2f8da7`, at 395) named that one added and nothing gone.
+  const wideSignatures = 396;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

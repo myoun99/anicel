@@ -12,7 +12,6 @@ import 'drags/frame_range_move_drag.dart';
 import 'drawing_block_move_drag.dart';
 import 'folders_and_attachments.dart';
 import 'range_selections.dart';
-import 'render_caches.dart';
 import 'row_spans.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
@@ -42,7 +41,6 @@ class FrameRangeMoveDragVerbs {
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
     required DrawingBlockMoveDragVerbs blockMove,
-    required RenderCaches renderCaches,
     required Camera camera,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
@@ -56,7 +54,6 @@ class FrameRangeMoveDragVerbs {
          retime: retime,
          dragPreview: dragPreview,
          blockMove: blockMove,
-         renderCaches: renderCaches,
          camera: camera,
          transitions: transitions,
          trackSe: trackSe,

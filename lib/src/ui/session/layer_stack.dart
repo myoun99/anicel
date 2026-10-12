@@ -28,7 +28,7 @@ import '../../services/commands/cut_command_input_planner.dart'
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, timelineDragPreviewLayerFor;
+    show TimelineDragPreview, celPixelsRowOf, timelineDragPreviewLayerFor;
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
@@ -313,7 +313,13 @@ class LayerStack {
     if (_brushInputActive.value && _liveStrokeCel == (layer.id, frame.id)) {
       return true;
     }
-    return _storeHoldsAPicture(cut, layer.id, frame.id);
+    // A cel a drag carries onto [layer] is drawn where its pixels still are:
+    // under the row it came from ([celPixelsRowOf]).
+    return _storeHoldsAPicture(
+      cut,
+      celPixelsRowOf(_dragPreview.value, layer.id, frame.id),
+      frame.id,
+    );
   }
 
   /// The cel a live stroke counts as drawn: the active row's selected
