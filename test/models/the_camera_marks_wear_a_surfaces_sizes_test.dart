@@ -78,4 +78,20 @@ void main() {
     final line = conteTextStyle(sizes.labelSize).height! * sizes.labelSize;
     expect(label.slot.height, greaterThanOrEqualTo(line));
   });
+
+  test('a surface\'s sizes in another\'s units are each of them that many '
+      'times over, each still its own', () {
+    final twice = sizes.scaledBy(2);
+    expect(
+      [
+        twice.frameWidth,
+        twice.trailWidth,
+        twice.labelSize,
+        twice.crossArm,
+        twice.crossWidth,
+        twice.labelInset,
+      ],
+      [3.6, 2.8, 24, 10, 3.2, 8],
+    );
+  });
 }
