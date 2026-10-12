@@ -158,6 +158,41 @@ void main() {
     expect((frame.h, frame.v), (SheetAlign.start, SheetAlign.end));
   });
 
+  test('a named key\'s frame never stands on its name: both read the path a '
+      'frame either side of the key, not the crosses in time either side', () {
+    // A peak at 10 between 9 below-left and 11 below-right of it — where
+    // the crosses in time, at 5 and 15, both lie below and right.
+    final peak = pathOf(
+      PropertyTrack<CanvasPoint>()
+          .withKey(5, p(30, 40))
+          .withKey(8, p(-20, 20))
+          .withKey(10, p(0, 0))
+          .withKey(11, p(10, 10))
+          .withKey(15, p(60, 40))
+          .withKeyName(10, 'A'),
+    );
+    final name = wordsIn(marksOf(peak)).singleWhere((w) => w.text == 'A');
+    expect(name.slot.left, closeTo(4, 1e-9), reason: 'above-right');
+    expect(name.slot.bottom, closeTo(-4, 1e-9));
+
+    final frame = wordsIn(
+      cameraPathTicks(
+        peak,
+        place: same,
+        every: 5,
+        playhead: 0,
+        arm: 3,
+        width: 1.1,
+        labelSize: 10,
+        labelGap: 2,
+        layer: SheetPaintLayer.picture,
+      ),
+    ).singleWhere((w) => w.text == '11f');
+    expect(frame.slot.right, closeTo(-2, 1e-9), reason: 'above-left');
+    expect(frame.slot.bottom, closeTo(-2, 1e-9));
+    expect((frame.h, frame.v), (SheetAlign.end, SheetAlign.end));
+  });
+
   test('a lane whose frames run ahead of the cut\'s — a track-SE row\'s — '
       'is read back on the cut\'s', () {
     final ahead = PropertyTrack<CanvasPoint>()

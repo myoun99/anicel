@@ -182,6 +182,7 @@ void main() {
       [Offset(b.x, b.y)],
       [Offset(c.x, c.y)],
     ]);
+    expect(box(tester).tangents, hasLength(1), reason: 'the key at 5\'s');
 
     for (final elsewhere in [
       const LaneRowAddress(row, 'scale'),
@@ -192,6 +193,13 @@ void main() {
       await tester.pump();
       expect(path(), findsNothing, reason: '$elsewhere');
     }
+    s.standOnRow(const LaneRowAddress(row, 'scale'));
+    await tester.pump();
+    expect(
+      box(tester).tangents,
+      isEmpty,
+      reason: 'the scale\'s box wears no handle of the path',
+    );
 
     s.standOnRow(const LaneRowAddress(row, 'position'));
     await tester.pump();
@@ -233,8 +241,14 @@ void main() {
     expectNear(handle.at, shown(200 + 40, 30), 'ahead');
     expectNear(handle.behind, shown(200 - 160 / 3, -40), 'behind');
 
+    final trailBefore = overlay(tester).path.cornerTrailsBetween(0, 10);
     handle.landing.committed(shown(250, 50));
     await tester.pump();
+    expect(
+      overlay(tester).path.cornerTrailsBetween(0, 10),
+      isNot(trailBefore),
+      reason: 'the path follows the bend',
+    );
     final bent = pathAt5(s);
     expect(bent, isA<HandledPath>());
     expectNear(
@@ -305,6 +319,17 @@ void main() {
     final crosses = keyCrosses(tester);
     expect(crosses[2].dx, closeTo(at.dx, 1e-6), reason: 'the key at 5');
     expect(crosses[2].dy, closeTo(at.dy, 1e-6));
+
+    // Kept to six frames either side of the playhead — the cut's frames,
+    // where the keys at 0 and 5 stand.
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      range: CameraPathRange.aroundPlayhead,
+      around: 6,
+    );
+    await tester.pump();
+    expect(box(tester).tangents, hasLength(2));
+    reset();
+    await tester.pump();
 
     // Every key smooth as it was typed (I-89-Q10 B): the end keys' handles
     // stand on them, the one at 5 a third of the way to 10 ahead.
