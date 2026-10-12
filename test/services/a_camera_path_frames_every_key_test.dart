@@ -426,12 +426,19 @@ void main() {
         '보여주도록」) — below and right of it, where the crosses either side '
         'leave that free', () {
       final labels = labelsOf(pathOf(three), every: 5, playhead: 10);
-      expect(labels.map((label) => label.text), ['6f', '11f', '16f', '21f']);
+      expect(labels.map((label) => label.text), [
+        '6f',
+        '11f',
+        '16f',
+        '21f',
+        ...['1f', '13f', '25f'],
+      ]);
       expect(labels.map((label) => label.argb), [
         grey,
         cameraBetweenArgb,
         blue,
         blue,
+        ...[cameraInArgb, cameraBetweenArgb, cameraOutArgb],
       ]);
       // Frame 5 at (180, 45): 0 and 10 level with it.
       expectPoints([labels[0].slot.topLeft], const [Offset(182, 47)]);
@@ -439,6 +446,22 @@ void main() {
       expect(labels[0].size, 10);
       // Frame 15 at (320, 78.75): 10 above and left of it, 20 below it.
       expectPoints([labels[2].slot.topLeft], const [Offset(322, 80.75)]);
+    });
+
+    test('a key\'s own cross wears its frame too, by the same rule, in the '
+        'key\'s colour (I-89-Q16 B, 유저 2026-10-12: 「키의 십자에도」)', () {
+      // A peak at 12, (320, 45): frame 7 below and left of it, 17 below and
+      // right — the frame stands above and right.
+      final peak = CutCamera(
+        keyframes: {0: at(80, 180), 12: at(320, 45), 24: at(560, 180)},
+      );
+      final labels = labelsOf(pathOf(peak), every: 5, playhead: 0);
+      final key = labels.singleWhere((label) => label.text == '13f');
+      expect(key.argb, cameraBetweenArgb);
+      expect(key.size, 10);
+      expect(key.slot.left, closeTo(320 + 2, 1e-9));
+      expect(key.slot.bottom, closeTo(45 - 2, 1e-9));
+      expect((key.h, key.v), (SheetAlign.start, SheetAlign.end));
     });
 
     test('where the path takes the quarter below and right, the frame stands '
@@ -490,6 +513,13 @@ void main() {
         hasLength(4),
         reason: 'frames 1 and 2 — nothing before the first key',
       );
+      expect(
+        wordsIn(
+          inTime(pathOf(three), every: 1, playhead: 0, from: 10, to: 14),
+        ).map((label) => label.text),
+        ['11f', '12f', '14f', '15f', '13f'],
+        reason: 'and the key\'s frame of the keys among them',
+      );
     });
 
     test('a turned camera\'s crosses turn with its frame, a key\'s and a '
@@ -511,7 +541,8 @@ void main() {
       }
       // Frame 6 at (200, 45), between keys level with it: below and right
       // as the frame stands, two along its sides.
-      final label = labelsOf(path, every: 6, playhead: 0).single;
+      final label = labelsOf(path, every: 6, playhead: 0).first;
+      expect(label.text, '7f', reason: '⛔전제');
       expect(label.turn, closeTo(turn, 1e-9));
       final right = Offset(math.cos(turn), math.sin(turn));
       final down = Offset(-math.sin(turn), math.cos(turn));

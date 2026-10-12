@@ -177,6 +177,9 @@ Iterable<SheetMark> cameraPathMarks(
 /// the path runs ([cameraCrossLabel]: 유저 2026-10-12 「궤도 십자가? 보이는
 /// 경우가 있잖아. 출력용말고 편집할때. 그 상황에서 십자가쪽에도 프레임번호
 /// 아까말한대로 보여주도록」) — the crosses either side of it are the path.
+/// So does a key's own cross, in the key's colour (I-89-Q16 B, 유저
+/// 2026-10-12: 「키의 십자에도」) — an unnamed key's frame reads twice, at
+/// its frame's corner and beside its cross.
 ///
 /// [place], [from] and [to] as [cameraPathMarks] takes them.
 Iterable<SheetMark> cameraPathTicks(
@@ -195,6 +198,20 @@ Iterable<SheetMark> cameraPathTicks(
   Offset centreAt(int frame) => cameraFrameCentre([
     for (final corner in path.frameAt(frame)) place(corner),
   ]);
+  SheetWords frameBeside(int frame, List<Offset> corners, int argb) =>
+      cameraCrossLabel(
+        cameraFrameLabel(frame),
+        corners,
+        at: cameraFrameCentre(corners),
+        taken: [
+          for (final side in [frame - every, frame + every])
+            centreAt(side.clamp(path.firstFrame, path.lastFrame)),
+        ],
+        argb: argb,
+        size: labelSize,
+        gap: labelGap,
+        layer: layer,
+      );
   final first = math.max(path.firstFrame, from ?? path.firstFrame);
   final last = math.min(path.lastFrame, to ?? path.lastFrame);
   final keyed = {for (final key in path.keys) key.frameIndex};
@@ -207,7 +224,6 @@ Iterable<SheetMark> cameraPathTicks(
       continue;
     }
     final corners = [for (final corner in path.frameAt(frame)) place(corner)];
-    final at = cameraFrameCentre(corners);
     final argb = frame < playhead
         ? cameraTickPastArgb
         : frame > playhead
@@ -215,24 +231,21 @@ Iterable<SheetMark> cameraPathTicks(
         : cameraBetweenArgb;
     yield* cameraCrossMarks(
       corners,
-      at: at,
+      at: cameraFrameCentre(corners),
       argb: argb,
       arm: arm,
       width: width,
       layer: layer,
     );
-    yield cameraCrossLabel(
-      cameraFrameLabel(frame),
-      corners,
-      at: at,
-      taken: [
-        for (final side in [frame - every, frame + every])
-          centreAt(side.clamp(path.firstFrame, path.lastFrame)),
-      ],
-      argb: argb,
-      size: labelSize,
-      gap: labelGap,
-      layer: layer,
-    );
+    yield frameBeside(frame, corners, argb);
+  }
+  for (final key in path.keys) {
+    if (key.frameIndex >= first && key.frameIndex <= last) {
+      yield frameBeside(
+        key.frameIndex,
+        [for (final corner in key.corners) place(corner)],
+        cameraKeyArgb(key.role),
+      );
+    }
   }
 }
