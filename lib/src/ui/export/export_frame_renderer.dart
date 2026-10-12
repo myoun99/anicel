@@ -979,6 +979,10 @@ class ExportFrameRenderer {
   /// canvas does — on the canvas [view] looks at, over everything laid
   /// before it. Null where none is laid, or the camera moves nothing
   /// ([CameraPath.of]).
+  ///
+  /// 🗣️I-89-Q20 (유저 2026-10-12): 「캔버스와 같은 픽셀 수」 — ⛔not grown with
+  /// the camera's frame as the conte sheet's are, though a large frame
+  /// prints them small.
   void Function(ui.Canvas canvas)? _cameraWorkOver(
     ExportCelGroupTask task,
     CameraView view,

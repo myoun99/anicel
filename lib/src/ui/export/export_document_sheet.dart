@@ -66,7 +66,10 @@ class ExportDocumentSheet extends ExportListSheet {
 
   /// Nothing is laid over a document.
   @override
-  bool get laid => false;
+  bool get directionLaid => false;
+
+  @override
+  bool get cameraLaid => false;
 
   ExportDocumentPage get ref => (document: kind, page: page);
 

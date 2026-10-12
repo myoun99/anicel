@@ -179,7 +179,7 @@ class ExportCelSheet extends ExportListSheet {
 
   /// The picture: the cel that is written, for a planned drawing — or, for
   /// one that is [refused], the bare drawing, drawn nowhere: it carries what
-  /// the hand did to it ([skipped], [laid]).
+  /// the hand did to it ([skipped], [directionLaid], [cameraLaid]).
   ///
   /// ↩️It was the drawing by itself over its cut's paper — what the preview
   /// showed of a row that was off, while a row whose files can be none was
@@ -195,7 +195,10 @@ class ExportCelSheet extends ExportListSheet {
   String get fileName => look.fileName;
 
   @override
-  bool get laid => look.overlays.isNotEmpty;
+  bool get directionLaid => look.overlays.isNotEmpty;
+
+  @override
+  bool get cameraLaid => look.cameraLaid;
 
   @override
   String get idValue => frame.id.value;

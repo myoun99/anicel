@@ -61,7 +61,10 @@ abstract class ExportListSheet {
   ExportCelRefusal? get refused;
 
   /// Whether a direction is laid over it.
-  bool get laid;
+  bool get directionLaid;
+
+  /// Whether the camera's work is laid over it (CAM, I-89-Q18).
+  bool get cameraLaid;
 
   bool get planned => refused == null;
 

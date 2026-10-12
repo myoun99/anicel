@@ -570,7 +570,8 @@ class ExportCelBlock extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 _word(context, written),
-                if (sheet.laid) _laidMark(idValue, written),
+                if (sheet.cameraLaid || sheet.directionLaid)
+                  _laidMarks(idValue, written),
               ],
             ),
           ),
@@ -625,27 +626,61 @@ class ExportCelBlock extends StatelessWidget {
     ),
   );
 
-  /// 「D」: a direction is laid over this drawing.
-  Widget _laidMark(String idValue, bool written) => Positioned(
+  /// What is laid over this drawing, in its corner: 「C」 for the camera's
+  /// work, 「D」 for a direction — side by side where both are.
+  ///
+  /// 🗣️I-89-Q21 (유저 2026-10-12): 「「C」를 붙인다」 — beside the 「D」
+  /// 유저 asked for on 10-06 (「블록에 디렉션적용시 빨간점말고 D라는 텍스트가
+  /// 더 맞을듯」), by the same law: each letter in the colour of the band's
+  /// button that laid it.
+  Widget _laidMarks(String idValue, bool written) => Positioned(
     top: 1,
     right: 1.5,
-    child: Text(
-      'D',
-      key: ValueKey<String>('export-cels-block-d-$idValue'),
-      style: TextStyle(
-        fontSize: 7.5,
-        height: 1,
-        fontWeight: FontWeight.bold,
-        color: exportLaidDirectionInk.withValues(alpha: written ? 1 : 0.6),
-      ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 1.5,
+      children: [
+        if (sheet.cameraLaid)
+          _laidMark(
+            'C',
+            'export-cels-block-c-$idValue',
+            exportLaidCameraInk,
+            written,
+          ),
+        if (sheet.directionLaid)
+          _laidMark(
+            'D',
+            'export-cels-block-d-$idValue',
+            exportLaidDirectionInk,
+            written,
+          ),
+      ],
     ),
   );
+
+  Widget _laidMark(String letter, String keyValue, Color ink, bool written) =>
+      Text(
+        letter,
+        key: ValueKey<String>(keyValue),
+        style: TextStyle(
+          fontSize: 7.5,
+          height: 1,
+          fontWeight: FontWeight.bold,
+          color: ink.withValues(alpha: written ? 1 : 0.6),
+        ),
+      );
 }
 
 /// The colour a laid direction is said in: the 「D」 on the drawing it is
 /// laid over, and the band's pill that laid it — one colour, so the eye
 /// ties the pill to the mark it put there (drawn so in the F-289 mock).
 const Color exportLaidDirectionInk = AppColors.danger;
+
+/// The colour the camera's work laid is said in: the 「C」 on the drawing it
+/// is laid over, and the CAM pill that laid it — as for
+/// [exportLaidDirectionInk] (I-89-Q21). Read live: the accent is the
+/// user's to set ([AppColors.accentSettings]).
+Color get exportLaidCameraInk => AppColors.accent;
 
 /// One direction drawing the band offers to lay over the drawing shown.
 typedef ExportCelsDirection = ({
@@ -777,6 +812,7 @@ class ExportCelsBand extends StatelessWidget {
             label: 'CAM',
             tooltip: AppText.strings.tlKindCamera,
             selected: camera.laid,
+            tone: exportLaidCameraInk,
             onTap: camera.onPressed,
           ),
         ],

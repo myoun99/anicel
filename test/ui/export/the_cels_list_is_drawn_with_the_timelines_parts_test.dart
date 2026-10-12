@@ -614,7 +614,57 @@ void main() {
       for (final other in ['b-b-2', 'b-b-3', 'a-a-1', 'l-l-1']) {
         expect(keyed('export-cels-block-d-$other'), findsNothing);
       }
-      expect(tester.widget<Pill>(keyed('export-cels-cam')).tone, isNull);
+      expect(
+        tester.widget<Pill>(keyed('export-cels-cam')).tone,
+        exportLaidCameraInk,
+      );
+      expect(keyed('export-cels-block-c-b-b-1'), findsNothing);
+    });
+
+    // 🗣️I-89-Q21 (유저 2026-10-12): 「「C」를 붙인다」.
+    testWidgets('the camera\'s work laid is said in ONE colour: the CAM pill, '
+        'and the 「C」 on the drawing it is laid over — left of the 「D」 where '
+        'a direction is laid too', (tester) async {
+      const b1 = (row: LayerId('b'), cel: FrameId('b-1'));
+      const b2 = (row: LayerId('b'), cel: FrameId('b-2'));
+      await pumpBoard(
+        tester,
+        delta: ExportCelsCutDelta()
+            .withCameraOver(b1, true)
+            .withCameraOver(b2, true)
+            .withDirectionOver(
+              b2,
+              (row: const LayerId('dir'), cel: const FrameId('d-1')),
+              true,
+            ),
+        camera: (laid: true, onPressed: () {}),
+      );
+
+      expect(
+        tester.widget<Pill>(keyed('export-cels-cam')).tone,
+        exportLaidCameraInk,
+      );
+      expect(
+        tester.widget<Text>(keyed('export-cels-block-c-b-b-1')).style!.color,
+        exportLaidCameraInk,
+      );
+      expect(
+        keyed('export-cels-block-d-b-b-1'),
+        findsNothing,
+        reason: 'the camera alone is laid over b-1',
+      );
+      expect(
+        tester.getTopRight(keyed('export-cels-block-c-b-b-2')).dx,
+        lessThanOrEqualTo(
+          tester.getTopLeft(keyed('export-cels-block-d-b-b-2')).dx,
+        ),
+        reason: 'both over b-2: 「C D」, the 「D」 where it stood alone',
+      );
+      // The mark is on the drawings the camera is laid over, and on no
+      // other.
+      for (final other in ['b-b-3', 'a-a-1', 'l-l-1']) {
+        expect(keyed('export-cels-block-c-$other'), findsNothing);
+      }
     });
 
     testWidgets('the caption over the pills: the whole of it where the band '
