@@ -462,23 +462,24 @@ void main() {
     await tester.pump();
     expect(painter().writtenFrame(), 7);
     // Its own layer: the first boundary above the writing is its tick
-    // layer's, under the strip's.
+    // layer's — the first one down from the tick layer, whichever render
+    // object it is — under the strip's.
     var boundary = tester.renderObject(writing).parent;
     while (boundary != null && !boundary.isRepaintBoundary) {
       boundary = boundary.parent;
     }
+    RenderObject? tickBoundary = tester.renderObject(
+      find.ancestor(of: writing, matching: find.byType(TickLayer)),
+    );
+    while (tickBoundary != null && !tickBoundary.isRepaintBoundary) {
+      RenderObject? first;
+      tickBoundary.visitChildren((child) => first ??= child);
+      tickBoundary = first;
+    }
+    expect(boundary, isNotNull, reason: '⛔premise: a boundary above it');
     expect(
       boundary,
-      same(
-        tester.renderObject(
-          find
-              .descendant(
-                of: find.ancestor(of: writing, matching: find.byType(TickLayer)),
-                matching: find.byType(RepaintBoundary),
-              )
-              .first,
-        ),
-      ),
+      same(tickBoundary),
       reason: 'its repaints never re-record the strip',
     );
 
