@@ -189,6 +189,7 @@ void main() {
       reason: 'arriving at the average speed',
     );
     expect(readOf(arriving.key, Axis.horizontal).time, closeTo(6, 1e-9));
+    expect(arriving.key.dy, closeTo(arriving.across.to, 1e-9));
 
     final quick = readOf(afterTheHold.at, Axis.horizontal);
     expect(quick.time, closeTo(18 - 0.25 * 6, 1e-9));
