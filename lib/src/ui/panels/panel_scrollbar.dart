@@ -19,27 +19,25 @@ import '../widgets/app_scrollbar.dart';
 ///
 /// 🆕This is also what `AppScrollBehavior` hands every ordinary scrollable
 /// in the app, so it is the app's general scrollbar and not only the
-/// panels'. It stays here because that is where its three explicit callers
-/// are and moving it would be churn.
+/// panels' — the behaviour is its one caller now. It stays here because
+/// moving it would be churn.
 class PanelScrollbar extends StatefulWidget {
   const PanelScrollbar({
     super.key,
     required this.controller,
     required this.child,
-    this.axis,
+    required this.axis,
   });
 
   final ScrollController controller;
   final Widget child;
 
-  /// The axis, when the caller already knows it.
-  ///
-  /// Null means "read it off the controller once it attaches", which is
-  /// what the explicit callers do. The scroll BEHAVIOUR knows it up front
-  /// (`ScrollableDetails.direction`) and says so, which spares the first
-  /// frame a guess — and the guess was always vertical, so a horizontal
-  /// scroller flashed a bar down its right edge before correcting itself.
-  final Axis? axis;
+  /// The axis, as the scroll behaviour knows it up front
+  /// (`ScrollableDetails.direction`). ⛔Never read off the controller: before
+  /// it attaches that was a guess, the guess was always vertical, and a
+  /// horizontal scroller flashed a bar down its right edge before
+  /// correcting itself.
+  final Axis axis;
 
   @override
   State<PanelScrollbar> createState() => _PanelScrollbarState();
@@ -69,17 +67,6 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
     return positions.length == 1 ? positions.first : null;
   }
 
-  Axis get _axis {
-    final stated = widget.axis;
-    if (stated != null) {
-      return stated;
-    }
-    final position = _position;
-    return position == null
-        ? Axis.vertical
-        : axisDirectionToAxis(position.axisDirection);
-  }
-
   /// Whether there is anything to scroll — the bar's entire visibility
   /// rule.
   bool get _overflows {
@@ -89,14 +76,47 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
         position.maxScrollExtent > 0;
   }
 
+  /// What the bar shows of its scrollable besides the offset — whether there
+  /// is anything to scroll, and the lengths the thumb is measured from — as
+  /// the last build saw it. The offset is the thumb's own: it follows the
+  /// controller ([AppControllerScrollbar]).
+  ({double viewport, double maxExtent})? _built;
+
+  static ({double viewport, double maxExtent})? _shapeOf(
+    ScrollMetrics? metrics,
+  ) =>
+      metrics == null ||
+          !metrics.hasContentDimensions ||
+          !metrics.hasViewportDimension
+      ? null
+      : (
+          viewport: metrics.viewportDimension,
+          maxExtent: metrics.maxScrollExtent,
+        );
+
   @override
   Widget build(BuildContext context) {
-    final axis = _axis;
+    final axis = widget.axis;
     final vertical = axis == Axis.vertical;
+    _built = _shapeOf(_position);
     return NotificationListener<ScrollMetricsNotification>(
       onNotification: (notification) {
+        // 🚨ITS OWN SCROLLABLE, AND ONLY WHAT THE BAR SHOWS
+        // (playback-frame-raster-is-the-whole-window, 10-12). A metrics
+        // notification climbs through every scrollable around the one that
+        // sent it, and this bar was built again for any of them — and for an
+        // offset alone. A rebuild is laid out by the nearest LayoutBuilder
+        // above it, and that layout repaints the boundary above THAT:
+        // 🔬after 27 of 329 frames of a run (the frame grid's page turns),
+        // the timeline dock's scroller bars laid its panel out again and
+        // painted the bottom region whole. Depth 0 is Flutter's own bars'
+        // rule (`defaultScrollNotificationPredicate`).
+        if (notification.depth != 0 ||
+            _shapeOf(notification.metrics) == _built) {
+          return false;
+        }
         // Metrics notifications arrive during layout — defer the rebuild
-        // (axis detection on first attach, thumb resize on content growth).
+        // (the bar comes or goes, the thumb is measured again).
         if (!_metricsRefreshScheduled) {
           _metricsRefreshScheduled = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
