@@ -455,6 +455,7 @@ void main() {
         parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
         at: (_) => const [320.0, 180.0],
         sides: const {},
+        way: null,
       ),
     );
     final seat = TimelineGraphSeat(
