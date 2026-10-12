@@ -563,6 +563,46 @@ void main() {
     );
   });
 
+  testWidgets('🚨a tick inside a still tick, still when the strata were taken, '
+      'is the one drawn live once it moves — the tick around it drew nothing '
+      'new of its own', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    Widget inside(Widget tick) => SizedBox(
+      width: 200,
+      height: 40,
+      child: TickLayer(
+        child: Stack(
+          children: [
+            const Positioned(
+              left: 150,
+              top: 20,
+              width: 40,
+              height: 20,
+              child: ColoredBox(color: _cover),
+            ),
+            Positioned(left: 0, top: 0, width: 140, height: 20, child: tick),
+          ],
+        ),
+      ),
+    );
+    await _pump(tester, _regionWith(at, wrap: inside));
+    final region = _region(tester);
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (region.debugDrawnFromImage) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(region.debugLiveTicks, isEmpty, reason: '⛔premise: all taken');
+
+    at.value = 60;
+    await tester.pump();
+    await _moveUntilStill(tester, at);
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(region.debugLiveTicks, [const Size(140, 20)]);
+  });
+
   group('the wait before an image follows how long the region stands '
       'still', () {
     /// [_regionWith]'s region with a ground that changes on [ground] — a
