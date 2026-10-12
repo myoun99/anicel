@@ -1235,11 +1235,12 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 // product and its 128 fit sixteen bits (65,153 at most), and so does the
 // rounding added to it (65,407), so the bytes are the scalar's.
 //
-// ⛔Not spread across the worker pool: a run of tiles staged in one pooled
-// call (lane tile-pictures-in-one-call, 10-12) made the camera view's
-// making SLOWER — the composes that give way between pictures took the one
-// staging block from each other, and a loaded machine staged one run 945
-// times for 72 (12.8 s against 0.8).
+// ⛔Not spread across the worker pool (lane tile-pictures-in-one-call,
+// 10-12, not landed): a run of tiles staged in one pooled call was never
+// faster where it was measured, the call waits for every worker it woke,
+// and the composes that give way between pictures took the one staging
+// block from each other — one make on a loaded machine staged its 72 runs
+// 945 times.
 static inline void qa_premultiply_pixel(uint8_t* d, const uint8_t* s) {
   const int32_t alpha = s[3];
   // SkMulDiv255Round: round(value * alpha / 255) for bytes.
