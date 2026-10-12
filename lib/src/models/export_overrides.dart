@@ -23,10 +23,12 @@ class ExportCelsCutDelta {
     Map<LayerId, bool> layerOverrides = const {},
     Set<ExportCelRef> skippedCels = const {},
     Set<ExportDirectionOver> directionOver = const {},
+    Set<ExportCelRef> cameraOver = const {},
     Set<ExportDocumentPage> skippedPages = const {},
   }) : layerOverrides = Map.unmodifiable(layerOverrides),
        skippedCels = Set.unmodifiable(skippedCels),
        directionOver = Set.unmodifiable(directionOver),
+       cameraOver = Set.unmodifiable(cameraOver),
        skippedPages = Set.unmodifiable(skippedPages);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
@@ -59,6 +61,13 @@ class ExportCelsCutDelta {
   /// this cut.
   final Set<ExportDirectionOver> directionOver;
 
+  /// The drawings the camera's work is laid over when they are written —
+  /// the band's CAM (F-289, 유저 2026-10-06: 「카메라레이어에 카메라 궤도나
+  /// A-B PAN같은 지시를 카메라레이어에 그려지도록 할거거든? 그거를 출력에
+  /// 실을용도」; its door made then, the work laid since I-89-Q18). The work
+  /// is this cut's camera's, as the canvas writes it.
+  final Set<ExportCelRef> cameraOver;
+
   /// The files of the cut's documents the user turned off in the list — to
   /// a document what [skippedCels] is to a row; its row's switch writes
   /// every page.
@@ -72,6 +81,7 @@ class ExportCelsCutDelta {
       layerOverrides.isEmpty &&
       skippedCels.isEmpty &&
       directionOver.isEmpty &&
+      cameraOver.isEmpty &&
       skippedPages.isEmpty;
 
   /// Whether a LAYER of this cut answers by hand rather than by the rules —
@@ -89,11 +99,13 @@ class ExportCelsCutDelta {
     Map<LayerId, bool>? layerOverrides,
     Set<ExportCelRef>? skippedCels,
     Set<ExportDirectionOver>? directionOver,
+    Set<ExportCelRef>? cameraOver,
     Set<ExportDocumentPage>? skippedPages,
   }) => ExportCelsCutDelta(
     layerOverrides: layerOverrides ?? this.layerOverrides,
     skippedCels: skippedCels ?? this.skippedCels,
     directionOver: directionOver ?? this.directionOver,
+    cameraOver: cameraOver ?? this.cameraOver,
     skippedPages: skippedPages ?? this.skippedPages,
   );
 
@@ -130,6 +142,10 @@ class ExportCelsCutDelta {
     directionOver: _held(directionOver, (cel: cel, direction: direction), laid),
   );
 
+  /// This delta with the camera's work laid over [cel], or taken off it.
+  ExportCelsCutDelta withCameraOver(ExportCelRef cel, bool laid) =>
+      _with(cameraOver: _held(cameraOver, cel, laid));
+
   /// [set] holding [member], or not.
   static Set<T> _held<T>(Set<T> set, T member, bool held) {
     final next = Set<T>.from(set);
@@ -148,7 +164,7 @@ class ExportCelsCutDelta {
   /// Reset: every row back on the rule and every drawing on. What is laid
   /// over a drawing is no answer to a rule, and stays.
   ExportCelsCutDelta backOnTheRules() =>
-      ExportCelsCutDelta(directionOver: directionOver);
+      ExportCelsCutDelta(directionOver: directionOver, cameraOver: cameraOver);
 
   static Map<String, dynamic> _refJson(ExportCelRef ref) => {
     'row': ref.row.value,
@@ -165,18 +181,26 @@ class ExportCelsCutDelta {
   static String _order(ExportCelRef ref) =>
       '${ref.row.value}\u0000${ref.cel.value}';
 
+  /// [refs] as a file says them, in [_order].
+  static List<Map<String, dynamic>> _refsJson(Set<ExportCelRef> refs) => [
+    for (final ref
+        in refs.toList()..sort((a, b) => _order(a).compareTo(_order(b))))
+      _refJson(ref),
+  ];
+
+  /// [_refsJson] read back; a file that says none has none.
+  static Set<ExportCelRef> _refsFromJson(Object? json) => {
+    for (final ref in json as List<dynamic>? ?? const [])
+      _refFromJson(ref as Map<String, dynamic>),
+  };
+
   Map<String, dynamic> toJson() => {
     'layerOverrides': {
       for (final entry in layerOverrides.entries)
         entry.key.value: entry.value,
     },
-    if (skippedCels.isNotEmpty)
-      'skippedCels': [
-        for (final cel
-            in skippedCels.toList()
-              ..sort((a, b) => _order(a).compareTo(_order(b))))
-          _refJson(cel),
-      ],
+    if (skippedCels.isNotEmpty) 'skippedCels': _refsJson(skippedCels),
+    if (cameraOver.isNotEmpty) 'cameraOver': _refsJson(cameraOver),
     if (skippedPages.isNotEmpty)
       'skippedPages': [
         for (final page
@@ -200,7 +224,6 @@ class ExportCelsCutDelta {
 
   static ExportCelsCutDelta fromJson(Map<String, dynamic> json) {
     final raw = json['layerOverrides'] as Map<String, dynamic>? ?? const {};
-    final skipped = json['skippedCels'] as List<dynamic>? ?? const [];
     final over = json['directionOver'] as List<dynamic>? ?? const [];
     final pages = json['skippedPages'] as List<dynamic>? ?? const [];
     return ExportCelsCutDelta(
@@ -213,9 +236,8 @@ class ExportCelsCutDelta {
         for (final entry in raw.entries)
           LayerId(entry.key): entry.value as bool,
       },
-      skippedCels: {
-        for (final cel in skipped) _refFromJson(cel as Map<String, dynamic>),
-      },
+      skippedCels: _refsFromJson(json['skippedCels']),
+      cameraOver: _refsFromJson(json['cameraOver']),
       directionOver: {
         for (final laid in over.cast<Map<String, dynamic>>())
           (
@@ -233,6 +255,7 @@ class ExportCelsCutDelta {
           mapEquals(other.layerOverrides, layerOverrides) &&
           setEquals(other.skippedCels, skippedCels) &&
           setEquals(other.directionOver, directionOver) &&
+          setEquals(other.cameraOver, cameraOver) &&
           setEquals(other.skippedPages, skippedPages);
 
   @override
@@ -243,6 +266,7 @@ class ExportCelsCutDelta {
     ]),
     Object.hashAllUnordered(skippedCels),
     Object.hashAllUnordered(directionOver),
+    Object.hashAllUnordered(cameraOver),
     Object.hashAllUnordered(skippedPages),
   );
 }

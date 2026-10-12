@@ -154,6 +154,7 @@ void main() {
     bool enabled = true,
     double width = 900,
     List<ExportCelsDirection> directions = const [],
+    ExportCelsCamera camera = const (laid: false, onPressed: null),
     CelsExportSpec spec = celsAlone,
   }) async {
     pressed.clear();
@@ -177,6 +178,7 @@ void main() {
                   canStepBack: false,
                   canStepOn: true,
                   directions: directions,
+                  camera: camera,
                 ),
                 rows: rows,
                 standing: stood.rowIn(rows)?.idValue,
@@ -525,8 +527,8 @@ void main() {
     });
 
     testWidgets('🗣️a pill a direction drawing — what its block says on it, '
-        'its whole name on its tooltip, lit while it is laid — and CAM, the '
-        'door alone', (tester) async {
+        'its whole name on its tooltip, lit while it is laid — and CAM, lit '
+        'while the camera\'s work is (I-89-Q18)', (tester) async {
       await pumpBoard(
         tester,
         directions: [
@@ -562,11 +564,21 @@ void main() {
       expect(pressed, ['lay tu']);
 
       expect(pill('export-cels-cam').label, 'CAM');
+      expect(pill('export-cels-cam').selected, isFalse);
       expect(
         pill('export-cels-cam').onTap,
         isNull,
-        reason: '유저: 「그 정한거를 가져오도록 입구만 만들어 주면되」',
+        reason: 'nothing to lay: the pill keeps its place',
       );
+
+      await pumpBoard(
+        tester,
+        camera: (laid: true, onPressed: () => pressed.add('lay camera')),
+      );
+      expect(pill('export-cels-cam').selected, isTrue);
+      await tester.tap(keyed('export-cels-cam'));
+      await tester.pump();
+      expect(pressed, ['lay camera']);
     });
 
     testWidgets('a laid direction is said in ONE colour: its pill, and the '

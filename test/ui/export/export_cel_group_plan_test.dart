@@ -1719,6 +1719,32 @@ void main() {
       expect([for (final task in built.cels) task.overlays], [[], [], []]);
     });
   });
+
+  test('the camera\'s work laid over a drawing (CAM, I-89-Q18) is in that '
+      'drawing\'s cel alone — and the preview tells it from the cel before '
+      'it was laid', () {
+    final layers = [
+      base('a', 'A', [frame('f1'), frame('f2')]),
+    ];
+    final built = plan(
+      layers,
+      overrides: ExportProjectOverrides().withCelsDelta(
+        const CutId('cut'),
+        ExportCelsCutDelta().withCameraOver((
+          row: const LayerId('a'),
+          cel: const FrameId('f1'),
+        ), true),
+      ),
+    );
+    expect([for (final task in built.cels) task.cameraLaid], [true, false]);
+    String keyOf(ExportCelGroupTask task) => celGroupPreviewKey(
+      task,
+      sizeMode: 'canvas',
+      backgroundKey: -1,
+      applyLayerFx: true,
+    );
+    expect(keyOf(built.cels.first), isNot(keyOf(plan(layers).cels.first)));
+  });
   group('the cut\'s documents are written beside its cels (F-289, 유저 '
       '2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 '
       '내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」)', () {

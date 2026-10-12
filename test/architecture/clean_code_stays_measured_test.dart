@@ -383,7 +383,15 @@ void main() {
   /// window onto its track, and asks a file's length as one question — the
   /// rate and the lookup bound once (`_fileFramesAt`) — which took
   /// `_clampToFileLength` (six) under the line.
-  const wideSignatures = 394;
+  ///
+  /// ⚠️394 → 395 on 2026-10-12, named as the rule above asks (I-89-Q18, the
+  /// camera's work laid over a drawing — the export's CAM):
+  /// `ExportCelsCutDelta._with` (five) takes the drawings the camera's work
+  /// is laid over beside the four sets it took — the delta's own fields,
+  /// which its constructor (excluded here) takes as well, as for
+  /// `PropertyTrack.withKey` above. 🔬`clean_code_diff` against master
+  /// (`d0baee08e`, at 394) named that one added and nothing gone.
+  const wideSignatures = 395;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

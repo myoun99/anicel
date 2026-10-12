@@ -98,24 +98,50 @@ void main() {
       expect(less, isNot(laid));
     });
 
+    test('the camera\'s work is laid over ONE drawing, and taken off it — '
+        'CAM (I-89-Q18)', () {
+      final laid = ExportCelsCutDelta()
+          .withCameraOver(ref('bg', 'b1'), true)
+          .withCameraOver(ref('a', 'f1'), true);
+      expect(laid.cameraOver, {ref('bg', 'b1'), ref('a', 'f1')});
+      expect(laid.isEmpty, isFalse);
+      expect(
+        laid.leavesTheRules,
+        isFalse,
+        reason: 'what is laid over a drawing is no answer to a rule',
+      );
+      expect(laid.directionsOver(ref('bg', 'b1')), isEmpty);
+      final less = laid.withCameraOver(ref('bg', 'b1'), false);
+      expect(less.cameraOver, {ref('a', 'f1')});
+      expect(less, isNot(laid));
+      expect(
+        less.withCameraOver(ref('a', 'f1'), false),
+        ExportCelsCutDelta(),
+        reason: 'nothing laid is the empty delta again',
+      );
+    });
+
     test('a filter press drops the row answers alone; Reset drops the '
         'drawings turned off too — and what is laid over a drawing stays '
         'through both', () {
       final delta = ExportCelsCutDelta()
           .withLayerOverride(const LayerId('l1'), true)
           .withCelSkipped(ref('a', 'f1'), true)
-          .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true);
+          .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true)
+          .withCameraOver(ref('a', 'f3'), true);
 
       final refiltered = delta.withoutRowExceptions();
       expect(refiltered.layerOverrides, isEmpty);
       expect(refiltered.skippedCels, {ref('a', 'f1')});
       expect(refiltered.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
+      expect(refiltered.cameraOver, {ref('a', 'f3')});
 
       final reset = delta.backOnTheRules();
       expect(reset.layerOverrides, isEmpty);
       expect(reset.skippedCels, isEmpty);
       expect(reset.leavesTheRules, isFalse);
       expect(reset.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
+      expect(reset.cameraOver, {ref('a', 'f3')});
       expect(reset.isEmpty, isFalse);
     });
 
@@ -130,7 +156,8 @@ void main() {
           delta = delta
               .withCelSkipped(ref('a', cel), true)
               .withDirectionOver(ref('bg', cel), ref('dir', 'd1'), true)
-              .withDirectionOver(ref('bg', cel), ref('dir', 'd0'), true);
+              .withDirectionOver(ref('bg', cel), ref('dir', 'd0'), true)
+              .withCameraOver(ref('bg', cel), true);
         }
         return delta;
       }
@@ -143,6 +170,11 @@ void main() {
       final restored = ExportCelsCutDelta.fromJson(forward.toJson());
       expect(restored, forward);
       expect(restored.skippedCels, hasLength(3));
+      expect(restored.cameraOver, {
+        ref('bg', 'f1'),
+        ref('bg', 'f2'),
+        ref('bg', 'f3'),
+      });
       expect(restored.directionsOver(ref('bg', 'f2')), {
         ref('dir', 'd0'),
         ref('dir', 'd1'),

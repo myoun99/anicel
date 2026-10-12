@@ -47,6 +47,7 @@ class ExportCelGroupTask {
     this.skipped = false,
     this.listedUnder,
     this.overlays = const [],
+    this.cameraLaid = false,
   });
 
   /// The cut this cel is COMPOSITED in — the one that SHOWS it: its rows
@@ -117,6 +118,11 @@ class ExportCelGroupTask {
   /// The direction drawings laid over this cel, bottom-up, above every
   /// member ([ExportCelsCutDelta.directionOver]).
   final List<ExportCelOverlay> overlays;
+
+  /// Whether the camera's work is laid over this cel, above every member
+  /// and direction ([ExportCelsCutDelta.cameraOver]) — the camera of
+  /// [listedCut], the cut the hand laid it in, as a direction is.
+  final bool cameraLaid;
 }
 
 /// A direction drawing laid over a cel: the direction row's drawing, in the
@@ -228,8 +234,9 @@ String celGroupPreviewKey(
     for (final over in task.overlays)
       '${over.cut.id.value}/${over.layer.id.value}/${over.frame.id.value}',
   ].join(',');
+  final camera = task.cameraLaid ? task.listedCut.id.value : '-';
   return 'celgroup:${task.cut.id.value}:${task.baseLayer.id.value}:'
-      '${task.baseFrame.id.value}:$members:$overlays:$sizeMode:'
+      '${task.baseFrame.id.value}:$members:$overlays:$camera:$sizeMode:'
       '$backgroundKey:${applyLayerFx ? 'fx' : 'raw'}';
 }
 
@@ -769,11 +776,17 @@ ExportCelGroupTask _cel(
   fileName: fileName,
   skipped: _turnedOff(cut, listed.row, listed.frame),
   overlays: _overlaysOn(cut, listed.row, listed.frame),
+  cameraLaid: _cameraLaidOn(cut, listed.row, listed.frame),
 );
 
 /// Whether the hand turned [frame] of [row] off in [cut]'s list.
 bool _turnedOff(_CutRun cut, Layer row, Frame frame) =>
     cut.delta?.skippedCels.contains((row: row.id, cel: frame.id)) ?? false;
+
+/// Whether the hand laid the camera's work over [frame] of [row] in [cut]'s
+/// list ([ExportCelsCutDelta.cameraOver]).
+bool _cameraLaidOn(_CutRun cut, Layer row, Frame frame) =>
+    cut.delta?.cameraOver.contains((row: row.id, cel: frame.id)) ?? false;
 
 /// The direction drawings laid over [frame] of [row]
 /// ([ExportCelsCutDelta.directionOver]), in the order [cut]'s cut stacks

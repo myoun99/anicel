@@ -14,6 +14,7 @@ import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
+import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -530,6 +531,7 @@ class ExportDialogState extends State<ExportDialog> {
         canStepBack: at > 0,
         canStepOn: at >= 0 && at < pages.length - 1,
         directions: _celDirections(cut, standing.sheetIn(rows)),
+        camera: _celCamera(cut, standing.sheetIn(rows)),
       ),
       rows: rows,
       standing: row?.idValue,
@@ -675,6 +677,31 @@ class ExportDialogState extends State<ExportDialog> {
               : null,
         ),
     ];
+  }
+
+  /// [cut]'s camera's work as the band offers to lay it over [shown]: lit
+  /// while it is laid. Like a direction it is laid over a drawing — not
+  /// over a document's page, and not while none is shown — and there is
+  /// none to lay where the camera moves nothing: the canvas draws no path
+  /// there ([CameraPath.of]).
+  ExportCelsCamera _celCamera(Cut cut, ExportListSheet? sheet) {
+    final shown = sheet is ExportCelSheet ? sheet : null;
+    if (shown == null) {
+      return const (laid: false, onPressed: null);
+    }
+    final laid =
+        _overrides.deltaFor(cut.id)?.cameraOver.contains(shown.ref) ?? false;
+    final moves =
+        CameraPath.of(cut, _session.camera.cameraFrameSize) != null;
+    return (
+      laid: laid,
+      onPressed: moves && !_isExporting
+          ? () => _editCelDelta(
+              cut.id,
+              (delta) => delta.withCameraOver(shown.ref, !laid),
+            )
+          : null,
+    );
   }
 
   /// The cut the list shows, as a popover of the cuts the plan lists

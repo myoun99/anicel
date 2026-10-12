@@ -32,7 +32,12 @@ import '../../services/playback/playback_frame_mapping.dart'
         trackGroupSourceOverWeights;
 import '../../services/camera_frame_corners.dart'
     show CameraView, cameraViewOver, pictureView;
+import '../../models/sheet_paint_layer.dart';
+import '../../services/camera_path.dart';
 import '../camera/camera_frame_render_service.dart';
+import '../camera/camera_path_overlay.dart';
+import '../conte/conte_fonts.dart' show conteTextStyle;
+import '../sheet_painting.dart';
 import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
 import '../canvas/subtree_image_composite.dart' show steppedForChain;
@@ -962,6 +967,46 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
+      overlayPass: _cameraWorkOver(task, view),
+    );
+  }
+
+  /// The camera's work laid over [task]'s cel (CAM, I-89-Q18) — the camera
+  /// of the cut the hand laid it in ([ExportCelGroupTask.listedCut]): its
+  /// path as the canvas writes it off the camera's row
+  /// ([CameraPathOverlay.standing]), at the canvas's sizes — a pixel of the
+  /// file for each pixel of the screen, so a file seen at 1:1 reads as the
+  /// canvas does — on the canvas [view] looks at, over everything laid
+  /// before it. Null where none is laid, or the camera moves nothing
+  /// ([CameraPath.of]).
+  void Function(ui.Canvas canvas)? _cameraWorkOver(
+    ExportCelGroupTask task,
+    CameraView view,
+  ) {
+    final cut = task.listedCut;
+    final path = task.cameraLaid
+        ? CameraPath.of(cut, session.camera.cameraFrameSize)
+        : null;
+    if (path == null) {
+      return null;
+    }
+    final marks = cameraPathMarks(
+      path,
+      place: (point) => point,
+      // The file is the view's frame at full size: a canvas pixel is
+      // [CameraPose.zoom] of its pixels.
+      sizes: CameraPathOverlay.sizes.scaledBy(1 / view.pose.zoom),
+      layer: SheetPaintLayer.picture,
+    ).toList();
+    final paper = ui.Size(
+      cut.canvasSize.width.toDouble(),
+      cut.canvasSize.height.toDouble(),
+    );
+    return (canvas) => const SheetCanvasPrinter(style: conteTextStyle).paint(
+      canvas,
+      paper,
+      (viewport: null, devicePixelRatio: 1, paper: paper),
+      marks,
     );
   }
 

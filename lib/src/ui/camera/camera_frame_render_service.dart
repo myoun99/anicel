@@ -140,8 +140,9 @@ class CameraFrameRenderService {
   /// inside the camera projection — the display-time annotations (the SE
   /// name tags) that never enter a composite cache. A tag lays its shot on
   /// the canvas itself (`ResolvedSeNameTag.shot`), so through this
-  /// projection it stands still in the frame (I-67-Q1). Cel renders leave
-  /// it null: a cel is the artwork alone.
+  /// projection it stands still in the frame (I-67-Q1). A cel's render
+  /// leaves it null — a cel is the artwork alone — but where the camera's
+  /// work is laid over it (CAM, I-89-Q18).
   ///
   /// [displayLevels] reduces the artwork as the canvas's display does
   /// ([displayLevelOf]): each layer's image halved, a 2×2 box mean a time,

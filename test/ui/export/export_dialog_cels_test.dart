@@ -4,8 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
 import 'package:anicel/src/models/export_overrides.dart';
@@ -100,8 +103,9 @@ void main() {
   /// wearing LO (so the 원화 label leaves it out) · folder F holding C (off
   /// the sheet) and D — and, given [unplaced], a drawing of D's no block
   /// shows · a direction row. CUT2·CUT3 are 겸용 siblings and CUT4 stands
-  /// alone — the scope grid's material.
-  EditorSessionManager celsSession({Frame? unplaced}) {
+  /// alone — the scope grid's material. Given [camera], CUT1's camera
+  /// moves as it says.
+  EditorSessionManager celsSession({Frame? unplaced, CutCamera? camera}) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -117,6 +121,7 @@ void main() {
                 name: 'CUT1',
                 duration: 4,
                 canvasSize: const CanvasSize(width: 8, height: 8),
+                camera: camera,
                 layers: [
                   drawing('paper', 'Paper', [
                     frame('p1'),
@@ -819,8 +824,49 @@ void main() {
     await tapKey(tester, 'export-cels-prev');
     await tapKey(tester, pillKey);
     expect(deltaOf(session), isNull);
+  });
 
+  testWidgets('CAM lays the camera\'s work over the drawing shown, a drawing '
+      'at a time, and 초기화 leaves it — I-89-Q18', (tester) async {
+    final session = celsSession(
+      camera: CutCamera(
+        keyframes: {
+          0: CameraPose(center: CanvasPoint(x: 2, y: 4)),
+          3: CameraPose(center: CanvasPoint(x: 6, y: 4)),
+        },
+      ),
+    );
+    await pumpCels(tester, session);
+    const cam = 'export-cels-cam';
+
+    await standOn(tester, 'a');
+    expect(pill(tester, cam).selected, isFalse);
+    await tapKey(tester, cam);
+    expect(deltaOf(session)?.cameraOver, {ref('a', 'f1')});
+    expect(pill(tester, cam).selected, isTrue);
+
+    // The other drawing reads its own answer.
+    await tapKey(tester, 'export-cels-next');
+    expect(pill(tester, cam).selected, isFalse);
+
+    // 초기화 is of the rules: what is laid over a drawing stays.
+    await tapKey(tester, 'export-cels-switch-b');
+    await tapKey(tester, 'export-cels-reset');
+    expect(deltaOf(session)?.cameraOver, {ref('a', 'f1')});
+
+    await tapKey(tester, 'export-cels-prev');
+    await tapKey(tester, cam);
+    expect(deltaOf(session), isNull);
+  });
+
+  testWidgets('CAM has nothing to lay where the camera moves nothing — the '
+      'canvas draws it no path — and keeps its place', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    await standOn(tester, 'a');
     expect(pill(tester, 'export-cels-cam').onTap, isNull);
+    await tapKey(tester, 'export-cels-cam');
+    expect(deltaOf(session), isNull);
   });
 
   testWidgets('nothing is laid over a direction row\'s OWN drawing: stood '

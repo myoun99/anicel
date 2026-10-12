@@ -656,6 +656,10 @@ typedef ExportCelsDirection = ({
   VoidCallback? onPressed,
 });
 
+/// The camera's work, as the band offers to lay it over the drawing shown:
+/// lit while it is laid, null to press while there is nothing to lay it on.
+typedef ExportCelsCamera = ({bool laid, VoidCallback? onPressed});
+
 /// The band over the rows: the cut the list shows, how many files the
 /// export writes, the two steps that turn through the standing row's
 /// drawings, and what is laid over the drawing shown.
@@ -665,8 +669,10 @@ typedef ExportCelsDirection = ({
 /// 이렇게하고 툴팁으로 T.U_A-B 이렇게」 — and it stands whether or not the
 /// direction KIND is written (「디렉션 on이든 off든 관계없이 떠있도록」).
 ///
-/// CAM is the door alone: 「나중에 캔버스에서 그 카메라 궤도같은거 어떻게
-/// 보여주게할지를 정할거고, 그 정한거를 가져오도록 입구만 만들어 주면되」.
+/// CAM lays the camera's work over it, as the canvas draws it (I-89-Q18).
+/// ↩️It was the door alone until the canvas's was settled: 「나중에
+/// 캔버스에서 그 카메라 궤도같은거 어떻게 보여주게할지를 정할거고, 그
+/// 정한거를 가져오도록 입구만 만들어 주면되」.
 class ExportCelsBand extends StatelessWidget {
   const ExportCelsBand({
     super.key,
@@ -676,6 +682,7 @@ class ExportCelsBand extends StatelessWidget {
     required this.canStepBack,
     required this.canStepOn,
     required this.directions,
+    this.camera = const (laid: false, onPressed: null),
   });
 
   final Widget cutPicker;
@@ -689,6 +696,7 @@ class ExportCelsBand extends StatelessWidget {
   final bool canStepOn;
 
   final List<ExportCelsDirection> directions;
+  final ExportCelsCamera camera;
 
   @override
   Widget build(BuildContext context) {
@@ -768,7 +776,8 @@ class ExportCelsBand extends StatelessWidget {
             keyValue: 'export-cels-cam',
             label: 'CAM',
             tooltip: AppText.strings.tlKindCamera,
-            selected: false,
+            selected: camera.laid,
+            onTap: camera.onPressed,
           ),
         ],
       ),

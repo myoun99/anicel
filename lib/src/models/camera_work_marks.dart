@@ -140,6 +140,16 @@ class CameraMarkSizes {
   /// How far a label sits inside its frame's corner, along both sides — and
   /// off a point's cross.
   final double labelInset;
+
+  /// These sizes [factor] times over — one surface's in another's units.
+  CameraMarkSizes scaledBy(double factor) => CameraMarkSizes(
+    frameWidth: frameWidth * factor,
+    trailWidth: trailWidth * factor,
+    labelSize: labelSize * factor,
+    crossArm: crossArm * factor,
+    crossWidth: crossWidth * factor,
+    labelInset: labelInset * factor,
+  );
 }
 
 /// [trails], and over them each of [keys]: its frame, its cross and its
