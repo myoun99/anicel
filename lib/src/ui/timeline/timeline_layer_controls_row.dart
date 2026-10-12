@@ -700,7 +700,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: Flex(
         direction: axis,
         children: [
-          Expanded(child: _nameText(context)),
+          // The letters as long as they are: the ground past them is the
+          // name's too, a double click there the label's.
+          Expanded(
+            child: Flex(
+              direction: axis,
+              children: [Flexible(child: _nameText(context))],
+            ),
+          ),
           ?_linkBadge(colorScheme),
           ?_referenceButton(),
           ?_cameraPathButton(),

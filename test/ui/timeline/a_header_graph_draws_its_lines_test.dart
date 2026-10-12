@@ -409,7 +409,10 @@ void main() {
 
   testWidgets('in a view too narrow for any name, a tag keeps its dash and '
       'its pin whole, and the tools their enlarge button', (tester) async {
-    final s = await _pump(tester, frames: 600, width: 1040);
+    // 1040 → 680 (I-89 Q1, 2026-10-12): the rail is 519 again, and a
+    // window's region never opens narrower than 640 by itself — so a
+    // window under that.
+    final s = await _pump(tester, frames: 600, width: 680);
     await _pinTheBlur(tester, s);
 
     final view = tester.getRect(
