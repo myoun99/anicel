@@ -39,7 +39,11 @@ import 'package:flutter/widgets.dart';
 /// more (the meter in its seat); where its size moves its row (the
 /// counter), the heavy things beside it stand on boundaries of their own.
 /// 🔬A steady run painted 90 + 52 + 78 render objects of unchanging chrome
-/// on every frame played.
+/// on every frame played. Boundaries of BOTH kinds (10-12): a tick that
+/// moves its row lays the row out, and the layout marks the layer's
+/// semantics — the counter's bar re-walked 50 render objects a frame for
+/// the zoom beside it, painted alone since 10-11 and still described with
+/// the counter.
 class TickLayer extends StatelessWidget {
   const TickLayer({super.key, required this.child});
 

@@ -242,18 +242,26 @@ class TimelineViewCluster extends StatelessWidget {
         // everything on it was painted again with the counter: 🔬72–78 render
         // objects a frame, the slider most of them. Standing on its own
         // boundary the zoom is moved, not painted, when the row moves.
-        RepaintBoundary(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // UI-R11 #11: the flanking glyphs are real STEP buttons now,
-              // not decorations — click-to-zoom without the slider's drag
-              // precision.
-              _zoomStepButton(zoomIn: false),
-              _zoomSlider(context),
-              _zoomStepButton(zoomIn: true),
-              ...trailing,
-            ],
+        // 🚨AND NOT DESCRIBED (10-12): the row's layout marks the bar's
+        // semantics too, and the bar's walk went through the zoom, its
+        // buttons and the orientation toggle — 🔬50 render objects re-walked
+        // for every frame played. A semantics boundary of its own stops the
+        // walk at the zoom; it reads as one group to a screen reader.
+        Semantics(
+          container: true,
+          child: RepaintBoundary(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // UI-R11 #11: the flanking glyphs are real STEP buttons
+                // now, not decorations — click-to-zoom without the
+                // slider's drag precision.
+                _zoomStepButton(zoomIn: false),
+                _zoomSlider(context),
+                _zoomStepButton(zoomIn: true),
+                ...trailing,
+              ],
+            ),
           ),
         ),
       ],
