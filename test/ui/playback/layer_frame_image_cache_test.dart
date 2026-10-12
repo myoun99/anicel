@@ -385,12 +385,12 @@ void main() {
   // draws it, rather than waiting for the same picture to be made again.
   group('a rekey carries a cel\'s pictures with its pixels', () {
     /// 'frame-a' — the cel [storeWithStroke] drew — on another row.
-    final carried = BrushFrameKey(
-      projectId: const ProjectId('project'),
-      trackId: const TrackId('track'),
-      cutId: const CutId('cut'),
-      layerId: const LayerId('other-row'),
-      frameId: const FrameId('frame-a'),
+    const carried = BrushFrameKey(
+      projectId: ProjectId('project'),
+      trackId: TrackId('track'),
+      cutId: CutId('cut'),
+      layerId: LayerId('other-row'),
+      frameId: FrameId('frame-a'),
     );
 
     LayerFrameImage? validAt(
