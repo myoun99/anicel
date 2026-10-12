@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show describeIdentity;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -125,5 +127,77 @@ void main() {
     );
     controller.stop();
     await tester.pump();
+  });
+
+  // 🔬A count laid the row out up to the panel's tab strip — a tick's layer
+  // — and re-walked the strip's semantics whole: 108 render objects at each
+  // count a run dropped (the real app, debug, 10-12).
+  testWidgets('a dropped frame lays out and describes the drop count alone',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    final controller = await pumpTransport(tester);
+    controller.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final row = tester.renderObject(
+      find.byKey(const ValueKey<String>('playback-transport-activeCut')),
+    );
+
+    final laid = <String>[];
+    final saved = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null && message.startsWith('Laying out')) {
+        laid.add(message);
+      }
+    };
+    debugPrintLayouts = true;
+    try {
+      // Three frames' time in one pump (10 fps): two were never shown.
+      await tester.pump(const Duration(milliseconds: 300));
+    } finally {
+      // Inside the body: the binding checks its switches before a tear-down
+      // would run.
+      debugPrintLayouts = false;
+      debugPrint = saved;
+    }
+    expect(controller.droppedFrames, 2, reason: 'premise: two dropped');
+    expect(laid, isNotEmpty, reason: 'LIVENESS: the count was laid out');
+    expect(
+      laid.where((line) => line.contains(describeIdentity(row))),
+      isEmpty,
+      reason: '↩️the count laid the row out again, and up to the strip',
+    );
+
+    // A layout marks its semantics up to the nearest boundary: the slot's.
+    RenderObject boundaryOf(RenderObject node) {
+      var at = node;
+      while (at.parent != null) {
+        final config = SemanticsConfiguration();
+        // ignore: invalid_use_of_protected_member
+        at.describeSemanticsConfiguration(config);
+        if (config.isSemanticBoundary) {
+          return at;
+        }
+        at = at.parent!;
+      }
+      return at;
+    }
+
+    var inside = false;
+    for (
+      RenderObject? at = boundaryOf(
+        tester.renderObject(
+          find.byKey(const ValueKey<String>('playback-dropped-indicator')),
+        ),
+      );
+      at != null;
+      at = at.parent
+    ) {
+      inside = inside || identical(at, row);
+    }
+    expect(inside, isTrue, reason: 'the walk stops inside the row');
+    controller.stop();
+    await tester.pump();
+    semantics.dispose();
   });
 }
