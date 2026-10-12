@@ -30,7 +30,8 @@ class RasterGridFit {
   /// the capture clips the content to its own box exactly as painting
   /// through does.
   void blit(Canvas canvas, ui.Image image, Offset origin) {
-    canvas.drawImageRect(
+    blitPart(
+      canvas,
       image,
       Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
       Rect.fromLTWH(
@@ -39,9 +40,42 @@ class RasterGridFit {
         image.width / scale,
         image.height / scale,
       ),
+    );
+  }
+
+  /// [blit] for a part of an image: the pixels [from] of [image] put back
+  /// over [onto], in the surface's own units — [logicalOf] the pixels of
+  /// the surface's image grid they were taken from, so every one of them
+  /// lands on exactly one device pixel.
+  void blitPart(Canvas canvas, ui.Image image, Rect from, Rect onto) {
+    canvas.drawImageRect(
+      image,
+      from,
+      onto,
       Paint()..filterQuality = FilterQuality.none,
     );
   }
+
+  /// The pixels of the surface's image grid — the grid of an image taken
+  /// over `Offset(-shift) & (size + shift)` at [scale], its origin on the
+  /// device pixel the box begins in — that [logical], in the surface's own
+  /// units from its box's corner, reaches: whole pixels, outward.
+  Rect devicePixelsOf(Rect logical) => Rect.fromLTRB(
+    ((logical.left + shift.dx) * scale).floorToDouble(),
+    ((logical.top + shift.dy) * scale).floorToDouble(),
+    ((logical.right + shift.dx) * scale).ceilToDouble(),
+    ((logical.bottom + shift.dy) * scale).ceilToDouble(),
+  );
+
+  /// Pixels of the surface's image grid ([devicePixelsOf]), in the
+  /// surface's own units from its box's corner — where they land put back
+  /// 1:1.
+  Rect logicalOf(Rect device) => Rect.fromLTRB(
+    device.left / scale - shift.dx,
+    device.top / scale - shift.dy,
+    device.right / scale - shift.dx,
+    device.bottom / scale - shift.dy,
+  );
 
   /// Where [box]'s top-left corner sits on the device pixel grid, or null
   /// when no 1:1 blit exists at all.
