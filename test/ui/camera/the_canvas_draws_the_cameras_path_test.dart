@@ -21,10 +21,12 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
 import 'package:anicel/src/ui/session/camera.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart' show CameraSizeDraft;
 
-/// I-89 ④ — the camera's path on the canvas: drawn while one stands on the
-/// camera row or its position lane (the confirmed spec of 2026-10-10:
-/// 「카메라 행이나 그 위치 레인에 서 있을 때」), where the canvas draws the
-/// camera's frame, as the canvas's camera path settings say.
+/// I-89 ④ — the camera's path on the canvas: drawn wherever the canvas draws
+/// the camera's frame (유저 2026-10-12: 「비지블버튼처럼 어느 상태에 있던
+/// 카메라 사각형을 보여주는 규칙 그대로 경로도」), as the canvas's camera
+/// path settings say — in time only standing on the camera's row, where its
+/// frame is worked (「nf마다의 작은 십자가, 핸들 이런게 서있으면
+/// 보여주도록」), and elsewhere as the export writes it.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -59,7 +61,12 @@ void main() {
     return (s, row);
   }
 
-  Future<void> pumpArea(WidgetTester tester, EditorSessionManager s) async {
+  /// The canvas over [s], the camera view (the eye) on — handed back, to be
+  /// turned.
+  Future<ValueNotifier<bool>> pumpArea(
+    WidgetTester tester,
+    EditorSessionManager s,
+  ) async {
     final brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     final cameraView = ValueNotifier<bool>(true);
     final cameraDim = ValueNotifier<double>(0.5);
@@ -79,6 +86,7 @@ void main() {
       ),
     );
     await tester.pump();
+    return cameraView;
   }
 
   /// The warmer's debounced timers cannot be cancelled by a dispose.
@@ -137,29 +145,27 @@ void main() {
     }
   }
 
-  testWidgets('standing on the camera row, the canvas draws its path — on '
-      'its position lane too, and on no other row or lane', (tester) async {
+  testWidgets('wherever the camera\'s frame is drawn, so is its path — in '
+      'time only standing on the camera\'s row, where its box is; where '
+      'the frame is not, no path', (tester) async {
     final (s, row) = panning();
     addTearDown(s.dispose);
-    await pumpArea(tester, s);
+    final eye = await pumpArea(tester, s);
+    Finder box() => find.byType(CameraFrameBox);
+
+    // The keys' two crosses, and a frame's from 1 to 4 between them.
+    void inTime() {
+      expect(box(), findsOneWidget, reason: '⛔전제: the frame is worked');
+      expect(armsOf(tester), 4 + 8);
+    }
+
     expect(cameraOf(s).isCameraLayerActive, isTrue, reason: '⛔전제');
-    expect(path(), findsOneWidget);
-
-    s.standOnRow(LaneRowAddress(row, 'position'));
-    await tester.pump();
-    expect(path(), findsOneWidget);
-
-    s.standOnRow(LaneRowAddress(row, 'scale'));
-    await tester.pump();
-    expect(path(), findsNothing);
-
-    s.standOnRow(LayerRowAddress(row));
-    await tester.pump();
-    expect(path(), findsOneWidget, reason: '⛔전제');
-    s.standOnRow(TrackRowAddress(s.selectedTrackId));
-    await tester.pump();
-    expect(cameraOf(s).isCameraLayerActive, isTrue, reason: '⛔전제');
-    expect(path(), findsNothing, reason: 'the cut row');
+    inTime();
+    for (final lane in ['position', 'scale']) {
+      s.standOnRow(LaneRowAddress(row, lane));
+      await tester.pump();
+      inTime();
+    }
 
     final drawing = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind != LayerKind.camera)
@@ -167,6 +173,17 @@ void main() {
     s.standOnRow(LayerRowAddress(drawing));
     await tester.pump();
     expect(cameraOf(s).isCameraLayerActive, isFalse, reason: '⛔전제');
+    expect(find.byType(CameraFrameOverlay), findsOneWidget, reason: 'eye');
+    expect(box(), findsNothing, reason: '⛔전제: the frame is not worked');
+    // As the export writes it: the keys alone — their frames, crosses and
+    // labels.
+    expect(keyFrames(tester), hasLength(2));
+    expect(labels(tester), ['1f', '6f']);
+    expect(armsOf(tester), 4);
+
+    eye.value = false;
+    await tester.pump();
+    expect(find.byType(CameraFrameOverlay), findsNothing, reason: '⛔전제');
     expect(path(), findsNothing);
 
     await drain(tester);

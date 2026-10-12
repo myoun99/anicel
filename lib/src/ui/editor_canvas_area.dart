@@ -81,15 +81,10 @@ import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart'
-    show
-        TransformPose,
-        TransformPropertyId,
-        TransformTrack,
-        transformPropertyOfLaneId,
-        uniformScale;
+    show TransformPose, TransformTrack, uniformScale;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
-    show LaneRowAddress, LayerRowAddress, TimelineRowAddress;
+    show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -1256,8 +1251,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// through the one handle path the layer handles take (「트랜스폼이나
   /// 카메라나 법 하나」): one key at the playhead, shown while it moves, on
   /// the ONE member the grab drives — as the user chose
-  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」). Where its path is
-  /// drawn, a curved key's tangent bends it ([_cameraPathTangents]).
+  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」). A curved key's
+  /// tangent bends its path ([_cameraPathTangents]) on the box, so only
+  /// where the box is: the path's handles are worked where the frame is
+  /// (유저 2026-10-12: 「카메라 사각형 조작 가능한것처럼 거기 서야만 핸들이나
+  /// 이런거 조작하도록」).
   Widget _cameraBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1314,9 +1312,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           move: move,
           zoom: zoom,
           turn: turn,
-          tangents: frame.cameraPathShown
-              ? _cameraPathTangents(session, cameraRow.id, settings)
-              : const [],
+          tangents: _cameraPathTangents(session, cameraRow.id, settings),
         ),
       ),
     );
@@ -1367,13 +1363,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   static CanvasSize _cameraFrameSizeShown(EditorSessionManager session) =>
       session.canvasAdjust.cameraSizeShown ?? session.camera.cameraFrameSize;
 
-  /// The camera's path (I-89 ④) under its frame, as the canvas's camera path
-  /// settings say — at the size the frame is shown at, around the playhead
-  /// the cursor moves, and where the frame is: nowhere in a gap.
+  /// The camera's path (I-89 ④) under its frame, wherever the frame is drawn
+  /// (유저 2026-10-12: 「비지블버튼처럼 어느 상태에 있던 카메라 사각형을
+  /// 보여주는 규칙 그대로 경로도」 — ↩️ it was drawn standing on the camera
+  /// row or its position lane alone), as the canvas's camera path settings
+  /// say — at the size the frame is shown at, around the playhead the cursor
+  /// moves, and nowhere in a gap. [standing] on the camera's row it is drawn
+  /// in time as well; elsewhere as the export writes it ([CameraPathOverlay]).
   Positioned _cameraPath(
     EditorSessionManager session,
-    CanvasViewport viewport,
-  ) => Positioned.fill(
+    CanvasViewport viewport, {
+    required bool standing,
+  }) => Positioned.fill(
     child: ValueListenableBuilder<CameraPathSettings>(
       valueListenable: CameraPathSettings.settings,
       builder: (context, settings, _) => settings.show == CameraPathShow.off
@@ -1391,6 +1392,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         playhead: session.currentFrameIndex,
                         settings: settings,
                         viewport: viewport,
+                        standing: standing,
                       );
               }),
             ),

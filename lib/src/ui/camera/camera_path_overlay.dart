@@ -15,8 +15,9 @@ import '../sheet_painting.dart';
 
 /// The camera's path over the canvas (I-89 ④): the trail its centre draws,
 /// every key's frame with its cross and its label ([cameraPathMarks]) and,
-/// shown in time, a cross every so many frames ([cameraPathTicks]) — as
-/// [settings] say, around [playhead] where they keep to it.
+/// shown in time while one is [standing], a cross every so many frames
+/// ([cameraPathTicks]) — as [settings] say, around [playhead] where they
+/// keep to it.
 ///
 /// It only draws, at the size the screen reads it whatever the zoom.
 class CameraPathOverlay extends StatelessWidget {
@@ -26,6 +27,7 @@ class CameraPathOverlay extends StatelessWidget {
     required this.playhead,
     required this.settings,
     required this.viewport,
+    required this.standing,
   });
 
   /// How large the canvas writes a camera's work, in screen pixels (the
@@ -48,6 +50,13 @@ class CameraPathOverlay extends StatelessWidget {
   final CameraPathSettings settings;
   final CanvasViewport viewport;
 
+  /// Whether one stands on the camera's row, where its frame is worked: the
+  /// crosses in time are drawn there alone, as the path's handles are (유저
+  /// 2026-10-12: 「nf마다의 작은 십자가, 핸들 이런게 서있으면 보여주도록」).
+  /// Elsewhere the path is what the export writes of it (「출력할때랑 동일한
+  /// 상태를 보여줌」).
+  final bool standing;
+
   /// What it draws, in screen pixels.
   List<SheetMark> get marks {
     Offset place(Offset point) => viewport.canvasToViewportOffset(
@@ -63,7 +72,7 @@ class CameraPathOverlay extends StatelessWidget {
         from: from,
         to: to,
       ),
-      if (settings.show == CameraPathShow.spaceAndTime)
+      if (standing && settings.show == CameraPathShow.spaceAndTime)
         ...cameraPathTicks(
           path,
           place: place,

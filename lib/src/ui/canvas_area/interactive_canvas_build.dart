@@ -292,8 +292,6 @@ class _InteractiveCanvasBuild {
       crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
       referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
-      cameraPathShown:
-          isCameraLayerActive && _standsOnCameraPosition(activeLayer, standing),
     );
     return MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
@@ -852,8 +850,12 @@ class _InteractiveCanvasBuild {
               context,
               throughCamera: shot != null,
             ),
-          if (editing && _cameraOverlayVisible && frame.cameraPathShown)
-            _state._cameraPath(frame.session, viewport),
+          if (editing && _cameraOverlayVisible)
+            _state._cameraPath(
+              frame.session,
+              viewport,
+              standing: frame.isCameraLayerActive,
+            ),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
         ],
@@ -976,23 +978,6 @@ class _InteractiveCanvasBuild {
         canvasManipulatorsForLane(lane).isEmpty;
   }
 
-  /// Whether [standing] is [camera]'s row or its position lane — where its
-  /// path is drawn (I-89 ④, the confirmed spec of 2026-10-10: 「카메라 행이나
-  /// 그 위치 레인에 서 있을 때」).
-  static bool _standsOnCameraPosition(
-    Layer? camera,
-    TimelineRowAddress? standing,
-  ) =>
-      camera != null &&
-      switch (standing) {
-        LayerRowAddress(:final layerId) => layerId == camera.id,
-        LaneRowAddress(:final layerId, :final laneId) =>
-          layerId == camera.id &&
-              transformPropertyOfLaneId(laneId) ==
-                  TransformPropertyId.position,
-        _ => false,
-      };
-
   Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
     if (frame.isCameraLayerActive && _cameraOverlayVisible) {
       return _state._cameraBox(frame, viewport, _canvasSize);
@@ -1082,7 +1067,6 @@ class _HostFrame {
     required this.crossGrabbable,
     required this.referenceBox,
     required this.isCameraLayerActive,
-    required this.cameraPathShown,
   });
 
   final EditorSessionManager session;
@@ -1109,10 +1093,6 @@ class _HostFrame {
   final ({int left, int top, int rightExclusive, int bottomExclusive})?
   inkBounds;
   final bool isCameraLayerActive;
-
-  /// The camera's path is drawn (I-89 ④): one stands on the camera row or
-  /// its position lane (`_standsOnCameraPosition`).
-  final bool cameraPathShown;
 
   /// Whether the row's box takes every press on the canvas, rather than its
   /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).

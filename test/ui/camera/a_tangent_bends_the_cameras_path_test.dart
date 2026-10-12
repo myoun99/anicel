@@ -348,12 +348,12 @@ void main() {
     await tester.pump();
     expect(tangents(tester), hasLength(1), reason: 'frames 2 to 6');
 
+    // Wherever the frame is worked, its path's handles are (유저 2026-10-12:
+    // 「카메라 사각형 조작 가능한것처럼 거기 서야만 핸들이나 이런거
+    // 조작하도록」) — on the camera's scale lane too.
     s.standOnRow(LaneRowAddress(row, 'scale'));
     await tester.pump();
-    expect(box(tester).tangents, isEmpty, reason: 'off the position lane');
-    s.standOnRow(LaneRowAddress(row, 'position'));
-    await tester.pump();
-    expect(tangents(tester), hasLength(1), reason: 'on it');
+    expect(tangents(tester), hasLength(1), reason: 'its scale lane');
 
     // Every key where the first is: the camera moves nothing, and no path
     // is drawn for the smooth key at 5 to wear its handle on.
