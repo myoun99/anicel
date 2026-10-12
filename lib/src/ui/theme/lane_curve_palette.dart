@@ -5,10 +5,11 @@ import 'package:flutter/painting.dart' show Color;
 /// a point's across and down, Scale, Rotation, Opacity, and an effect's
 /// first parameter (its Blur's width).
 ///
-/// ⚠️A layer's Scale DOWN and an effect's later parameters were not in the
-/// mock (it drew one Scale and one parameter): their colours are the
-/// round's own, put to the user 2026-10-11 — a lighter Scale blue, and a
-/// round of hues after the first parameter's.
+/// 🗣️An effect's later parameters, not in the mock (it drew one), take a
+/// round of hues after the first's, by where they stand among its
+/// parameters (I-89-Q3 A, 유저 2026-10-12: 「파라미터 순서대로 돌아가며」).
+/// ⚠️A layer's Scale DOWN, not in the mock either, is the round's own: a
+/// lighter Scale blue.
 abstract final class LaneCurvePalette {
   static const Color across = Color(0xFFE2836F);
   static const Color down = Color(0xFF8DCB73);

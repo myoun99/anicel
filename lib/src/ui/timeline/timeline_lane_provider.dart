@@ -134,9 +134,8 @@ PropertyLaneRow? timelineCameraUnionLane({
 /// lane that draws no line.
 ///
 /// Read with the lane's own group twirled open, whatever the rail shows:
-/// a pin in a folded group still reaches every graph. ⚠️The round's own
-/// answer, put to the user 2026-10-11 as I-89 ③ Q4 (A, this; B, a fold
-/// hides its pins too).
+/// a pin in a folded group still reaches every graph (I-89-Q4 A, 유저
+/// 2026-10-12: 「계속 그림(AE 그래프 편집기 세트처럼)」).
 ///
 /// Read as a drag in flight shows its row — the one substitution every drag
 /// makes ([timelineDragPreviewLayerFor]) — so a pin follows a handle pulled
