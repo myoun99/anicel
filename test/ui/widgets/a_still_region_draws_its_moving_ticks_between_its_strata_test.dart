@@ -384,6 +384,29 @@ void main() {
     );
   });
 
+  testWidgets('🚨a tick that moves once a film frame stays live between its '
+      'moves — at 144Hz a 24fps film\'s counter stands still for five '
+      'refreshes of six', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+    final taken = region.debugCaptureCount;
+
+    for (var film = 0; film < 8; film += 1) {
+      at.value = (at.value + 7) % 180;
+      await tester.pump();
+      for (var refresh = 1; refresh < 6; refresh += 1) {
+        await _frame(tester);
+      }
+    }
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(region.debugLiveTicks, hasLength(1), reason: 'still live');
+    expect(region.debugCaptureCount, taken, reason: 'not retaken');
+  });
+
   testWidgets('🚨a live tick that stops moving is taken into its stratum — a '
       'row\'s tile lands once, a film frame\'s counter changes every few '
       'refreshes', (tester) async {
