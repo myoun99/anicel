@@ -392,6 +392,10 @@ class _StillLayer extends OffsetLayer {
   /// The frame this region was last re-added with a change of its own.
   int _changedAt = 0;
 
+  /// The ticks whose own drawing changed in the frame under way — each
+  /// moved alone unless the region changed in it too ([_moving]).
+  final List<TickSceneLayer> _changedTicks = [];
+
   /// The frame its current image was taken, for the back-off.
   int? _capturedAt;
   int _stillFramesNeeded = StillRaster.stillFrames;
@@ -442,6 +446,7 @@ class _StillLayer extends OffsetLayer {
       builder.pop();
       _owner._drawnFromImage = true;
       _owner._standDown = StillStandDown.none;
+      _noteWhoMovedAlone();
       return;
     }
     final dropped = strata != null;
@@ -473,6 +478,7 @@ class _StillLayer extends OffsetLayer {
     }
     _lastSignature = signature;
     _lastFit = fit;
+    _noteWhoMovedAlone();
     _owner._drawnFromImage = false;
     final gate = _owner._gate();
     _owner._standDown = gate == StillStandDown.none
@@ -596,14 +602,32 @@ class _StillLayer extends OffsetLayer {
   static const int _movingFor = StillRaster.maxStillFrames;
 
   /// Whether [tick] changed what it holds in the last [_movingFor] frames
-  /// WHILE THE REST OF THE REGION STOOD STILL — after the region's own last
-  /// change. One that changed with it moved with the region, and is taken
-  /// with the rest: a playing timeline's rows each hold a tick that a page
-  /// turn moves with the page, and nothing else. ↩️Read live for the 48
-  /// frames after every page, they were taken into the strata in an image
-  /// of their own when those ran out — two images a page (10-12, cut 302).
+  /// WHILE THE REST OF THE REGION STOOD STILL — in a frame the region had
+  /// no change of its own in. One that changes only with the region moves
+  /// with it, and is taken with the rest: a playing timeline's rows each
+  /// hold a tick that a page turn moves with the page, and nothing else.
+  /// ↩️Read live for the 48 frames after every page, they were taken into
+  /// the strata in an image of their own when those ran out — two images a
+  /// page (10-12, cut 302). ↩️Asked as "changed after the region's own
+  /// last change", a tick a film frame changed the frame before a page
+  /// turn read as standing still: taken into the strata, which the next
+  /// film frame threw away — two images a page again, and the first film
+  /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
   bool _moving(TickSceneLayer tick) =>
-      tick._changedAt > _changedAt && _frame - tick._changedAt <= _movingFor;
+      _frame - tick._movedAloneAt <= _movingFor;
+
+  /// Marks the ticks that changed in this frame as moved alone, unless the
+  /// region changed in it too. A tick looked at for the first time is a
+  /// layer new to the region, which is a change of the region's: a tick
+  /// never moves alone on its first look.
+  void _noteWhoMovedAlone() {
+    if (_changedAt != _frame) {
+      for (final tick in _changedTicks) {
+        tick._movedAloneAt = _frame;
+      }
+    }
+    _changedTicks.clear();
+  }
 
   void _watch() {
     if (_watching) {
@@ -741,7 +765,9 @@ class _StillLayer extends OffsetLayer {
             return false;
           }
         }
-        layer._looked(itsOwn, _frame);
+        if (layer._looked(itsOwn)) {
+          _changedTicks.add(layer);
+        }
         if (!live(layer)) {
           out.addAll(held);
         }
@@ -1231,21 +1257,21 @@ class TickSceneLayer extends OffsetLayer {
   Size size = Size.zero;
 
   /// What the tick held the last time its region looked — its place, its
-  /// layers and their pictures, as values — and the frame that changed it.
+  /// layers and their pictures, as values — and the last frame it changed
+  /// in ALONE, the rest of its region standing still ([_StillLayer._moving]).
   ///
   /// ⛔Not the frames it was added to a scene in: a tick is added again
   /// whenever anything under it changes, and a region drawing it live adds
   /// it on every frame itself.
   List<Object?>? _held;
-  int _changedAt = -_StillLayer._movingFor - 1;
+  int _movedAloneAt = -_StillLayer._movingFor - 1;
 
-  void _looked(List<Object?> held, int frame) {
-    if (!listEquals(held, _held)) {
-      // The first look sees what it holds; it is no change.
-      if (_held != null) {
-        _changedAt = frame;
-      }
-      _held = held;
+  /// Whether what the tick holds changed since its region last looked.
+  bool _looked(List<Object?> held) {
+    if (listEquals(held, _held)) {
+      return false;
     }
+    _held = held;
+    return true;
   }
 }

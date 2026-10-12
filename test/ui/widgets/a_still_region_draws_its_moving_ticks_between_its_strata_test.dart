@@ -777,6 +777,44 @@ void main() {
         reason: 'drawn from the stratum where it stood',
       );
     });
+
+    testWidgets('🚨a tick that moved alone the frame before the region '
+        'changed is still moving — the first film frame after a page turn '
+        'is drawn from the strata like every other', (tester) async {
+      final at = ValueNotifier<double>(0);
+      final ground = ValueNotifier<Color>(_ground);
+      addTearDown(at.dispose);
+      addTearDown(ground.dispose);
+      await _pump(tester, regionOf(ground, at));
+      Future<void> film() {
+        at.value = (at.value + 7) % 180;
+        return tester.pump();
+      }
+
+      await film();
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken',
+      );
+      final region = _region(tester);
+      expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+
+      // A film frame, and a page turn on the frame after it.
+      await film();
+      await change(tester, ground);
+      expect(
+        await framesUntilDrawn(tester, StillRaster.maxStillFrames),
+        isNotNull,
+        reason: '⛔premise: taken again',
+      );
+      expect(region.debugLiveTicks, hasLength(1), reason: 'still moving');
+      final taken = region.debugCaptureCount;
+
+      await film();
+      expect(region.debugDrawnFromImage, isTrue);
+      expect(region.debugCaptureCount, taken, reason: 'not retaken');
+    });
   });
 }
 
