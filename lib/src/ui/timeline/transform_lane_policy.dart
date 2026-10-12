@@ -204,6 +204,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('position', label, delta),
+      walks: positionKeySpace,
     ),
     _lane(
       'scale',
@@ -434,6 +435,8 @@ String? scrubTransformLaneValue(
   return null;
 }
 
+/// [track]'s lane, its line drawn off [reading] — walking the path [walks]
+/// lays, where it is given one ([LaneCurve.way]).
 PropertyLaneRow _lane<T>(
   String id,
   String label,
@@ -441,6 +444,7 @@ PropertyLaneRow _lane<T>(
   _LaneReading reading, {
   String? Function(String currentLabel, Offset dragDelta)? scrubValue,
   bool linkable = false,
+  KeyValueSpace<T>? walks,
 }) {
   return PropertyLaneRow(
     laneId: id,
@@ -455,6 +459,7 @@ PropertyLaneRow _lane<T>(
         parts: parts,
         at: at,
         sides: track.sidesByFrame,
+        way: walks == null ? null : (from) => track.wayFrom(from, walks),
       ),
       null => null,
     },

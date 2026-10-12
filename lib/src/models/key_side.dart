@@ -344,14 +344,19 @@ double autoSideSpeed(double reach) => reach.clamp(0.0, 3.0).toDouble();
   return leaving ? (x: reach, y: rise) : (x: 1 - reach, y: 1 - rise);
 }
 
+/// The influence a handle at [x] of its segment's time stands for,
+/// [leaving] the key or arriving at it — held to the reach a side may take
+/// ([EaseSide.leastInfluence] to all of the segment), in a value graph and
+/// a speed graph alike (I-89 ③).
+double keyHandleInfluenceAt(double x, {required bool leaving}) =>
+    (leaving ? x : 1 - x).clamp(EaseSide.leastInfluence, 1.0).toDouble();
+
 /// [keyHandlePoint] read back: the handle that stands at [x], [y] of the
 /// unit square, [leaving] or arriving — its influence held to the reach a
-/// side may take ([EaseSide.leastInfluence] to all of the segment), its
-/// speed what rising to [y] over that influence takes.
+/// side may take ([keyHandleInfluenceAt]), its speed what rising to [y]
+/// over that influence takes.
 KeyHandle keyHandleAt(double x, double y, {required bool leaving}) {
-  final influence = (leaving ? x : 1 - x)
-      .clamp(EaseSide.leastInfluence, 1.0)
-      .toDouble();
+  final influence = keyHandleInfluenceAt(x, leaving: leaving);
   return (influence: influence, speed: (leaving ? y : 1 - y) / influence);
 }
 

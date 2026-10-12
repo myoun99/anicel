@@ -171,6 +171,53 @@ void main() {
     });
   });
 
+  group('the way from a key that keeps its time', () {
+    test('runs to the next that does, through the roving keys, as long as '
+        'the walk through them — what a speed graph paces its handles by '
+        '(I-89-Q5 B)', () {
+      final way = turning().wayFrom(0, positionKeySpace)!;
+      expect(way.to, 20);
+      expect(way.length, closeTo(400, 1e-9));
+    });
+
+    test('runs a segment where nothing roves, and nowhere after the last '
+        'key', () {
+      final track = PropertyTrack(
+        keys: {
+          0: PropertyKey(p(0, 0)),
+          10: PropertyKey(p(100, 0)),
+          20: PropertyKey(p(100, 300)),
+        },
+      );
+      final first = track.wayFrom(0, positionKeySpace)!;
+      expect(first.to, 10);
+      expect(first.length, closeTo(100, 1e-9));
+      final second = track.wayFrom(10, positionKeySpace)!;
+      expect(second.to, 20);
+      expect(second.length, closeTo(300, 1e-9));
+      expect(track.wayFrom(20, positionKeySpace), isNull);
+    });
+
+    test('is a path\'s: a bent one is longer than the line between its '
+        'keys', () {
+      final bent = PropertyTrack(
+        keys: {
+          0: PropertyKey(p(0, 0)),
+          10: PropertyKey(p(100, 0), path: KeyPath.auto),
+          20: PropertyKey(p(100, 100)),
+        },
+      );
+      expect(bent.wayFrom(0, positionKeySpace)!.length, greaterThan(100));
+    });
+
+    test('is none on a lane whose keys walk no path', () {
+      final track = PropertyTrack(
+        keys: {0: const PropertyKey(0.0), 20: const PropertyKey(400.0)},
+      );
+      expect(track.wayFrom(0, doubleKeySpace), isNull);
+    });
+  });
+
   group('where a roving key stands', () {
     test('the frame nearest when it is passed — and a placed track is '
         'placed again as it is', () {

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
@@ -184,6 +185,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(_leaving(s), const EaseSide());
     expect(s.historyManager.canUndo, undoable);
+  });
+
+  testWidgets('in a speed graph too: the handle stays under the hand, and '
+      'its drop writes the speed the hand stood at (I-89-Q5 B)', (
+    tester,
+  ) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    await _tap(
+      tester,
+      'timeline-lane-graph-plot-${LaneGraphMode.speed.name}-$_transformGroup',
+    );
+    // Shown, the pill scrolled the frames: back to their start, where the
+    // handle stands clear of the rail's edge.
+    _framesScroll(tester).jumpTo(0);
+    await tester.pump();
+    final taken = _handleOf(tester, 'timeline');
+    expect(taken.mode, LaneGraphMode.speed, reason: '⛔전제');
+    final start = _handleOnScreen(tester, 'timeline');
+    // Straight up, from still to half the segment's average speed.
+    final (:from, :to) = taken.across;
+    final pull = Offset(0, (to - from) / 2);
+
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(pull / 2);
+    await tester.pump();
+    await gesture.moveBy(pull / 2);
+    await tester.pump();
+    expect(
+      _handleOnScreen(tester, 'timeline'),
+      offsetMoreOrLessEquals(start + pull, epsilon: 0.5),
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final written = _leaving(s) as EaseSide;
+    expect(written.influence, closeTo(EaseSide.easeInfluence, 1e-6));
+    expect(written.speed, closeTo(0.5, 1e-6));
   });
 
   testWidgets('on the sheet, the timeline turned a quarter clockwise, the '

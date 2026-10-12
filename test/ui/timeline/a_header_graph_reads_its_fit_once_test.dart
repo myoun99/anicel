@@ -35,6 +35,7 @@ void main() {
             return [time];
           },
           sides: const {},
+          way: null,
         ),
       );
       final geometry = ValueNotifier(

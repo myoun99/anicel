@@ -490,7 +490,7 @@ void main() {
     // Position runs from its key on 0 to its key on 8 at an even speed
     // (sides linear), and stands after it.
     final speeds = _strokes(tester);
-    expect(speeds, hasLength(2), reason: 'its across and its down');
+    expect(speeds, hasLength(1), reason: 'I-89-Q5 B: a point\'s one speed');
     expect(speeds.every(spansThePadding), isTrue, reason: '$speeds');
     expect(_marks(tester), 0, reason: 'the speed graph marks no key');
 

@@ -7,7 +7,13 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/key_side.dart'
-    show EaseSide, KeySideEdit, KeySidesEdit, keyHandleAt, keyHandlePoint;
+    show
+        EaseSide,
+        KeySideEdit,
+        KeySidesEdit,
+        keyHandleAt,
+        keyHandleInfluenceAt,
+        keyHandlePoint;
 import '../../models/timeline_row_address.dart';
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
@@ -891,40 +897,47 @@ LaneGraphRange _spared(double low, double high) {
   return (low: from - spare, high: to + spare);
 }
 
-/// How fast each number of [curve] changes at [time] — per frame, as AE's
-/// speed graph plots it (I-89 ③ 속도) — read inside the stretch between
-/// its keys on [from] and [to]: a step ahead, and never on [to] itself,
-/// where a hold jumps.
-List<double> laneGraphSpeedsAt(
+/// How fast [curve] moves at [time] — per frame, as AE's speed graph plots
+/// it (I-89 ③ 속도) — read inside the stretch between its keys on [from]
+/// and [to]: a step ahead, and never on [to] itself, where a hold jumps.
+/// Its numbers move as one: at the speed of the point they make, a
+/// position's along its path (I-89-Q5 B — AE's one line for a point).
+double laneGraphSpeedAt(
   LaneCurve curve,
   double time, {
   required int from,
   required int to,
 }) {
   final at = time.clamp(from.toDouble(), to - 2 * _laneGraphSpeedStep);
-  final before = curve.at(at);
-  final after = curve.at(at + _laneGraphSpeedStep);
-  return [
-    for (var part = 0; part < before.length; part += 1)
-      (after[part] - before[part]).abs() / _laneGraphSpeedStep,
-  ];
+  return _laneGraphApart(curve.at(at), curve.at(at + _laneGraphSpeedStep)) /
+      _laneGraphSpeedStep;
 }
 
-/// [curve] as a speed graph plots it through [times]: how fast each of its
-/// numbers changes ([laneGraphSpeedsAt]) inside each stretch between two
-/// of its [keyed] frames, and still before the first and after the last —
-/// and on a key, the speeds it arrives at and then the ones it leaves at,
-/// so the line steps where they differ.
-Iterable<({double time, List<double> numbers})> laneGraphSpeeds(
+/// How far apart two readings of a line stand ([LaneCurve.at]): the
+/// distance between the points their numbers make.
+double _laneGraphApart(List<double> from, List<double> to) {
+  var squares = 0.0;
+  for (var part = 0; part < from.length; part += 1) {
+    final gap = to[part] - from[part];
+    squares += gap * gap;
+  }
+  return math.sqrt(squares);
+}
+
+/// [curve] as a speed graph plots it through [times]: how fast it moves
+/// ([laneGraphSpeedAt]) inside each stretch between two of its [keyed]
+/// frames, and still before the first and after the last — and on a key,
+/// the speed it arrives at and then the one it leaves at, so the line
+/// steps where they differ.
+Iterable<({double time, double speed})> laneGraphSpeeds(
   LaneCurve curve,
   List<int> keyed,
   Iterable<double> times,
 ) sync* {
-  final still = List<double>.filled(curve.parts.length, 0);
-  List<double> inStretch(int index, double time) =>
+  double inStretch(int index, double time) =>
       index < 0 || index + 1 >= keyed.length
-      ? still
-      : laneGraphSpeedsAt(
+      ? 0
+      : laneGraphSpeedAt(
           curve,
           time,
           from: keyed[index],
@@ -935,35 +948,32 @@ Iterable<({double time, List<double> numbers})> laneGraphSpeeds(
     while (next < keyed.length && keyed[next] < time) {
       next += 1;
     }
-    yield (time: time, numbers: inStretch(next - 1, time));
+    yield (time: time, speed: inStretch(next - 1, time));
     if (next < keyed.length && keyed[next] == time) {
-      yield (time: time, numbers: inStretch(next, time));
+      yield (time: time, speed: inStretch(next, time));
     }
   }
 }
 
-/// The speeds each number of [curve] is fitted to across a speed graph,
-/// in the order of its parts: from still — the timeline's foot, the
-/// sheet's left — to the fastest it goes between its [keyed] frames, with
-/// no spare either way (the mock's, 5판); read on both ends of every
-/// stretch and [_laneGraphRangeSteps] times across it. A number that never
-/// moves is given 0 to 1.
-List<LaneGraphRange> laneGraphSpeedRanges(LaneCurve curve, List<int> keyed) {
-  final high = List<double>.filled(curve.parts.length, 0);
+/// The speeds [curve] is fitted to across a speed graph: from still — the
+/// timeline's foot, the sheet's left — to the fastest it goes between its
+/// [keyed] frames, with no spare either way (the mock's, 5판); read on
+/// both ends of every stretch and [_laneGraphRangeSteps] times across it.
+/// A line that never moves is given 0 to 1.
+LaneGraphRange laneGraphSpeedRange(LaneCurve curve, List<int> keyed) {
+  var fastest = 0.0;
   for (var index = 0; index + 1 < keyed.length; index += 1) {
     final from = keyed[index];
     final to = keyed[index + 1];
     for (var step = 0; step <= _laneGraphRangeSteps; step += 1) {
       final time = from + (to - from) * step / _laneGraphRangeSteps;
-      final speeds = laneGraphSpeedsAt(curve, time, from: from, to: to);
-      for (var part = 0; part < high.length; part += 1) {
-        high[part] = math.max(high[part], speeds[part]);
-      }
+      fastest = math.max(
+        fastest,
+        laneGraphSpeedAt(curve, time, from: from, to: to),
+      );
     }
   }
-  return [
-    for (final fastest in high) (low: 0, high: fastest < 1e-6 ? 1 : fastest),
-  ];
+  return (low: 0, high: fastest < 1e-6 ? 1 : fastest);
 }
 
 /// Where [value] stands across a graph [extent] deep, fitted to [range]
@@ -1034,20 +1044,24 @@ typedef _LaneGraphPass = ({
 typedef _LaneGraphMark = ({Offset at, KeyMark mark, Color color});
 
 /// What a line is fitted to across its graph: its keyed frames in order
-/// and each number's range.
+/// and each number's range — in a speed graph its one speed's.
 typedef LaneGraphFit = ({List<int> keyed, List<LaneGraphRange> ranges});
 
 /// A line as a painter plots it: in dashes or not, and what it is fitted
 /// to — or null for a line with nothing to draw.
 typedef _LaneGraphPlot = ({LaneGraphLine line, bool dashed, LaneGraphFit? fit});
 
-/// A HANDLE a header graph draws (I-89 ③): the side of [line]'s key on
+/// A HANDLE a header graph draws (I-89 ③): the [side] of [line]'s key on
 /// [frame] it pulls — [leaving] the key, or arriving at it — drawn [at],
-/// its stem from the key's mark at [key]; and the segment it bends, from
-/// the key on [frames]' `from` to the next: where the two keys stand across
-/// the graph.
+/// its stem from where the key stands at [key]; and the segment it bends,
+/// from the key on [frames]' `from` to the next that keeps its time, as
+/// [mode] plots it: where its 0 and its 1 stand [across] the graph — the
+/// two keys' values in a value graph, still and the segment's average
+/// speed in a speed graph (I-89-Q5 B).
 typedef LaneGraphHandle = ({
   LaneGraphLine line,
+  LaneGraphMode mode,
+  EaseSide side,
   int frame,
   bool leaving,
   Offset at,
@@ -1057,12 +1071,16 @@ typedef LaneGraphHandle = ({
 });
 
 /// What pulling [handle] to [position] writes (I-89 ③): its side's
-/// influence and its speed, read back off the segment's square as the
-/// graph — laid along by [frames] — draws it ([keyHandleAt], the reading
-/// [keyHandlePoint] draws the handle by).
+/// influence and its speed, read back off the segment as the graph — laid
+/// along by [frames] — draws it. A value graph reads them off the
+/// segment's square ([keyHandleAt], the reading [keyHandlePoint] draws the
+/// handle by); a speed graph's speed is as high as the hand, never slower
+/// than still, and the way the side went — a speed graph shows how fast,
+/// not which way (I-89-Q5 B, AE's).
 ///
-/// A segment whose two keys stand level across the graph has no height to
-/// read a speed off, so it takes the influence alone.
+/// A segment with no height to read a speed off — its two keys level
+/// across a value graph, a way of no length in a speed graph — takes the
+/// influence alone.
 KeySidesEdit laneGraphPull(
   LaneGraphHandle handle,
   Offset position, {
@@ -1077,11 +1095,15 @@ KeySidesEdit laneGraphPull(
       (laneGraphTimeAt(along, frames) - span.from) / (span.to - span.from);
   final rise = handle.across.to - handle.across.from;
   final level = rise == 0;
-  final (:influence, :speed) = keyHandleAt(
-    x,
-    level ? 0 : (across - handle.across.from) / rise,
-    leaving: handle.leaving,
-  );
+  final y = level ? 0.0 : (across - handle.across.from) / rise;
+  final leaving = handle.leaving;
+  final (:influence, :speed) = switch (handle.mode) {
+    LaneGraphMode.value => keyHandleAt(x, y, leaving: leaving),
+    LaneGraphMode.speed => (
+      influence: keyHandleInfluenceAt(x, leaving: leaving),
+      speed: math.max(0.0, y) * (handle.side.speed < 0 ? -1 : 1),
+    ),
+  };
   final rate = level ? null : speed;
   return handle.leaving
       ? KeySidesEdit(
@@ -1160,7 +1182,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       keyed: keyed,
       ranges: switch (mode) {
         LaneGraphMode.value => laneGraphRanges(curve, keyed),
-        LaneGraphMode.speed => laneGraphSpeedRanges(curve, keyed),
+        LaneGraphMode.speed => [laneGraphSpeedRange(curve, keyed)],
       },
     );
   }
@@ -1259,10 +1281,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     return handles;
   }
 
-  /// The handles [plot]'s line takes (the mock's, 5판): in a value graph,
-  /// on a line of one number, one on each side of a key that eases toward
-  /// the key beside it — where that side bends their segment
-  /// ([keyHandlePoint]) — on every segment [window] shows some of.
+  /// The handles [plot]'s line takes (the mock's, 5판): one on each side of
+  /// a key that eases toward the key beside it, on every segment [window]
+  /// shows some of — in a value graph on a line of one number, where that
+  /// side bends their segment ([keyHandlePoint]); in a speed graph on every
+  /// line, as far along as the side reaches and as high as the speed it
+  /// moves at by its key, a stem's length from it (I-89-Q5 B, AE's speed
+  /// graph).
   Iterable<LaneGraphHandle> _handlesOf(
     _LaneGraphPlot plot,
     TimelineFrameGeometry frames,
@@ -1271,17 +1296,15 @@ class TimelineLaneGraphPainter extends CustomPainter {
   ) sync* {
     final (:line, dashed: _, :fit) = plot;
     final curve = line.lane.curve;
-    if (mode != LaneGraphMode.value ||
-        curve == null ||
+    if (curve == null ||
         fit == null ||
-        curve.parts.length != 1) {
+        (mode == LaneGraphMode.value && curve.parts.length != 1)) {
       return;
     }
     final (:keyed, :ranges) = fit;
     double across(double value) =>
         laneGraphAcross(value, ranges.single, extent, axis);
-    for (var index = 0; index + 1 < keyed.length; index += 1) {
-      final span = (from: keyed[index], to: keyed[index + 1]);
+    for (final span in _segmentsOf(curve, keyed)) {
       if (span.to < window.startIndex ||
           span.from >= window.endIndexExclusive) {
         continue;
@@ -1290,39 +1313,78 @@ class TimelineLaneGraphPainter extends CustomPainter {
       if (eases.isEmpty) {
         continue;
       }
-      final values = (
-        from: curve.at(span.from.toDouble()).single,
-        to: curve.at(span.to.toDouble()).single,
+      final unit = switch (mode) {
+        LaneGraphMode.value => (
+          from: curve.at(span.from.toDouble()).single,
+          to: curve.at(span.to.toDouble()).single,
+        ),
+        LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
+      };
+      Offset place(double x, double y) => offsetAlong(
+        axis,
+        along: laneGraphAlong(span.from + x * (span.to - span.from), frames),
+        across: across(unit.from + y * (unit.to - unit.from)),
       );
-      final ends = (from: across(values.from), to: across(values.to));
       for (final (:side, :leaving) in eases) {
-        final (:x, :y) = keyHandlePoint(
+        final point = keyHandlePoint(
           (influence: side.influence, speed: side.speed),
           leaving: leaving,
         );
-        final frame = leaving ? span.from : span.to;
+        final end = leaving ? 0.0 : 1.0;
+        final (handle, key) = switch (mode) {
+          LaneGraphMode.value => (point.y, end),
+          LaneGraphMode.speed => (side.speed.abs(), side.speed.abs()),
+        };
         yield (
           line: line,
-          frame: frame,
+          mode: mode,
+          side: side,
+          frame: leaving ? span.from : span.to,
           leaving: leaving,
-          at: offsetAlong(
-            axis,
-            along: laneGraphAlong(
-              span.from + x * (span.to - span.from),
-              frames,
-            ),
-            across: across(values.from + y * (values.to - values.from)),
-          ),
-          key: offsetAlong(
-            axis,
-            along: laneGraphAlong(frame.toDouble(), frames),
-            across: leaving ? ends.from : ends.to,
-          ),
+          at: place(point.x, handle),
+          key: place(end, key),
           frames: span,
-          across: ends,
+          across: (from: across(unit.from), to: across(unit.to)),
         );
       }
     }
+  }
+
+  /// The segments [curve]'s handles bend, in order: from each of its
+  /// [keyed] frames to the next — where it walks a path, from each that
+  /// keeps its time to the next that does ([LaneCurve.way]), the roving
+  /// ones between passed at the pace those two set.
+  static Iterable<({int from, int to})> _segmentsOf(
+    LaneCurve curve,
+    List<int> keyed,
+  ) sync* {
+    final way = curve.way;
+    if (way == null) {
+      for (var index = 0; index + 1 < keyed.length; index += 1) {
+        yield (from: keyed[index], to: keyed[index + 1]);
+      }
+      return;
+    }
+    for (int? from = keyed.first; from != null;) {
+      final to = way(from)?.to;
+      if (to != null) {
+        yield (from: from, to: to);
+      }
+      from = to;
+    }
+  }
+
+  /// How fast [curve] moves over [span] on average — as far as it goes,
+  /// along its way where it walks one, over the frames it takes: what a
+  /// side's speed is a multiple of ([EaseSide.speed]).
+  static double _averageSpeed(LaneCurve curve, ({int from, int to}) span) {
+    final length =
+        curve.way?.call(span.from)?.length ??
+        _laneGraphApart(
+          curve.at(span.from.toDouble()),
+          curve.at(span.to.toDouble()),
+        );
+    return length / (span.to - span.from);
   }
 
   /// The sides of [span]'s two keys that ease toward each other — the
@@ -1337,9 +1399,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
       (side: side, leaving: false),
   ];
 
-  /// Draws every number [plot]'s line holds through [pass], in dashes for
-  /// a guest, and gives back the marks its keys in the window take — none
-  /// in a speed graph (the mock's, 5판).
+  /// Draws [plot]'s line through [pass] — every number it holds, or in a
+  /// speed graph the one speed they move at (I-89-Q5 B) — in dashes for a
+  /// guest, and gives back the marks its keys in the window take — none in
+  /// a speed graph (the mock's, 5판).
   List<_LaneGraphMark> _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
     final (:line, :dashed, :fit) = plot;
     final curve = line.lane.curve;
@@ -1358,9 +1421,15 @@ class TimelineLaneGraphPainter extends CustomPainter {
       LaneGraphMode.value => [
         for (final time in times) (time: time, numbers: curve.at(time)),
       ],
-      LaneGraphMode.speed => laneGraphSpeeds(curve, keyed, times).toList(),
+      LaneGraphMode.speed => [
+        for (final (:time, :speed) in laneGraphSpeeds(curve, keyed, times))
+          (time: time, numbers: [speed]),
+      ],
     };
-    for (var part = 0; part < curve.parts.length; part += 1) {
+    // A stroke to each range the line is fitted to. ⚠️A speed graph's one
+    // takes its first number's colour — mine (I-89-Q5 B): the mock drew a
+    // point's speed as two lines, and AE's one line has no colour of ours.
+    for (var part = 0; part < ranges.length; part += 1) {
       _strokeLaneGraphLine(
         canvas,
         Path()..addPolygon([

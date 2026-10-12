@@ -166,6 +166,10 @@ final class _RunWalk<T> {
   /// length to share.
   final List<double> stops;
 
+  /// How long the whole way is.
+  double get length =>
+      segments.fold(0.0, (sum, segment) => sum + segment.length);
+
   static List<double> _stopsAlong(List<SegmentWalk<Object?>> segments) {
     final total = segments.fold(0.0, (sum, segment) => sum + segment.length);
     if (total <= 0) {
@@ -320,6 +324,18 @@ final class _TrackTime<T> {
       }
     }
     return times;
+  }
+
+  /// [PropertyTrack.wayFrom].
+  ({int to, double length})? wayFrom(int from, KeyValueSpace<T> space) {
+    final walk = space.walk;
+    if (walk == null) {
+      return null;
+    }
+    final to = _timedKeyAfter(from, roves: _anyRoving);
+    return to == null
+        ? null
+        : (to: to, length: _walkFrom(from, to, walk).length);
   }
 
   /// Whether the key at [frame] keeps its own time: every key, but a
@@ -809,6 +825,15 @@ class PropertyTrack<T> {
   /// none of them. Empty where no key roves or [space] walks no path.
   Map<int, double> rovingTimes(KeyValueSpace<T> space) =>
       _time.rovingTimes(space);
+
+  /// The way [space] walks from the key at [from] — one that keeps its
+  /// time — to the next that does, through every roving key between: the
+  /// frame it ends on and how long it is, what its two keys' sides pace
+  /// (I-89-Q5 B: a speed graph's handle reads its speed by it). Null after
+  /// the last key, and where [space] walks no path: its keys' values lerp,
+  /// the way between two of them as long as they stand apart.
+  ({int to, double length})? wayFrom(int from, KeyValueSpace<T> space) =>
+      _time.wayFrom(from, space);
 
   /// [this] with each roving key on the frame nearest when its run passes
   /// it ([rovingTimes]) — in their order, one to a frame, between the

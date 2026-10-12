@@ -193,12 +193,16 @@ typedef LaneStretchWord = ({int from, int to, String word});
 
 /// A lane as a header graph draws it ([PropertyLaneRow.curve]): the numbers
 /// it holds [at] a time — a frame, or a time between two — each drawn in
-/// its colour of [parts], in order; and the [sides] of each of its keys by
-/// frame, which its handles stand for (I-89 ③).
+/// its colour of [parts], in order; the [sides] of each of its keys by
+/// frame, which its handles stand for (I-89 ③); and, where its values walk
+/// a path (a position's, I-89 ④), the [way] from a key on — the next key
+/// that keeps its time, and how far — which a speed graph paces its
+/// handles by (I-89-Q5 B). Null where they lerp, from each key to the next.
 typedef LaneCurve = ({
   List<Color> parts,
   List<double> Function(double time) at,
   Map<int, ({KeySide incoming, KeyExit outgoing})> sides,
+  ({int to, double length})? Function(int from)? way,
 });
 
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can

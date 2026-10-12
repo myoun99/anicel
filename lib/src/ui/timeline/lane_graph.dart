@@ -14,7 +14,8 @@ typedef LaneGraphVerbs = ({
   ValueChanged<String> enlarge,
 });
 
-/// What a header graph plots: the values, or how fast they change.
+/// What a header graph plots: the values, or how fast they change — a
+/// lane's together, as one speed (I-89-Q5 B).
 enum LaneGraphMode { value, speed }
 
 /// How many rows tall a graph opens — before its grip says otherwise.

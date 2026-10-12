@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
@@ -271,17 +272,11 @@ void main() {
     expect(painter.handlesIn(size), isEmpty, reason: 'past every segment');
   });
 
-  test('no handle on a line of two numbers, nor in a speed graph', () {
+  test('no handle on a line of two numbers in a value graph', () {
     expect(
       painterOf([lineOf('position')]).handlesIn(sizeFor(Axis.horizontal)),
       isEmpty,
       reason: 'I-89-Q-a: a point\'s two numbers share one side',
-    );
-    expect(
-      painterOf([
-        lineOf('rotation'),
-      ], mode: LaneGraphMode.speed).handlesIn(sizeFor(Axis.horizontal)),
-      isEmpty,
     );
   });
 
@@ -501,5 +496,295 @@ void main() {
       ),
       rangeOf(before),
     );
+  });
+
+  /// **I-89-Q5 B — a speed graph's handles (유저 2026-10-12: 「속도 보기에도
+  /// 핸들(AE 식)」):** AE's speed graph — a side's handle as far along as it
+  /// reaches and as high as the speed it moves at by its key, on a line of
+  /// any numbers, a point's along its path.
+  group('a speed graph', () {
+    final size = sizeFor(Axis.horizontal);
+    TimelineLaneGraphPainter speedOf(
+      LaneGraphLine line, {
+      Axis axis = Axis.horizontal,
+    }) => painterOf([line], mode: LaneGraphMode.speed, axis: axis);
+
+    /// Where [speed] stands across [painter]'s one line, on the timeline.
+    double acrossAt(TimelineLaneGraphPainter painter, double speed) =>
+        laneGraphAcross(
+          speed,
+          painter.fits.values.single.ranges.single,
+          size.height,
+          Axis.horizontal,
+        );
+
+    Layer withTrack(TransformTrack track) =>
+        layer.copyWith(transformTrack: track);
+
+    test('draws a handle on each side that eases toward the key beside it, '
+        'as a value graph does — on a line of any numbers, a point\'s '
+        'too', () {
+      List<(int, bool)> sides(LaneGraphLine line) => [
+        for (final handle in speedOf(line).handlesIn(size))
+          (handle.frame, handle.leaving),
+      ];
+      expect(sides(lineOf('rotation')), [(0, true), (6, false), (18, false)]);
+      expect(sides(lineOf('position')), [(0, true), (8, false)]);
+    });
+
+    test('a handle stands as far along as its side reaches and as high as '
+        'the speed it moves at by its key — its segment\'s average times its '
+        'speed — its stem level from the key', () {
+      final painter = speedOf(lineOf('rotation'));
+      final handles = painter.handlesIn(size);
+      // 30 over 0 to 6, and 30 over 12 to 18 — the hold's as if it did not
+      // hold, as a run is placed: 5 a frame each.
+      for (final (index, time, speed) in [
+        (0, 2.0, 0.0),
+        (1, 3.0, 5.0),
+        (2, 16.5, 10.0),
+      ]) {
+        final handle = handles[index];
+        final reason = '${handle.frame} ${handle.leaving ? 'out' : 'in'}';
+        final at = readOf(handle.at, Axis.horizontal);
+        expect(at.time, closeTo(time, 1e-9), reason: reason);
+        expect(
+          at.across,
+          closeTo(acrossAt(painter, speed), 1e-9),
+          reason: reason,
+        );
+        final key = readOf(handle.key, Axis.horizontal);
+        expect(key.time, closeTo(handle.frame, 1e-9), reason: reason);
+        expect(key.across, closeTo(at.across, 1e-9), reason: '$reason level');
+        expect(handle.across.from, closeTo(acrossAt(painter, 0), 1e-9));
+        expect(handle.across.to, closeTo(acrossAt(painter, 5), 1e-9));
+      }
+    });
+
+    test('a handle stands on the line it pulls: by its key the line moves '
+        'at the handle\'s speed', () {
+      final line = lineOf('rotation');
+      final curve = line.lane.curve!;
+      final painter = speedOf(line);
+      // 18's side comes after a hold, whose line lies still to the jump.
+      for (final handle in painter.handlesIn(size).take(2)) {
+        final (:from, :to) = handle.frames;
+        final drawn = laneGraphSpeedAt(
+          curve,
+          handle.frame.toDouble(),
+          from: from,
+          to: to,
+        );
+        expect(
+          readOf(handle.key, Axis.horizontal).across,
+          closeTo(acrossAt(painter, drawn), 0.5),
+          reason: '${handle.frame}',
+        );
+      }
+    });
+
+    test('a point\'s average is how far it walks its path over the frames '
+        'it takes — a bent path\'s farther than the line between its '
+        'keys — each segment its own', () {
+      const ease = EaseSide(influence: 0.5, speed: 1);
+      final bent = withTrack(
+        TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
+              .withKey(8, CanvasPoint(x: 80, y: 0), path: KeyPath.auto)
+              .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease),
+        ),
+      );
+      final position = bent.transformTrack.position;
+      final lengths = [
+        for (final from in [0, 8]) position.wayFrom(from, positionKeySpace)!,
+      ];
+      expect(lengths.first.length, greaterThan(80), reason: '⛔전제: bent');
+      expect(lengths.last.length, greaterThan(60), reason: '⛔전제: bent');
+      final painter = speedOf(lineOf('position', on: bent));
+      final handles = painter.handlesIn(size);
+      expect(
+        [for (final handle in handles) (handle.frame, handle.frames)],
+        [(0, (from: 0, to: 8)), (16, (from: 8, to: 16))],
+      );
+      for (final (handle, way, time) in [
+        (handles.first, lengths.first, 4.0),
+        (handles.last, lengths.last, 12.0),
+      ]) {
+        final at = readOf(handle.at, Axis.horizontal);
+        expect(at.time, closeTo(time, 1e-9));
+        expect(at.across, closeTo(acrossAt(painter, way.length / 8), 1e-9));
+      }
+    });
+
+    test('a run through roving keys is one segment: its handles are its '
+        'timed ends\', paced by the whole way', () {
+      const ease = EaseSide(influence: 0.5, speed: 1);
+      final roving = withTrack(
+        TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
+              .withKey(
+                8,
+                CanvasPoint(x: 80, y: 0),
+                incoming: ease,
+                outgoing: ease,
+              )
+              .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease)
+              .withKeysRoving(frames: {8}, roving: true),
+        ),
+      );
+      final painter = speedOf(lineOf('position', on: roving));
+      final handles = painter.handlesIn(size);
+      expect(
+        [
+          for (final handle in handles)
+            (handle.frame, handle.leaving, handle.frames),
+        ],
+        [(0, true, (from: 0, to: 16)), (16, false, (from: 0, to: 16))],
+        reason: 'none on the roving key',
+      );
+      expect(
+        readOf(handles.first.at, Axis.horizontal).across,
+        closeTo(acrossAt(painter, (80 + 60) / 16), 1e-9),
+      );
+    });
+
+    test('a pair of numbers that walks no path averages the line between '
+        'its keys — an anchor\'s', () {
+      final anchored = withTrack(
+        TransformTrack.empty().copyWith(
+          anchorPoint: PropertyTrack<CanvasPoint>()
+              .withKey(
+                0,
+                CanvasPoint(x: 0, y: 0),
+                outgoing: const EaseSide(influence: 0.5, speed: 1),
+              )
+              .withKey(10, CanvasPoint(x: 30, y: 40)),
+        ),
+      );
+      final painter = speedOf(lineOf('anchor-point', on: anchored));
+      expect(
+        readOf(painter.handlesIn(size).single.at, Axis.horizontal).across,
+        closeTo(acrossAt(painter, 50 / 10), 1e-9),
+      );
+    });
+
+    for (final axis in Axis.values) {
+      test('pulled to where it stands, a handle writes what it is — on the '
+          '${axis.name} graph', () {
+        final handles = speedOf(
+          lineOf('rotation'),
+          axis: axis,
+        ).handlesIn(sizeFor(axis));
+        expect(handles, hasLength(3), reason: '⛔전제');
+        for (final handle in handles) {
+          final edit = laneGraphPull(
+            handle,
+            handle.at,
+            frames: geometry.value,
+            axis: axis,
+          );
+          final written = handle.leaving ? edit.outgoing : edit.incoming;
+          final side = sideOf(handle);
+          final reason = '${handle.frame} ${handle.leaving ? 'out' : 'in'}';
+          expect(
+            written!.influence,
+            closeTo(side.influence, 1e-9),
+            reason: reason,
+          );
+          expect(written.speed, closeTo(side.speed, 1e-9), reason: reason);
+          expect(handle.leaving ? edit.incoming : edit.outgoing, isNull);
+        }
+      });
+    }
+
+    test('a pull is as fast as the hand is high — never slower than still — '
+        'its reach held as a value graph holds it', () {
+      final painter = speedOf(lineOf('rotation'));
+      final handle = painter.handlesIn(size).first;
+      KeySideEdit pulledTo(double time, double speed) => laneGraphPull(
+        handle,
+        Offset(laneGraphAlong(time, geometry.value), acrossAt(painter, speed)),
+        frames: geometry.value,
+        axis: Axis.horizontal,
+      ).outgoing!;
+
+      final half = pulledTo(3, 7.5);
+      expect(half.influence, closeTo(0.5, 1e-9));
+      expect(half.speed, closeTo(1.5, 1e-9), reason: '7.5 against 5 a frame');
+      expect(pulledTo(3, -2).speed, 0, reason: 'never slower than still');
+      expect(pulledTo(9, 5).influence, 1, reason: 'never past the next key');
+      expect(pulledTo(-2, 5).influence, EaseSide.leastInfluence);
+    });
+
+    test('a side that sets off backward stands at its speed\'s size, on the '
+        'line — and goes on backward, however fast it is pulled', () {
+      final back = withTrack(
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>()
+              .withKey(
+                0,
+                0,
+                outgoing: const EaseSide(influence: 0.5, speed: -1),
+              )
+              .withKey(6, 30),
+        ),
+      );
+      final painter = speedOf(lineOf('rotation', on: back));
+      final handle = painter.handlesIn(size).single;
+      expect(
+        readOf(handle.at, Axis.horizontal).across,
+        closeTo(acrossAt(painter, 5), 1e-9),
+        reason: '5 a frame, the other way',
+      );
+      final edit = laneGraphPull(
+        handle,
+        Offset(handle.at.dx, acrossAt(painter, 10)),
+        frames: geometry.value,
+        axis: Axis.horizontal,
+      );
+      expect(edit.outgoing!.speed, closeTo(-2, 1e-9));
+    });
+
+    test('a way of no length has no height to read a speed off: its pull '
+        'takes the influence alone', () {
+      final level = withTrack(
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>()
+              .withKey(
+                0,
+                10,
+                outgoing: const EaseSide(influence: 0.4, speed: 2),
+              )
+              .withKey(6, 10),
+        ),
+      );
+      final handle = speedOf(
+        lineOf('rotation', on: level),
+      ).handlesIn(size).single;
+      final edit = laneGraphPull(
+        handle,
+        handle.at + const Offset(0, -40),
+        frames: geometry.value,
+        axis: Axis.horizontal,
+      );
+      expect(edit.outgoing!.influence, closeTo(0.4, 1e-9));
+      expect(edit.outgoing!.speed, isNull);
+    });
+
+    test('a point\'s speed is one line, in its first number\'s colour', () {
+      final canvas = TestRecordingCanvas();
+      speedOf(lineOf('position')).paint(canvas, size);
+      expect(
+        [
+          for (final call in canvas.invocations)
+            if (call.invocation.memberName == #drawPath)
+              (call.invocation.positionalArguments[1] as Paint).color
+                  .toARGB32(),
+        ],
+        [LaneCurvePalette.across.toARGB32()],
+      );
+    });
   });
 }
