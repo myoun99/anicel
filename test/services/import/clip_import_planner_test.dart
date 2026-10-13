@@ -1546,6 +1546,47 @@ void main() {
       });
     });
 
+    test('each lane is keyed where its own curves key it — the point and '
+        'the pivot place the frame, the scale zooms it, the turn turns it '
+        '(I-89 ⑦) — on the cut\'s own frames', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+      // Every curve runs straight through a key of its own, so no key
+      // stands anywhere the file keys none; the timeline starts on its
+      // frame 10, the cut's 0.
+      PropertyTrack<double> straight(Map<int, double> values) =>
+          keys(values, const {});
+      final pan = moving(camera, [
+        (
+          span: (start: 10, end: 23),
+          x: straight({10: 100, 14: 120, 22: 160}),
+          y: straight({10: 180, 15: 190, 22: 204}),
+          pivotX: straight({10: 100, 16: 106, 22: 112}),
+          pivotY: straight({10: 50, 17: 57, 22: 62}),
+          scale: straight({10: 1, 18: 1}),
+          degrees: straight({10: 0, 19: 0}),
+          unread: false,
+        ),
+      ]);
+
+      final track = plan(
+        root([camera]),
+        [
+          ClipTimeline(
+            name: 'c1',
+            fps: 24,
+            start: 10,
+            end: 23,
+            tracks: Map.fromEntries([pan]),
+          ),
+        ],
+        frame: frame,
+      ).cuts.single.camera.track;
+
+      expect(track.position.keys.keys, [0, 4, 5, 6, 7, 12]);
+      expect(track.scale.keys.keys, [0, 8]);
+      expect(track.rotation.keys.keys, [0, 9]);
+    });
+
     test('a key CLIP STUDIO holds holds here, and a value the clip keys '
         'nothing for stays where the camera rests', () {
       final camera = folder(

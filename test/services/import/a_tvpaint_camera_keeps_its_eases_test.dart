@@ -15,21 +15,26 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const canvas = CanvasSize(width: 1920, height: 1080);
 
-  TvppCameraPoint point(int instant, double x, {int flags = 15}) =>
-      TvppCameraPoint(
-        x: x,
-        y: 300,
-        rotationDegrees: 0,
-        zoomFactor: 1,
-        sizeX: 1920,
-        sizeY: 1080,
-        instant: instant,
-        flags: flags,
-        bezierBeforeX: 0,
-        bezierBeforeY: 0,
-        bezierAfterX: 0,
-        bezierAfterY: 0,
-      );
+  TvppCameraPoint point(
+    int instant,
+    double x, {
+    int flags = 15,
+    double turn = 0,
+    double zoom = 1,
+  }) => TvppCameraPoint(
+    x: x,
+    y: 300,
+    rotationDegrees: turn,
+    zoomFactor: zoom,
+    sizeX: 1920,
+    sizeY: 1080,
+    instant: instant,
+    flags: flags,
+    bezierBeforeX: 0,
+    bezierBeforeY: 0,
+    bezierAfterX: 0,
+    bezierAfterY: 0,
+  );
 
   TvppCameraProfilePoint profilePoint(
     double x,
@@ -133,6 +138,26 @@ void main() {
 
     expect(camera.track.scale.keys.keys, [0]);
     expect(camera.track.rotation.keys.keys, [0]);
+  });
+
+  test('each channel is keyed on the keys whose flags author it — 1 the '
+      'position, 2 the turn, 4 the zoom — on the frames TVPaint puts them '
+      'on', () {
+    final keyedOn = tvppCameraKeyFrames([
+      point(0, 100),
+      point(8, 100, flags: 2, turn: 30),
+      point(16, 100, flags: 4, zoom: 2),
+      point(24, 1100, flags: 1),
+    ]);
+
+    expect(
+      [keyedOn.position, keyedOn.rotation, keyedOn.zoom],
+      [
+        [0, 24],
+        [0, 8],
+        [0, 16],
+      ],
+    );
   });
 
   test('TVPaint passes its last key a frame late: a cut that runs on past '

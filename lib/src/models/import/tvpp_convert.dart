@@ -216,9 +216,7 @@ TvppClipConversion convertTvppClip(
       camera: TvpCamera(
         width: clip.width,
         height: clip.height,
-        keyedOn: tvppCameraKeyFrames(
-          poses.isEmpty ? const [] : clip.cameraPoints,
-        ),
+        keyedOn: tvppCameraKeyFrames(clip.cameraPoints),
         positions: poses,
       ),
       layers: layers,

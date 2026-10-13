@@ -113,7 +113,7 @@ class TvpCamera {
   final int height;
 
   /// The 0-based frames each channel's authored keys stand on
-  /// (`tvppCameraKeyFrames`). Empty when the clip has no camera work.
+  /// (`tvppCameraKeyFrames`). Empty when the clip keys no camera.
   final CameraKeyFrames keyedOn;
 
   /// One entry per frame — baked by `tvpp_camera_bake.dart` from the
