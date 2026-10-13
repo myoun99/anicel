@@ -304,7 +304,8 @@ void main() {
     });
 
     testWidgets('the format window lists both bundled forms, the one in use '
-        'marked, and a form saved reprints the sheet', (tester) async {
+        'marked; a form saved reprints the sheet, and the window opens on '
+        'it', (tester) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       await tester.binding.setSurfaceSize(const Size(900, 700));
@@ -325,14 +326,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('envelope-format-button')),
+      final formatButton = find.byKey(
+        const ValueKey<String>('envelope-format-button'),
       );
+      final formList = find.byKey(
+        const ValueKey<String>('envelope-format-form'),
+      );
+      await tester.tap(formatButton);
       await tester.pumpAndSettle();
       final rows = tester
-          .widget<PanelFlyoutButton>(
-            find.byKey(const ValueKey<String>('envelope-format-form')),
-          )
+          .widget<PanelFlyoutButton>(formList)
           .entriesBuilder()
           .whereType<PanelFlyoutItem>();
       expect(
@@ -357,6 +360,14 @@ void main() {
                   .painter!
               as CutEnvelopePainter;
       expect(painter.layout.form.id, CutEnvelopePresets.digitalId);
+
+      await tester.tap(formatButton);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PanelFlyoutButton>(formList).label,
+        CutEnvelopePresets.byId(CutEnvelopePresets.digitalId).name,
+        reason: 'the window opens on the form the work has now',
+      );
     });
 
     testWidgets('a stroke lands on the box it is drawn over and one undo '
