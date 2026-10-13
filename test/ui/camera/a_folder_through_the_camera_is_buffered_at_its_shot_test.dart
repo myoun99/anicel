@@ -13,10 +13,14 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+
+import '../../helpers/placement_reading.dart';
 
 /// 🎯A FOLDER THE CAMERA SHOWS IS BUFFERED AT WHAT OF IT IS IN SHOT (card
 /// export-folders-and-rows-at-their-extent) — the editing stack's law
@@ -43,8 +47,12 @@ void main() {
     );
   }
 
-  CompositeNode<CutFrameCompositeLayer> row(BitmapSurface surface) =>
-      CompositeLeaf(CutFrameCompositeLayer(surface: surface, opacity: 1));
+  CompositeNode<CutFrameCompositeLayer> row(
+    BitmapSurface surface, {
+    LayerPlacement? placement,
+  }) => CompositeLeaf(
+    CutFrameCompositeLayer(surface: surface, opacity: 1, placement: placement),
+  );
 
   CompositeNode<CutFrameCompositeLayer> folder(
     List<CompositeNode<CutFrameCompositeLayer>> children, {
@@ -90,19 +98,30 @@ void main() {
       .having((r) => r.right, 'right', closeTo(rect.right, 1e-3))
       .having((r) => r.bottom, 'bottom', closeTo(rect.bottom, 1e-3));
 
-  for (final (says, view, bounds) in <(String, CameraView, Rect)>[
+  final inFolder = folder([row(inkAt(1, 1))]);
+  final whole = cameraViewOver(canvasSize.canvasRect);
+  final part = cameraViewOver(const Rect.fromLTWH(10, 7, 40, 30));
+  for (final (says, node, view, bounds) in <(
+    String,
+    CompositeNode<CutFrameCompositeLayer>,
+    CameraView,
+    Rect,
+  )>[
     (
       'a camera square over a part of the canvas: that part',
-      cameraViewOver(const Rect.fromLTWH(10, 7, 40, 30)),
+      inFolder,
+      part,
       const Rect.fromLTRB(10, 7, 50, 37),
     ),
     (
       'a camera reaching past the canvas: the canvas part of its shot',
+      inFolder,
       cameraViewOver(const Rect.fromLTWH(40, 30, 40, 30)),
       const Rect.fromLTRB(40, 30, 64, 48),
     ),
     (
       'a turned camera: the box around its turned frame',
+      inFolder,
       (
         pose: CameraPose(
           center: CanvasPoint(x: 32, y: 24),
@@ -116,18 +135,43 @@ void main() {
     (
       'a camera over the whole canvas: the rect its row stands for, not '
           'the ink in it',
-      cameraViewOver(canvasSize.canvasRect),
+      inFolder,
+      whole,
       const Rect.fromLTRB(0, 0, 64, 48),
+    ),
+    (
+      'a row moved half the canvas across: where its placement puts it',
+      folder([
+        row(
+          inkAt(1, 1),
+          placement: placedBy(
+            TransformPose(center: CanvasPoint(x: 64, y: 24)),
+            canvasSize,
+          ),
+        ),
+      ]),
+      whole,
+      const Rect.fromLTRB(32, 0, 64, 48),
+    ),
+    (
+      'an adjustment through a camera over a part: that part',
+      CompositeAdjustment(
+        children: [row(inkAt(1, 1))],
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.brightnessContrast,
+            values: [20, 0],
+          ),
+        ],
+        mix: 1,
+      ),
+      part,
+      const Rect.fromLTRB(10, 7, 50, 37),
     ),
   ]) {
     testWidgets('🎯$says', (tester) async {
       await tester.runAsync(() async {
-        expect(
-          await bufferOf([
-            folder([row(inkAt(1, 1))]),
-          ], view),
-          near(bounds),
-        );
+        expect(await bufferOf([node], view), near(bounds));
       });
     });
   }
