@@ -52,6 +52,10 @@
 #    touched packages/qa_native/src is built here — EVERY target, because the
 #    pen DLL lives beside the engine and a directory holding only qa_engine
 #    fails the pen tests for a reason that has nothing to do with the change
+#    — and, where the generator holds every configuration (Windows), the
+#    engine once more in DEBUG, the configuration the app's Debug build
+#    compiles it in (2026-10-13: a C++ unit kept /RTC1 beside the engine's
+#    /O2 and only Debug refused it, cl D8016 — every Release step was green)
 #    — then its C tests run, then the parity subset runs against what was
 #    just built, with QA_REQUIRE_NATIVE=1 so a missing binary fails instead
 #    of skipping. `bash tool/lane.sh native <name>` runs the same thing
@@ -750,6 +754,14 @@ cmd_native() {
     grep -aE 'error C[0-9]+|: error:| error ' "$log" | head -15 >&2
     die "the engine is not built from this lane's C — this is refusal 5; the whole log: $log"
   }
+  if grep -q '^CMAKE_CONFIGURATION_TYPES' \
+    "$p/build/native_standalone/CMakeCache.txt" 2>/dev/null; then
+    (cd "$p" && "$cm" --build build/native_standalone --config Debug \
+      --target qa_engine) >>"$log" 2>&1 || {
+      grep -aE 'error [A-Z]+[0-9]+|: error:| error ' "$log" | head -15 >&2
+      die "the engine does not compile in Debug, as the app's Debug build compiles it — this is refusal 5; the whole log: $log"
+    }
+  fi
   (cd "$p/build/native_standalone" \
     && "$(dirname "$cm")/ctest" -C Release --output-on-failure) >>"$log" 2>&1 || {
     grep -aE 'Failed|\*\*\*' "$log" | head -15 >&2
