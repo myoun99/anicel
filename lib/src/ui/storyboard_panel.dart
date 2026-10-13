@@ -1852,79 +1852,77 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         // may be and stretched — and says so, for the body below to be
         // laid out alone.
         child: SizedBox.expand(
-        child: ValueListenableBuilder<double?>(
-        valueListenable: _railRows._railExtent,
-        // Every notify runs this again: laid out, painted and described
-        // alone, or each one rebuilt the nodes of the rows in it (I-57).
-        builder: (context, _, child) => LaidOutAlone(
-          builder: (context, constraints) {
-            // Viewport paper fill (UI-R12 #16): the strips run to the
-            // viewport's right edge — recorded FIRST so the SE strip rows and
-            // the body agree on the rendered extent within one build.
-            // What the panel can spare for the rail ([layerRailAvailableExtent]).
-            // Recorded so `_buildBody` and every part of the rail read the
-            // ONE value.
-            _availableRailWidth = layerRailAvailableExtent(
-              constraints,
-              railAxis: Axis.horizontal,
-              scrollbarLaneExtent: StoryboardPanel._scrollbarLaneWidth,
-            );
-            _stripViewportWidth = constraints.hasBoundedWidth
-                ? (constraints.maxWidth -
-                          StoryboardPanel._scrollbarLaneWidth -
-                          _railRows._railExtent.windowExtent(
-                            _naturalRailWidth,
-                            availableExtent: _availableRailWidth,
-                          ) -
-                          LayerRailSplitter.thickness)
-                      .clamp(0.0, double.infinity)
-                      .toDouble()
-                : 0.0;
-            _viewportFillFrameCells = endlessViewportFillFrames(
-              viewportExtent: _stripViewportWidth,
-              frameCellExtent: _scale.pixelsPerFrame,
-            );
-            // The V rows' geometry for this pass. `frameStartIndex` is 0 and
-            // there is no leading spacer: the storyboard's x IS the track-global
-            // frame axis, which is exactly why the timeline's gesture layer can
-            // read it without knowing whose row it is on.
-            _frameGeometry.value = TimelineFrameGeometry(
-              frameCellExtent: _scale.pixelsPerFrame,
-              frameStartIndex: 0,
-              frameEndIndexExclusive:
-                  _totalFrames(
-                    widget.project,
-                    buildStoryboardTimelineLayout(widget.project),
-                  ) +
-                  _frameAxis.trailingFrames +
-                  _viewportFillFrameCells,
-            );
-            // SE rows are built OUTSIDE the drag-preview builder from the RAW
-            // project (R10-③): their content is track-global, so a cut trim
-            // never changes them — handing the per-step rebuild IDENTICAL row
-            // instances lets Flutter skip their whole subtrees (waveform
-            // painters included). The trade: an in-flight trim doesn't slide
-            // their cut-boundary marks until release. SE comma drags edit the
-            // ACTIVE layer through the timeline gates, unaffected here.
-            final trackGlobalStripRowsByTrack = _railRows._trackGlobalStripRowsByTrack();
-            // The body builds from the COMMITTED project, once. The drag
-            // preview is read further down, at [_trackGroupSection] — see the
-            // measurement in its doc for why the difference is not small.
-            return _buildBody(
-              context,
-              widget.project,
-              trackGlobalStripRowsByTrack,
-            );
-          },
+          child: ValueListenableBuilder<double?>(
+            valueListenable: _railRows._railExtent,
+            // Every notify runs this again: laid out, painted and described
+            // alone, or each one rebuilt the nodes of the rows in it (I-57).
+            builder: (context, _, _) => LaidOutAlone(builder: _sizedBody),
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
 
+  /// The body for the size the panel is given.
+  Widget _sizedBody(BuildContext context, BoxConstraints constraints) {
+    // Viewport paper fill (UI-R12 #16): the strips run to the
+    // viewport's right edge — recorded FIRST so the SE strip rows and
+    // the body agree on the rendered extent within one build.
+    // What the panel can spare for the rail ([layerRailAvailableExtent]).
+    // Recorded so `_buildBody` and every part of the rail read the
+    // ONE value.
+    _availableRailWidth = layerRailAvailableExtent(
+      constraints,
+      railAxis: Axis.horizontal,
+      scrollbarLaneExtent: StoryboardPanel._scrollbarLaneWidth,
+    );
+    _stripViewportWidth = constraints.hasBoundedWidth
+        ? (constraints.maxWidth -
+                  StoryboardPanel._scrollbarLaneWidth -
+                  _railRows._railExtent.windowExtent(
+                    _naturalRailWidth,
+                    availableExtent: _availableRailWidth,
+                  ) -
+                  LayerRailSplitter.thickness)
+              .clamp(0.0, double.infinity)
+              .toDouble()
+        : 0.0;
+    _viewportFillFrameCells = endlessViewportFillFrames(
+      viewportExtent: _stripViewportWidth,
+      frameCellExtent: _scale.pixelsPerFrame,
+    );
+    // The V rows' geometry for this pass. `frameStartIndex` is 0 and
+    // there is no leading spacer: the storyboard's x IS the track-global
+    // frame axis, which is exactly why the timeline's gesture layer can
+    // read it without knowing whose row it is on.
+    _frameGeometry.value = TimelineFrameGeometry(
+      frameCellExtent: _scale.pixelsPerFrame,
+      frameStartIndex: 0,
+      frameEndIndexExclusive:
+          _totalFrames(
+            widget.project,
+            buildStoryboardTimelineLayout(widget.project),
+          ) +
+          _frameAxis.trailingFrames +
+          _viewportFillFrameCells,
+    );
+    // SE rows are built OUTSIDE the drag-preview builder from the RAW
+    // project (R10-③): their content is track-global, so a cut trim
+    // never changes them — handing the per-step rebuild IDENTICAL row
+    // instances lets Flutter skip their whole subtrees (waveform
+    // painters included). The trade: an in-flight trim doesn't slide
+    // their cut-boundary marks until release. SE comma drags edit the
+    // ACTIVE layer through the timeline gates, unaffected here.
+    final trackGlobalStripRowsByTrack =
+        _railRows._trackGlobalStripRowsByTrack();
+    // The body builds from the COMMITTED project, once. The drag
+    // preview is read further down, at [_trackGroupSection] — see the
+    // measurement in its doc for why the difference is not small.
+    return _buildBody(context, widget.project, trackGlobalStripRowsByTrack);
+  }
+
   /// Frame cells the strips viewport needs to be fully papered (UI-R12
-  /// #16) — recorded by [_buildBody]'s LayoutBuilder. Zero until layout.
+  /// #16) — recorded by [_sizedBody]. Zero until layout.
   int _viewportFillFrameCells = 0;
 
   /// The strip column's viewport width — the shared window policy's other
