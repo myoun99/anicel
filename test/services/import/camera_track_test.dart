@@ -73,7 +73,8 @@ void main() {
     expect(camera.keyframes.keys, [0]);
   });
 
-  test('a straight move is its two ends', () {
+  test('a straight move is its two ends, run straight — no ease comes '
+      'nearer it', () {
     final poses = baked(
       48,
       (f) => pose(100 + f * 10.0, 80 + f * 2.5, zoom: 1 + f / 100, turn: f / 4),
@@ -81,6 +82,16 @@ void main() {
     final camera = keyed(poses);
 
     expect(camera.keyframes.keys, [0, 47]);
+    for (final lane in [
+      camera.track.position,
+      camera.track.scale,
+      camera.track.rotation,
+    ]) {
+      expect(
+        (lane.keys[0]!.outgoing, lane.keys[47]!.incoming),
+        (KeySide.linear, KeySide.linear),
+      );
+    }
     expectPlaysBack(poses, camera);
   });
 
@@ -132,6 +143,72 @@ void main() {
       expect(arriving.speed, closeTo(0, 1e-3));
     }
     expectPlaysBack(poses, camera);
+  });
+
+  test('🗣️an ease of a few pixels comes in eased too, where one straight way '
+      'would play it within the pixel: the pixel says where another key '
+      'stands, not how the way between two bends (the user\'s zoom-and-turn '
+      'sample: CLIP STUDIO\'s own slow-out slow-in of 3px came in straight, '
+      '0.29px off)', () {
+    final poses = baked(30, (f) {
+      final t = f / 29;
+      final eased = t * t * (3 - 2 * t);
+      return pose(
+        100 + 3 * eased,
+        80 - 2 * eased,
+        zoom: 1 + 3e-4 * eased,
+        turn: 0.1 * eased,
+      );
+    });
+    final camera = keyed(poses);
+
+    for (final lane in [
+      camera.track.position,
+      camera.track.scale,
+      camera.track.rotation,
+    ]) {
+      expect(lane.keys.keys, [0, 29]);
+      final leaving = lane.keys[0]!.outgoing as EaseSide;
+      final arriving = lane.keys[29]!.incoming as EaseSide;
+      expect(leaving.influence, closeTo(1 / 3, 1e-3));
+      expect(leaving.speed, closeTo(0, 1e-3));
+      expect(arriving.influence, closeTo(1 / 3, 1e-3));
+      expect(arriving.speed, closeTo(0, 1e-3));
+    }
+    expectPlaysBack(poses, camera);
+  });
+
+  /// A move of 100px over 30 frames, [by] px of it bent the way an ease
+  /// bends one — straight a tenth of [by] away at the most.
+  SplayTreeMap<int, CameraPose> bentBy(double by) => baked(30, (f) {
+    final t = f / 29;
+    return pose(100 + 100 * t + by * (t * t * (3 - 2 * t) - t), 80);
+  });
+
+  test('an ease straight plays within a hundredth of the pixel is straight — '
+      'nearer than the import knows a file (TVPaint\'s own bake against the '
+      'decode\'s: 0.003 to 0.006px); one it misses by more comes in '
+      'eased', () {
+    final finer = keyed(bentBy(0.05)).track.position;
+    final coarser = keyed(bentBy(0.5)).track.position;
+
+    expect(finer.keys.keys, [0, 29]);
+    expect(finer.keys[0]!.outgoing, KeySide.linear, reason: '0.005px');
+    expect(coarser.keys.keys, [0, 29]);
+    expect(coarser.keys[0]!.outgoing, isA<EaseSide>(), reason: '0.05px');
+  });
+
+  test('a way out and back by under a pixel is one straight way — no ease '
+      'bends a way that ends where it starts', () {
+    final poses = baked(
+      25,
+      (f) => pose(100 + 0.5 * math.sin(math.pi * f / 24), 80),
+    );
+    final position = keyed(poses).track.position;
+
+    expect(position.keys.keys, [0, 24]);
+    expect(position.keys[0]!.outgoing, KeySide.linear);
+    expectPlaysBack(poses, keyed(poses));
   });
 
   test('a move that turns a corner keeps it: the keys either side of it run '

@@ -19,6 +19,16 @@ const double _pointTolerance = 1;
 const double _scaleTolerance = 4e-4;
 const double _rotationTolerance = 0.04;
 
+/// How much nearer the file than a straight way an ease must play a way
+/// that both play, in the lane's tolerance, to be the way: a hundredth — a
+/// hundredth of a pixel, about as near as the import knows a file's look
+/// (TVPaint's own bake against the decode's: 0.003 to 0.006px on the
+/// calibration files' straight ramps, `tvpp_camera_oracle_check`). Any
+/// nearer brought a straight bake in eased: a calibration file's straight
+/// ramp with a point added on it, straight 0.00013px off and the ease
+/// 0.00002px.
+const double _nearerBy = 1 / 100;
+
 /// The frames a transform's lanes are keyed on, each its own — as After
 /// Effects keys them apart and as the files an import reads key them
 /// (I-89 ⑦).
@@ -35,9 +45,11 @@ typedef TransformKeyFrames = ({
 /// 새 모델로 옮긴다 — 매 프레임 굽기 대신」): each lane its own keys, on the
 /// frames the file keys that lane on ([keyedOn]) and where its move starts
 /// and stops, and each way between two of them held, straight or one AE
-/// ease ([EaseSide] on both of its ends). Where one way does not play the
-/// file's move within a pixel, a key stands where it stops doing so, and
-/// the way goes on from there.
+/// ease ([EaseSide] on both of its ends) — the ease where it plays the
+/// file's nearer than a straight way does, by more than the import knows
+/// the file ([_nearerBy]). Where one way does not play the file's move
+/// within a pixel, a key stands where it stops doing so, and the way goes
+/// on from there.
 ///
 /// ⚠️What the file SHOWS is the truth, not its keys' values (measured on
 /// TVPaint's own bakes — `planTvpCamera`): a key carries the pose on its
@@ -127,36 +139,44 @@ TransformTrack transformTrackOfFramePoses(
 }
 
 /// What fitting one of a transform's lanes takes: the space the app plays
-/// its values in, and how near a played value must come to the file's.
+/// its values in, how far a played value is from the file's, and how far
+/// it may be on a frame before another key stands.
 final class _TransformLane<T> {
-  const _TransformLane(this.space, this.near);
+  const _TransformLane(this.space, this.miss, this.tolerance);
 
   final KeyValueSpace<T> space;
-  final bool Function(T played, T shown) near;
+  final double Function(T played, T shown) miss;
+  final double tolerance;
 }
 
-bool _pointsNear(CanvasPoint played, CanvasPoint shown, double tolerance) =>
-    (played.x - shown.x).abs() <= tolerance &&
-    (played.y - shown.y).abs() <= tolerance;
-
-final _anchorLane = _TransformLane<CanvasPoint>(
-  pointKeySpace,
-  (played, shown) => _pointsNear(played, shown, _pointTolerance),
+/// How far [played] is from [shown] on the axis it is the farther on.
+double _pointMiss(CanvasPoint played, CanvasPoint shown) => math.max(
+  (played.x - shown.x).abs(),
+  (played.y - shown.y).abs(),
 );
 
-final _positionLane = _TransformLane<CanvasPoint>(
+const _anchorLane = _TransformLane<CanvasPoint>(
+  pointKeySpace,
+  _pointMiss,
+  _pointTolerance,
+);
+
+const _positionLane = _TransformLane<CanvasPoint>(
   positionKeySpace,
-  (played, shown) => _pointsNear(played, shown, _pointTolerance),
+  _pointMiss,
+  _pointTolerance,
 );
 
-final _scaleLane = _TransformLane<CanvasPoint>(
+const _scaleLane = _TransformLane<CanvasPoint>(
   pointKeySpace,
-  (played, shown) => _pointsNear(played, shown, _scaleTolerance),
+  _pointMiss,
+  _scaleTolerance,
 );
 
 final _rotationLane = _TransformLane<double>(
   doubleKeySpace,
-  (played, shown) => (played - shown).abs() <= _rotationTolerance,
+  (played, shown) => (played - shown).abs(),
+  _rotationTolerance,
 );
 
 /// How a way between two keys goes: the side it leaves the one by and the
@@ -282,7 +302,13 @@ final class _LaneKeys<T> {
 
   /// The one way from index [from] to [to] that plays every frame between
   /// as the file shows it — held, straight or eased — or null when none
-  /// does.
+  /// does. Straight where it does, unless the ease plays the file nearer by
+  /// more than [_nearerBy] of the lane's tolerance: the tolerance says
+  /// where another key must stand, not how the way between two keys bends.
+  /// ↩️Until 10-13 straight was taken wherever it played — a rule no one
+  /// gave: at a pixel, CLIP STUDIO's own slow-out slow-in came in straight
+  /// up to ten pixels long (the user's zoom-and-turn sample: 3px of it,
+  /// 0.29px off where one ease plays it exactly).
   _Way? _wayBetween(int from, int to) {
     if (to - from < 2) {
       return _straight;
@@ -292,34 +318,36 @@ final class _LaneKeys<T> {
         values.getRange(from + 1, to).every((value) => value == start)) {
       return _held;
     }
-    if (_plays(from, to, _straight)) {
+    final straight = _worstMiss(from, to, _straight);
+    final eased = _easedWay(from, to);
+    final bent = eased == null ? double.infinity : _worstMiss(from, to, eased);
+    if (straight <= lane.tolerance &&
+        straight - bent <= lane.tolerance * _nearerBy) {
       return _straight;
     }
-    final eased = _easedWay(from, to);
-    return eased != null && _plays(from, to, eased) ? eased : null;
+    return bent <= lane.tolerance ? eased : null;
   }
 
-  /// Whether [way] from index [from] to [to] plays every frame between as
-  /// the file shows it — read the way the app plays a lane
-  /// ([PropertyTrack.resolveAt]), so what is checked is what is seen.
-  bool _plays(int from, int to, _Way way) {
+  /// How far [way] from index [from] to [to] plays from the file on the
+  /// frame between where it is the farthest — read the way the app plays a
+  /// lane ([PropertyTrack.resolveAt]), so what is measured is what is seen.
+  double _worstMiss(int from, int to, _Way way) {
     final track = PropertyTrack<T>(
       keys: {
         frames[from]: PropertyKey(values[from], outgoing: way.leaving),
         frames[to]: PropertyKey(values[to], incoming: way.arriving),
       },
     );
+    var worst = 0.0;
     for (var index = from + 1; index < to; index += 1) {
       final played = track.resolveAt(
         frameIndex: frames[index],
         orElse: () => values[index],
         space: lane.space,
       );
-      if (!lane.near(played, values[index])) {
-        return false;
-      }
+      worst = math.max(worst, lane.miss(played, values[index]));
     }
-    return true;
+    return worst;
   }
 
   /// The AE ease nearest the way the file takes from index [from] to [to]
