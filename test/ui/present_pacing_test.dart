@@ -57,6 +57,45 @@ class _Display implements DisplayTiming {
 
   @override
   void waitUntil(int micros) => waits.add(micros);
+
+  /// What it was told of composing on every vblank, in order.
+  final List<bool> composing = [];
+
+  @override
+  bool composeEveryVblank({required bool on}) {
+    composing.add(on);
+    return on;
+  }
+}
+
+/// The playback of a project of one cut, ten frames long, at 24fps.
+CanvasPlaybackController _playbackOfOneCut() {
+  final project = Project(
+    id: const ProjectId('paced'),
+    name: 'Paced',
+    createdAt: DateTime.utc(2026, 10, 11),
+    tracks: [
+      Track(
+        id: const TrackId('track'),
+        name: 'Video',
+        cuts: [
+          Cut(
+            id: const CutId('cut'),
+            name: 'A',
+            duration: 10,
+            canvasSize: const CanvasSize(width: 64, height: 36),
+            layers: const [],
+          ),
+        ],
+      ),
+    ],
+  );
+  return CanvasPlaybackController(
+    resolveProject: () => project,
+    resolveActiveCutId: () => const CutId('cut'),
+    resolveActiveTrackId: () => const TrackId('track'),
+    resolveFrameRate: () => ProjectFrameRate.fps24,
+  );
 }
 
 /// The test binding with both laws of a clock's frames mixed in: drawn only
@@ -305,37 +344,11 @@ void main() {
     await settle(tester);
     final read = <Duration>[];
     var heard = 0;
-    final project = Project(
-      id: const ProjectId('paced'),
-      name: 'Paced',
-      createdAt: DateTime.utc(2026, 10, 11),
-      tracks: [
-        Track(
-          id: const TrackId('track'),
-          name: 'Video',
-          cuts: [
-            Cut(
-              id: const CutId('cut'),
-              name: 'A',
-              duration: 10,
-              canvasSize: const CanvasSize(width: 64, height: 36),
-              layers: const [],
-            ),
-          ],
-        ),
-      ],
-    );
-    final controller =
-        CanvasPlaybackController(
-            resolveProject: () => project,
-            resolveActiveCutId: () => const CutId('cut'),
-            resolveActiveTrackId: () => const TrackId('track'),
-            resolveFrameRate: () => ProjectFrameRate.fps24,
-          )
-          ..resolveAudioClock = ({frameTime}) {
-            read.add(frameTime!);
-            return ClockReading(globalFrame: heard);
-          };
+    final controller = _playbackOfOneCut()
+      ..resolveAudioClock = ({frameTime}) {
+        read.add(frameTime!);
+        return ClockReading(globalFrame: heard);
+      };
     addTearDown(controller.dispose);
     controller.attachTicker(const TestVSync());
     controller.play(scope: PlaybackScope.activeCut);
@@ -465,6 +478,76 @@ void main() {
     await tester.pump(vsync);
 
     expect(display.waits, [claim!.handOffFromMicros]);
+  });
+
+  group('🚨while a clock runs the compositor composes on every vblank', () {
+    testWidgets('from the clock\'s start to its stop — and rests after', (
+      tester,
+    ) async {
+      await settle(tester);
+      final clock = LookingTicker((_) {});
+
+      clock.start(const TestVSync());
+      expect(display.composing, [true]);
+      await tester.pump(vsync);
+      clock.stop();
+
+      expect(display.composing, [true, false]);
+    });
+
+    testWidgets('two clocks: it rests only once the last has stopped', (
+      tester,
+    ) async {
+      await settle(tester);
+      final film = LookingTicker((_) {});
+      final sound = LookingTicker((_) {});
+
+      film.start(const TestVSync());
+      sound.start(const TestVSync());
+      film.stop();
+      expect(display.composing, [true], reason: 'one still runs');
+      sound.stop();
+
+      expect(display.composing, [true, false]);
+    });
+
+    testWidgets('a clock started afresh never stopped: the compositor is not '
+        'let rest between', (tester) async {
+      await settle(tester);
+      final clock = LookingTicker((_) {});
+
+      clock.start(const TestVSync());
+      clock.start(const TestVSync());
+      expect(display.composing, [true]);
+      clock.stop();
+
+      expect(display.composing, [true, false]);
+    });
+
+    testWidgets('a clock stopped twice says it once', (tester) async {
+      await settle(tester);
+      final clock = LookingTicker((_) {});
+
+      clock.start(const TestVSync());
+      clock.stop();
+      clock.stop();
+
+      expect(display.composing, [true, false]);
+    });
+
+    testWidgets('🚨a cut\'s playback composes while it plays', (tester) async {
+      await settle(tester);
+      final controller = _playbackOfOneCut();
+      addTearDown(controller.dispose);
+      controller.attachTicker(const TestVSync());
+
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump(vsync);
+      expect(display.composing, [true]);
+      controller.stop();
+
+      expect(display.composing, [true, false]);
+    });
   });
 
   group('the quiet between held frames', () {

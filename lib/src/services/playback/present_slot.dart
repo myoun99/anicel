@@ -1,39 +1,53 @@
 import 'dart:math' as math;
 
-/// 🚨THE COMPOSITOR'S LATCH, MEASURED (Windows, DWM, a 144Hz screen,
-/// 2026-10-11 — the desktop's own frames read back through Desktop
-/// Duplication, ~900 film changes over six runs, joined to the app's frame
-/// times): a picture whose raster ENDS between
-/// `vblank + presentLatchEarlyMicros` and
-/// `next vblank − presentLatchLateMicros` is shown
-/// [presentShownAfterVblanks] vblanks on. One that ends in the last
-/// stretch before a vblank is often shown a vblank later; one that ends in
-/// the first 1.75ms after one is now and then caught early, when the
-/// compositor wakes late.
+/// 🚨THE COMPOSITOR'S LATCH, ON THE GLASS (Windows, DWM kept composing on
+/// every vblank while a clock runs — `PresentPacing` — a 144Hz screen,
+/// 2026-10-13: the compositor's own statistics of when each of its frames
+/// reached the glass, joined to the app's frame times; 2,886 film changes
+/// over eight runs): a picture whose raster ENDS after the vblank it claimed
+/// is taken by the composition frame that starts on the next vblank, and
+/// shown [presentShownAfterVblanks] vblanks after the claimed one — unless
+/// the GPU is still at its work when that frame starts, which the raster's
+/// end does not wait for. Ends 0–2ms past the vblank: 1.2 in a hundred off,
+/// none of 84 in its first quarter of a millisecond. Later ends are taken
+/// late more and more often (4% at 2–2.5ms, 9% at 2.5–4.5ms, 35% past
+/// that); ends before the vblank are taken by the frame that starts ON it
+/// and shown a refresh early, at once (4% in the quarter of a millisecond
+/// before it, 20% in the quarter before that). So the edges are not alike:
+/// the early one is sharp and the late one soft, and a hand-off puts the
+/// shortest of the recent scenes on the early one and leaves the GPU the
+/// rest of the refresh ([RasterSpread.handOffFor]).
 ///
-/// 🔬Read again 10-12 over ~2,700 film changes of seventeen runs: ends
-/// 6.0–6.25ms past a 6.95ms vblank were already 18% late (so the late edge
-/// is 0.95ms, not the 0.7 first read), early catches gather below 1.75ms,
-/// and the fewest misses of all fall 3–4.75ms past the vblank (0.6–2.7%)
-/// — the middle of the window, which is where a hand-off aims
-/// ([RasterSpread.handOffFor]).
+/// [presentLatchLateMicros] is the compositor's own lead: a picture with
+/// nothing left for the GPU to do (a test window's, handed over at a moment
+/// of its choosing) was taken by the frame starting on the next vblank
+/// 97.7–100 in a hundred times up to 1.44ms before it, and mostly not at
+/// 0.44ms.
+///
+/// ↩️Read 10-11 and 10-12 through Desktop Duplication, which says when the
+/// compositor PRESENTED a frame — a vblank before it reaches the glass — and
+/// off a compositor left to compose on demand, which takes a picture at
+/// once when it idles and at the next vblank when it is busy: a window
+/// 1.75ms past a vblank to 0.95ms before the next, shown two vblanks on.
+/// Both were the instrument's.
 ///
 /// Between those edges the vblank a picture lands on depends on nothing but
 /// WHEN its raster ends — not on how long the frame took, and not on the
 /// engine's own vsync, which on Windows is a grid of its own that never
 /// meets the real one ([PresentClaims]).
-const int presentLatchEarlyMicros = 1750;
-const int presentLatchLateMicros = 950;
+const int presentLatchEarlyMicros = 0;
+const int presentLatchLateMicros = 1500;
 
-/// How many vblanks after the one its raster ends past a picture is shown:
-/// the compositor takes what is ready at its latch and shows it on the
-/// vblank after next.
-const int presentShownAfterVblanks = 2;
+/// How many vblanks after the one it claimed a picture is shown: the
+/// composition frame that takes it starts on the next vblank, and a
+/// composition frame reaches the glass on the second vblank after it starts.
+const int presentShownAfterVblanks = 3;
 
 /// A look's claim on a vblank: the hand-off — from [handOffFromMicros],
-/// the moment that lands the most of the recent scenes between the latch's
-/// edges, to [handOffByMicros], the last moment that lands as many — and
-/// the moment its picture is shown.
+/// the moment that ends the shortest of the most recent scenes the latch's
+/// window holds on its early edge, to [handOffByMicros], the last moment
+/// that ends the longest of them on its late edge — and the moment its
+/// picture is shown.
 typedef PresentClaim = ({
   int handOffFromMicros,
   int handOffByMicros,
@@ -41,8 +55,9 @@ typedef PresentClaim = ({
 });
 
 /// Where a scene is handed over against the vblank its raster is to end
-/// past: [fromMicros] to aim at, and [byMicros], the latest that does as
-/// well ([RasterSpread.handOffFor]).
+/// past: [fromMicros] to aim at, and [byMicros], the latest that still
+/// ends every scene aimed for inside the latch's window
+/// ([RasterSpread.handOffFor]).
 typedef PresentHandOff = ({double fromMicros, double byMicros});
 
 /// 🚨WHICH VBLANK EACH LOOK OF A CLOCK FILLS (유저 2026-10-11: 「144hz든
@@ -155,18 +170,23 @@ final class PresentClaims {
 /// followed over the last [capacity] paced frames — and where to hand a
 /// scene over for those lengths to end inside the latch's window.
 ///
-/// 🚨THE WINDOW GOES WHERE THE MOST SCENES LAND, AND IN THE MIDDLE OF WHERE
-/// THEY DO (10-12, after the screen said otherwise): the first placement
-/// put the lengths' tenth percentile on the latch's early edge, which ends
-/// a tenth of the scenes before the window by construction and leaves
-/// none of the window's room on that side — replayed against the screen's
-/// own runs it put 12–15 film changes in a hundred off, as the screen had.
-/// And a percentile follows a stretch of slow scenes wherever it goes: the
-/// scenes of a run still making its pictures (20–60ms) moved the first
-/// steady seconds' window 29ms early. The most-covered window, centred,
-/// lands the same runs' scenes 2–6 in a hundred off, and a stretch of slow
-/// scenes moves it only once they outnumber the steady ones within any one
-/// window's width.
+/// 🚨THE WINDOW GOES WHERE THE MOST SCENES LAND (10-12, after the screen
+/// said otherwise): a percentile follows a stretch of slow scenes wherever
+/// it goes — the scenes of a run still making its pictures (20–60ms) moved
+/// the first steady seconds' window 29ms early — while the most-covered
+/// window moves only once slow scenes outnumber the steady ones within any
+/// one window's width.
+///
+/// 🚨AND THE SHORTEST OF THOSE SCENES ENDS ON THE EARLY EDGE (10-13, on the
+/// glass): the early edge is sharp and the late one soft — a scene that ends
+/// later is taken late more often, the longer the GPU is left to finish it
+/// in ([presentLatchEarlyMicros] has the measurement) — so every scene is
+/// handed over as early as the early edge lets the shortest of them be.
+/// ↩️The window's middle, which 10-12 chose over a tenth percentile on the
+/// early edge, was chosen on Desktop Duplication's word, where the early
+/// edge had come out soft and 1.75ms late (the instrument's): on the glass,
+/// with the compositor kept composing, that middle put 9–13 film changes in
+/// a hundred a refresh late, and a hand-off 2ms earlier 1.4–5.8.
 ///
 /// 🔬A scene's length is not its film frame's: the same frame a loop later
 /// took a different length (correlation −0.3 to 0.1 over eight runs) — it
@@ -179,9 +199,10 @@ final class RasterSpread {
   int _next = 0;
 
   /// Before eight paced scenes have said: what a whole-window scene of this
-  /// app took after its hand-off on the machine the latch was measured on.
-  static const int unmeasuredLowMicros = 3500;
-  static const int unmeasuredHighMicros = 7500;
+  /// app took after its hand-off on the machine the latch was measured on
+  /// (10-13: a tenth of 2,524 held frames shorter, a tenth longer).
+  static const int unmeasuredLowMicros = 2000;
+  static const int unmeasuredHighMicros = 3800;
 
   void add(int micros) {
     if (_recent.length < capacity) {
@@ -208,8 +229,9 @@ final class RasterSpread {
   /// Where to hand a scene over, against the vblank its raster is to end
   /// past, on a display of [periodMicros]: the window of the latch's width
   /// that holds the most of the recent lengths, each weighing [ageDecay]
-  /// for every newer one, handed over so that its lengths end in the
-  /// latch's window, centred in it.
+  /// for every newer one, handed over so that the shortest of them ends on
+  /// the latch's early edge — and, at the latest, so that the longest ends
+  /// on its late one.
   PresentHandOff handOffFor(double periodMicros) {
     final width = math.max(
       0.0,
@@ -239,7 +261,7 @@ final class RasterSpread {
       covered -= lengths[i].weight;
     }
     return (
-      fromMicros: presentLatchEarlyMicros - (low + high) / 2,
+      fromMicros: presentLatchEarlyMicros - high,
       byMicros: presentLatchEarlyMicros - low,
     );
   }
@@ -275,10 +297,11 @@ final class RasterSpread {
 /// against 3.3ms in the others — and those were the film frames shown a
 /// refresh late.
 ///
-/// The quiet a held frame leaves runs from its raster's end — where the
-/// latch's window for the vblank it claimed closes — to the next held
-/// frame's hand-off, less [marginMicros] for the work that frame still does
-/// before it. Held frames claim VBLANKS, so the next stands a whole number
+/// The quiet a held frame leaves runs from where the compositor has taken
+/// its picture — where the latch's window for the vblank it claimed closes,
+/// its raster and the GPU's work after it done or too late to matter — to
+/// the next held frame's hand-off, less [marginMicros] for the work that
+/// frame still does before it. Held frames claim VBLANKS, so the next stands a whole number
 /// of refreshes past this one — at least the [held] gap — and is handed
 /// over no sooner than its claim's window opens: the quiet ends on the
 /// vblank grid, not on when a frame happened to be let go.

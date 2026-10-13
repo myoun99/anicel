@@ -154,3 +154,24 @@ QA_EXPORT void qa_display_wait_until_us(int64_t deadline_us) {
   (void)deadline_us;
 #endif
 }
+
+#if defined(_WIN32)
+// qa_display_compose.cpp: DirectComposition has no C binding.
+int32_t qa_display_compose_win(int32_t on);
+#endif
+
+// Keeps the compositor composing on every vblank (on != 0), or lets it rest
+// again (0) - so a picture handed over between two vblanks is taken at the
+// second of them, however idle the rest of the desktop leaves it
+// (qa_display_compose.cpp has the measurement). 1 while it is kept
+// composing, 0 when it rests or cannot be kept: where there is no app
+// window to compose on, and everywhere but Windows, whose compositors take
+// their frames on the display's own vsync.
+QA_EXPORT int32_t qa_display_compose_every_vblank(int32_t on) {
+#if defined(_WIN32)
+  return qa_display_compose_win(on);
+#else
+  (void)on;
+  return 0;
+#endif
+}

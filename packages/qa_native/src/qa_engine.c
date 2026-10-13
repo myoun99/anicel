@@ -6125,4 +6125,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v44: qa_display_vblank / qa_display_wait_until_us - the compositor's
 // vblank and a wait that ends on a microsecond, for a clock's frame to be
 // handed to the GPU where it lands on the vblank it claimed.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 44; }
+// v45: qa_display_compose_every_vblank - the compositor kept composing on
+// every vblank while a clock runs, so a picture handed over between two
+// vblanks is taken at the second of them however idle the desktop is.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 45; }

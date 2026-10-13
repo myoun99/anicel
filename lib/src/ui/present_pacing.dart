@@ -33,6 +33,24 @@ void lookChangedWhatItShows() {
   }
 }
 
+/// [clock] follows time from now on, until it says [clockStopped]: while
+/// any clock does, the compositor is kept composing on every vblank
+/// ([PresentPacing]). Said anywhere else, it is nobody's news.
+void clockStarted(Object clock) {
+  final binding = SchedulerBinding.instance;
+  if (binding is PresentPacing) {
+    binding._clockRuns(clock, running: true);
+  }
+}
+
+/// [clock] no longer follows time ([clockStarted]).
+void clockStopped(Object clock) {
+  final binding = SchedulerBinding.instance;
+  if (binding is PresentPacing) {
+    binding._clockRuns(clock, running: false);
+  }
+}
+
 /// When background GPU work — an upload, a bake — can run without running
 /// beside a held frame's raster, on the frame clock
 /// ([quietBetweenHeldFrames] has why): EMPTY where a run leaves no room,
@@ -65,6 +83,19 @@ void lookChangedWhatItShows() {
 /// window whatever else asked for it to be drawn: a page turn in the same
 /// frame shows on the same vblank as the film it carries. A frame no clock
 /// looked in is never held — an edit waits for no vblank.
+///
+/// 🚨WHILE A CLOCK RUNS THE COMPOSITOR COMPOSES ON EVERY VBLANK (10-13,
+/// the compositor's own per-frame statistics against the vblank each film
+/// frame claimed): Windows' compositor composes on demand, and a frame of
+/// its reaches the glass on the second vblank after it starts — an idle one
+/// starts the moment a picture is handed to it, a busy one at the next
+/// vblank. The same hand-off reached the glass two vblanks after its claim
+/// or three as the rest of the desktop kept the compositor idle or busy, and
+/// 39–47 film frames in a hundred were a refresh off their neighbours. Kept
+/// composing ([DisplayTiming.composeEveryVblank]), it takes every picture at
+/// the vblank after its claim and shows it [presentShownAfterVblanks] on.
+/// From [clockStarted] to the last [clockStopped], so a desktop no clock is
+/// running on rests as it did.
 ///
 /// ⛔Where the engine's vsync IS the display's — every platform but Windows
 /// — there is no [displayTiming], nothing is claimed and nothing waits:
@@ -110,6 +141,22 @@ mixin PresentPacing on WidgetsBinding {
   /// No look for this long and no clock is running: nothing is held.
   static const int _runGoneMicros = 100000;
 
+  /// The clocks running now ([clockStarted]): while there are any, the
+  /// compositor composes on every vblank.
+  final Set<Object> _clocks = <Object>{};
+
+  void _clockRuns(Object clock, {required bool running}) {
+    final composing = _clocks.isNotEmpty;
+    if (running) {
+      _clocks.add(clock);
+    } else {
+      _clocks.remove(clock);
+    }
+    if (_clocks.isNotEmpty != composing) {
+      displayTiming?.composeEveryVblank(on: _clocks.isNotEmpty);
+    }
+  }
+
   /// A test's own run starts where a run starts — every test replays the
   /// same frame times, and a chain left by the test before would go on, and
   /// the lengths it taught would place the window.
@@ -121,6 +168,7 @@ mixin PresentPacing on WidgetsBinding {
     _lookedAt = null;
     _heldVblank = null;
     _heldGaps.clear();
+    _clocks.clear();
   }
 
   @override

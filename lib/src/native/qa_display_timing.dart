@@ -20,11 +20,19 @@ abstract interface class DisplayTiming {
 
   /// Blocks the calling thread until [micros] on the frame clock.
   void waitUntil(int micros);
+
+  /// Keeps the compositor composing on every vblank, or lets it rest again
+  /// ([on] false) — whether it is kept composing now. A picture handed over
+  /// between two vblanks is then taken at the second of them, however idle
+  /// the rest of the desktop leaves the compositor.
+  bool composeEveryVblank({required bool on});
 }
 
 /// The engine's own answers (`qa_display_vblank`,
-/// `qa_display_wait_until_us`): Windows' compositor timing (DWM) and a
-/// high-resolution waitable timer.
+/// `qa_display_wait_until_us`, `qa_display_compose_every_vblank`): Windows'
+/// compositor timing (DWM), a high-resolution waitable timer, and a visual
+/// with nothing in it swaying on the app's window for as long as the
+/// compositor is to compose on every vblank.
 ///
 /// 🚨THE TWO CLOCKS ARE ONE ONLY BECAUSE BOTH ARE THE PERFORMANCE COUNTER —
 /// Dart's monotonic microseconds are, on Windows, and the compositor stamps
@@ -35,10 +43,11 @@ abstract interface class DisplayTiming {
 /// Null where the engine has no display to ask — every platform but
 /// Windows, whose engine vsync IS the display's — or where no engine loads.
 final class QaDisplayTiming implements DisplayTiming {
-  QaDisplayTiming._(this._vblank, this._waitUntil);
+  QaDisplayTiming._(this._vblank, this._waitUntil, this._compose);
 
   final int Function(Pointer<Int64>) _vblank;
   final void Function(int) _waitUntil;
+  final int Function(int) _compose;
   final Pointer<Int64> _out = calloc<Int64>(2);
 
   static QaDisplayTiming? _instance;
@@ -70,6 +79,9 @@ final class QaDisplayTiming implements DisplayTiming {
       library.lookupFunction<Void Function(Int64), void Function(int)>(
         'qa_display_wait_until_us',
       ),
+      library.lookupFunction<Int32 Function(Int32), int Function(int)>(
+        'qa_display_compose_every_vblank',
+      ),
     );
     final grid = timing.vblankGrid();
     if (grid == null) {
@@ -94,4 +106,7 @@ final class QaDisplayTiming implements DisplayTiming {
 
   @override
   void waitUntil(int micros) => _waitUntil(micros);
+
+  @override
+  bool composeEveryVblank({required bool on}) => _compose(on ? 1 : 0) != 0;
 }

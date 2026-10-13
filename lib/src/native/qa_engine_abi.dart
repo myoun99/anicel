@@ -238,7 +238,11 @@ import 'dart:io';
 ///   where it lands on the vblank it claimed (`QaDisplayTiming`, board
 ///   playback-frame-raster-is-the-whole-window, 유저 2026-10-11 「144hz든
 ///   몇이든 확실하게」).
-const int kQaEngineAbiVersion = 44;
+/// - v45: `qa_display_compose_every_vblank` — the compositor kept composing
+///   on every vblank while a clock runs, so a picture handed over between
+///   two vblanks is taken at the second of them however idle the desktop
+///   leaves it (`QaDisplayTiming.composeEveryVblank`; the same board card).
+const int kQaEngineAbiVersion = 45;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

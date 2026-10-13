@@ -41,9 +41,14 @@ class LookingTicker {
   /// on it changed its film frame a refresh early or late at every jump
   /// (`PresentClaims`). Where the engine's vsync is the display's, the two
   /// are the same times.
+  ///
+  /// A clock is running from here to [stop] ([clockStarted]) — started
+  /// afresh, it never stopped.
   void start(TickerProvider vsync) {
-    stop();
+    _ticker?.dispose();
+    _firstShown = null;
     final ticker = _ticker = vsync.createTicker(_tick);
+    clockStarted(this);
     _onlyToLook(() => unawaited(ticker.start()));
   }
 
@@ -51,6 +56,7 @@ class LookingTicker {
     _ticker?.dispose();
     _ticker = null;
     _firstShown = null;
+    clockStopped(this);
   }
 
   void _tick(Duration elapsed) {

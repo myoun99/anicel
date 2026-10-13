@@ -8,9 +8,10 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import '../helpers/native_engine_path.dart';
 
 /// The engine's word on the display (`qa_display_vblank`,
-/// `qa_display_wait_until_us`): where the real vblanks are, on the frame
-/// clock, and a wait that ends on its microsecond — what a clock's frame
-/// is handed to the GPU by (`PresentPacing`).
+/// `qa_display_wait_until_us`, `qa_display_compose_every_vblank`): where
+/// the real vblanks are, on the frame clock, a wait that ends on its
+/// microsecond — what a clock's frame is handed to the GPU by
+/// (`PresentPacing`) — and the compositor kept composing while it runs.
 void main() {
   final dllPath = nativeEngineLibraryPathOrNull();
 
@@ -50,6 +51,17 @@ void main() {
       lessThan(Duration.microsecondsPerSecond),
       reason: 'a vblank of now, on the clock the frame times are on',
     );
+  });
+
+  test('with no app window to compose on — a test has none — the compositor '
+      'is not kept composing, and letting it rest says so too', () {
+    final timing = dllPath == null ? null : QaDisplayTiming.instance;
+    if (timing == null) {
+      markTestSkipped('no display timing here');
+      return;
+    }
+    expect(timing.composeEveryVblank(on: true), isFalse);
+    expect(timing.composeEveryVblank(on: false), isFalse);
   });
 
   test('a wait ends on its microsecond — never before it', () {

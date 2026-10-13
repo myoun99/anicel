@@ -36,16 +36,23 @@ void main() {
   /// The vblank a claim's picture is shown on.
   int shownOn(PresentClaim claim) => vblankIndexOf(claim.shownAtMicros);
 
-  /// Where, past the vblank before the one [claim] is shown on, a scene of
-  /// [length] handed over at [handOff] ends.
+  /// Where, past the vblank [claim] claimed, a scene of [length] handed over
+  /// at [handOff] ends.
   double endOf(PresentClaim claim, int handOff, int length) =>
       handOff +
       length -
       (claim.shownAtMicros - presentShownAfterVblanks * period);
 
+  /// Inside the latch's window — to the microsecond each of the hand-off
+  /// and the vblank round to.
+  final insideTheLatch = inInclusiveRange(
+    presentLatchEarlyMicros - 1,
+    period - presentLatchLateMicros + 1,
+  );
+
   test('🚨every learned length handed over anywhere from the window\'s start '
-      'to its end ends between the latch\'s edges of the vblank before the '
-      'one it is shown on', () {
+      'to its end ends between the latch\'s edges of the vblank it '
+      'claimed', () {
     final lengths = [for (var i = 0; i < 32; i += 1) 3600 + i * 100];
     final claim = claimAt(
       PresentClaims(),
@@ -56,10 +63,7 @@ void main() {
       for (final length in lengths) {
         expect(
           endOf(claim, handOff, length),
-          inInclusiveRange(
-            presentLatchEarlyMicros - 1,
-            period - presentLatchLateMicros + 1,
-          ),
+          insideTheLatch,
           reason: 'handed over at $handOff, $length long',
         );
       }
@@ -71,23 +75,25 @@ void main() {
     );
   });
 
-  test('🚨the hand-off aims at the middle: the shortest and the longest '
-      'length end as far inside the latch\'s two edges', () {
+  test('🚨THE LATCH ON THE GLASS (10-13): the shortest scene is handed over '
+      'to end ON the vblank its look claimed, the latest hand-off ends the '
+      'longest 1.5ms before the next, and the picture is shown three '
+      'vblanks after the claimed one', () {
+    final lengths = [for (var i = 0; i < 16; i += 1) 2000 + i * 120];
     final claim = claimAt(
       PresentClaims(),
       vblank + 400 * period + 777,
-      handOff: handOffOf([for (var i = 0; i < 16; i += 1) 4000 + i * 100]),
+      handOff: handOffOf(lengths),
     );
-    final early = endOf(claim, claim.handOffFromMicros, 4000) -
-        presentLatchEarlyMicros;
-    final late = period -
-        presentLatchLateMicros -
-        endOf(claim, claim.handOffFromMicros, 5500);
-    expect(early, greaterThan(500), reason: '⛔premise: room on both sides');
+    final claimed = claim.shownAtMicros - 3 * period;
     expect(
-      (early - late).abs(),
-      lessThanOrEqualTo(2),
+      claim.handOffFromMicros + lengths.first - claimed,
+      closeTo(0, 1),
       reason: 'a microsecond of rounding each, the hand-off and the vblank',
+    );
+    expect(
+      claim.handOffByMicros + lengths.last - claimed,
+      closeTo(period - 1500, 1),
     );
   });
 
@@ -105,13 +111,7 @@ void main() {
       handOff: handOffOf(lengths),
     );
     for (final length in steady) {
-      expect(
-        endOf(claim, claim.handOffFromMicros, length),
-        inInclusiveRange(
-          presentLatchEarlyMicros,
-          period - presentLatchLateMicros,
-        ),
-      );
+      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
     }
   });
 
@@ -126,13 +126,7 @@ void main() {
       handOff: handOffOf([...making, ...steady]),
     );
     for (final length in steady) {
-      expect(
-        endOf(claim, claim.handOffFromMicros, length),
-        inInclusiveRange(
-          presentLatchEarlyMicros,
-          period - presentLatchLateMicros,
-        ),
-      );
+      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
     }
   });
 
@@ -147,13 +141,7 @@ void main() {
       handOff: handOffOf([...making, ...steady]),
     );
     for (final length in steady) {
-      expect(
-        endOf(claim, claim.handOffFromMicros, length),
-        inInclusiveRange(
-          presentLatchEarlyMicros,
-          period - presentLatchLateMicros,
-        ),
-      );
+      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
     }
   });
 
@@ -169,13 +157,7 @@ void main() {
       ]),
     );
     for (final length in steady) {
-      expect(
-        endOf(claim, claim.handOffFromMicros, length),
-        inInclusiveRange(
-          presentLatchEarlyMicros,
-          period - presentLatchLateMicros,
-        ),
-      );
+      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
     }
   });
 
@@ -190,13 +172,7 @@ void main() {
       ], capacity: 16),
     );
     for (final length in steady) {
-      expect(
-        endOf(claim, claim.handOffFromMicros, length),
-        inInclusiveRange(
-          presentLatchEarlyMicros,
-          period - presentLatchLateMicros,
-        ),
-      );
+      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
     }
   });
 
