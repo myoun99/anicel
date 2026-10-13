@@ -110,15 +110,19 @@ void main() {
     return keys;
   }
 
-  /// A video run in [mode] of every frame of [cut], in order.
-  ExportVideoRun runOf(
-    ExportFrameRenderer renderer,
-    Cut cut,
-    ExportSizeMode mode,
-  ) => renderer.videoRun([
+  /// Every frame of [cut], in order.
+  List<ExportFrameTask> framesOf(Cut cut) => [
     for (var index = 0; index < cut.duration; index += 1)
       ExportFrameTask(cut: cut, frameIndex: index),
-  ], mode);
+  ];
+
+  /// A video run in [mode] of every frame of [cut], in order.
+  ExportRun runOf(ExportFrameRenderer renderer, Cut cut, ExportSizeMode mode) =>
+      renderer.videoRun(framesOf(cut), mode);
+
+  Future<Uint8List> bytesOf(ui.Image image) async => (await image.toByteData(
+    format: ui.ImageByteFormat.rawRgba,
+  ))!.buffer.asUint8List();
 
   group('f1 held for frames 0–2, then f2, f3, f4 one frame each', () {
     const cutId = CutId('cut');
@@ -303,7 +307,7 @@ void main() {
     );
 
     /// A video run in [mode] of the O.L's first four frames, 12–15.
-    ExportVideoRun mixedRun(
+    ExportRun mixedRun(
       ExportFrameRenderer renderer,
       EditorSessionManager s,
       ExportSizeMode mode,
@@ -368,8 +372,8 @@ void main() {
     }
   });
 
-  group('🚨a video frame that is made of what the frame before it was made '
-      'of is THAT FRAME\'S PICTURE, handed again (F-289)', () {
+  group('🚨a frame of a run that is made of what the frame before it was '
+      'made of is THAT FRAME\'S PICTURE, handed again (F-289)', () {
     const cutId = CutId('cut');
 
     /// A: one drawing for the whole cut. B: b1 for frames 0–1, b2 for 2–3.
@@ -403,11 +407,12 @@ void main() {
 
     /// A: one drawing for the whole cut. B: a cycle — b1, b2, b3, and b1
     /// again.
-    Cut cycle() => Cut(
+    Cut cycle({CutCamera? camera}) => Cut(
       id: cutId,
       name: 'Cut',
       duration: 4,
       canvasSize: canvasSize,
+      camera: camera,
       layers: [
         Layer(
           id: const LayerId('a'),
@@ -437,14 +442,23 @@ void main() {
     int handlesOn(ui.Image image) =>
         image.debugGetOpenHandleStackTraces()!.length;
 
-    const doors = {
-      'a canvas-size video frame': ExportSizeMode.canvas,
-      'a camera video frame (the track stack)': ExportSizeMode.camera,
-    };
+    /// Every run whose frames are held pictures, opened over a renderer and
+    /// the frames of a cut.
+    final doors =
+        <String, ExportRun Function(ExportFrameRenderer renderer, Cut cut)>{
+          'a canvas-size video frame': (renderer, cut) =>
+              renderer.videoRun(framesOf(cut), ExportSizeMode.canvas),
+          'a camera video frame (the track stack)': (renderer, cut) =>
+              renderer.videoRun(framesOf(cut), ExportSizeMode.camera),
+          'a canvas-size picture of a sequence': (renderer, cut) =>
+              renderer.stillRun(framesOf(cut), ExportSizeMode.canvas),
+          'a camera-size picture of a sequence': (renderer, cut) =>
+              renderer.stillRun(framesOf(cut), ExportSizeMode.camera),
+        };
 
-    for (final MapEntry(key: door, value: mode) in doors.entries) {
-      /// A renderer over [s]'s cut, and the door through it — a video run of
-      /// the cut's frames.
+    for (final MapEntry(key: door, value: open) in doors.entries) {
+      /// A renderer over [s]'s cut, and the door through it — a run of the
+      /// cut's frames.
       ({
         ExportFrameRenderer renderer,
         Future<ui.Image> Function(int index) frameAt,
@@ -454,7 +468,7 @@ void main() {
         addTearDown(renderer.dispose);
         return (
           renderer: renderer,
-          frameAt: runOf(renderer, s.requireActiveCut, mode).frame,
+          frameAt: open(renderer, s.requireActiveCut).frame,
         );
       }
 
@@ -569,11 +583,7 @@ void main() {
             final frames = <Uint8List>[];
             for (final index in [0, 1, 2, 3]) {
               final image = await frameAt(index);
-              frames.add(
-                (await image.toByteData(
-                  format: ui.ImageByteFormat.rawRgba,
-                ))!.buffer.asUint8List(),
-              );
+              frames.add(await bytesOf(image));
               image.dispose();
             }
             expect(
@@ -716,16 +726,56 @@ void main() {
           reason: 'the frame alone — the cut\'s picture is the one it was',
         );
         final [before, after] = [
-          for (final image in [first, moved])
-            (await image.toByteData(
-              format: ui.ImageByteFormat.rawRgba,
-            ))!.buffer.asUint8List(),
+          for (final image in [first, moved]) await bytesOf(image),
         ];
         expect(after, isNot(before), reason: 'and it shows another part');
         first.dispose();
         moved.dispose();
       });
     });
+
+    for (final mode in ExportSizeMode.values) {
+      testWidgets('🚨a ${mode.name}-size picture of a sequence is the picture '
+          'renderComposite makes of its frame, byte for byte', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([
+            cycle(
+              camera: CutCamera(
+                keyframes: {
+                  0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
+                  3: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+                },
+              ),
+            ),
+          ]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          final plan = framesOf(s.requireActiveCut);
+          final run = renderer.stillRun(plan, mode);
+
+          for (final (index, task) in plan.indexed) {
+            final held = await run.frame(index);
+            final plain = await ExportFrameRenderer(
+              session: s,
+            ).renderComposite(task, mode);
+            expect(
+              await bytesOf(held),
+              await bytesOf(plain),
+              reason: 'frame $index',
+            );
+            held.dispose();
+            plain.dispose();
+          }
+          expect(
+            renderer.debugRowsMade,
+            4,
+            reason: 'LIVENESS: a1 and b1 were held — a1, b1, b2, b3',
+          );
+        });
+      });
+    }
   });
 
   group('what is not in the cut\'s composite is part of the frame all the '
@@ -796,6 +846,32 @@ void main() {
           for (final image in [unnamed, named, held]) {
             image.dispose();
           }
+        });
+      });
+
+      testWidgets('${mode.name}: a picture of a sequence takes no names — a '
+          'name coming up over a held drawing is the picture before', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([still()], seLayers: [speaker()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final cut = s.requireActiveCut;
+          expect(
+            s.seEntries.seNameTagsForCutFrame(cut, 1),
+            hasLength(1),
+            reason: 'LIVENESS: somebody is named at 1',
+          );
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          final run = renderer.stillRun(framesOf(cut), mode);
+
+          final unnamed = await run.frame(0);
+          final named = await run.frame(1);
+          expect(named.isCloneOf(unnamed), isTrue);
+          unnamed.dispose();
+          named.dispose();
         });
       });
     }

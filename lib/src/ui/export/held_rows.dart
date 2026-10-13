@@ -6,13 +6,13 @@ import '../../services/playback/let_go_wanted_latest.dart';
 import '../camera/camera_frame_render_service.dart' show RowPictures;
 import '../canvas/tiled_surface_compose.dart' show PositionedSurfaceImage;
 
-/// When a video run next shows a row: how many frames on from the frame
+/// When a run next shows a row: how many frames on from the frame
 /// being drawn the first frame that shows [address] is, counting from
 /// [from] frames on (0 — the frame being drawn); null when no frame from
 /// there shows it.
 typedef RowNextShown = int? Function(Object address, int from);
 
-/// The row pictures of a video run — each held from the frame that composes
+/// The row pictures of an export run — each held from the frame that composes
 /// it to the last frame ahead that shows it, as far as the room lent to
 /// them reaches.
 ///

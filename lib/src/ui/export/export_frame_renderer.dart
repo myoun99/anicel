@@ -122,7 +122,7 @@ class ExportFrameRenderer {
   var _thisFrame = <_CelAt, BitmapSurface?>{};
   var _frameBefore = <_CelAt, BitmapSurface?>{};
 
-  /// The pictures the VIDEO frame being drawn is made of and the ones the
+  /// The pictures the frame a run draws is made of and the ones the
   /// frame before it was made of, each under what it was made of: a cut's
   /// whole picture in its own canvas space, and the finished frame. Held
   /// for one more frame like the cels above ([HeldPictures]), and GPU
@@ -139,7 +139,7 @@ class ExportFrameRenderer {
   /// 1,483 are that frame's picture, camera and all).
   final HeldPictures _pictures = HeldPictures();
 
-  /// The rows the cut pictures of a video run are made of, each held until
+  /// The rows the cut pictures of a run are made of, each held until
   /// no frame ahead of the run shows it — so the picture a frame changes on
   /// composes only the rows it has not composed before (F-289-Q21). Their
   /// room is lent by playback's line of the memory allowance, whose caches
@@ -155,8 +155,8 @@ class ExportFrameRenderer {
   /// its row is held under.
   final _celAddresses = Expando<_CelAddress>('cel address');
 
-  /// The frames of the video run being drawn, and the cels each shows
-  /// ([videoRun]).
+  /// The frames of the run being drawn, and the cels each shows
+  /// ([videoRun], [stillRun]).
   _ShownAhead? _run;
 
   /// How many pictures this renderer has had to make (test hook) — a frame
@@ -181,7 +181,7 @@ class ExportFrameRenderer {
     _rows.nextFrame();
   }
 
-  /// Lets go of the pictures and the rows a video run held. The run's to
+  /// Lets go of the pictures and the rows a run held. The run's to
   /// call when its last frame is out.
   void dispose() {
     _pictures.dispose();
@@ -519,7 +519,8 @@ class ExportFrameRenderer {
   /// is handed to disposes it.
   ///
   /// [route] is whatever of [render] the signature does not say: which of
-  /// the two canvas-space renders it is, and what is drawn over it.
+  /// the renders it is, the view it is drawn through, and what is drawn
+  /// over it.
   Future<ui.Image> _cutPicture(
     Cut cut,
     int frameIndex, {
@@ -551,25 +552,50 @@ class ExportFrameRenderer {
   );
 
   /// A video run of [plan] in [mode] — its frames, drawn in order
-  /// ([ExportVideoRun.frame]), every row held from the frame that composes
-  /// it until no frame ahead shows it ([HeldRows]).
+  /// ([ExportRun.frame]), every row held from the frame that composes it
+  /// until no frame ahead shows it ([HeldRows]). Each frame is made of the
+  /// cuts [_cutsOfVideoFrame] names.
+  ExportRun videoRun(
+    List<ExportFrameTask> plan,
+    ExportSizeMode mode, {
+    bool preserveAlpha = false,
+  }) => _runOf(
+    plan,
+    cutsOf: (task) => _cutsOfVideoFrame(task, mode),
+    draw: (task) => _videoFrame(task, mode, preserveAlpha: preserveAlpha),
+  );
+
+  /// A run of STILLS of [plan] in [mode] — a picture sequence's frames,
+  /// each the picture [renderComposite] makes of its task, held as a video
+  /// run holds its own: a frame made of what the frame before it was made
+  /// of is that frame's picture, handed again ([_stillFrame]), and every
+  /// row is held until no frame ahead shows it.
+  ExportRun stillRun(List<ExportFrameTask> plan, ExportSizeMode mode) =>
+      _runOf(
+        plan,
+        cutsOf: (task) => [(task.cut, task.frameIndex)],
+        draw: (task) => _stillFrame(task, mode),
+      );
+
+  /// A run of [plan] whose frames [draw] draws, each made of the cuts
+  /// [cutsOf] names.
   ///
   /// What each frame shows is read here, for the whole run at once: the cels
-  /// of every cut the frame is made of ([_cutsOfVideoFrame]), as that cut's
-  /// picture names them ([_signatureOf]).
+  /// of every cut the frame is made of, as that cut's picture names them
+  /// ([_signatureOf]).
   ///
   /// ⚠️A movie's pictures are installed as the run reaches them ([_hydrate]),
   /// and an installed picture moves its cel's revision — so a movie row whose
   /// picture the run installs is read under another address than the one
   /// read here, and is composed for its picture alone.
-  ExportVideoRun videoRun(
-    List<ExportFrameTask> plan,
-    ExportSizeMode mode, {
-    bool preserveAlpha = false,
+  ExportRun _runOf(
+    List<ExportFrameTask> plan, {
+    required List<(Cut, int)> Function(ExportFrameTask task) cutsOf,
+    required Future<ui.Image> Function(ExportFrameTask task) draw,
   }) {
     final shown = <_CelAddress, List<int>>{};
     for (final (index, task) in plan.indexed) {
-      for (final (cut, frameIndex) in _cutsOfVideoFrame(task, mode)) {
+      for (final (cut, frameIndex) in cutsOf(task)) {
         for (final layer in _signatureOf(cut, frameIndex).layers) {
           final frames = shown.putIfAbsent(
             _celAddress(cut, layer.layerId, layer.frameId),
@@ -581,13 +607,31 @@ class ExportFrameRenderer {
         }
       }
     }
-    return ExportVideoRun._(
+    return ExportRun._(
       this,
       plan: plan,
-      mode: mode,
-      preserveAlpha: preserveAlpha,
+      draw: draw,
       shown: _ShownAhead(shown),
     );
+  }
+
+  /// The picture [renderComposite] makes of [task] in [mode] — at its full
+  /// size, without the names — held as a cut's picture is ([_cutPicture]),
+  /// under the view it is drawn through: a picture of the caller's own to
+  /// dispose.
+  Future<ui.Image> _stillFrame(
+    ExportFrameTask task,
+    ExportSizeMode mode,
+  ) async {
+    _startFrame();
+    final view = _viewFor(task.cut, task.frameIndex, mode);
+    final picture = await _cutPicture(
+      task.cut,
+      task.frameIndex,
+      route: ('still', view),
+      render: (rows) => _composite(task, view, rows: rows),
+    );
+    return picture.clone();
   }
 
   /// The cuts video frame [task] is made of in [mode], each at its own
@@ -1114,26 +1158,24 @@ class ExportFrameRenderer {
 
 }
 
-/// The frames of a video run ([ExportFrameRenderer.videoRun]).
-final class ExportVideoRun {
-  ExportVideoRun._(
+/// The frames of a run — a video's ([ExportFrameRenderer.videoRun]) or a
+/// picture sequence's ([ExportFrameRenderer.stillRun]).
+final class ExportRun {
+  ExportRun._(
     this._renderer, {
     required List<ExportFrameTask> plan,
-    required ExportSizeMode mode,
-    required bool preserveAlpha,
+    required Future<ui.Image> Function(ExportFrameTask task) draw,
     required _ShownAhead shown,
   }) : _plan = plan,
-       _mode = mode,
-       _preserveAlpha = preserveAlpha,
+       _draw = draw,
        _shown = shown;
 
   final ExportFrameRenderer _renderer;
   final List<ExportFrameTask> _plan;
-  final ExportSizeMode _mode;
-  final bool _preserveAlpha;
+  final Future<ui.Image> Function(ExportFrameTask task) _draw;
   final _ShownAhead _shown;
 
-  /// Frame [index] of the run ([ExportFrameRenderer._videoFrame]).
+  /// Frame [index] of the run, a picture of the caller's own to dispose.
   ///
   /// ⚠️One at a time, in order: a row is held for the frames ahead of the
   /// one asked for last, and a frame that starts lets go of the rows no
@@ -1141,11 +1183,7 @@ final class ExportVideoRun {
   Future<ui.Image> frame(int index) {
     _shown.at = index;
     _renderer._run = _shown;
-    return _renderer._videoFrame(
-      _plan[index],
-      _mode,
-      preserveAlpha: _preserveAlpha,
-    );
+    return _draw(_plan[index]);
   }
 }
 
@@ -1161,7 +1199,7 @@ typedef _SharedTransitionSpace = ({
   int globalFrame,
 });
 
-/// The frames of a video run each cel shows, in order, and the frame being
+/// The frames of a run each cel shows, in order, and the frame being
 /// drawn ([at]) — what tells a held row how long it is wanted.
 final class _ShownAhead {
   _ShownAhead(this._frames);

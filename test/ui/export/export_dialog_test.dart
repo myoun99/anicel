@@ -23,6 +23,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -34,6 +35,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/held_pictures.dart';
+import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -354,6 +356,68 @@ void main() {
 
       expect(filesWrittenUnder(temp), ['frame_0001.png', 'frame_0002.png']);
       expect(statusText(tester), 'Exported 2 frames.');
+    });
+
+    testWidgets('🎯a frame that is the picture before it is written as the '
+        'bytes before it — encoded once', (tester) async {
+      const cutId = CutId('cut');
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('held'),
+          name: 'Held',
+          cameraSize: const CanvasSize(width: 8, height: 8),
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                Cut(
+                  id: cutId,
+                  name: 'Cut',
+                  duration: 2,
+                  canvasSize: const CanvasSize(width: 8, height: 8),
+                  layers: [
+                    Layer(
+                      id: const LayerId('layer'),
+                      name: 'A',
+                      frames: [frame('f1')],
+                      timeline: const {
+                        0: TimelineExposure.drawing(FrameId('f1'), length: 2),
+                      },
+                    ),
+                    createCameraLayer(cutId: cutId),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(session.dispose);
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await pickStillPng(tester);
+      // RGB: a PNG this app encodes itself (F-335), not the engine's.
+      final rgb = find.byKey(
+        const ValueKey<String>('export-format-channels-rgb'),
+      );
+      await tester.ensureVisible(rgb);
+      await tester.tap(rgb);
+      await tester.pump();
+      final before = PngSequenceExportService.debugEncodes;
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final [first, second] = [
+        for (final name in ['frame_0001.png', 'frame_0002.png'])
+          File('${temp.path}${Platform.pathSeparator}$name').readAsBytesSync(),
+      ];
+      expect(second, first, reason: 'LIVENESS: one drawing held for both');
+      expect(PngSequenceExportService.debugEncodes - before, 1);
     });
 
     testWidgets('naming module renames the base', (tester) async {

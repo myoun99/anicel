@@ -1312,7 +1312,7 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: format,
     );
-    // The video run burns the SE name tags in (ExportVideoRun.frame);
+    // The video run burns the SE name tags in (videoRun);
     // stills stay clean because they are compositing sources. The preview
     // has to answer the same question, or it shows a frame the export
     // will not produce.
@@ -2432,7 +2432,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Future<String> _exportPngSequence() {
+  Future<String> _exportPngSequence() async {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: false);
     final renderer = ExportFrameRenderer.forFormat(
@@ -2440,14 +2440,22 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
-    return _runImageExport(
-      count: plan.length,
-      renderImage: (index) =>
-          renderer.renderComposite(plan[index], spec.sizeMode),
-      fileNameFor: _sequenceFileNameFor,
-      encoderFor: (_) => stillEncoderFor(spec.format),
-      says: _Tally.frames,
-    );
+    final run = renderer.stillRun(plan, spec.sizeMode);
+    // ONE encoder for every frame: a frame that is the picture before it is
+    // written as the bytes before it only when the same encoder made them
+    // ([PngSequenceExportService.exportImages]).
+    final encoder = stillEncoderFor(spec.format);
+    try {
+      return await _runImageExport(
+        count: plan.length,
+        renderImage: run.frame,
+        fileNameFor: _sequenceFileNameFor,
+        encoderFor: (_) => encoder,
+        says: _Tally.frames,
+      );
+    } finally {
+      renderer.dispose();
+    }
   }
 
   Future<String> _exportCurrentFrame() async {
