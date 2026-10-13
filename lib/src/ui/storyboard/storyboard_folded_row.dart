@@ -80,7 +80,7 @@ class _StoryboardFolded {
       };
     }
     if (slot.railRow?.seSlot case final seSlot?) {
-      return _se(track, (index: trackIndex, slot: seSlot), entries, slot.height);
+      return _se(track, (index: trackIndex, slot: seSlot), slot.height);
     }
     return _transition(track, slot.height);
   }
@@ -136,7 +136,6 @@ class _StoryboardFolded {
   _FoldedStrip _se(
     Track track,
     ({int index, int slot}) at,
-    List<StoryboardTimelineLayoutEntry> entries,
     double height,
   ) => (
     rail: () => _state._rows._seLabel(track, at.slot, chromeless: true),
@@ -144,7 +143,6 @@ class _StoryboardFolded {
       trackIndex: at.index,
       slot: at.slot,
       layer: _state._seDisplayAt(track, at.slot),
-      layoutEntries: entries,
       width: 0,
       height: height,
       timelineScale: _state._scale,
@@ -164,7 +162,7 @@ class _StoryboardFolded {
     return (
       rail: () => _state._rows._transitionLabel(track, chromeless: true),
       frames: (context, geometry) => _StoryboardTransitionRow(
-        track: track,
+        trackId: track.id,
         layer:
             widget.transitionRowShown?.call(track, transition) ?? transition,
         width: 0,

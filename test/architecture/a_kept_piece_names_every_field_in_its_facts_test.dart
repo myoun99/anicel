@@ -64,6 +64,37 @@ class Planted extends KeptPiece {
     ]);
     expect(_leftOut(pieces.single), ['Planted.left']);
   });
+
+  test('🚨and a piece that mixes a part in, and a field typed over lines — '
+      'a storyboard row is both (I-57)', () {
+    const planted = '''
+class PlantedRow extends KeptPiece
+    with _Labels {
+  const PlantedRow({required this.height, this.rowAt});
+
+  @override
+  final double height;
+
+  final TimelineRowAddress? Function(
+    TimelineRowAddress anchorRow,
+    double crossOffset,
+  )?
+  rowAt;
+
+  @override
+  Object? get facts => (height,);
+
+  @override
+  Widget buildKept(BuildContext context) => const SizedBox();
+}
+''';
+    final pieces = _keptPieces(planted).toList();
+
+    expect([for (final piece in pieces) piece.fields], [
+      ['height', 'rowAt'],
+    ]);
+    expect(_leftOut(pieces.single), ['PlantedRow.rowAt']);
+  });
 }
 
 typedef _Piece = ({String name, List<String> fields, String facts});
@@ -71,8 +102,14 @@ typedef _Piece = ({String name, List<String> fields, String facts});
 /// Every `class … extends KeptPiece` in [source]: its instance fields, and
 /// what its `facts` getter returns.
 Iterable<_Piece> _keptPieces(String source) sync* {
-  final head = RegExp(r'^class (\w+) extends KeptPiece \{', multiLine: true);
-  final field = RegExp(r'^  final .+ (\w+);$', multiLine: true);
+  // A `with` clause may follow, on the line or the next one.
+  final head = RegExp(
+    r'^class (\w+) extends KeptPiece\b[^{]*\{',
+    multiLine: true,
+  );
+  // A field's type may run over lines (a function type does): everything
+  // up to its `;`, the name last.
+  final field = RegExp(r'^  final [^;]*?(\w+);', multiLine: true);
   final facts = RegExp('get facts =>([^;]*);');
   for (final match in head.allMatches(source)) {
     final end = source.indexOf('\n}', match.end);

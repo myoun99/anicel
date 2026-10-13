@@ -197,7 +197,7 @@ import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
 import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
-import 'timeline/memo_token.dart' show ByList;
+import 'timeline/memo_token.dart' show ByIdentity, ByList, KeptPiece;
 import 'repaint_props.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
@@ -3705,10 +3705,10 @@ mixin _StoryboardRowRunLabels {
   );
 }
 
-class _StoryboardTransitionRow extends StatelessWidget
+class _StoryboardTransitionRow extends KeptPiece
     with _StoryboardRowRunLabels {
   const _StoryboardTransitionRow({
-    required this.track,
+    required this.trackId,
     required this.layer,
     required this.width,
     required this.height,
@@ -3727,7 +3727,8 @@ class _StoryboardTransitionRow extends StatelessWidget
     this.railRowAt,
   });
 
-  final Track track;
+  /// The track whose row this is — its keys' word.
+  final TrackId trackId;
 
   /// The row as it should RENDER — the committed layer, or the session's
   /// in-flight edge-drag form while a grip is held.
@@ -3778,8 +3779,39 @@ class _StoryboardTransitionRow extends StatelessWidget
     frameEndIndexExclusive: _frameEndExclusive,
   );
 
+  /// What the row shows — its spans' terms and crossing warnings by what
+  /// [defById] and [crossingTooltip] answer for every span the row holds,
+  /// a superset of the ones its window draws.
+  ///
+  /// 🚨I-57 (10-14): the S rows' story — built again with the panel on
+  /// every notify and every cut crossed.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackId,
+    ByIdentity(layer),
+    width,
+    height,
+    timelineScale.pixelsPerFrame,
+    timelineScale.minBlockWidth,
+    ByIdentity(frameGeometry),
+    ByIdentity(windowBucket),
+    viewportWidth,
+    showSeconds,
+    projectFrameRate,
+    ByList([
+      for (final MapEntry(key: start, value: span)
+          in layer.instructions.entries)
+        (defById?.call(span.instructionId), crossingTooltip?.call(start)),
+    ]),
+    commaDrag != null,
+    onRowFramePress != null,
+    onEditSpan != null,
+    select != null,
+    railRowAt != null,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     final spans = <Widget>[];
     // The paper under each span, at its TRUE global extent: this row has no
     // cells of its own, so it paints its paper the way the storyboard's SE
@@ -3936,7 +3968,7 @@ class _StoryboardTransitionRow extends StatelessWidget
       }
     }
     return SizedBox(
-      key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),
+      key: ValueKey<String>('storyboard-transition-row-${trackId.value}'),
       width: width,
       height: height,
       child: Stack(children: spans),
@@ -3948,12 +3980,11 @@ class _StoryboardTransitionRow extends StatelessWidget
 /// on the global frame axis — blocks keep their true lengths (a sound may
 /// cross cut boundaries; each crossed boundary draws a `~` continuation
 /// mark) and the timeline's data is exactly this layer, by identity.
-class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
+class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   const _StoryboardSeRow({
     required this.trackIndex,
     required this.slot,
     required this.layer,
-    required this.layoutEntries,
     required this.width,
     required this.height,
     required this.timelineScale,
@@ -3992,7 +4023,6 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
 
   /// The track's GLOBAL SE layer behind this row (null = fewer rows).
   final Layer? layer;
-  final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
 
   /// Its label's height ([_StoryboardRowHeights.se]) — one row.
@@ -4045,8 +4075,47 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
   @override
   final bool showSeconds;
 
+  /// What the row shows: its sounds' waveforms by what [audioPeaksFor]
+  /// answers for them — each peaks by identity, none while extracting — and
+  /// of the rows a move walks only their layers, which is all the walk
+  /// reads ([resolveBlockMoveTargetLayer]).
+  ///
+  /// 🚨I-57 (10-14): built again with the panel — on every notify, every
+  /// cut crossed — the row painted every waveform of the track again:
+  /// 🔬three fifths of a crossing's paint on the AMMI OP, for sounds that
+  /// had not moved.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackIndex,
+    slot,
+    ByIdentity(layer),
+    width,
+    height,
+    timelineScale.pixelsPerFrame,
+    timelineScale.minBlockWidth,
+    projectFrameRate,
+    ByIdentity(frameGeometry),
+    ByIdentity(windowBucket),
+    viewportWidth,
+    showSeconds,
+    ByList([
+      if (layer case final layer?)
+        for (final span in seAudioSpans(layer))
+          audioPeaksFor?.call(span.clip.filePath),
+    ]),
+    seClipMarkerTooltip,
+    onRowFramePress != null,
+    onDropMediaAsset != null,
+    acceptsMediaAsset != null,
+    onEditSeEntry != null,
+    seCommaDrag != null,
+    seSelect != null,
+    railRowAt != null,
+    ByList([for (final row in seRowsInDisplayOrder) row.layer.id]),
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     final spans = <Widget>[];
     final layer = this.layer;
     if (layer != null) {

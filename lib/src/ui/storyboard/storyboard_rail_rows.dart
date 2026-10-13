@@ -1679,11 +1679,23 @@ class _StoryboardRailRows {
   /// This rail is the one surface with rows of several heights (SE 30, the
   /// V row 28–160, audio 36, transform 26), which is why the old scalar
   /// "offset ÷ my own height" worked everywhere else and failed here.
+  ///
+  /// 🚨Asked at the drag, of the track [trackId] names as the panel holds
+  /// it THEN. A row is kept while what it shows holds (I-57, 10-14), and a
+  /// kept row drags with the lookup it was built with: a TRACK closed over
+  /// there would be the track as it stood then — before a cut came or an
+  /// S row went — while the row itself showed nothing that changed.
   TimelineRowAddress? _railRowAtCrossOffset({
-    required Track track,
+    required TrackId trackId,
     required TimelineRowAddress anchorRow,
     required double crossOffset,
   }) {
+    final track = _state.widget.project.tracks
+        .where((track) => track.id == trackId)
+        .firstOrNull;
+    if (track == null) {
+      return null;
+    }
     final geometry = _trackGroupRowGeometry(track);
     final rows = [for (final slot in geometry) slot.row];
     final anchorIndex = rows.indexOf(anchorRow);
@@ -2101,7 +2113,7 @@ class _StoryboardRailRows {
           windowBucket: _state._horizontalWindowBucket,
           viewportWidth: _state._stripViewportWidth,
           railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-            track: track,
+            trackId: track.id,
             anchorRow: anchorRow,
             crossOffset: crossOffset,
           ),
@@ -2298,7 +2310,6 @@ class _StoryboardRailRows {
   List<Widget> _seStripRowsForTrack(
     Track track,
     int index,
-    List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
   ) {
@@ -2306,7 +2317,7 @@ class _StoryboardRailRows {
     final heights = _state._rowHeights;
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
       railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-        track: track,
+        trackId: track.id,
         anchorRow: anchorRow,
         crossOffset: crossOffset,
       ),
@@ -2314,7 +2325,6 @@ class _StoryboardRailRows {
       trackIndex: index,
       slot: slot,
       layer: layer,
-      layoutEntries: entries,
       width: width,
       height: heights.se,
       timelineScale: scale,
@@ -2493,9 +2503,6 @@ class _StoryboardRailRows {
           ..._seStripRowsForTrack(
             _state.widget.project.tracks[index],
             index,
-            layoutEntries
-                .where((entry) => entry.trackIndex == index)
-                .toList(growable: false),
             contentWidth,
             scale,
           ),

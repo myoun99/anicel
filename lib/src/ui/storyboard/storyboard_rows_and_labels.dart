@@ -678,7 +678,7 @@ class _StoryboardRowsAndLabels {
     final committed = track.transitionLayer;
     final height = _state._rowHeights.transition;
     Widget row(Layer layer) => _StoryboardTransitionRow(
-      track: track,
+      trackId: track.id,
       layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
       width: width,
       height: height,
@@ -697,7 +697,7 @@ class _StoryboardRowsAndLabels {
       select: _state.widget.seSelect,
       railRowAt: (anchorRow, crossOffset) =>
           _state._railRows._railRowAtCrossOffset(
-            track: track,
+            trackId: track.id,
             anchorRow: anchorRow,
             crossOffset: crossOffset,
           ),
