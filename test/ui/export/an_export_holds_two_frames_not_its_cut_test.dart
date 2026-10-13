@@ -734,6 +734,53 @@ void main() {
       });
     });
 
+    for (final (mode, moves, says) in [
+      (ExportSizeMode.camera, true, 'its own, the camera moved'),
+      (ExportSizeMode.canvas, false, 'the one before, no camera moves it'),
+    ]) {
+      testWidgets('🎯the camera moving over a held drawing: a ${mode.name}-size '
+          'picture of a sequence is of the view it is drawn through — '
+          '$says', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([
+            cut(
+              camera: CutCamera(
+                keyframes: {
+                  0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
+                  1: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+                },
+              ),
+            ),
+          ]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          final plan = framesOf(s.requireActiveCut);
+          final run = renderer.stillRun(plan, mode);
+
+          final frames = [for (final index in [0, 1]) await run.frame(index)];
+          expect(
+            frames[1].isCloneOf(frames[0]),
+            !moves,
+            reason: 'frames 0 and 1 show a1 and b1',
+          );
+          for (final (index, image) in frames.indexed) {
+            final plain = await ExportFrameRenderer(
+              session: s,
+            ).renderComposite(plan[index], mode);
+            expect(
+              await bytesOf(image),
+              await bytesOf(plain),
+              reason: 'frame $index',
+            );
+            plain.dispose();
+            image.dispose();
+          }
+        });
+      });
+    }
+
     for (final mode in ExportSizeMode.values) {
       testWidgets('🚨a ${mode.name}-size picture of a sequence is the picture '
           'renderComposite makes of its frame, byte for byte', (tester) async {
