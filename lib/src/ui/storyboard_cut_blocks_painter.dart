@@ -224,7 +224,8 @@ final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 /// 🗣️유저 2026-10-01: 「s행에서면 s행블록만 칠해지도록」 — one standing place,
 /// as the timeline's lane takes the wash off its layer's row. Heard through
 /// [changes], which carry both answers; it holds nothing of its own, so a
-/// host builds one per build.
+/// host whose row is built again with it may make one a build — and a host
+/// that keeps its row holds one, as the storyboard does a track (I-57).
 class StandingCut implements ValueListenable<CutId?> {
   const StandingCut({
     required this.changes,
