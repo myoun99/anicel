@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -9,11 +10,14 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
+import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -26,10 +30,20 @@ import '../../helpers/frame_census.dart';
 /// cut switch rebuilt them all, 121 widgets a panel, and so did a stroke's
 /// commit, though the brush's panel shows nothing of the cut. The panel
 /// rebuilds by what it shows of the session now (`SlicedListenableBuilder`):
-/// news that moves none of it stops at the host.
+/// news that moves none of it stops at the host — and every part of what
+/// it shows still reaches it, read here one part at a time.
 const _first = CutId('first');
 const _second = CutId('second');
 const _third = CutId('third');
+
+final _mirror = DrawingGuide(
+  id: const GuideId('mirror'),
+  name: 'Mirror',
+  shape: SymmetryShape(
+    axis: GuideAxis(origin: CanvasPoint(x: 320, y: 180), angleDegrees: 90),
+    lineCount: 2,
+  ),
+);
 
 Layer _drawing(String id) => Layer(
   id: LayerId(id),
@@ -38,15 +52,16 @@ Layer _drawing(String id) => Layer(
   timeline: const {},
 );
 
-Cut _cut(CutId id, List<String> layers, {CanvasSize? size}) => Cut(
+Cut _cut(CutId id, List<Layer> layers, {CanvasSize? size}) => Cut(
   id: id,
   name: id.value,
   duration: 12,
   canvasSize: size ?? const CanvasSize(width: 640, height: 360),
-  layers: [for (final layer in layers) _drawing(layer)],
+  layers: layers,
 );
 
-/// The real app with the tool settings group open on the rail.
+/// The real app with the tool settings group open on the rail, standing on
+/// the first cut's `a1`.
 Future<EditorSessionManager> _open(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -62,13 +77,23 @@ Future<EditorSessionManager> _open(WidgetTester tester) async {
               id: const TrackId('track'),
               name: 'Video',
               cuts: [
-                _cut(_first, ['a1', 'a2']),
-                _cut(_second, ['b1', 'b2']),
+                _cut(_first, [
+                  _drawing('a1'),
+                  _drawing('a2'),
+                  // A row the fill-reference flag does not belong on.
+                  Layer(
+                    id: const LayerId('a-photo'),
+                    name: 'a-photo',
+                    frames: const [],
+                    kind: LayerKind.image,
+                  ),
+                ]),
+                _cut(_second, [_drawing('b1'), _drawing('b2')]),
                 // A canvas of another size: the selection tool's invert
                 // reaches out to the canvas's edge, so the panel holds it.
                 _cut(
                   _third,
-                  ['c1'],
+                  [_drawing('c1')],
                   size: const CanvasSize(width: 320, height: 180),
                 ),
               ],
@@ -82,13 +107,21 @@ Future<EditorSessionManager> _open(WidgetTester tester) async {
   final settings = EditorWorkspace.railGroupId(right: false, slot: 2);
   await tester.tap(find.byKey(ValueKey<String>('rail-group-$settings')));
   await tester.pumpAndSettle();
+  final session = tester
+      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+      .session;
+  session.selectLayer(const LayerId('a1'));
+  await tester.pumpAndSettle();
   for (final panel in _toolSettings) {
     expect(find.byType(panel), findsOneWidget, reason: 'LIVENESS: $panel');
   }
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+  return session;
 }
 
 const _toolSettings = [ToolSettingsPanel, BrushSettingsPanel];
+
+ToolSettingsPanel _panel(WidgetTester tester) =>
+    tester.widget<ToolSettingsPanel>(find.byType(ToolSettingsPanel));
 
 void main() {
   testWidgets('a cut switch that moves nothing they show rebuilds none of '
@@ -125,23 +158,25 @@ void main() {
   group('what they show still reaches them', () {
     testWidgets('the cut\'s guides', (tester) async {
       final session = await _open(tester);
-      final guide = DrawingGuide(
-        id: const GuideId('mirror'),
-        name: 'Mirror',
-        shape: SymmetryShape(
-          axis: GuideAxis(
-            origin: CanvasPoint(x: 320, y: 180),
-            angleDegrees: 90,
-          ),
-          lineCount: 2,
-        ),
-      );
 
       final census = await frameCensus(
         tester,
         () => session.cutVerbs.setActiveCutGuides(
-          CutGuides(guides: [guide], activeSymmetryId: guide.id),
+          CutGuides(guides: [_mirror], activeSymmetryId: _mirror.id),
         ),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('the guide picked', (tester) async {
+      final session = await _open(tester);
+      session.cutVerbs.setActiveCutGuides(CutGuides(guides: [_mirror]));
+      await tester.pumpAndSettle();
+
+      final census = await frameCensus(
+        tester,
+        () => session.cutVerbs.selectedGuideId = _mirror.id,
       );
 
       expect(census.rebuilt, contains(ToolSettingsPanel));
@@ -156,6 +191,114 @@ void main() {
       );
 
       expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('the program\'s language — news the session never carries', (
+      tester,
+    ) async {
+      final session = await _open(tester);
+      final settings = session.languageSettings.value;
+
+      final census = await frameCensus(
+        tester,
+        () => session.languageSettings.value = settings.copyWith(
+          programLanguage: settings.programLanguage == AppLanguage.ko
+              ? AppLanguage.ja
+              : AppLanguage.ko,
+        ),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('the layers the fill reads', (tester) async {
+      final session = await _open(tester);
+      final panel = _panel(tester);
+      panel.onFillOptionsChanged(
+        panel.fillOptions.copyWith(source: CanvasReadSource.layer),
+      );
+      await tester.pumpAndSettle();
+
+      final census = await frameCensus(
+        tester,
+        () => session.selectLayer(const LayerId('a2')),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('the layers the eyedropper reads', (tester) async {
+      final session = await _open(tester);
+      _panel(tester).onEyedropperSourceChanged!(CanvasReadSource.layer);
+      await tester.pumpAndSettle();
+
+      final census = await frameCensus(
+        tester,
+        () => session.selectLayer(const LayerId('a2')),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('the fill-reference flag of the row stood on', (tester) async {
+      final session = await _open(tester);
+
+      final census = await frameCensus(
+        tester,
+        () => session.layerSwitches.toggleLayerFillReference(
+          const LayerId('a1'),
+        ),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+
+    testWidgets('whether the row stood on takes the flag', (tester) async {
+      final session = await _open(tester);
+
+      final census = await frameCensus(
+        tester,
+        () => session.selectLayer(const LayerId('a-photo')),
+      );
+
+      expect(census.rebuilt, contains(ToolSettingsPanel));
+    });
+  });
+
+  group('the cut\'s guide list', () {
+    Future<EditorSessionManager> openOnGuides(WidgetTester tester) async {
+      final session = await _open(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('tool-guide-button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GuideLibraryList), findsOneWidget, reason: 'LIVENESS');
+      return session;
+    }
+
+    testWidgets('a cut switch with the same guides rebuilds it not', (
+      tester,
+    ) async {
+      final session = await openOnGuides(tester);
+
+      final census = await frameCensus(
+        tester,
+        () => session.selectCut(_second),
+      );
+
+      expect(session.activeCutId, _second, reason: 'LIVENESS: it switched');
+      expect(census.rebuilt, isNot(contains(GuideLibraryList)));
+    });
+
+    testWidgets('a guide drawn rebuilds it', (tester) async {
+      final session = await openOnGuides(tester);
+
+      final census = await frameCensus(
+        tester,
+        () => session.cutVerbs.setActiveCutGuides(
+          CutGuides(guides: [_mirror]),
+        ),
+      );
+
+      expect(census.rebuilt, contains(GuideLibraryList));
     });
   });
 }
