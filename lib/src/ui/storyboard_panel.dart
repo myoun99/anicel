@@ -1848,9 +1848,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // timeline grids' one driver.
       child: PanelPanDriver(
         controllers: [_verticalController, _horizontalController],
+        // The panel fills what it is given — its column is as tall as it
+        // may be and stretched — and says so, for the body below to be
+        // laid out alone.
+        child: SizedBox.expand(
         child: ValueListenableBuilder<double?>(
         valueListenable: _railRows._railExtent,
-        builder: (context, _, child) => LayoutBuilder(
+        // Every notify runs this again: laid out, painted and described
+        // alone, or each one rebuilt the nodes of the rows in it (I-57).
+        builder: (context, _, child) => LaidOutAlone(
           builder: (context, constraints) {
             // Viewport paper fill (UI-R12 #16): the strips run to the
             // viewport's right edge — recorded FIRST so the SE strip rows and
@@ -1911,6 +1917,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             );
           },
         ),
+      ),
       ),
       ),
     );
@@ -2073,21 +2080,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           height: StoryboardPanel._bottomScrollbarRailHeight,
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final viewportWidth = constraints.hasBoundedWidth
-                  ? constraints.maxWidth
-                  : 0.0;
-              return TimelineHorizontalScrollbarRail(
-                key: const ValueKey<String>(
-                  'storyboard-horizontal-scrollbar',
-                ),
-                controller: _horizontalController,
-                viewportWidth: viewportWidth,
-                contentWidth: frame.contentWidth,
-                height: StoryboardPanel._bottomScrollbarRailHeight,
-              );
-            },
+          // Laid out alone: every notify runs it again (I-57).
+          child: SizedBox(
+            height: StoryboardPanel._bottomScrollbarRailHeight,
+            child: LaidOutAlone(
+              builder: (context, constraints) =>
+                  TimelineHorizontalScrollbarRail(
+                    key: const ValueKey<String>(
+                      'storyboard-horizontal-scrollbar',
+                    ),
+                    controller: _horizontalController,
+                    viewportWidth: constraints.maxWidth,
+                    contentWidth: frame.contentWidth,
+                    height: StoryboardPanel._bottomScrollbarRailHeight,
+                  ),
+            ),
           ),
         ),
       ],
@@ -2097,7 +2104,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Expanded _scrollArea(_StoryboardBodyFrame frame) {
     final playheadListenable = frame.playheadListenable;
     return Expanded(
-      child: LayoutBuilder(
+      // Laid out alone: every notify runs it again (I-57).
+      child: LaidOutAlone(
         builder: (context, middleConstraints) {
           final middleViewportHeight =
               middleConstraints.hasBoundedHeight
@@ -2529,15 +2537,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ),
         const SizedBox(width: LayerRailSplitter.thickness),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final viewportWidth = constraints.hasBoundedWidth
-                  ? constraints.maxWidth
-                  : frame.contentWidth;
-              _frameAxis.rereadAfterLayout();
-              return SizedBox(
-                height: bandHeight,
-                child: ClipRect(
+          // Laid out alone: every notify runs it again (I-57).
+          child: SizedBox(
+            height: bandHeight,
+            child: LaidOutAlone(
+              builder: (context, constraints) {
+                final viewportWidth = constraints.maxWidth;
+                _frameAxis.rereadAfterLayout();
+                return ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.topLeft,
                     minWidth: frame.contentWidth,
@@ -2587,9 +2594,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],
