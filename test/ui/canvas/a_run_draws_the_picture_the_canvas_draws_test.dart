@@ -545,6 +545,16 @@ void main() {
                 isNot(rgbaOf(past)),
                 reason: 'LIVENESS: and the pasteboard past the ink',
               );
+              if (paperNone) {
+                // Both roads lay the paper's absence with one painter:
+                // only this tells that it is laid at all.
+                expect(
+                  pixelAt(still, (20 * ratio).floor(), (12 * ratio).floor()),
+                  isNot(rgbaOf(pasteboard)),
+                  reason: 'LIVENESS: in the hole the checkerboard lies in '
+                      'the absent paper\'s place, not the pasteboard',
+                );
+              }
             }
 
             expect(
