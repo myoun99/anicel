@@ -137,8 +137,7 @@ class _LayerGridRailRows {
   /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
   /// legend-visible fact changes — zoom steps and unrelated session
   /// notifies reuse the instance, skipping its ~15 tooltip/flyout cells.
-  Widget legendHeaderMemoized(List<TimelineDisplayRow> rows) {
-    final displayedIds = _state._displayedLayerIds(rows);
+  Widget legendHeaderMemoized() {
     final inputs = (
       layerRowHeight: _state._metrics.layerRowHeight,
       layerControlsWidth: _state._metrics.layerControlsWidth,
@@ -150,7 +149,6 @@ class _LayerGridRailRows {
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
       anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
       allSeMuted: _state._allSeMuted(),
-      displayedIds: BySet(displayedIds),
       masterOpacityValue: _state.widget.masterOpacityValue,
       hasLaneToggles: _state.widget.hooks.onToggleLayerLanes != null,
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
@@ -174,9 +172,12 @@ class _LayerGridRailRows {
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
       anyLanesExpanded: inputs.anyLanesExpanded,
       allSeMuted: inputs.allSeMuted,
-      // The fresh set is captured here — the token's BySet invalidates
-      // the cached header whenever the displayed rows change.
-      displayedLayerIds: () => displayedIds,
+      // The set a bulk verb ACTS on, read at the press — of the rows the
+      // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
+      // project): captured here and kept fresh by the token, it changed at
+      // every cut switch and built the whole header again — 223 widgets of
+      // a crossing's 855, for a set no cell of the header shows.
+      displayedLayerIds: () => _state._displayedLayerIds(_state._dragRows),
       displayedOpacity: _state.widget.masterOpacityValue,
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
       onExpandAllLanes: _state.widget.hooks.onToggleLayerLanes == null

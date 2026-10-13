@@ -160,7 +160,6 @@ typedef _LegendMemoInputs = ({
   bool visibilitySoloEnabled,
   bool anyLanesExpanded,
   bool allSeMuted,
-  BySet<LayerId> displayedIds,
   double masterOpacityValue,
   bool hasLaneToggles,
   bool displayedOnionSkinOn,
@@ -1153,9 +1152,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 availableRailExtent,
                                             // Memo-gated (UI-R7 #1): zoom steps
                                             // reuse the identical header instance.
-                                            child: _railRows.legendHeaderMemoized(
-                                              rows,
-                                            ),
+                                            child: _railRows
+                                                .legendHeaderMemoized(),
                                           ),
                                           const SizedBox(
                                             width:
