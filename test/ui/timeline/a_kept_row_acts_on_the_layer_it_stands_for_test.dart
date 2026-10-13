@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show laneGraphHeadedBy;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show PropertyLaneRow;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragState, LayerRowSubject, TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/rail_eyes.dart' show RailEyeBuilder;
@@ -217,6 +219,10 @@ void main() {
         'the attach base\'s twirl': (
           (tester) => tapNamed(tester, '$rail-attach-twirl-${_two.base}'),
           'attach ${_two.base}',
+        ),
+        'the lane twirl': (
+          (tester) => tapNamed(tester, '$rail-lane-toggle-${_two.draw}'),
+          'lanes ${_two.draw}',
         ),
       };
 
@@ -437,6 +443,10 @@ Layer _row(String id, String name, LayerKind kind) =>
 Layer _layerNamed(_Cut cut, String name) =>
     _layersOf(cut).firstWhere((layer) => layer.name == name);
 
+const _drawLanes = [
+  PropertyLaneRow(laneId: 'position', label: 'Position', keyMarks: {}),
+];
+
 final _cursor = ValueNotifier<int>(0);
 final _preview =
     ValueNotifier<({Set<LayerId> layerIds, double opacity})?>(null);
@@ -534,6 +544,10 @@ Widget _panel(
         ),
         onToggleLayerCollapsed: (id) => hear('fold', id),
         onToggleAttachGroup: (id) => hear('attach', id),
+        // The drawing carries a lane in both cuts, so its row wears the
+        // lane twirl and still comes back whole.
+        lanesForLayer: (layer) => layer.name == 'Draw' ? _drawLanes : const [],
+        onToggleLayerLanes: (id) => hear('lanes', id),
         orientation: orientation,
         onOrientationChanged: (_) {},
       ),

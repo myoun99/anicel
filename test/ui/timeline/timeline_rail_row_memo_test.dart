@@ -264,6 +264,16 @@ void main() {
       isFalse,
       reason: 'a rename must refresh the rail row',
     );
+    expect(
+      find.descendant(
+        of: find.byWidget(rowFor(activeId)),
+        matching: find.text('renamed'),
+      ),
+      findsOneWidget,
+      reason: 'and SHOWS it: the name is drawn in the eye\'s own builder '
+          '([RailEyeBuilder]), which hands back what it built while the eye '
+          'stays the same — a row built again builds it again',
+    );
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
