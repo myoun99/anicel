@@ -15,6 +15,7 @@ import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
+import 'canvas/after_frame_once.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/canvas_adjust.dart';
 import 'session/editor_app_settings.dart';
@@ -555,15 +556,39 @@ class EditorSessionManager extends ChangeNotifier
   /// boundary stuttered; whatever had to follow anyway was wired to the
   /// playhead one surface at a time. The rail's rows were made light for
   /// the crossing first (I-57 ①).
+  ///
+  /// 🚨THE CROSSING LANDS ONCE THE FRAME THAT SHOWS IT HAS BEEN HANDED OVER
+  /// (I-57, 10-13). The canvas draws a run from its position, never from
+  /// the active cut, so the crossing's first picture needs nothing the
+  /// landing does — and landing INSIDE that frame made the picture wait for
+  /// every panel's turn-over: 🔬23–32ms of UI at each boundary (profile,
+  /// AMMI OP) against a held frame's 8.6, the new cut's first picture
+  /// several refreshes late at every crossing (유저 10-13: 「재생시 컷 경계
+  /// 넘을때도 버벅여. 매번」). The panels turn over in the next frame, with
+  /// a film frame's time before the picture after it.
   void followPlaybackCut() {
+    if (_crossedInto() != null) {
+      _landingAfterThePicture.ask(() {
+        if (_crossedInto() case final position? when !disposed) {
+          _landOn(position);
+        }
+      });
+    }
+  }
+
+  final AfterFrameOnce _landingAfterThePicture = AfterFrameOnce();
+
+  /// Where a running playback stands when that is another cut than the
+  /// active one.
+  PlaybackPosition? _crossedInto() {
     if (playbackRig.playback.globalFrameIndexListenable.value == null) {
-      return;
+      return null;
     }
     final position = playbackRig.playback.position;
     if (position == null || position.cutId == editingSession.activeCutId) {
-      return;
+      return null;
     }
-    _landOn(position);
+    return position;
   }
 
   /// Where a run stands — at a crossing while it plays, and where it stops:

@@ -604,7 +604,8 @@ void main() {
       expect((shown.cut.id, shown.startFrame, shown.localFrame), (b, 24, 12));
     });
 
-    test('🚨the follow seats the cut it crosses into on that frame', () {
+    testWidgets('🚨the follow seats the cut it crosses into on that frame — '
+        'once the frame that shows the crossing is over', (tester) async {
       final session = sessionOf()..selectCut(a);
       final playback = session.playbackRig.playback;
       playback.play(scope: PlaybackScope.allCuts, startGlobalFrame: 20);
@@ -613,8 +614,16 @@ void main() {
 
       playback.seekToGlobalFrame(30);
       session.followPlaybackCut();
+      expect(
+        session.activeCutId,
+        a,
+        reason: 'the crossing\'s picture needs nothing the landing does — '
+            'landing inside its frame made it wait for every panel',
+      );
 
+      await tester.pump();
       expect((session.activeCutId, session.currentFrameIndex), (b, 12));
+      playback.stop();
     });
 
     test('🚨and a stop lands on that frame', () async {
