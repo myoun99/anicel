@@ -409,6 +409,7 @@ void main() {
       await tester.tap(rgb);
       await tester.pump();
       final before = PngSequenceExportService.debugEncodes;
+      final heldBefore = HeldPictures.debugHeld;
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -418,6 +419,11 @@ void main() {
       ];
       expect(second, first, reason: 'LIVENESS: one drawing held for both');
       expect(PngSequenceExportService.debugEncodes - before, 1);
+      expect(
+        HeldPictures.debugHeld,
+        heldBefore,
+        reason: 'the run let go of what it held',
+      );
     });
 
     testWidgets('naming module renames the base', (tester) async {
