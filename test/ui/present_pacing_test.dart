@@ -99,8 +99,8 @@ CanvasPlaybackController _playbackOfOneCut() {
 }
 
 /// The test binding with both laws of a clock's frames mixed in: drawn only
-/// when something changed ([LookOnlyFrames]), and handed to the GPU in the
-/// window of the vblank its look claimed ([PresentPacing]) — on a display
+/// when something changed ([LookOnlyFrames]), and handed to the GPU at the
+/// hand-off of the vblank its look claimed ([PresentPacing]) — on a display
 /// the test owns.
 class _PacedBinding extends AutomatedTestWidgetsFlutterBinding
     with LookOnlyFrames, PresentPacing {
@@ -136,7 +136,7 @@ void main() {
     vblankMicros: _Display.vblank,
     periodMicros: _Display.period,
     budgetMicros: PresentPacing.budgetMicros,
-    handOff: (spread ?? RasterSpread()).handOffFor(_Display.period),
+    handOffMicros: (spread ?? RasterSpread()).handOffFor(_Display.period),
   );
 
   /// A look in this frame changed what its clock shows — said to the
@@ -170,7 +170,9 @@ void main() {
   }
 
   testWidgets('🚨a clock\'s look is read at the moment its claimed vblank is '
-      'shown, and its frame waits for that vblank\'s window', (tester) async {
+      'shown, and its frame waits for that vblank\'s hand-off', (
+    tester,
+  ) async {
     final shown = await settle(tester);
     Duration? readAt;
     PresentClaim? claim;
@@ -184,11 +186,11 @@ void main() {
     await tester.pump(vsync);
 
     expect(readAt, Duration(microseconds: claim!.shownAtMicros));
-    expect(display.waits, [claim!.handOffFromMicros]);
+    expect(display.waits, [claim!.handOffMicros]);
   });
 
   testWidgets('🚨a clock\'s frame that something else ALSO asked to draw '
-      'waits for its window all the same — the film it carries is on it', (
+      'waits for its hand-off all the same — the film it carries is on it', (
     tester,
   ) async {
     final shown = await settle(tester);
@@ -203,7 +205,7 @@ void main() {
     binding.scheduleFrame();
     await tester.pump(vsync);
 
-    expect(display.waits, [claim!.handOffFromMicros]);
+    expect(display.waits, [claim!.handOffMicros]);
   });
 
   testWidgets('🚨a look that changed nothing is not held, though its frame '
@@ -272,7 +274,7 @@ void main() {
     expect(display.waits, isEmpty);
   });
 
-  testWidgets('a frame already inside its window is handed over at once', (
+  testWidgets('a frame past its hand-off is handed over at once', (
     tester,
   ) async {
     final shown = await settle(tester);
@@ -361,7 +363,7 @@ void main() {
     await tester.pump(refresh);
     heard = 1;
     await tester.pump(refresh);
-    // The frame the change was drawn in waited for its window and held the
+    // The frame the change was drawn in waited for its hand-off and held the
     // next look up: two refreshes pass.
     await tester.pump(refresh * 2);
     controller.stop();
@@ -391,7 +393,7 @@ void main() {
   });
 
   testWidgets('🚨the scenes\' lengths are learned from the frames it paced: '
-      'what their timings say moves the next window', (tester) async {
+      'what their timings say moves the next hand-off', (tester) async {
     final shown = await settle(tester);
     final learned = RasterSpread();
     for (var round = 0; round < 8; round += 1) {
@@ -429,7 +431,7 @@ void main() {
         vblankMicros: _Display.vblank,
         periodMicros: _Display.period,
         budgetMicros: PresentPacing.budgetMicros,
-        handOff: RasterSpread().handOffFor(_Display.period),
+        handOffMicros: RasterSpread().handOffFor(_Display.period),
       );
       frameShownAt();
       shown.value += 1;
@@ -437,11 +439,11 @@ void main() {
     });
     await tester.pump(vsync);
 
-    expect(display.waits, [claim!.handOffFromMicros]);
+    expect(display.waits, [claim!.handOffMicros]);
     expect(
-      claim!.handOffFromMicros - claim!.shownAtMicros,
-      isNot(unlearned!.handOffFromMicros - unlearned!.shownAtMicros),
-      reason: '⛔premise: the learned spread puts the window elsewhere',
+      claim!.handOffMicros - claim!.shownAtMicros,
+      isNot(unlearned!.handOffMicros - unlearned!.shownAtMicros),
+      reason: '⛔premise: the learned spread puts the hand-off elsewhere',
     );
   });
 
@@ -477,7 +479,7 @@ void main() {
     });
     await tester.pump(vsync);
 
-    expect(display.waits, [claim!.handOffFromMicros]);
+    expect(display.waits, [claim!.handOffMicros]);
   });
 
   group('🚨while a clock runs the compositor composes on every vblank', () {
@@ -582,9 +584,7 @@ void main() {
             last.shownAtMicros - presentShownAfterVblanks * _Display.period,
         periodMicros: _Display.period,
         gap: gap,
-        handOffFromMicros: RasterSpread()
-            .handOffFor(_Display.period)
-            .fromMicros,
+        handOffMicros: RasterSpread().handOffFor(_Display.period),
       ),
       marginMicros: PresentPacing.budgetMicros + 1000,
     );

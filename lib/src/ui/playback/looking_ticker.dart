@@ -52,8 +52,15 @@ class LookingTicker {
     _onlyToLook(() => unawaited(ticker.start()));
   }
 
+  /// A clock that is not running has nothing to stop and says nothing
+  /// ([clockStopped]): every dispose stops its clocks, and a session can be
+  /// disposed where no binding was ever made.
   void stop() {
-    _ticker?.dispose();
+    final ticker = _ticker;
+    if (ticker == null) {
+      return;
+    }
+    ticker.dispose();
     _ticker = null;
     _firstShown = null;
     clockStopped(this);

@@ -43,22 +43,18 @@ const int presentLatchLateMicros = 1500;
 /// composition frame reaches the glass on the second vblank after it starts.
 const int presentShownAfterVblanks = 3;
 
-/// A look's claim on a vblank: the hand-off — from [handOffFromMicros],
-/// the moment that ends the shortest of the most recent scenes the latch's
-/// window holds on its early edge, to [handOffByMicros], the last moment
-/// that ends the longest of them on its late edge — and the moment its
-/// picture is shown.
-typedef PresentClaim = ({
-  int handOffFromMicros,
-  int handOffByMicros,
-  int shownAtMicros,
-});
-
-/// Where a scene is handed over against the vblank its raster is to end
-/// past: [fromMicros] to aim at, and [byMicros], the latest that still
-/// ends every scene aimed for inside the latch's window
-/// ([RasterSpread.handOffFor]).
-typedef PresentHandOff = ({double fromMicros, double byMicros});
+/// A look's claim on a vblank: [handOffMicros], the moment its frame's
+/// scene is handed over — the one that ends the shortest of the recent
+/// scenes on the latch's early edge ([RasterSpread.handOffFor]) — and
+/// [shownAtMicros], the moment its picture is shown.
+///
+/// ↩️It had a latest hand-off too, the last moment that ended the longest
+/// scene on the latch's late edge, and a look claimed a vblank its frame
+/// could reach by then. With the late edge soft every moment past the
+/// hand-off ends the scenes later, and a frame let go late in that room
+/// lands late more often (10-13: 1 in 20 held frames reached its seam past
+/// its hand-off) — a look claims a vblank its frame can WAIT for.
+typedef PresentClaim = ({int handOffMicros, int shownAtMicros});
 
 /// 🚨WHICH VBLANK EACH LOOK OF A CLOCK FILLS (유저 2026-10-11: 「144hz든
 /// 몇이든 확실하게 근본/구조적으로 해결하도록」).
@@ -77,8 +73,8 @@ typedef PresentHandOff = ({double fromMicros, double byMicros});
 ///
 /// So a look does not take its vblank from the engine's vsync. Each look
 /// claims a REAL vblank — the one after the last look's — and its frame
-/// hands its scene to the GPU inside that vblank's hand-off window, and the
-/// clock is read at the moment that vblank's picture is SHOWN. One look,
+/// hands its scene to the GPU at that vblank's hand-off, and the clock is
+/// read at the moment that vblank's picture is SHOWN. One look,
 /// one vblank, one after another: a jump of the engine's grid moves when a
 /// look happens, never which vblank it fills.
 ///
@@ -110,8 +106,8 @@ final class PresentClaims {
   bool _lastChanged = false;
 
   /// The vblank the look made at [nowMicros] fills, its frame's work still
-  /// to come taking at most [budgetMicros] and its scene handed over at
-  /// [handOff] against that vblank.
+  /// to come taking at most [budgetMicros] and its scene handed over
+  /// [handOffMicros] past that vblank.
   ///
   /// [vblankMicros] is any real vblank and [periodMicros] the real refresh
   /// period, both on the frame clock.
@@ -120,12 +116,12 @@ final class PresentClaims {
     required int vblankMicros,
     required double periodMicros,
     required int budgetMicros,
-    required PresentHandOff handOff,
+    required double handOffMicros,
   }) {
     int indexOf(double micros) =>
         ((micros - vblankMicros) / periodMicros).round();
     final natural =
-        ((nowMicros + budgetMicros - handOff.byMicros - vblankMicros) /
+        ((nowMicros + budgetMicros - handOffMicros - vblankMicros) /
                 periodMicros)
             .ceil();
     final last = _last == null ? null : indexOf(_last!);
@@ -149,8 +145,7 @@ final class PresentClaims {
     _last = vblank;
     _lastChanged = false;
     return (
-      handOffFromMicros: (vblank + handOff.fromMicros).round(),
-      handOffByMicros: (vblank + handOff.byMicros).round(),
+      handOffMicros: (vblank + handOffMicros).round(),
       shownAtMicros: (vblank + presentShownAfterVblanks * periodMicros)
           .round(),
     );
@@ -198,11 +193,10 @@ final class RasterSpread {
   final List<int> _recent = [];
   int _next = 0;
 
-  /// Before eight paced scenes have said: what a whole-window scene of this
-  /// app took after its hand-off on the machine the latch was measured on
-  /// (10-13: a tenth of 2,524 held frames shorter, a tenth longer).
-  static const int unmeasuredLowMicros = 2000;
-  static const int unmeasuredHighMicros = 3800;
+  /// Before eight paced scenes have said: the shortest a whole-window scene
+  /// of this app took after its hand-off on the machine the latch was
+  /// measured on (10-13: a tenth of 2,524 held frames were shorter).
+  static const int unmeasuredMicros = 2000;
 
   void add(int micros) {
     if (_recent.length < capacity) {
@@ -230,19 +224,18 @@ final class RasterSpread {
   /// past, on a display of [periodMicros]: the window of the latch's width
   /// that holds the most of the recent lengths, each weighing [ageDecay]
   /// for every newer one, handed over so that the shortest of them ends on
-  /// the latch's early edge — and, at the latest, so that the longest ends
-  /// on its late one.
-  PresentHandOff handOffFor(double periodMicros) {
+  /// the latch's early edge.
+  double handOffFor(double periodMicros) {
     final width = math.max(
       0.0,
       periodMicros - presentLatchEarlyMicros - presentLatchLateMicros,
     );
     final lengths = _byLength();
-    // Each candidate covers lengths[i..j]: a window [b, b + width] holds
-    // them for any b from lengths[j] − width up to lengths[i].
+    // Each candidate holds lengths[i..j], all within one width of the
+    // shortest.
     var most = -1.0;
     var covered = 0.0;
-    var (low, high) = (0.0, 0.0);
+    var shortest = 0;
     var j = -1;
     for (var i = 0; i < lengths.length; i += 1) {
       if (j < i) {
@@ -256,24 +249,18 @@ final class RasterSpread {
       }
       if (covered > most) {
         most = covered;
-        (low, high) = (lengths[j].micros - width, lengths[i].micros.toDouble());
+        shortest = lengths[i].micros;
       }
       covered -= lengths[i].weight;
     }
-    return (
-      fromMicros: presentLatchEarlyMicros - high,
-      byMicros: presentLatchEarlyMicros - low,
-    );
+    return (presentLatchEarlyMicros - shortest).toDouble();
   }
 
   /// The recent lengths, shortest first, each with its weight — the newest
-  /// weighing 1 — or, before eight have said, the unmeasured two alike.
+  /// weighing 1 — or, before eight have said, the unmeasured one.
   List<({int micros, double weight})> _byLength() {
     if (_recent.length < 8) {
-      return const [
-        (micros: unmeasuredLowMicros, weight: 1),
-        (micros: unmeasuredHighMicros, weight: 1),
-      ];
+      return const [(micros: unmeasuredMicros, weight: 1)];
     }
     // The ring's oldest is at [_next] once it is full, at 0 before.
     final oldest = _recent.length < capacity ? 0 : _next;
@@ -301,10 +288,10 @@ final class RasterSpread {
 /// its picture — where the latch's window for the vblank it claimed closes,
 /// its raster and the GPU's work after it done or too late to matter — to
 /// the next held frame's hand-off, less [marginMicros] for the work that
-/// frame still does before it. Held frames claim VBLANKS, so the next stands a whole number
-/// of refreshes past this one — at least the [held] gap — and is handed
-/// over no sooner than its claim's window opens: the quiet ends on the
-/// vblank grid, not on when a frame happened to be let go.
+/// frame still does before it. Held frames claim VBLANKS, so the next
+/// stands a whole number of refreshes past this one — at least the [held]
+/// gap — and is handed over no sooner than its claim's hand-off: the quiet
+/// ends on the vblank grid, not on when a frame happened to be let go.
 ///
 /// ↩️It was read off the moments the held frames were let go: their
 /// interval after the last, less two refreshes for where the next release
@@ -321,12 +308,12 @@ final class RasterSpread {
   required HeldFrames held,
   required int marginMicros,
 }) {
-  final (:vblankMicros, :periodMicros, :gap, :handOffFromMicros) = held;
+  final (:vblankMicros, :periodMicros, :gap, :handOffMicros) = held;
   return (
     fromMicros: (vblankMicros + periodMicros - presentLatchLateMicros)
         .round(),
     untilMicros:
-        (vblankMicros + gap * periodMicros + handOffFromMicros).round() -
+        (vblankMicros + gap * periodMicros + handOffMicros).round() -
         marginMicros,
   );
 }
@@ -339,5 +326,5 @@ typedef HeldFrames = ({
   double vblankMicros,
   double periodMicros,
   int gap,
-  double handOffFromMicros,
+  double handOffMicros,
 });

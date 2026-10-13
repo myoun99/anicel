@@ -23,7 +23,7 @@ Duration frameShownAt() {
 }
 
 /// A clock's look changed what it shows in the frame under way — what
-/// holds the frame for its claim's window ([PresentPacing]), and lets the
+/// holds the frame for its claim's hand-off ([PresentPacing]), and lets the
 /// look after it take back the lead that wait spent
 /// ([PresentClaims.changed]). Said anywhere else, it is nobody's news.
 void lookChangedWhatItShows() {
@@ -62,7 +62,7 @@ void clockStopped(Object clock) {
 }
 
 /// 🚨A CLOCK'S LOOK CLAIMS A REAL VBLANK, AND ITS FRAME HANDS ITS SCENE TO
-/// THE GPU IN THAT VBLANK'S WINDOW (유저 2026-10-11: 「144hz든 몇이든
+/// THE GPU AT THAT VBLANK'S HAND-OFF (유저 2026-10-11: 「144hz든 몇이든
 /// 확실하게 근본/구조적으로 해결하도록」) — [PresentClaims] has why, and
 /// which vblank; [frameShownAt] is when it is seen.
 ///
@@ -70,17 +70,17 @@ void clockStopped(Object clock) {
 /// ([createSceneBuilder] — called once a frame, by
 /// `RenderView.compositeFrame`, and nowhere else): by then the frame is
 /// built, laid out and painted, so however long that took is waited out
-/// with the rest, and only the scene's own length is left for the window
+/// with the rest, and only the scene's own length is left for the hand-off
 /// to place ([RasterSpread], learned from the frames it paced): the frame
-/// is handed over at the window's start, or at once anywhere up to its end.
+/// is handed over then, or at once if it comes later.
 ///
 /// 🚨ONLY A LOOK THAT CHANGED WHAT ITS CLOCK SHOWS IS HELD (10-12): a look
 /// that changed nothing shows the same picture whichever vblank its frame
 /// lands on, so a page turn or a tile landing drawn between two film
 /// frames is handed over the moment it is built, and the lengths learned
 /// are those of the changing frames — the ones whose landing IS the
-/// cadence. A frame that carries a change is handed over in its claim's
-/// window whatever else asked for it to be drawn: a page turn in the same
+/// cadence. A frame that carries a change is handed over at its claim's
+/// hand-off whatever else asked for it to be drawn: a page turn in the same
 /// frame shows on the same vblank as the film it carries. A frame no clock
 /// looked in is never held — an edit waits for no vblank.
 ///
@@ -122,7 +122,7 @@ mixin PresentPacing on WidgetsBinding {
   PresentClaim? _claim;
 
   /// Whether a look in the frame under way changed what its clock shows —
-  /// the only frame that is held for its claim's window.
+  /// the only frame that is held for its claim's hand-off.
   bool _changed = false;
 
   /// Each paced frame by its number, with the moment its seam let it go —
@@ -159,7 +159,7 @@ mixin PresentPacing on WidgetsBinding {
 
   /// A test's own run starts where a run starts — every test replays the
   /// same frame times, and a chain left by the test before would go on, and
-  /// the lengths it taught would place the window.
+  /// the lengths it taught would place the hand-off.
   @visibleForTesting
   void debugForgetClaims() {
     _claims.forget();
@@ -168,7 +168,6 @@ mixin PresentPacing on WidgetsBinding {
     _lookedAt = null;
     _heldVblank = null;
     _heldGaps.clear();
-    _clocks.clear();
   }
 
   @override
@@ -200,7 +199,7 @@ mixin PresentPacing on WidgetsBinding {
       vblankMicros: grid.vblankMicros,
       periodMicros: grid.periodMicros,
       budgetMicros: budgetMicros,
-      handOff: _spread.handOffFor(grid.periodMicros),
+      handOffMicros: _spread.handOffFor(grid.periodMicros),
     );
   }
 
@@ -225,8 +224,8 @@ mixin PresentPacing on WidgetsBinding {
     if (_learning == null) {
       addTimingsCallback(_learning = _learn);
     }
-    if (timing.nowMicros < claim.handOffFromMicros) {
-      timing.waitUntil(claim.handOffFromMicros);
+    if (timing.nowMicros < claim.handOffMicros) {
+      timing.waitUntil(claim.handOffMicros);
     }
     if (_paced.length > 256) {
       _paced.clear();
@@ -269,7 +268,7 @@ mixin PresentPacing on WidgetsBinding {
         vblankMicros: vblank,
         periodMicros: period,
         gap: gaps[math.min(1, gaps.length - 1)],
-        handOffFromMicros: _spread.handOffFor(period).fromMicros,
+        handOffMicros: _spread.handOffFor(period),
       ),
       // What the next held frame's own work may still take before its
       // hand-off ([budgetMicros]), and a millisecond.

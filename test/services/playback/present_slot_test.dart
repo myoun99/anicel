@@ -14,7 +14,7 @@ void main() {
   int vblankIndexOf(num micros) => ((micros - vblank) / period).round();
 
   /// The hand-off for scenes of these [lengths], as the spread learns them.
-  PresentHandOff handOffOf(List<int> lengths, {int capacity = 32}) {
+  double handOffOf(List<int> lengths, {int capacity = 32}) {
     final spread = RasterSpread(capacity: capacity);
     lengths.forEach(spread.add);
     return spread.handOffFor(period);
@@ -24,13 +24,13 @@ void main() {
   PresentClaim claimAt(
     PresentClaims claims,
     num now, {
-    PresentHandOff? handOff,
+    double? handOff,
   }) => claims.claim(
     nowMicros: now.round(),
     vblankMicros: vblank,
     periodMicros: period,
     budgetMicros: budget,
-    handOff: handOff ?? RasterSpread().handOffFor(period),
+    handOffMicros: handOff ?? RasterSpread().handOffFor(period),
   );
 
   /// The vblank a claim's picture is shown on.
@@ -50,34 +50,25 @@ void main() {
     period - presentLatchLateMicros + 1,
   );
 
-  test('🚨every learned length handed over anywhere from the window\'s start '
-      'to its end ends between the latch\'s edges of the vblank it '
-      'claimed', () {
+  test('🚨every learned length handed over at the hand-off ends between the '
+      'latch\'s edges of the vblank it claimed', () {
     final lengths = [for (var i = 0; i < 32; i += 1) 3600 + i * 100];
     final claim = claimAt(
       PresentClaims(),
       vblank + 300 * period + 1234,
       handOff: handOffOf(lengths),
     );
-    for (final handOff in [claim.handOffFromMicros, claim.handOffByMicros]) {
-      for (final length in lengths) {
-        expect(
-          endOf(claim, handOff, length),
-          insideTheLatch,
-          reason: 'handed over at $handOff, $length long',
-        );
-      }
+    for (final length in lengths) {
+      expect(
+        endOf(claim, claim.handOffMicros, length),
+        insideTheLatch,
+        reason: '$length long',
+      );
     }
-    expect(
-      endOf(claim, claim.handOffByMicros + 3, lengths.last),
-      greaterThan(period - presentLatchLateMicros),
-      reason: 'the window\'s end is the LAST moment that lands them all',
-    );
   });
 
   test('🚨THE LATCH ON THE GLASS (10-13): the shortest scene is handed over '
-      'to end ON the vblank its look claimed, the latest hand-off ends the '
-      'longest 1.5ms before the next, and the picture is shown three '
+      'to end ON the vblank its look claimed, and the picture is shown three '
       'vblanks after the claimed one', () {
     final lengths = [for (var i = 0; i < 16; i += 1) 2000 + i * 120];
     final claim = claimAt(
@@ -87,14 +78,23 @@ void main() {
     );
     final claimed = claim.shownAtMicros - 3 * period;
     expect(
-      claim.handOffFromMicros + lengths.first - claimed,
+      claim.handOffMicros + lengths.first - claimed,
       closeTo(0, 1),
       reason: 'a microsecond of rounding each, the hand-off and the vblank',
     );
-    expect(
-      claim.handOffByMicros + lengths.last - claimed,
-      closeTo(period - 1500, 1),
-    );
+  });
+
+  test('🚨THE LATCH ON THE GLASS (10-13): scenes a refresh less the '
+      'compositor\'s 1.5ms lead apart land together; a microsecond further '
+      'apart, the more of them take the hand-off', () {
+    final apart = (period - 1500).floor();
+    // Four older scenes, and twelve newer ones that outweigh them.
+    List<int> scenes(int longer) => [
+      for (var i = 0; i < 4; i += 1) 2000,
+      for (var i = 0; i < 12; i += 1) 2000 + longer,
+    ];
+    expect(handOffOf(scenes(apart)), -2000);
+    expect(handOffOf(scenes(apart + 1)), -2000 - (apart + 1));
   });
 
   test('🚨lengths wider than the latch leaves: the hand-off lands the most '
@@ -111,7 +111,7 @@ void main() {
       handOff: handOffOf(lengths),
     );
     for (final length in steady) {
-      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
+      expect(endOf(claim, claim.handOffMicros, length), insideTheLatch);
     }
   });
 
@@ -126,7 +126,7 @@ void main() {
       handOff: handOffOf([...making, ...steady]),
     );
     for (final length in steady) {
-      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
+      expect(endOf(claim, claim.handOffMicros, length), insideTheLatch);
     }
   });
 
@@ -141,7 +141,7 @@ void main() {
       handOff: handOffOf([...making, ...steady]),
     );
     for (final length in steady) {
-      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
+      expect(endOf(claim, claim.handOffMicros, length), insideTheLatch);
     }
   });
 
@@ -157,7 +157,7 @@ void main() {
       ]),
     );
     for (final length in steady) {
-      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
+      expect(endOf(claim, claim.handOffMicros, length), insideTheLatch);
     }
   });
 
@@ -172,7 +172,7 @@ void main() {
       ], capacity: 16),
     );
     for (final length in steady) {
-      expect(endOf(claim, claim.handOffFromMicros, length), insideTheLatch);
+      expect(endOf(claim, claim.handOffMicros, length), insideTheLatch);
     }
   });
 
@@ -268,35 +268,34 @@ void main() {
     expect(more, again, reason: 'the reserve stops the chain running ahead');
   });
 
-  test('a claim leaves its frame the budget to reach the seam before its '
-      'window ends', () {
+  test('🚨a look that falls behind claims the first vblank whose hand-off '
+      'its frame can still wait for — the budget to reach the seam left '
+      'before it', () {
     final handOff = handOffOf([for (var i = 0; i < 8; i += 1) 4000]);
     final claims = PresentClaims();
-    // A look whose budget runs just past the window's end of the vblank
-    // its lead would claim.
     const at = vblank + 9000 * period;
-    final claim = claimAt(claims, at, handOff: handOff);
+    claimAt(claims, at, handOff: handOff);
+    // Three refreshes and a half on: past what the run's lead covers.
+    const behind = at + 3.5 * period;
+    final claim = claimAt(claims, behind, handOff: handOff);
+    expect(behind + budget, lessThanOrEqualTo(claim.handOffMicros));
     expect(
-      at + budget,
-      lessThanOrEqualTo(claim.handOffByMicros),
-      reason: 'the claim leaves its frame the budget to reach the seam',
+      behind + budget,
+      greaterThan(claim.handOffMicros - period),
+      reason: 'the vblank before it is out of reach',
     );
   });
 
   group('the scenes\' lengths', () {
-    test('place the hand-off where the latch was measured with until eight '
-        'frames have said', () {
+    test('until eight frames have said, the hand-off ends a 2ms scene — the '
+        'shortest the latch\'s machine took — on the vblank', () {
       final spread = RasterSpread();
       for (var i = 0; i < 7; i += 1) {
         spread.add(9000);
       }
-      final unmeasured = handOffOf([
-        for (var i = 0; i < 4; i += 1) RasterSpread.unmeasuredLowMicros,
-        for (var i = 0; i < 4; i += 1) RasterSpread.unmeasuredHighMicros,
-      ]);
-      expect(spread.handOffFor(period), unmeasured);
+      expect(spread.handOffFor(period), -2000);
       spread.add(9000);
-      expect(spread.handOffFor(period), isNot(unmeasured));
+      expect(spread.handOffFor(period), -9000);
     });
 
     test('🚨one scene an upload landed in does not move the window', () {
@@ -316,23 +315,6 @@ void main() {
         handOffOf([for (var i = 0; i < 16; i += 1) 4000], capacity: 16),
       );
     });
-
-    test('the hand-off\'s start never comes after its end — at any refresh '
-        'rate, even one too fast for the latch\'s edges to leave room', () {
-      for (final hz in [60, 120, 144, 165, 240, 360, 500]) {
-        final p = 1e6 / hz;
-        final spread = RasterSpread();
-        for (var i = 0; i < 16; i += 1) {
-          spread.add(3000 + i * 300);
-        }
-        final handOff = spread.handOffFor(p);
-        expect(
-          handOff.fromMicros,
-          lessThanOrEqualTo(handOff.byMicros),
-          reason: '$hz Hz',
-        );
-      }
-    });
   });
 
   test('⛔premise: at 144Hz the latch leaves a window wider than the '
@@ -342,19 +324,19 @@ void main() {
 
   group('the quiet between two held frames', () {
     const held = 5000000.0; // the vblank the last held frame claimed
-    const handOffFrom = -3200.0;
+    const handOff = -3200.0;
     const margin = 4000;
 
     ({int fromMicros, int untilMicros}) quietAfter({
       int gap = 6,
       double periodMicros = period,
-      double handOffFromMicros = handOffFrom,
+      double handOffMicros = handOff,
     }) => quietBetweenHeldFrames(
       held: (
         vblankMicros: held,
         periodMicros: periodMicros,
         gap: gap,
-        handOffFromMicros: handOffFromMicros,
+        handOffMicros: handOffMicros,
       ),
       marginMicros: margin,
     );
@@ -364,7 +346,7 @@ void main() {
         'grid', () {
       expect(quietAfter(), (
         fromMicros: (held + period - presentLatchLateMicros).round(),
-        untilMicros: (held + 6 * period + handOffFrom).round() - margin,
+        untilMicros: (held + 6 * period + handOff).round() - margin,
       ));
     });
 
@@ -376,7 +358,7 @@ void main() {
 
     test('🚨scenes as long as the frames come leave an EMPTY quiet — the '
         'work waits; it is not let run beside the frames', () {
-      final quiet = quietAfter(gap: 1, handOffFromMicros: -6000);
+      final quiet = quietAfter(gap: 1, handOffMicros: -6000);
       expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));
     });
   });
