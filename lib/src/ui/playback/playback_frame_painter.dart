@@ -254,7 +254,12 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       // over a fading picture reads as a bug.
       final thinning = imageOpacity < 1;
       if (thinning) {
-        canvas.saveLayer(unit, Paint()..color = alphaOnly(imageOpacity));
+        // Bounded by what is clipped already — through the camera, its
+        // frame. ↩️It was bounded by [unit], which is in the frame's space,
+        // here under the camera's projection in the canvas's: a camera that
+        // looked away from the canvas's corner cut the thinned names away
+        // whole (🧪10-13: 15,008 pixels at 1, none at a half).
+        canvas.saveLayer(null, Paint()..color = alphaOnly(imageOpacity));
       }
       paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
       if (thinning) {
