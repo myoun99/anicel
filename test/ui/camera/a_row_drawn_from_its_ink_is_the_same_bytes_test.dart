@@ -270,6 +270,50 @@ void main() {
     });
   });
 
+  testWidgets('🎯a row its ink alone would draw otherwise — an advanced '
+      'blend, a pose, a blur — is composed whole, and so is every row '
+      'through a camera that resamples', (tester) async {
+    await tester.runAsync(() async {
+      final rastered = <int>[];
+      debugOnWaitedSnapshot = (width, height) => rastered.add(width * height);
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      double areaOf(Rect rect) => rect.width * rect.height;
+      double ink(String id) => areaOf(surfaceInkWorldRect(surfaces[id]!));
+      double whole(String id) => areaOf(surfaceContentWorldRect(surfaces[id]!));
+      const square = 'square over the canvas';
+
+      for (final (scene, camera, areas) in [
+        (
+          'ink and whole rows over each other',
+          square,
+          [
+            ink('pasteboard'),
+            whole('interior'),
+            ink('leftTop'),
+            whole('rightBottom'),
+            ink('sparse'),
+          ],
+        ),
+        ('posed rows', square, [whole('interior'), whole('rightBottom')]),
+        (
+          'a blur and a colour effect',
+          square,
+          [whole('interior'), ink('leftTop')],
+        ),
+        (
+          'ink rows through normal and add',
+          'turned',
+          [for (final id in cels.keys) whole(id)],
+        ),
+      ]) {
+        rastered.clear();
+        await render(scenes[scene]!(), cameras[camera]!);
+
+        expect(rastered.take(areas.length), areas, reason: '$scene, $camera');
+      }
+    });
+  });
+
   testWidgets('🎯rows kept for renders that do not all lay them down texel '
       'for texel are composed whole — even for one that does', (
     tester,

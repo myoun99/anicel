@@ -62,4 +62,60 @@ void main() {
     expect(mapped.x, closeTo(480 + 50, 1e-9));
     expect(mapped.y, closeTo(270, 1e-9));
   });
+
+  group('whether a camera moves canvas pixels onto output pixels whole', () {
+    final at = CanvasPoint(x: 1000, y: 600);
+    for (final (says, pose, outputSize, whole) in <(
+      String,
+      CameraPose,
+      CanvasSize?,
+      bool,
+    )>[
+      ('square, on whole pixels', CameraPose(center: at), null, true),
+      (
+        'moved by whole pixels',
+        CameraPose(center: CanvasPoint(x: 1001, y: 598)),
+        null,
+        true,
+      ),
+      (
+        'half a pixel across',
+        CameraPose(center: CanvasPoint(x: 1000.5, y: 600)),
+        null,
+        false,
+      ),
+      (
+        'half a pixel down',
+        CameraPose(center: CanvasPoint(x: 1000, y: 600.5)),
+        null,
+        false,
+      ),
+      ('zoomed', CameraPose(center: at, zoom: 2), null, false),
+      ('turned', CameraPose(center: at, rotationDegrees: 90), null, false),
+      (
+        'onto an output of another size',
+        CameraPose(center: at),
+        const CanvasSize(width: 960, height: 540),
+        false,
+      ),
+    ]) {
+      test('$says: $whole', () {
+        expect(
+          cameraMovesPixelsWhole(pose, frame, outputSize: outputSize),
+          whole,
+        );
+      });
+    }
+
+    test('a frame of odd size square over itself: its center and its '
+        'output\'s fall between pixels together', () {
+      expect(
+        cameraMovesPixelsWhole(
+          CameraPose(center: CanvasPoint(x: 50.5, y: 30.5)),
+          const CanvasSize(width: 101, height: 61),
+        ),
+        isTrue,
+      );
+    });
+  });
 }

@@ -41,18 +41,16 @@ bool cameraMovesPixelsWhole(
   CanvasSize cameraFrameSize, {
   CanvasSize? outputSize,
 }) {
-  final m = cameraProjectionMatrix(
+  final projection = cameraProjectionMatrix(
     pose,
     cameraFrameSize,
     outputSize: outputSize,
-  ).storage;
-  bool whole(double value) => value == value.roundToDouble();
-  return m[0] == 1 &&
-      m[1] == 0 &&
-      m[4] == 0 &&
-      m[5] == 1 &&
-      whole(m[12]) &&
-      whole(m[13]);
+  );
+  final x = projection.storage[12];
+  final y = projection.storage[13];
+  return x == x.roundToDouble() &&
+      y == y.roundToDouble() &&
+      projection == Matrix4.translationValues(x, y, 0);
 }
 
 /// The camera's SHOT → canvas: where a point of the frame the camera shows
