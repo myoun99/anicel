@@ -36,6 +36,7 @@ import 'timeline_frame_coordinate_policy.dart'
     show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_tile_store.dart';
@@ -53,7 +54,7 @@ TextPainter _glyphPainter(
   String text,
   TextStyle style, {
   double tightening = 0,
-}) => timelineGlyphPainter(text, style, tightening: tightening);
+}) => laidOutGlyph(text, style, tightening: tightening);
 
 /// Where a cell of [layer]'s row can paint differently from the cell before
 /// it, ascending — the edges of its STRETCHES: between two edges every cell

@@ -22,6 +22,7 @@ import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
 import 'timeline/timeline_frame_window.dart';
+import 'text/laid_out_glyph.dart';
 import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
     show TimelineChromeGround, TimelineChromeGrounds;
@@ -616,7 +617,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// The layer badge's glyph ([Icons.link]) in the accent, centred in [rect].
   void _paintLinkIcon(Canvas canvas, Rect rect) {
     const icon = Icons.link;
-    final glyph = timelineGlyphPainter(
+    final glyph = laidOutGlyph(
       String.fromCharCode(icon.codePoint),
       TextStyle(
         fontSize: rect.height,

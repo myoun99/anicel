@@ -19,7 +19,7 @@ import '../text/word_condensation.dart';
 import '../present_pacing.dart' show quietForBackgroundGpuWork;
 import '../../services/playback/present_slot.dart' show quietBetweenHeldFrames;
 import 'timeline_frame_window.dart';
-import 'timeline_glyph_cache.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
@@ -805,7 +805,7 @@ class TimelineGridTileStore {
     // parameter, so the shrink and the narrowing happen in the bake, before
     // upload; the native ABI is untouched.
     return bakeWordCoverage(
-      timelineGlyphPainter(
+      laidOutGlyph(
         text,
         style.copyWith(color: const Color(0xFFFFFFFF)),
         tightening: tightening,

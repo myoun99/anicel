@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dialogue_fit_layout.dart';
+import 'laid_out_glyph.dart';
 import 'word_condensation.dart';
 import 'vertical_writing_text.dart';
 
@@ -44,10 +45,7 @@ void paintDialogueFitColumn(
   double condense(double extentAlongColumn) =>
       wordCondensation(extent: extentAlongColumn, room: cellExtent);
   for (var i = 0; i < glyphs.length; i += 1) {
-    final painter = TextPainter(
-      text: TextSpan(text: glyphs[i], style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = laidOutGlyph(glyphs[i], style);
     paintVerticalTextCell(
       canvas,
       verticalGlyphCell(glyphs[i]),
@@ -74,10 +72,7 @@ double dialogueNaturalExtent(
 }) {
   var extent = 0.0;
   for (final glyph in text.characters) {
-    final painter = TextPainter(
-      text: TextSpan(text: glyph, style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = laidOutGlyph(glyph, style);
     if (axis == Axis.horizontal) {
       extent += painter.width;
       continue;

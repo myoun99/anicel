@@ -31,7 +31,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
-import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart'
     show TimelineGridTileOp;
@@ -108,7 +108,7 @@ void main() {
 
   Size naturalName(TimelineRowCellsPainter painter, int start) {
     final model = painter.cellModelAt(start);
-    return timelineGlyphPainter(model.glyph, painter.glyphStyleFor(model)).size;
+    return laidOutGlyph(model.glyph, painter.glyphStyleFor(model)).size;
   }
 
   const zooms = [48.0, 24.0, 12.0, 6.0, 2.4];
@@ -136,7 +136,7 @@ void main() {
           final style = painter.glyphStyleFor(model);
           final layout = painter.cellWordSetFor(start, model.glyph, style);
           // The word as it is set: its letter gaps gave what they could.
-          final word = timelineGlyphPainter(
+          final word = laidOutGlyph(
             model.glyph,
             style,
             tightening: layout.tightening,
@@ -380,9 +380,9 @@ void main() {
   test('the glyph cache tells two faces of one word apart', () {
     const first = TextStyle(fontSize: 9, fontFamily: 'First');
     const second = TextStyle(fontSize: 9, fontFamily: 'Second');
-    timelineGlyphPainter('12', first);
+    laidOutGlyph('12', first);
     expect(
-      timelineGlyphPainter('12', second).text!.style!.fontFamily,
+      laidOutGlyph('12', second).text!.style!.fontFamily,
       'Second',
       reason: '↩️the cache keyed on colour, weight and size alone, so a '
           'number laid out in one face was served in another',
@@ -450,7 +450,7 @@ void main() {
   // builds as a widget too, set by the painted word's own code.
   test('a word built as a widget gives up its letter gaps first', () {
     const style = TextStyle(fontSize: 10, fontFamily: 'Face');
-    final natural = timelineGlyphPainter('12', style).size;
+    final natural = laidOutGlyph('12', style).size;
     final word = RenderTimelineBlockText(
       text: '12',
       style: style,
@@ -817,7 +817,7 @@ void main() {
     test('a cell\'s word centres on its cell while it fits', () {
       final painter = cellsPainter(cell);
       final small = base.copyWith(fontSize: 4);
-      final word = timelineGlyphPainter('x', small).size;
+      final word = laidOutGlyph('x', small).size;
       for (final (start, _) in blocks) {
         final laid = painter.cellRectFor(start);
         expect(
@@ -847,7 +847,7 @@ void main() {
       // ⚠️A narrowing is quantised down to 1/64 (the tile bake is keyed on
       // it), which would hide a fraction of a pixel on a much wider word —
       // so the word is a hair wider than the block: it must narrow.
-      final wider = timelineGlyphPainter('x', wide(room + 0.1)).width;
+      final wider = laidOutGlyph('x', wide(room + 0.1)).width;
       final narrowed = painter.cellWordSetFor(1, 'x', wide(room + 0.1));
       expect(narrowed.fit.x, lessThan(1), reason: 'the block cannot hold it');
       expect(

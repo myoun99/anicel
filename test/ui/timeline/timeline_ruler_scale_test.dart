@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/text/word_condensation.dart' show wordFitsAsItIs;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineFrameBoundaryLineInk, timelineGridLineSnap, timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_second.dart'
@@ -163,7 +164,7 @@ void main() {
       'next (I-22)', () {
     double widest(TextStyle type, int digits) => [
       for (var digit = 0; digit <= 9; digit += 1)
-        timelineGlyphPainter('$digit' * digits, type).width,
+        laidOutGlyph('$digit' * digits, type).width,
     ].reduce(math.max);
 
     test('the densest rung the widest number fits, with its gap', () {

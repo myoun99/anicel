@@ -10,6 +10,7 @@ import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
@@ -228,7 +229,7 @@ class TimelineFrameRulerPainter extends CustomPainter
                 ? colorScheme.onSurface
                 : colorScheme.onSurfaceVariant,
           );
-      final painter = timelineGlyphPainter(
+      final painter = laidOutGlyph(
         writing.number,
         scale.inkOf(style, current: current),
       );
@@ -679,7 +680,7 @@ final class TimelineRulerScale {
   }) {
     var widest = 0.0;
     for (var digit = 0; digit <= 9; digit += 1) {
-      final glyph = timelineGlyphPainter('$digit' * digits, type);
+      final glyph = laidOutGlyph('$digit' * digits, type);
       final extent = extentAlong(
         axis,
         Size(math.min(glyph.width, widthAtMost), glyph.height),

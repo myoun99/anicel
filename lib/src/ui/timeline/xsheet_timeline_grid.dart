@@ -45,6 +45,7 @@ import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
@@ -1521,7 +1522,7 @@ class XSheetFrameRailPainter extends CustomPainter
                 ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
                 : colorScheme.onSurface,
           );
-      final painter = timelineGlyphPainter(
+      final painter = laidOutGlyph(
         writing.number,
         scale.inkOf(style, current: current),
       );

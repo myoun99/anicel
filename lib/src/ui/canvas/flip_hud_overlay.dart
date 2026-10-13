@@ -8,6 +8,7 @@ import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
+import '../text/laid_out_glyph.dart';
 import '../timeline/timeline_glyph_cache.dart';
 import '../timeline/timeline_lane_rows.dart'
     show strokeKeysLineClearOf, timelineKeysLineSpan;
@@ -629,7 +630,7 @@ class FlipHudPainter extends CustomPainter
 
   TextPainter _kindIconPainter(FlipHudRow row, Color ink) {
     final icon = layerKindIcon(row.kind);
-    return timelineGlyphPainter(
+    return laidOutGlyph(
       String.fromCharCode(icon.codePoint),
       TextStyle(
         fontSize: 13,
@@ -651,7 +652,7 @@ class FlipHudPainter extends CustomPainter
       _upright(canvas, rect, (box) => _paintRailHeader(canvas, box, row, ink));
       return;
     }
-    final namePainter = timelineGlyphPainter(
+    final namePainter = laidOutGlyph(
       row.name,
       _railNameStyle(row, ink),
       maxWidth: rect.width - (row.isLane ? 12 : 26),
