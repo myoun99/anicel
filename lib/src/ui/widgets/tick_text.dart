@@ -165,9 +165,9 @@ class RenderTickText extends RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
+    // ⛔Nothing to catch up on: a line is away only inside the build that
+    // moves it, and no tick lands in a build (mutation, I-57 10-14).
     _ticks?.addListener(_heard);
-    // What ticked while it was away.
-    _heard();
   }
 
   @override

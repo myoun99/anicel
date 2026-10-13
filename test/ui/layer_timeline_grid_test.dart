@@ -431,6 +431,16 @@ void main() {
           .left,
       moreOrLessEquals(windowRight),
     );
+    // And the rail's own bar is as long as the window it drives — kept as
+    // it was built, it reached on under the frames (I-57, 10-14).
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('timeline-rail-scrollbar')),
+          )
+          .width,
+      moreOrLessEquals(200),
+    );
   });
 
   testWidgets('keeps header and add-layer cell sticky during vertical scroll', (

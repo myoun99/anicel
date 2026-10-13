@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/widgets/tick_text.dart';
@@ -127,6 +128,39 @@ void main() {
     expect(line(tester).data, 'b1');
   });
 
+  testWidgets('a line handed other ticks hears those', (tester) async {
+    final other = ValueNotifier<String>('a');
+    addTearDown(other.dispose);
+    Widget host(ValueNotifier<String> ticks) => Directionality(
+      textDirection: TextDirection.ltr,
+      child: TickText(ticks: ticks, words: () => ticks.value, style: style),
+    );
+    await tester.pumpWidget(host(words));
+    await tester.pumpWidget(host(other));
+
+    other.value = 'b';
+
+    expect(line(tester).data, 'b');
+  });
+
+  testWidgets('a tick that leaves the words as they were asks for nothing', (
+    tester,
+  ) async {
+    final ticks = ValueNotifier<int>(0);
+    addTearDown(ticks.dispose);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: TickText(ticks: ticks, words: () => 'same', style: style),
+      ),
+    );
+
+    ticks.value = 1;
+
+    expect(line(tester).debugNeedsPaint, isFalse);
+    expect(line(tester).debugNeedsLayout, isFalse);
+  });
+
   testWidgets('a line taken away stops hearing the ticks', (tester) async {
     final key = GlobalKey();
     Widget host({required bool shown}) => Directionality(
@@ -182,10 +216,17 @@ void main() {
         ),
       );
 
-  void expectSetAsAText(WidgetTester tester) => expect(
-    tester.getSize(find.byType(TickText)),
-    tester.getSize(find.byType(Text)),
-  );
+  void expectSetAsAText(WidgetTester tester) {
+    expect(
+      tester.getSize(find.byType(TickText)),
+      tester.getSize(find.byType(Text)),
+    );
+    // The test font sets bold as wide as plain: the type says it.
+    expect(
+      line(tester).type.style,
+      tester.renderObject<RenderParagraph>(find.byType(RichText)).text.style,
+    );
+  }
 
   testWidgets('it is set as a Text is: over the ambient style, at the text '
       'scale, in bold where bold text is asked for', (tester) async {
@@ -205,6 +246,25 @@ void main() {
 
     expect(tester.getSize(find.byType(TickText)), isNot(atOne));
     expectSetAsAText(tester);
+  });
+
+  testWidgets('a room narrower than the line cuts it, as a Text\'s does', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 4,
+            child: TickText(words: () => '120', style: style),
+          ),
+        ),
+      ),
+    );
+
+    expect(line(tester).size.width, 4);
+    expect(line(tester), paints..clipRect());
   });
 
   testWidgets('it reads as its words, described on its own', (tester) async {

@@ -132,13 +132,11 @@ abstract class KeptPiece extends StatefulWidget {
 
 class _KeptPieceState extends State<KeptPiece> {
   Object? _facts;
-  Widget? _built;
 
-  @override
-  void reassemble() {
-    super.reassemble();
-    _built = null;
-  }
+  /// What was built from [_facts]. ⛔A hot reload drops nothing here: it
+  /// builds every element again, the `Builder` [KeptPiece.buildKept] runs
+  /// in among them (mutation, I-57 10-14).
+  Widget? _built;
 
   @override
   Widget build(BuildContext context) {
