@@ -126,7 +126,21 @@ void main() {
     test('🚨laid alike, it is the same row — what draws it knows it by '
         'identity (I-57)', () {
       final a = cut('a', 10, conteLayer: conte('a', {0: block('a1', 10)}));
-      final row = trackConteRowShown(trackId, entriesOf([a]));
+      final [laid] = entriesOf([a]);
+      // The very cut laid again — as a drag in flight lays the cuts behind
+      // the one it re-times: the same instance, elsewhere.
+      StoryboardTimelineLayoutEntry relaid({int by = 0, int? duration}) =>
+          StoryboardTimelineLayoutEntry(
+            trackId: laid.trackId,
+            cutId: laid.cutId,
+            trackIndex: laid.trackIndex,
+            cutIndex: laid.cutIndex,
+            startFrame: laid.startFrame + by,
+            endFrame: laid.startFrame + by + (duration ?? laid.duration),
+            duration: duration ?? laid.duration,
+            cut: a,
+          );
+      final row = trackConteRowShown(trackId, [laid]);
 
       expect(
         trackConteRowShown(trackId, entriesOf([a])),
@@ -135,26 +149,29 @@ void main() {
             'film\'s conte cells, and said them all again, for a cut '
             'crossed under the playhead',
       );
-      expect(
-        trackConteRowShown(trackId, entriesOf([cut('z', 4), a])),
-        isNot(same(row)),
-        reason: 'the same cut laid elsewhere is another row',
-      );
-      expect(
-        trackConteRowShown(
-          trackId,
+      // Each laying is asked right after [laid]'s row was, so it is told
+      // apart from THAT one.
+      for (final (other, seat, reason) in [
+        ([relaid(by: 3)], 0, 'the very cut moved is another row'),
+        ([relaid(duration: 6)], 0, 'and so is the very cut held shorter'),
+        (entriesOf([cut('z', 4), a]), 0, 'and the cut laid after another'),
+        (entriesOf([a, cut('z', 4)]), 0, 'and the cut with another after'),
+        (
           entriesOf([
             cut('a', 10, conteLayer: conte('a', {0: block('a2', 10)})),
           ]),
+          0,
+          'and another cut in its place',
         ),
-        isNot(same(row)),
-        reason: 'and so is another cut in its place',
-      );
-      expect(
-        trackConteRowShown(trackId, entriesOf([a]), seat: 1),
-        isNot(same(row)),
-        reason: 'and the row at another seat',
-      );
+        ([laid], 1, 'and the row at another seat'),
+      ]) {
+        final kept = trackConteRowShown(trackId, [laid]);
+        expect(
+          trackConteRowShown(trackId, other, seat: seat),
+          isNot(same(kept)),
+          reason: reason,
+        );
+      }
     });
 
     test('a cut with no conte layer, and a gap, hold nothing', () {
