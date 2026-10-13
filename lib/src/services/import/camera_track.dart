@@ -147,6 +147,10 @@ final class _TransformLane<T> {
   final KeyValueSpace<T> space;
   final double Function(T played, T shown) miss;
   final double tolerance;
+
+  /// Whether a way whose farthest frame misses the file by [worst] plays
+  /// it — the tolerance is as far as it may be.
+  bool plays(double worst) => worst <= tolerance;
 }
 
 /// How far [played] is from [shown] on the axis it is the farther on.
@@ -321,11 +325,11 @@ final class _LaneKeys<T> {
     final straight = _worstMiss(from, to, _straight);
     final eased = _easedWay(from, to);
     final bent = eased == null ? double.infinity : _worstMiss(from, to, eased);
-    if (straight <= lane.tolerance &&
+    if (lane.plays(straight) &&
         straight - bent <= lane.tolerance * _nearerBy) {
       return _straight;
     }
-    return bent <= lane.tolerance ? eased : null;
+    return lane.plays(bent) ? eased : null;
   }
 
   /// How far [way] from index [from] to [to] plays from the file on the

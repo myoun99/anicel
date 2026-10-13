@@ -198,17 +198,38 @@ void main() {
     expect(coarser.keys[0]!.outgoing, isA<EaseSide>(), reason: '0.05px');
   });
 
-  test('a way out and back by under a pixel is one straight way — no ease '
-      'bends a way that ends where it starts', () {
+  test('a way out and back by a pixel is one straight way — no ease bends a '
+      'way that ends where it starts, and the pixel is as far as it may '
+      'be', () {
     final poses = baked(
       25,
-      (f) => pose(100 + 0.5 * math.sin(math.pi * f / 24), 80),
+      (f) => pose(100 + math.sin(math.pi * f / 24), 80),
     );
     final position = keyed(poses).track.position;
 
     expect(position.keys.keys, [0, 24]);
     expect(position.keys[0]!.outgoing, KeySide.linear);
     expectPlaysBack(poses, keyed(poses));
+  });
+
+  test('a way that only runs ahead of a straight one — fast out, slow in — '
+      'is as far off as one that lags it, on every lane', () {
+    final poses = baked(30, (f) {
+      final t = f / 29;
+      final ahead = 1 - (1 - t) * (1 - t);
+      return pose(100 + 300 * ahead, 80, zoom: 1 + ahead, turn: 30 * ahead);
+    });
+    final camera = keyed(poses);
+
+    for (final lane in [
+      camera.track.position,
+      camera.track.scale,
+      camera.track.rotation,
+    ]) {
+      expect(lane.keys.keys, [0, 29]);
+      expect(lane.keys[0]!.outgoing, isA<EaseSide>());
+    }
+    expectPlaysBack(poses, camera);
   });
 
   test('a move that turns a corner keeps it: the keys either side of it run '

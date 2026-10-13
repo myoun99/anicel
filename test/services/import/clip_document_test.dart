@@ -883,6 +883,11 @@ void main() {
     expect(move.span, (start: 12, end: 48));
     expect(keys(move.pivotX), [(12.0, 100.0)]);
     expect(keys(move.pivotY), [(12.0, 50.0)]);
+    expect(
+      [move.pivotX.unread, move.pivotY.unread, move.x.unread],
+      [false, false, false],
+      reason: 'a held value, and one the clip says nothing of, are read',
+    );
   });
 
   test('a curve a file keeps oddly still reads: a pulled key with no slopes '
