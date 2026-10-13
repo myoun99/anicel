@@ -1,6 +1,7 @@
 import 'dart:ui' show Offset;
 
 import '../../core/cubic_curve.dart';
+import '../cut_camera.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
 import 'tvpp_parse.dart';
@@ -264,6 +265,23 @@ TvppCameraChannels parseTvppCameraProfiles(String cameraDataText) {
     rotation: channel('rotation'),
     zoom: channel('zoom'),
     size: channel('size'),
+  );
+}
+
+/// The frames — 0-based instants — each channel the app keys apart is
+/// keyed on: the keys that author it ([_keyedIndices], the bake's own
+/// reading of `flags`). Where a cut's camera keys stand (I-89 ⑦).
+CameraKeyFrames tvppCameraKeyFrames(List<TvppCameraPoint> points) {
+  if (points.isEmpty) {
+    return (position: const [], zoom: const [], rotation: const []);
+  }
+  List<int> keyedOn(int bit) => [
+    for (final index in _keyedIndices(points, bit)) points[index].instant,
+  ];
+  return (
+    position: keyedOn(_positionBit),
+    zoom: keyedOn(_zoomBit),
+    rotation: keyedOn(_rotationBit),
   );
 }
 

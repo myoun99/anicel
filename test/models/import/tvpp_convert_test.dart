@@ -286,7 +286,19 @@ void main() {
       expect(still.camera.positions, hasLength(12));
       expect(still.camera.positions.first.x, 160);
       expect(still.camera.positions.last.x, 160);
-      expect(still.camera.keyframes, hasLength(1));
+      expect(
+        [
+          still.camera.keyedOn.position,
+          still.camera.keyedOn.zoom,
+          still.camera.keyedOn.rotation,
+        ],
+        [
+          [0],
+          [0],
+          [0],
+        ],
+        reason: 'one key, on every lane',
+      );
 
       // A linear two-key pan (no easing profile): halfway in time is
       // halfway in space. The key is REACHED one frame past its instant

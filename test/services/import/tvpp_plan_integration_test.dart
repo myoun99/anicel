@@ -151,7 +151,7 @@ void main() {
       camera: TvpCamera(
         width: 320,
         height: 180,
-        keyframes: [],
+        keyedOn: (position: [], zoom: [], rotation: []),
         positions: [],
       ),
       layers: [],

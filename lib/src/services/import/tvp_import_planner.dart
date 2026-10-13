@@ -324,7 +324,7 @@ SplayTreeMap<int, TimelineExposure> _withTvpEdgeMarks(
 
 /// The clip's camera as a [CutCamera].
 ///
-/// **Built from the BAKED `positions`, not the authored `points`.**
+/// **Played from the BAKED `positions`, not the authored `points`.**
 /// TVPaint's own curve does not reach its keyframe values: in the
 /// `edge_behaviors` fixture the key at frame 24 reads `y: 853.0` while the
 /// baked curve TVPaint displayed ends at `y: 845.332`, and the first key's
@@ -332,9 +332,16 @@ SplayTreeMap<int, TimelineExposure> _withTvpEdgeMarks(
 /// framed the move they SAW, so the baked curve is the truth and the keys
 /// are a lossy summary of it.
 ///
-/// A key on every frame would be unreadable on the timeline, so
-/// [cutCameraOfFramePoses] keeps only the keys the move needs — the one
-/// way a baked camera becomes keys, the .clip import's as well.
+/// So the keys stand where TVPaint's stand, each channel's on its own
+/// frames ([TvpCamera.keyedOn], I-89 ⑦), each carrying the pose TVPaint
+/// shows on its frame, and every way between two is TVPaint's ease as an
+/// AE ease, as far as one plays it ([cutCameraOfFramePoses], the .clip
+/// import's as well). TVPaint stretches its whole path a frame long — it
+/// passes each key after the key's own frame, the last a whole frame late —
+/// so a cut that runs on past the last key has one more key where the move
+/// really stops. ↩️A key was kept wherever a straight line stopped playing
+/// the bake: a slow start came in as many linear keys rather than two keys
+/// and an ease.
 ///
 /// `angle` arrives NEGATED — the two apps count rotation opposite ways.
 /// See [_cameraPoseFor] for the measurement that settled it.
@@ -342,26 +349,13 @@ CutCamera planTvpCamera({
   required TvpCamera camera,
   required int frameCount,
 }) {
-  // `keyframes` is the gate: the .tvpp reader only fills either list
-  // when the clip's `[cameradata]` carries authored keys.
-  if (camera.keyframes.isEmpty || camera.positions.isEmpty) {
+  // `positions` is the gate: the .tvpp reader only bakes it when the
+  // clip's `[cameradata]` carries authored keys.
+  if (camera.positions.isEmpty) {
     return CutCamera.empty();
   }
-  final source = camera.positions;
-  // A STILL camera stays one key. The baked curve holds one pose per
-  // frame either way, and the simplifier keeps both endpoints of any
-  // track it walks — which turned TVPaint's single frame-1 key into a
-  // key on the last frame too (288, hands-on).
-  if (!camera.isAnimated) {
-    final first = source.first;
-    final index = (first.frame - 1).clamp(0, frameCount - 1);
-    return CutCamera(
-      keyframes: {index: _cameraPoseFor(first)},
-    );
-  }
-
   final byFrame = SplayTreeMap<int, CameraPose>();
-  for (final pose in source) {
+  for (final pose in camera.positions) {
     // Poses number frames from 1, TVPaint-style.
     final index = pose.frame - 1;
     if (index < 0 || index >= frameCount) {
@@ -369,7 +363,7 @@ CutCamera planTvpCamera({
     }
     byFrame.putIfAbsent(index, () => _cameraPoseFor(pose));
   }
-  return cutCameraOfFramePoses(byFrame);
+  return cutCameraOfFramePoses(byFrame, keyedOn: camera.keyedOn);
 }
 
 /// One TVPaint pose in Anicel's terms. [CameraPose.center] is the view

@@ -1418,7 +1418,32 @@ final class _CutCameras {
         frame: _poseAt(view.start + frame, folder.camera!, track),
     });
     _sayWhatItMoves(folder, poses.values);
-    return cutCameraOfFramePoses(poses);
+    return cutCameraOfFramePoses(poses, keyedOn: _keyedOn(view, track));
+  }
+
+  /// The cut frames the clips of [track] key each of the camera's lanes on
+  /// (I-89 ⑦): the position where the point or the pivot it turns and
+  /// scales about is keyed — the frame's centre is placed by the two
+  /// ([clipPlaced]) — the zoom where the scale is, the turn where the turn
+  /// is.
+  static CameraKeyFrames _keyedOn(_CutView view, ClipTrack? track) {
+    final moves = track?.cameraMoves ?? const <ClipCameraMove>[];
+    List<int> on(Iterable<PropertyTrack<double>> curves) => [
+      for (final curve in curves)
+        for (final frame in curve.keys.keys) frame - view.start,
+    ];
+    return (
+      position: on([
+        for (final move in moves) ...[
+          move.x,
+          move.y,
+          move.pivotX,
+          move.pivotY,
+        ],
+      ]),
+      zoom: on([for (final move in moves) move.scale]),
+      rotation: on([for (final move in moves) move.degrees]),
+    );
   }
 
   /// Through the shooting frame — or, with none, the canvas whole.

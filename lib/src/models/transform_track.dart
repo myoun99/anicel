@@ -35,11 +35,12 @@ enum TransformPropertyId { anchorPoint, position, scale, rotation, opacity }
 /// default pose (the camera's canvas-centered pose, a layer's identity).
 class TransformTrack {
   /// [keyframes] as keys on position, scale and rotation, running straight
-  /// between them — what an import's baked camera is kept in
-  /// (`cutCameraOfFramePoses` drops every frame a straight line between its
-  /// neighbours reproduces). ⛔Not a key laid by hand: that one is smooth
-  /// from the start ([positionLaneKeyed], I-89-Q10 B), and a key smooth here
-  /// would bend the move the import measured.
+  /// between them — poses set whole, every lane at once (`CutCamera.new`).
+  /// ⛔Not a key laid by hand: that one is smooth from the start
+  /// ([positionLaneKeyed], I-89-Q10 B), and a key smooth here would bend
+  /// the way between the poses it was given. ↩️An import's baked camera was
+  /// kept here; it keys each lane where its file does now
+  /// (`cutCameraOfFramePoses`, I-89 ⑦).
   TransformTrack({Map<int, TransformPose>? keyframes})
     : anchorPoint = PropertyTrack.empty(),
       position = PropertyTrack(

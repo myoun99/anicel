@@ -5,6 +5,15 @@ import 'camera_pose.dart';
 import 'property_track.dart';
 import 'transform_track.dart';
 
+/// The frames a camera's three lanes are keyed on, each its own — the
+/// position, the zoom and the turn, as After Effects keys them apart and
+/// as the files an import reads key them (I-89 ⑦).
+typedef CameraKeyFrames = ({
+  Iterable<int> position,
+  Iterable<int> zoom,
+  Iterable<int> rotation,
+});
+
 /// Per-cut camera animation: camera poses keyframed by playback frame index.
 ///
 /// A thin cut-level wrapper over the shared [TransformTrack] mechanics (the
@@ -18,9 +27,11 @@ import 'transform_track.dart';
 /// 하나 그대로」), which this writes to both axes and reads back as the one
 /// it is.
 class CutCamera {
-  /// [keyframes] as keys running straight between them, as an import bakes
-  /// a camera ([TransformTrack.new]); a key written new is smooth
-  /// ([withKeyframe]).
+  /// [keyframes] as keys on every lane, running straight between them
+  /// ([TransformTrack.new]) — a camera set whole, as an import sets a still
+  /// one; a key written new is smooth ([withKeyframe]). ↩️An import's
+  /// MOVING camera was kept here too; it keys each lane where its file does
+  /// now (`cutCameraOfFramePoses`, I-89 ⑦).
   CutCamera({Map<int, CameraPose>? keyframes})
     : track = TransformTrack(
         keyframes: keyframes == null

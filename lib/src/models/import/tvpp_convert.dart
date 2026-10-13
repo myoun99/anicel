@@ -199,18 +199,6 @@ TvppClipConversion convertTvppClip(
     parseTvppCameraProfiles(clip.cameraDataText),
     frameCount: clip.frameCount,
   );
-  final keyframes = [
-    for (final p in clip.cameraPoints)
-      TvpCameraPose(
-        frame: p.instant + 1,
-        x: p.x,
-        y: p.y,
-        angleDegrees: p.rotationDegrees,
-        scale: p.zoomFactor,
-        sizeX: p.sizeX,
-        sizeY: p.sizeY,
-      ),
-  ];
 
   return TvppClipConversion(
     result: TvpImportClip(
@@ -228,7 +216,9 @@ TvppClipConversion convertTvppClip(
       camera: TvpCamera(
         width: clip.width,
         height: clip.height,
-        keyframes: poses.isEmpty ? const [] : keyframes,
+        keyedOn: tvppCameraKeyFrames(
+          poses.isEmpty ? const [] : clip.cameraPoints,
+        ),
         positions: poses,
       ),
       layers: layers,

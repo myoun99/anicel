@@ -12,6 +12,7 @@
 /// project memory `tvpp-format-notes`).
 library;
 
+import '../cut_camera.dart';
 import 'import_warning.dart';
 
 enum TvpEdgeBehavior {
@@ -104,37 +105,20 @@ class TvpCamera {
   const TvpCamera({
     required this.width,
     required this.height,
-    required this.keyframes,
+    required this.keyedOn,
     required this.positions,
   });
 
   final int width;
   final int height;
 
-  /// Authored keys. Empty when the clip has no camera work.
-  final List<TvpCameraPose> keyframes;
+  /// The 0-based frames each channel's authored keys stand on
+  /// (`tvppCameraKeyFrames`). Empty when the clip has no camera work.
+  final CameraKeyFrames keyedOn;
 
   /// One entry per frame — baked by `tvpp_camera_bake.dart` from the
   /// authored keys and their easing profiles.
   final List<TvpCameraPose> positions;
-
-  /// Whether the camera actually goes anywhere — a still camera bakes a
-  /// full [positions] list of identical poses, which is not camera work.
-  bool get isAnimated {
-    if (positions.length < 2) {
-      return false;
-    }
-    final first = positions.first;
-    for (final pose in positions.skip(1)) {
-      if (pose.x != first.x ||
-          pose.y != first.y ||
-          pose.angleDegrees != first.angleDegrees ||
-          pose.scale != first.scale) {
-        return true;
-      }
-    }
-    return false;
-  }
 }
 
 /// One layer of the clip, with its timeline already resolved.
