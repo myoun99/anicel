@@ -129,8 +129,13 @@ void main() {
   );
 
   /// The panel as a host builds it: again whenever [_Host.notify] moves, of
-  /// what [host] holds then.
-  Future<void> pumpHost(WidgetTester tester, _Host host) => tester.pumpWidget(
+  /// what [host] holds then — the cut under the playhead [under] where one
+  /// is handed instead.
+  Future<void> pumpHost(
+    WidgetTester tester,
+    _Host host, {
+    _HeardCut? under,
+  }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: ValueListenableBuilder<int>(
@@ -138,7 +143,7 @@ void main() {
           builder: (_, _, _) => StoryboardPanel(
             project: host.project.value,
             activeCutId: host.active.value,
-            cutUnderPlayhead: host.under,
+            cutUnderPlayhead: under ?? host.under,
             currentRowHooks: TimelineCurrentRowHooks(currentRow: host.standing),
             pixelsPerFrame: 8,
             projectFrameRate: ProjectFrameRate.fps24,
@@ -306,7 +311,8 @@ void main() {
   });
 
   testWidgets('🚨what a V row hears it lets go of — when its track goes, '
-      'and when the panel does', (tester) async {
+      'when it is handed another cut under the playhead, and when the panel '
+      'goes', (tester) async {
     final host = newHost(heard: peaks);
     await pumpHost(tester, host);
     final hearing = host.under.hearers;
@@ -321,7 +327,13 @@ void main() {
       reason: 'the new track hears it, and the gone one no longer',
     );
 
+    final handedAnew = _HeardCut(const CutId('c1'));
+    addTearDown(handedAnew.dispose);
+    await pumpHost(tester, host, under: handedAnew);
+    expect(host.under.hearers, 0, reason: 'the one it was handed before');
+    expect(handedAnew.hearers, hearing);
+
     await tester.pumpWidget(const SizedBox.shrink());
-    expect(host.under.hearers, 0);
+    expect(handedAnew.hearers, 0);
   });
 }
