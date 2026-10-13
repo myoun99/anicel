@@ -15,11 +15,12 @@ import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 import 'package:anicel/src/ui/export/held_rows.dart';
 
-/// The row pictures a video run's held cut pictures are made of (F-289-Q21,
-/// 유저 2026-10-07: 「붙든다 — 재생 줄의 허용치 안에서」): a row a held
-/// picture is made of composes once for every picture after it that shows
-/// it, and goes when the last of them does — within the room playback's
-/// line lends.
+/// The row pictures a video run's cut pictures are made of (F-289-Q21,
+/// 유저 2026-10-07: 「붙든다 — 재생 줄의 허용치 안에서」): a cel's row is
+/// composed once for the frames of the run that show it — held under the
+/// cel's address from the frame that composes it to the last frame ahead
+/// that shows it, within the room playback's line lends, and where that is
+/// short the row shown latest makes room.
 void main() {
   /// A 2×2 row picture's bytes.
   const rowBytes = 2 * 2 * 4;
@@ -29,40 +30,63 @@ void main() {
   late HeldRows rows;
   late int room;
 
+  /// The frames of the run that show each cel, in order.
+  late Map<String, List<int>> shows;
+
+  /// The frame of the run being drawn.
+  late int at;
+
+  /// The cel each surface was read for.
+  final celOf = Expando<String>('cel');
+
   /// Every picture [compose] made, in the order it made them.
   final composed = <ui.Image>[];
-
-  /// Every picture key a test made a picture under.
-  final keys = <Object>{};
 
   setUp(() {
     heldBefore = HeldRows.debugHeld;
     told = [];
     room = 1 << 30;
-    rows = HeldRows(room: () => room, onHeld: told.add);
+    shows = {};
+    at = 0;
+    rows = HeldRows(
+      room: () => room,
+      onHeld: told.add,
+      addressOf: (surface) => celOf[surface]!,
+      nextShown: (address, from) {
+        final ahead = [
+          for (final frame in shows[address] ?? const <int>[])
+            if (frame >= at + from) frame - at,
+        ];
+        return ahead.isEmpty ? null : ahead.first;
+      },
+    );
     composed.clear();
-    keys.clear();
   });
 
   tearDown(() {
-    keys.forEach(rows.letGoOf);
+    rows.dispose();
     expect(
       HeldRows.debugHeld,
       heldBefore,
-      reason: 'every picture let go: nothing left held',
+      reason: 'the run is over: nothing left held',
     );
   });
 
-  BitmapSurface surface(int seed) => BitmapSurface(
-    canvasSize: const CanvasSize(width: 2, height: 2),
-    tileSize: 2,
-    tiles: {
-      TileCoord(x: 0, y: 0): BitmapTile(
-        size: 2,
-        pixels: Uint8List(16)..fillRange(0, 16, seed),
-      ),
-    },
-  );
+  /// [cel], read — another surface each time, as a cel read again is.
+  BitmapSurface read(String cel) {
+    final surface = BitmapSurface(
+      canvasSize: const CanvasSize(width: 2, height: 2),
+      tileSize: 2,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: 2,
+          pixels: Uint8List(16)..fillRange(0, 16, cel.codeUnitAt(0)),
+        ),
+      },
+    );
+    celOf[surface] = cel;
+    return surface;
+  }
 
   Future<PositionedSurfaceImage> compose() async {
     final recorder = ui.PictureRecorder();
@@ -77,132 +101,209 @@ void main() {
     );
   }
 
-  /// One picture under [key], made of [surfaces] in that order — what it
-  /// was handed for each.
-  Future<List<ui.Image>> picture(Object key, List<BitmapSurface> surfaces) {
-    keys.add(key);
-    return rows.during(key, (asked) async {
-      return [
-        for (final surface in surfaces)
-          (await asked.of(surface, compose)).image,
-      ];
-    });
+  /// A picture made of [cels], in that order — what it was handed for each.
+  Future<List<ui.Image>> picture(List<String> cels) => rows.during(
+    (asked) async => [
+      for (final cel in cels) (await asked.of(read(cel), compose)).image,
+    ],
+  );
+
+  /// Frame [index] of the run starts, and a picture is made of [cels] — or
+  /// of nothing, where the frame is the picture the frame before it was.
+  Future<List<ui.Image>> frame(int index, [List<String>? cels]) async {
+    at = index;
+    rows.nextFrame();
+    return cels == null ? const [] : await picture(cels);
   }
 
-  test('🎯a row a held picture is made of composes ONCE for the picture '
-      'after it — the same picture, handed again', () async {
-    final a = surface(1);
-    final [aFirst, _] = await picture('p1', [a, surface(2)]);
-    final [aAgain, _] = await picture('p2', [a, surface(3)]);
+  test('🎯a cel shown again is the row composed for it — read again, '
+      'another surface, across a frame that does not show it', () async {
+    // 🔬The user's film (2026-10-13): 958 of 1,594 row rasters were of cels
+    // composed before — a cycle's drawings leave the frame and come back.
+    shows = {
+      'a': [0, 2],
+      'b': [1],
+    };
+    final [aFirst] = await frame(0, ['a']);
+    await frame(1, ['b']);
+    final [aAgain] = await frame(2, ['a']);
 
     expect(identical(aAgain, aFirst), isTrue);
-    expect(rows.made, 3, reason: 'a once, then b and c');
-    expect(composed, hasLength(3));
+    expect(rows.made, 2, reason: 'a once, and b');
+    expect(composed, hasLength(2));
   });
 
-  test('🚨a row goes when the LAST held picture made of it does, and not '
-      'before', () async {
-    final a = surface(1);
-    final [aImage, bImage] = await picture('p1', [a, surface(2)]);
-    final [_, cImage] = await picture('p2', [a, surface(3)]);
+  test('🚨a row is let go when a frame starts from which no frame shows '
+      'it — and not before', () async {
+    shows = {
+      'a': [0, 1],
+      'b': [0, 2],
+    };
+    final [aImage, bImage] = await frame(0, ['a', 'b']);
 
-    rows.letGoOf('p1');
-    expect(bImage.debugDisposed, isTrue, reason: 'only p1 was made of b');
-    expect(aImage.debugDisposed, isFalse, reason: 'p2 is made of a too');
+    await frame(1);
+    expect(aImage.debugDisposed, isFalse, reason: 'frame 1 shows a');
     expect(HeldRows.debugHeld - heldBefore, 2);
 
-    rows.letGoOf('p2');
-    expect(aImage.debugDisposed, isTrue);
-    expect(cImage.debugDisposed, isTrue);
-    expect(HeldRows.debugHeld, heldBefore);
-  });
-
-  test('a surface read again is another object, and composes again — a row '
-      'is held under the surface itself', () async {
-    await picture('p1', [surface(1)]);
-    await picture('p2', [surface(1)]);
-
-    expect(rows.made, 2, reason: 'equal surfaces, two objects');
-  });
-
-  test('a row asked for twice by one picture is held once, and goes with '
-      'it', () async {
-    final a = surface(1);
-    final [first, second] = await picture('p1', [a, a]);
-
-    expect(identical(first, second), isTrue);
-    expect(rows.made, 1);
-    rows.letGoOf('p1');
-    expect(first.debugDisposed, isTrue, reason: 'one picture, one hold');
-  });
-
-  test('🚨a row that does not fit in the room is composed for its picture '
-      'alone, and let go the moment that picture is made', () async {
-    room = rowBytes;
-    final a = surface(1);
-    final b = surface(2);
-    final [aImage, bImage] = await picture('p1', [a, b]);
-
-    expect(aImage.debugDisposed, isFalse, reason: 'a fit: held');
-    expect(bImage.debugDisposed, isTrue, reason: 'b did not: let go');
+    await frame(2);
+    expect(aImage.debugDisposed, isTrue, reason: 'no frame from 2 on shows a');
+    expect(bImage.debugDisposed, isFalse, reason: 'frame 2 shows b');
     expect(HeldRows.debugHeld - heldBefore, 1);
-
-    await picture('p2', [a, b]);
-    expect(rows.made, 3, reason: 'a held; b composed again');
   });
 
-  test('🚨rows held before the room shrank go at the next fitRoom — and a '
-      'row asked for again composes again, in the room left', () async {
-    // The storage session's review (2026-10-08): the room is asked only
-    // when a row would be held, so rows held before an OS memory warning
-    // halved the line stood over it while their pictures were held.
-    final a = surface(1);
-    final [aImage, bImage] = await picture('p1', [a, surface(2)]);
-    rows.fitRoom();
-    expect(aImage.debugDisposed, isFalse, reason: 'they fit: kept');
+  test('🚨a row no frame after its own shows is composed for its picture '
+      'alone, and let go the moment that picture is made', () async {
+    shows = {
+      'a': [0, 1],
+      'b': [0],
+    };
+    final [aImage, bImage] = await frame(0, ['a', 'b']);
+
+    expect(aImage.debugDisposed, isFalse, reason: 'frame 1 shows a: held');
+    expect(bImage.debugDisposed, isTrue, reason: 'no frame after 0 shows b');
+    expect(HeldRows.debugHeld - heldBefore, 1);
+  });
+
+  test('a cel asked for twice by one picture is composed once — held or '
+      'not', () async {
+    shows = {
+      'a': [0, 1],
+      'b': [0],
+    };
+    final [a1, a2, b1, b2] = await frame(0, ['a', 'a', 'b', 'b']);
+
+    expect(identical(a1, a2), isTrue);
+    expect(identical(b1, b2), isTrue);
+    expect(rows.made, 2);
+  });
+
+  test('🎯where the room is short, the row shown LATEST makes room — not '
+      'one shown sooner', () async {
+    room = 3 * rowBytes;
+    shows = {
+      'a': [0, 1],
+      'b': [0, 3],
+      'c': [1, 2],
+      'd': [0, 6],
+    };
+    final [_, bImage, dImage] = await frame(0, ['a', 'b', 'd']);
+    final [_, cImage] = await frame(1, ['a', 'c']);
+
+    expect(dImage.debugDisposed, isTrue, reason: 'shown at 6: latest');
+    expect(bImage.debugDisposed, isFalse, reason: 'shown at 3');
+    expect(cImage.debugDisposed, isFalse, reason: 'held: frame 2 shows it');
+  });
+
+  test('a row shown later than every row it would take the place of is '
+      'composed for its picture alone', () async {
     room = 2 * rowBytes;
-    rows.fitRoom();
-    expect(aImage.debugDisposed, isFalse, reason: 'a room they fill: kept');
+    shows = {
+      'a': [0, 2],
+      'b': [0, 3],
+      'c': [1, 5],
+    };
+    final [aImage, bImage] = await frame(0, ['a', 'b']);
+    final [cImage] = await frame(1, ['c']);
+
+    expect(cImage.debugDisposed, isTrue, reason: 'shown at 5: after both');
+    expect(aImage.debugDisposed, isFalse);
+    expect(bImage.debugDisposed, isFalse);
+  });
+
+  test('among rows shown next at one frame, the one used least lately makes '
+      'room first', () async {
+    shows = {
+      'a': [0, 1, 3],
+      'b': [0, 3],
+    };
+    final [aImage, bImage] = await frame(0, ['a', 'b']);
+    await frame(1, ['a']);
 
     room = rowBytes;
-    rows.fitRoom();
-    expect(aImage.debugDisposed, isTrue);
-    expect(bImage.debugDisposed, isTrue);
-    expect(HeldRows.debugHeld, heldBefore, reason: 'none held');
-    expect(told.last, 0, reason: 'the lender hears it');
+    await frame(2);
+    expect(bImage.debugDisposed, isTrue, reason: 'b was last used at 0');
+    expect(aImage.debugDisposed, isFalse, reason: 'a at 1');
+  });
 
+  test('🚨the rows a picture is drawn with stay while room is made for '
+      'another of its rows — whatever the run says of them', () async {
+    room = rowBytes;
+    // The run shows a at 0 and 4 alone — the picture at 1 is made of it
+    // all the same.
+    shows = {
+      'a': [0, 4],
+      'c': [1, 2],
+    };
+    final [aImage] = await frame(0, ['a']);
+    final [aThen, cImage] = await frame(1, ['a', 'c']);
+
+    expect(identical(aThen, aImage), isTrue, reason: 'LIVENESS: held');
+    expect(aImage.debugDisposed, isFalse, reason: 'drawn with: it stays');
+    expect(cImage.debugDisposed, isTrue, reason: 'no room left for c');
+  });
+
+  test('🚨a room lowered while the run goes takes rows back when the next '
+      'frame starts — the one shown latest first — and a row asked for '
+      'again composes again', () async {
+    // The storage session's review (2026-10-08): an OS memory warning
+    // halves playback's line while the run goes.
+    shows = {
+      'a': [0, 1, 2, 3],
+      'b': [0, 3],
+    };
+    final [aImage, bImage] = await frame(0, ['a', 'b']);
+
+    room = rowBytes;
+    await frame(1);
+    expect(bImage.debugDisposed, isTrue, reason: 'shown at 3, a at 1');
+    expect(aImage.debugDisposed, isFalse);
+    expect(told.last, rowBytes, reason: 'the lender hears it');
+
+    room = 0;
+    await frame(2);
+    expect(aImage.debugDisposed, isTrue);
+    expect(HeldRows.debugHeld, heldBefore, reason: 'none held');
+
+    room = 1 << 30;
     final made = rows.made;
-    final [aAgain] = await picture('p2', [a]);
-    expect(rows.made, made + 1, reason: 'a composed again');
+    final [aAgain, _] = await frame(3, ['a', 'b']);
+    expect(rows.made, made + 2, reason: 'both composed again');
     expect(identical(aAgain, aImage), isFalse);
-    expect(HeldRows.debugHeld - heldBefore, 1, reason: 'and held: it fits');
   });
 
   test('the room is asked when a row would be held, so a line that gives '
       'more holds more', () async {
+    shows = {
+      'a': [0, 1],
+      'b': [1, 2],
+    };
     room = 0;
-    await picture('p1', [surface(1)]);
+    await frame(0, ['a']);
     expect(HeldRows.debugHeld, heldBefore, reason: 'no room: none held');
 
     room = rowBytes;
-    await picture('p2', [surface(2)]);
+    await frame(1, ['b']);
     expect(HeldRows.debugHeld - heldBefore, 1);
   });
 
   test('🎯the lender hears what is held each time it changes, and 0 when '
-      'the last row goes', () async {
-    final a = surface(1);
-    await picture('p1', [a, surface(2)]);
+      'the run is over', () async {
+    shows = {
+      'a': [0, 1, 2],
+      'b': [0, 1],
+    };
+    final [aImage, _] = await frame(0, ['a', 'b']);
     expect(told.last, 2 * rowBytes);
 
-    await picture('p2', [a]);
-    expect(told.last, 2 * rowBytes, reason: 'a was held already');
+    await frame(1, ['a', 'b']);
+    expect(told.last, 2 * rowBytes, reason: 'both were held already');
 
-    rows.letGoOf('p1');
-    expect(told.last, rowBytes, reason: 'b went; a stays with p2');
+    await frame(2);
+    expect(told.last, rowBytes, reason: 'no frame from 2 on shows b');
 
-    rows.letGoOf('p2');
+    rows.dispose();
     expect(told.last, 0);
+    expect(aImage.debugDisposed, isTrue);
     expect(
       [for (var i = 1; i < told.length; i += 1) told[i] != told[i - 1]],
       everyElement(isTrue),
@@ -210,37 +311,27 @@ void main() {
     );
   });
 
-  test('a picture that fails holds nothing new — and the rows it shared '
-      'with a held one stay held', () async {
-    final a = surface(1);
-    final [aImage] = await picture('p1', [a]);
-
+  test('a picture that fails lets go of what was composed for it alone',
+      () async {
+    shows = {
+      'a': [0, 1],
+      'b': [0],
+    };
     final fresh = <ui.Image>[];
     await expectLater(
-      rows.during('p2', (asked) async {
-        await asked.of(a, compose);
-        fresh.add((await asked.of(surface(2), compose)).image);
+      rows.during((asked) async {
+        for (final cel in ['a', 'b']) {
+          fresh.add((await asked.of(read(cel), compose)).image);
+        }
         throw StateError('no raster');
       }),
       throwsStateError,
     );
 
-    expect(fresh.single.debugDisposed, isTrue, reason: 'p2 holds nothing');
-    expect(aImage.debugDisposed, isFalse, reason: 'p1 still holds a');
-    rows.letGoOf('p1');
-    expect(aImage.debugDisposed, isTrue, reason: 'p2 left no hold on it');
-    expect(HeldRows.debugHeld, heldBefore);
-  });
-
-  test('a picture made again under its key lets go of what the one before '
-      'held, after taking what they share', () async {
-    final a = surface(1);
-    final [aImage, bImage] = await picture('p', [a, surface(2)]);
-    await picture('p', [a]);
-
-    expect(aImage.debugDisposed, isFalse);
-    expect(bImage.debugDisposed, isTrue);
-    expect(HeldRows.debugHeld - heldBefore, 1);
+    final [aImage, bImage] = fresh;
+    expect(bImage.debugDisposed, isTrue, reason: 'no frame after 0 shows b');
+    expect(aImage.debugDisposed, isFalse, reason: 'frame 1 shows a');
+    expect(told.last, rowBytes, reason: 'the lender hears it');
   });
 
   group('a render that is handed rows', () {

@@ -1,59 +1,73 @@
-import 'dart:collection';
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../../core/pin_counts.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/rgba_image_bytes.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 import '../camera/camera_frame_render_service.dart' show RowPictures;
 import '../canvas/tiled_surface_compose.dart' show PositionedSurfaceImage;
 
-/// The row pictures a video run's held cut pictures are made of — each held
-/// for as long as a picture made of it is held, as far as the room lent to
+/// When a video run next shows a row: how many frames on from the frame
+/// being drawn the first frame that shows [address] is, counting from
+/// [from] frames on (0 — the frame being drawn); null when no frame from
+/// there shows it.
+typedef RowNextShown = int? Function(Object address, int from);
+
+/// The row pictures of a video run — each held from the frame that composes
+/// it to the last frame ahead that shows it, as far as the room lent to
 /// them reaches.
 ///
 /// 🗣️유저 2026-10-07 (F-289-Q21): 「붙든다 — 재생 줄의 허용치 안에서」. A
 /// frame on which a cut's picture changes composited every row of the cut
 /// again where two of five or six had changed — 56% of a run of the user's
-/// film (card `video-export-holds-unchanged-rows`). A row that shows what
-/// the picture before it showed is that picture's row, handed again.
+/// film (card `video-export-holds-unchanged-rows`).
 ///
-/// A row is the picture its SURFACE composes to and nothing more — its
-/// pose, opacity and effects are laid on at the draw — so it is held under
-/// that surface: the object itself, which the run holds while it shows (the
-/// renderer's cels). A drawing read again is another object, and composes
-/// again.
+/// A row is the picture its CEL composes to and nothing more — its pose,
+/// opacity and effects are laid on at the draw — so it is held under the
+/// cel's address ([addressOf]: which cel, at which revision), and a cel read
+/// again is the row held for it.
+///
+/// ↩️It was held under the surface OBJECT, for as long as a held picture was
+/// made of it (10-07). 🔬Measured 2026-10-13 on the user's film (Surface Pro
+/// 11, profile build, card `video-export-speed`): of 1,594 row rasters, 958
+/// were of cels composed before — a drawing that leaves the frame for two
+/// frames and comes back, as each drawing of a cycle does, is read again,
+/// and a surface read again is another object. Each was a canvas-size
+/// raster with every tile uploaded again.
 ///
 /// ⛔THE ROOM IS LENT, NOT A BUDGET OF ITS OWN — the user chose that the
 /// memory allowance gets no export line. Playback rests while a run goes,
 /// so its line lends the run what its caches will give back ([room]), and
-/// hears every change in what is held ([onHeld]) so that they give way. A
-/// row that does not fit is composed for its render and let go after it,
-/// as every row was before.
+/// hears every change in what is held ([onHeld]) so that they give way.
+/// Where the room is short the rows let go in the order playback's caches
+/// do ([letGoWantedLatest]: the one shown latest first), and a row shown
+/// later than every held one is composed for its render and let go after
+/// it.
 class HeldRows {
   HeldRows({
     required int Function() room,
     required void Function(int bytes) onHeld,
+    required Object Function(BitmapSurface surface) addressOf,
+    required RowNextShown nextShown,
   }) : _room = room,
-       _onHeld = onHeld;
+       _onHeld = onHeld,
+       _addressOf = addressOf,
+       _nextShown = nextShown;
 
   final int Function() _room;
   final void Function(int bytes) _onHeld;
+  final Object Function(BitmapSurface surface) _addressOf;
+  final RowNextShown _nextShown;
 
-  final _rows = HashMap<BitmapSurface, _Row>.identity();
-
-  /// The rows each held picture is made of, under that picture's key.
-  final _byPicture = <Object, List<_Row>>{};
-
-  /// How many held pictures are made of each row.
-  final _holds = PinCounts<_Row>();
+  final _rows = <Object, _Row>{};
 
   var _bytes = 0;
   var _said = 0;
 
-  /// How many row pictures have been composed — a row a held picture
-  /// already holds is not.
+  /// One tick per picture made — the recency that orders rows shown at
+  /// the same frame.
+  var _clock = 0;
+
+  /// How many row pictures have been composed — a row held already is not.
   int get made => _made;
   var _made = 0;
 
@@ -62,89 +76,104 @@ class HeldRows {
   @visibleForTesting
   static int debugHeld = 0;
 
-  /// [render]'s result, made with the rows held here — and the rows it was
-  /// made of held from then on under [picture], the key its own holder
-  /// knows it by, until that key is let go ([letGoOf]).
-  ///
-  /// A render that fails holds nothing new.
-  Future<T> during<T>(
-    Object picture,
-    Future<T> Function(RowPictures rows) render,
-  ) async {
-    final rows = _RowsOfOnePicture(this);
+  /// [render]'s result, made with the rows held here — and each row it
+  /// composes held from then on, if a frame ahead shows it and the room has
+  /// it.
+  Future<T> during<T>(Future<T> Function(RowPictures rows) render) async {
+    final rows = _RowsOfOnePicture(this, _clock += 1);
     try {
-      final made = await render(rows);
-      // A picture made again under a key lets go of what the one before
-      // held — after this one has taken what it shares with it.
-      _byPicture.update(picture, (before) {
-        before.forEach(_release);
-        return rows._held;
-      }, ifAbsent: () => rows._held);
-      return made;
-    } on Object {
-      rows._held.forEach(_release);
-      rethrow;
+      return await render(rows);
     } finally {
-      for (final image in rows._passing) {
-        image.dispose();
+      for (final passing in rows._passing.values) {
+        passing.image.dispose();
       }
       _tell();
     }
   }
 
-  /// Lets go of the rows held under [picture] — the ones no other held
-  /// picture is made of. A row is held under nothing but a picture, so
-  /// once every picture is let go, every row is.
-  void letGoOf(Object picture) {
-    _byPicture.remove(picture)?.forEach(_release);
-    _tell();
-  }
-
-  /// Lets go of every held row once they no longer fit the room — the
-  /// run's to ask at each frame.
+  /// The next frame starts: the rows no frame from it on shows are let go —
+  /// the room they took goes back to playback — and then the rows shown
+  /// latest, until what is held fits the room.
   ///
-  /// The room is asked only when a row would be held, and it can shrink
-  /// while a run goes: an OS memory warning halves playback's line. Rows
-  /// held before it would stand over the lowered line for as long as the
-  /// pictures made of them are held — through a whole span of frames that
-  /// shows the same picture (the storage session's review, 2026-10-08). A
-  /// held row only waits to be asked for again, so one let go is composed
-  /// again when it is, as a row with no room is.
-  void fitRoom() {
-    if (_bytes <= _room()) {
-      return;
+  /// The room can shrink while a run goes: an OS memory warning halves
+  /// playback's line, and rows held before it would stand over the lowered
+  /// line for as long as frames ahead show them (the storage session's
+  /// review, 2026-10-08). A row let go only waits to be asked for again, and
+  /// is composed again when it is.
+  void nextFrame() {
+    for (final row in [..._rows.values]) {
+      if (_nextShown(row.address, 0) == null) {
+        _letGo(row);
+      }
     }
-    for (final held in _byPicture.values) {
-      held.forEach(_release);
-    }
-    _byPicture.clear();
+    _letGoShownLatest(maxBytes: _room());
     _tell();
   }
 
-  /// [composed], held under [surface] — or null when it does not fit in
-  /// the room.
-  _Row? _keep(BitmapSurface surface, PositionedSurfaceImage composed) {
+  /// Lets go of every row held — the run is over.
+  void dispose() {
+    for (final row in [..._rows.values]) {
+      _letGo(row);
+    }
+    _tell();
+  }
+
+  /// Lets go of the rows [among] shown latest until what is held is
+  /// [maxBytes] or under, never one shown [laterThan] frames on or sooner;
+  /// answers whether it got there.
+  bool _letGoShownLatest({
+    required int maxBytes,
+    Iterable<_Row>? among,
+    int? laterThan,
+  }) => letGoWantedLatest(
+    entries: [...(among ?? _rows.values)],
+    heldBytes: _bytes,
+    maxBytes: maxBytes,
+    wantedAt: (row) => _nextShown(row.address, 0),
+    lastUsed: (row) => row.lastUsed,
+    bytesOf: (row) => row.bytes,
+    letGo: _letGo,
+    laterThan: laterThan,
+  );
+
+  /// [composed], held under [address] by the picture stamped [stamp] — or
+  /// null when no frame after this one shows it, or room cannot be made for
+  /// it but by letting go of a row shown sooner. The rows [inUse] are the
+  /// picture's own, still to be drawn, and stay.
+  _Row? _keep(
+    Object address,
+    PositionedSurfaceImage composed, {
+    required int stamp,
+    required Set<_Row> inUse,
+  }) {
+    final next = _nextShown(address, 1);
+    if (next == null) {
+      return null;
+    }
     final bytes = estimatedImageBytes(
       composed.image.width,
       composed.image.height,
     );
-    if (_bytes + bytes > _room()) {
+    final fits = _letGoShownLatest(
+      maxBytes: _room() - bytes,
+      among: [
+        for (final row in _rows.values)
+          if (!inUse.contains(row)) row,
+      ],
+      laterThan: next,
+    );
+    if (!fits) {
       return null;
     }
-    final row = _Row(surface, composed, bytes);
-    _rows[surface] = row;
+    final row = _Row(address, composed, bytes)..lastUsed = stamp;
+    _rows[address] = row;
     _bytes += bytes;
     debugHeld += 1;
-    _tell();
     return row;
   }
 
-  void _release(_Row row) {
-    _holds.release(row);
-    if (_holds.isPinned(row)) {
-      return;
-    }
-    _rows.remove(row.surface);
+  void _letGo(_Row row) {
+    _rows.remove(row.address);
     row.picture.image.dispose();
     _bytes -= row.bytes;
     debugHeld -= 1;
@@ -162,53 +191,60 @@ class HeldRows {
 
 /// One row picture held.
 final class _Row {
-  _Row(this.surface, this.picture, this.bytes);
+  _Row(this.address, this.picture, this.bytes);
 
-  final BitmapSurface surface;
+  final Object address;
   final PositionedSurfaceImage picture;
   final int bytes;
+
+  /// The stamp of the last picture made with it.
+  int lastUsed = 0;
 }
 
 /// The rows of the one picture being made — what it asks for, from what is
 /// held or composed now.
 final class _RowsOfOnePicture implements RowPictures {
-  _RowsOfOnePicture(this._keeper);
+  _RowsOfOnePicture(this._keeper, this._stamp);
 
   final HeldRows _keeper;
+  final int _stamp;
 
-  /// The held rows this picture is made of, each once.
-  final _held = <_Row>[];
+  /// The held rows this picture is made of.
+  final _inUse = <_Row>{};
 
-  /// The rows composed for this picture alone (no room for them), let go
-  /// when it is made.
-  final _passing = <ui.Image>[];
+  /// The rows composed for this picture alone, under their addresses — let
+  /// go when it is made.
+  final _passing = <Object, PositionedSurfaceImage>{};
 
   @override
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
     Future<PositionedSurfaceImage> Function() compose,
   ) async {
-    final held = _keeper._rows[surface];
+    final address = _keeper._addressOf(surface);
+    final held = _keeper._rows[address];
     if (held != null) {
-      _hold(held);
+      held.lastUsed = _stamp;
+      _inUse.add(held);
       return held.picture;
+    }
+    final passing = _passing[address];
+    if (passing != null) {
+      return passing;
     }
     final composed = await compose();
     _keeper._made += 1;
-    final row = _keeper._keep(surface, composed);
+    final row = _keeper._keep(
+      address,
+      composed,
+      stamp: _stamp,
+      inUse: _inUse,
+    );
     if (row == null) {
-      _passing.add(composed.image);
+      _passing[address] = composed;
     } else {
-      _hold(row);
+      _inUse.add(row);
     }
     return composed;
-  }
-
-  void _hold(_Row row) {
-    if (_held.any((held) => identical(held, row))) {
-      return;
-    }
-    _keeper._holds.retain(row);
-    _held.add(row);
   }
 }

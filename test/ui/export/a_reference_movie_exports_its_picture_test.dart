@@ -97,11 +97,9 @@ void main() {
     final s = await placed(tester);
 
     await tester.runAsync(() async {
-      final image = await ExportFrameRenderer(session: s)
-          .renderCompositeForVideo(
-            ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
-            ExportSizeMode.camera,
-          );
+      final image = await ExportFrameRenderer(session: s).videoRun([
+        ExportFrameTask(cut: s.requireActiveCut, frameIndex: 5),
+      ], ExportSizeMode.camera).frame(0);
       expect(await centreIsRed(image), isTrue, reason: 'the take, not paper');
       image.dispose();
     });

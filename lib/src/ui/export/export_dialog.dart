@@ -1312,7 +1312,7 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: format,
     );
-    // The video run burns the SE name tags in (renderCompositeForVideo);
+    // The video run burns the SE name tags in (ExportVideoRun.frame);
     // stills stay clean because they are compositing sources. The preview
     // has to answer the same question, or it shows a frame the export
     // will not produce.
@@ -2388,16 +2388,17 @@ class ExportDialogState extends State<ExportDialog> {
       _singleFileName(_sequenceFileController, format.container.fileExtension),
     );
     final audioMixPath = spec.includeAudio ? await _renderAudioMix(plan) : null;
+    // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α keeps
+    // the channel (transparent ground, fade still paints).
+    final run = renderer.videoRun(
+      plan,
+      spec.sizeMode,
+      preserveAlpha: alphaVideo,
+    );
     try {
       final summary = await widget.videoExportService.exportVideo(
         count: plan.length,
-        // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α
-        // keeps the channel (transparent ground, fade still paints).
-        renderImage: (index) => renderer.renderCompositeForVideo(
-          plan[index],
-          spec.sizeMode,
-          preserveAlpha: alphaVideo,
-        ),
+        renderImage: run.frame,
         outputFilePath: videoPath,
         frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,

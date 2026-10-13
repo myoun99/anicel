@@ -13,13 +13,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 ///
 /// GPU pictures, so let go by hand: [dispose] when the run is over.
 class HeldPictures {
-  /// [onLetGo] hears the key of every picture let go — what was held WITH
-  /// that picture goes when it does (a cut's picture keeps the rows it is
-  /// made of: `HeldRows`).
-  HeldPictures({void Function(Object key)? onLetGo}) : _onLetGo = onLetGo;
-
-  final void Function(Object key)? _onLetGo;
-
   var _thisFrame = <Object, ui.Image>{};
   var _frameBefore = <Object, ui.Image>{};
 
@@ -69,6 +62,5 @@ class HeldPictures {
   void _letGo(Object key, ui.Image picture) {
     picture.dispose();
     debugHeld -= 1;
-    _onLetGo?.call(key);
   }
 }

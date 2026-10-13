@@ -84,10 +84,9 @@ void main() {
     final image = await ExportFrameRenderer(
       session: manager,
       background: const ui.Color(green),
-    ).renderCompositeForVideo(
+    ).videoRun([
           ExportFrameTask(cut: manager.requireActiveCut, frameIndex: frame),
-          mode,
-        );
+        ], mode).frame(0);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final offset = ((image.height ~/ 2) * image.width + image.width ~/ 2) * 4;
     image.dispose();

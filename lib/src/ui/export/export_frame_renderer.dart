@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:collection/collection.dart' show lowerBound;
 import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -135,17 +137,27 @@ class ExportFrameRenderer {
   /// (F-289, measured 2026-10-07 on the user's own film: of its 1,857
   /// frames 1,687 show the composite the frame before them showed, and
   /// 1,483 are that frame's picture, camera and all).
-  late final HeldPictures _pictures = HeldPictures(onLetGo: _rows.letGoOf);
+  final HeldPictures _pictures = HeldPictures();
 
-  /// The rows the cut pictures in [_pictures] are made of, each held while
-  /// a picture made of it is — so the picture a frame changes on composes
-  /// only the rows that changed (F-289-Q21). Their room is lent by
-  /// playback's line of the memory allowance, whose caches give way to
-  /// them while the run goes.
+  /// The rows the cut pictures of a video run are made of, each held until
+  /// no frame ahead of the run shows it — so the picture a frame changes on
+  /// composes only the rows it has not composed before (F-289-Q21). Their
+  /// room is lent by playback's line of the memory allowance, whose caches
+  /// give way to them while the run goes.
   late final HeldRows _rows = HeldRows(
     room: () => session.playbackRig.playbackCache.lendableBytes,
     onHeld: session.playbackRig.playbackCache.lend,
+    addressOf: (surface) => _celAddresses[surface] ?? surface,
+    nextShown: (address, from) => _run?.nextShown(address, from),
   );
+
+  /// The address of each cel this renderer has read ([_readSurface]) — what
+  /// its row is held under.
+  final _celAddresses = Expando<_CelAddress>('cel address');
+
+  /// The frames of the video run being drawn, and the cels each shows
+  /// ([videoRun]).
+  _ShownAhead? _run;
 
   /// How many pictures this renderer has had to make (test hook) — a frame
   /// that is the picture before it makes none.
@@ -166,13 +178,15 @@ class ExportFrameRenderer {
     _frameBefore = _thisFrame;
     _thisFrame = {};
     _pictures.nextFrame();
-    _rows.fitRoom();
+    _rows.nextFrame();
   }
 
-  /// Lets go of the pictures a video run held — and with them the rows they
-  /// were made of, which are held under nothing else. The run's to call
-  /// when its last frame is out.
-  void dispose() => _pictures.dispose();
+  /// Lets go of the pictures and the rows a video run held. The run's to
+  /// call when its last frame is out.
+  void dispose() {
+    _pictures.dispose();
+    _rows.dispose();
+  }
 
   /// Keeps the cels [signature]'s picture is made of for one more frame.
   ///
@@ -206,7 +220,7 @@ class ExportFrameRenderer {
 
   BitmapSurface? _readSurface(Cut cut, Layer layer, Frame frame) {
     _celReads += 1;
-    final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
+    final address = _celAddress(cut, layer.id, frame.id);
     // R19 P3b: the baked raster is the truth — a READ-ONLY reference
     // (valid display cache first, else baked; the coordinator donates
     // on every commit, undo and redo); null = an empty cel.
@@ -218,10 +232,30 @@ class ExportFrameRenderer {
     // the cut being drawn toward cooling. A look still decodes at the
     // canvas's size, which is why those pictures render one at a time
     // ([StoryboardCutThumbnailStore]).
-    return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
-      frameKey,
-      canvasSize: cut.canvasSize,
-      read: CelRead.look,
+    final surface = session.renderCaches.brushFrameStore
+        .currentSurfaceWithoutReplay(
+          address.key,
+          canvasSize: cut.canvasSize,
+          read: CelRead.look,
+        );
+    if (surface != null) {
+      _celAddresses[surface] = address;
+    }
+    return surface;
+  }
+
+  /// Where [cut]'s cel of [layerId] at [frameId] lives, and which revision
+  /// of it is there — the identity the playback cache keys a cut's picture
+  /// by ([_signatureOf]), and so the one a row of it is held under.
+  _CelAddress _celAddress(Cut cut, LayerId layerId, FrameId frameId) {
+    final key = session.brushFrameKeyForCut(cut, layerId, frameId);
+    return (
+      key: key,
+      revision:
+          session.renderCaches.brushFrameStore
+              .frameOrNull(key)
+              ?.sourceRevision ??
+          0,
     );
   }
 
@@ -475,10 +509,7 @@ class ExportFrameRenderer {
         cut: _cutForRender(cut),
         frameIndex: frameIndex,
         revisionOf: (layerId, frameId) =>
-            session.renderCaches.brushFrameStore
-                .frameOrNull(session.brushFrameKeyForCut(cut, layerId, frameId))
-                ?.sourceRevision ??
-            0,
+            _celAddress(cut, layerId, frameId).revision,
       );
 
   /// [cut]'s whole picture at [frameIndex] as [route] draws it, held
@@ -497,8 +528,7 @@ class ExportFrameRenderer {
   }) {
     final signature = _signatureOf(cut, frameIndex);
     _carryCelsOf(cut.id, signature);
-    final key = (route, signature);
-    return _pictures.of(key, () => _rows.during(key, render));
+    return _pictures.of((route, signature), () => _rows.during(render));
   }
 
   /// [cut]'s picture at [frameIndex] over its whole canvas, on this
@@ -519,6 +549,83 @@ class ExportFrameRenderer {
       rows: rows,
     ),
   );
+
+  /// A video run of [plan] in [mode] — its frames, drawn in order
+  /// ([ExportVideoRun.frame]), every row held from the frame that composes
+  /// it until no frame ahead shows it ([HeldRows]).
+  ///
+  /// What each frame shows is read here, for the whole run at once: the cels
+  /// of every cut the frame is made of ([_cutsOfVideoFrame]), as that cut's
+  /// picture names them ([_signatureOf]).
+  ExportVideoRun videoRun(
+    List<ExportFrameTask> plan,
+    ExportSizeMode mode, {
+    bool preserveAlpha = false,
+  }) {
+    final shown = <_CelAddress, List<int>>{};
+    for (final (index, task) in plan.indexed) {
+      for (final (cut, frameIndex) in _cutsOfVideoFrame(task, mode)) {
+        for (final layer in _signatureOf(cut, frameIndex).layers) {
+          final frames = shown.putIfAbsent(
+            _celAddress(cut, layer.layerId, layer.frameId),
+            () => [],
+          );
+          if (frames.isEmpty || frames.last != index) {
+            frames.add(index);
+          }
+        }
+      }
+    }
+    return ExportVideoRun._(
+      this,
+      plan: plan,
+      mode: mode,
+      preserveAlpha: preserveAlpha,
+      shown: _ShownAhead(shown),
+    );
+  }
+
+  /// The cuts video frame [task] is made of in [mode], each at its own
+  /// frame — the track stack's positions, or what the canvas-size frame
+  /// mixes ([_canvasFrameOf]).
+  List<(Cut, int)> _cutsOfVideoFrame(
+    ExportFrameTask task,
+    ExportSizeMode mode,
+  ) => switch (mode) {
+    ExportSizeMode.camera => [
+      for (final position in _stackPositionsOf(task))
+        (position.cut, position.localFrameIndex),
+    ],
+    ExportSizeMode.canvas => _canvasFrameOf(task).cuts,
+  };
+
+  /// What a CANVAS-size video frame is made of: no cut in a gap; the cuts a
+  /// transition reaching across this frame's boundary mixes, where they
+  /// share its space ([shared]); else its own cut — each at its own frame.
+  ///
+  /// A transition puts a SECOND cut here, and canvas space is shared
+  /// whenever the two agree on their canvas size — which two cuts of one
+  /// track normally do. Only differing sizes keep the single-cut bake,
+  /// because then there is no shared space to mix in (the camera frame is
+  /// that space, and that is the track stack's).
+  ({List<(Cut, int)> cuts, _SharedTransitionSpace? shared}) _canvasFrameOf(
+    ExportFrameTask task,
+  ) {
+    if (task.isGap) {
+      return (cuts: const [], shared: null);
+    }
+    final shared = _sharedTransitionSpace(task);
+    if (shared != null) {
+      return (
+        cuts: [
+          for (final contribution in shared.contributions)
+            (contribution.cut, contribution.localFrameIndex),
+        ],
+        shared: shared,
+      );
+    }
+    return (cuts: [(task.cut, task.frameIndex)], shared: null);
+  }
 
   /// [renderComposite] with the cut-level pose and fade baked in for VIDEO
   /// frames — MP4 carries no alpha (yuv420p drops the channel without
@@ -550,17 +657,18 @@ class ExportFrameRenderer {
   ///
   /// A frame that is the picture the frame before it was comes back as
   /// that picture ([_frameOf]).
-  Future<ui.Image> renderCompositeForVideo(
+  Future<ui.Image> _videoFrame(
     ExportFrameTask task,
     ExportSizeMode mode, {
-    bool preserveAlpha = false,
+    required bool preserveAlpha,
   }) async {
     _startFrame();
     if (mode == ExportSizeMode.camera) {
       return _renderTrackStackForVideo(task, preserveAlpha: preserveAlpha);
     }
     final ground = _backdropGround(preserveAlpha: preserveAlpha);
-    if (task.isGap) {
+    final (:cuts, :shared) = _canvasFrameOf(task);
+    if (cuts.isEmpty) {
       // A leading-gap frame: nothing plays — the BACKDROP (R3b), exactly
       // what playback shows in the gap. Opaque codecs bake the floor; an
       // alpha master keeps the gap transparent.
@@ -572,14 +680,8 @@ class ExportFrameRenderer {
         paint: _paintGapFrame,
       );
     }
-    // A transition reaching across this frame's boundary puts a SECOND cut
-    // here, and canvas space is shared whenever the two agree on their canvas
-    // size — which two cuts of one track normally do. Only differing sizes
-    // keep the single-cut bake, because then there is no shared space to mix
-    // in (the camera frame is that space, and that is the camera path above).
-    final overlap = await _canvasSpaceTransitionFrame(task, ground: ground);
-    if (overlap != null) {
-      return overlap;
+    if (shared != null) {
+      return _canvasSpaceTransitionFrame(shared, ground: ground);
     }
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
@@ -651,13 +753,7 @@ class ExportFrameRenderer {
   /// disagree on their canvas size, which leaves no shared space to mix in.
   ///
   /// The weights come out already source-over composed.
-  ({
-    List<TransitionContribution> contributions,
-    CanvasSize size,
-    List<double> weights,
-    int globalFrame,
-  })?
-  _sharedTransitionSpace(ExportFrameTask task) {
+  _SharedTransitionSpace? _sharedTransitionSpace(ExportFrameTask task) {
     final own = _entryOf(task);
     if (own == null) {
       return null;
@@ -696,21 +792,15 @@ class ExportFrameRenderer {
   }
 
   /// A CANVAS-size video frame that two cuts share, because a transition
-  /// reaches across the boundary here — null when this frame has only one
-  /// contribution (the ordinary bake) or when the contributing cuts disagree
-  /// on their canvas size (no shared space to mix in).
+  /// reaches across the boundary here ([shared]).
   ///
   /// Each cut is drawn with its own track pose, chain and unit weight, in the
   /// order the resolver returns them (leaving cut first) — the camera path's
   /// rules, in canvas space instead of the camera frame.
-  Future<ui.Image?> _canvasSpaceTransitionFrame(
-    ExportFrameTask task, {
+  Future<ui.Image> _canvasSpaceTransitionFrame(
+    _SharedTransitionSpace shared, {
     required ui.Color? ground,
   }) async {
-    final shared = _sharedTransitionSpace(task);
-    if (shared == null) {
-      return null;
-    }
     final size = shared.size;
     return _frameOf<_MixedFrame>(
       (
@@ -756,6 +846,15 @@ class ExportFrameRenderer {
     );
   }
 
+  /// The track stack at [task]'s frame, bottom up — read once for its
+  /// render and for the run that counts what it shows ([videoRun]).
+  List<TrackStackContribution> _stackPositionsOf(ExportFrameTask task) =>
+      resolveTrackStackContributions(
+        layout: _layout,
+        spansOf: session.transitions.transitionSpansOfTrack,
+        globalFrameIndex: (_entryOf(task)?.startFrame ?? 0) + task.frameIndex,
+      );
+
   /// The camera-frame video frame as the display's track stack (R3a).
   ///
   /// The task's cut names the frame's GLOBAL index (its layout start plus
@@ -772,12 +871,7 @@ class ExportFrameRenderer {
     ExportFrameTask task, {
     required bool preserveAlpha,
   }) async {
-    final globalFrame = (_entryOf(task)?.startFrame ?? 0) + task.frameIndex;
-    final positions = resolveTrackStackContributions(
-      layout: _layout,
-      spansOf: session.transitions.transitionSpansOfTrack,
-      globalFrameIndex: globalFrame,
-    );
+    final positions = _stackPositionsOf(task);
     // The unit alphas, and then the source-over weights that make the stack
     // read as that mix (see [sourceOverWeights]) — grouped by track here,
     // because an upper track thins only its own contribution.
@@ -834,10 +928,9 @@ class ExportFrameRenderer {
             frameIndex: position.localFrameIndex,
             surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
           ),
-          // The IDENTITY camera: a canvas-space composite, exactly what
-          // the playback cache holds — the painter below projects it
-          // through the cut's real camera, so the camera is never baked
-          // into the composite itself (playback's own rule).
+          // The IDENTITY camera: a canvas-space composite — the painter
+          // below projects it through the cut's real camera, so the camera
+          // is never baked into the composite itself (playback's own rule).
           pose: CameraPose(
             center: CanvasPoint(
               x: cut.canvasSize.width / 2,
@@ -1014,6 +1107,72 @@ class ExportFrameRenderer {
     );
   }
 
+}
+
+/// The frames of a video run ([ExportFrameRenderer.videoRun]).
+final class ExportVideoRun {
+  ExportVideoRun._(
+    this._renderer, {
+    required List<ExportFrameTask> plan,
+    required ExportSizeMode mode,
+    required bool preserveAlpha,
+    required _ShownAhead shown,
+  }) : _plan = plan,
+       _mode = mode,
+       _preserveAlpha = preserveAlpha,
+       _shown = shown;
+
+  final ExportFrameRenderer _renderer;
+  final List<ExportFrameTask> _plan;
+  final ExportSizeMode _mode;
+  final bool _preserveAlpha;
+  final _ShownAhead _shown;
+
+  /// Frame [index] of the run ([ExportFrameRenderer._videoFrame]).
+  ///
+  /// ⚠️In order: a row is held for the frames ahead of the one asked for
+  /// last.
+  Future<ui.Image> frame(int index) {
+    _shown.at = index;
+    _renderer._run = _shown;
+    return _renderer._videoFrame(
+      _plan[index],
+      _mode,
+      preserveAlpha: _preserveAlpha,
+    );
+  }
+}
+
+/// Which cel, at which revision of it.
+typedef _CelAddress = ({BrushFrameKey key, int revision});
+
+/// The cuts a canvas-size video frame mixes, when a transition puts two in
+/// one space ([ExportFrameRenderer._sharedTransitionSpace]).
+typedef _SharedTransitionSpace = ({
+  List<TransitionContribution> contributions,
+  CanvasSize size,
+  List<double> weights,
+  int globalFrame,
+});
+
+/// The frames of a video run each cel shows, in order, and the frame being
+/// drawn ([at]) — what tells a held row how long it is wanted.
+final class _ShownAhead {
+  _ShownAhead(this._frames);
+
+  final Map<_CelAddress, List<int>> _frames;
+
+  int at = 0;
+
+  /// [HeldRows]' question ([RowNextShown]).
+  int? nextShown(Object address, int from) {
+    final frames = _frames[address];
+    if (frames == null) {
+      return null;
+    }
+    final next = lowerBound(frames, at + from);
+    return next == frames.length ? null : frames[next] - at;
+  }
 }
 
 // --- what a video frame is made of ------------------------------------------

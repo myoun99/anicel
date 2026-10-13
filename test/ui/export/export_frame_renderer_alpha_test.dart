@@ -89,18 +89,15 @@ void main() {
         session: manager,
         background: const ui.Color(0x00000000),
       );
-      final baked = await renderer.renderCompositeForVideo(
-        gap,
-        ExportSizeMode.camera,
-      );
+      final baked = await renderer
+          .videoRun([gap], ExportSizeMode.camera)
+          .frame(0);
       expect(await cornerAlpha(baked), 255);
       baked.dispose();
 
-      final kept = await renderer.renderCompositeForVideo(
-        gap,
-        ExportSizeMode.camera,
-        preserveAlpha: true,
-      );
+      final kept = await renderer
+          .videoRun([gap], ExportSizeMode.camera, preserveAlpha: true)
+          .frame(0);
       expect(await cornerAlpha(kept), 0);
       kept.dispose();
     });
@@ -120,10 +117,9 @@ void main() {
         session: manager,
         background: const ui.Color(0x00000000),
       );
-      final there = await renderer.renderCompositeForVideo(
-        gap,
-        ExportSizeMode.camera,
-      );
+      final there = await renderer
+          .videoRun([gap], ExportSizeMode.camera)
+          .frame(0);
       expect(
         await cornerAlpha(there),
         255,
@@ -132,10 +128,9 @@ void main() {
       there.dispose();
 
       manager.projectSettings.setProjectBackdropNone();
-      final absent = await renderer.renderCompositeForVideo(
-        gap,
-        ExportSizeMode.camera,
-      );
+      final absent = await renderer
+          .videoRun([gap], ExportSizeMode.camera)
+          .frame(0);
       expect(await cornerAlpha(absent), 0);
       absent.dispose();
     });
@@ -208,19 +203,21 @@ void main() {
         session: covered,
         background: const ui.Color(0x00000000),
       );
-      final coveredFrame = await coveredRenderer.renderCompositeForVideo(
-        ExportFrameTask(
-          cut: covered.repository
-              .requireProject()
-              .tracks
-              .first
-              .cuts
-              .single,
-          frameIndex: -1,
-        ),
+      final coveredFrame = await coveredRenderer.videoRun(
+        [
+          ExportFrameTask(
+            cut: covered.repository
+                .requireProject()
+                .tracks
+                .first
+                .cuts
+                .single,
+            frameIndex: -1,
+          ),
+        ],
         ExportSizeMode.camera,
         preserveAlpha: true,
-      );
+      ).frame(0);
       expect(
         await cornerAlpha(coveredFrame),
         255,
@@ -237,19 +234,21 @@ void main() {
         session: uncovered,
         background: const ui.Color(0x00000000),
       );
-      final uncoveredFrame = await uncoveredRenderer.renderCompositeForVideo(
-        ExportFrameTask(
-          cut: uncovered.repository
-              .requireProject()
-              .tracks
-              .first
-              .cuts
-              .single,
-          frameIndex: -1,
-        ),
+      final uncoveredFrame = await uncoveredRenderer.videoRun(
+        [
+          ExportFrameTask(
+            cut: uncovered.repository
+                .requireProject()
+                .tracks
+                .first
+                .cuts
+                .single,
+            frameIndex: -1,
+          ),
+        ],
         ExportSizeMode.camera,
         preserveAlpha: true,
-      );
+      ).frame(0);
       expect(
         await cornerAlpha(uncoveredFrame),
         0,

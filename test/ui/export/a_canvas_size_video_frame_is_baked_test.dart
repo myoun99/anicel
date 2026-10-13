@@ -127,11 +127,9 @@ void main() {
     bool preserveAlpha = false,
   }) async {
     final renderer = ExportFrameRenderer(session: session, background: green);
-    final image = await renderer.renderCompositeForVideo(
-      task,
-      ExportSizeMode.canvas,
-      preserveAlpha: preserveAlpha,
-    );
+    final image = await renderer
+        .videoRun([task], ExportSizeMode.canvas, preserveAlpha: preserveAlpha)
+        .frame(0);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     renderer.dispose();
