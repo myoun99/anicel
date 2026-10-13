@@ -334,6 +334,11 @@ void main() {
       // edge to cross into the clip on its own segment, and no further.
       expect(bounds.left, inInclusiveRange(1600 - 16, 1600));
       expect(bounds.right, inInclusiveRange(1664, 1664 + 16));
+
+      // A clip that shows none of it — before its start — draws nothing.
+      final before = _BandSpy(clip: const Rect.fromLTRB(-100, 0, -10, size));
+      band.paint(before, const Size(3200, size));
+      expect(before.band, isNull);
     });
   });
 }
