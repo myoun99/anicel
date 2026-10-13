@@ -241,6 +241,7 @@ void main() {
     required ValueNotifier<int> builds,
     required Widget panel,
     bool host = true,
+    Widget? beside,
   }) {
     final listener = ValueListenableBuilder<int>(
       valueListenable: builds,
@@ -251,6 +252,7 @@ void main() {
       textDirection: TextDirection.ltr,
       child: Stack(
         children: [
+          ?beside,
           Positioned.fill(
             child: host
                 ? TickLayer.host(child: listener)
@@ -297,6 +299,155 @@ void main() {
     expect(await panelPainted(tester, builds), isTrue);
   });
 
+  testWidgets('nor anything beside the host', (tester) async {
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    await tester.pumpWidget(
+      panelHost(
+        builds: builds,
+        panel: const Text('panel'),
+        beside: const Text('beside'),
+      ),
+    );
+    final beside = tester.renderObject(find.text('beside'));
+
+    final frame = await frameCensus(tester, () => builds.value += 1);
+
+    expect(
+      frame.rebuilt,
+      contains(ValueListenableBuilder<int>),
+      reason: 'premise: the host was built again',
+    );
+    expect(frame.painted, isNot(contains(same(beside))));
+  });
+
+  /// How often [assembled]'s node was put together again by [act]: a frame
+  /// of it less a frame with nothing changed.
+  Future<int> nodeBuiltBy(
+    WidgetTester tester,
+    List<int> assembled,
+    VoidCallback act,
+  ) async {
+    expect(assembled.single, greaterThan(0), reason: 'premise: it was built');
+    var before = assembled.single;
+    SchedulerBinding.instance.scheduleFrame();
+    await tester.pump();
+    final unchanged = assembled.single - before;
+    before = assembled.single;
+    act();
+    await tester.pump();
+    return assembled.single - before - unchanged;
+  }
+
+  testWidgets('🚨and puts the panel\'s semantics nodes together again none '
+      'of them', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    final assembled = [0];
+    await tester.pumpWidget(
+      panelHost(
+        builds: builds,
+        panel: _NodeCounter(assembled: assembled, child: const Text('panel')),
+      ),
+    );
+
+    expect(
+      await nodeBuiltBy(tester, assembled, () => builds.value += 1),
+      0,
+      reason: '↩️the host\'s layout dropped the geometry of the panel\'s top '
+          'nodes, and each was put together again — 🔬a crossing in a test '
+          'app rebuilt 58 nodes, 34 with the host\'s node (I-57, 10-14)',
+    );
+    expect(
+      find.bySemanticsLabel('panel'),
+      findsOneWidget,
+      reason: 'the panel reads to a screen reader as it did',
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('CONTROL: a tick layer round the same listener puts it '
+      'together again — what ticks is what changed', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    final assembled = [0];
+    await tester.pumpWidget(
+      panelHost(
+        builds: builds,
+        panel: _NodeCounter(assembled: assembled, child: const Text('panel')),
+        host: false,
+      ),
+    );
+
+    expect(
+      await nodeBuiltBy(tester, assembled, () => builds.value += 1),
+      greaterThan(0),
+    );
+    semantics.dispose();
+  });
+
+  /// A body its host builds again whenever [builds] moves — laid out alone,
+  /// or under a bare LayoutBuilder — round a node that counts how often it
+  /// is put together.
+  Widget body({
+    required ValueNotifier<int> builds,
+    required List<int> assembled,
+    required bool alone,
+  }) {
+    Widget panel(BuildContext context, BoxConstraints constraints) =>
+        _NodeCounter(
+          assembled: assembled,
+          child: Text('${constraints.maxWidth}'),
+        );
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ValueListenableBuilder<int>(
+        valueListenable: builds,
+        builder: (context, _, _) => alone
+            ? LaidOutAlone(builder: panel)
+            : LayoutBuilder(builder: panel),
+      ),
+    );
+  }
+
+  testWidgets('🚨a body laid out alone and built again puts together none '
+      'of the nodes it holds', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    final assembled = [0];
+    await tester.pumpWidget(
+      body(builds: builds, assembled: assembled, alone: true),
+    );
+
+    expect(
+      await nodeBuiltBy(tester, assembled, () => builds.value += 1),
+      0,
+      reason: '↩️a grid\'s body, run again for a notify, dropped the geometry '
+          'of its rows\' nodes and put each together again',
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('CONTROL: under a bare LayoutBuilder the same build puts them '
+      'together again', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    final assembled = [0];
+    await tester.pumpWidget(
+      body(builds: builds, assembled: assembled, alone: false),
+    );
+
+    expect(
+      await nodeBuiltBy(tester, assembled, () => builds.value += 1),
+      greaterThan(0),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('under loose constraints it says so', (tester) async {
     await tester.pumpWidget(
       const Center(
@@ -308,8 +459,8 @@ void main() {
   });
 }
 
-/// A box that counts the semantics walks passing through it: rebuilding a
-/// boundary's share of the tree visits every node under it this way.
+/// A box that counts the semantics walks passing through it: a walk from a
+/// boundary down to what changed visits every box on its way this way.
 class _WalkCounter extends SingleChildRenderObjectWidget {
   const _WalkCounter({required this.walks, super.child});
 
@@ -329,5 +480,40 @@ class _RenderWalkCounter extends RenderProxyBox {
   void visitChildrenForSemantics(RenderObjectVisitor visitor) {
     walks[0] += 1;
     super.visitChildrenForSemantics(visitor);
+  }
+}
+
+/// A node of its own that counts how often it is put together: a boundary
+/// is assembled whenever the flush builds its node again — its geometry
+/// dropped by a layout above it, or its place in the tree changed.
+class _NodeCounter extends SingleChildRenderObjectWidget {
+  const _NodeCounter({required this.assembled, super.child});
+
+  final List<int> assembled;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderNodeCounter(assembled);
+}
+
+class _RenderNodeCounter extends RenderProxyBox {
+  _RenderNodeCounter(this.assembled);
+
+  final List<int> assembled;
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    config.isSemanticBoundary = true;
+  }
+
+  @override
+  void assembleSemanticsNode(
+    SemanticsNode node,
+    SemanticsConfiguration config,
+    Iterable<SemanticsNode> children,
+  ) {
+    assembled[0] += 1;
+    super.assembleSemanticsNode(node, config, children);
   }
 }

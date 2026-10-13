@@ -22,7 +22,9 @@ import 'still_raster.dart' show TickSceneLayer;
 ///
 /// 🚨SEMANTICS IS THE THIRD HALF (2026-10-10): a layout ends by marking its
 /// semantics, and that mark climbs to the nearest semantics boundary, whose
-/// whole share of the tree is walked again. With none here a playback step
+/// share of the tree is walked again down to what changed — and the nodes
+/// nearest under what was laid out are put together again (I-57, 10-14:
+/// [LaidOutAlone]). With none here a playback step
 /// re-walked four of them for a few moved nodes — the timeline panel's
 /// scroll view, the frame grid's, the canvas panel and the bottom dock,
 /// over a thousand render objects (the real app, accessibility tree on as
@@ -94,10 +96,9 @@ class TickLayer extends StatefulWidget {
   /// repainted its pill, swatches and panbars on every cut crossed,
   /// measured). So the panel stands on a layer of its own INSIDE the
   /// host's: the host's layer holds the LayoutBuilder alone, and the
-  /// panel's is painted again for what changed in it. ⛔No semantics
-  /// boundary goes with it: a layout's mark is walked again only along
-  /// what changed, never through the panel whole (measured 10-14 — taken
-  /// away, the boundary spared no walk).
+  /// panel's is painted again for what changed in it — and on a semantics
+  /// node of its own, which a layout of the host rebuilds alone
+  /// ([LaidOutAlone] has why).
   const TickLayer.host({super.key, required this.child}) : _kind = _Kind.host;
 
   final Widget child;
@@ -129,30 +130,66 @@ class _TickLayerState extends State<TickLayer> {
     return Semantics(
       container: true,
       child: switch (widget._kind) {
-        _Kind.built => _TickBoundary(child: _laidOutAlone(child)),
+        _Kind.built => _TickBoundary(child: _laidOutAlone((_, _) => child)),
         _Kind.heard => _TickBoundary(child: child),
-        _Kind.host => RepaintBoundary(
-          child: _laidOutAlone(RepaintBoundary(child: child)),
-        ),
+        _Kind.host => LaidOutAlone(builder: (_, _) => child),
       },
     );
   }
 
-  /// [child] under a LayoutBuilder of its own: the scope a build inside
-  /// the layer runs in.
-  static Widget _laidOutAlone(Widget child) => LayoutBuilder(
-    builder: (context, constraints) {
-      assert(
-        constraints.isTight,
-        'A TickLayer keeps its layout in only under tight constraints '
-        '(got $constraints).',
-      );
-      return child;
-    },
-  );
-
   @override
   Widget build(BuildContext context) => _built;
+}
+
+/// What [build] makes under a LayoutBuilder of its own — the scope a build
+/// inside runs in — that keeps its layout in, as only tight constraints
+/// let it.
+Widget _laidOutAlone(LayoutWidgetBuilder build) => LayoutBuilder(
+  builder: (context, constraints) {
+    assert(
+      constraints.isTight,
+      'What is laid out alone keeps its layout in only under tight '
+      'constraints (got $constraints).',
+    );
+    return build(context, constraints);
+  },
+);
+
+/// What a LayoutBuilder makes of its size, laid out, painted and described
+/// ALONE when its host builds it again — a panel's host ([TickLayer.host]),
+/// a grid's body.
+///
+/// A host that builds again runs this LayoutBuilder again: its layout stays
+/// in, as a tick layer's does (tight constraints), and it paints a layer
+/// that holds nothing but [builder]'s, which is painted again only for
+/// what changed in it.
+///
+/// 🚨AND A NODE OF ITS OWN (I-57, 10-14). A layout drops the semantics
+/// geometry of every node nearest under what it laid out, and the flush
+/// puts each of those together again (Flutter 3.47.4, `flushSemantics`) —
+/// the walk follows only what changed, the rebuilds do not. So a host laid
+/// out for a notify that changed nothing in it rebuilt its panel's top
+/// nodes, and a grid's body its rows': 🔬58 nodes of a crossing in a test
+/// app, 26 of them the host's. Under a node of its own the layout drops
+/// that node alone, and what [builder] made keeps its nodes — 🔬a crossing
+/// in a test app rebuilt 58, and 34 with the host's layout dropping its
+/// own node alone.
+/// ↩️(10-14, the same day) the host's node was taken away for sparing no
+/// walk — the pin counted WALKS, and never saw a node rebuilt.
+class LaidOutAlone extends StatelessWidget {
+  const LaidOutAlone({super.key, required this.builder});
+
+  final LayoutWidgetBuilder builder;
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: _laidOutAlone(
+      (context, constraints) => Semantics(
+        container: true,
+        child: RepaintBoundary(child: builder(context, constraints)),
+      ),
+    ),
+  );
 }
 
 /// A tick's repaint boundary, whose layer a still region draws live
