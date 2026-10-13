@@ -2743,8 +2743,8 @@ class ExportDialogState extends State<ExportDialog> {
       return _noCutsDialog(context);
     }
     // LayoutBuilder sits OUTSIDE the window now: AppWindow owns the Dialog,
-    // so the room the drawers negotiate over is the screen minus the
-    // window's inset, not the dialog's interior.
+    // so the room the drawers negotiate over is the screen's half, not the
+    // dialog's interior.
     return LayoutBuilder(
       builder: (context, constraints) {
         final room = _windowMetrics(constraints);
@@ -2813,8 +2813,10 @@ class ExportDialogState extends State<ExportDialog> {
   static const double _previewColumnWidth = ExportCelsBoard.minimumWidth + 16;
   static const double _settingsColumnWidth = 272;
 
-  /// The window's size and whether each drawer still fits, for the room the
-  /// screen leaves.
+  /// The window's size and whether each drawer still fits: half the app
+  /// screen ([AppWindow.halfScreen]), never narrower than the four columns
+  /// with both drawers folded — the half yields before the preview does,
+  /// as the drawers do.
   ///
   /// The drawers yield before the preview does (v10: 전개 ~1020 / 최소
   /// ~700): a tight surface collapses the queue, then the presets, to
@@ -2822,21 +2824,18 @@ class ExportDialogState extends State<ExportDialog> {
   /// drawer comes back the moment the room does.
   ({double width, double height, bool presetsOpen, bool queueOpen})
   _windowMetrics(BoxConstraints constraints) {
-    final room = AppWindow.fullRoom(constraints);
-    final availableWidth = room.width;
-    final availableHeight = room.height;
+    final room = AppWindow.halfScreen(
+      constraints,
+      least: Size(_columnsWidth(presetsOpen: false, queueOpen: false), 0),
+    );
     var presetsOpen = _presetsOpen;
     var queueOpen = _queueOpen;
     double widthFor() =>
-        _drawerWidth(presetsOpen, _presetsDrawerWidth) +
-        _previewColumnWidth +
-        _settingsColumnWidth +
-        _drawerWidth(queueOpen, _queueDrawerWidth) +
-        4;
-    if (widthFor() > availableWidth && queueOpen) {
+        _columnsWidth(presetsOpen: presetsOpen, queueOpen: queueOpen);
+    if (widthFor() > room.width && queueOpen) {
       queueOpen = false;
     }
-    if (widthFor() > availableWidth && presetsOpen) {
+    if (widthFor() > room.width && presetsOpen) {
       presetsOpen = false;
     }
     // 🗣️유저 2026-09-16: 「미리보기 셀 리스트 가로길이가 길어서 미리보기
@@ -2846,16 +2845,28 @@ class ExportDialogState extends State<ExportDialog> {
     //
     // The window used to be exactly the four columns' sum, so the preview —
     // the only column that stretches — got whatever the fixed three left,
-    // and the cel list ate into that. It takes the room the screen leaves
-    // now; [widthFor] stays because it answers a different question: whether
-    // a drawer still fits.
+    // and the cel list ate into that. It takes half the app screen now
+    // (F-337 — ↩️all the room the screen leaves, from that day); [widthFor]
+    // stays because it answers a different question: whether a drawer
+    // still fits.
     return (
-      width: availableWidth,
-      height: availableHeight,
+      width: room.width,
+      height: room.height,
       presetsOpen: presetsOpen,
       queueOpen: queueOpen,
     );
   }
+
+  /// The four columns side by side, each drawer open or folded.
+  static double _columnsWidth({
+    required bool presetsOpen,
+    required bool queueOpen,
+  }) =>
+      _drawerWidth(presetsOpen, _presetsDrawerWidth) +
+      _previewColumnWidth +
+      _settingsColumnWidth +
+      _drawerWidth(queueOpen, _queueDrawerWidth) +
+      4;
 
   static double _drawerWidth(bool open, double openWidth) =>
       open ? openWidth : _collapsedDrawerWidth;

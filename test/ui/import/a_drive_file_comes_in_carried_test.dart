@@ -175,6 +175,11 @@ void main() {
       findsOneWidget,
     );
 
+    // ⚠️Brought into view first: the table scrolls sideways in a window too
+    // narrow for it, and a tap that misses the cell would offer nothing
+    // either — the findsNothing below would pass on a miss.
+    await tester.ensureVisible(fileCell(copy));
+    await tester.pump();
     await tester.tap(fileCell(copy));
     await settleLoadedPages(tester);
     expect(
@@ -222,6 +227,8 @@ void main() {
     final s = await openPicked(tester);
     final copy = ProviderDocuments.workingCopyOf(uri)!;
 
+    await tester.ensureVisible(fileCell(copy));
+    await tester.pump();
     await tester.tap(fileCell(copy));
     await settleLoadedPages(tester);
     expect(

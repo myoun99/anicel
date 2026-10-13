@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'app_tooltip.dart';
 import 'app_icon_button.dart';
 import 'package:flutter/material.dart';
@@ -149,23 +151,41 @@ class AppWindow extends StatelessWidget {
   static const double titleBarHeight = 32;
   static const double tabBarHeight = 30;
 
-  /// The room the screen leaves a window that takes all of it — [screen]
-  /// less the dialog's own inset — as the [width] and [height] to hand it.
+  /// A window that takes half the app [screen] by AREA — each side at √½
+  /// of the screen's — as the [width] and [height] to hand it. Never less
+  /// than [least], what the window's own columns lay out at, and never more
+  /// than the room the dialog leaves it ([_roomLeft]): a screen too small
+  /// for the least gives all the room it has.
+  ///
+  /// 🗣️F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
+  /// 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」).
+  /// ↩️Both windows took all the room the dialog leaves: the export window
+  /// (유저 2026-09-16: 「그냥 출력 공용창 크기 자체를 더 크게 키우는게
+  /// 날거같기도? … 어차피 창은 이제 비율기준이니까 앱 전체 채워도
+  /// 문제는없잖아」), and the import window as it did (F-282-Q7, 유저
+  /// 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리 전체」).
+  static Size halfScreen(BoxConstraints screen, {Size least = Size.zero}) {
+    final room = _roomLeft(screen);
+    double side(double whole, double atLeast, double atMost) =>
+        math.min(atMost, math.max(whole * math.sqrt1_2, atLeast));
+    return Size(
+      side(screen.maxWidth, least.width, room.width),
+      side(screen.maxHeight, least.height, room.height),
+    );
+  }
+
+  /// The room the dialog leaves a window: [screen] less the dialog's own
+  /// inset.
   ///
   /// ⚠️The window sits in a Material `Dialog`, whose own insetPadding is 40
-  /// a side horizontally and 24 vertically. Taking the full room means
-  /// taking THAT room: ask for more and the window overflows its dialog.
-  ///
-  /// 🗣️The export window takes it (유저 2026-09-16: 「그냥 출력 공용창 크기
-  /// 자체를 더 크게 키우는게 날거같기도? … 어차피 창은 이제 비율기준이니까
-  /// 앱 전체 채워도 문제는없잖아」), and the import window as it does
-  /// (F-282-Q7, 유저 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리 전체」).
-  static Size fullRoom(BoxConstraints screen) => Size(
-    screen.maxWidth - _fullRoomSideInset,
-    screen.maxHeight - _fullRoomVerticalInset,
+  /// a side horizontally and 24 vertically: ask for more than this and the
+  /// window overflows its dialog.
+  static Size _roomLeft(BoxConstraints screen) => Size(
+    screen.maxWidth - _roomSideInset,
+    screen.maxHeight - _roomVerticalInset,
   );
-  static const double _fullRoomSideInset = 80;
-  static const double _fullRoomVerticalInset = 64;
+  static const double _roomSideInset = 80;
+  static const double _roomVerticalInset = 64;
 
   @override
   Widget build(BuildContext context) {

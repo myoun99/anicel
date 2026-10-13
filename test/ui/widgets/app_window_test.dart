@@ -92,4 +92,37 @@ void main() {
     await tester.pump();
     expect(events, ['cancel', 'apply']);
   });
+
+  // F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
+  // 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」).
+  group('half the screen', () {
+    test('by area — each side √½ of the screen\'s', () {
+      final half = AppWindow.halfScreen(
+        const BoxConstraints(maxWidth: 1920, maxHeight: 1200),
+      );
+      expect(half.width, closeTo(1357.6, 0.1));
+      expect(half.height, closeTo(848.5, 0.1));
+      expect(half.width * half.height, closeTo(1920 * 1200 / 2, 1));
+    });
+
+    test('a window\'s least wins over the half', () {
+      final half = AppWindow.halfScreen(
+        const BoxConstraints(maxWidth: 1280, maxHeight: 720),
+        least: const Size(1018, 600),
+      );
+      expect((half.width, half.height), (1018.0, 600.0));
+    });
+
+    test('never more than the room the dialog leaves, least or not', () {
+      final half = AppWindow.halfScreen(
+        const BoxConstraints(maxWidth: 1000, maxHeight: 640),
+        least: const Size(1018, 600),
+      );
+      expect(
+        (half.width, half.height),
+        (920.0, 576.0),
+        reason: 'the screen less the dialog\'s own inset, 80 by 64',
+      );
+    });
+  });
 }

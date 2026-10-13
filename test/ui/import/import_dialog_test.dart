@@ -365,6 +365,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      // The table scrolls sideways in a window too narrow for it.
+      await tester.ensureVisible(into);
+      await tester.pumpAndSettle();
       await tester.tap(into);
       await tester.pumpAndSettle();
       expect(
