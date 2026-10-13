@@ -534,9 +534,16 @@ void main() {
           addTearDown(s.dispose);
           parkEvery(s);
           final (:renderer, :frameAt) = over(s);
+          final heldBefore = HeldRows.debugHeld;
 
           for (final index in [0, 1, 2, 3]) {
             (await frameAt(index)).dispose();
+            expect(
+              HeldRows.debugHeld - heldBefore,
+              2,
+              reason: 'frame $index: a1 and b1 — b2 and b3 are each shown at '
+                  'one frame alone',
+            );
           }
           expect(
             renderer.debugCelReads,

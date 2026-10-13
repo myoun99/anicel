@@ -227,18 +227,23 @@ void main() {
 
   test('🚨the rows a picture is drawn with stay while room is made for '
       'another of its rows — whatever the run says of them', () async {
-    room = rowBytes;
-    // The run shows a at 0 and 4 alone — the picture at 1 is made of it
-    // all the same.
+    room = 2 * rowBytes;
+    // The run shows a at 0 and 4 and x at 5 alone — the picture at 1 is
+    // made of both all the same.
     shows = {
       'a': [0, 4],
+      'x': [5],
       'c': [1, 2],
     };
     final [aImage] = await frame(0, ['a']);
-    final [aThen, cImage] = await frame(1, ['a', 'c']);
+    final [aThen, xImage, cImage] = await frame(1, ['a', 'x', 'c']);
 
-    expect(identical(aThen, aImage), isTrue, reason: 'LIVENESS: held');
-    expect(aImage.debugDisposed, isFalse, reason: 'drawn with: it stays');
+    expect(identical(aThen, aImage), isTrue, reason: 'LIVENESS: a was held');
+    expect(
+      [aImage.debugDisposed, xImage.debugDisposed],
+      [false, false],
+      reason: 'a held and x composed — drawn with, both stay',
+    );
     expect(cImage.debugDisposed, isTrue, reason: 'no room left for c');
   });
 
