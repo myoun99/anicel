@@ -69,13 +69,14 @@ Widget floorPillHarness({
   bool oneToOneOnPill = false,
   ValueChanged<CanvasViewport>? onViewportChanged,
   List<Widget> pageStrip = const [],
+  EdgeInsets floorCover = EdgeInsets.zero,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
     coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    floorCover: EdgeInsets.zero,
+    floorCover: floorCover,
     pageStrip: pageStrip,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
@@ -118,7 +119,7 @@ Widget floorPillHarness({
           width: width,
           height: 420,
           child: onFloor
-              ? CanvasFloorInsets(insets: EdgeInsets.zero, child: panel)
+              ? CanvasFloorInsets(insets: floorCover, child: panel)
               : panel,
         ),
       ),
@@ -314,9 +315,10 @@ void main() {
   });
 
   testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '
-      'panel\'s pill its band — Fit centres the artwork in what they leave, '
-      'the pill and the page strip float over it; ringed on the artwork '
-      'side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」)', (
+      'panel\'s pill and page strip their bands — Fit centres the artwork in '
+      'what they leave, the pill and the strip floating on them; ringed on '
+      'the artwork side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」 · '
+      'F-346: the strip as the pill)', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
@@ -341,13 +343,23 @@ void main() {
         // The harness panel is `width` × 420; the artwork is 300 × 300.
         final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
         final band = pillBandOf(tester);
+        final stripBand = pageStripBandOf(tester);
         final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
         expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+        expect(
+          stripBand,
+          greaterThan(30),
+          reason: 'premise: the strip\'s band',
+        );
         final centre = renderOf(
           tester,
           fitted!,
         ).canvasToViewport(CanvasPoint(x: 150, y: 150));
-        expect(centre.x, closeTo((width - lane) / 2, 0.5), reason: where);
+        expect(
+          centre.x,
+          closeTo(stripBand + (width - stripBand - lane) / 2, 0.5),
+          reason: 'beside the strip\'s band ($where)',
+        );
         expect(
           centre.y,
           closeTo(band + (420 - band - lane) / 2, 0.5),
@@ -395,6 +407,49 @@ void main() {
     const ring = BorderSide(color: AppColors.backdrop);
     expect(ringOf('canvas-panbar-vertical').left, ring);
     expect(ringOf('canvas-panbar-horizontal').top, ring);
+  });
+
+  testWidgets('F-346: on the floor the page strip stands on the box\'s own '
+      'left edge, so a rail lying on that edge costs Fit the rail or the '
+      'strip, whichever reaches further — never the two end to end', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Future<double> fittedCentreX(double rail) async {
+      CanvasViewport? fitted;
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          floorCover: EdgeInsets.only(left: rail),
+          onViewportChanged: (view) => fitted = view,
+          pageStrip: const [SizedBox(width: 26, height: 40)],
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      );
+      await tester.pumpAndSettle();
+      return renderOf(
+        tester,
+        fitted!,
+      ).canvasToViewport(CanvasPoint(x: 150, y: 150)).x;
+    }
+
+    final narrow = await fittedCentreX(20);
+    final strip = pageStripBandOf(tester);
+    expect(strip, greaterThan(20), reason: '⛔premise: the strip reaches past');
+    expect(narrow, closeTo(strip + (900 - strip) / 2, 0.5));
+
+    final wide = await fittedCentreX(200);
+    expect(
+      pageStripBandOf(tester),
+      lessThan(200),
+      reason: '⛔premise: the rail lies over the strip',
+    );
+    expect(wide, closeTo(200 + (900 - 200) / 2, 0.5));
   });
 
   testWidgets('🗣️playback\'s fit — the frame an owner hands a view nobody '

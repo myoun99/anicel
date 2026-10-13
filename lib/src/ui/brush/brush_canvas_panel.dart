@@ -524,6 +524,9 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Empty means no strip at all: a still image has no pages to turn, and
   /// a disabled cluster on a permanent capsule is a promise the panel
   /// cannot keep.
+  ///
+  /// It hides the artwork's left edge as the pill hides the top (F-346), so
+  /// framing keeps out from under it (`_framingInsets`).
   final List<Widget> pageStrip;
 
   /// The transport of a document that RUNS IN TIME, under the horizontal
@@ -2193,20 +2196,35 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// What is hidden from the artwork: the panels lying on the floor, a
   /// docked panel's own lanes — its panbars stand on the artwork's right and
   /// bottom edges (F-209) — the pill's band across the top edge
-  /// ([_CanvasEditorPanelShell.pillBandIn]), and the transport under a
-  /// document that runs ([_CanvasEditorPanelShell.transportCover]). Framing
-  /// keeps out from under all of it as it keeps out from under a panel.
-  EdgeInsets get _framingInsets =>
-      widget.floorCover +
-      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
-      EdgeInsets.only(
-        top: _pillBand,
-        bottom: _CanvasEditorPanelShell.transportCover(
-          widget.transport,
-          onFloor: _onFloor,
-          floorOverlay: widget.floorBottomOverlaySpan,
-        ),
-      );
+  /// ([_CanvasEditorPanelShell.pillBandIn]), the page strip's down the left
+  /// one ([_CanvasEditorPanelShell.pageStripBandOf]), and the transport
+  /// under a document that runs ([_CanvasEditorPanelShell.transportCover]).
+  /// Framing keeps out from under all of it as it keeps out from under a
+  /// panel.
+  ///
+  /// ⚠️The strip's band is the larger of it and the floor's left cover, not
+  /// their sum: the strip stands on the box's own left edge — what it floats
+  /// in is pushed down by a region on top, not in by a rail beside it — so
+  /// a rail lying on that edge already hides it.
+  EdgeInsets get _framingInsets {
+    final covered =
+        widget.floorCover +
+        (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+        EdgeInsets.only(
+          top: _pillBand,
+          bottom: _CanvasEditorPanelShell.transportCover(
+            widget.transport,
+            onFloor: _onFloor,
+            floorOverlay: widget.floorBottomOverlaySpan,
+          ),
+        );
+    return covered.copyWith(
+      left: math.max(
+        covered.left,
+        _CanvasEditorPanelShell.pageStripBandOf(widget.pageStrip),
+      ),
+    );
+  }
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
@@ -2868,7 +2886,20 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// middle a zoom holds). ↩️It was a see-through capsule for a day
   /// (F-209); the user took that back for this.
   static double pillBandIn(BuildContext context) =>
-      2 * _capsuleMargin + _CanvasViewportBottomBar.heightIn(context);
+      _capsuleBand(_CanvasViewportBottomBar.heightIn(context));
+
+  /// 🗣️F-346 (유저 2026-10-12): 「왼쪽알약도 동일하게 하나의 기준? 아무튼
+  /// 그쪽도 이동가능해야하는 부분으로서 판정하도록」 — the page strip is cover
+  /// as the pill is ([pillBandIn]): the band it floats in down the left
+  /// edge, its margin either side. Zoomed in, the view goes on until the
+  /// paper's left edge stands beside the strip. Nothing with no strip.
+  static double pageStripBandOf(List<Widget> pageStrip) =>
+      pageStrip.isEmpty ? 0 : _capsuleBand(_pageStripWidth);
+
+  /// The band a capsule floats in along the edge it rides: its own
+  /// [thickness], with [_capsuleMargin] on either side of it.
+  static double _capsuleBand(double thickness) =>
+      _capsuleMargin + thickness + _capsuleMargin;
 
   /// What [transport] hides of the artwork's bottom edge — a docked panel's
   /// band and the rule over it; the floor's capsule, its margin on either
@@ -2887,8 +2918,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     if (transport == null) {
       return 0;
     }
-    return transport.height +
-        (onFloor ? floorOverlay + 2 * _capsuleMargin : _transportRule);
+    return onFloor
+        ? floorOverlay + _capsuleBand(transport.height)
+        : transport.height + _transportRule;
   }
 
   /// The hairline between a docked panel's lanes and the band under them.
