@@ -676,15 +676,55 @@ class _LayerStackPaintPass {
         : extent.intersect(_visibleCanvasRect);
   }
 
+  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it is on
+  /// screen ([subtreeBufferBounds], the one law the camera's walk keeps
+  /// too).
+  ///
+  /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
+  ///
+  /// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
+  /// far enough and that rect spans the whole pasteboard — 5×5 canvases
+  /// then, 11700×8270 on a 2340×1654 page — which blew past [_maxBufferSide]
+  /// and dropped the paint onto the fallback past the cap (since H2's 3×3,
+  /// 2026-08-22, that page's pasteboard is 7020×4962 and fits; a page more
+  /// than 2730 on a side still does not). That fallback is how the editing
+  /// canvas stopped compositing the way playback, the camera and the export
+  /// do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
+  /// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
+  /// the only tool on the table; the screen-resolution "knee" that served
+  /// the fallback from 2026-08-16 went with the level buffer on 2026-09-16,
+  /// and past the cap the direct walk is the net).
+  ///
+  /// ★Content is not the pasteboard. For a cached row it is
+  /// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
+  /// tiles that actually exist — so an ordinary page bounds to 2340×1654 and
+  /// never reaches the cap. The fallback stops being reachable, and one
+  /// resolution serves every zoom. For the ACTIVE row it is whatever the
+  /// caller measures it by ([activeSurfaceExtent]): everything the slot
+  /// draws for the display buffer — its committed surface alone cut every
+  /// live draw at the edge of the ink already landed (F-85) — and that
+  /// committed surface for the bake, which never records the live slot
+  /// (review 2026-09-15).
   Rect _bufferBoundsFor(
     CompositeNode<_PaintRow> node,
     Rect Function() activeSurfaceExtent,
-  ) => _visibleCanvasRect.intersect(
-    _paintNodeExtent(
-      node,
-      activeSurfaceExtent: activeSurfaceExtent,
-      liftedExtent: _liftedExtent,
-    ),
+  ) => subtreeBufferBounds(
+    node,
+    // ⚠️The view at every depth, where the law asks for the buffer of the
+    // folder that holds [node]: a blurred folder holding a buffered one
+    // misses the inner folder's ink past the screen's edge, so the blur
+    // there changes as the view moves (card
+    // nested-folder-buffers-read-past-the-view).
+    within: _visibleCanvasRect,
+    extentOf: (row) => switch (row) {
+      _PaintImage(:final extent) => extent,
+      _PaintActiveSurface() => activeSurfaceExtent(),
+      final _PaintLiftedSurface lifted => _liftedExtent(lifted),
+    },
+    placementOf: (row) => switch (row) {
+      _PaintImage(:final placement) => placement,
+      final _SurfaceRow surface => surface.placement,
+    },
   );
 
   void _paintNodesWith(

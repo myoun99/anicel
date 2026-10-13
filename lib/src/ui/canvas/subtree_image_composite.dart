@@ -3,10 +3,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
+import '../../models/composite_tree.dart';
 import 'blends_in_place.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
 import '../../services/composite_effect_paint.dart';
+import '../../services/layer_pose_matrix.dart'
+    show LayerPlacement, placementMatrix;
 import 'raster_picture.dart';
 
 /// The largest side a sub-tree's own raster may have, in device pixels.
@@ -19,7 +22,7 @@ import 'raster_picture.dart';
 /// remedy is to clamp the scale — refusing here would be a second code path,
 /// the one where a folder's effect silently does not apply.
 ///
-/// It is one constant rather than one per route so the three walks cannot
+/// It is one constant rather than one per route so the walks cannot
 /// disagree about how big a folder may get.
 const int maxSubtreeRasterSide = 8192;
 
@@ -40,13 +43,71 @@ double scaleFittingSide({
   return side * scale > maxSide ? maxSide / side : scale;
 }
 
+/// The CANVAS-SPACE rect a buffer for [node] covers: what of it lies
+/// [within] what reads the buffer — the rect each of its rows stands for
+/// ([extentOf]) under the row's own placement ([placementOf]), a folder's
+/// or an adjustment's the union of its children's.
+///
+/// [within] is the view at the top, and under a folder that folder's own
+/// buffer: a blur on the folder reads its buffer past the view, so what
+/// lies inside it has to be there too. 🔬A blurred folder holding a
+/// buffered one, cut to the view at every depth, put the frame's edge 56
+/// levels off (2026-10-13, measured against the camera's old bound).
+///
+/// 🚨★★★ONE LAW FOR EVERY WALK (card export-folders-and-rows-at-their-extent,
+/// 2026-10-13). ↩️The camera bounded a folder by the square that covers its
+/// frame at any turn — 2.1× a 2340×1654 canvas, 8.2 Mpx a folder, a
+/// convenience of R6a (07-30), nobody's decision — where the editing stack
+/// bounded the same folder by what of it is in view. 🔬On the user's film,
+/// with a kit that bounded it by the frame alone: a folder cut's picture
+/// 129 → 79 ms of GPU, the run 151 → 124 s, the video's bytes the same.
+///
+/// [extentOf] is the rect a row STANDS FOR, not the part of it that holds
+/// the ink: a folder's buffer — and so where its blur is worked out —
+/// reaches as far as it did when every image was whole.
+///
+/// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
+/// high-water mark of everything you had done — the "sticky / containment
+/// 매칭 버퍼 rect" the composite plan rejects by name.
+Rect subtreeBufferBounds<T>(
+  CompositeNode<T> node, {
+  required Rect within,
+  required Rect Function(T row) extentOf,
+  required LayerPlacement? Function(T row) placementOf,
+}) => within.intersect(_subtreeExtent(node, extentOf, placementOf));
+
+Rect _subtreeExtent<T>(
+  CompositeNode<T> node,
+  Rect Function(T row) extentOf,
+  LayerPlacement? Function(T row) placementOf,
+) {
+  switch (node) {
+    case CompositeLeaf(:final payload):
+      final extent = extentOf(payload);
+      final placement = placementOf(payload);
+      return placement == null
+          ? extent
+          : MatrixUtils.transformRect(placementMatrix(placement), extent);
+    case CompositeGroup(:final children):
+    case CompositeAdjustment(:final children):
+      var union = Rect.zero;
+      for (final child in children) {
+        final rect = _subtreeExtent(child, extentOf, placementOf);
+        if (rect.isEmpty) {
+          continue;
+        }
+        union = union.isEmpty ? rect : union.expandToInclude(rect);
+      }
+      return union;
+  }
+}
+
 /// The grid a sub-tree rasterises on, decided once and then obeyed.
 ///
-/// ⛔The arithmetic lives HERE and only here. Three walks composite a group —
-/// the editing stack, the playback cache and the camera (which the export
-/// renders through) — and one of them is async, so they cannot share a single
-/// function body. What they share is `drawSubtreeAsImage` and its async twin,
-/// which differ by one `await` and nothing that decides a pixel; the plan and
+/// ⛔The arithmetic lives HERE and only here. Two walks composite a group —
+/// the editing stack (playback's too, since 2026-10-10) and the camera
+/// (which the export renders through). What they share is how big a group's
+/// buffer is ([subtreeBufferBounds]) and `drawSubtreeAsImage`; the plan and
 /// the blit are the machinery underneath and belong to this file alone.
 @immutable
 class SubtreeRasterPlan {
@@ -223,10 +284,6 @@ typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 /// blits once, an adjustment wraps a crossfade `saveLayer` around two. Passing
 /// the structure in rather than a single paint is what lets an adjustment
 /// rasterise its scope ONCE where two `saveLayer`s painted the children twice.
-///
-/// This is the SYNCHRONOUS form. A walk that awaits its children calls
-/// [drawSubtreeAsImageAsync]; the two differ by one `await` and share every
-/// line that decides a pixel.
 void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
@@ -248,37 +305,6 @@ void drawSubtreeAsImage({
   final into = Canvas(recorder);
   plan.applyTo(into);
   paintSubtree(into, plan.scale);
-  _finishSubtreeRaster(
-    canvas: canvas,
-    recorder: recorder,
-    plan: plan,
-    compose: compose,
-    steps: steps,
-  );
-}
-
-/// The [drawSubtreeAsImage] a walk that awaits its children can use.
-Future<void> drawSubtreeAsImageAsync({
-  required Canvas canvas,
-  required Rect bounds,
-  required double rasterScale,
-  int maxPixelSide = maxSubtreeRasterSide,
-  required Future<void> Function(Canvas into, double rasterScale) paintSubtree,
-  required void Function(BlitSubtree blit) compose,
-  List<CompositeEffectStep> steps = const [],
-}) async {
-  final plan = _planSubtreeRaster(
-    bounds: bounds,
-    rasterScale: rasterScale,
-    maxPixelSide: maxPixelSide,
-  );
-  if (plan == null) {
-    return;
-  }
-  final recorder = ui.PictureRecorder();
-  final into = Canvas(recorder);
-  plan.applyTo(into);
-  await paintSubtree(into, plan.scale);
   _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,

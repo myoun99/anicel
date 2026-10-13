@@ -133,6 +133,20 @@ void main() {
     }
   });
 
+  test('every walk sizes a sub-tree\'s buffer by the one shared law', () {
+    for (final path in walks) {
+      expect(
+        codeLines(path).join('\n').contains('subtreeBufferBounds('),
+        isTrue,
+        reason:
+            '$path sizes a buffer by a law of its own — the camera '
+            'buffered a folder at the square around its frame while the '
+            'editing stack buffered it at what of it is in view (card '
+            'export-folders-and-rows-at-their-extent)',
+      );
+    }
+  });
+
   test('no walk has grown a new sub-tree saveLayer', () {
     for (final path in walks) {
       final count = codeLines(

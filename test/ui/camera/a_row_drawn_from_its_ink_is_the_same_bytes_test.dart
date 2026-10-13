@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -29,6 +31,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -365,6 +368,65 @@ void main() {
         reason: 'each crop laid back',
       );
       expect(turned, whole);
+    });
+  });
+
+  // A canvas a few pixels wider than a folder's raster may be: the folder
+  // over it is cut down to its cap, and its rows are drawn into it
+  // resampled, never texel for texel.
+  testWidgets('🎯a row composed as its ink is laid back whole in a folder '
+      'cut down to its cap — the same bytes as the whole row', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      const wide = CanvasSize(width: maxSubtreeRasterSide + 8, height: 16);
+      final pixels = Uint8List(16 * 16 * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i] = 200;
+        pixels[i + 3] = 255;
+      }
+      final surface = BitmapSurface(
+        canvasSize: wide,
+        tileSize: 16,
+        tiles: {TileCoord(x: 1, y: 0): BitmapTile(size: 16, pixels: pixels)},
+      );
+      final nodes = [
+        CompositeGroup<CutFrameCompositeLayer>(
+          children: [
+            CompositeLeaf(CutFrameCompositeLayer(surface: surface, opacity: 1)),
+          ],
+          opacity: 0.9,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ];
+      final view = cameraViewOver(wide.canvasRect);
+      Future<Uint8List> render() async {
+        final image = await const CameraFrameRenderService()
+            .renderThroughCamera(
+              nodes: nodes,
+              pose: view.pose,
+              cameraFrameSize: view.frameSize,
+            );
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return data!.buffer.asUint8List();
+      }
+
+      final laidBack = debugWholesLaidBack;
+      final ink = await render();
+      expect(
+        debugLastSubtreeRaster!.scale,
+        lessThan(1),
+        reason: 'LIVENESS: the cap cut the folder down',
+      );
+      expect(debugWholesLaidBack - laidBack, 1, reason: 'the crop laid back');
+      debugComposesRowsWhole = true;
+      addTearDown(() => debugComposesRowsWhole = false);
+      final whole = await render();
+
+      expect(ink, whole);
     });
   });
 }

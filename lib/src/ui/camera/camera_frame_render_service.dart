@@ -6,11 +6,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/point_bounds.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
+import '../../services/camera_frame_corners.dart'
+    show cameraFrameCornersInCanvas;
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
@@ -316,33 +319,36 @@ class CameraFrameRenderService {
       outputSize: resolvedOutput,
     );
 
-    // The group buffer's size hint, in CANVAS space — the space the canvas
-    // is now in. It used to be the camera frame anchored at the canvas
+    // The canvas region this render can SEE, in CANVAS space — the space
+    // the canvas is now in: the output rect pulled back through the camera
+    // projection ([cameraFrameCornersInCanvas]), which is exactly the
+    // editing stack's "visible rect" rule (R5b's lesson: ask whether it is
+    // in shot). It used to be the camera frame anchored at the canvas
     // ORIGIN, which is only the right rect when the camera happens to sit
     // there: a panned or zoomed-out camera clipped group members that the
     // view plainly showed (invisible while a group only carried opacity and
-    // a blend, fatal once it carries a blur). What actually matters is the
-    // canvas region this render can SEE — the output rect pulled back
-    // through the camera projection, which is exactly the editing stack's
-    // "visible rect" rule (R5b's lesson: ask whether it is in shot).
-    final visibleHalfWidth =
-        resolvedOutput.width / 2 / (previewScale * pose.zoom);
-    final visibleHalfHeight =
-        resolvedOutput.height / 2 / (previewScale * pose.zoom);
-    // Rotation turns the rect; the circumscribing half-extent (the
-    // rectangle's own half-diagonal) covers every angle without a matrix.
-    final visibleRadius = math.sqrt(
-      visibleHalfWidth * visibleHalfWidth +
-          visibleHalfHeight * visibleHalfHeight,
+    // a blend, fatal once it carries a blur).
+    final visible = pointsBounds(
+      cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: cameraFrameSize),
     );
-    final groupBounds = Rect.fromCircle(
-      center: Offset(pose.center.x, pose.center.y),
-      radius: visibleRadius,
+    // A sub-tree's buffer: what of it lies [within] what reads it — the shot
+    // at the top, and under a folder that folder's buffer, which a blur on
+    // it reads past the shot ([subtreeBufferBounds]). A row stands for its
+    // content, never the ink alone it may be composed as ([rowsAsInk]).
+    Rect bufferBoundsFor(
+      CompositeNode<CutFrameCompositeLayer> node,
+      Rect within,
+    ) => subtreeBufferBounds(
+      node,
+      within: within,
+      extentOf: (layer) => surfaceContentWorldRect(layer.surface),
+      placementOf: (layer) => layer.placement,
     );
     void paintNodes(
       Canvas canvas,
       List<CompositeNode<CutFrameCompositeLayer>> list,
       double rasterScale,
+      Rect within,
     ) {
       for (final node in list) {
         switch (node) {
@@ -362,16 +368,21 @@ class CameraFrameRenderService {
               blendMode: blendMode,
               effects: groupPlan.finalPaint,
             );
-            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, this
-            // walk and the playback cache composite the same tree; if one of
-            // them kept a `saveLayer` the folder would be samplable on
-            // screen and not in the file, which is the asymmetry the whole
-            // round exists to close.
+            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack and this
+            // walk composite the same tree; if one of them kept a
+            // `saveLayer` the folder would be samplable on screen and not in
+            // the file, which is the asymmetry the whole round exists to
+            // close.
+            final bounds = effectBufferBounds(
+              bufferBoundsFor(node, within),
+              groupPlan.outsetPixels,
+            );
             drawSubtreeAsImage(
               canvas: canvas,
-              bounds: effectBufferBounds(groupBounds, groupPlan.outsetPixels),
+              bounds: bounds,
               rasterScale: rasterScale,
-              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              paintSubtree: (into, scale) =>
+                  paintNodes(into, children, scale, bounds),
               compose: (blit) => blit(groupPaint),
               steps: groupPlan.preSteps,
             );
@@ -383,7 +394,7 @@ class CameraFrameRenderService {
             // twice. The outer `saveLayer` stays: it is an alpha group over
             // two draws of one image, not a buffer anything needs to sample.
             final pass = resolveAdjustmentScopePass(
-              bounds: groupBounds,
+              bounds: bufferBoundsFor(node, within),
               effects: effects,
               mix: mix,
             );
@@ -391,7 +402,8 @@ class CameraFrameRenderService {
               canvas: canvas,
               bounds: pass.bufferBounds,
               rasterScale: rasterScale,
-              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              paintSubtree: (into, scale) =>
+                  paintNodes(into, children, scale, pass.bufferBounds),
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,
             );
@@ -440,7 +452,7 @@ class CameraFrameRenderService {
       }
     }
 
-    paintNodes(canvas, tree, cameraRasterScale);
+    paintNodes(canvas, tree, cameraRasterScale, visible);
     overlayPass?.call(canvas);
 
     final picture = recorder.endRecording();
