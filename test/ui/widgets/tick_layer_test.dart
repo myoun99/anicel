@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/frame_census.dart';
+
 /// I-22 ③: WHAT A TICK MOVES IS LAID OUT AND PAINTED ALONE.
 ///
 /// A rebuild inside a `LayoutBuilder`'s subtree lays that LayoutBuilder out
@@ -230,6 +232,101 @@ void main() {
 
     expect(asked.laidOut, isTrue);
     expect(asked.painted, isTrue);
+  });
+
+  /// A panel's host: a [host] layer — or a tick layer — round a listener
+  /// that builds [panel] again whenever [builds] moves, handing back the
+  /// very panel it holds.
+  Widget panelHost({
+    required ValueNotifier<int> builds,
+    required Widget panel,
+    bool host = true,
+  }) {
+    final listener = ValueListenableBuilder<int>(
+      valueListenable: builds,
+      builder: (context, _, held) => held!,
+      child: panel,
+    );
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Semantics(
+        container: true,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: host
+                  ? TickLayer.host(child: listener)
+                  : TickLayer(child: listener),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> panelPainted(
+    WidgetTester tester,
+    ValueNotifier<int> builds,
+  ) async {
+    final panel = tester.renderObject(find.text('panel'));
+    final frame = await frameCensus(tester, () => builds.value += 1);
+    expect(
+      frame.rebuilt,
+      contains(ValueListenableBuilder<int>),
+      reason: 'premise: the host was built again',
+    );
+    return frame.painted.any((object) => identical(object, panel));
+  }
+
+  testWidgets('a host built again round a panel that did not change paints '
+      'none of the panel', (tester) async {
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    await tester.pumpWidget(
+      panelHost(builds: builds, panel: const Text('panel')),
+    );
+
+    expect(await panelPainted(tester, builds), isFalse);
+  });
+
+  testWidgets('CONTROL: a tick layer round the same listener paints it '
+      'again — what ticks is what changed', (tester) async {
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    await tester.pumpWidget(
+      panelHost(builds: builds, panel: const Text('panel'), host: false),
+    );
+
+    expect(await panelPainted(tester, builds), isTrue);
+  });
+
+  testWidgets('and re-walks none of the panel\'s semantics', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    final walks = [0];
+    await tester.pumpWidget(
+      panelHost(
+        builds: builds,
+        panel: _WalkCounter(walks: walks, child: const Text('panel')),
+      ),
+    );
+    var before = walks.single;
+    SchedulerBinding.instance.scheduleFrame();
+    await tester.pump();
+    final unchanged = walks.single - before;
+    before = walks.single;
+
+    builds.value += 1;
+    await tester.pump();
+
+    expect(walks.single - before - unchanged, 0);
+    expect(
+      find.bySemanticsLabel('panel'),
+      findsOneWidget,
+      reason: 'the panel reads to a screen reader as it did',
+    );
+    semantics.dispose();
   });
 
   testWidgets('under loose constraints it says so', (tester) async {

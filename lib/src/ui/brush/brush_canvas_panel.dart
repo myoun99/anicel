@@ -2936,7 +2936,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// Whether the page strip, [height] tall in the middle of a window that
   /// starts [windowTop] down the floor and is [windowHeight] tall, has the
   /// left rail's [band] beside it — what the vertical panbar asks of the
-  /// right rail ([_floorVerticalCapsule]). The axis law has a control yield
+  /// right rail ([_FloorVerticalBarSeat]). The axis law has a control yield
   /// across the edge it rides (유저, R4), and to the rail's band rather
   /// than its whole edge (유저, R3 #5).
   static bool pageStripBesideRail(
@@ -3078,7 +3078,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   static const double _capsuleTrackMax = 260;
 
-  double _capsuleTrack(double edge) {
+  static double _capsuleTrack(double edge) {
     // Never wider than the edge it rides, and never so short that the thumb
     // has nowhere to travel — a scrollbar that cannot be dragged is not a
     // scrollbar, and dragging is the ONLY way back from a runaway pan.
@@ -3155,100 +3155,95 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           top: cover.top,
           right: onFloor ? 0 : dockedLane,
           bottom: cover.bottom + (onFloor ? 0 : dockedLane + _transportCover),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final window = Size(
-                constraints.maxWidth.clamp(0.0, double.infinity),
-                constraints.maxHeight.clamp(0.0, double.infinity),
-              );
-              return _FloatingCanvasControls(
-                children: [
-                  // THE PAGE STRIP, at the LEFT CENTRE (유저 확정 ⑥).
-                  //
-                  // Same axis law the two bars follow: ALONG the edge it
-                  // rides it holds the window's centre, and ACROSS that
-                  // edge it sits on the edge — past the left rail where the
-                  // rail is beside it, as the vertical bar steps past the
-                  // right one ([_PageStripSeat]): under a rail, no page
-                  // could be turned. A rail opening on the right is not a
-                  // reason for the page you are turning to walk left.
-                  if (pageStrip.isNotEmpty)
-                    Positioned.fill(
-                      child: CustomSingleChildLayout(
-                        delegate: _PageStripSeat(
-                          railBand: leftRailBand,
-                          windowTop: cover.top,
-                          railSpan: cover.left,
-                          onLaidOut: onPageStripLaidOut,
-                        ),
-                        // A panel shorter than the strip gets the whole strip,
-                        // smaller — never a column that overflows, and never
-                        // one missing a control. Its height is its controls
-                        // and a readout that wraps (「12 / 51」 is two lines
-                        // in 30px), so no floor number can promise it room.
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: CanvasCapsule(
-                            keyValue: 'canvas-page-strip',
-                            width: _pageStripWidth,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: pageStrip,
-                            ),
-                          ),
-                        ),
-                      ),
+          child: _FloatingCanvasControls(
+            children: [
+              // THE PAGE STRIP, at the LEFT CENTRE (유저 확정 ⑥).
+              //
+              // Same axis law the two bars follow: ALONG the edge it rides
+              // it holds the window's centre, and ACROSS that edge it sits
+              // on the edge — past the left rail where the rail is beside
+              // it, as the vertical bar steps past the right one
+              // ([_PageStripSeat]): under a rail, no page could be turned.
+              // A rail opening on the right is not a reason for the page
+              // you are turning to walk left.
+              if (pageStrip.isNotEmpty)
+                Positioned.fill(
+                  child: CustomSingleChildLayout(
+                    delegate: _PageStripSeat(
+                      railBand: leftRailBand,
+                      windowTop: cover.top,
+                      railSpan: cover.left,
+                      onLaidOut: onPageStripLaidOut,
                     ),
-                  // THE PILL, at the TOP CENTRE (유저, R3 #6).
-                  //
-                  // ⛔It used to take the top corner away from the tool strip
-                  // (R2 #14), which needed a rule about which hand the strip
-                  // was under and an InheritedWidget to publish the answer.
-                  // Centred, there is no side to choose, and the pill is the
-                  // same distance from either hand.
-                  //
-                  // It sits ON the top edge now rather than one lane below
-                  // it: the horizontal panbar used to own that edge and has
-                  // moved to the bottom, so the row it was making way for is
-                  // gone. Still NOT the timeline's edge, for the old reason
-                  // — that edge moves on every resize and every threshold
-                  // switch, and 좌우반전 gets pressed dozens of times an hour.
-                  Positioned(
-                    left: _capsuleMargin,
-                    top: _capsuleMargin,
-                    right: _capsuleMargin,
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      // BOUNDED on purpose: an unbounded pill would offer
-                      // itself everything, keep every control and overflow.
-                      // The shedding is the whole reason it is measured.
-                      //
-                      // There is no floor under which the pill disappears.
-                      // There used to be — below 190px it stood down, on
-                      // the reading that a capsule around an empty row says
-                      // nothing. With the docked bar gone the row is never
-                      // empty: Fit is in it at every width, and the panel
-                      // narrow enough to have lost the pill is the one that
-                      // needed it most.
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: math.max(
-                            0.0,
-                            window.width - 2 * _capsuleMargin,
-                          ),
-                        ),
-                        child: CanvasCapsule(
-                          keyValue: 'canvas-view-pill',
-                          height: _CanvasViewportBottomBar.heightIn(context),
-                          child: bottomBar,
+                    // A panel shorter than the strip gets the whole strip,
+                    // smaller — never a column that overflows, and never
+                    // one missing a control. Its height is its controls and
+                    // a readout that wraps (「12 / 51」 is two lines in
+                    // 30px), so no floor number can promise it room.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: CanvasCapsule(
+                        keyValue: 'canvas-page-strip',
+                        width: _pageStripWidth,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: pageStrip,
                         ),
                       ),
                     ),
                   ),
-                ],
-              );
-            },
+                ),
+              // THE PILL, at the TOP CENTRE (유저, R3 #6).
+              //
+              // ⛔It used to take the top corner away from the tool strip
+              // (R2 #14), which needed a rule about which hand the strip was
+              // under and an InheritedWidget to publish the answer. Centred,
+              // there is no side to choose, and the pill is the same
+              // distance from either hand.
+              //
+              // It sits ON the top edge now rather than one lane below it:
+              // the horizontal panbar used to own that edge and has moved to
+              // the bottom, so the row it was making way for is gone. Still
+              // NOT the timeline's edge, for the old reason — that edge
+              // moves on every resize and every threshold switch, and
+              // 좌우반전 gets pressed dozens of times an hour.
+              Positioned(
+                left: _capsuleMargin,
+                top: _capsuleMargin,
+                right: _capsuleMargin,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  // BOUNDED on purpose: an unbounded pill would offer itself
+                  // everything, keep every control and overflow. The
+                  // shedding is the whole reason it is measured. The bound
+                  // is the two edges it is pinned between — the Align hands
+                  // the pill what they leave, and nothing more.
+                  //
+                  // 🚨I-57 (10-13): it was a LayoutBuilder measuring the
+                  // window to bound the pill a second time with the same
+                  // number. A builder runs again whenever the panel is
+                  // built, and its layout repainted the whole shell — the
+                  // pill, its swatches and readouts, the panbars — on every
+                  // notify and every cut crossed, for a pill that had not
+                  // changed. (The bound was the builder's job when the pill
+                  // sat in a Row, which hands its children no width.)
+                  //
+                  // There is no floor under which the pill disappears.
+                  // There used to be — below 190px it stood down, on the
+                  // reading that a capsule around an empty row says
+                  // nothing. With the docked bar gone the row is never
+                  // empty: Fit is in it at every width, and the panel narrow
+                  // enough to have lost the pill is the one that needed it
+                  // most.
+                  child: CanvasCapsule(
+                    keyValue: 'canvas-view-pill',
+                    height: _CanvasViewportBottomBar.heightIn(context),
+                    child: bottomBar,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -3270,75 +3265,47 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// actually beside it. A rail panel is as tall as it was left at, so
   /// a short one covers a band, not an edge: stepping in for the whole
   /// edge left the bar hanging in the middle of nothing.
-  Widget _floorCapsules() => Positioned.fill(
-    child: LayoutBuilder(
-      builder: (context, panel) => Stack(
-        children: [
-          _floorVerticalCapsule(panel),
-          _floorHorizontalCapsule(panel),
-          if (transport case final transport?)
-            _floorTransportCapsule(transport),
-        ],
-      ),
-    ),
-  );
-
-  Positioned _floorVerticalCapsule(BoxConstraints panel) {
-    final insets = cover;
-    final visibleTop = insets.top;
-    final visibleBottom = math.max(
-      visibleTop,
-      panel.maxHeight - insets.bottom - _transportCover,
-    );
-    final track = _capsuleTrack(visibleBottom - visibleTop);
-    final centre = (visibleTop + visibleBottom) / 2;
-    final barTop = centre - track / 2;
-    final intrudes = canvasFloorBandIntrudes(
-      rightRailBand,
-      top: barTop,
-      bottom: barTop + track,
-    );
-    return Positioned(
-      right: intrudes ? insets.right + _capsuleMargin : _capsuleMargin,
-      top: barTop,
-      height: track,
-      child: CanvasCapsule(
-        keyValue: 'canvas-panbar-vertical',
-        width: rightStripWidth,
-        height: track,
-        child: rightStripBar,
-      ),
-    );
-  }
-
-  /// 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서 펼치든말든 중앙에. The
-  /// two axes are NOT the same question, and the answer differs by axis
-  /// rather than by widget:
   ///
-  ///  * ALONG the edge it rides, the bar holds the window's centre. A side
-  ///    panel opening is not a reason for the thing you read to walk
-  ///    sideways — that is the 「읽는 것은 안 움직인다」 rule, and the
-  ///    earlier pass over-applied "centre on what you can see" to it.
-  ///  * ACROSS that edge it still yields, because there it is not a matter
-  ///    of taste: a bar on the bottom edge with the region docked below
-  ///    would be UNDER it.
-  Positioned _floorHorizontalCapsule(BoxConstraints panel) => Positioned(
-    left: _capsuleMargin,
-    right: _capsuleMargin,
-    // ⑩: …and above whatever lies ON the artwork at that edge. The
-    // collapsed row frames nothing, so it is not in `cover` — but it is
-    // exactly where this bar was, which is what the user saw. The transport
-    // lies under the bar ([_floorTransportCapsule]), so the bar stands on
-    // it.
-    bottom: _floorBarBottom,
-    child: Align(
-      alignment: Alignment.bottomCenter,
-      child: CanvasCapsule(
-        keyValue: 'canvas-panbar-horizontal',
-        height: AppScrollbarLane.medium,
-        width: _capsuleTrack(panel.maxWidth),
-        child: horizontalStripBar,
-      ),
+  /// 🚨I-57 (10-13): each bar is SEATED where it is laid out
+  /// ([_FloorVerticalBarSeat], [_FloorHorizontalBarSeat]), as the page strip
+  /// is. They were measured in a LayoutBuilder, and a builder runs again
+  /// whenever the panel is built: its layout repainted the shell — the pill
+  /// and everything on it — on every notify and every cut crossed, for
+  /// bars that had not moved.
+  Widget _floorCapsules() => Positioned.fill(
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: CustomSingleChildLayout(
+            delegate: _FloorVerticalBarSeat(
+              cover: cover,
+              bottomCover: _transportCover,
+              railBand: rightRailBand,
+            ),
+            child: CanvasCapsule(
+              keyValue: 'canvas-panbar-vertical',
+              width: rightStripWidth,
+              child: rightStripBar,
+            ),
+          ),
+        ),
+        // ⑩: …and above whatever lies ON the artwork at that edge. The
+        // collapsed row frames nothing, so it is not in `cover` — but it is
+        // exactly where this bar was, which is what the user saw. The
+        // transport lies under the bar ([_floorTransportCapsule]), so the
+        // bar stands on it.
+        Positioned.fill(
+          child: CustomSingleChildLayout(
+            delegate: _FloorHorizontalBarSeat(bottom: _floorBarBottom),
+            child: CanvasCapsule(
+              keyValue: 'canvas-panbar-horizontal',
+              height: AppScrollbarLane.medium,
+              child: horizontalStripBar,
+            ),
+          ),
+        ),
+        if (transport case final transport?) _floorTransportCapsule(transport),
+      ],
     ),
   );
 
@@ -3541,6 +3508,105 @@ class _PageStripSeat extends SingleChildLayoutDelegate {
       oldDelegate.railBand != railBand ||
       oldDelegate.windowTop != windowTop ||
       oldDelegate.railSpan != railSpan;
+}
+
+/// Seats the floor's vertical panbar in the middle of the visible HEIGHT,
+/// on the right edge — past the right rail when the rail is beside it —
+/// as long as that height allows ([_CanvasEditorPanelShell._capsuleTrack]).
+///
+/// The capsule's corner follows the lane it stands in, its stated axis.
+class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
+  const _FloorVerticalBarSeat({
+    required this.cover,
+    required this.bottomCover,
+    required this.railBand,
+  });
+
+  /// See [_CanvasEditorPanelShell.cover].
+  final EdgeInsets cover;
+
+  /// What the transport hides of the bottom edge, past [cover]
+  /// ([_CanvasEditorPanelShell.transportCover]).
+  final double bottomCover;
+
+  /// See [_CanvasEditorPanelShell.rightRailBand].
+  final CanvasFloorBand? railBand;
+
+  static const double _margin = _CanvasEditorPanelShell._capsuleMargin;
+
+  double _visibleBottom(double height) =>
+      math.max(cover.top, height - cover.bottom - bottomCover);
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.tightFor(
+        width: _CanvasEditorPanelShell.rightStripWidth,
+        height: _CanvasEditorPanelShell._capsuleTrack(
+          _visibleBottom(constraints.maxHeight) - cover.top,
+        ),
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final track = childSize.height;
+    final centre = (cover.top + _visibleBottom(size.height)) / 2;
+    final barTop = centre - track / 2;
+    final intrudes = canvasFloorBandIntrudes(
+      railBand,
+      top: barTop,
+      bottom: barTop + track,
+    );
+    final right = intrudes ? cover.right + _margin : _margin;
+    return Offset(size.width - right - childSize.width, barTop);
+  }
+
+  @override
+  bool shouldRelayout(_FloorVerticalBarSeat oldDelegate) =>
+      oldDelegate.cover != cover ||
+      oldDelegate.bottomCover != bottomCover ||
+      oldDelegate.railBand != railBand;
+}
+
+/// Seats the floor's horizontal panbar on the bottom edge, [bottom] up it,
+/// as long as the panel's width allows
+/// ([_CanvasEditorPanelShell._capsuleTrack]).
+///
+/// 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서 펼치든말든 중앙에. The
+/// two axes are NOT the same question, and the answer differs by axis
+/// rather than by widget:
+///
+///  * ALONG the edge it rides, the bar holds the window's centre. A side
+///    panel opening is not a reason for the thing you read to walk
+///    sideways — that is the 「읽는 것은 안 움직인다」 rule, and the
+///    earlier pass over-applied "centre on what you can see" to it.
+///  * ACROSS that edge it still yields, because there it is not a matter
+///    of taste: a bar on the bottom edge with the region docked below
+///    would be UNDER it.
+///
+/// The capsule's corner follows the lane it stands in, its stated axis.
+class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
+  const _FloorHorizontalBarSeat({required this.bottom});
+
+  /// How far up the bottom edge the bar stands
+  /// ([_CanvasEditorPanelShell._floorBarBottom]).
+  final double bottom;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.tightFor(
+        width: _CanvasEditorPanelShell._capsuleTrack(constraints.maxWidth),
+        height: AppScrollbarLane.medium,
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    (size.width - childSize.width) / 2,
+    size.height - bottom - childSize.height,
+  );
+
+  @override
+  bool shouldRelayout(_FloorHorizontalBarSeat oldDelegate) =>
+      oldDelegate.bottom != bottom;
 }
 
 /// The floor's controls, laid on the drawing.

@@ -44,10 +44,7 @@ class _PanelBuild {
       // 🚨Its own SEMANTICS boundary, like every dock region (2026-09-26):
       // the panel lays itself out again at every pen-up, and each layout
       // re-walked the ROOT's share of the semantics tree for it.
-      child: Semantics(
-        container: true,
-        child: LayoutBuilder(builder: _panelBox),
-      ),
+      child: Semantics(container: true, child: _panelBox(context)),
     );
   }
 
@@ -102,26 +99,23 @@ class _PanelBuild {
   }
 
   /// The panel's box for the space it was given: the shell around the
-  /// viewport, sized to the constraints (the canvas size when unbounded).
-  Widget _panelBox(BuildContext context, BoxConstraints constraints) {
-    final fallbackSize = Size(
-      _state.widget.canvasSize.width.toDouble(),
-      _state.widget.canvasSize.height.toDouble(),
-    );
-    final boundedWidth = constraints.hasBoundedWidth
-        ? constraints.maxWidth
-        : fallbackSize.width;
-    final boundedHeight = constraints.hasBoundedHeight
-        ? constraints.maxHeight
-        : fallbackSize.height + _CanvasViewportBottomBar.heightIn(context);
-
-    return SizedBox(
-      width: boundedWidth,
-      height: boundedHeight,
+  /// viewport, filling the constraints — the canvas size, and the bar's
+  /// height under it, on an axis left unbounded.
+  ///
+  /// 🚨I-57 (10-13): a LIMIT, not a LayoutBuilder. The builder measured the
+  /// constraints to pick between the two, and a builder runs again whenever
+  /// the panel is built: its layout repainted the shell — the pill, its
+  /// swatches and readouts, the panbars — on every notify and every cut
+  /// crossed.
+  Widget _panelBox(BuildContext context) => LimitedBox(
+    maxWidth: _state.widget.canvasSize.width.toDouble(),
+    maxHeight:
+        _state.widget.canvasSize.height.toDouble() +
+        _CanvasViewportBottomBar.heightIn(context),
+    child: SizedBox.expand(
       child: _CanvasEditorPanelShell(
         rightStripBar: _state._shellBars.memoizedRightStripBar(),
-        horizontalStripBar: _state._shellBars
-            .memoizedHorizontalStripBar(),
+        horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
         bottomBar: _state._shellBars.memoizedBottomBar(),
         pageStrip: _state.widget.pageStrip,
         transport: _state.widget.transport,
@@ -136,8 +130,8 @@ class _PanelBuild {
         bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
         child: LayoutBuilder(builder: _viewport),
       ),
-    );
-  }
+    ),
+  );
 
   /// What sits on the artwork inside the pointer census — [_toolDeck],
   /// behind the view hold's gate (I-15 · I-88): while the 「이동」 or the
