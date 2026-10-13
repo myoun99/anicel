@@ -75,44 +75,118 @@ class TimelineCommandBar extends StatelessWidget {
 
   final Widget cluster;
 
+  /// The bar's FRAME — its tick layer, padding, row and overflow scroller —
+  /// one constant per shape, so every build hands the same frame back; the
+  /// two pieces reach their seats in it through [_BarPieces].
+  ///
+  /// 🚨I-57 (10-13): the frame was made anew on every build, round a
+  /// toolbar its host makes anew on every notify. A new frame laid the
+  /// scroller out again — the scroller's own LayoutBuilders and semantics
+  /// with it — and the tick layer round them, while the toolbar it held
+  /// handed back the same buttons. Measured on the user's project: a
+  /// notify that changed nothing cost 4.3ms with the bar made anew, 3.6
+  /// with it held. Now a new piece is a seat's rebuild and nothing round
+  /// it.
+  ///
+  /// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
+  /// and its width moves the row — it grows into the room on its left
+  /// ([TimelineViewCluster]) — so a tick lays out and paints THIS bar.
+  /// Rebuilt bare, the counter laid out the dock's panel scroller and
+  /// repainted the panel and the dock around it on every playback frame.
+  static const Widget _frame = TickLayer(
+    child: Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: leadingInset),
+              // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
+              // 스크롤바」): the app's bar exists only while the row
+              // overflows and costs no layout when it does not.
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _Seat(_Piece.leading),
+              ),
+            ),
+          ),
+          SizedBox(width: 8),
+          _Seat(_Piece.cluster),
+        ],
+      ),
+    ),
+  );
+
+  /// [_frame] with no leading: the cluster still pinned right.
+  static const Widget _frameWithoutLeading = TickLayer(
+    child: Padding(
+      padding: padding,
+      child: Row(
+        children: [Spacer(), SizedBox(width: 8), _Seat(_Piece.cluster)],
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => _BarPieces(
+    leading: leading,
+    cluster: cluster,
+    child: SizedBox(
+      height: heightIn(context),
+      child: leading == null ? _frameWithoutLeading : _frame,
+    ),
+  );
+}
+
+/// The two pieces a bar seats.
+enum _Piece { leading, cluster }
+
+/// The pieces a [TimelineCommandBar] holds, handed to its frame's seats:
+/// a seat is built again when ITS piece is a new widget, and nothing else
+/// in the bar is.
+class _BarPieces extends InheritedModel<_Piece> {
+  const _BarPieces({
+    required this.leading,
+    required this.cluster,
+    required super.child,
+  });
+
+  final Widget? leading;
+  final Widget cluster;
+
+  bool _moved(_BarPieces old, _Piece piece) => switch (piece) {
+    _Piece.leading => !identical(old.leading, leading),
+    _Piece.cluster => !identical(old.cluster, cluster),
+  };
+
+  @override
+  bool updateShouldNotify(_BarPieces oldWidget) =>
+      _Piece.values.any((piece) => _moved(oldWidget, piece));
+
+  @override
+  bool updateShouldNotifyDependent(
+    _BarPieces oldWidget,
+    Set<_Piece> dependencies,
+  ) => dependencies.any((piece) => _moved(oldWidget, piece));
+}
+
+/// Where a piece sits in the bar's frame.
+class _Seat extends StatelessWidget {
+  const _Seat(this.piece);
+
+  final _Piece piece;
+
   @override
   Widget build(BuildContext context) {
-    final leading = this.leading;
-    return SizedBox(
-      height: heightIn(context),
-      // 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
-      // and its width moves the row — it grows into the room on its left
-      // ([TimelineViewCluster]) — so a tick lays out and paints THIS bar.
-      // Rebuilt bare, the counter laid out the dock's panel scroller and
-      // repainted the panel and the dock around it on every playback frame.
-      child: TickLayer(
-        child: Padding(
-          padding: padding,
-          child: Row(
-            children: [
-              if (leading != null)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: leadingInset,
-                    ),
-                    // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
-                    // 스크롤바」): the app's bar exists only while the row
-                    // overflows and costs no layout when it does not.
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: leading,
-                    ),
-                  ),
-                )
-              else
-                const Spacer(),
-              const SizedBox(width: 8),
-              cluster,
-            ],
-          ),
-        ),
-      ),
-    );
+    final pieces = InheritedModel.inheritFrom<_BarPieces>(
+      context,
+      aspect: piece,
+    )!;
+    return switch (piece) {
+      // Seated only in the frame that has a leading; a bar losing its
+      // leading swaps the frame, and this seat goes with the old one.
+      _Piece.leading => pieces.leading ?? const SizedBox.shrink(),
+      _Piece.cluster => pieces.cluster,
+    };
   }
 }

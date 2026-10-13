@@ -47,7 +47,17 @@ import 'still_raster.dart' show TickSceneLayer;
 /// semantics — the counter's bar re-walked 50 render objects a frame for
 /// the zoom beside it, painted alone since 10-11 and still described with
 /// the counter.
-class TickLayer extends StatelessWidget {
+///
+/// 🚨A LAYER BUILT AGAIN ROUND THE SAME CHILD IS THE SAME LAYER (I-57,
+/// 10-13). Its LayoutBuilder was made anew on every build, and a
+/// LayoutBuilder handed a new builder runs it again in layout — which lays
+/// the layer out and so paints and describes it again: everything the layer
+/// exists to keep in, spent on a child that had not changed. A host that
+/// rebuilt for anything rebuilt every tick layer under it that way (the
+/// timeline: a notify that changed nothing laid out 27 LayoutBuilders and
+/// repainted 17 boundaries, measured). So the layer is built once per
+/// child and handed back whole while the child is the same widget.
+class TickLayer extends StatefulWidget {
   const TickLayer({super.key, required this.child}) : _drawnOverStill = true;
 
   /// A panel's HOST on a layer of its own — laid out, painted and described
@@ -67,7 +77,24 @@ class TickLayer extends StatelessWidget {
   final bool _drawnOverStill;
 
   @override
-  Widget build(BuildContext context) {
+  State<TickLayer> createState() => _TickLayerState();
+}
+
+class _TickLayerState extends State<TickLayer> {
+  /// The layer as built round the child it holds.
+  late Widget _built = _layer();
+
+  @override
+  void didUpdateWidget(covariant TickLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.child, widget.child) ||
+        oldWidget._drawnOverStill != widget._drawnOverStill) {
+      _built = _layer();
+    }
+  }
+
+  Widget _layer() {
+    final child = widget.child;
     final laidOutAlone = LayoutBuilder(
       builder: (context, constraints) {
         assert(
@@ -80,11 +107,14 @@ class TickLayer extends StatelessWidget {
     );
     return Semantics(
       container: true,
-      child: _drawnOverStill
+      child: widget._drawnOverStill
           ? _TickBoundary(child: laidOutAlone)
           : RepaintBoundary(child: laidOutAlone),
     );
   }
+
+  @override
+  Widget build(BuildContext context) => _built;
 }
 
 /// A tick's repaint boundary, whose layer a still region draws live

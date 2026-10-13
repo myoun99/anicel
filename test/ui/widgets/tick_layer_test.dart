@@ -146,6 +146,92 @@ void main() {
     semantics.dispose();
   });
 
+  /// A host that builds its tick layer again whenever [builds] moves —
+  /// round [child] itself, or round a new widget holding it when [renew]
+  /// says so.
+  Widget rebuildingHost({
+    required ValueNotifier<int> builds,
+    required Widget child,
+    required bool renew,
+  }) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: ValueListenableBuilder<int>(
+      valueListenable: builds,
+      builder: (context, _, _) => Stack(
+        children: [
+          Positioned.fill(
+            child: TickLayer(child: renew ? KeyedSubtree(child: child) : child),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// What building the layer again asks of it: its LayoutBuilder read once
+  /// the build is done, its boundary once the layout is.
+  Future<({bool laidOut, bool painted})> buildAgain(
+    WidgetTester tester,
+    ValueNotifier<int> builds,
+  ) async {
+    RenderObject layoutBuilder() => tester.renderObject(
+      find.descendant(
+        of: find.byType(TickLayer),
+        matching: find.byType(LayoutBuilder),
+      ),
+    );
+    builds.value += 1;
+    await tester.pump(Duration.zero, EnginePhase.build);
+    final laidOut = layoutBuilder().debugNeedsLayout;
+    await tester.pump();
+    RenderTickBoundary? boundary;
+    void look(RenderObject node) {
+      if (node is RenderTickBoundary) {
+        boundary ??= node;
+        return;
+      }
+      node.visitChildren(look);
+    }
+
+    look(tester.renderObject(find.byType(TickLayer)));
+    builds.value += 1;
+    await tester.pump(Duration.zero, EnginePhase.layout);
+    final painted = boundary!.debugNeedsPaint;
+    await tester.pump();
+    return (laidOut: laidOut, painted: painted);
+  }
+
+  testWidgets('built again round the same child, the layer is not laid out '
+      'or painted again', (tester) async {
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    const child = Text('held');
+    await tester.pumpWidget(
+      rebuildingHost(builds: builds, child: child, renew: false),
+    );
+
+    final asked = await buildAgain(tester, builds);
+
+    expect(asked.laidOut, isFalse, reason: 'its builder would hand back the '
+        'very child it holds');
+    expect(asked.painted, isFalse);
+    expect(find.text('held'), findsOneWidget);
+  });
+
+  testWidgets('CONTROL: built again round a new child, it is laid out and '
+      'painted again', (tester) async {
+    final builds = ValueNotifier<int>(0);
+    addTearDown(builds.dispose);
+    const child = Text('held');
+    await tester.pumpWidget(
+      rebuildingHost(builds: builds, child: child, renew: true),
+    );
+
+    final asked = await buildAgain(tester, builds);
+
+    expect(asked.laidOut, isTrue);
+    expect(asked.painted, isTrue);
+  });
+
   testWidgets('under loose constraints it says so', (tester) async {
     await tester.pumpWidget(
       const Center(
