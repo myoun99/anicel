@@ -84,6 +84,15 @@ class LayerLegendCallbacks {
   /// composites (the same [displayedLayerIds] set the opacity bar drags).
   final void Function(Set<LayerId> layerIds, LayerBlendMode mode)?
   onSetBlendModeForDisplayed;
+
+  /// Which optional verbs are here — what a legend shows of them: a column
+  /// that opens a flyout or one that does not. The required verbs close
+  /// over the session (R13-2), so having a legend says the rest.
+  ({bool onion, bool reveal, bool blend}) get shape => (
+    onion: onToggleOnionSkinForDisplayed != null,
+    reveal: onRevealOnionSkinPanel != null,
+    blend: onSetBlendModeForDisplayed != null,
+  );
 }
 
 /// One legend column's flyout, built when it opens — or null where that
@@ -110,13 +119,19 @@ class TimelineLegendMenus {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
-    this.marksInUse = const {},
-    this.kindsInUse = const {},
+    this.marksInUse = noMarks,
+    this.kindsInUse = noKinds,
     this.visibilitySoloEnabled = false,
     this.displayedLayerIds,
     this.displayedOnionSkinOn = false,
     this.showRowSolos = true,
   });
+
+  /// No marks in use — a legend over no rows that carry one.
+  static Set<LayerMark> noMarks() => const {};
+
+  /// No kinds in use.
+  static Set<LayerKind> noKinds() => const {};
 
   /// Null for a display-only legend: no column but the sections opens.
   final LayerLegendCallbacks? legend;
@@ -128,11 +143,17 @@ class TimelineLegendMenus {
   final TimelineRowFilter rowFilter;
 
   /// Marks currently assigned across the panel's layers — the 「solo color
-  /// X」 list is built from these.
-  final Set<LayerMark> marksInUse;
+  /// X」 list is built from these — read when the list is.
+  ///
+  /// 🚨READ, NEVER HELD (I-57, 10-14): held, the two sets changed at every
+  /// cut switch, and the header that hands them on was built again whole
+  /// for sets none of its cells shows (🔬221 widgets of a crossing's 821)
+  /// — `displayedLayerIds` went this way on 10-13 for the same reason.
+  final Set<LayerMark> Function() marksInUse;
 
-  /// Kinds present across the panel's layers — the kind solos (R4 #8).
-  final Set<LayerKind> kindsInUse;
+  /// Kinds present across the panel's layers — the kind solos (R4 #8) —
+  /// read when they are, as [marksInUse] is.
+  final Set<LayerKind> Function() kindsInUse;
 
   /// Whether the visibility SOLO MODE is on (the eye flyout's check).
   final bool visibilitySoloEnabled;
@@ -280,7 +301,7 @@ class TimelineLegendMenus {
   /// every label left LO in the filter and gone from this list: every row
   /// but the standing one hidden, and nothing here to uncheck.
   List<PanelFlyoutEntry> _markSolos(LayerLegendCallbacks legend) {
-    final listed = {...marksInUse, ...rowFilter.markColors}
+    final listed = {...marksInUse(), ...rowFilter.markColors}
       ..removeWhere((mark) => mark.isNone);
     return listed.isEmpty
         ? const []
@@ -305,21 +326,28 @@ class TimelineLegendMenus {
   /// (mark-filter-held-after-its-mark-is-gone).
   LegendFlyout? get kind {
     final legend = this.legend;
-    final listed = {...kindsInUse, ...rowFilter.kinds};
-    if (legend == null || listed.isEmpty || !showRowSolos) return null;
-    return () => [
-      PanelFlyoutHeader(AppText.strings.tlSoloKind),
-      for (final kind in LayerKind.values)
-        if (listed.contains(kind))
-          PanelFlyoutItem(
-            keyValue: 'legend-filter-kind-${kind.name}',
-            label: layerKindDisplayName(kind),
-            shortcuts: [railSoloKindActionId(kind)],
-            icon: layerKindIcon(kind),
-            checked: rowFilter.kinds.contains(kind),
-            onSelected: () => legend.onToggleKindFilter(kind),
-          ),
-    ];
+    if (legend == null ||
+        !showRowSolos ||
+        kindsInUse().isEmpty && rowFilter.kinds.isEmpty) {
+      return null;
+    }
+    // Listed as it opens ([kindsInUse]).
+    return () {
+      final listed = {...kindsInUse(), ...rowFilter.kinds};
+      return [
+        PanelFlyoutHeader(AppText.strings.tlSoloKind),
+        for (final kind in LayerKind.values)
+          if (listed.contains(kind))
+            PanelFlyoutItem(
+              keyValue: 'legend-filter-kind-${kind.name}',
+              label: layerKindDisplayName(kind),
+              shortcuts: [railSoloKindActionId(kind)],
+              icon: layerKindIcon(kind),
+              checked: rowFilter.kinds.contains(kind),
+              onSelected: () => legend.onToggleKindFilter(kind),
+            ),
+      ];
+    };
   }
 
   LegendFlyout? get fillReference => _bulkThenSolos(

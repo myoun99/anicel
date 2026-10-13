@@ -465,8 +465,10 @@ void main() {
       24,
     );
     final toolbarBefore = tester.widget(find.byType(TimelineActionToolbar));
-    final legendBefore = tester.widget(
+    expect(
       find.byType(TimelineLayerControlsHeader),
+      findsOneWidget,
+      reason: 'premise: the legend stands',
     );
     final drawingRowBefore = tester
         .widgetList<TimelineLayerControlsRow>(
@@ -475,8 +477,21 @@ void main() {
         .firstWhere((row) => row.layer.kind == LayerKind.animation);
 
     // A zoom step lands WITHOUT any host/workspace rebuild…
+    final inLegend = <Type>[];
+    debugOnRebuildDirtyWidget = (element, _) =>
+        element.visitAncestorElements((ancestor) {
+          if (ancestor.widget is! TimelineLayerControlsHeader) {
+            return true;
+          }
+          inLegend.add(element.widget.runtimeType);
+          return false;
+        });
     zoom.value = 48;
-    await tester.pump();
+    try {
+      await tester.pump();
+    } finally {
+      debugOnRebuildDirtyWidget = null;
+    }
 
     expect(
       tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame,
@@ -493,16 +508,15 @@ void main() {
       isTrue,
       reason: 'zoom steps must not reconstruct the toolbar',
     );
-    // The rail's Material-heavy pieces are memo-gated too (UI-R7 #1):
-    // the legend header and the repository-identity control rows come
-    // back as the IDENTICAL instances across a zoom step.
+    // The rail's Material-heavy pieces are kept too (UI-R7 #1): nothing
+    // of the legend header is built again across a zoom step — it keeps
+    // what it built while what it shows is the same (I-57, 10-14) — and
+    // the repository-identity control rows come back as the IDENTICAL
+    // instances.
     expect(
-      identical(
-        tester.widget(find.byType(TimelineLayerControlsHeader)),
-        legendBefore,
-      ),
-      isTrue,
-      reason: 'zoom steps must not reconstruct the legend header',
+      inLegend,
+      isEmpty,
+      reason: 'zoom steps must not build the legend header again',
     );
     final drawingRowAfter = tester
         .widgetList<TimelineLayerControlsRow>(

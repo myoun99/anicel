@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -33,7 +32,6 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
 import 'timeline_frame_ruler.dart';
 import 'timeline_frame_rows_scroll_body.dart';
-import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_rail_window.dart';
 import 'rail_column_swipe.dart';
 import 'layer_label_controls.dart'
@@ -52,10 +50,8 @@ import '../input/pen_friendly_scroll_controller.dart';
 import '../input/scroller_press_hold.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
-import 'memo_token.dart';
 import 'timeline_layer_controls_row.dart';
 import 'rail_eyes.dart';
-import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_row_edges.dart';
@@ -146,31 +142,6 @@ class LayerTimelineGrid extends StatefulWidget {
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
 
-/// The legend header's memo token (UI-R7 #1): every legend-visible fact.
-/// A new legend-reading cell must join this record — miss one and the
-/// header shows stale state.
-typedef _LegendMemoInputs = ({
-  double layerRowHeight,
-  double layerControlsWidth,
-  bool hasLegend,
-  BySet<TimelineSection> hiddenSections,
-  TimelineRowFilter rowFilter,
-  BySet<LayerMark> marksInUse,
-  BySet<LayerKind> kindsInUse,
-  bool visibilitySoloEnabled,
-  bool anyLanesExpanded,
-  bool allSeMuted,
-  double masterOpacityValue,
-  bool hasLaneToggles,
-  bool displayedOnionSkinOn,
-  // R27 #6: the blend column's header prints language-dependent names in
-  // its flyout and gates on the bulk callback's presence.
-  AppLanguage language,
-  bool hasBlendBulk,
-  // The rows' optional columns, which the headings follow.
-  LayerRailOptionalColumns optionalColumns,
-});
-
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
@@ -189,12 +160,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   late final KeptLayerControlsRows _railRowMemo = KeptLayerControlsRows(
     _rowDrags.draggable,
   );
-
-  /// The legend header's memo — same idea, token-gated (R13-2): the
-  /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible
-  /// fact changes, never on zoom steps.
-  ({_LegendMemoInputs inputs, TimelineLayerControlsHeader header})?
-  _legendHeaderMemo;
 
   late final ScrollController _horizontalScrollController;
   late final ScrollController _verticalScrollController;
@@ -1150,16 +1115,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 _railRows.naturalRailWidth,
                                             availableExtent:
                                                 availableRailExtent,
-                                            // Memo-gated (UI-R7 #1): zoom steps
-                                            // reuse the identical header instance.
-                                            // 🚨On a layer of its own (I-57,
-                                            // 10-14): the grid laid out again
-                                            // painted it whole — 🔬255 of a
-                                            // notify's 567 render objects.
-                                            child: RepaintBoundary(
-                                              child: _railRows
-                                                  .legendHeaderMemoized(),
-                                            ),
+                                            // Kept (UI-R7 #1): zoom steps hand
+                                            // the header back whole. 🚨On a
+                                            // layer of its own (I-57, 10-14):
+                                            // the grid laid out again painted
+                                            // it whole — 🔬255 of a notify's
+                                            // 567 render objects.
+                                            child: _railRows.legendHeader(),
                                           ),
                                           const SizedBox(
                                             width:

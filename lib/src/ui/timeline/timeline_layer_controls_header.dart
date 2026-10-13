@@ -10,6 +10,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
+import 'memo_token.dart' show BySet, KeptPiece;
 import 'timeline_grid_metrics.dart';
 import 'timeline_legend_menus.dart';
 import 'timeline_row_filter.dart';
@@ -27,7 +28,7 @@ import '../text/vertical_writing_text.dart';
 /// box above the frame-number rail that used to read 'Frame' and label
 /// nothing. Same list, same order, same slot extents, turned 90°, so the
 /// sheet's column headers get named by the icons that name the timeline's.
-class TimelineLayerControlsHeader extends StatelessWidget {
+class TimelineLayerControlsHeader extends KeptPiece {
   const TimelineLayerControlsHeader({
     super.key,
     required this.metrics,
@@ -40,8 +41,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.onCollapseAllLanes,
     this.onExpandAllLanes,
     this.rowFilter = TimelineRowFilter.none,
-    this.marksInUse = const {},
-    this.kindsInUse = const {},
+    this.marksInUse = TimelineLegendMenus.noMarks,
+    this.kindsInUse = TimelineLegendMenus.noKinds,
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
     this.allSeMuted = false,
@@ -91,12 +92,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   final TimelineRowFilter rowFilter;
 
   /// Marks currently assigned across the active cut's layers — the
-  /// "solo color X" list is built from these (empty color set skipped).
-  final Set<LayerMark> marksInUse;
+  /// "solo color X" list is built from these (empty color set skipped),
+  /// read when it is ([TimelineLegendMenus.marksInUse] has why).
+  final Set<LayerMark> Function() marksInUse;
 
   /// Kinds present across the active cut's layers — the "solo kind" list
-  /// (R4 #8) is built from these.
-  final Set<LayerKind> kindsInUse;
+  /// (R4 #8) is built from these, read when it is.
+  final Set<LayerKind> Function() kindsInUse;
 
   /// The rows the rail currently DISPLAYS (filter-passing, non-camera) —
   /// the master opacity bar's target set (R4 #6). Null disables the bar.
@@ -130,6 +132,41 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
   final VoidCallback? onExpandAllLanes;
+
+  /// What the header shows and what its flyouts read when they open — its
+  /// ~15 tooltip and flyout cells are built again only when one of these
+  /// moves, on every grid that stands one up.
+  ///
+  /// ↩️(UI-R7 #1) the timeline gated it on a token of its own and the
+  /// storyboard and the x-sheet built it again on every build; the one
+  /// keep is the header's now (I-57, 10-14). The words are the program
+  /// language's, read at build.
+  @override
+  Object? get facts => (
+    metrics.layerControlsWidth,
+    metrics.layerRowHeight,
+    metrics.railColumns,
+    axis,
+    railExtent,
+    optionalColumns,
+    legend?.shape,
+    BySet(hiddenSections),
+    onToggleSection != null,
+    rowFilter,
+    marksInUse,
+    kindsInUse,
+    kindsInUse().isNotEmpty,
+    visibilitySoloEnabled,
+    anyLanesExpanded,
+    allSeMuted,
+    displayedLayerIds != null,
+    displayedOpacity,
+    displayedOnionSkinOn,
+    showRowSolos,
+    onCollapseAllLanes != null,
+    onExpandAllLanes != null,
+    AppText.language,
+  );
 
   /// The legend's menus — this header's flyouts and, published by the panel
   /// that built this header, what a key presses one of (I-40). ONE place
@@ -411,7 +448,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   }) => Icon(icon, size: 13, color: engaged ? AppColors.accent : restColor);
 
   @override
-  Widget build(BuildContext context) {
+  Widget buildKept(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final legend = this.legend;
     final menus = this.menus;

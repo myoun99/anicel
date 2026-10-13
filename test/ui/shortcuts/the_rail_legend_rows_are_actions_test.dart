@@ -60,8 +60,8 @@ LayerLegendCallbacks everyVerb() => LayerLegendCallbacks(
 TimelineLegendMenus fullest() => TimelineLegendMenus(
   legend: everyVerb(),
   onToggleSection: (_) {},
-  marksInUse: everyLayerMark().toSet(),
-  kindsInUse: LayerKind.values.toSet(),
+  marksInUse: () => everyLayerMark().toSet(),
+  kindsInUse: () => LayerKind.values.toSet(),
   displayedLayerIds: () => const {},
 );
 

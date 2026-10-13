@@ -2504,8 +2504,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               hiddenSections: widget.hiddenSections,
               onToggleSection: widget.onToggleSection,
               showRowSolos: true,
-              marksInUse: _legendMarksInUse(),
-              kindsInUse: _legendKindsInUse(),
+              marksInUse: _legendMarksInUse,
+              kindsInUse: _legendKindsInUse,
               visibilitySoloEnabled: widget.visibilitySoloEnabled,
               allSeMuted: _legendAllSeMuted(),
               displayedLayerIds: widget.legend == null

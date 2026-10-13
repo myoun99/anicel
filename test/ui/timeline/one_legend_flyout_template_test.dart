@@ -57,7 +57,7 @@ void main() {
               optionalColumns: noOptionalRailColumns,
               legend: withLegend ? callbacks() : null,
               showRowSolos: showRowSolos,
-              marksInUse: marksInUse,
+              marksInUse: () => marksInUse,
               rowFilter: rowFilter,
               visibilitySoloEnabled: visibilitySoloEnabled,
             ),

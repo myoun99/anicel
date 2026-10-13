@@ -134,44 +134,22 @@ class _LayerGridRailRows {
       '${row.layer.id}-'
       '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}';
 
-  /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
-  /// legend-visible fact changes — zoom steps and unrelated session
-  /// notifies reuse the instance, skipping its ~15 tooltip/flyout cells.
-  Widget legendHeaderMemoized() {
-    final inputs = (
-      layerRowHeight: _state._metrics.layerRowHeight,
-      layerControlsWidth: _state._metrics.layerControlsWidth,
-      hasLegend: _state.widget.legend != null,
-      hiddenSections: BySet(_state.widget.hooks.hiddenSections),
-      rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: BySet(_state._marksInUse()),
-      kindsInUse: BySet(_state._kindsInUse()),
-      visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _state._allSeMuted(),
-      masterOpacityValue: _state.widget.masterOpacityValue,
-      hasLaneToggles: _state.widget.hooks.onToggleLayerLanes != null,
-      displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
-      language: AppText.language,
-      hasBlendBulk: _state.widget.legend?.onSetBlendModeForDisplayed != null,
-      optionalColumns: _state.widget.hooks.optionalRailColumns,
-    );
-    final cached = _state._legendHeaderMemo;
-    if (cached != null && cached.inputs == inputs) {
-      return _published(cached.header);
-    }
-    final header = TimelineLayerControlsHeader(
+  /// The legend header — which keeps itself while what it shows holds
+  /// ([TimelineLayerControlsHeader.facts]): zoom steps, unrelated notifies
+  /// and cut switches hand back the cells it had.
+  Widget legendHeader() => _published(
+    TimelineLayerControlsHeader(
       metrics: _state._metrics,
-      optionalColumns: inputs.optionalColumns,
+      optionalColumns: _state.widget.hooks.optionalRailColumns,
       legend: _state.widget.legend,
       hiddenSections: _state.widget.hooks.hiddenSections,
       onToggleSection: _state.widget.onToggleSection,
       rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: inputs.marksInUse.value,
-      kindsInUse: inputs.kindsInUse.value,
+      marksInUse: _state._marksInUse,
+      kindsInUse: _state._kindsInUse,
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: inputs.anyLanesExpanded,
-      allSeMuted: inputs.allSeMuted,
+      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
+      allSeMuted: _state._allSeMuted(),
       // The set a bulk verb ACTS on, read at the press — of the rows the
       // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
       // project): captured here and kept fresh by the token, it changed at
@@ -186,10 +164,8 @@ class _LayerGridRailRows {
       onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
           ? null
           : _state._lanes._collapseAllLanes,
-    );
-    _state._legendHeaderMemo = (inputs: inputs, header: header);
-    return _published(header);
-  }
+    ),
+  );
 
   /// [header], its menus handed to whoever presses its rows by key (I-40):
   /// the very menus it opens, counted on this grid's rows.

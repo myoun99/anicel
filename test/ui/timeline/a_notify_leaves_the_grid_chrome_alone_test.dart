@@ -114,8 +114,7 @@ void main() {
     final frame = await frameCensus(tester, sessionOf(tester).notifyChanged);
 
     expect(
-      frame.painted.any((object) => identical(object, legend)) ||
-          paintedInside(frame.painted, legend),
+      paintedInside(frame.painted, legend),
       isFalse,
       reason: '↩️the grid laid out again painted it whole — 255 of a '
           'notify\'s 567 render objects',
