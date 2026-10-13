@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/app_scrollbar.dart';
+import 'memo_token.dart' show KeptPiece;
 
 class TimelineVerticalScrollbarSlot extends StatelessWidget {
   const TimelineVerticalScrollbarSlot({
@@ -21,7 +22,7 @@ class TimelineVerticalScrollbarSlot extends StatelessWidget {
 /// The timeline's right-edge scrollbar rail: the shared
 /// [AppControllerScrollbar] on the panel's own surface. The rail width is the
 /// hit lane; the thumb inside stays visually thin.
-class TimelineVerticalScrollbarRail extends StatelessWidget {
+class TimelineVerticalScrollbarRail extends KeptPiece {
   const TimelineVerticalScrollbarRail({
     super.key = const ValueKey<String>('timeline-vertical-scrollbar'),
     required this.controller,
@@ -37,7 +38,10 @@ class TimelineVerticalScrollbarRail extends StatelessWidget {
   final double width;
 
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (controller, viewportHeight, contentHeight, width);
+
+  @override
+  Widget buildKept(BuildContext context) {
     // The rail's side hairlines went at UI-R18 #3, leaving a fill one level
     // BELOW the rows to separate it — "a lane is a groove, not a panel". The
     // fill went at F-73 ② (유저 2026-09-11: 「타임라인패널의 스크롤바도 배경이

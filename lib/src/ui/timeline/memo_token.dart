@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show Widget;
+import 'package:flutter/widgets.dart';
 
 import '../collection_equality.dart';
 
@@ -99,4 +99,54 @@ Widget keptWhileSame<K, F>(
   final built = build();
   held[key] = (facts: facts, built: built);
   return built;
+}
+
+/// THE keep (F-244) for a piece that keeps ITSELF — one that every frame
+/// panel's grid stands up, each making it anew on every build. What it
+/// built is handed back while its [facts] are what that was built from,
+/// and it stands on a layer of its own: a grid built, laid out and painted
+/// again round it builds, lays out and paints none of it.
+///
+/// 🚨I-57 (10-14): the grids' corner toggle, rail splitter and scrollbars
+/// were built, laid out and painted again on every notify and every cut
+/// crossed, all three grids alike, while nothing they show had changed.
+///
+/// What else the piece reads — the theme, the words — rebuilds it where it
+/// reads them: [buildKept] runs in a `Builder` of its own, never through
+/// this.
+abstract class KeptPiece extends StatefulWidget {
+  const KeptPiece({super.key});
+
+  /// What the piece shows: a record of everything [buildKept] reads, each
+  /// field comparing as the piece needs ([ByIdentity] and kin above). A
+  /// callback follows R13-2 — what it closes over is the stable session —
+  /// so whether there is one is the fact, never which.
+  Object? get facts;
+
+  /// The piece, built afresh.
+  Widget buildKept(BuildContext context);
+
+  @override
+  State<KeptPiece> createState() => _KeptPieceState();
+}
+
+class _KeptPieceState extends State<KeptPiece> {
+  Object? _facts;
+  Widget? _built;
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _built = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final facts = widget.facts;
+    if (_built == null || facts != _facts) {
+      _facts = facts;
+      _built = RepaintBoundary(child: Builder(builder: widget.buildKept));
+    }
+    return _built!;
+  }
 }

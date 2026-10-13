@@ -1152,8 +1152,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 availableRailExtent,
                                             // Memo-gated (UI-R7 #1): zoom steps
                                             // reuse the identical header instance.
-                                            child: _railRows
-                                                .legendHeaderMemoized(),
+                                            // 🚨On a layer of its own (I-57,
+                                            // 10-14): the grid laid out again
+                                            // painted it whole — 🔬255 of a
+                                            // notify's 567 render objects.
+                                            child: RepaintBoundary(
+                                              child: _railRows
+                                                  .legendHeaderMemoized(),
+                                            ),
                                           ),
                                           const SizedBox(
                                             width:
