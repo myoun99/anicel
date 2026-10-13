@@ -51,6 +51,40 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
+  /// What the tool settings show of the session — the slice their panel
+  /// rebuilds by, with [fillSource] and [eyedropperSource] the two sources
+  /// it names the read layers of.
+  ///
+  /// 🚨I-57 ㉢ (10-13, measured on the user's project): every tool's panel
+  /// is kept alive, and each one rebuilt on EVERY session notify — a cut
+  /// switch rebuilt them all, 121 widgets a panel, and so did every
+  /// stroke's commit, though the brush's panel shows nothing of the cut.
+  _ToolSettingsCut _toolSettingsCut(
+    CanvasReadSource fillSource,
+    CanvasReadSource eyedropperSource,
+  ) {
+    final session = _state.widget.session;
+    ByList<String>? reads(CanvasReadSource source) => switch (layerNamesReadBy(
+      source,
+      session.activeCutOrNull,
+      session.activeLayerId,
+    )) {
+      final names? => ByList(names),
+      null => null,
+    };
+    return (
+      tips: _state._tipLibrary.tips,
+      guides: session.cutVerbs.activeCutGuides,
+      selectedGuideId: session.cutVerbs.selectedGuideId,
+      fillReads: reads(fillSource),
+      eyedropperReads: reads(eyedropperSource),
+      activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
+      canToggleFillReference: _activeLayerFillReferenceToggle() != null,
+      canvasSize: session.activeCutOrNull?.canvasSize,
+      language: session.languageSettings.value.programLanguage,
+    );
+  }
+
   /// A panel's host — the timeline's, the storyboard's, the conte's, the
   /// envelope's, the timesheet's: [host], built again whenever [listenable]
   /// moves, on a layer of its own.
@@ -464,9 +498,13 @@ class _WorkspaceTabs {
                         // The cut's own guides. Unlike the brush library
                         // above — app-wide and permanent — this list belongs
                         // to the CUT, so it follows the session.
-                        guideLibrary: ListenableBuilder(
+                        // What it shows is the slice: a session notify that
+                        // changes none of it — a stroke's commit, a switch
+                        // between cuts with the same guides — stops here
+                        // (I-57 ㉢).
+                        guideLibrary: SlicedListenableBuilder(
                           listenable: _state.widget.session,
-                          builder: (context, _) => GuideLibraryList(
+                          slice: () => (
                             guides:
                                 _state.widget.session.cutVerbs.activeCutGuides,
                             canvasSize:
@@ -478,6 +516,11 @@ class _WorkspaceTabs {
                                 BrushCanvasDefaults.canvasSize,
                             selectedGuideId:
                                 _state.widget.session.cutVerbs.selectedGuideId,
+                          ),
+                          builder: (context, shown) => GuideLibraryList(
+                            guides: shown.guides,
+                            canvasSize: shown.canvasSize,
+                            selectedGuideId: shown.selectedGuideId,
                             onGuideSelected: (id) =>
                                 _state.widget.session.cutVerbs.selectedGuideId =
                                     id,
@@ -535,7 +578,9 @@ class _WorkspaceTabs {
                                   // The tip library loads in two passes,
                                   // so the pickers have to follow it.
                                   builder: (context, eyedropperSource, _) =>
-                                      ListenableBuilder(
+                                      SlicedListenableBuilder<
+                                        _ToolSettingsCut
+                                      >(
                                         // The guides live on the CUT and
                                         // the selection is UI state, so
                                         // both have to reach this panel:
@@ -546,21 +591,19 @@ class _WorkspaceTabs {
                                         listenable: Listenable.merge([
                                           _state._tipLibrary,
                                           _state.widget.session,
+                                          _state.widget.session
+                                              .languageSettings,
                                         ]),
-                                        builder: (context, _) => ToolSettingsPanel(
+                                        slice: () => _toolSettingsCut(
+                                          fillOptions.source,
+                                          eyedropperSource,
+                                        ),
+                                        builder: (context, cut) => ToolSettingsPanel(
                                           state: toolState,
                                           onChanged: (state) =>
                                               _state._brushTool.value = state,
-                                          guides: _state
-                                              .widget
-                                              .session
-                                              .cutVerbs
-                                              .activeCutGuides,
-                                          selectedGuideId: _state
-                                              .widget
-                                              .session
-                                              .cutVerbs
-                                              .selectedGuideId,
+                                          guides: cut.guides,
+                                          selectedGuideId: cut.selectedGuideId,
                                           onGuidesCommitted: _state
                                               .widget
                                               .session
@@ -571,7 +614,7 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .previewActiveCutGuides,
-                                          tips: _state._tipLibrary.tips,
+                                          tips: cut.tips,
                                           onTipImportRequested: () {
                                             unawaited(
                                               _state._brushPresets
@@ -606,12 +649,7 @@ class _WorkspaceTabs {
                                                     .activeLayerId,
                                               ),
                                           activeLayerIsFillReference:
-                                              _state
-                                                  .widget
-                                                  .session
-                                                  .activeLayer
-                                                  ?.isFillReference ??
-                                              false,
+                                              cut.activeLayerIsFillReference,
                                           onToggleActiveLayerFillReference:
                                               _activeLayerFillReferenceToggle(),
                                           selectionMaskOptions: maskOptions,
@@ -638,11 +676,7 @@ class _WorkspaceTabs {
                                           textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
-                                          canvasSize: _state
-                                              .widget
-                                              .session
-                                              .activeCutOrNull
-                                              ?.canvasSize,
+                                          canvasSize: cut.canvasSize,
                                           cutPieceSlot: _state._cutPieceSlot,
                                           // TS8: composite order is
                                           // the BLEND's answer, so
@@ -658,12 +692,7 @@ class _WorkspaceTabs {
                                               _state._brushPresets._renameTip,
                                           onDeleteTip:
                                               _state._brushPresets._deleteTip,
-                                          language: _state
-                                              .widget
-                                              .session
-                                              .languageSettings
-                                              .value
-                                              .programLanguage,
+                                          language: cut.language,
                                         ),
                                       ),
                                 ),
@@ -1272,3 +1301,18 @@ class _WorkspaceTabs {
     });
   }
 }
+
+/// What the tool settings show of the session ([_WorkspaceTabs
+/// ._toolSettingsCut]): equal answers, no rebuild. The tips compare by the
+/// list — the library hands a new one for every change.
+typedef _ToolSettingsCut = ({
+  List<BrushTipEntry> tips,
+  CutGuides guides,
+  GuideId? selectedGuideId,
+  ByList<String>? fillReads,
+  ByList<String>? eyedropperReads,
+  bool activeLayerIsFillReference,
+  bool canToggleFillReference,
+  CanvasSize? canvasSize,
+  AppLanguage language,
+});
