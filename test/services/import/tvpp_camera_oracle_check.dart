@@ -123,9 +123,9 @@ void main() {
       // is the noise floor the mode-4 ceiling allows for.
       expect(worst.bake, lessThan(ceiling),
           reason: '$name matches to solver noise');
-      // The keys play the bake back within a quarter pixel
+      // The keys play the bake back within a pixel
       // (`cutCameraOfFramePoses`).
-      expect(worst.keyed, lessThan(ceiling + 0.25),
+      expect(worst.keyed, lessThan(ceiling + 1),
           reason: '$name keyed plays as TVPaint does');
     }
   });
@@ -152,6 +152,6 @@ void main() {
     // within ~1% of the pan and is pinned here so a regression past the
     // known ceiling still fails.
     expect(worst.bake, lessThan(12));
-    expect(worst.keyed, lessThan(12.25));
+    expect(worst.keyed, lessThan(13));
   });
 }

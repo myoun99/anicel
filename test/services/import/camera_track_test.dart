@@ -1,10 +1,12 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/camera_pose_resolver.dart';
 import 'package:anicel/src/services/import/camera_track.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,7 +39,8 @@ void main() {
   }) => cutCameraOfFramePoses(poses, keyedOn: keyedOn);
 
   /// Every frame of [poses], played back from [camera]'s keys the way the
-  /// app plays a camera ([resolveCameraPoseAt]), is the pose baked there.
+  /// app plays a camera ([resolveCameraPoseAt]), is within a pixel of the
+  /// pose baked there.
   void expectPlaysBack(
     SplayTreeMap<int, CameraPose> poses,
     CutCamera camera,
@@ -48,12 +51,12 @@ void main() {
         canvasSize: canvas,
         frameIndex: frame,
       );
-      expect(shown.center.x, closeTo(baked.center.x, 0.25), reason: '$frame');
-      expect(shown.center.y, closeTo(baked.center.y, 0.25), reason: '$frame');
-      expect(shown.zoom, closeTo(baked.zoom, 1e-4), reason: '$frame');
+      expect(shown.center.x, closeTo(baked.center.x, 1), reason: '$frame');
+      expect(shown.center.y, closeTo(baked.center.y, 1), reason: '$frame');
+      expect(shown.zoom, closeTo(baked.zoom, 4e-4), reason: '$frame');
       expect(
         shown.rotationDegrees,
-        closeTo(baked.rotationDegrees, 0.01),
+        closeTo(baked.rotationDegrees, 0.04),
         reason: '$frame',
       );
     });
@@ -192,7 +195,7 @@ void main() {
 
   test('where one ease does not play the file\'s way, keys stand where it '
       'stops — each of them still on the file\'s, and every frame within a '
-      'quarter pixel', () {
+      'pixel', () {
     // A TVPaint profile drawn as a polyline through four points (the
     // reference cut's own shape), a 1036px pan over 25 frames.
     const corners = [
@@ -236,5 +239,55 @@ void main() {
 
     expect(camera.keyframes.keys, [0, 1999]);
     expectPlaysBack(poses, camera);
+  });
+
+  /// A wobble no one way follows — three times back and forth over [frames]
+  /// — that a way's tolerance must take whole for that way to stand alone.
+  double wobble(int frame, int frames) =>
+      math.sin(6 * math.pi * frame / (frames - 1));
+
+  test('🗣️a way that plays the file\'s within a pixel is one way — and a '
+      'zoom or a turn within what moves one (유저 10-13: 「1px 까지 '
+      '허용」)', () {
+    // 0.6px, 3e-4 of zoom and 0.03° off straight: under a pixel's worth,
+    // over the quarter's the import kept before.
+    final poses = baked(
+      25,
+      (f) => pose(
+        100 + 10.0 * f + 0.6 * wobble(f, 25),
+        80,
+        zoom: 1 + f / 50 + 3e-4 * wobble(f, 25),
+        turn: 2.0 * f + 0.03 * wobble(f, 25),
+      ),
+    );
+    final camera = keyed(poses);
+
+    expect(camera.track.position.keys.keys, [0, 24]);
+    expect(camera.track.scale.keys.keys, [0, 24]);
+    expect(camera.track.rotation.keys.keys, [0, 24]);
+    expectPlaysBack(poses, camera);
+  });
+
+  test('a camera folder\'s anchor is keyed to the same pixel', () {
+    final track = transformTrackOfFramePoses(
+      {
+        for (var f = 0; f < 25; f += 1)
+          f: (
+            pose: TransformPose(center: CanvasPoint(x: 360, y: 270)),
+            anchorPoint: CanvasPoint(
+              x: 100 + 10.0 * f + 0.6 * wobble(f, 25),
+              y: 80,
+            ),
+          ),
+      },
+      keyedOn: (
+        anchorPoint: const [],
+        position: const [],
+        scale: const [],
+        rotation: const [],
+      ),
+    );
+
+    expect(track.anchorPoint.keys.keys, [0, 24]);
   });
 }

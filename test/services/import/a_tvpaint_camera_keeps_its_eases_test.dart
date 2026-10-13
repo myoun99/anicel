@@ -105,8 +105,8 @@ void main() {
         canvasSize: canvas,
         frameIndex: pose.frame - 1,
       );
-      expect(shown.center.x, closeTo(pose.x, 0.25), reason: '${pose.frame}');
-      expect(shown.center.y, closeTo(pose.y, 0.25), reason: '${pose.frame}');
+      expect(shown.center.x, closeTo(pose.x, 1), reason: '${pose.frame}');
+      expect(shown.center.y, closeTo(pose.y, 1), reason: '${pose.frame}');
     }
   }
 

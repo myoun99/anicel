@@ -9,13 +9,15 @@ import '../../models/transform_track.dart';
 import '../layer_pose_matrix.dart' show LayerPoseSample;
 
 /// How far a way between two keys may play from the pose the file shows on
-/// a frame before another key stands between them. Sized to stay under a
-/// quarter canvas pixel on a 2000px-ish canvas: position and an anchor are
-/// already in canvas pixels; a 1e-4 zoom error moves a 2000px span by
-/// 0.2px, and 0.01° swings a 1000px radius by 0.17px.
-const double _pointTolerance = 0.25;
-const double _scaleTolerance = 1e-4;
-const double _rotationTolerance = 0.01;
+/// a frame before another key stands between them — a canvas pixel (유저
+/// 10-13, `camera-import-keeps-the-files-eases-Q3`: 「1px 까지 허용」), on
+/// a 2000px-ish canvas: position and an anchor are already in canvas
+/// pixels; a 4e-4 zoom error moves a 2000px span by 0.8px, and 0.04° swings
+/// a 1000px radius by 0.7px. ↩️A quarter pixel (1e-4, 0.01°) until then:
+/// a key or two more on a curved TVPaint profile.
+const double _pointTolerance = 1;
+const double _scaleTolerance = 4e-4;
+const double _rotationTolerance = 0.04;
 
 /// The frames a transform's lanes are keyed on, each its own — as After
 /// Effects keys them apart and as the files an import reads key them
@@ -34,16 +36,18 @@ typedef TransformKeyFrames = ({
 /// frames the file keys that lane on ([keyedOn]) and where its move starts
 /// and stops, and each way between two of them held, straight or one AE
 /// ease ([EaseSide] on both of its ends). Where one way does not play the
-/// file's move within a quarter pixel, a key stands where it stops doing
-/// so, and the way goes on from there.
+/// file's move within a pixel, a key stands where it stops doing so, and
+/// the way goes on from there.
 ///
 /// ⚠️What the file SHOWS is the truth, not its keys' values (measured on
 /// TVPaint's own bakes — `planTvpCamera`): a key carries the pose on its
 /// frame, and the keys a way needs beside the file's are the price of
 /// looking as it looked — the save law 「겉모습이 먼저다」(유저 10-07:
-/// 「최대한 보기 같은걸 원한다」). 🗣️Whether a file's ease one AE ease
-/// carries less closely should come in as that ease all the same is
-/// `camera-import-keeps-the-files-eases-Q1`, open.
+/// 「최대한 보기 같은걸 원한다」). 🗣️A file's ease that one AE ease does not
+/// carry within the pixel above comes in as more keys, each way between
+/// them eased — not as the one nearest ease (유저 10-13,
+/// `camera-import-keeps-the-files-eases-Q3`: 「1px 까지 허용」 over 「원본
+/// 키만」).
 ///
 /// A hold at either end needs no key of its own — the app holds the first
 /// key before it and the last after it — so a move is keyed where it starts
