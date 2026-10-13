@@ -7,78 +7,77 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 
-/// The frame counter ticks with every frame played, and its width moves the
-/// row, so the bar it stands on is one tick layer ([TimelineCommandBar]).
-/// What stands beside it there is moved, not painted, when it ticks
-/// (playback-making-pictures-shakes-the-frames, 10-11): 🔬the bar was
-/// painted again whole on every frame played — 72–78 render objects, the
-/// zoom slider most of them.
+import '../../helpers/frame_census.dart';
+
+/// The frame counter ticks with every frame played. A tick that keeps the
+/// counter's width paints its line alone (I-57, 10-14 — [TickText]); one
+/// that widens it moves the row, so the bar it stands on is one tick layer
+/// ([TimelineCommandBar]) and what stands beside it there is moved, not
+/// painted (playback-making-pictures-shakes-the-frames, 10-11).
 void main() {
-  testWidgets('🚨a counter tick paints the counter, and not the zoom beside '
-      'it', (tester) async {
+  RenderObject at(WidgetTester tester, String key) =>
+      tester.renderObject(find.byKey(ValueKey<String>(key)));
+
+  testWidgets('🚨a counter tick builds nothing and paints the counter\'s '
+      'line alone', (tester) async {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
     await tester.pumpWidget(_bar(cursor));
-    final slider = tester.renderObject(
-      find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-    );
-    final counter = tester.renderObject(
-      find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-    );
-    bool under(RenderObject painted, RenderObject root) {
-      for (RenderObject? at = painted; at != null; at = at.parent) {
-        if (identical(at, root)) {
-          return true;
-        }
-      }
-      return false;
-    }
+    // The app's focus settles a frame after it is built.
+    await tester.pumpAndSettle();
+    final line = at(tester, 'timeline-local-frame-counter');
 
-    var sliderPaints = 0;
-    var counterPaints = 0;
-    debugOnProfilePaint = (painted) {
-      if (under(painted, slider)) {
-        sliderPaints += 1;
-      }
-      if (under(painted, counter)) {
-        counterPaints += 1;
-      }
-    };
-
-    try {
-      for (var frame = 1; frame <= 5; frame += 1) {
+    for (var frame = 1; frame <= 5; frame += 1) {
+      late bool linePainted;
+      final ticked = await frameCensus(tester, () {
         cursor.value = frame;
-        await tester.pump();
-      }
-    } finally {
-      // Unset inside the body: the binding checks its debug switches before
-      // a tear-down would run.
-      debugOnProfilePaint = null;
+        linePainted = line.debugNeedsPaint;
+      });
+
+      expect(linePainted, isTrue, reason: 'premise: the line heard it');
+      expect(ticked.rebuilt, isEmpty);
+      expect(
+        ticked.painted,
+        isEmpty,
+        reason: '↩️the bar was painted again whole at every tick — 🔬72–78 '
+            'render objects before the zoom stood on a layer of its own '
+            '(10-11), 24 after it',
+      );
     }
+  });
+
+  testWidgets('CONTROL: a tick that widens the counter paints the bar '
+      'round it, and not the zoom', (tester) async {
+    final cursor = ValueNotifier<int>(8);
+    addTearDown(cursor.dispose);
+    await tester.pumpWidget(_bar(cursor));
+    final line = at(tester, 'timeline-local-frame-counter');
+    final slider = at(tester, 'timeline-zoom-slider');
+
+    final frame = await frameCensus(tester, () => cursor.value = 9);
 
     expect(
-      counterPaints,
-      greaterThanOrEqualTo(5),
-      reason: 'fixture: the counter was painted at every tick',
+      frame.painted.where((object) => !identical(object, line)),
+      isNotEmpty,
+      reason: '9 to 10 is a wider counter',
     );
     expect(
-      sliderPaints,
-      0,
-      reason: '↩️the bar was painted again whole at every tick, the zoom '
-          'slider with the counter',
+      frame.painted.any((object) => identical(object, slider)) ||
+          paintedInside(frame.painted, slider),
+      isFalse,
     );
   });
 
-  testWidgets('🚨a counter tick re-walks the semantics up to the bar, and '
-      'the walk stops at the zoom beside it', (tester) async {
+  testWidgets('🚨a counter tick re-describes its line alone, and a bar '
+      'described again stops at the zoom beside it', (tester) async {
     final semantics = tester.ensureSemantics();
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
     await tester.pumpWidget(_bar(cursor));
 
-    // A layout marks the semantics of what it laid out, and the mark climbs
-    // to the nearest boundary — whose share of the tree is walked again,
-    // down to the boundaries under it.
+    // A change marks the semantics of what changed, and the mark climbs to
+    // the nearest boundary — whose share of the tree is walked again, down
+    // to the boundaries under it.
     bool isBoundary(RenderObject node) {
       final config = SemanticsConfiguration();
       // ignore: invalid_use_of_protected_member
@@ -94,10 +93,15 @@ void main() {
       return at;
     }
 
-    RenderObject at(String key) =>
-        tester.renderObject(find.byKey(ValueKey<String>(key)));
+    final line = at(tester, 'timeline-local-frame-counter');
+    expect(
+      boundaryOf(line),
+      same(line),
+      reason: '↩️a tick walked the bar\'s semantics, the cut\'s name and '
+          'the counter\'s other line with it',
+    );
 
-    final bar = boundaryOf(at('timeline-local-frame-counter'));
+    final bar = boundaryOf(at(tester, 'timeline-cut-name'));
 
     /// The boundary [node] stands under right inside the bar's.
     RenderObject underTheBar(RenderObject node) {
@@ -115,13 +119,13 @@ void main() {
       return under;
     }
 
-    final zoom = underTheBar(at('timeline-zoom-slider'));
+    final zoom = underTheBar(at(tester, 'timeline-zoom-slider'));
     expect(
-      underTheBar(at('timeline-zoom-out-button')),
+      underTheBar(at(tester, 'timeline-zoom-out-button')),
       same(zoom),
       reason: 'the slider and the buttons beside it are one boundary\'s',
     );
-    expect(underTheBar(at('timeline-zoom-in-button')), same(zoom));
+    expect(underTheBar(at(tester, 'timeline-zoom-in-button')), same(zoom));
     // Inside the body: the binding checks its handles before a tear-down
     // would run.
     semantics.dispose();

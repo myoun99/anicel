@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 void main() {
   Future<List<double>> pump(
@@ -49,8 +50,9 @@ void main() {
     return zooms;
   }
 
-  String textOf(WidgetTester tester, String key) =>
-      tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
+  String textOf(WidgetTester tester, String key) => tester
+      .renderObject<RenderTickText>(find.byKey(ValueKey<String>(key)))
+      .data;
 
   testWidgets(
     'the counter is one-based with an empty top line on the timeline',

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../helpers/the_classic_rail.dart';
 
@@ -111,8 +112,9 @@ Offset _seRowPoint(WidgetTester tester, int globalFrame) {
 /// here instead of on screen. What these tests are about (which frame a
 /// press lands on) is unchanged.
 String _frameCounter(WidgetTester tester) {
-  String line(String keyValue) =>
-      tester.widget<Text>(find.byKey(ValueKey<String>(keyValue))).data!;
+  String line(String keyValue) => tester
+      .renderObject<RenderTickText>(find.byKey(ValueKey<String>(keyValue)))
+      .data;
   return '${line('timeline-global-frame-counter')} · '
       '${line('timeline-local-frame-counter')}';
 }

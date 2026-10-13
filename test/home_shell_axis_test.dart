@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
@@ -213,10 +214,10 @@ void main() {
     await tester.pumpWidget(const AnicelApp());
 
     String counterText() => tester
-        .widget<Text>(
+        .renderObject<RenderTickText>(
           find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
         )
-        .data!;
+        .data;
     expect(counterText(), '1');
 
     // F-284 (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에

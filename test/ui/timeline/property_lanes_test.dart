@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
@@ -1600,7 +1601,7 @@ void main() {
 
       expect(
         tester
-            .widget<Text>(
+            .renderObject<RenderTickText>(
               find.byKey(
                 const ValueKey<String>('timeline-local-frame-counter'),
               ),
@@ -1933,7 +1934,7 @@ void main() {
 
       expect(
         tester
-            .widget<Text>(
+            .renderObject<RenderTickText>(
               find.byKey(
                 const ValueKey<String>('timeline-local-frame-counter'),
               ),

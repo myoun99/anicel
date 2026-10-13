@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'timeline/timeline_cell_probe.dart';
 import '../helpers/named_finders.dart';
@@ -342,7 +343,7 @@ void main() {
     // local number at the same height it sits at on the storyboard.
     expect(
       tester
-          .widget<Text>(
+          .renderObject<RenderTickText>(
             find.byKey(const ValueKey<String>('timeline-global-frame-counter')),
           )
           .data,
@@ -350,7 +351,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Text>(
+          .renderObject<RenderTickText>(
             find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
           )
           .data,

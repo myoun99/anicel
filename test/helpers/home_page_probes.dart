@@ -25,6 +25,7 @@ import 'app_icon_button_probe.dart';
 import 'named_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -379,11 +380,6 @@ Future<void> createSecondAuthoredFrame(WidgetTester tester) async {
   await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 }
 
-String statusText(WidgetTester tester, ValueKey<String> key) {
-  final status = tester.widget<Text>(find.byKey(key));
-  return status.data ?? '';
-}
-
 void expectActiveLayerName(String name) {
   expect(
     find.descendant(
@@ -399,7 +395,11 @@ void expectCurrentFrame(WidgetTester tester, int frameNumber) {
   // cut-local below. This is the timeline, where the top line is blank, so
   // the number under assertion is the LOCAL one.
   expect(
-    statusText(tester, const ValueKey<String>('timeline-local-frame-counter')),
+    tester
+        .renderObject<RenderTickText>(
+          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
+        )
+        .data,
     '$frameNumber',
   );
 }

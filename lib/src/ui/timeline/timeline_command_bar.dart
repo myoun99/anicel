@@ -92,9 +92,11 @@ class TimelineCommandBar extends StatelessWidget {
   ///
   /// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
   /// and its width moves the row — it grows into the room on its left
-  /// ([TimelineViewCluster]) — so a tick lays out and paints THIS bar.
-  /// Rebuilt bare, the counter laid out the dock's panel scroller and
-  /// repainted the panel and the dock around it on every playback frame.
+  /// ([TimelineViewCluster]) — so a tick that widens it lays out and
+  /// paints THIS bar; one that keeps its width paints its line alone
+  /// ([TickText], I-57 10-14). Rebuilt bare, the counter laid out the
+  /// dock's panel scroller and repainted the panel and the dock around it
+  /// on every playback frame.
   static const Widget _frame = TickLayer(
     child: Padding(
       padding: padding,
