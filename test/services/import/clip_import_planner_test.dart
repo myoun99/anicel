@@ -7,7 +7,6 @@ import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -19,11 +18,13 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/camera_pose_resolver.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
 import 'package:anicel/src/services/import/clip_import_planner.dart';
 import 'package:anicel/src/services/import/clip_placement.dart';
+import 'package:anicel/src/services/import/clip_track_clip.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 
 /// The shape a CLIP STUDIO file opens as (보드 `csp-clip-import-analysis`,
@@ -1381,11 +1382,14 @@ void main() {
     });
   });
 
-  group('🗣️a cut is shot through its camera, the app\'s way (유저 10-09: '
-      '「카메라는 우리방식이 제일 좋다고 생각하니 모아트는 참고만하고 '
-      '우리방식대로」)', () {
-    // The shooting frame: 200 × 100, its centre at (320, 180) on the paper.
+  group('🗣️a 2D camera folder is a folder whose transform moves what it '
+      'holds, and the cut\'s camera stays the shooting frame (유저 10-13: '
+      '「카메라인척하는 ae의 트랜스폼임 … 카메라폴더는 그냥 폴더에 트랜스폼 '
+      '움직이는걸로 … 이름은 카메라폴더 이름 그대로」)', () {
+    // The shooting frame: 200 × 100, its centre at (320, 180) on the paper —
+    // its top-left at (220, 130).
     const frame = (width: 200, height: 100, centerX: 320.0, centerY: 180.0);
+    final frameOrigin = CanvasPoint(x: 220, y: 130);
     final shootingFrame = CameraPose(center: CanvasPoint(x: 320, y: 180));
 
     /// A camera at [scale] times the frame, turned [degrees], its [pivotX] ·
@@ -1407,37 +1411,49 @@ void main() {
       pivotY: pivotY,
     );
 
-    PropertyTrack<double> keys(Map<int, double> values, Set<int> held) =>
-        PropertyTrack(
-          keys: {
-            for (final MapEntry(:key, :value) in values.entries)
-              key: PropertyKey(
-                value,
-                outgoing: held.contains(key)
-                    ? KeyExit.hold
-                    : KeySide.linear,
-              ),
-          },
-        );
+    /// [values] on their frames, running straight from each to the next —
+    /// a cubic whose slopes are each way's own average — or held from the
+    /// keys in [held].
+    ClipCurve ramp(Map<int, double> values, {Set<int> held = const {}}) {
+      final keys = values.entries.toList();
+      double average(int i) =>
+          (keys[i + 1].value - keys[i].value) / (keys[i + 1].key - keys[i].key);
+      return ClipCurve(
+        [
+          for (final MapEntry(:key, :value) in keys)
+            (frame: key.toDouble(), value: value),
+        ],
+        [
+          for (var i = 0; i + 1 < keys.length; i += 1)
+            if (held.contains(keys[i].key))
+              ClipWay.held
+            else
+              ClipCubic(leaving: average(i), arriving: average(i)),
+        ],
+      );
+    }
 
-    /// A clip over [span] keying the camera's point and scale; [held] keys
-    /// hold to the next.
+    /// CLIP STUDIO's own way between two keys: slow out, slow in.
+    ClipCurve eased(int from, double start, int to, double end) => ClipCurve(
+      [(frame: from.toDouble(), value: start), (frame: to.toDouble(), value: end)],
+      const [ClipCubic(leaving: 0, arriving: 0)],
+    );
+
+    /// A clip over [span] keying the camera's values.
     ClipCameraMove move(
       ClipSpan span, {
-      Map<int, double> x = const {},
-      Map<int, double> y = const {},
-      Map<int, double> scale = const {},
-      Set<int> held = const {},
-      bool unread = false,
+      ClipCurve? x,
+      ClipCurve? y,
+      ClipCurve? scale,
+      ClipCurve? degrees,
     }) => (
       span: span,
-      x: keys(x, held),
-      y: keys(y, held),
-      scale: keys(scale, held),
-      degrees: PropertyTrack.empty(),
-      pivotX: PropertyTrack.empty(),
-      pivotY: PropertyTrack.empty(),
-      unread: unread,
+      x: x ?? ClipCurve.none,
+      y: y ?? ClipCurve.none,
+      scale: scale ?? ClipCurve.none,
+      degrees: degrees ?? ClipCurve.none,
+      pivotX: ClipCurve.none,
+      pivotY: ClipCurve.none,
     );
 
     /// [camera]'s track: a clip for each of [moves].
@@ -1454,12 +1470,27 @@ void main() {
       ),
     );
 
-    /// The camera [cut] shows on its [frame], as the app plays it.
-    CameraPose at(Cut cut, int frame) => resolveCameraPoseAt(
-      camera: cut.camera,
-      canvasSize: const CanvasSize(width: 640, height: 360),
-      frameIndex: frame,
-    );
+    /// Where [cut] paints, on its [frame], the point [q] of its [name]
+    /// row's picture — the composite's own placement.
+    CanvasPoint painted(Cut cut, String name, int frame, CanvasPoint q) =>
+        layerPlacementAt(
+          cut: cut,
+          layer: row(cut, name),
+          frameIndex: frame,
+        )?.apply(q) ??
+        q;
+
+    /// What the camera of [placement] sees on its own point [u] — the
+    /// canvas point it takes there ([clipPlaced]).
+    CanvasPoint seen(ClipPlacement placement, double u, double v) {
+      final (:x, :y) = clipPlaced(placement, u, v);
+      return CanvasPoint(x: x, y: y);
+    }
+
+    void expectNear(CanvasPoint actual, CanvasPoint expected, double within) {
+      expect(actual.x, closeTo(expected.x, within));
+      expect(actual.y, closeTo(expected.y, within));
+    }
 
     List<(String, Object?)> said(ClipImportPlan result) => [
       for (final warning in result.warnings)
@@ -1486,46 +1517,9 @@ void main() {
       expect(result.cuts.single.camera.isEmpty, isTrue);
     });
 
-    test('🎯a camera the timeline does not move is the cut\'s camera at its '
-        'rest — its picture the frame, placed as a picture is: the centre '
-        'lands by its pivot and scale, and twice the frame is half the '
-        'zoom — one key', () {
-      final camera = folder(
-        'camera',
-        [layer('BG')],
-        camera: placed(x: 300, y: 200, scale: 2, pivotX: 0, pivotY: 0),
-      );
-
-      final result = plan(root([camera]), [timeline([])], frame: frame);
-
-      expect(result.cuts.single.camera.keyframes, {
-        0: CameraPose(center: CanvasPoint(x: 500, y: 300), zoom: 0.5),
-      });
-    });
-
-    test('🎯its turn is the picture\'s — clockwise on positive, the way the '
-        'app\'s camera turns', () {
-      final camera = folder(
-        'camera',
-        [layer('BG')],
-        camera: placed(x: 300, y: 200, degrees: 90, pivotX: 0, pivotY: 0),
-      );
-
-      final pose = plan(
-        root([camera]),
-        [timeline([])],
-        frame: frame,
-      ).cuts.single.camera.keyframeAt(0)!;
-
-      // The frame's centre, (100, 50) from the pivot, a quarter turn
-      // clockwise on a canvas whose y runs down: (−50, 100).
-      expect(pose.center.x, closeTo(250, 1e-9));
-      expect(pose.center.y, closeTo(300, 1e-9));
-      expect(pose.rotationDegrees, 90);
-    });
-
-    test('🎯a clip moves the cut\'s camera as its keys do — a straight pan '
-        'is its two keys again', () {
+    test('🎯a camera folder is a folder row of its own name, and the cut\'s '
+        'camera stays the shooting frame however the folder moves — CLIP '
+        'STUDIO\'s own camera is still (「진짜 존재하는 카메라는 고정되있음」)', () {
       final camera = folder('camera', [layer('BG')], camera: placed());
 
       final cut = plan(
@@ -1533,58 +1527,121 @@ void main() {
         [
           timeline([
             moving(camera, [
-              move((start: 0, end: 12), x: {0: 100, 11: 210}),
+              move((start: 0, end: 12), x: eased(0, 100, 11, 210)),
             ]),
           ]),
         ],
         frame: frame,
       ).cuts.single;
 
-      expect(cut.camera.keyframes, {
-        0: CameraPose(center: CanvasPoint(x: 100, y: 180)),
-        11: CameraPose(center: CanvasPoint(x: 210, y: 180)),
-      });
+      expect(row(cut, 'camera').kind, LayerKind.folder);
+      expect(row(cut, 'BG').folderId, row(cut, 'camera').id);
+      expect(cut.camera.keyframes, {0: shootingFrame});
     });
 
-    test('each lane is keyed where its own curves key it — the point and '
-        'the pivot place the frame, the scale zooms it, the turn turns it '
-        '(I-89 ⑦) — on the cut\'s own frames', () {
-      final camera = folder('camera', [layer('BG')], camera: placed());
-      // Every curve runs straight through a key of its own, so no key
-      // stands anywhere the file keys none; the timeline starts on its
-      // frame 10, the cut's 0.
-      PropertyTrack<double> straight(Map<int, double> values) =>
-          keys(values, const {});
-      final pan = moving(camera, [
-        (
-          span: (start: 10, end: 23),
-          x: straight({10: 100, 14: 120, 22: 160}),
-          y: straight({10: 180, 15: 190, 22: 204}),
-          pivotX: straight({10: 100, 16: 106, 22: 112}),
-          pivotY: straight({10: 50, 17: 57, 22: 62}),
-          scale: straight({10: 1, 18: 1}),
-          degrees: straight({10: 0, 19: 0}),
-          unread: false,
-        ),
-      ]);
+    test('🎯what the folder holds is painted where the camera sees it: the '
+        'canvas point the camera takes on its own point u stands on the '
+        'frame\'s u — moved, scaled and turned as the camera is', () {
+      // Twice the frame, a sixth of a turn, its pivot off the frame's centre
+      // — every number of the placement at once.
+      final rest = placed(x: 300, y: 210, scale: 2, degrees: 60, pivotX: 30);
+      final camera = folder('camera', [layer('BG')], camera: rest);
 
-      final track = plan(
+      final cut = plan(root([camera]), [timeline([])], frame: frame).cuts.single;
+
+      for (final (u, v) in [(0.0, 0.0), (200.0, 0.0), (30.0, 50.0), (50.0, 90.0)]) {
+        expectNear(
+          painted(cut, 'BG', 0, seen(rest, u, v)),
+          CanvasPoint(x: frameOrigin.x + u, y: frameOrigin.y + v),
+          1e-9,
+        );
+      }
+    });
+
+    test('🎯the folder\'s transform reads as the camera: the anchor on the '
+        'point it is placed at, the position on the frame\'s point its pivot '
+        'is, the scale its own undone, its turn the other way', () {
+      final camera = folder(
+        'camera',
+        [layer('BG')],
+        camera: placed(x: 300, y: 210, scale: 2, degrees: 60, pivotX: 30),
+      );
+
+      final track = row(
+        plan(root([camera]), [timeline([])], frame: frame).cuts.single,
+        'camera',
+      ).transformTrack;
+
+      expect(track.anchorPoint.keys.values.single.value, CanvasPoint(x: 300, y: 210));
+      expect(track.position.keys.values.single.value, CanvasPoint(x: 250, y: 180));
+      expect(track.scale.keys.values.single.value, CanvasPoint(x: 0.5, y: 0.5));
+      expect(track.rotation.keys.values.single.value, -60);
+    });
+
+    test('🎯a clip moves what the folder holds as its keys do — CLIP STUDIO\'s '
+        'own way slow out, slow in — and its keys stand where the clip\'s '
+        'do', () {
+      final rest = placed();
+      final camera = folder('camera', [layer('BG')], camera: rest);
+      final pan = eased(0, 100, 11, 210);
+
+      final cut = plan(
         root([camera]),
         [
-          ClipTimeline(
-            name: 'c1',
-            fps: 24,
-            start: 10,
-            end: 23,
-            tracks: Map.fromEntries([pan]),
-          ),
+          timeline([
+            moving(camera, [move((start: 0, end: 12), x: pan)]),
+          ]),
         ],
         frame: frame,
-      ).cuts.single.camera.track;
+      ).cuts.single;
 
-      expect(track.position.keys.keys, [0, 4, 5, 6, 7, 12]);
-      expect(track.scale.keys.keys, [0, 8]);
-      expect(track.rotation.keys.keys, [0, 9]);
+      expect(row(cut, 'camera').transformTrack.anchorPoint.keys.keys, [0, 11]);
+      for (final at in [0, 3, 6, 11]) {
+        final looking = (
+          scaleX: 1.0,
+          scaleY: 1.0,
+          degrees: 0.0,
+          x: pan.at(at.toDouble())!,
+          y: rest.y,
+          pivotX: rest.pivotX,
+          pivotY: rest.pivotY,
+        );
+        expectNear(
+          painted(cut, 'BG', at, seen(looking, 40, 70)),
+          CanvasPoint(x: frameOrigin.x + 40, y: frameOrigin.y + 70),
+          0.25,
+        );
+      }
+    });
+
+    test('a clip that zooms and turns the camera zooms and turns what the '
+        'folder holds, about the frame\'s point the camera\'s pivot is', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final cut = plan(
+        root([camera]),
+        [
+          timeline([
+            moving(camera, [
+              move(
+                (start: 0, end: 12),
+                scale: ramp({0: 1, 11: 2}),
+                degrees: ramp({0: 0, 11: 90}),
+              ),
+            ]),
+          ]),
+        ],
+        frame: frame,
+      ).cuts.single;
+
+      final looking = placed(scale: 1 + 6 / 11, degrees: 90 * 6 / 11);
+      for (final (u, v) in [(0.0, 0.0), (180.0, 20.0)]) {
+        expectNear(
+          painted(cut, 'BG', 6, seen(looking, u, v)),
+          CanvasPoint(x: frameOrigin.x + u, y: frameOrigin.y + v),
+          0.5,
+        );
+      }
     });
 
     test('a key CLIP STUDIO holds holds here, and a value the clip keys '
@@ -1595,45 +1652,132 @@ void main() {
         camera: placed(y: 90, scale: 2),
       );
 
+      final track = row(
+        plan(
+          root([camera]),
+          [
+            timeline([
+              moving(camera, [
+                move((start: 0, end: 12), x: ramp({0: 100, 6: 160}, held: {0})),
+              ]),
+            ]),
+          ],
+          frame: frame,
+        ).cuts.single,
+        'camera',
+      ).transformTrack;
+
+      CanvasPoint anchorOn(int frame) =>
+          resolveAnchorTrackAt(track.anchorPoint, frame)!;
+      expect((anchorOn(3).x, anchorOn(6).x), (100, 160));
+      expect(anchorOn(3).y, 90);
+      expect(track.scale.keys.values.single.value, CanvasPoint(x: 0.5, y: 0.5));
+    });
+
+    test('🎯between its clips CLIP STUDIO shows nothing of the folder — what '
+        'it holds has no cel there — so no frame there asks the transform '
+        'for anything: the clips\' own keys join over the gap', () {
+      final camera = folder('camera', [
+        animation('A', [layer('1')]),
+      ], camera: placed());
+
       final cut = plan(
         root([camera]),
         [
           timeline([
             moving(camera, [
-              move((start: 0, end: 12), x: {0: 100, 6: 160}, held: {0}),
+              move((start: 0, end: 6), x: ClipCurve.held(0, 100)),
+              move((start: 10, end: 12), x: ClipCurve.held(10, 200)),
             ]),
+            keyed(camera.children.single, [(0, '1')]),
           ]),
         ],
         frame: frame,
       ).cuts.single;
 
-      expect((at(cut, 3).center.x, at(cut, 6).center.x), (100, 160));
-      expect((at(cut, 3).center.y, at(cut, 3).zoom), (90, 0.5));
+      final base = cut.layers.singleWhere(
+        (layer) => layer.name == 'A' && layer.kind == LayerKind.animation,
+      );
+      expect(blocks(base), [(0, 6, '1'), (10, 2, '1')]);
+      final anchor = row(cut, 'camera').transformTrack.anchorPoint;
+      expect(anchor.keys.keys, [0, 10]);
+      expect(anchor.keys[0]!.outgoing, KeyExit.hold);
     });
 
-    test('🎯between its clips a cut is shot through the shooting frame — '
-        'CLIP STUDIO shows nothing of the folder there', () {
-      // Resting off the frame, so the frame is not the rest by chance.
+    test('a cut that never shows the folder holds it at its rest', () {
       final camera = folder('camera', [layer('BG')], camera: placed(x: 500));
 
-      final cut = plan(
-        root([camera]),
-        [
-          timeline([
-            moving(camera, [
-              move((start: 0, end: 6), x: {0: 100}),
+      final track = row(
+        plan(
+          root([camera]),
+          [
+            timeline([
+              moving(camera, [
+                move((start: 20, end: 30), x: ClipCurve.held(20, 100)),
+              ]),
             ]),
-          ]),
-        ],
-        frame: frame,
-      ).cuts.single;
+          ],
+          frame: frame,
+        ).cuts.single,
+        'camera',
+      ).transformTrack;
 
-      expect(at(cut, 2).center.x, 100);
-      expect(at(cut, 8), shootingFrame);
+      expect(track.anchorPoint.keys.keys, [0]);
+      expect(
+        track.anchorPoint.keys.values.single.value,
+        CanvasPoint(x: 500, y: 180),
+      );
     });
 
-    test('every timeline moves its own cut\'s camera — the 겸용 cuts share '
-        'their rows, not their camera\'s moves', () {
+    test('a clip of the track that keys nothing holds the folder at its '
+        'rest', () {
+      final camera = folder('camera', [layer('BG')], camera: placed(x: 400));
+
+      final track = row(
+        plan(
+          root([camera]),
+          [
+            timeline([
+              MapEntry(
+                camera.uuid,
+                const ClipTrack(
+                  kind: 2005,
+                  pieces: [(span: (start: 0, end: 12), cels: [])],
+                  labels: [],
+                ),
+              ),
+            ]),
+          ],
+          frame: frame,
+        ).cuts.single,
+        'camera',
+      ).transformTrack;
+
+      expect(track.anchorPoint.keys.values.single.value.x, 400);
+    });
+
+    test('🎯every camera folder moves what it holds, each its own — and a '
+        'folder outside them stands still', () {
+      final first = folder('camera', [layer('A')], camera: placed(x: 300));
+      final second = folder('camera 2', [layer('B')], camera: placed(x: 340));
+
+      final result = plan(
+        root([first, second, folder('plain', [layer('C')])]),
+        [timeline([])],
+        frame: frame,
+      );
+      final cut = result.cuts.single;
+
+      expect([
+        for (final name in ['camera', 'camera 2'])
+          row(cut, name).transformTrack.anchorPoint.keys.values.single.value.x,
+      ], [300, 340]);
+      expect(row(cut, 'plain').transformTrack.isEmpty, isTrue);
+      expect(said(result), isEmpty);
+    });
+
+    test('every timeline moves its own cut\'s folder — the 겸용 cuts share '
+        'their rows, not the camera\'s moves', () {
       final camera = folder('camera', [layer('BG')], camera: placed());
 
       final cuts = plan(
@@ -1641,72 +1785,106 @@ void main() {
         [
           timeline([
             moving(camera, [
-              move((start: 0, end: 12), x: {0: 100}),
+              move((start: 0, end: 12), x: ClipCurve.held(0, 100)),
             ]),
           ]),
           timeline(name: 'c2', [
             moving(camera, [
-              move((start: 0, end: 12), x: {0: 400}),
+              move((start: 0, end: 12), x: ClipCurve.held(0, 400)),
             ]),
           ]),
         ],
         frame: frame,
       ).cuts;
 
-      expect([for (final cut in cuts) at(cut, 0).center.x], [100, 400]);
+      expect([
+        for (final cut in cuts)
+          row(cut, 'camera').transformTrack.anchorPoint.keys.values.single
+              .value.x,
+      ], [100, 400]);
     });
 
-    test('what the camera cannot bring is said: a second camera folder, and '
-        'keys on a curve it does not read', () {
-      final first = folder('camera', [layer('A')], camera: placed());
-      final second = folder('camera 2', [layer('B')], camera: placed());
+    test('each lane is keyed where its own curves key it — the anchor where '
+        'the point is, the position where the pivot is, the scale and the '
+        'turn where theirs are (I-89 ⑦) — on the cut\'s own frames', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+      // Every curve runs straight through a key of its own, so no key
+      // stands anywhere the file keys none; the timeline starts on its
+      // frame 10, the cut's 0.
+      final pan = moving(camera, [
+        (
+          span: (start: 10, end: 23),
+          x: ramp({10: 100, 14: 120, 22: 160}),
+          y: ramp({10: 180, 15: 190, 22: 204}),
+          pivotX: ramp({10: 100, 16: 106, 22: 112}),
+          pivotY: ramp({10: 50, 17: 57, 22: 62}),
+          scale: ramp({10: 1, 18: 1}),
+          degrees: ramp({10: 0, 19: 0}),
+        ),
+      ]);
+
+      final track = row(
+        plan(
+          root([camera]),
+          [
+            ClipTimeline(
+              name: 'c1',
+              fps: 24,
+              start: 10,
+              end: 23,
+              tracks: Map.fromEntries([pan]),
+            ),
+          ],
+          frame: frame,
+        ).cuts.single,
+        'camera',
+      ).transformTrack;
+
+      expect(track.anchorPoint.keys.keys, [0, 4, 5, 12]);
+      expect(track.position.keys.keys, [0, 6, 7, 12]);
+      expect(track.scale.keys.keys, [0, 8]);
+      expect(track.rotation.keys.keys, [0, 9]);
+    });
+
+    test('keys on a curve the import does not read are said, once a '
+        'folder', () {
+      final camera = folder('camera', [layer('A')], camera: placed());
+      final unread = ClipCurve(
+        [(frame: 0, value: 0), (frame: 6, value: 10), (frame: 11, value: 20)],
+        [ClipWay.straight, ClipWay.straight],
+      );
 
       final result = plan(
-        root([first, second]),
+        root([camera]),
         [
           timeline([
-            moving(first, [move((start: 0, end: 12), unread: true)]),
+            moving(camera, [move((start: 0, end: 12), x: unread)]),
+          ]),
+          timeline(name: 'c2', [
+            moving(camera, [move((start: 0, end: 12), y: unread)]),
           ]),
         ],
         frame: frame,
       );
 
-      expect(said(result), [
-        ('clipCameraExtra', 'camera 2'),
-        ('clipCameraCurve', 'camera'),
-      ]);
+      expect(said(result), [('clipCameraCurve', 'camera')]);
     });
 
-    test('🎯what a cut shows outside the camera folder is said, once the '
-        'camera leaves the frame — CLIP STUDIO\'s camera does not move it, '
-        'the cut\'s does', () {
-      final camera = folder('camera', [layer('A')], camera: placed(x: 400));
-
-      final result = plan(
-        root([layer('over'), layer('hidden', shown: false), camera]),
-        [timeline([]), timeline([], name: 'c2')],
-        frame: frame,
+    test('a camera whose numbers say nothing — no size, a turn that is no '
+        'number — comes in unscaled and unturned, not refused', () {
+      final camera = folder(
+        'camera',
+        [layer('BG')],
+        camera: placed(scale: 0, degrees: double.nan),
       );
 
-      expect(said(result), [('clipCameraOutside', 'camera')]);
-      expect(
-        result.warnings.single.values['count'],
-        '1',
-        reason: 'the hidden one is not shown',
-      );
-    });
+      final track = row(
+        plan(root([camera]), [timeline([])], frame: frame).cuts.single,
+        'camera',
+      ).transformTrack;
 
-    test('⛔CONTROL: a camera that stays on the frame says nothing of what '
-        'stands outside it', () {
-      final camera = folder('camera', [layer('A')], camera: placed());
-
-      final result = plan(
-        root([layer('over'), camera]),
-        [timeline([])],
-        frame: frame,
-      );
-
-      expect(said(result), isEmpty);
+      expect(track.scale.keys.values.single.value, CanvasPoint(x: 1, y: 1));
+      expect(track.rotation.keys.values.single.value, 0);
     });
   });
 }

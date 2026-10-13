@@ -6,15 +6,26 @@ import '../../models/canvas_point.dart';
 import '../../models/cut_camera.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
+import '../layer_pose_matrix.dart' show LayerPoseSample;
 
 /// How far a way between two keys may play from the pose the file shows on
 /// a frame before another key stands between them. Sized to stay under a
-/// quarter canvas pixel on a 2000px-ish canvas: position is already in
-/// canvas pixels; a 1e-4 zoom error moves a 2000px span by 0.2px, and 0.01°
-/// swings a 1000px radius by 0.17px.
-const double _cameraPositionTolerance = 0.25;
-const double _cameraZoomTolerance = 1e-4;
-const double _cameraRotationTolerance = 0.01;
+/// quarter canvas pixel on a 2000px-ish canvas: position and an anchor are
+/// already in canvas pixels; a 1e-4 zoom error moves a 2000px span by
+/// 0.2px, and 0.01° swings a 1000px radius by 0.17px.
+const double _pointTolerance = 0.25;
+const double _scaleTolerance = 1e-4;
+const double _rotationTolerance = 0.01;
+
+/// The frames a transform's lanes are keyed on, each its own — as After
+/// Effects keys them apart and as the files an import reads key them
+/// (I-89 ⑦).
+typedef TransformKeyFrames = ({
+  Iterable<int> anchorPoint,
+  Iterable<int> position,
+  Iterable<int> scale,
+  Iterable<int> rotation,
+});
 
 /// The camera that plays [byFrame] — a pose on every frame, the move as the
 /// file shows it — in keys the way the app keys a camera (I-89 ⑦, 유저
@@ -39,67 +50,109 @@ const double _cameraRotationTolerance = 0.01;
 /// and stops, and a lane that never moves and that the file keys nowhere is
 /// ONE key, where it starts (288, hands-on: one key on frame 1 arrived as
 /// keys on 1 and 96; s6's pan, keyed on frames 0 and 108, arrived with a
-/// third on its last frame). The TVPaint and CLIP STUDIO imports both make
-/// their cut's camera here.
+/// third on its last frame). The TVPaint import makes its cut's camera
+/// here; the CLIP STUDIO import each 2D camera folder's transform
+/// ([transformTrackOfFramePoses]) — one fit.
 CutCamera cutCameraOfFramePoses(
   SplayTreeMap<int, CameraPose> byFrame, {
   required CameraKeyFrames keyedOn,
+}) => CutCamera.fromTrack(
+  transformTrackOfFramePoses(
+    {
+      // The one zoom on both of the scale's numbers (`CutCamera`).
+      for (final MapEntry(key: frame, value: pose) in byFrame.entries)
+        frame: (pose: TransformPose.ofCamera(pose), anchorPoint: null),
+    },
+    keyedOn: (
+      anchorPoint: const [],
+      position: keyedOn.position,
+      scale: keyedOn.zoom,
+      rotation: keyedOn.rotation,
+    ),
+  ),
+);
+
+/// The transform that plays [byFrame] — a pose and its anchor on every
+/// frame given, the move as the file shows it — in keys, each lane its own
+/// as [cutCameraOfFramePoses] lays a camera's; empty for no frame. A frame
+/// with no anchor stands its pose on the canvas's centre
+/// (`layerPoseMatrix`) — the lane keyed nowhere — so none of them has one,
+/// or every one does. A frame not given is one the file shows nothing on
+/// (a 2D camera folder between its clips): no way is fitted to it, and the
+/// keys either side join over it.
+TransformTrack transformTrackOfFramePoses(
+  Map<int, LayerPoseSample> byFrame, {
+  required TransformKeyFrames keyedOn,
 }) {
   if (byFrame.isEmpty) {
-    return CutCamera.empty();
+    return TransformTrack.empty();
   }
-  final frames = byFrame.keys.toList();
-  final poses = byFrame.values.toList();
-  return CutCamera.fromTrack(
-    TransformTrack.properties(
-      anchorPoint: PropertyTrack.empty(),
-      position: _LaneKeys(
-        frames,
-        [for (final pose in poses) pose.center],
-        _positionLane,
-      ).keyedOn(keyedOn.position),
-      // The one zoom on both of the scale's numbers (`CutCamera`).
-      scale: _LaneKeys(
-        frames,
-        [for (final pose in poses) CanvasPoint(x: pose.zoom, y: pose.zoom)],
-        _zoomLane,
-      ).keyedOn(keyedOn.zoom),
-      rotation: _LaneKeys(
-        frames,
-        [for (final pose in poses) pose.rotationDegrees],
-        _rotationLane,
-      ).keyedOn(keyedOn.rotation),
-      opacity: PropertyTrack.empty(),
-    ),
+  final frames = (byFrame.keys.toList()..sort());
+  final samples = [for (final frame in frames) byFrame[frame]!];
+  final anchors = [for (final sample in samples) sample.anchorPoint];
+  assert(
+    anchors.every((anchor) => anchor == null) ||
+        anchors.every((anchor) => anchor != null),
+    'Some frames of a transform have an anchor and some do not.',
+  );
+  return TransformTrack.properties(
+    anchorPoint: anchors.first == null
+        ? PropertyTrack.empty()
+        : _LaneKeys(
+            frames,
+            anchors.nonNulls.toList(),
+            _anchorLane,
+          ).keyedOn(keyedOn.anchorPoint),
+    position: _LaneKeys(
+      frames,
+      [for (final sample in samples) sample.pose.center],
+      _positionLane,
+    ).keyedOn(keyedOn.position),
+    scale: _LaneKeys(
+      frames,
+      [for (final sample in samples) sample.pose.scale],
+      _scaleLane,
+    ).keyedOn(keyedOn.scale),
+    rotation: _LaneKeys(
+      frames,
+      [for (final sample in samples) sample.pose.rotationDegrees],
+      _rotationLane,
+    ).keyedOn(keyedOn.rotation),
+    opacity: PropertyTrack.empty(),
   );
 }
 
-/// What fitting one of the camera's lanes takes: the space the app plays
+/// What fitting one of a transform's lanes takes: the space the app plays
 /// its values in, and how near a played value must come to the file's.
-final class _CameraLane<T> {
-  const _CameraLane(this.space, this.near);
+final class _TransformLane<T> {
+  const _TransformLane(this.space, this.near);
 
   final KeyValueSpace<T> space;
   final bool Function(T played, T shown) near;
 }
 
-final _positionLane = _CameraLane<CanvasPoint>(
-  positionKeySpace,
-  (played, shown) =>
-      (played.x - shown.x).abs() <= _cameraPositionTolerance &&
-      (played.y - shown.y).abs() <= _cameraPositionTolerance,
-);
+bool _pointsNear(CanvasPoint played, CanvasPoint shown, double tolerance) =>
+    (played.x - shown.x).abs() <= tolerance &&
+    (played.y - shown.y).abs() <= tolerance;
 
-final _zoomLane = _CameraLane<CanvasPoint>(
+final _anchorLane = _TransformLane<CanvasPoint>(
   pointKeySpace,
-  (played, shown) =>
-      (played.x - shown.x).abs() <= _cameraZoomTolerance &&
-      (played.y - shown.y).abs() <= _cameraZoomTolerance,
+  (played, shown) => _pointsNear(played, shown, _pointTolerance),
 );
 
-final _rotationLane = _CameraLane<double>(
+final _positionLane = _TransformLane<CanvasPoint>(
+  positionKeySpace,
+  (played, shown) => _pointsNear(played, shown, _pointTolerance),
+);
+
+final _scaleLane = _TransformLane<CanvasPoint>(
+  pointKeySpace,
+  (played, shown) => _pointsNear(played, shown, _scaleTolerance),
+);
+
+final _rotationLane = _TransformLane<double>(
   doubleKeySpace,
-  (played, shown) => (played - shown).abs() <= _cameraRotationTolerance,
+  (played, shown) => (played - shown).abs() <= _rotationTolerance,
 );
 
 /// How a way between two keys goes: the side it leaves the one by and the
@@ -119,7 +172,7 @@ final class _LaneKeys<T> {
 
   final List<int> frames;
   final List<T> values;
-  final _CameraLane<T> lane;
+  final _TransformLane<T> lane;
 
   /// The index of each key, and the sides the ways either side give it.
   final _stops = SplayTreeSet<int>();

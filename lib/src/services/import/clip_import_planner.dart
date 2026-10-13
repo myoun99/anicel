@@ -13,7 +13,11 @@
 ///   cut's own — the state `CreateLinkedCutCommand` leaves.
 /// * **Folders outside the cels are folder rows, structure as it is** (Q6):
 ///   nesting, name, eye, opacity, blend, and the fold (Q3: 「접힌 폴더는
-///   접힌상태로 들여오도록. 이건 tvp든 뭐든 임포트할때의 기본」).
+///   접힌상태로 들여오도록. 이건 tvp든 뭐든 임포트할때의 기본」). A 2D camera
+///   folder is one too, its transform moving what it holds as the camera
+///   shows it, and every cut is shot through the still shooting frame
+///   (유저 10-13: 「카메라폴더는 그냥 폴더에 트랜스폼 움직이는걸로」 —
+///   [_CameraFolder]).
 /// * **An animation folder is always a folder row** (Q7) holding a BASE row
 ///   — the top layer of every cel (Q2: 「맨 위 레이어가 기준」), one cel per
 ///   CLIP STUDIO cel, named as there — and BELOW it the attach rows the
@@ -72,13 +76,12 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
-import '../../models/property_track.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
-import '../../models/transform_track.dart' show doubleKeySpace;
-import '../camera_pose_resolver.dart' show defaultCameraPoseFor;
+import '../../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../editing/default_cut_helpers.dart';
+import '../layer_pose_matrix.dart' show LayerPoseSample;
 import 'camera_track.dart';
 import 'clip_document.dart';
 import 'clip_placement.dart';
@@ -199,19 +202,21 @@ ClipImportPlan planClipImport({
     mint: mint,
     warnings: warnings,
     soundPaths: soundPaths,
+    frameOrigin: switch (document.frame) {
+      final frame? => CanvasPoint(
+        x: frame.centerX - frame.width / 2,
+        y: frame.centerY - frame.height / 2,
+      ),
+      null => CanvasPoint(x: 0, y: 0),
+    },
   )
     ..walk(document.root, null, const [])
     ..nameAttachRows();
   final canvas = CanvasSize(width: document.width, height: document.height);
-  final cameras = _CutCameras(document, warnings);
+  final camera = _shootingCamera(document);
   final cuts = [
     for (var i = 0; i < views.length; i += 1)
-      planner.cutIn(
-        i,
-        cutId: cutIds[i],
-        canvas: canvas,
-        camera: cameras.inCut(views[i]),
-      ),
+      planner.cutIn(i, cutId: cutIds[i], canvas: canvas, camera: camera),
   ];
   return ClipImportPlan(
     cuts: cuts,
@@ -359,6 +364,7 @@ final class _FolderRow extends _Row {
     required this.opacity,
     required this.blend,
     required this.collapsed,
+    required this.camera,
   });
 
   @override
@@ -367,6 +373,10 @@ final class _FolderRow extends _Row {
   final double opacity;
   final LayerBlendMode blend;
   final bool collapsed;
+
+  /// The 2D camera the folder is, which moves what it holds — null for
+  /// every other folder.
+  final _CameraFolder? camera;
 
   @override
   Layer layerIn(int cut, _CutView view) =>
@@ -379,6 +389,7 @@ final class _FolderRow extends _Row {
         opacity: opacity,
         blendMode: blend,
         collapsed: collapsed,
+        transformTrack: camera?.trackIn(view),
       );
 }
 
@@ -648,6 +659,7 @@ final class _Planner {
     required this.mint,
     required this.warnings,
     required Map<String, String> soundPaths,
+    required this.frameOrigin,
   }) : sounds = _SoundRows(
          views: views,
          mint: mint,
@@ -658,6 +670,10 @@ final class _Planner {
   final List<_CutView> views;
   final ImportIdMint mint;
   final List<ImportWarning> warnings;
+
+  /// Where the shooting frame's top-left stands on the canvas — the
+  /// canvas's own, for a file with no frame.
+  final CanvasPoint frameOrigin;
 
   /// Bottom first, the order a cut stores.
   final rows = <_Row>[];
@@ -754,7 +770,36 @@ final class _Planner {
     opacity: folder.opacity / _fullOpacity,
     blend: _blendOf(folder, folder.name),
     collapsed: folder.isCollapsed,
+    camera: switch (folder.camera) {
+      final rest? => _cameraFolderOf(folder, rest),
+      null => null,
+    },
   );
+
+  /// [folder], the 2D camera [rest] places when no clip moves it — and
+  /// said where a clip of its keys a way this import does not read.
+  _CameraFolder _cameraFolderOf(ClipLayer folder, ClipPlacement rest) {
+    final unread = views.any(
+      (view) =>
+          view.trackOf(folder)?.cameraMoves.any(
+            (move) => _CameraFolder.curvesOf(
+              move,
+            ).any((curve) => curve.unread),
+          ) ??
+          false,
+    );
+    if (unread) {
+      warnings.add(
+        ImportWarning(
+          'clipCameraCurve',
+          '{name}: some camera keys follow a curve this import does not '
+              'read — the camera moves straight between them.',
+          {'name': folder.name},
+        ),
+      );
+    }
+    return _CameraFolder(folder, rest, frameOrigin);
+  }
 
   void _outsideLayer(
     ClipLayer layer,
@@ -1320,227 +1365,149 @@ final class _SoundRows {
   }
 }
 
-/// Each cut's camera, in the app's own way (유저 10-09: 「카메라는
-/// 우리방식이 제일 좋다고 생각하니 모아트는 참고만하고 우리방식대로」): the
-/// cut's ONE camera, a pose on every frame of the cut as the file moves it,
-/// made keys the way every baked camera is ([cutCameraOfFramePoses]).
-///
-/// A file with a 2D camera folder is shot through it — inside its track's
-/// clips as each moves it, at its rest where the timeline has no track for
-/// it, and through the shooting frame between its clips, where CLIP STUDIO
-/// shows nothing of the folder and the rest through the frame. A file
-/// without one is shot through its shooting frame, still; one with no frame
-/// either keeps the cut's own camera.
+/// Every cut's camera: the shooting frame, still — CLIP STUDIO's own camera
+/// does not move (유저 10-13: 「진짜 존재하는 카메라는 고정되있음」); its 2D
+/// camera folders move what they hold ([_CameraFolder]). Null for a file
+/// with no frame, whose cuts keep their own.
+CutCamera? _shootingCamera(ClipDocument document) => switch (document.frame) {
+  final frame? => CutCamera(
+    keyframes: {
+      0: CameraPose(center: CanvasPoint(x: frame.centerX, y: frame.centerY)),
+    },
+  ),
+  null => null,
+};
+
+/// A 2D camera folder, the app's way: the folder row it is anyway, named as
+/// it is, its transform moving what it holds as CLIP STUDIO shows that
+/// through the camera (유저 10-13, 보드
+/// `clip-camera-folder-is-a-folder-transform`: 「클립은 tvp의 카메라같은
+/// 개념이 아님. 카메라인척하는 ae의 트랜스폼임 … 카메라폴더는 그냥 폴더에
+/// 트랜스폼 움직이는걸로 구현하는게 확실할듯. 이름은 카메라폴더 이름 그대로」).
+/// A file may hold several, each moving its own; what stands outside them
+/// is seen through the still frame ([_shootingCamera]). ↩️The first camera
+/// folder was the cut's camera, moving everything, and a second was only
+/// said (10-09, 「카메라는 우리방식이 제일 좋다고 생각하니 모아트는
+/// 참고만하고 우리방식대로」 — the way stays ours).
 ///
 /// The camera's picture is the shooting frame, placed on the canvas the
-/// way a picture is ([clipPlaced]): its centre is where the camera looks,
-/// and its scale what it takes in — twice the frame is half the zoom (s6's
-/// four corners meet the frame so — memory `csp-clip-format-notes` §3). Its
-/// turn is the picture's, clockwise on positive as the app's camera turns
-/// ([CameraPose.rotationDegrees]); no sample's camera turns.
-final class _CutCameras {
-  _CutCameras(ClipDocument document, this.warnings)
-    : _size = switch (document.frame) {
-        final frame? => CanvasSize(width: frame.width, height: frame.height),
-        null => CanvasSize(width: document.width, height: document.height),
-      },
-      _still = switch (document.frame) {
-        final frame? => CameraPose(
-          center: CanvasPoint(x: frame.centerX, y: frame.centerY),
-        ),
-        null => null,
-      },
-      _root = document.root {
-    final cameras = [
-      for (final layer in document.root.everyLayer)
-        if (layer.camera != null) layer,
-    ];
-    _folder = cameras.firstOrNull;
-    for (final extra in cameras.skip(1)) {
-      warnings.add(
-        ImportWarning(
-          'clipCameraExtra',
-          '{name}: a second camera folder — a cut has one camera, so its '
-              'moves do not come in.',
-          {'name': extra.name},
-        ),
-      );
-    }
-    final folder = _folder;
-    if (folder != null &&
-        document.timelines.any(
-          (timeline) =>
-              timeline.tracks[folder.uuid]?.cameraMoves.any(
-                (move) => move.unread,
-              ) ??
-              false,
-        )) {
-      warnings.add(
-        ImportWarning(
-          'clipCameraCurve',
-          '{name}: some camera keys follow a curve this import does not '
-              'read — the camera moves straight between them.',
-          {'name': folder.name},
-        ),
-      );
-    }
-  }
+/// way a picture is ([clipPlaced]): its pivot `c` on the point `p`, scaled
+/// by `s` and turned by `θ` about it — `P(u) = p + R(θ)·s·(u − c)`. What
+/// it sees on its own `u` shows on the frame's, `f0 + u` (`f0` the frame's
+/// top-left), so the folder's picture at `q` shows at
+/// `f0 + P⁻¹(q) = f0 + c + R(−θ)·(q − p) / s`: After Effects' transform
+/// (`layerPoseMatrix`) with the anchor on `p`, the position on `f0 + c`,
+/// the scale `1 / s` and the turn `−θ`. Measured on the user's camera
+/// samples (2026-10-13): what two camera folders and a folder outside them
+/// hold stands on CLIP STUDIO's first frame exactly where this puts it, and
+/// every pan moves it as its curves do, within half a pixel (memory
+/// `csp-clip-format-notes` §3); no sample's camera scales or turns.
+final class _CameraFolder {
+  _CameraFolder(this.folder, this.rest, this.frameOrigin);
 
-  final List<ImportWarning> warnings;
+  final ClipLayer folder;
 
-  /// The camera's picture: the shooting frame — the canvas, for a file
-  /// with none.
-  final CanvasSize _size;
+  /// Where it stands where no clip of its track moves it.
+  final ClipPlacement rest;
 
-  /// The shooting frame, as the camera that looks through it.
-  final CameraPose? _still;
-  final ClipLayer _root;
+  /// The shooting frame's top-left, `f0`.
+  final CanvasPoint frameOrigin;
 
-  /// The 2D camera folder the cuts are shot through — the first, when a
-  /// file has more.
-  late final ClipLayer? _folder;
+  /// [move]'s curves.
+  static List<ClipCurve> curvesOf(ClipCameraMove move) => [
+    move.x,
+    move.y,
+    move.scale,
+    move.degrees,
+    move.pivotX,
+    move.pivotY,
+  ];
 
-  /// Whether the layers it does not move have been said.
-  var _outsideSaid = false;
-
-  /// [view]'s camera — null for the cut's own.
-  CutCamera? inCut(_CutView view) {
-    final folder = _folder;
-    if (folder == null) {
-      return switch (_still) {
-        final still? => CutCamera(keyframes: {0: still}),
-        null => null,
-      };
-    }
+  /// Its transform in [view]: the pose on every frame the cut shows the
+  /// folder on — inside its track's clips as each moves it, at its rest
+  /// where the timeline has no track for it — made keys the way every
+  /// imported move is ([transformTrackOfFramePoses]). Between its clips
+  /// CLIP STUDIO shows nothing of the folder, so no frame there asks for
+  /// anything; a cut that never shows it holds it at its rest.
+  TransformTrack trackIn(_CutView view) {
     final track = view.trackOf(folder);
-    final poses = SplayTreeMap<int, CameraPose>.of({
-      for (var frame = 0; frame < view.duration; frame += 1)
-        frame: _poseAt(view.start + frame, folder.camera!, track),
-    });
-    _sayWhatItMoves(folder, poses.values);
-    return cutCameraOfFramePoses(poses, keyedOn: _keyedOn(view, track));
+    final poses = SplayTreeMap<int, LayerPoseSample>();
+    for (var frame = 0; frame < view.duration; frame += 1) {
+      if (_placementAt(view.start + frame, track) case final placement?) {
+        poses[frame] = _poseOf(placement);
+      }
+    }
+    if (poses.isEmpty) {
+      poses[0] = _poseOf(rest);
+    }
+    return transformTrackOfFramePoses(poses, keyedOn: _keyedOn(view, track));
   }
 
-  /// The cut frames the clips of [track] key each of the camera's lanes on
-  /// (I-89 ⑦): the position where the point or the pivot it turns and
-  /// scales about is keyed — the frame's centre is placed by the two
-  /// ([clipPlaced]) — the zoom where the scale is, the turn where the turn
-  /// is.
-  static CameraKeyFrames _keyedOn(_CutView view, ClipTrack? track) {
+  /// The cut frames the clips of [track] key each lane on (I-89 ⑦): the
+  /// anchor where the camera's point is keyed, the position where its
+  /// pivot is, the scale and the turn where theirs are.
+  static TransformKeyFrames _keyedOn(_CutView view, ClipTrack? track) {
     final moves = track?.cameraMoves ?? const <ClipCameraMove>[];
-    List<int> on(Iterable<PropertyTrack<double>> curves) => [
+    List<int> on(Iterable<ClipCurve> curves) => [
       for (final curve in curves)
-        for (final frame in curve.keys.keys) frame - view.start,
+        for (final frame in curve.keyedFrames) frame - view.start,
     ];
     return (
-      position: on([
-        for (final move in moves) ...[
-          move.x,
-          move.y,
-          move.pivotX,
-          move.pivotY,
-        ],
+      anchorPoint: on([
+        for (final move in moves) ...[move.x, move.y],
       ]),
-      zoom: on([for (final move in moves) move.scale]),
+      position: on([
+        for (final move in moves) ...[move.pivotX, move.pivotY],
+      ]),
+      scale: on([for (final move in moves) move.scale]),
       rotation: on([for (final move in moves) move.degrees]),
     );
   }
 
-  /// Through the shooting frame — or, with none, the canvas whole.
-  CameraPose get _framed => _still ?? defaultCameraPoseFor(_size);
-
-  /// The camera on the timeline's [frame]: the move of the clip there, its
-  /// values the clip keys nothing for at [rest].
-  CameraPose _poseAt(int frame, ClipPlacement rest, ClipTrack? track) {
+  /// Where the camera stands on the timeline's [frame]: the move of the
+  /// clip there, its values the clip keys nothing for at its [rest] — null
+  /// where no clip of [track] shows the folder.
+  ClipPlacement? _placementAt(int frame, ClipTrack? track) {
     if (track == null) {
-      return _poseOf(rest);
+      return rest;
     }
     bool holds(ClipSpan span) => span.start <= frame && frame < span.end;
     if (!track.pieces.any((piece) => holds(piece.span))) {
-      return _framed;
+      return null;
     }
-    final move = track.cameraMoves.where((move) => holds(move.span));
-    if (move.isEmpty) {
-      return _poseOf(rest);
+    final moves = track.cameraMoves.where((move) => holds(move.span));
+    if (moves.isEmpty) {
+      return rest;
     }
-    double at(PropertyTrack<double> keys, double resting) => keys.resolveAt(
-      frameIndex: frame,
-      orElse: () => resting,
-      space: doubleKeySpace,
-    );
-    final keyed = move.first;
-    final scale = at(keyed.scale, rest.scaleX);
-    return _poseOf((
+    final move = moves.first;
+    double at(ClipCurve curve, double resting) =>
+        curve.at(frame.toDouble()) ?? resting;
+    final scale = at(move.scale, rest.scaleX);
+    return (
       scaleX: scale,
       scaleY: scale,
-      degrees: at(keyed.degrees, rest.degrees),
-      x: at(keyed.x, rest.x),
-      y: at(keyed.y, rest.y),
-      pivotX: at(keyed.pivotX, rest.pivotX),
-      pivotY: at(keyed.pivotY, rest.pivotY),
-    ));
+      degrees: at(move.degrees, rest.degrees),
+      x: at(move.x, rest.x),
+      y: at(move.y, rest.y),
+      pivotX: at(move.pivotX, rest.pivotX),
+      pivotY: at(move.pivotY, rest.pivotY),
+    );
   }
 
-  /// The app's camera that sees what [placement] places the frame on.
-  CameraPose _poseOf(ClipPlacement placement) {
-    final center = clipPlaced(
-      placement,
-      _size.width / 2,
-      _size.height / 2,
-    );
+  /// The folder's transform that shows what [placement] places the camera
+  /// on, on the still frame.
+  LayerPoseSample _poseOf(ClipPlacement placement) {
     final scale = placement.scaleX;
-    return CameraPose(
-      center: CanvasPoint(x: center.x, y: center.y),
-      zoom: scale > 0 && scale.isFinite ? 1 / scale : 1,
-      rotationDegrees: placement.degrees.isFinite ? placement.degrees : 0,
+    return (
+      pose: TransformPose.uniform(
+        center: CanvasPoint(
+          x: frameOrigin.x + placement.pivotX,
+          y: frameOrigin.y + placement.pivotY,
+        ),
+        zoom: scale > 0 && scale.isFinite ? 1 / scale : 1,
+        rotationDegrees: placement.degrees.isFinite ? -placement.degrees : 0,
+      ),
+      anchorPoint: CanvasPoint(x: placement.x, y: placement.y),
     );
   }
-
-  /// Says, once, how many shown layers stand outside [folder] — CLIP
-  /// STUDIO's camera does not move them, and the cut's camera here does —
-  /// when [poses] ever leave the shooting frame.
-  void _sayWhatItMoves(ClipLayer folder, Iterable<CameraPose> poses) {
-    if (_outsideSaid || poses.every((pose) => pose == _framed)) {
-      return;
-    }
-    _outsideSaid = true;
-    final count = _outsideOf(_root, folder);
-    if (count > 0) {
-      warnings.add(
-        ImportWarning(
-          'clipCameraOutside',
-          '{name}: {count} shown layers stand outside this camera folder — '
-              'CLIP STUDIO\'s camera does not move them, and the cut\'s '
-              'camera here does.',
-          {'name': folder.name, 'count': '$count'},
-        ),
-      );
-    }
-  }
-
-  /// What a cut shows of [folder] outside the [camera] folder: each
-  /// animation folder, and each layer of a picture that comes in — eyes on
-  /// all the way up.
-  static int _outsideOf(ClipLayer folder, ClipLayer camera) {
-    var count = 0;
-    for (final child in folder.children) {
-      if (identical(child, camera) || !child.isShown) {
-        continue;
-      }
-      if (child.isAnimationFolder) {
-        count += 1;
-      } else if (child.isFolder) {
-        count += _outsideOf(child, camera);
-      } else if (child.hasPicture && _drawnKinds.contains(child.kind)) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  static const _drawnKinds = {
-    ClipLayerKind.raster,
-    ClipLayerKind.picture,
-    ClipLayerKind.vector,
-  };
 }

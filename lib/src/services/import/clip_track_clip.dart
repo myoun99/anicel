@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import '../../models/property_track.dart';
+import '../../core/cubic_curve.dart';
 import 'clip_cmt.dart';
 
 /// Where a track shows its layer, in the timeline's frames: from [start]
@@ -33,23 +33,121 @@ typedef ClipSoundCue = ({
 
 /// How a 2D camera track's clip moves its camera (memory
 /// `csp-clip-format-notes` §3): each value of the camera's placement — its
-/// point, scale, turn and pivot — as keys on the timeline's frames, the way
-/// the app's own keys go ([PropertyTrack]): straight to the next, or held
-/// where the file says `Constant`. A value the clip keys no curve for holds the
-/// clip's `Param`; one with neither is empty, and the camera keeps its rest
-/// there. [scale] is 1 at the camera's own size, as a placement's is (the
-/// file keys percent). [unread] when a key names another curve — one this
-/// reader does not know, moved straight.
+/// point, scale, turn and pivot — as CLIP STUDIO keys it over the clip
+/// ([ClipCurve]). A value the clip keys no curve for holds the clip's
+/// `Param`; one with neither is empty, and the camera keeps its rest there.
+/// [scale] is 1 at the camera's own size, as a placement's is (the file
+/// keys percent).
 typedef ClipCameraMove = ({
   ClipSpan span,
-  PropertyTrack<double> x,
-  PropertyTrack<double> y,
-  PropertyTrack<double> scale,
-  PropertyTrack<double> degrees,
-  PropertyTrack<double> pivotX,
-  PropertyTrack<double> pivotY,
-  bool unread,
+  ClipCurve x,
+  ClipCurve y,
+  ClipCurve scale,
+  ClipCurve degrees,
+  ClipCurve pivotX,
+  ClipCurve pivotY,
 });
+
+/// One key of a [ClipCurve]: its [value] on the timeline's [frame] —
+/// unrounded, where the clip's tick lands.
+typedef ClipCurveKey = ({double frame, double value});
+
+/// How a CLIP STUDIO value goes from one key to the next, as CLIP STUDIO
+/// draws it (memory `csp-clip-format-notes` §3 — the user's camera sample
+/// against the frames CLIP STUDIO wrote of it, 2026-10-13).
+sealed class ClipWay {
+  const ClipWay();
+
+  /// `Constant`: the key's value until the next.
+  static const ClipWay held = ClipHold._();
+
+  /// A way this reader does not know, run straight — and said
+  /// ([ClipCurve.unread]).
+  static const ClipWay straight = ClipStraight._();
+}
+
+/// [ClipWay.held]'s type.
+final class ClipHold extends ClipWay {
+  const ClipHold._();
+}
+
+/// [ClipWay.straight]'s type.
+final class ClipStraight extends ClipWay {
+  const ClipStraight._();
+}
+
+/// A cubic from one key to the next, moving at [leaving] as it leaves the
+/// one and at [arriving] as it reaches the other — value per frame.
+/// `Hermite` is this with the slopes the keys keep; CLIP STUDIO's own way
+/// (no `Interp` at all) is this with the slopes its keys' values give
+/// (`_ownSlope`) — slow out and slow in, between two keys alone.
+final class ClipCubic extends ClipWay {
+  const ClipCubic({required this.leaving, required this.arriving});
+
+  final double leaving;
+  final double arriving;
+}
+
+/// One of a 2D camera's values over its clip, as CLIP STUDIO plays it: its
+/// [keys] in order of frame, and the way from each to the next — one fewer
+/// [ways] than keys. A curve of the point keeps each axis apart, so a way
+/// whose two axes' slopes differ walks a bent path (유저 10-13: 「그래프를
+/// 만지면 시간+공간을 같이움직임」).
+final class ClipCurve {
+  ClipCurve(this.keys, this.ways)
+    : assert(ways.length == math.max(0, keys.length - 1));
+
+  /// A value the clip holds throughout — its `Param`, which no curve keys —
+  /// keyed on the clip's first [frame].
+  ClipCurve.held(double frame, double value)
+    : this([(frame: frame, value: value)], const []);
+
+  /// A value the clip says nothing of.
+  static final ClipCurve none = ClipCurve(const [], const []);
+
+  final List<ClipCurveKey> keys;
+  final List<ClipWay> ways;
+
+  bool get isEmpty => keys.isEmpty;
+
+  /// Whether a way of it is one this reader does not know — run straight.
+  bool get unread => ways.any((way) => way is ClipStraight);
+
+  /// The frames its keys stand on, rounded as a cel key's are.
+  Iterable<int> get keyedFrames => [for (final key in keys) key.frame.round()];
+
+  /// The value on the timeline's [frame] — the first key's before it, the
+  /// last key's after it; null for a curve with no key.
+  double? at(double frame) {
+    if (keys.isEmpty) {
+      return null;
+    }
+    for (var i = 0; i < ways.length; i += 1) {
+      final (frame: start, value: from) = keys[i];
+      final (frame: end, value: to) = keys[i + 1];
+      if (frame >= end) {
+        continue;
+      }
+      if (frame <= start) {
+        return from;
+      }
+      final span = end - start;
+      final u = (frame - start) / span;
+      return switch (ways[i]) {
+        ClipHold() => from,
+        ClipStraight() => from + (to - from) * u,
+        ClipCubic(:final leaving, :final arriving) => cubicAt(
+          u,
+          from,
+          from + leaving * span / 3,
+          to - arriving * span / 3,
+          to,
+        ),
+      };
+    }
+    return keys.last.value;
+  }
+}
 
 /// What one clip of a track says: [piece] — where it shows and the cels it
 /// keys — and, on a sound track, the [sound] it plays; on a 2D camera's,
@@ -262,47 +360,39 @@ ClipSoundCue? _soundCueOf(
 }
 
 /// How a 2D camera track's [clip] moves the camera (memory
-/// `csp-clip-format-notes` §3, measured on s6): an `FCurve` per value —
-/// `ImagePosition` and `ImageCenter` by `Axis` X · Y, `ImageScale` and
-/// `ImageRotation` alone — its `Frame` ticks and `Value`s; a `Param` of the
-/// same name holds a value no curve keys (a pair for the two by axis). Its
-/// keys stand on the frames the clip's ticks land on, rounded as a cel
-/// key's are.
+/// `csp-clip-format-notes` §3, measured on s6 and the user's camera
+/// samples): an `FCurve` per value — `ImagePosition` and `ImageCenter` by
+/// `Axis` X · Y, `ImageScale` and `ImageRotation` alone — its `Frame` ticks
+/// and `Value`s, each key's way to the next ([_curveOf]); a `Param` of the
+/// same name holds a value no curve keys (a pair for the two by axis).
 ClipCameraMove _cameraMoveOf(
   CmtNode clip,
   ClipSpan span,
   double Function(double tick) frameAt,
 ) {
   final anim = clip.child('AnimInfo');
-  var unread = false;
-  PropertyTrack<double> keysOf(
+  final framesPerTick = frameAt(1) - frameAt(0);
+  ClipCurve curveOf(
     String type, {
     String? axis,
     int index = 0,
     double unit = 1,
   }) {
     if (anim == null) {
-      return PropertyTrack.empty();
+      return ClipCurve.none;
     }
     final curve = _childOf(anim, 'FCurve', {'Type': type, 'Axis': ?axis});
     final ticks = _numbers(curve, 'Frame');
     final values = _numbers(curve, 'Value');
-    if (ticks.isNotEmpty && values.isNotEmpty) {
-      final curves = switch (curve?.child('Interp')?.value) {
-        final List<Object?> named => named,
-        _ => const <Object?>[],
-      };
-      unread = unread || curves.any((named) => named != 'Constant');
-      return PropertyTrack(
-        keys: {
-          for (var i = 0; i < ticks.length && i < values.length; i += 1)
-            frameAt(ticks[i]).round(): PropertyKey(
-              values[i] / unit,
-              outgoing: i < curves.length && curves[i] == 'Constant'
-                  ? KeyExit.hold
-                  : KeySide.linear,
-            ),
-        },
+    final count = math.min(ticks.length, values.length);
+    if (curve != null && count > 0) {
+      return _curveOf(
+        curve,
+        [
+          for (var i = 0; i < count; i += 1)
+            (frame: frameAt(ticks[i]), value: values[i] / unit),
+        ],
+        slopeDivisor: framesPerTick * unit,
       );
     }
     final held = switch (_childOf(anim, 'Param', {'Name': type})?.value) {
@@ -311,24 +401,102 @@ ClipCameraMove _cameraMoveOf(
       _ => null,
     };
     return held is num
-        ? PropertyTrack(keys: {span.start: PropertyKey(held / unit)})
-        : PropertyTrack.empty();
+        ? ClipCurve.held(span.start.toDouble(), held / unit)
+        : ClipCurve.none;
   }
 
-  final x = keysOf('ImagePosition', axis: 'X');
-  final y = keysOf('ImagePosition', axis: 'Y', index: 1);
-  final scale = keysOf('ImageScale', unit: 100);
-  final degrees = keysOf('ImageRotation');
-  final pivotX = keysOf('ImageCenter', axis: 'X');
-  final pivotY = keysOf('ImageCenter', axis: 'Y', index: 1);
   return (
     span: span,
-    x: x,
-    y: y,
-    scale: scale,
-    degrees: degrees,
-    pivotX: pivotX,
-    pivotY: pivotY,
-    unread: unread,
+    x: curveOf('ImagePosition', axis: 'X'),
+    y: curveOf('ImagePosition', axis: 'Y', index: 1),
+    scale: curveOf('ImageScale', unit: 100),
+    degrees: curveOf('ImageRotation'),
+    pivotX: curveOf('ImageCenter', axis: 'X'),
+    pivotY: curveOf('ImageCenter', axis: 'Y', index: 1),
   );
+}
+
+/// [keys] — [curve]'s, on the timeline's frames — with the way from each to
+/// the next as CLIP STUDIO draws it (memory `csp-clip-format-notes` §3,
+/// measured 2026-10-13 against the frames CLIP STUDIO wrote of the user's
+/// two camera samples, 0.06px): each axis apart, the cubic two keys'
+/// slopes make — or, from a `Constant` key, its value held to the next.
+///
+/// A key's slopes — value per frame, as the way before it arrives and the
+/// way after it leaves — are its own kind's. `Hermite`, a graph pulled,
+/// keeps them in the file in value per TICK (a slope per frame overshot
+/// nothing where CLIP STUDIO's output overshot by a tenth), divided by
+/// [slopeDivisor] — the timeline's frames a tick times the value's unit —
+/// to move it per frame: its `LeftSlope` arriving, its `RightSlope`
+/// leaving. A key of CLIP STUDIO's own — no `Interp` at all, `Default`, or
+/// `Constant` — moves at the slope [_ownSlope] gives. ⚠️The slopes a file
+/// keeps beside such a key are not read: the one the samples keep, a
+/// `Default` last key's, is 0 — which its own slope is there too. A way
+/// from or to a key of a kind this reader does not know runs straight, and
+/// is said. ↩️Every way that was not `Constant` ran straight (s6, 10-09: a
+/// guess, never held to an output).
+ClipCurve _curveOf(
+  CmtNode curve,
+  List<ClipCurveKey> keys, {
+  required double slopeDivisor,
+}) {
+  final kinds = switch (curve.child('Interp')?.value) {
+    final List<Object?> named => named,
+    _ => const <Object?>[],
+  };
+  final arriving = _numbers(curve, 'LeftSlope');
+  final leaving = _numbers(curve, 'RightSlope');
+  ({double arriving, double leaving}) through(double slope) =>
+      (arriving: slope, leaving: slope);
+  final slopes = <({double arriving, double leaving})?>[
+    for (var i = 0; i < keys.length; i += 1)
+      switch (i < kinds.length ? kinds[i] : null) {
+        'Hermite'
+            when slopeDivisor != 0 &&
+                i < arriving.length &&
+                i < leaving.length =>
+          (
+            arriving: arriving[i] / slopeDivisor,
+            leaving: leaving[i] / slopeDivisor,
+          ),
+        null || 'Default' || 'Constant' => through(_ownSlope(keys, i)),
+        _ => null,
+      },
+  ];
+  return ClipCurve(keys, [
+    for (var i = 0; i + 1 < keys.length; i += 1)
+      if (i < kinds.length && kinds[i] == 'Constant')
+        ClipWay.held
+      else if ((slopes[i], slopes[i + 1]) case (
+        (leaving: final leaving, arriving: _),
+        (leaving: _, arriving: final arriving),
+      ))
+        ClipCubic(leaving: leaving, arriving: arriving)
+      else
+        ClipWay.straight,
+  ]);
+}
+
+/// The slope CLIP STUDIO's own way moves at through key [i] of [keys]: none
+/// at the curve's two ends and where the value turns back, and between, the
+/// gentler of the two ways' own average slopes — so the curve never
+/// overshoots a key (the user's 4-key sample, 2026-10-13: a slope fitted
+/// freely to its output came out at exactly the gentler one, 2.00 and 2.00,
+/// and no other rule tried came within 1px). A key of two keys' curve is
+/// an end, so that way is slow out and slow in — After Effects' Easy Ease
+/// (the first sample). ⚠️A `Constant` key is read the same — what CLIP
+/// STUDIO moves at into a held key, or beside a held way, no sample shows.
+double _ownSlope(List<ClipCurveKey> keys, int i) {
+  if (i == 0 || i == keys.length - 1) {
+    return 0;
+  }
+  double average(ClipCurveKey from, ClipCurveKey to) => to.frame == from.frame
+      ? 0
+      : (to.value - from.value) / (to.frame - from.frame);
+  final before = average(keys[i - 1], keys[i]);
+  final after = average(keys[i], keys[i + 1]);
+  if (before * after <= 0) {
+    return 0;
+  }
+  return before.abs() < after.abs() ? before : after;
 }

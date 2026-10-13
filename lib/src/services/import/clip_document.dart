@@ -9,7 +9,13 @@ import 'clip_placement.dart';
 import 'clip_track_clip.dart';
 
 export 'clip_track_clip.dart'
-    show ClipCameraMove, ClipCelKey, ClipPiece, ClipSoundCue, ClipSpan;
+    show
+        ClipCameraMove,
+        ClipCelKey,
+        ClipCurve,
+        ClipPiece,
+        ClipSoundCue,
+        ClipSpan;
 
 /// What a CLIP STUDIO PAINT layer is, as the import tells them apart.
 enum ClipLayerKind {

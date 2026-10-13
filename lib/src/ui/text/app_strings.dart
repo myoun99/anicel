@@ -3805,12 +3805,8 @@ enum AppStrings {
         '{name}: CLIP STUDIO では別の速度で再生しています — ここでは元の速度で再生します。',
     'importWarning.clipSoundVolume':
         '{name}: クリップの途中で音量が変わります — クリップの始まりの音量にしました。',
-    'importWarning.clipCameraExtra':
-        '{name}: 2つ目のカメラフォルダーです — カットのカメラは1つなので、このカメラワークは読み込みませんでした。',
     'importWarning.clipCameraCurve':
         '{name}: 読み込めない補間のカメラキーがあります — その間はまっすぐ動きます。',
-    'importWarning.clipCameraOutside':
-        '{name}: このカメラフォルダーの外に表示中のレイヤーが{count}枚あります — CLIP STUDIO のカメラでは動きませんが、ここではカットのカメラで動きます。',
     'importWarning.unsupportedLayerKind':
         '{name}: このレイヤーの種類には対応していません。',
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
@@ -5301,12 +5297,8 @@ enum AppStrings {
         '{name}: CLIP STUDIO 에서는 다른 속도로 재생됩니다 — 여기서는 제 속도로 재생합니다.',
     'importWarning.clipSoundVolume':
         '{name}: 클립 안에서 음량이 바뀝니다 — 클립이 시작할 때의 음량으로 맞췄습니다.',
-    'importWarning.clipCameraExtra':
-        '{name}: 두 번째 카메라 폴더입니다 — 컷의 카메라는 하나라서 이 카메라워크는 가져오지 않았습니다.',
     'importWarning.clipCameraCurve':
         '{name}: 읽지 못하는 보간의 카메라 키가 있습니다 — 그 사이는 곧게 움직입니다.',
-    'importWarning.clipCameraOutside':
-        '{name}: 이 카메라 폴더 밖에 보이는 레이어가 {count}장 있습니다 — CLIP STUDIO 의 카메라로는 움직이지 않지만, 여기서는 컷의 카메라로 움직입니다.',
     'importWarning.unsupportedLayerKind':
         '{name}: 이 레이어 종류는 지원되지 않습니다.',
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
@@ -6899,16 +6891,9 @@ enum AppStrings {
     'importWarning.clipSoundVolume':
         '{name} : son volume change au cours du clip — réglé sur celui du '
         'début du clip.',
-    'importWarning.clipCameraExtra':
-        "{name} : un deuxième dossier caméra — un plan n'a qu'une caméra, "
-        'ses mouvements ne sont pas importés.',
     'importWarning.clipCameraCurve':
         '{name} : des clés de caméra suivent une courbe que cette importation '
         'ne lit pas — la caméra va en ligne droite entre elles.',
-    'importWarning.clipCameraOutside':
-        '{name} : {count} calque(s) visible(s) hors de ce dossier caméra — la '
-        'caméra de CLIP STUDIO ne les déplace pas, celle du plan les déplace '
-        'ici.',
     'importWarning.unsupportedLayerKind':
         "{name} : ce type de calque n'est pas pris en charge.",
     'importWarning.clipBlend':
@@ -8357,9 +8342,7 @@ enum AppStrings {
     'importWarning.clipSoundSpeed':
         '{name}：CLIP STUDIO 以其他速度播放——这里按原速播放。',
     'importWarning.clipSoundVolume': '{name}：音量在片段中途变化——已设为片段开始时的音量。',
-    'importWarning.clipCameraExtra': '{name}：第二个摄像机文件夹——一个镜头只有一台摄像机，因此未导入它的运镜。',
     'importWarning.clipCameraCurve': '{name}：部分摄像机关键帧使用了无法读取的插值——其间按直线移动。',
-    'importWarning.clipCameraOutside': '{name}：此摄像机文件夹外有 {count} 个显示中的图层——CLIP STUDIO 的摄像机不会移动它们，这里会随镜头的摄像机移动。',
     'importWarning.unsupportedLayerKind': '{name}：不支持此图层类型。',
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',

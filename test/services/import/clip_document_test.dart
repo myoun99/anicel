@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/services/import/clip_container.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
+import 'package:anicel/src/services/import/clip_track_clip.dart';
 
 import '../../helpers/temp_dir.dart';
 import 'clip_test_builder.dart';
@@ -645,13 +645,27 @@ void main() {
                     value: [100, 50],
                     attributes: {'Name': 'ImageCenter'},
                   ),
+                  // A graph pulled on its first two keys: their slopes in
+                  // value per tick, 0.4 frames a tick; the last key CLIP
+                  // STUDIO's own.
                   CmtSpec(
                     'FCurve',
                     'null',
                     attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
                     children: [
-                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
-                      CmtSpec('Value', 'Double[]', value: [300, 360]),
+                      CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
+                      CmtSpec('Value', 'Double[]', value: [300, 330, 360]),
+                      CmtSpec(
+                        'LeftSlope',
+                        'Double[]',
+                        value: [9, 0.5, 0.25],
+                      ),
+                      CmtSpec('RightSlope', 'Double[]', value: [2, 7, 3]),
+                      CmtSpec(
+                        'Interp',
+                        'String[]',
+                        value: ['Hermite', 'Hermite', 'Default'],
+                      ),
                     ],
                   ),
                   CmtSpec(
@@ -659,8 +673,18 @@ void main() {
                     'null',
                     attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
                     children: [
-                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
-                      CmtSpec('Value', 'Double[]', value: [200, 230]),
+                      // Frames 0 · 7 · 17 · 29 · 40: a rise at 4.7, 2 and
+                      // 2.6 a frame, then a fall.
+                      CmtSpec(
+                        'Frame',
+                        'Double[]',
+                        value: [0, 17.5, 42.5, 72.5, 100],
+                      ),
+                      CmtSpec(
+                        'Value',
+                        'Double[]',
+                        value: [401, 434, 454, 485, 470],
+                      ),
                     ],
                   ),
                   CmtSpec(
@@ -676,12 +700,12 @@ void main() {
                     'null',
                     attributes: {'Type': 'ImageRotation'},
                     children: [
-                      CmtSpec('Frame', 'Double[]', value: [0, 60]),
-                      CmtSpec('Value', 'Double[]', value: [0, 10]),
+                      CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
+                      CmtSpec('Value', 'Double[]', value: [0, 10, 20]),
                       CmtSpec(
                         'Interp',
                         'String[]',
-                        value: ['Constant', 'Bezier'],
+                        value: ['Constant', 'Bezier', 'Default'],
                       ),
                     ],
                   ),
@@ -768,24 +792,48 @@ void main() {
       '-',
       '',
     )]!.cameraMoves.single;
-    Map<int, (double, KeyExit)> keys(
-      PropertyTrack<double> track,
-    ) => {
-      for (final MapEntry(:key, :value) in track.keys.entries)
-        key: (value.value, value.outgoing),
-    };
-    const straight = KeySide.linear;
+    List<(double, double)> keys(ClipCurve curve) => [
+      for (final key in curve.keys) (key.frame, key.value),
+    ];
+    String ways(ClipCurve curve) => [
+      for (final way in curve.ways)
+        switch (way) {
+          ClipHold() => 'held',
+          ClipStraight() => 'straight',
+          ClipCubic(:final leaving, :final arriving) => 'cubic $leaving '
+              '$arriving',
+        },
+    ].join(', ');
     expect(move.span, (start: 0, end: 48));
-    expect(keys(move.x), {0: (300.0, straight), 24: (360.0, straight)});
-    expect(keys(move.y), {0: (200.0, straight), 24: (230.0, straight)});
-    expect(keys(move.scale), {0: (1.5, straight)}, reason: 'its Param');
-    expect(keys(move.pivotX), {0: (100.0, straight)}, reason: 'its pair');
-    expect(keys(move.pivotY), {0: (50.0, straight)});
-    expect(keys(move.degrees), {
-      0: (0.0, KeyExit.hold),
-      24: (10.0, straight),
-    });
-    expect(move.unread, isTrue, reason: 'a curve it does not know');
+    expect(keys(move.x), [(0.0, 300.0), (12.0, 330.0), (24.0, 360.0)]);
+    expect(
+      ways(move.x),
+      'cubic 5.0 1.25, cubic 17.5 0.0',
+      reason:
+          'a pulled key\'s right slope leaving and left arriving, per '
+          'frame; CLIP STUDIO\'s own at the last key, still',
+    );
+    expect(keys(move.y), [
+      (0.0, 401.0),
+      (7.0, 434.0),
+      (17.0, 454.0),
+      (29.0, 485.0),
+      (40.0, 470.0),
+    ]);
+    expect(
+      ways(move.y),
+      'cubic 0.0 2.0, cubic 2.0 2.0, cubic 2.0 0.0, cubic 0.0 0.0',
+      reason:
+          'CLIP STUDIO\'s own way: still at the ends and where it turns '
+          'back, and between, the gentler of the two ways\' slopes',
+    );
+    expect(keys(move.scale), [(0.0, 1.5)], reason: 'its Param');
+    expect(keys(move.pivotX), [(0.0, 100.0)], reason: 'its pair');
+    expect(keys(move.pivotY), [(0.0, 50.0)]);
+    expect(keys(move.degrees), [(0.0, 0.0), (12.0, 10.0), (24.0, 20.0)]);
+    expect(ways(move.degrees), 'held, straight');
+    expect(move.degrees.unread, isTrue, reason: 'a curve it does not know');
+    expect(move.x.unread || move.y.unread, isFalse);
   });
 
   test('the shooting frame: its size, and its centre the canvas\'s moved by '

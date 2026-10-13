@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId;
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -640,9 +641,10 @@ void main() {
     );
   });
 
-  test('🎯a 2D camera folder\'s move is the cut\'s camera — its keys where the '
-      'pan needs them, through the frame it shoots (유저 10-09: 「카메라는 '
-      '우리방식이 제일 좋다고 생각하니 … 우리방식대로」)', () async {
+  test('🎯a 2D camera folder\'s move is its folder\'s transform — its keys '
+      'where the pan needs them — and the cut\'s camera the frame it shoots, '
+      'still (유저 10-13: 「카메라폴더는 그냥 폴더에 트랜스폼 움직이는걸로 … '
+      '이름은 카메라폴더 이름 그대로」)', () async {
     const uuidCamera = '22223333-4444-5555-6666-777788889999';
     // At rest on the shooting frame: the frame's own size, its centre
     // (100, 50) placed on the frame's centre (320, 180).
@@ -765,14 +767,32 @@ void main() {
       (200, 100),
       reason: 'the frame it shoots is the project\'s camera',
     );
-    final camera = project.tracks.single.cuts.single.camera;
-    expect(camera.keyframes.keys, [0, 11], reason: 'a straight pan: its ends');
+    final cut = project.tracks.single.cuts.single;
     expect(
       [
-        for (final pose in camera.keyframes.values)
-          (pose.center.x, pose.center.y, pose.zoom),
+        for (final MapEntry(key: frame, value: pose)
+            in cut.camera.keyframes.entries)
+          (frame, pose.center),
       ],
-      [(100.0, 180.0, 1.0), (210.0, 180.0, 1.0)],
+      [(0, CanvasPoint(x: 320, y: 180))],
+      reason: 'CLIP STUDIO\'s own camera does not move',
+    );
+    final folder = cut.layers.singleWhere((layer) => layer.name == 'camera');
+    expect(folder.kind, LayerKind.folder);
+    final transform = folder.transformTrack;
+    expect(
+      {
+        for (final MapEntry(key: frame, value: key)
+            in transform.anchorPoint.keys.entries)
+          frame: key.value,
+      },
+      {0: CanvasPoint(x: 100, y: 180), 11: CanvasPoint(x: 210, y: 180)},
+      reason: 'a pan: its ends, on the point the camera stands at',
+    );
+    expect(
+      transform.position.keys.values.single.value,
+      CanvasPoint(x: 320, y: 180),
+      reason: 'the frame\'s point its pivot is',
     );
   });
 
