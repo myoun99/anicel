@@ -132,11 +132,12 @@ void main() {
     );
   });
 
-  testWidgets('🚨F-114: an ABSENT backdrop or pasteboard is the checkerboard '
-      'exactly where that plane would be', (tester) async {
+  testWidgets('🚨F-114: an ABSENT backdrop, pasteboard or paper is the '
+      'checkerboard exactly where that plane would be', (tester) async {
     // 유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
     // 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」. The same stage
-    // as the test above: the corner is backdrop, (438, 288) is apron.
+    // as the test above: the corner is backdrop, (438, 288) is apron, and
+    // the paper begins at (450, 300).
     await tester.binding.setSurfaceSize(const Size(900, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -146,6 +147,7 @@ void main() {
     Future<int Function(int x, int y)> capture({
       required bool backdropNone,
       required bool pasteboardNone,
+      bool paperNone = false,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -164,6 +166,12 @@ void main() {
                 backdropNone: backdropNone,
                 pasteboardColor: pasteboard,
                 pasteboardNone: pasteboardNone,
+                paperNone: paperNone,
+                // As the canvas area mounts it: the paper is the stack's,
+                // laid under the canvas — none here, so the planes show
+                // where it is. A panel without one lays a page of its own.
+                viewportUnderlayBuilder: (_, _, _, _) =>
+                    const SizedBox.expand(),
                 viewport: seedFromRender(
                   tester,
                   CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
@@ -191,6 +199,12 @@ void main() {
     }
 
     bool checker(int rgb) => rgb == 0xFFFFFF || rgb == 0xCCCCCC;
+    // Two pixels a cell apart inside the paper: both its colours where the
+    // checkerboard lies, whatever its phase.
+    Set<int> paperPlace(int Function(int x, int y) shown) => {
+      shown(460, 320),
+      shown(468, 320),
+    };
 
     final noBackdrop = await capture(backdropNone: true, pasteboardNone: false);
     expect(
@@ -217,6 +231,27 @@ void main() {
       noPasteboard(2, 2),
       backdrop & 0xFFFFFF,
       reason: 'and the backdrop that is there lies beyond it, as before',
+    );
+    expect(
+      paperPlace(noBackdrop),
+      hasLength(1),
+      reason: 'LIVENESS: a paper that is there is one colour',
+    );
+
+    final noPaper = await capture(
+      backdropNone: false,
+      pasteboardNone: false,
+      paperNone: true,
+    );
+    expect(
+      paperPlace(noPaper),
+      {0xFFFFFF, 0xCCCCCC},
+      reason: 'the absent paper is the checkerboard in its place',
+    );
+    expect(
+      noPaper(438, 288),
+      pasteboard & 0xFFFFFF,
+      reason: 'and the pasteboard that is there lies around it',
     );
   });
 
