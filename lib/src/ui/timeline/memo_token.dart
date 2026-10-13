@@ -111,6 +111,16 @@ Widget keptWhileSame<K, F>(
 /// were built, laid out and painted again on every notify and every cut
 /// crossed, all three grids alike, while nothing they show had changed.
 ///
+/// 🚨…AND ON A SEMANTICS NODE OF ITS OWN (I-57, 10-14). A layout drops the
+/// geometry of the nodes nearest under what it laid out, and each is put
+/// together again (`LaidOutAlone` has how) — a painter's by saying every
+/// cell it draws over. The storyboard's kept rows were laid out again
+/// under their panel's on every cut crossed, and said every cell again:
+/// 🔬a crossing's UI turn 12.2 → 7.45ms with the node here (the AMMI OP
+/// copy, profile, accessibility on). A kept piece reads as one group to a
+/// screen reader, which is what it is — the dock regions' law
+/// (2026-09-26).
+///
 /// What else the piece reads — the theme, the words — rebuilds it where it
 /// reads them: [buildKept] runs in a `Builder` of its own, never through
 /// this.
@@ -143,7 +153,12 @@ class _KeptPieceState extends State<KeptPiece> {
     final facts = widget.facts;
     if (_built == null || facts != _facts) {
       _facts = facts;
-      _built = RepaintBoundary(child: Builder(builder: widget.buildKept));
+      _built = RepaintBoundary(
+        child: Semantics(
+          container: true,
+          child: Builder(builder: widget.buildKept),
+        ),
+      );
     }
     return _built!;
   }

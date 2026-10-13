@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/memo_token.dart';
 
 import '../../helpers/frame_census.dart';
+import '../../helpers/node_assemblies.dart';
 
 void main() {
   group('ByIdentity', () {
@@ -56,11 +57,15 @@ void main() {
     tearDown(() => host.value = 0);
 
     /// A host built, laid out and painted again whenever [host] moves,
-    /// round a piece that says [label] in the ambient [colour].
+    /// round a piece that says [label] in the ambient [colour] — the
+    /// piece's node counted by [assembled], and a node of the host's own
+    /// beside it by [beside].
     Widget hosting(
       List<String> builds, {
       String label = 'piece',
       Color colour = const Color(0xFF000000),
+      Assemblies? assembled,
+      Assemblies? beside,
     }) => Directionality(
       textDirection: TextDirection.ltr,
       child: DefaultTextStyle(
@@ -70,8 +75,13 @@ void main() {
           builder: (context, _, _) => LayoutBuilder(
             builder: (context, _) => Column(
               children: [
-                _Piece(label: label, builds: builds),
+                _Piece(label: label, builds: builds, assembled: assembled),
                 Text('host ${host.value}'),
+                if (beside != null)
+                  CountsAssemblies(
+                    assemblies: beside,
+                    child: const Text('beside'),
+                  ),
               ],
             ),
           ),
@@ -121,25 +131,66 @@ void main() {
         const Color(0xFF0000FF),
       );
     });
+
+    testWidgets('🚨laid out again round it, it is described again none of '
+        'itself — it is a node of its own', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final assembled = Assemblies();
+      await tester.pumpWidget(hosting([], assembled: assembled));
+
+      expect(
+        await assembliesBy(tester, assembled, () => host.value += 1),
+        0,
+        reason: '↩️the host\'s layout dropped the geometry of the piece\'s '
+            'top nodes and each was put together again — a painter\'s by '
+            'saying every cell over: the storyboard\'s kept rows, on every '
+            'cut crossed (I-57, 10-14)',
+      );
+      expect(
+        find.bySemanticsLabel('piece'),
+        findsOneWidget,
+        reason: 'the piece reads to a screen reader as it did',
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('CONTROL: a node of the host\'s beside it is put together '
+        'again', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final beside = Assemblies();
+      await tester.pumpWidget(hosting([], beside: beside));
+
+      expect(
+        await assembliesBy(tester, beside, () => host.value += 1),
+        greaterThan(0),
+      );
+      semantics.dispose();
+    });
   });
 }
 
-/// A kept piece that writes down every time it is built.
+/// A kept piece that writes down every time it is built — its node
+/// counted by [assembled], if given.
 class _Piece extends KeptPiece {
-  const _Piece({required this.label, required this.builds});
+  const _Piece({required this.label, required this.builds, this.assembled});
 
   final String label;
   final List<String> builds;
+  final Assemblies? assembled;
 
   @override
-  Object? get facts => label;
+  Object? get facts => (label, ByIdentity(assembled));
 
   @override
   Widget buildKept(BuildContext context) {
     builds.add(label);
-    return Text(
+    final text = Text(
       label,
       style: TextStyle(color: DefaultTextStyle.of(context).style.color),
     );
+    final assembled = this.assembled;
+    return assembled == null
+        ? text
+        : CountsAssemblies(assemblies: assembled, child: text);
   }
 }
