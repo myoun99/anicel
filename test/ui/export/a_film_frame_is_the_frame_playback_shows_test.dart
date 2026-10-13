@@ -369,13 +369,19 @@ void main() {
       ],
     );
 
-    /// The filled cut through a camera at [pose], on a blue apron.
-    (EditorSessionManager, ExportFrameRenderer) filmAt(CameraPose pose) {
+    /// The cut through a camera at [pose], on a blue apron: filled to the
+    /// edge where [inked], blank where not; [size] for a canvas, and a
+    /// camera, other than the group's.
+    (EditorSessionManager, ExportFrameRenderer) filmAt(
+      CameraPose pose, {
+      bool inked = true,
+      CanvasSize size = canvas,
+    }) {
       final s = EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
           name: 'Project',
-          cameraSize: canvas,
+          cameraSize: size,
           pasteboardArgb: blue,
           tracks: [
             Track(
@@ -386,7 +392,7 @@ void main() {
                   id: cutId,
                   name: 'Cut',
                   duration: 1,
-                  canvasSize: canvas,
+                  canvasSize: size,
                   camera: CutCamera(keyframes: {0: pose}),
                   layers: [row('filled'), createCameraLayer(cutId: cutId)],
                 ),
@@ -397,7 +403,9 @@ void main() {
         ),
       );
       addTearDown(s.dispose);
-      ink(s, [(s.requireActiveCut, 'filled', filled)]);
+      if (inked) {
+        ink(s, [(s.requireActiveCut, 'filled', filled)]);
+      }
       final renderer = ExportFrameRenderer(session: s);
       addTearDown(renderer.dispose);
       return (s, renderer);
@@ -471,6 +479,56 @@ void main() {
         });
       });
     }
+
+    testWidgets('🎯where nothing is drawn over it, the paper\'s edge is cut '
+        'as a level buffer cuts its own under a reduced resample: '
+        'anti-aliased', (tester) async {
+      await tester.runAsync(() async {
+        final (s, renderer) = filmAt(
+          CameraPose(center: CanvasPoint(x: 30.3, y: 19.7), zoom: 0.4),
+          inked: false,
+        );
+        final film = await bytesOf(
+          await renderer.videoRun([
+            ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+          ], ExportSizeMode.camera).frame(0),
+        );
+        // The paper's foot a level pixel up from the canvas's, at canvas
+        // row 36: film row 19 + (36 − 19.7) × 0.4 = 25.52.
+        expect(
+          pixelOf(film, canvas.width, 30, 24),
+          (255, 255, 255, 255),
+          reason: 'LIVENESS: the paper above its foot',
+        );
+        final (r, _, _, _) = pixelOf(film, canvas.width, 30, 25);
+        expect(r, inExclusiveRange(0x20, 0xE0), reason: 'paper over apron');
+      });
+    });
+
+    testWidgets('🎯a canvas too small to give a level pixel up keeps its '
+        'paper whole — it does not vanish', (tester) async {
+      await tester.runAsync(() async {
+        // At a quarter, two film pixels a side: a level pixel in from each
+        // edge leaves nothing.
+        const small = CanvasSize(width: 8, height: 8);
+        final (s, renderer) = filmAt(
+          CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 0.25),
+          inked: false,
+          size: small,
+        );
+        final film = await bytesOf(
+          await renderer.videoRun([
+            ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+          ], ExportSizeMode.camera).frame(0),
+        );
+        expect(
+          pixelOf(film, small.width, 0, 0),
+          (0, 0, 255, 255),
+          reason: 'LIVENESS: the apron past the canvas',
+        );
+        expect(pixelOf(film, small.width, 4, 4), (255, 255, 255, 255));
+      });
+    });
   });
 
   group('the stage', () {
