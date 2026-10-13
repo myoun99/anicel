@@ -881,19 +881,22 @@ class _InteractiveCanvasBuild {
     CanvasViewport viewport,
     CameraShotAt? shot,
     Widget over,
-  ) => ClipPath(
-    clipBehavior: shot == null ? Clip.none : Clip.antiAlias,
-    clipper: shot == null
+  ) {
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    // Cut as the picture under it is ([shotClipOnScreen]): a fade that
+    // thins the frame thins every pixel the picture shows.
+    final cut = shot == null
         ? null
-        : OutlineClipper(
-            cameraFrameOnScreen(
-              viewport,
-              shot.frameSize,
-              EffectiveDevicePixelRatio.of(context),
-            ),
-          ),
-    child: over,
-  );
+        : shotClipOnScreen(
+            cameraFrameOnScreen(viewport, shot.frameSize, ratio),
+            ratio,
+          );
+    return ClipPath(
+      clipBehavior: cut?.behavior ?? Clip.none,
+      clipper: cut == null ? null : OutlineClipper(cut.corners),
+      child: over,
+    );
+  }
 
   /// The standing row's box, over every tool
   /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the

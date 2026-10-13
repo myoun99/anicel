@@ -346,15 +346,19 @@ void main() {
           )
           .first,
     );
-    expect(over.clipBehavior, isNot(Clip.none));
+    final ratio = EffectiveDevicePixelRatio.of(
+      tester.element(find.byType(CameraShot)),
+    );
+    final frame = shotClipOnScreen(
+      cameraFrameOnScreen(shotWidget.view, shot.frameSize, ratio),
+      ratio,
+    );
+    expect(over.clipBehavior, frame.behavior);
     expect(
       (over.clipper! as OutlineClipper).corners,
-      cameraFrameOnScreen(
-        shotWidget.view,
-        shot.frameSize,
-        EffectiveDevicePixelRatio.of(tester.element(find.byType(CameraShot))),
-      ),
-      reason: 'nothing over the picture shows past the camera\'s frame',
+      frame.corners,
+      reason: 'nothing over the picture shows past the camera\'s frame — '
+          'cut as the picture under it is',
     );
 
     playback.stop();

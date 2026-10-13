@@ -1,10 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
-import '../../core/convex_clip.dart' show convexIntersection;
+import '../../core/convex_clip.dart' show convexIntersection, convexOutset;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
+import '../canvas/display_resample.dart'
+    show
+        displayEdgeAntiAliased,
+        displayLevelOf,
+        displayScaleOf,
+        rectOutwardOnGrid,
+        wholeLevelPixelsOutward;
 import '../canvas/outline_clipper.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -69,6 +78,12 @@ class CameraShot extends StatelessWidget {
   Widget build(BuildContext context) {
     final shot = this.shot;
     final ratio = EffectiveDevicePixelRatio.of(context);
+    final cut = shot == null
+        ? null
+        : shotClipOnScreen(
+            pictureOutlineOnScreen(view, shot, canvasSize, ratio),
+            ratio,
+          );
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -90,17 +105,73 @@ class CameraShot extends StatelessWidget {
                 ),
         ),
         ClipPath(
-          clipBehavior: shot == null ? Clip.none : Clip.antiAlias,
-          clipper: shot == null
-              ? null
-              : OutlineClipper(
-                  pictureOutlineOnScreen(view, shot, canvasSize, ratio),
-                ),
+          clipBehavior: cut?.behavior ?? Clip.none,
+          clipper: cut == null ? null : OutlineClipper(cut.corners),
           child: child,
         ),
       ],
     );
   }
+}
+
+/// How a run on a screen of [devicePixelRatio] is cut to [outline]
+/// ([pictureOutlineOnScreen], [cameraFrameOnScreen]): out to the whole
+/// device pixels around it, so the cut falls on no pixel the picture
+/// covers in part — that pixel is the picture's, drawn by the law the
+/// canvas draws its own edge by ([displayEdgeAntiAliased]).
+///
+/// 🚨playback-picture-is-not-the-canvas-picture (유저 10-13: 「재생하면
+/// 미묘하게 화면 움직이는데 … 배율따라서 끝에 흰 선」): cut ON the outline
+/// and anti-aliased, a pixel the canvas covers in part was thinned a second
+/// time over what lies past it — along every edge not on a whole pixel,
+/// the right and the bottom at most zooms, all four once the pan's phase
+/// is in. What the cut lets through instead is less than a pixel past the
+/// outline, which the canvas standing still shows whole.
+///
+/// A turned outline has no whole pixels to grow to: each of its edges goes
+/// out a pixel's diagonal, past every pixel the edge crossed, and stays
+/// anti-aliased.
+({List<Offset> corners, Clip behavior}) shotClipOnScreen(
+  List<Offset> outline,
+  double devicePixelRatio,
+) {
+  final square = _squareBounds(outline);
+  if (square != null) {
+    final whole = rectOutwardOnGrid(square, devicePixelRatio);
+    return (
+      corners: [
+        whole.topLeft,
+        whole.topRight,
+        whole.bottomRight,
+        whole.bottomLeft,
+      ],
+      behavior: Clip.hardEdge,
+    );
+  }
+  return (
+    corners: convexOutset(outline, math.sqrt2 / devicePixelRatio),
+    behavior: Clip.antiAlias,
+  );
+}
+
+/// [outline]'s bounds when every edge of it runs level or plumb — a rect,
+/// for a convex outline — or null.
+Rect? _squareBounds(List<Offset> outline) {
+  if (outline.length < 3) {
+    return null;
+  }
+  const flat = 1e-6;
+  for (var index = 0; index < outline.length; index += 1) {
+    final along = outline[(index + 1) % outline.length] - outline[index];
+    if (along.dx.abs() > flat && along.dy.abs() > flat) {
+      return null;
+    }
+  }
+  var bounds = Rect.fromPoints(outline.first, outline.first);
+  for (final corner in outline.skip(1)) {
+    bounds = bounds.expandToInclude(Rect.fromPoints(corner, corner));
+  }
+  return bounds;
 }
 
 /// Where a cut's picture is cut on a screen of [devicePixelRatio]: its
@@ -130,23 +201,32 @@ List<Offset> cameraFrameOnScreen(
   double devicePixelRatio,
 ) => outlineOnScreen(frameSize.canvasRect, view, devicePixelRatio);
 
-/// [rect]'s corners where [view] paints them — the pan snapped as every
+/// [rect]'s corners where [view] paints it — the pan snapped as every
 /// canvas-space painter snaps it ([renderSnappedViewport]), so an outline
-/// cut by these lands on the edge the painter drew.
+/// cut by these lands on the edge the painter drew; and out to the grid of
+/// the level the display draws at ([wholeLevelPixelsOutward]), where a
+/// picture of [rect] ends: a level pixel its edge cuts part-way is drawn
+/// whole, box-filtered from the part inside — a run cut on [rect] itself
+/// thinned what the canvas standing still shows of it
+/// (playback-picture-is-not-the-canvas-picture).
 List<Offset> outlineOnScreen(
   Rect rect,
   CanvasViewport view,
   double devicePixelRatio,
 ) {
+  final drawn = wholeLevelPixelsOutward(
+    rect,
+    displayLevelOf(displayScaleOf(view.zoom, devicePixelRatio)),
+  );
   final toScreen = viewportTransformMatrix(
     renderSnappedViewport(view, devicePixelRatio),
   );
   return [
     for (final corner in [
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
+      drawn.topLeft,
+      drawn.topRight,
+      drawn.bottomRight,
+      drawn.bottomLeft,
     ])
       MatrixUtils.transformPoint(toScreen, corner),
   ];

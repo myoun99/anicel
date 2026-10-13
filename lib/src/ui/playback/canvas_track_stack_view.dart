@@ -258,7 +258,15 @@ class CanvasTrackStackView extends StatelessWidget {
       cameraPose: pose,
       cameraFrameSize: pose == null ? null : cameraFrameSize,
       paperBackground: background,
-      paintPaper: under && isStage,
+      // The paper is the canvas's own, drawn with its rows (as the camera's
+      // shot leaves it). Here is only its plane where it is ABSENT
+      // (F-114): the checkerboard in its place.
+      // 🚨playback-picture-is-not-the-canvas-picture (유저 10-13 「끝에 흰
+      // 선」): painted here under the rows, the paper filled the canvas
+      // to its edge — under a level image whose last pixel the edge cuts
+      // part-way, which the stack's own paper yields to (#15) — and showed
+      // white through it.
+      paintPaper: under && isStage && background.none,
       // The letterbox is the FLOOR's, laid once under every track
       // ([_CameraFloor]). ↩️Each stage contribution laid its own over
       // the whole screen, opaque, under its fade — so in an O.L the
@@ -282,6 +290,10 @@ class CanvasTrackStackView extends StatelessWidget {
       imageOpacity: isStage ? 1 : weight,
       veils: under ? const [] : position.veils,
     );
+    final clip = shotClipOnScreen(
+      pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
+      ratio,
+    );
     final unit = Stack(
       fit: StackFit.expand,
       children: [
@@ -289,14 +301,15 @@ class CanvasTrackStackView extends StatelessWidget {
         Opacity(
           opacity: isStage ? 1 : weight,
           child: ClipPath(
-            clipper: OutlineClipper(
-              pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
-            ),
+            clipBehavior: clip.behavior,
+            clipper: OutlineClipper(clip.corners),
             child: CanvasLayerStackView(
               nodes: stackOf(cut, localFrame),
               imageCache: imageCache,
               canvasSize: cut.canvasSize,
               viewport: shot?.frameView ?? view,
+              paintPaper: isStage,
+              paperBackground: background,
               // A drag parks one frame after another: a cut shows its last
               // whole frame until the next one is — a run's are whole anyway
               // ([CanvasLayerStackView.wholeFrames]).

@@ -33,8 +33,9 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// One covered cut's share of the frame as the stack lays it: the unit's
-/// fade, the painter under its picture (paper, apron), the thinning on its
-/// picture, the picture's own stack, and the painter over it (names, veils).
+/// fade, the painter under its picture (the apron, an absent paper's
+/// checkerboard), the thinning on its picture, the picture's own stack —
+/// its paper with it — and the painter over it (names, veils).
 typedef _Unit = ({
   double fade,
   PlaybackFramePainter under,
@@ -265,9 +266,9 @@ void main() {
     expect(units, hasLength(2));
     expect(units[0].under.cameraPose, isNotNull, reason: 'camera framing');
     expect(units[0].under.cameraFrameSize, cameraFrameSize);
-    expect(units[0].under.paintPaper, isTrue);
+    expect(units[0].stack.paintPaper, isTrue);
     expect(units[1].under.cameraPose, isNotNull);
-    expect(units[1].under.paintPaper, isFalse, reason: 'stacks over the bottom');
+    expect(units[1].stack.paintPaper, isFalse, reason: 'stacks over the bottom');
     expect(
       [
         for (final unit in units) ...[
@@ -353,7 +354,12 @@ void main() {
 
     final units = unitsOf(tester);
     expect(units, hasLength(1));
-    expect(units.single.under.paintPaper, isTrue);
+    expect(units.single.stack.paintPaper, isTrue);
+    expect(
+      units.single.under.paintPaper,
+      isFalse,
+      reason: 'the paper is the canvas\'s own, drawn with its rows',
+    );
     expect(units.single.under.paintLetterbox, isFalse, reason: 'the floor\'s');
   });
 
@@ -546,8 +552,8 @@ void main() {
 
       final units = unitsOf(tester);
       expect(units, hasLength(2));
-      expect(units[0].under.paintPaper, isTrue);
-      expect(units[1].under.paintPaper, isTrue, reason: 'the arriving cut too');
+      expect(units[0].stack.paintPaper, isTrue);
+      expect(units[1].stack.paintPaper, isTrue, reason: 'the arriving cut too');
       expect(
         [toldFrame(units[0].stack), toldFrame(units[1].stack)],
         ['cut-a@3', 'cut-b@1'],
@@ -682,7 +688,7 @@ void main() {
       final units = unitsOf(tester);
       expect(units, hasLength(1));
       expect(units.single.fade, 1);
-      expect(units.single.under.paintPaper, isTrue);
+      expect(units.single.stack.paintPaper, isTrue);
     });
   });
 
@@ -704,7 +710,11 @@ void main() {
     expect(units[0].under.cameraPose, isNull);
     expect(units[0].under.paintLetterbox, isFalse);
     expect(units[0].under.pasteboardColor, isNull);
-    expect(units[0].under.paintPaper, isTrue, reason: 'the paper is not the crop');
+    expect(
+      units[0].stack.paintPaper,
+      isTrue,
+      reason: 'the paper is not the crop',
+    );
     expect(
       units[0].stack.viewport,
       CanvasViewport(),

@@ -41,6 +41,70 @@ List<Offset> convexInset(List<Offset> polygon, double by) {
   return kept;
 }
 
+/// The convex polygon [polygon] with every edge moved [by] away from its
+/// inside — [convexInset] the other way — its corners where the moved
+/// edges meet.
+List<Offset> convexOutset(List<Offset> polygon, double by) {
+  final corners = _turningCorners(polygon);
+  if (corners.length < 3 || by <= 0) {
+    return polygon;
+  }
+  final outward = -_inwardSign(corners);
+  final moved = [
+    for (var edge = 0; edge < corners.length; edge += 1)
+      _movedEdge(
+        corners[edge],
+        corners[(edge + 1) % corners.length],
+        outward * by,
+      ),
+  ];
+  return [
+    for (var edge = 0; edge < moved.length; edge += 1)
+      _crossing(
+        moved[(edge + moved.length - 1) % moved.length].$1,
+        moved[(edge + moved.length - 1) % moved.length].$2,
+        moved[edge].$1,
+        moved[edge].$2,
+      ),
+  ];
+}
+
+/// The edge [start]→[end] moved [by] to its left (to its right where [by]
+/// is negative).
+(Offset, Offset) _movedEdge(Offset start, Offset end, double by) {
+  final along = end - start;
+  final shift = Offset(-along.dy, along.dx) * (by / along.distance);
+  return (start + shift, end + shift);
+}
+
+/// [polygon]'s corners where it turns — a corner on a straight run, or on
+/// top of the one before it, is none — so no two edges left are parallel.
+List<Offset> _turningCorners(List<Offset> polygon) {
+  const flat = 1e-9;
+  final kept = <Offset>[];
+  for (final corner in polygon) {
+    if (kept.isEmpty || (corner - kept.last).distance > flat) {
+      kept.add(corner);
+    }
+  }
+  if (kept.length > 1 && (kept.first - kept.last).distance <= flat) {
+    kept.removeLast();
+  }
+  bool turns(int index) {
+    final before = kept[(index + kept.length - 1) % kept.length];
+    final here = kept[index];
+    final after = kept[(index + 1) % kept.length];
+    final into = here - before;
+    final out = after - here;
+    return _cross(into, out).abs() > flat * into.distance * out.distance;
+  }
+
+  return [
+    for (var index = 0; index < kept.length; index += 1)
+      if (turns(index)) kept[index],
+  ];
+}
+
 /// [polygon] cut by the line [from]→[to], keeping the side [inside] says
 /// — one step of Sutherland–Hodgman.
 List<Offset> _keptBy(
