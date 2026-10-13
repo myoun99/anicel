@@ -35,9 +35,9 @@ const int _cacheCap = 2048;
 /// laid out at two widths is two different pictures.
 ///
 /// The style's COLOR is in the key too, which is what lets the
-/// ground-law sites (`paintTimelineGlyphOnGround`) share this one cache:
-/// the resolved black and white variants of a string are simply two
-/// entries, and neither can serve the other's raster.
+/// ground-law sites (a glyph inked by the ground it stands on) share this
+/// one cache: the resolved black and white variants of a string are simply
+/// two entries, and neither can serve the other's raster.
 ///
 /// [tightening] is what each LETTER GAP gives way (`wordTightening`): the
 /// letters before the last are set that much tighter and the last keeps its
