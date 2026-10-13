@@ -17,6 +17,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -347,6 +348,131 @@ void main() {
     });
   });
 
+  // 🗣️playback-picture-is-not-the-canvas-picture (유저 10-13: 「배율따라서
+  // 끝에 흰 선」): the canvas's edge, where rows reduced to a level end in a
+  // pixel they cover in part, is drawn as the canvas draws it — the paper
+  // laid with the rows, one level pixel in, and the cut out past every
+  // pixel they cover.
+  group('at the canvas\'s edge', () {
+    // No whole number of tiles; its edges fall inside the film's pixels, and
+    // at a quarter its foot inside a level pixel too (38 = 9½ × 4).
+    const canvas = CanvasSize(width: 60, height: 38);
+    const cutId = CutId('cut');
+    const blue = 0xFF0000FF;
+    // Ink to the canvas's edge and not a pixel past it.
+    final filled = surfaceOf(
+      canvas,
+      (x, y) => x < canvas.width && y < canvas.height ? 0xFF102030 : null,
+      coords: [
+        for (var ty = 0; ty < 3; ty += 1)
+          for (var tx = 0; tx < 4; tx += 1) TileCoord(x: tx, y: ty),
+      ],
+    );
+
+    /// The filled cut through a camera at [pose], on a blue apron.
+    (EditorSessionManager, ExportFrameRenderer) filmAt(CameraPose pose) {
+      final s = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: canvas,
+          pasteboardArgb: blue,
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                Cut(
+                  id: cutId,
+                  name: 'Cut',
+                  duration: 1,
+                  canvasSize: canvas,
+                  camera: CutCamera(keyframes: {0: pose}),
+                  layers: [row('filled'), createCameraLayer(cutId: cutId)],
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(s.dispose);
+      ink(s, [(s.requireActiveCut, 'filled', filled)]);
+      final renderer = ExportFrameRenderer(session: s);
+      addTearDown(renderer.dispose);
+      return (s, renderer);
+    }
+
+    // Each with the film's row its foot falls in.
+    for (final (pose, foot) in [
+      (CameraPose(center: CanvasPoint(x: 30, y: 19), zoom: 0.4), 26),
+      (CameraPose(center: CanvasPoint(x: 30.3, y: 19.7), zoom: 0.4), 26),
+      (CameraPose(center: CanvasPoint(x: 30, y: 19), zoom: 0.2), 22),
+    ]) {
+      final where =
+          '(${pose.center.x}, ${pose.center.y}) at a zoom of ${pose.zoom}';
+
+      testWidgets('🎯through a camera at $where, ink drawn to the edge ends '
+          'on the stage\'s apron — no line of paper past it', (tester) async {
+        await tester.runAsync(() async {
+          final (s, renderer) = filmAt(pose);
+          final film = await bytesOf(
+            await renderer.videoRun([
+              ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+            ], ExportSizeMode.camera).frame(0),
+          );
+          expect(
+            pixelOf(film, canvas.width, 30, 10),
+            (0, 0, 255, 255),
+            reason: 'LIVENESS: the apron past the canvas',
+          );
+          final (_, _, edge, _) = pixelOf(film, canvas.width, 30, foot);
+          expect(
+            edge,
+            inExclusiveRange(0x30, 0xFF),
+            reason: 'LIVENESS: the edge falls inside a pixel',
+          );
+          for (var i = 0; i < film.length; i += 4) {
+            expect(
+              film[i],
+              lessThanOrEqualTo(0x11),
+              reason:
+                  'no white at pixel ${i ~/ 4 % canvas.width}, '
+                  '${i ~/ 4 ~/ canvas.width}: the ink\'s red and the apron\'s',
+            );
+          }
+        });
+      });
+
+      testWidgets('🎯through a camera at $where, the cut takes nothing of a '
+          'pixel the rows cover in part: a picture of the sequence is the '
+          'panel\'s picture, which is cut nowhere', (tester) async {
+        await tester.runAsync(() async {
+          final (s, renderer) = filmAt(pose);
+          final cut = s.requireActiveCut;
+          final still = await bytesOf(
+            await renderer.renderComposite(
+              ExportFrameTask(cut: cut, frameIndex: 0),
+              ExportSizeMode.camera,
+            ),
+          );
+          final (r, _, _, _) = pixelOf(still, canvas.width, 30, foot);
+          expect(
+            r,
+            inExclusiveRange(0x10, 0xFF),
+            reason: 'LIVENESS: the edge falls inside a pixel',
+          );
+          expect(
+            still,
+            await bytesOf(
+              await renderer.renderPicture(cut, 0, width: canvas.width),
+            ),
+          );
+        });
+      });
+    }
+  });
+
   group('the stage', () {
     const canvas = CanvasSize(width: 8, height: 8);
     const red = 0xFFFF0000;
@@ -462,6 +588,82 @@ void main() {
         expect((g, a), (0, 255));
         expect(r, inInclusiveRange(100, 155), reason: 'the stage\'s red…');
         expect(b, inInclusiveRange(100, 155), reason: '…under blue at half');
+      });
+    });
+
+    testWidgets('🎯a name is laid over the cut\'s picture — its paper and '
+        'all', (tester) async {
+      await tester.runAsync(() async {
+        // Room for the name.
+        const wide = CanvasSize(width: 320, height: 180);
+        const cutId = CutId('cut');
+        Future<Uint8List> filmOf({required bool named}) async {
+          final s = EditorSessionManager(
+            initialProject: Project(
+              id: const ProjectId('project'),
+              name: 'Project',
+              cameraSize: wide,
+              tracks: [
+                Track(
+                  id: const TrackId('track'),
+                  name: 'V',
+                  cuts: [
+                    Cut(
+                      id: cutId,
+                      name: 'Cut',
+                      duration: 24,
+                      canvasSize: wide,
+                      layers: [
+                        row('blank', duration: 24),
+                        createCameraLayer(cutId: cutId),
+                      ],
+                    ),
+                  ],
+                  seLayers: [
+                    if (named)
+                      Layer(
+                        id: const LayerId('se'),
+                        name: 'S1',
+                        kind: LayerKind.se,
+                        frames: [
+                          Frame(
+                            id: const FrameId('line'),
+                            duration: 24,
+                            strokes: const [],
+                            name: 'the line',
+                            seName: 'who',
+                          ),
+                        ],
+                        timeline: const {
+                          0: TimelineExposure.drawing(
+                            FrameId('line'),
+                            length: 24,
+                          ),
+                        },
+                      ),
+                  ],
+                ),
+              ],
+              createdAt: DateTime.utc(2026),
+            ),
+          );
+          addTearDown(s.dispose);
+          final cut = s.requireActiveCut;
+          expect(
+            s.seEntries.seNameTagsForCutFrame(cut, 0),
+            hasLength(named ? 1 : 0),
+            reason: 'LIVENESS: somebody is named, or nobody',
+          );
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          return bytesOf(
+            await renderer.videoRun([
+              ExportFrameTask(cut: cut, frameIndex: 0),
+            ], ExportSizeMode.camera).frame(0),
+          );
+        }
+
+        expect(await filmOf(named: true), isNot(await filmOf(named: false)));
       });
     });
 

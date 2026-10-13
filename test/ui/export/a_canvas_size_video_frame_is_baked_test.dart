@@ -229,10 +229,12 @@ void main() {
   });
 
   group('two cuts an O.L mixes', () {
-    /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35.
-    EditorSessionManager mixing() {
+    /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35 — under
+    /// the V row's [effects].
+    EditorSessionManager mixing({List<LayerEffect> effects = const []}) {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
+        effects: effects,
         transitions: createTrackTransitionLayer(trackId).copyWith(
           instructions: SplayTreeMap.of({
             12: const InstructionEvent(instructionId: 'ol', length: 24),
@@ -262,6 +264,29 @@ void main() {
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut, thinning');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut, coming');
         expect((r, a), (0, 255), reason: 'two whole cuts hide the backdrop');
+      });
+    });
+
+    testWidgets('🎯the V row\'s chain filters each cut it mixes', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final session = mixing(
+          effects: [
+            LayerEffect(
+              id: const EffectId('fx'),
+              kind: EffectKind.brightnessContrast,
+              parameters: {'brightness': EffectParameter(value: 50)},
+            ),
+          ],
+        );
+        addTearDown(session.dispose);
+
+        final (r, _, _, a) = centreOf(
+          await videoFrame(session, midway(session)),
+        );
+        expect(r, greaterThan(40), reason: 'neither cut has red but the lift');
+        expect(a, 255);
       });
     });
   });

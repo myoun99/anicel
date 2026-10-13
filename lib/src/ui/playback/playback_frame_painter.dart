@@ -231,11 +231,13 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // The canvas seen whole stands in for the editing stack's paper — the
     // blank canvas is this — so it cuts the canvas's boundary the way the
     // stack cuts it (`displayEdgeAntiAliased`, F-67-paper-edge), or a cel
-    // coming and going would switch the edge line on and off. Camera mode
-    // keeps the anti-aliased edge it had: the paper is projected there.
+    // coming and going would switch the edge line on and off. ↩️Through the
+    // camera a paper kept the anti-aliased edge it had, projected — until
+    // every road laid its paper with its rows (playback-picture-is-not-the-
+    // canvas-picture, and a film since): through the camera this lays an
+    // absent paper's checkerboard, which has no edge to cut.
     final edgeAntiAlias =
         resolvedViewport == null ||
-        pose != null ||
         displayEdgeAntiAliased(resolvedViewport, devicePixelRatio);
     if (pose == null) {
       _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);

@@ -120,6 +120,28 @@ double displayResidualOf(double scale) =>
 ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
     rectOutwardOnGrid(bounds, 1.0 / (1 << level));
 
+/// The paper under rows reduced to [level] ([displayLevelOf]) on the canvas
+/// [canvasRect]: the canvas's own rect at level 0, one level pixel in below.
+///
+/// #15 — inside a LEVEL buffer the paper yields one buffer pixel to the
+/// reduced resample: paper and ink are rasterised at level resolution
+/// where the canvas's edge can fall inside a level pixel, and a paper
+/// that ended on that pixel's far side would show past ink that is a
+/// box-filtered half there — the 1px bright ring the device saw below
+/// ~30% under the knee's scaled recording (the same mechanism, the same
+/// one-buffer-pixel answer). At level 0 the canvas edge is whole and the
+/// paper is the exact canvas rect.
+///
+/// A canvas under two level pixels a side has nothing left to yield: the
+/// paper stays whole rather than vanishing.
+ui.Rect paperRectAtLevel(ui.Rect canvasRect, int level) {
+  if (level == 0) {
+    return canvasRect;
+  }
+  final yielded = canvasRect.deflate((1 << level).toDouble());
+  return yielded.isEmpty ? canvasRect : yielded;
+}
+
 /// [bounds] grown out to the grid of [scale] cells per canvas unit counted
 /// from [origin] — the smallest rect on that grid that holds [bounds].
 ///

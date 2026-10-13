@@ -234,26 +234,34 @@ List<Offset> cameraFrameOnScreen(
   double devicePixelRatio,
 ) => outlineOnScreen(frameSize.canvasRect, view, devicePixelRatio);
 
-/// [rect]'s corners where [view] paints it — the pan snapped as every
-/// canvas-space painter snaps it ([renderSnappedViewport]), so an outline
-/// cut by these lands on the edge the painter drew; and out to the grid of
-/// the level the display draws at ([wholeLevelPixelsOutward]), where a
-/// picture of [rect] ends: a level pixel its edge cuts part-way is drawn
-/// whole, box-filtered from the part inside — a run cut on [rect] itself
-/// thinned what the canvas standing still shows of it
-/// (playback-picture-is-not-the-canvas-picture).
+/// [rect]'s corners where [view] paints it ([outlineAtLevel]) — the pan
+/// snapped as every canvas-space painter snaps it ([renderSnappedViewport]),
+/// so an outline cut by these lands on the edge the painter drew — at the
+/// level the display draws at.
 List<Offset> outlineOnScreen(
   Rect rect,
   CanvasViewport view,
   double devicePixelRatio,
-) {
-  final drawn = wholeLevelPixelsOutward(
-    rect,
-    displayLevelOf(displayScaleOf(view.zoom, devicePixelRatio)),
-  );
-  final toScreen = viewportTransformMatrix(
+) => outlineAtLevel(
+  rect,
+  level: displayLevelOf(displayScaleOf(view.zoom, devicePixelRatio)),
+  toScreen: viewportTransformMatrix(
     renderSnappedViewport(view, devicePixelRatio),
-  );
+  ),
+);
+
+/// [rect]'s corners through [toScreen], out to the grid of [level] first
+/// ([wholeLevelPixelsOutward]), where a picture of [rect] reduced to that
+/// level ends: a level pixel its edge cuts part-way is drawn whole,
+/// box-filtered from the part inside — a run cut on [rect] itself thinned
+/// what the canvas standing still shows of it
+/// (playback-picture-is-not-the-canvas-picture), and so did a film.
+List<Offset> outlineAtLevel(
+  Rect rect, {
+  required int level,
+  required Matrix4 toScreen,
+}) {
+  final drawn = wholeLevelPixelsOutward(rect, level);
   return [
     for (final corner in [
       drawn.topLeft,

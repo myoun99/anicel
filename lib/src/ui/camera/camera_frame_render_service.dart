@@ -13,6 +13,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project_background.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFrameCornersInCanvas;
 import '../../services/camera_projection_matrix.dart';
@@ -21,11 +22,15 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../../services/straight_rgba_image.dart';
+import '../../services/viewport_transform_matrix.dart'
+    show viewportOfSimilarity;
 import '../canvas/display_resample.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
+import '../canvas/paper_background.dart' show paintProjectPaper;
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../playback/camera_shot.dart' show outlineAtLevel, shotClipOnScreen;
 
 /// Surfaces with at least this many pixels assemble their upload buffer in
 /// a background isolate; smaller ones stay synchronous (the spawn/copy
@@ -166,8 +171,18 @@ class CameraFrameRenderService {
   ///
   /// [cutTo] cuts the picture at that canvas's edge where the projection
   /// lays it — the film shows no pasteboard (「페이스트보드는 포함 안
-  /// 시킴」), as playback cuts it (`pictureOutlineOnScreen`). Only the rows:
-  /// [overlayPass] is laid over the cut.
+  /// 시킴」) — as playback cuts it ([shotClipOnScreen]): out to the whole
+  /// pixels around where the rows end on their level's grid
+  /// ([outlineAtLevel]), so the cut takes nothing of a pixel they cover in
+  /// part. Only the rows and [paper]: [overlayPass] is laid over the cut.
+  ///
+  /// [paper] is laid under the rows on [cutTo]'s canvas as the canvas lays
+  /// its paper with its rows ([paperRectAtLevel]) — a stage's, as playback
+  /// lays it (`CanvasTrackStackView._unit`). ↩️A film laid it under the
+  /// picture to the canvas's edge, where rows reduced to a level end in a
+  /// pixel they cover in part, and the paper showed white through it — the
+  /// line playback had too (playback-picture-is-not-the-canvas-picture,
+  /// 유저 10-13: 「끝에 흰 선」).
   ///
   /// [rows] keeps the rows' pictures from one render to the next — a video
   /// run's (F-289-Q21). Each row's picture is asked of it, and what it
@@ -182,8 +197,13 @@ class CameraFrameRenderService {
     CanvasSize? outputSize,
     void Function(ui.Canvas canvas)? overlayPass,
     CanvasSize? cutTo,
+    ProjectBackground? paper,
     RowPictures? rows,
   }) async {
+    assert(
+      paper == null || cutTo != null,
+      'a paper is laid on the canvas its picture is cut to',
+    );
     final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
     final previewScale = resolvedOutput.width / cameraFrameSize.width;
@@ -310,13 +330,6 @@ class CameraFrameRenderService {
         resolvedOutput.height.toDouble(),
       ),
       Paint()..color = background,
-    );
-
-    applyCameraProjection(
-      canvas,
-      pose,
-      cameraFrameSize,
-      outputSize: resolvedOutput,
     );
 
     // The canvas region this render can SEE, in CANVAS space — the space
@@ -452,16 +465,52 @@ class CameraFrameRenderService {
       }
     }
 
+    final projection = cameraProjectionMatrix(
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    canvas.save();
     if (cutTo != null) {
-      canvas.save();
-      // Anti-aliased, as playback's clip of the same outline is.
-      canvas.clipRect(cutTo.canvasRect);
+      final cut = shotClipOnScreen(
+        outlineAtLevel(cutTo.canvasRect, level: level, toScreen: projection),
+        // An output pixel is the device's.
+        1,
+      );
+      canvas.clipPath(
+        Path()..addPolygon(cut.corners, true),
+        doAntiAlias: cut.behavior == Clip.antiAlias,
+      );
+    }
+    applyCameraProjection(
+      canvas,
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    if (paper != null) {
+      final view = viewportOfSimilarity(projection);
+      paintProjectPaper(
+        canvas,
+        paperRectAtLevel(cutTo!.canvasRect, level),
+        paper,
+        // The edge a level buffer gives its paper, seen through this
+        // projection.
+        antiAlias:
+            view == null || displayEdgeAntiAliased(view, 1, level: level),
+      );
     }
     paintNodes(canvas, tree, cameraRasterScale, visible);
-    if (cutTo != null) {
-      canvas.restore();
+    canvas.restore();
+    if (overlayPass != null) {
+      applyCameraProjection(
+        canvas,
+        pose,
+        cameraFrameSize,
+        outputSize: resolvedOutput,
+      );
+      overlayPass(canvas);
     }
-    overlayPass?.call(canvas);
 
     final picture = recorder.endRecording();
     try {

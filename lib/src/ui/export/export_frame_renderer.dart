@@ -8,6 +8,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project_background.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
@@ -414,7 +415,8 @@ class ExportFrameRenderer {
   /// caller that keys the picture ([_cutPicture]) keys it by the very chain
   /// and tags that are drawn — and its rows from [rows] when a held picture
   /// keeps them. On [service]'s ground, this renderer's own unless another
-  /// is named ([_stackRenderService]).
+  /// is named ([_stackRenderService]), with [paper] laid under the rows
+  /// where a stage's picture carries its own.
   ///
   /// Cut at its canvas's edge: a film shows no pasteboard, and a picture of
   /// a sequence is one of its frames.
@@ -424,6 +426,7 @@ class ExportFrameRenderer {
     CanvasSize? outputSize,
     List<ResolvedLayerEffect> trackEffects = const [],
     List<ResolvedSeNameTag> nameTags = const [],
+    ProjectBackground? paper,
     RowPictures? rows,
     CameraFrameRenderService? service,
   }) async {
@@ -435,6 +438,7 @@ class ExportFrameRenderer {
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
       cutTo: cut.canvasSize,
+      paper: paper,
       rows: rows,
       overlayPass: nameTags.isEmpty
           ? null
@@ -971,10 +975,10 @@ class ExportFrameRenderer {
   }
 
   /// One position of the track stack as playback lays it
-  /// (`CanvasTrackStackView._unit`): the stage under its cut where it is
-  /// the stage, the cut's picture through its camera — held
-  /// ([_cutPicture]), under the V row's chain — and its names and veils
-  /// over that, at [weight].
+  /// (`CanvasTrackStackView._unit`): the stage's apron under its cut where
+  /// it is the stage, the cut's picture through its camera — its paper laid
+  /// with its rows there, held ([_cutPicture]), under the V row's chain —
+  /// and its names and veils over that, at [weight].
   ///
   /// ↩️The picture was the cut's canvas-space composite at full size, which
   /// the painter projected through the camera in one bilinear draw — where
@@ -997,30 +1001,34 @@ class ExportFrameRenderer {
       position.globalFrameIndex,
       enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
     );
-    final picture = await _cutPicture(
-      cut,
-      frameIndex,
-      route: ('stack', view, ByList(trackEffects)),
-      render: (rows) => _composite(
-        ExportFrameTask(cut: cut, frameIndex: frameIndex),
-        view,
-        trackEffects: trackEffects,
-        rows: rows,
-        service: _stackRenderService,
-      ),
-    );
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
     // its own paper and the weights cross-fade the whole screen. Keyed to
     // the bottom CONTRIBUTION this baked a superimpose.
     final isStage = position.isBottomTrack;
+    // The stage's paper is laid with its rows, in its picture, as playback
+    // lays it (`CanvasLayerStackView.paintPaper`).
+    final paper = isStage ? session.projectSettings.projectBackground : null;
+    final picture = await _cutPicture(
+      cut,
+      frameIndex,
+      route: ('stack', view, ByList(trackEffects), paper),
+      render: (rows) => _composite(
+        ExportFrameTask(cut: cut, frameIndex: frameIndex),
+        view,
+        trackEffects: trackEffects,
+        paper: paper,
+        rows: rows,
+        service: _stackRenderService,
+      ),
+    );
     final project = session.repository.requireProject();
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
       cameraPose: view.pose,
       cameraFrameSize: view.frameSize,
-      paperBackground: session.projectSettings.projectBackground,
-      paintPaper: under && isStage,
+      // The paper is the picture's; an absent one prints nothing.
+      paintPaper: false,
       // The alpha matrix (user 2026-07-29): alpha masters exclude the
       // backdrop AND the pasteboard — they are compositing sources,
       // and the paper carries its own alpha. A pasteboard that is NONE
