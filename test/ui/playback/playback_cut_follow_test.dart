@@ -34,17 +34,22 @@ void main() {
     // Forward across the boundary → the second cut becomes active and the
     // playhead lands on the playing local frame, through the landing every
     // cut switch makes. ↩️R12-B kept this crossing QUIET (no notify); the
-    // user chose the rows turning over in place (I-57-Q2, 10-09).
+    // user chose the rows turning over in place (I-57-Q2, 10-09). The
+    // landing waits for the frame that shows the crossing (I-57, 10-13),
+    // so each crossing is pumped through before it is read.
     s.playbackRig.playback.seekToGlobalFrame(firstDuration + 2);
+    await tester.pump();
     expect(s.activeCutId, second);
     expect(s.currentFrameIndex, 2);
     expect(notifies, 1, reason: 'ONE notify at the crossing');
 
     s.playbackRig.playback.seekToGlobalFrame(firstDuration + 4);
+    await tester.pump();
     expect(notifies, 1, reason: 'a tick inside the cut notifies nothing');
 
     // Backward across the boundary follows too (loop wrap, ruler seeks).
     s.playbackRig.playback.seekToGlobalFrame(0);
+    await tester.pump();
     expect(s.activeCutId, first);
     expect(notifies, 2);
 

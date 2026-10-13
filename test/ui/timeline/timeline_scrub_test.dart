@@ -678,8 +678,10 @@ layers: layers,
 
     // 🗣️I-57-Q1 memo (유저 10-08): 「컷 안 선택 풀려도 됨 … 콘티패널 ·
     // 글로벌 선택만 남으면 됨」.
-    test('a crossing keeps the TRACK\'s selection — the rows the conte '
-        'panel selects — whether a scrub or a run makes it', () {
+    testWidgets('a crossing keeps the TRACK\'s selection — the rows the '
+        'conte panel selects — whether a scrub or a run makes it', (
+      tester,
+    ) async {
       final manager = twoCutSession();
       addTearDown(manager.dispose);
       manager.updateTrackRowRangeSelectionByFrame(
@@ -700,10 +702,13 @@ layers: layers,
       final playback = manager.playbackRig.playback;
       playback.play(scope: PlaybackScope.allCuts);
       playback.seekToGlobalFrame(5); // back into cut-a
+      // A run's crossing lands once its frame is out (I-57, 10-13).
+      await tester.pump();
       expect(manager.activeCutId, const CutId('cut-a'), reason: 'fixture');
       expect(manager.trackFrameRangeSelection.value, same(held));
       playback.stop();
       expect(manager.trackFrameRangeSelection.value, same(held));
+      await tester.pumpAndSettle();
     });
 
     test('a same-frame tap on an already-parked position never engages '
