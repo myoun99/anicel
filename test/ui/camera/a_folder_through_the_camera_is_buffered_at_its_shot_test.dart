@@ -154,9 +154,19 @@ void main() {
       const Rect.fromLTRB(32, 0, 64, 48),
     ),
     (
-      'an adjustment through a camera over a part: that part',
+      // Neither the shot (10, 7, 50, 37) nor the row (32, 0, 96, 48) alone.
+      'an adjustment over a moved row through a camera over a part: what '
+          'of the row is in shot',
       CompositeAdjustment(
-        children: [row(inkAt(1, 1))],
+        children: [
+          row(
+            inkAt(1, 1),
+            placement: placedBy(
+              TransformPose(center: CanvasPoint(x: 64, y: 24)),
+              canvasSize,
+            ),
+          ),
+        ],
         effects: [
           ResolvedLayerEffect(
             kind: EffectKind.brightnessContrast,
@@ -166,7 +176,7 @@ void main() {
         mix: 1,
       ),
       part,
-      const Rect.fromLTRB(10, 7, 50, 37),
+      const Rect.fromLTRB(32, 7, 50, 37),
     ),
   ]) {
     testWidgets('🎯$says', (tester) async {
