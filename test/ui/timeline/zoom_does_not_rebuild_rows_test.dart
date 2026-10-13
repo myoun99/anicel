@@ -201,11 +201,11 @@ void main() {
       isGroupHeader: true,
     );
     final layers = [drawingLayer('a')];
-    Widget pumpable(double cellWidth) => harness(
-      layers,
-      cellWidth,
-      unionLaneForLayer: (_) => lane,
-    );
+    // ONE function, as the host's method is: a resolver is a fact the row
+    // keeps by equality, so a fresh closure per pump would be a new row.
+    PropertyLaneRow? union(Layer _) => lane;
+    Widget pumpable(double cellWidth) =>
+        harness(layers, cellWidth, unionLaneForLayer: union);
 
     await tester.pumpWidget(pumpable(24));
     final before = rowWidget(tester, 'a');

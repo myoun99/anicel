@@ -414,6 +414,142 @@ void main() {
           orderedEquals(rows),
         );
       });
+
+      testWidgets('a finger pressed inside the selection is read inside it: '
+          'it takes the block once the block would leave its seat, not '
+          'once it leaves the cell', (tester) async {
+        await crossed(tester);
+        void select() => hooks.selection.value = TimelineFrameRangeSelection(
+          layerId: LayerId(_two.plain),
+          startIndex: 0,
+          endIndexExclusive: 3,
+        );
+        final cell = twoCells(tester, _two.plain) / 2;
+        // Late in cell 1, so the finger leaves the cell before it has gone
+        // half a cell: a press read as off the selection steps there.
+        final from = cellOf(tester, _two.plain, 1) + cell * 0.35;
+        // A finger: its drag waits out a slop the first step cuts short
+        // ([EagerPanGestureRecognizer.firstStepAt]) — a mouse's drag starts
+        // a pixel on, whatever the step says.
+        Future<void> dragBy(double cells) async {
+          final gesture = await tester.startGesture(from);
+          await gesture.moveBy(cell * cells);
+          await tester.pump();
+          await gesture.up();
+          await tester.pumpAndSettle();
+        }
+
+        select();
+        await tester.pump();
+        await dragBy(0.3);
+        expect(
+          heard.where((verb) => verb.startsWith('move')),
+          isEmpty,
+          reason: 'inside the selection the first step is the block\'s — a '
+              'press read on the layer the row was built for stepped as it '
+              'left the cell, and moved',
+        );
+
+        select();
+        await tester.pump();
+        await dragBy(0.6);
+        expect(
+          heard,
+          contains('move ${_two.plain}'),
+          reason: 'LIVENESS: past half a cell the same press moves it',
+        );
+      });
+
+      testWidgets('a sound that began in the cut before keeps no start grip '
+          'on the row standing in that cut — the row draws the world it '
+          'stands in, not the one it was built in', (tester) async {
+        Iterable<TimelineRowGripTarget> startGrips() =>
+            (tester
+                        .widget<CustomPaint>(
+                          find.named('$grid-edit-chrome-${_two.sound}'),
+                        )
+                        .painter!
+                    as TimelineRowEditChromePainter)
+                .model
+                .targets
+                .whereType<TimelineRowGripTarget>()
+                .where(
+                  (grip) =>
+                      grip.edge == TimelineBlockEdge.start &&
+                      grip.blockStartIndex == 0,
+                );
+        await crossed(tester);
+        expect(
+          startGrips(),
+          isNotEmpty,
+          reason: 'LIVENESS: a block of the cut\'s own starts with a grip',
+        );
+
+        await tester.pumpWidget(
+          _panel(
+            _two,
+            orientation,
+            heard,
+            hooks,
+            spill: {LayerId(_two.sound): 2},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          startGrips(),
+          isEmpty,
+          reason: 'a block that began in the cut before wears its `~` '
+              'where the start grip was (UI-R7 #6)',
+        );
+      });
+
+      testWidgets('a layer edited under a standing preview reaches the row: '
+          'its edges call back on the layer as committed (R12-③)', (
+        tester,
+      ) async {
+        await crossed(tester);
+        final drawn = _layers[_two]!.firstWhere(
+          (layer) => layer.id.value == _two.draw,
+        );
+        _preview.value = ExposureEdgeDragPreview(
+          previewLayer: drawn.copyWith(
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('f'), length: 9),
+            },
+          ),
+        );
+        await tester.pump();
+        // Committed while the preview stands: the same layer, a new value.
+        final committed = drawn.copyWith(name: 'Draw');
+
+        await tester.pumpWidget(
+          _panel(
+            _two,
+            orientation,
+            heard,
+            hooks,
+            layers: [
+              for (final layer in _layers[_two]!)
+                if (layer.id == committed.id) committed else layer,
+            ],
+          ),
+        );
+        await tester.pump();
+
+        final chrome = tester.widget<TimelineRowEditChromeLayer>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is TimelineRowEditChromeLayer &&
+                widget.layerId == committed.id,
+          ),
+        );
+        expect(
+          identical(chrome.resolver.baseLayer, committed),
+          isTrue,
+          reason: 'the preview stands as it was; the layer under it moved',
+        );
+      });
     });
   }
 }
@@ -565,6 +701,7 @@ Widget _panel(
   List<String> heard,
   _Hooks hooks, {
   List<Layer>? layers,
+  Map<LayerId, int> spill = const {},
 }) {
   void hear(String verb, LayerId id) => heard.add('$verb ${id.value}');
   return MaterialApp(
@@ -589,6 +726,7 @@ Widget _panel(
               substrateGeneration: cut.world,
               frameCursor: _cursor,
               playbackFrameCount: 12,
+              spillInLeadFrames: spill,
               exposureStateForLayer: _uncovered,
               onSelectLayer: (id) => hear('select', id),
               onSelectFrame: (_) {},

@@ -302,6 +302,62 @@ void main() {
         );
       });
 
+      testWidgets('two rows of one face that trade layers across a switch '
+          'each show the eye of the layer they stand for now', (
+        tester,
+      ) async {
+        heard = [];
+        drags = _dragsHeardBy(heard);
+        await tester.binding.setSurfaceSize(const Size(1600, 1100));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        // One face — the eye is not part of it — the first shown, the
+        // second hidden, in both cuts (linked cuts share their layers).
+        // Trading places changes no layer's eye, so nothing but the berths
+        // says which eye a row shows now. Across worlds a row takes the
+        // berth at its place; within one it would follow its layer.
+        final shown = _row('twin-a', 'Twin', LayerKind.animation);
+        final hidden = _row(
+          'twin-b',
+          'Twin',
+          LayerKind.animation,
+        ).copyWith(isVisible: false);
+        List<Widget> rows() =>
+            tester.widgetList(find.byType(TimelineLayerControlsRow)).toList();
+        List<bool> eyes() => [
+          for (final eye in tester.widgetList<LayerVisibilityToggleButton>(
+            find.byType(LayerVisibilityToggleButton),
+          ))
+            eye.isVisible,
+        ];
+        await tester.pumpWidget(
+          _panel(_one, orientation, heard, drags, layers: [shown, hidden]),
+        );
+        await tester.pumpAndSettle();
+        final before = rows();
+        final eyesBefore = eyes();
+        expect(
+          eyesBefore,
+          unorderedEquals([true, false]),
+          reason: 'LIVENESS: each row shows its own layer\'s eye',
+        );
+
+        await tester.pumpWidget(
+          _panel(_two, orientation, heard, drags, layers: [hidden, shown]),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          rows(),
+          orderedEquals(before),
+          reason: 'premise: one face, so each berth hands its row back whole',
+        );
+        expect(
+          eyes(),
+          eyesBefore.reversed,
+          reason: 'each place now stands for the other layer',
+        );
+      });
+
       testWidgets('a drag\'s opacity preview shows on the row standing for '
           'the layer it drags', (tester) async {
         await crossed(tester);
@@ -500,13 +556,14 @@ Widget _panel(
   _Cut cut,
   TimelineOrientation orientation,
   List<String> heard,
-  TimelineRowDragHooks drags,
-) {
+  TimelineRowDragHooks drags, {
+  List<Layer>? layers,
+}) {
   void hear(String verb, LayerId id) => heard.add('$verb ${id.value}');
   return MaterialApp(
     home: Scaffold(
       body: TimelinePanel(
-        layers: _layersOf(cut),
+        layers: layers ?? _layersOf(cut),
         rowDragHooks: drags,
         activeLayerId: LayerId(cut.base),
         substrateGeneration: cut.world,

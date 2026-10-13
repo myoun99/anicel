@@ -6,9 +6,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart'
     show TimelineLaneSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 /// 🚨I-57 (10-13): EVERY PRESS ON A ROW READS THE CELL UNDER IT BY ONE LAW
 /// ([frameAtVisibleX]) — the cells' pick, the range drag over them, a
@@ -64,6 +66,46 @@ void main() {
       frameEndIndexExclusive: 40,
     );
     expect(frames.cellAt(shortOfTwo), 1);
+  });
+
+  testWidgets('the cells\' tap picks the cell the law puts there', (
+    tester,
+  ) async {
+    final picks = <int>[];
+    final geometry = ValueNotifier(
+      const TimelineFrameGeometry(
+        frameCellExtent: cell,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 40,
+      ),
+    );
+    addTearDown(geometry.dispose);
+    await tester.pumpWidget(
+      strip(
+        Builder(
+          builder: (context) => timelineRowCellsPaintArea(
+            context: context,
+            keyPrefix: 'timeline',
+            layer: layer,
+            geometry: geometry,
+            crossAxisExtent: 24,
+            axis: Axis.horizontal,
+            exposureStateForLayer: (_, _) =>
+                TimelineCellExposureState.uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: picks.add,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tapAt(
+      Offset(shortOfTwo, 12),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+
+    expect(picks, [1]);
   });
 
   testWidgets('the cells\' range drag anchors on the cell the press picks', (
