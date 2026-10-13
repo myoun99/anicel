@@ -917,6 +917,46 @@ void main() {
     expect(ways(move.y), 'cubic 0.0 0.0, cubic 0.0 0.0, cubic 0.0 0.0');
   });
 
+  test('🎯「등속」 is `Linear`: from a Linear key the way runs straight, and '
+      'is read (the user\'s zoom-and-turn sample — both keys Linear, its '
+      'zoom and turn on a straight ramp); ⚠️into one, a way comes at that '
+      'key\'s own slope, as into a held key (no sample shows it)', () {
+    final move = moveOf(
+      cameraDocument(const [
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImageScale'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 58]),
+            CmtSpec('Value', 'Double[]', value: [100, 150]),
+            CmtSpec('LeftSlope', 'Double[]', value: [0, 0]),
+            CmtSpec('RightSlope', 'Double[]', value: [0, 0]),
+            CmtSpec('Interp', 'String[]', value: ['Linear', 'Linear']),
+          ],
+        ),
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImageRotation'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 30, 60, 90]),
+            CmtSpec('Value', 'Double[]', value: [0, 12, 36, 48]),
+            CmtSpec(
+              'Interp',
+              'String[]',
+              value: ['Default', 'Linear', 'Default', 'Default'],
+            ),
+          ],
+        ),
+      ]),
+    );
+
+    expect(ways(move.scale), 'straight');
+    expect(ways(move.degrees), 'cubic 0.0 1.0, straight, cubic 1.0 0.0');
+    expect(move.scale.unread || move.degrees.unread, isFalse);
+  });
+
   test('the shooting frame: its size, and its centre the canvas\'s moved by '
       'the crop\'s offset and the inner frame\'s', () {
     final database = databaseBytes((db) {

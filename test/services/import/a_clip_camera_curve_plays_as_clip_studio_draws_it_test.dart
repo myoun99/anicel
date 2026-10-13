@@ -50,16 +50,13 @@ void main() {
     expect(pan.at(29), 56);
   });
 
-  test('a held key holds to the next; a way this reader does not know runs '
-      'straight, and is said', () {
+  test('a held key holds to the next; a straight way runs straight', () {
     final turn = curve(
       [(0, 0), (10, 30), (20, 50)],
       [ClipWay.held, ClipWay.straight],
     );
 
     expect([turn.at(9.9), turn.at(10), turn.at(15)], [0, 30, 40]);
-    expect(turn.unread, isTrue);
-    expect(curve([(0, 0), (10, 30)], [ClipWay.held]).unread, isFalse);
   });
 
   test('before its first key a curve is its first value, after its last its '

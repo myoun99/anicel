@@ -1899,6 +1899,7 @@ void main() {
       final unread = ClipCurve(
         [(frame: 0, value: 0), (frame: 6, value: 10), (frame: 11, value: 20)],
         [ClipWay.straight, ClipWay.straight],
+        unread: true,
       );
 
       final result = plan(

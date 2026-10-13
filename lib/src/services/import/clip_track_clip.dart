@@ -61,8 +61,8 @@ sealed class ClipWay {
   /// `Constant`: the key's value until the next.
   static const ClipWay held = ClipHold._();
 
-  /// A way this reader does not know, run straight — and said
-  /// ([ClipCurve.unread]).
+  /// `Linear`: straight on to the next key — and how a way this reader does
+  /// not know is run, which its curve says ([ClipCurve.unread]).
   static const ClipWay straight = ClipStraight._();
 }
 
@@ -94,7 +94,7 @@ final class ClipCubic extends ClipWay {
 /// whose two axes' slopes differ walks a bent path (유저 10-13: 「그래프를
 /// 만지면 시간+공간을 같이움직임」).
 final class ClipCurve {
-  ClipCurve(this.keys, this.ways)
+  ClipCurve(this.keys, this.ways, {this.unread = false})
     : assert(ways.length == math.max(0, keys.length - 1));
 
   /// A value the clip holds throughout — its `Param`, which no curve keys —
@@ -108,10 +108,13 @@ final class ClipCurve {
   final List<ClipCurveKey> keys;
   final List<ClipWay> ways;
 
-  bool get isEmpty => keys.isEmpty;
+  /// Whether a way of it is one this reader does not know — run straight
+  /// ([ClipWay.straight]). ↩️It was whether a way of it is straight, while
+  /// no way the reader knew was (until the user's zoom-and-turn sample,
+  /// 10-13: `Linear`).
+  final bool unread;
 
-  /// Whether a way of it is one this reader does not know — run straight.
-  bool get unread => ways.any((way) => way is ClipStraight);
+  bool get isEmpty => keys.isEmpty;
 
   /// The frames its keys stand on, rounded as a cel key's are.
   Iterable<int> get keyedFrames => [for (final key in keys) key.frame.round()];
@@ -419,8 +422,10 @@ ClipCameraMove _cameraMoveOf(
 /// [keys] — [curve]'s, on the timeline's frames — with the way from each to
 /// the next as CLIP STUDIO draws it (memory `csp-clip-format-notes` §3,
 /// measured 2026-10-13 against the frames CLIP STUDIO wrote of the user's
-/// two camera samples, 0.06px): each axis apart, the cubic two keys'
-/// slopes make — or, from a `Constant` key, its value held to the next.
+/// three camera samples, 0.06px): each axis apart, the cubic two keys'
+/// slopes make — or, from a `Constant` key, its value held to the next;
+/// from a `Linear` one, straight on to it (the zoom-and-turn sample's
+/// 「등속」, both keys `Linear`: the zoom and the turn on a straight ramp).
 ///
 /// A key's slopes — value per frame, as the way before it arrives and the
 /// way after it leaves — are its own kind's. `Hermite`, a graph pulled,
@@ -428,12 +433,13 @@ ClipCameraMove _cameraMoveOf(
 /// nothing where CLIP STUDIO's output overshot by a tenth), divided by
 /// [slopeDivisor] — the timeline's frames a tick times the value's unit —
 /// to move it per frame: its `LeftSlope` arriving, its `RightSlope`
-/// leaving. A key of CLIP STUDIO's own — no `Interp` at all, `Default`, or
-/// `Constant` — moves at the slope [_ownSlope] gives. ⚠️The slopes a file
-/// keeps beside such a key are not read: the one the samples keep, a
-/// `Default` last key's, is 0 — which its own slope is there too. A way
-/// from or to a key of a kind this reader does not know runs straight, and
-/// is said. ↩️Every way that was not `Constant` ran straight (s6, 10-09: a
+/// leaving. A key of CLIP STUDIO's own — no `Interp` at all, `Default`,
+/// `Constant` or `Linear` — moves at the slope [_ownSlope] gives. ⚠️The
+/// slopes a file keeps beside such a key are not read: the ones the
+/// samples keep, a `Default` last key's and every `Constant` and `Linear`
+/// key's, are 0 — which a `Default` end's own slope is too. A way from or
+/// to a key of a kind this reader does not know runs straight, and is
+/// said. ↩️Every way that was not `Constant` ran straight (s6, 10-09: a
 /// guess, never held to an output).
 ClipCurve _curveOf(
   CmtNode curve,
@@ -444,33 +450,42 @@ ClipCurve _curveOf(
     final List<Object?> named => named,
     _ => const <Object?>[],
   };
+  Object? kindOf(int i) => i < kinds.length ? kinds[i] : null;
   final arriving = _numbers(curve, 'LeftSlope');
   final leaving = _numbers(curve, 'RightSlope');
   ({double arriving, double leaving}) through(double slope) =>
       (arriving: slope, leaving: slope);
   final slopes = <({double arriving, double leaving})?>[
     for (var i = 0; i < keys.length; i += 1)
-      switch (i < kinds.length ? kinds[i] : null) {
+      switch (kindOf(i)) {
         'Hermite' when i < arriving.length && i < leaving.length => (
           arriving: arriving[i] / slopeDivisor,
           leaving: leaving[i] / slopeDivisor,
         ),
-        null || 'Default' || 'Constant' => through(_ownSlope(keys, i)),
+        null || 'Default' || 'Constant' || 'Linear' => through(
+          _ownSlope(keys, i),
+        ),
         _ => null,
       },
   ];
-  return ClipCurve(keys, [
+  final ways = <ClipWay?>[
     for (var i = 0; i + 1 < keys.length; i += 1)
-      if (i < kinds.length && kinds[i] == 'Constant')
-        ClipWay.held
-      else if ((slopes[i], slopes[i + 1]) case (
-        (leaving: final leaving, arriving: _),
-        (leaving: _, arriving: final arriving),
-      ))
-        ClipCubic(leaving: leaving, arriving: arriving)
-      else
-        ClipWay.straight,
-  ]);
+      switch ((kindOf(i), slopes[i], slopes[i + 1])) {
+        ('Constant', _, _) => ClipWay.held,
+        ('Linear', _, _) => ClipWay.straight,
+        (_, (leaving: final leaving, arriving: _), (
+          leaving: _,
+          arriving: final arriving,
+        )) =>
+          ClipCubic(leaving: leaving, arriving: arriving),
+        _ => null,
+      },
+  ];
+  return ClipCurve(
+    keys,
+    [for (final way in ways) way ?? ClipWay.straight],
+    unread: ways.contains(null),
+  );
 }
 
 /// The slope CLIP STUDIO's own way moves at through key [i] of [keys]: none
@@ -480,8 +495,9 @@ ClipCurve _curveOf(
 /// freely to its output came out at exactly the gentler one, 2.00 and 2.00,
 /// and no other rule tried came within 1px). A key of two keys' curve is
 /// an end, so that way is slow out and slow in — After Effects' Easy Ease
-/// (the first sample). ⚠️A `Constant` key is read the same — what CLIP
-/// STUDIO moves at into a held key, or beside a held way, no sample shows.
+/// (the first sample). ⚠️A `Constant` or `Linear` key is read the same —
+/// what CLIP STUDIO moves at into one, or beside a held or a straight way,
+/// no sample shows: theirs are two keys of the one kind.
 double _ownSlope(List<ClipCurveKey> keys, int i) {
   if (i == 0 || i == keys.length - 1) {
     return 0;
