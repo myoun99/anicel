@@ -225,6 +225,22 @@ void main() {
     expect(aImage.debugDisposed, isFalse, reason: 'a at 1');
   });
 
+  test('a row is used by the picture it is composed for — later than one '
+      'handed to a picture before it', () async {
+    shows = {
+      'p': [0, 1, 4],
+      'q': [2, 4],
+    };
+    final [pImage] = await frame(0, ['p']);
+    await frame(1, ['p']);
+    final [qImage] = await frame(2, ['q']);
+
+    room = rowBytes;
+    await frame(3);
+    expect(pImage.debugDisposed, isTrue, reason: 'p was last used at 1');
+    expect(qImage.debugDisposed, isFalse, reason: 'q at 2, composed there');
+  });
+
   test('🚨the rows a picture is drawn with stay while room is made for '
       'another of its rows — whatever the run says of them', () async {
     room = 2 * rowBytes;

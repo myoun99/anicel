@@ -557,6 +557,11 @@ class ExportFrameRenderer {
   /// What each frame shows is read here, for the whole run at once: the cels
   /// of every cut the frame is made of ([_cutsOfVideoFrame]), as that cut's
   /// picture names them ([_signatureOf]).
+  ///
+  /// ⚠️A movie's pictures are installed as the run reaches them ([_hydrate]),
+  /// and an installed picture moves its cel's revision — so a movie row whose
+  /// picture the run installs is read under another address than the one
+  /// read here, and is composed for its picture alone.
   ExportVideoRun videoRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode, {
@@ -1130,8 +1135,9 @@ final class ExportVideoRun {
 
   /// Frame [index] of the run ([ExportFrameRenderer._videoFrame]).
   ///
-  /// ⚠️In order: a row is held for the frames ahead of the one asked for
-  /// last.
+  /// ⚠️One at a time, in order: a row is held for the frames ahead of the
+  /// one asked for last, and a frame that starts lets go of the rows no
+  /// frame from it on shows — which a frame still being drawn would lose.
   Future<ui.Image> frame(int index) {
     _shown.at = index;
     _renderer._run = _shown;
