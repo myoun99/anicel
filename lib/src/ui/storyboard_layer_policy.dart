@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../models/conte_group.dart';
 import '../models/cut.dart';
@@ -115,18 +117,16 @@ Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut(
 /// and said every one of them again to a screen reader (🔬the largest cost
 /// of a crossing's frame on the AMMI OP). So the row is kept on the
 /// track's id for the cuts as last laid, and handed back while they are
-/// laid alike — the same cuts at the same places.
+/// laid alike — the same cuts at the same places, by the one law the
+/// storyboard's rows are kept by ([StoryboardTimelineLayoutEntry.==]).
 Layer trackConteRowShown(
   TrackId trackId,
   Iterable<StoryboardTimelineLayoutEntry> entries, {
   int seat = 0,
 }) {
-  final laid = [
-    for (final entry in entries)
-      (cut: entry.cut, startFrame: entry.startFrame, duration: entry.duration),
-  ];
+  final laid = [...entries];
   final kept = (_conteRowsShown[trackId] ??= {})[seat];
-  if (kept != null && _laidAlike(kept.laid, laid)) {
+  if (kept != null && listEquals(kept.laid, laid)) {
     return kept.row;
   }
   final row = _conteRowLaid(trackId, laid, seat);
@@ -134,47 +134,38 @@ Layer trackConteRowShown(
   return row;
 }
 
-/// A cut of a track's conte row as laid on the track's axis.
-typedef _LaidCut = ({Cut cut, int startFrame, int duration});
+/// A conte row as last shown, with the laying it was made of.
+typedef _ConteRowShown = ({
+  List<StoryboardTimelineLayoutEntry> laid,
+  Layer row,
+});
 
-/// The conte rows last shown of each track, by seat, with the laying each
-/// was made of — on the track's id, which every version of the track
-/// shares, so they go with the project.
-final Expando<Map<int, ({List<_LaidCut> laid, Layer row})>> _conteRowsShown =
-    Expando('conte rows shown');
-
-/// Whether [a] and [b] lay the same cuts — the very instances — at the
-/// same places.
-bool _laidAlike(List<_LaidCut> a, List<_LaidCut> b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var i = 0; i < a.length; i += 1) {
-    if (!identical(a[i].cut, b[i].cut) ||
-        a[i].startFrame != b[i].startFrame ||
-        a[i].duration != b[i].duration) {
-      return false;
-    }
-  }
-  return true;
-}
+/// The conte rows last shown of each track, by seat — on the track's id,
+/// which every version of the track shares, so they go with the project.
+final Expando<Map<int, _ConteRowShown>> _conteRowsShown = Expando(
+  'conte rows shown',
+);
 
 /// [trackConteRowShown] made from [laid].
-Layer _conteRowLaid(TrackId trackId, List<_LaidCut> laid, int seat) {
+Layer _conteRowLaid(
+  TrackId trackId,
+  List<StoryboardTimelineLayoutEntry> laid,
+  int seat,
+) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   final frames = <Frame>[];
-  for (final cut in laid) {
-    final cells = _conteCellsOf(cut, seat);
+  for (final entry in laid) {
+    final cells = _conteCellsOf(entry, seat);
     if (cells == null) {
       continue;
     }
     frames.addAll(cells.row.frames);
     for (final MapEntry(key: conteFrame, value: block)
         in cells.blocks.entries) {
-      timeline[cut.startFrame + conteFrame] = block;
+      timeline[entry.startFrame + conteFrame] = block;
     }
   }
-  final cuts = [for (final cut in laid) cut.cut];
+  final cuts = [for (final entry in laid) entry.cut];
   return Layer(
     id: trackConteRowId(trackId, seat: seat),
     name: trackConteRowName(cuts, seat: seat),
@@ -189,7 +180,7 @@ Layer _conteRowLaid(TrackId trackId, List<_LaidCut> laid, int seat) {
 /// 0 at the cut's start on the track; null where the cut holds no row
 /// there, or nothing of it to show.
 ({Layer row, Map<int, TimelineExposure> blocks})? _conteCellsOf(
-  _LaidCut entry,
+  StoryboardTimelineLayoutEntry entry,
   int seat,
 ) {
   final base = storyboardLayerForCut(entry.cut);

@@ -6,29 +6,31 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/conte_track_fixture.dart';
 
-/// 🚨I-57: A STORYBOARD BUILT AGAIN FOR NOTHING HANDS ITS CONTE ROW THE ROW
-/// IT HAD.
+/// 🚨I-57: A CONTE ROW BUILT AGAIN WHILE ITS CUTS LIE ALIKE HANDS ITS CELLS
+/// THE ROW THEY HAD.
 ///
-/// Its host builds it again on every notify it hears — a cut crossed under
-/// the playhead among them — and the conte row's painter knows the row by
-/// identity. Laid out anew on each build, the row read as changed every
-/// time: the whole film's conte cells were painted again and said again to
-/// a screen reader, for a crossing that moved none of them (🔬the largest
-/// cost of a crossing's frame on the AMMI OP, 10-14).
+/// The conte row's painter knows the row by identity. Laid out anew on each
+/// build, the row read as changed every time: the whole film's conte cells
+/// were painted again and said again to a screen reader, for a crossing
+/// that moved none of them (🔬the largest cost of a crossing's frame on the
+/// AMMI OP, 10-14). A build for nothing no longer reaches the row at all
+/// (a_build_for_nothing_hands_back_the_track_rows_test.dart); a build for
+/// what the cells do not show — the seconds its run labels print — does.
 void main() {
-  testWidgets('the conte row\'s painter has nothing to paint again and '
-      'nothing to say again', (tester) async {
-    final notify = ValueNotifier<int>(0);
-    addTearDown(notify.dispose);
+  testWidgets('built again for its seconds, the conte row\'s cells have '
+      'nothing to paint again and nothing to say again', (tester) async {
+    final showSeconds = ValueNotifier<bool>(false);
+    addTearDown(showSeconds.dispose);
     final project = conteTrackProject();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ValueListenableBuilder<int>(
-            valueListenable: notify,
-            builder: (_, _, _) => StoryboardPanel(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: showSeconds,
+            builder: (_, seconds, _) => StoryboardPanel(
               project: project,
               activeCutId: const CutId('cut-1'),
+              showSeconds: seconds,
             ),
           ),
         ),
@@ -48,7 +50,7 @@ void main() {
     final before = conteCells();
     expect(before.layer.timeline, isNotEmpty, reason: 'premise: panels');
 
-    notify.value += 1;
+    showSeconds.value = true;
     await tester.pump();
     final after = conteCells();
 

@@ -28,9 +28,10 @@ class StoryboardTimelineLayoutEntry {
   /// Two entries are one when they lay the very same cut at the same place.
   ///
   /// 🚨The cut by IDENTITY, never by its deep `==`, which walks every frame
-  /// of every layer: the storyboard's rows are kept while their cuts lie
-  /// alike (I-57, 10-14), asked on every build of the panel — every notify,
-  /// every cut crossed — of every entry of the track.
+  /// of every layer: the storyboard's rows, and the conte row they draw,
+  /// are kept while their cuts lie alike (I-57, 10-14) — asked on every
+  /// build of the panel, every notify and every cut crossed, of every entry
+  /// of the track.
   @override
   bool operator ==(Object other) =>
       other is StoryboardTimelineLayoutEntry &&
