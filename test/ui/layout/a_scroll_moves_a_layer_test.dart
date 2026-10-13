@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/node_assemblies.dart';
+
 /// 🚨★★★**A SCROLL MOVES A LAYER; IT REPAINTS NOTHING**
 /// (playback-page-turn-repaints-the-whole-timeline, 10-11).
 ///
@@ -325,7 +327,7 @@ void main() {
     final semantics = tester.ensureSemantics();
     final controller = ScrollController();
     addTearDown(controller.dispose);
-    final over = _Assemblies();
+    final over = Assemblies();
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
@@ -346,7 +348,7 @@ void main() {
                 // One boundary over the bar and what stands beside it — the
                 // workspace's, in the app. (The scroll stands outside it: its
                 // own updates are its own boundary's.)
-                _CountsAssemblies(
+                CountsAssemblies(
                   assemblies: over,
                   child: Column(
                     children: [
@@ -540,43 +542,4 @@ class _Mark extends CustomPainter {
 
   @override
   bool shouldRepaint(_Mark oldDelegate) => false;
-}
-
-/// How often [_CountsAssemblies]' node was assembled.
-class _Assemblies {
-  int count = 0;
-}
-
-/// A semantics boundary that counts how often its node is assembled — what
-/// a flush does to every boundary it builds again, in every build mode.
-class _CountsAssemblies extends SingleChildRenderObjectWidget {
-  const _CountsAssemblies({required this.assemblies, super.child});
-
-  final _Assemblies assemblies;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderCountsAssemblies(assemblies);
-}
-
-class _RenderCountsAssemblies extends RenderProxyBox {
-  _RenderCountsAssemblies(this.assemblies);
-
-  final _Assemblies assemblies;
-
-  @override
-  void describeSemanticsConfiguration(SemanticsConfiguration config) {
-    super.describeSemanticsConfiguration(config);
-    config.isSemanticBoundary = true;
-  }
-
-  @override
-  void assembleSemanticsNode(
-    SemanticsNode node,
-    SemanticsConfiguration config,
-    Iterable<SemanticsNode> children,
-  ) {
-    assemblies.count += 1;
-    super.assembleSemanticsNode(node, config, children);
-  }
 }
