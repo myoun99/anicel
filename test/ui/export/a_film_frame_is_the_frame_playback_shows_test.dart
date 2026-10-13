@@ -591,6 +591,46 @@ void main() {
       });
     });
 
+    testWidgets('🎯a cut that becomes the stage where the track under it '
+        'ends brings its paper — after a frame it lay over that track, in '
+        'one run', (tester) async {
+      await tester.runAsync(() async {
+        final s = sessionOf([
+          Track(
+            id: const TrackId('lower'),
+            name: 'V1',
+            cuts: [cutOf('low', duration: 12)],
+          ),
+          Track(
+            id: const TrackId('upper'),
+            name: 'V2',
+            cuts: [cutOf('high', duration: 24)],
+          ),
+        ]);
+        addTearDown(s.dispose);
+        final [lowerTrack, upperTrack] = s.repository.requireProject().tracks;
+        fill(s, [(lowerTrack.cuts.single, red)]);
+        final high = upperTrack.cuts.single;
+        final renderer = ExportFrameRenderer(session: s);
+        addTearDown(renderer.dispose);
+        final run = renderer.videoRun([
+          for (final index in [5, 15])
+            ExportFrameTask(cut: high, frameIndex: index),
+        ], ExportSizeMode.camera);
+
+        expect(
+          pixelOf(await bytesOf(await run.frame(0)), 8, 4, 4),
+          (255, 0, 0, 255),
+          reason: 'CONTROL: the stage\'s red through the blank cut over it',
+        );
+        expect(
+          pixelOf(await bytesOf(await run.frame(1)), 8, 4, 4),
+          (255, 255, 255, 255),
+          reason: 'its own paper, where nothing lies under it',
+        );
+      });
+    });
+
     testWidgets('🎯a name is laid over the cut\'s picture — its paper and '
         'all', (tester) async {
       await tester.runAsync(() async {
