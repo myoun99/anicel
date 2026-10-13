@@ -7,9 +7,10 @@ import '../helpers/dart_sources.dart';
 ///
 /// A kept piece is handed back as it was built while its facts hold, so a
 /// field its facts leave out is one whose change shows nothing: the piece
-/// keeps what it was built from. Mutation found five such (I-57, 10-14) —
+/// keeps what it was built from. Mutation found twelve such (I-57, 10-14) —
 /// the corner's size and whether it takes a press, the splitter's extent
-/// and the two extents its drag is clamped to — and no behaviour test told
+/// and the two its drag is clamped to, the rail scrollbar's same three, and
+/// the frame rails' viewport and content extents — and no behaviour test told
 /// them apart, because nothing a test drives changes them while the piece
 /// stands. ⛔So this reads the source: every field the class declares is
 /// named in its facts (a callback by whether there is one, R13-2).
