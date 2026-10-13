@@ -187,7 +187,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// skips their whole subtree rebuild. What the row shows gates content
   /// ([LayerControlsRowFacts]); callbacks follow the R13-2 rule (host
   /// callbacks close over the stable session only).
-  final KeptLayerControlsRows _railRowMemo = KeptLayerControlsRows();
+  late final KeptLayerControlsRows _railRowMemo = KeptLayerControlsRows(
+    _rowDrags.draggable,
+  );
 
   /// The legend header's memo — same idea, token-gated (R13-2): the
   /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible

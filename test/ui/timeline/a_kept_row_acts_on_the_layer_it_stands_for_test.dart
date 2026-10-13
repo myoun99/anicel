@@ -5,10 +5,14 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/berth_row.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show laneGraphHeadedBy;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowDragState, LayerRowSubject, TimelineRowDragHooks;
+import 'package:anicel/src/ui/timeline/rail_eyes.dart' show RailEyeBuilder;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -38,14 +42,20 @@ void main() {
         : 'xsheet';
     group('$rail: after a switch onto a cut of the same faces', () {
       late List<String> heard;
+      late TimelineRowDragHooks drags;
 
-      /// Pumps the first cut, switches to the second, and holds that every
-      /// row came back whole.
-      Future<void> crossed(WidgetTester tester) async {
+      /// Pumps the first cut, switches to the second — with [listening]
+      /// hearing what the switch builds — and holds that every row came
+      /// back whole.
+      Future<void> crossed(
+        WidgetTester tester, {
+        _RowRebuilds? listening,
+      }) async {
         heard = [];
+        drags = _dragsHeardBy(heard);
         await tester.binding.setSurfaceSize(const Size(1600, 1100));
         addTearDown(() => tester.binding.setSurfaceSize(null));
-        await tester.pumpWidget(_panel(_one, orientation, heard));
+        await tester.pumpWidget(_panel(_one, orientation, heard, drags));
         await tester.pumpAndSettle();
         List<Widget> rows() =>
             tester.widgetList(find.byType(TimelineLayerControlsRow)).toList();
@@ -56,8 +66,13 @@ void main() {
           reason: 'LIVENESS: every row stands',
         );
 
-        await tester.pumpWidget(_panel(_two, orientation, heard));
-        await tester.pumpAndSettle();
+        listening?.listen();
+        try {
+          await tester.pumpWidget(_panel(_two, orientation, heard, drags));
+          await tester.pumpAndSettle();
+        } finally {
+          debugOnRebuildDirtyWidget = null;
+        }
 
         expect(
           find.named('$rail-layer-row-${_two.draw}'),
@@ -95,6 +110,20 @@ void main() {
         'the type button': (
           (tester) => tapNamed(tester, '$rail-layer-type-button-${_two.draw}'),
           'select ${_two.draw}',
+        ),
+        // The row's drag is put on it by a wrapper of its own, kept apart
+        // from the row ([KeptLayerControlsRows]).
+        'the row\'s drag': (
+          (tester) async {
+            await tester.drag(
+              find.named('$rail-layer-name-${_two.draw}'),
+              orientation == TimelineOrientation.horizontal
+                  ? const Offset(0, -40)
+                  : const Offset(-40, 0),
+            );
+            await tester.pumpAndSettle();
+          },
+          'drag ${_two.draw}',
         ),
         'the label\'s double click': (
           (tester) async {
@@ -283,6 +312,56 @@ void main() {
           0.25,
         );
       });
+
+      // What the hand-back saves, measured on the user's project: 1576 →
+      // 855 widgets built per crossing (I-57 ㉣) — held here by the rows'
+      // own count, not by the clock.
+      testWidgets('the switch builds nothing again inside a kept row but '
+          'an eye the new layer changed', (tester) async {
+        final rebuilt = _RowRebuilds();
+        await crossed(tester, listening: rebuilt);
+
+        expect(
+          rebuilt.berths,
+          greaterThanOrEqualTo(_layersOf(_one).length),
+          reason: 'LIVENESS: every berth was handed the next cut\'s layer',
+        );
+        expect(
+          rebuilt.inRows[_two.draw],
+          contains(LayerVisibilityToggleButton),
+          reason: 'the drawing\'s eye changed, and shows it',
+        );
+        for (final MapEntry(key: row, value: types)
+            in rebuilt.inRows.entries) {
+          if (row != _two.draw) {
+            expect(
+              types.difference({RailEyeBuilder}),
+              isEmpty,
+              reason: '$row shows what the row it was built for showed',
+            );
+          }
+        }
+      });
+
+      testWidgets('a pass that changes no row builds nothing in the rows', (
+        tester,
+      ) async {
+        await crossed(tester);
+        final rebuilt = _RowRebuilds()..listen();
+        try {
+          await tester.pumpWidget(_panel(_two, orientation, heard, drags));
+          await tester.pump();
+        } finally {
+          debugOnRebuildDirtyWidget = null;
+        }
+
+        expect(
+          rebuilt.berths,
+          greaterThanOrEqualTo(_layersOf(_two).length),
+          reason: 'LIVENESS: the berths were handed their rows again',
+        );
+        expect(rebuilt.inRows, isEmpty);
+      });
     });
   }
 }
@@ -362,12 +441,63 @@ final _cursor = ValueNotifier<int>(0);
 final _preview =
     ValueNotifier<({Set<LayerId> layerIds, double opacity})?>(null);
 
-Widget _panel(_Cut cut, TimelineOrientation orientation, List<String> heard) {
+/// Row drags that say which layer a drag picked up — ONE set for both
+/// cuts, as a host binds its own once (F-244): a drag wrapper is kept
+/// while its hooks are the same.
+TimelineRowDragHooks _dragsHeardBy(List<String> heard) => TimelineRowDragHooks(
+  drag: ValueNotifier<LayerRowDragState?>(null),
+  onBegin: (subject) {
+    if (subject case LayerRowSubject(:final layerId)) {
+      heard.add('drag ${layerId.value}');
+    }
+  },
+  onUpdate: (_, _, {pointerInRow}) {},
+  onRowTarget: (_, _, _) {},
+  onEffectUpdate: (_, _, _) {},
+  onEnd: () {},
+  onCancel: () {},
+  isInRowSelection: (_) => true,
+);
+
+/// What a pass built again as the rows see it: the widget types built
+/// INSIDE each controls row, by the layer the row stands for — and how
+/// many berths ([BerthRow]) were handed a row, so that nothing built is a
+/// count that looked.
+final class _RowRebuilds {
+  final Map<String, Set<Type>> inRows = {};
+  int berths = 0;
+
+  void listen() {
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget is BerthRow) {
+        berths += 1;
+      }
+      element.visitAncestorElements((ancestor) {
+        if (ancestor.widget case TimelineLayerControlsRow(:final layer)) {
+          final standsFor = BerthRow.at(ancestor)?.id ?? layer.id;
+          inRows
+              .putIfAbsent(standsFor.value, () => {})
+              .add(element.widget.runtimeType);
+          return false;
+        }
+        return true;
+      });
+    };
+  }
+}
+
+Widget _panel(
+  _Cut cut,
+  TimelineOrientation orientation,
+  List<String> heard,
+  TimelineRowDragHooks drags,
+) {
   void hear(String verb, LayerId id) => heard.add('$verb ${id.value}');
   return MaterialApp(
     home: Scaffold(
       body: TimelinePanel(
         layers: _layersOf(cut),
+        rowDragHooks: drags,
         activeLayerId: LayerId(cut.base),
         substrateGeneration: cut.world,
         frameCursor: _cursor,

@@ -75,7 +75,7 @@ class _LayerGridRailRows {
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
   ///
-  /// The memo is the x-sheet header's too ([keptLayerControlsRow]) — one
+  /// The memo is the x-sheet header's too ([KeptLayerControlsRows]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
   Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
     if (row.isLane) {
@@ -89,13 +89,11 @@ class _LayerGridRailRows {
       fold: fold,
       hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
     );
-    return keptLayerControlsRow(
-      _state._railRowMemo,
+    return _state._railRowMemo.keep(
       berths,
       row,
       (facts: facts, drag: _state._rowDrags.inputsFor(row)),
-      build: () => layerControlsRowFrom(facts, row, grid, fold),
-      wrap: (built) => _state._rowDrags.draggable(row, built),
+      () => layerControlsRowFrom(facts, row, grid, fold),
     );
   }
 

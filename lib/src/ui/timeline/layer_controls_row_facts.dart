@@ -31,7 +31,7 @@ import 'timeline_layer_controls_row.dart';
 /// built every header again at every commit (8,276 elements on 24 layers,
 /// fifteen times the timeline's).
 ///
-/// 🚨Also the key of the memo both grids keep ([keptLayerControlsRow]): a
+/// 🚨Also the key of the memo both grids keep ([KeptLayerControlsRows]): a
 /// row is kept while these hold. ⛔A fact the row takes and this leaves out
 /// is a row kept across a change of it — the rail's own key had left out
 /// four the row was given (a reference row's shortfall, an attach row's
@@ -251,9 +251,39 @@ typedef LayerControlsRowInputs = ({
 /// stands for through [BerthRow]. The wrapper is built from the row's
 /// ADDRESS — a drag carries the layer it moves — so it is built again
 /// whenever its berth holds another row, around the same row.
+///
+/// ONE memo for the rail's rows and the x-sheet's headers — a grid says
+/// how its rows drag once, when it makes its keep ([drags]: the wrapper
+/// it puts on a row), and of each row only the wrapper's inputs.
 final class KeptLayerControlsRows {
+  KeptLayerControlsRows(this.drags);
+
+  final Widget Function(TimelineDisplayRow row, Widget built) drags;
   final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
   final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
+
+  /// [row]'s controls row in its berth of [berths] (F-244): the row
+  /// [build] makes, kept while its facts hold, in the drag wrapper put on
+  /// it, kept while the row and its address do — so a commit rebuilds no
+  /// row it did not change, and a cut switch none whose face it left
+  /// alone.
+  Widget keep(
+    RowBerthMap berths,
+    TimelineDisplayRow row,
+    LayerControlsRowInputs inputs,
+    Widget Function() build,
+  ) {
+    final built = _rows.keep(berths, row, inputs.facts, build);
+    return BerthRow(
+      layer: row.layer,
+      child: _wrapped.keep(
+        berths,
+        row,
+        (drag: inputs.drag, address: row.address, row: ByIdentity(built)),
+        () => drags(row, built),
+      ),
+    );
+  }
 }
 
 /// What a kept row's drag wrapper is built from: the wrapper's inputs, the
@@ -263,32 +293,3 @@ typedef _LayerControlsRowWrap = ({
   TimelineRowAddress address,
   ByIdentity<Widget> row,
 });
-
-/// [row]'s controls row as [kept] holds it in its berth of [berths]
-/// (F-244): the row [build] makes, kept while its facts hold, in the drag
-/// wrapper [wrap] puts on it, kept while the row and its address do — so a
-/// commit rebuilds no row it did not change, and a cut switch none whose
-/// face it left alone.
-///
-/// ONE memo for the rail's rows and the x-sheet's headers — a grid says
-/// only how its row drags: the wrapper's inputs, and the wrapper [wrap]
-/// puts on.
-Widget keptLayerControlsRow(
-  KeptLayerControlsRows kept,
-  RowBerthMap berths,
-  TimelineDisplayRow row,
-  LayerControlsRowInputs inputs, {
-  required Widget Function() build,
-  required Widget Function(Widget row) wrap,
-}) {
-  final built = kept._rows.keep(berths, row, inputs.facts, build);
-  return BerthRow(
-    layer: row.layer,
-    child: kept._wrapped.keep(
-      berths,
-      row,
-      (drag: inputs.drag, address: row.address, row: ByIdentity(built)),
-      () => wrap(built),
-    ),
-  );
-}

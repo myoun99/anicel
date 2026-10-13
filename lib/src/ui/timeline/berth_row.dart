@@ -8,7 +8,7 @@ import '../../models/layer_id.dart';
 /// 🚨I-57 ㉣ (10-13): a cut switch builds the new cut's rows in the old
 /// rows' elements ([RowBerths]), and a row whose FACE is the face the old
 /// row showed — its name, kind, label, opacity, switches — is the same row
-/// on screen, so its memo hands it back whole ([keptLayerControlsRow]).
+/// on screen, so its memo hands it back whole ([KeptLayerControlsRows]).
 /// Only WHICH layer it stands for changed, and that is asked here, at the
 /// moment it matters: a press acts on the layer the row stands for now
 /// ([layerIdNow]), and an eye shows that layer's switch ([of]).

@@ -96,7 +96,7 @@ class _XSheetGridHeaders {
 
   /// [entry]'s column header, draggable. A LAYER's is kept while nothing
   /// it is built from changed — the rail's memo, turned on its side
-  /// ([keptLayerControlsRow], F-244): a commit rebuilt every header of
+  /// ([KeptLayerControlsRows], F-244): a commit rebuilt every header of
   /// the sheet. A lane's is built every pass.
   Widget header(TimelineDisplayRow entry) {
     if (entry.isLane) {
@@ -116,17 +116,17 @@ class _XSheetGridHeaders {
       hooks: grid.hooks.rowDragHooks,
       onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
     );
-    return keptLayerControlsRow(
-      _kept,
+    return _kept.keep(
       _state._berths,
       entry,
       (facts: facts, drag: drag),
-      build: () => layerControlsRowFrom(facts, entry, grid, fold),
-      wrap: (built) => draggableHeader(entry, built),
+      () => layerControlsRowFrom(facts, entry, grid, fold),
     );
   }
 
-  final KeptLayerControlsRows _kept = KeptLayerControlsRows();
+  late final KeptLayerControlsRows _kept = KeptLayerControlsRows(
+    draggableHeader,
+  );
 
   /// Every column's [header] where [edges] puts it — the room after a
   /// graph's last lane left empty, and a column of no extent no box, as
