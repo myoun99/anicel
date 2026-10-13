@@ -27,6 +27,7 @@ import '../text/vertical_writing_text.dart';
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'axis_turn.dart';
+import 'berth_row.dart';
 import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
 
@@ -1012,7 +1013,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
               ? AppColors.accent
               : colorScheme.onSurface.withValues(alpha: 0.35),
         ),
-        onPressed: () => onToggle(layerId),
+        onPressed: () => onToggle(layerIdNow(context, layerId)),
       ),
     );
   }
@@ -1219,8 +1220,10 @@ class LayerMarkChip extends StatelessWidget {
       semanticLabel: AppText.strings.tlLayerTake,
       entriesBuilder: () => layerTakeFlyoutEntries(
         selectedTake: mark.take,
-        onSelected: (take) =>
-            onMarkSelected(layerId, (current) => current.withTake(take!)),
+        onSelected: (take) => onMarkSelected(
+          layerIdNow(context, layerId),
+          (current) => current.withTake(take!),
+        ),
       ),
       child: LayerTakeText(mark: mark, axis: axis),
     );
@@ -1252,7 +1255,10 @@ class LayerMarkChip extends StatelessWidget {
       // answers from the ONE [LayerRevise] set, so renaming a revise renames
       // it everywhere and 원화 can drop 동화검사 without the others noticing.
       entriesBuilder: () => layerMarkFlyoutEntries(
-        onSelected: (option) => onMarkSelected(layerId, (_) => option),
+        onSelected: (option) => onMarkSelected(
+          layerIdNow(context, layerId),
+          (_) => option,
+        ),
       ),
       child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
     );

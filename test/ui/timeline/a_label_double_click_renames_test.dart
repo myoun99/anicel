@@ -45,12 +45,12 @@ void main() {
       final fired = <LayerId>[];
       VoidCallback arm(LayerId pressed) => () => fired.add(pressed);
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
-      timelineLabelDoubleTapActivation(b)(TapDownDetails());
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
+      timelineLabelDoubleTapActivation(() => b)(TapDownDetails());
       expect(fired, isEmpty, reason: 'two rows are two labels');
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
       expect(fired, [a]);
     });
 
@@ -63,16 +63,19 @@ void main() {
         return () => fired.add(seen);
       }
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
       selection = 'nothing';
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
 
       expect(fired, ['A and B']);
     });
 
     test('a cell pressed between is another target', () {
       var fired = 0;
-      timelineLabelDoubleTapRecord(a, (_) => () => fired += 1)(Offset.zero);
+      timelineLabelDoubleTapRecord(
+        () => a,
+        (_) => () => fired += 1,
+      )(Offset.zero);
       timelineCellDoubleTapRecord(
         row: const LayerRowAddress(a),
         cells: (
@@ -81,7 +84,7 @@ void main() {
           cellExtent: () => 10.0,
         ),
       )(Offset.zero);
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
 
       expect(fired, 0);
     });

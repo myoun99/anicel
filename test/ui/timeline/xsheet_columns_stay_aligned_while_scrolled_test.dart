@@ -127,7 +127,7 @@ void main() {
       for (final row in layers) {
         final id = row.id.value;
         final header = find.named('xsheet-layer-row-$id');
-        final cells = find.byKey(ValueKey<String>('xsheet-column-$id-cells'));
+        final cells = find.named('xsheet-column-$id-cells');
         if (header.evaluate().isEmpty || cells.evaluate().isEmpty) {
           // Scrolled out of the window — windowing is not what this is about.
           continue;

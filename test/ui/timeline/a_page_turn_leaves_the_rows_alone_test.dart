@@ -86,7 +86,7 @@ void main() {
       // The row's own layer: the first boundary down its box.
       var rowLayer = tester.renderObject(
         sheet
-            ? find.byKey(ValueKey<String>('xsheet-column-${layer.id}-cells'))
+            ? find.named('xsheet-column-${layer.id}-cells')
             : find.named('timeline-row-${layer.id}-cells'),
       );
       while (!rowLayer.isRepaintBoundary) {

@@ -54,7 +54,7 @@ void main() {
       'collapsed': (layer) => layer.copyWith(collapsed: !layer.collapsed),
       'isFillReference': (layer) =>
           layer.copyWith(isFillReference: !layer.isFillReference),
-      'attachedToLayerId': (layer) =>
+      'an attach': (layer) =>
           layer.copyWith(attachedToLayerId: const LayerId('other')),
       'attachedPlacement': (layer) => layer.copyWith(
         attachedPlacement: layer.attachedPlacement == AttachedPlacement.above
@@ -91,6 +91,31 @@ void main() {
         reason: 'a solo flips most rows\' eyes at once, and with the eye in '
             'the token every one of those rows rebuilt all twelve slots — '
             '3,051 elements in one frame',
+      );
+    });
+
+    test('🚨WHICH layer the row stands for is not in the token — a cut '
+        'switch hands a row of the same face back whole (I-57 ㉣)', () {
+      expect(
+        ControlsRowFace(base) ==
+            ControlsRowFace(base.copyWith(id: const LayerId('next-cut'))),
+        isTrue,
+        reason: 'the rail\'s rows were 544 of a crossing\'s rebuilds on the '
+            'user\'s project; the row asks its layer at the press',
+      );
+    });
+
+    test('which layer an attach row is attached to is not shown — only '
+        'that it is one', () {
+      final attached = base.copyWith(
+        attachedToLayerId: const LayerId('a-base'),
+      );
+      expect(
+        ControlsRowFace(attached) ==
+            ControlsRowFace(
+              attached.copyWith(attachedToLayerId: const LayerId('b-base')),
+            ),
+        isTrue,
       );
     });
 

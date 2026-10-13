@@ -66,25 +66,27 @@ class _XSheetGridColumns {
     // 🚨F-244: a layer of the column's own size, as the horizontal rows have
     // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
     // The box is laid FRESH on every pass, outside the kept column: a zoom
-    // step moves its extent and keeps the column.
-    return SizedBox(
-      key: ValueKey<String>(
-        'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
+    // step moves its extent and keeps the column. Built in its BERTH and
+    // named for its layer, as the timeline's rows are (I-57).
+    return Named(
+      'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
+      key: _state._berths.keyOf(entry),
+      child: SizedBox(
+        width: timelineDisplayRowExtent(entry, _state._metrics),
+        height: plan.totalFrameContentWidth,
+        child: entry.isLane
+            ? timelineGatedRow(
+                entry,
+                grid.hooks.dragPreview,
+                (context, layer) =>
+                    timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
+              )
+            : keptTimelineCellsRow(_kept, _state._berths, entry, grid),
       ),
-      width: timelineDisplayRowExtent(entry, _state._metrics),
-      height: plan.totalFrameContentWidth,
-      child: entry.isLane
-          ? timelineGatedRow(
-              entry,
-              grid.hooks.dragPreview,
-              (context, layer) =>
-                  timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
-            )
-          : keptTimelineCellsRow(_kept, entry, grid),
     );
   }
 
-  final Map<LayerId, KeptTimelineCellsRow> _kept = {};
+  final KeptTimelineCellsRows _kept = KeptTimelineCellsRows();
 
   /// The frames the sheet lays its lane columns over — its plan's window
   /// and room — and their selection domain ([timelineLaneRowFrom]).

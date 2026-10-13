@@ -166,9 +166,7 @@ void main() {
       await pumpSheet(tester, width: width);
 
       final header = find.named('xsheet-layer-row-draw-0');
-      final cells = find.byKey(
-        const ValueKey<String>('xsheet-column-draw-0-cells'),
-      );
+      final cells = find.named('xsheet-column-draw-0-cells');
       final rail = find.byKey(
         const ValueKey<String>('xsheet-frame-number-rail'),
       );

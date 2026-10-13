@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/berth_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/named.dart';
 
 /// `find.byKey` for a handle that is a NAME ([Named]) — a handle the tree
@@ -30,13 +32,33 @@ extension NamedFinders on CommonFinders {
 }
 
 /// The name a [Named] directly over [element] gives it, or null.
+///
+/// A KEPT controls row's names are spelled with the layer it was BUILT for,
+/// and a cut switch may have stood it for another since ([BerthRow], I-57
+/// ㉣) — so a name is read as the row stands: the built-for id that ends it
+/// is read as the id of the layer the row stands for now. Every name in a
+/// row that carries its layer ENDS with the layer's id
+/// (`a_kept_row_acts_on_the_layer_it_stands_for_test.dart` holds that).
 String? nameOf(Element element) {
   String? name;
   element.visitAncestorElements((parent) {
-    if (parent.widget case Named(name: final given)) {
-      name = given;
+    if (parent.widget case Named(name: final given?)) {
+      name = _asTheRowStands(parent, given);
     }
     return false;
   });
   return name;
+}
+
+String _asTheRowStands(Element named, String name) {
+  final now = BerthRow.at(named)?.id.value;
+  if (now == null) {
+    return name;
+  }
+  final row = named.findAncestorWidgetOfExactType<TimelineLayerControlsRow>();
+  final builtFor = row?.layer.id.value;
+  if (builtFor == null || builtFor == now || !name.endsWith('-$builtFor')) {
+    return name;
+  }
+  return '${name.substring(0, name.length - builtFor.length)}$now';
 }

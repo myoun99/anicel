@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/named.dart';
+import 'berth_row.dart';
 
 /// A layer row's opacity slider, live-following the session's drag preview
 /// when it targets this layer (the master bar sweep, UI-R6 #2).
@@ -30,10 +31,11 @@ Widget layerOpacityField({
         axis: axis,
         value: value,
         height: 18 + FieldSlider.growthIn(context),
-        onChanged: (opacity) => onChanged(layer.id, opacity),
+        onChanged: (opacity) =>
+            onChanged(layerIdNow(context, layer.id), opacity),
         onChangeEnd: onChangeEnd == null
             ? null
-            : (opacity) => onChangeEnd(layer.id, opacity),
+            : (opacity) => onChangeEnd(layerIdNow(context, layer.id), opacity),
       ),
     ),
   );
@@ -55,7 +57,8 @@ Widget layerOpacityField({
   return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
     valueListenable: dragPreview,
     builder: (context, dragging, _) => slider(
-      dragging != null && dragging.layerIds.contains(layer.id)
+      dragging != null &&
+              dragging.layerIds.contains((BerthRow.of(context) ?? layer).id)
           ? dragging.opacity
           : resting,
     ),

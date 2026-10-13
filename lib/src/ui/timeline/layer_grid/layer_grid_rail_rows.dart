@@ -77,7 +77,7 @@ class _LayerGridRailRows {
   ///
   /// The memo is the x-sheet header's too ([keptLayerControlsRow]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
-  Widget _railRowMemoized(TimelineDisplayRow row) {
+  Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
     if (row.isLane) {
       return _state._rowDrags.draggable(row, _laneRow(row));
     }
@@ -91,12 +91,11 @@ class _LayerGridRailRows {
     );
     return keptLayerControlsRow(
       _state._railRowMemo,
+      berths,
       row,
       (facts: facts, drag: _state._rowDrags.inputsFor(row)),
-      () => _state._rowDrags.draggable(
-        row,
-        layerControlsRowFrom(facts, row, grid, fold),
-      ),
+      build: () => layerControlsRowFrom(facts, row, grid, fold),
+      wrap: (built) => _state._rowDrags.draggable(row, built),
     );
   }
 
@@ -128,7 +127,7 @@ class _LayerGridRailRows {
       ? Named(
           _railRowName(rows[index]),
           key: window.berths.keyOf(rows[index]),
-          child: _railRowMemoized(rows[index]),
+          child: _railRowMemoized(rows[index], window.berths),
         )
       : null;
 

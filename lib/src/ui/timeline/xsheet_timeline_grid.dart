@@ -1,5 +1,6 @@
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/empty_state_text.dart';
+import '../widgets/named.dart';
 import '../widgets/tick_layer.dart';
 import 'dart:math' as math;
 
@@ -27,7 +28,6 @@ import 'timeline_cut_end_handle.dart';
 import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/layer_id.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
@@ -47,6 +47,7 @@ import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
+import 'row_berths.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
@@ -497,6 +498,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// in, beside the list it is counted in.
   TimelineRowEdges _dragEdges = TimelineRowEdges.uniform(0, 0);
 
+  /// Which elements each column is built in — its header's and its cells'
+  /// alike, as the rail's rows and the timeline's cells are ([RowBerths]).
+  final RowBerths _rowBerths = RowBerths();
+
+  /// The berths of the columns the pass in flight DRAWS.
+  late RowBerthMap _berths;
+
   /// The shared virtualization plan with the frame axis fed through the
   /// "horizontal" inputs (the axes are swapped in this grid). Read INSIDE
   /// the window-bucket subscribers (UI-R9 #12a): scroll pixels re-window
@@ -574,11 +582,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               // layer order).
               return TimelineFrameGridStack(
                 axis: Axis.vertical,
-                rowsBody: _columns.buildColumns(
-                  entries,
-                  edges,
-                  plan,
-                  bodyViewportHeight,
+                rowsBody: _rowBerths.counting(
+                  _columns.buildColumns(
+                    entries,
+                    edges,
+                    plan,
+                    bodyViewportHeight,
+                  ),
                 ),
                 gridSheet: _buildGridSheet(entries, edges),
                 playheadExtent: geometry.totalFrameContentHeight,
@@ -735,10 +745,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   if (!entry.isLane) entry.layer,
                               ],
                               stack: widget.layers,
-                              child: Row(
-                                children: _headers.headers(
-                                  entries,
-                                  geometry.columnEdges,
+                              child: _rowBerths.counting(
+                                Row(
+                                  children: _headers.headers(
+                                    entries,
+                                    geometry.columnEdges,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1123,6 +1135,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             final drawnEntries = rowsWithSilhouette(
               entries,
               widget.hooks.dragPreview?.value,
+            );
+            // Over the DRAWN columns: the headers and the cells are both
+            // built from them.
+            _berths = _rowBerths.berthsFor(
+              drawnEntries,
+              world: widget.hooks.substrateGeneration,
             );
             // Drawn, so the content is one column wider while a file
             // hovers — an extent that forgot it would clip the column it

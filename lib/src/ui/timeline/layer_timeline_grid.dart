@@ -187,7 +187,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// skips their whole subtree rebuild. What the row shows gates content
   /// ([LayerControlsRowFacts]); callbacks follow the R13-2 rule (host
   /// callbacks close over the stable session only).
-  final Map<LayerId, KeptLayerControlsRow> _railRowMemo = {};
+  final KeptLayerControlsRows _railRowMemo = KeptLayerControlsRows();
 
   /// The legend header's memo — same idea, token-gated (R13-2): the
   /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible
@@ -416,8 +416,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _frameWindowBucket.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();
-    _railFocus.dispose();
-    _cellsFocus.dispose();
     super.dispose();
   }
 
@@ -711,65 +709,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       berths: _rowBerths.berthsFor(
         rows,
         world: widget.hooks.substrateGeneration,
-        handsOn: _handsInTheRows,
       ),
     );
   }
 
   /// Which elements each row is built in — the rail's and the cells' alike.
   final RowBerths _rowBerths = RowBerths();
-
-  /// Whether an edit is in flight in the rows, which keeps a cut switch
-  /// from handing a row's elements to another layer ([RowBerths]): a
-  /// pointer down on a row, the keyboard's focus in one. (A row a drag
-  /// holds is a pointer down on it — [HeldRowPin] is taken mid-drag.)
-  bool _handsInTheRows() =>
-      _pointersOnTheRows.isNotEmpty || _focusInARow();
-
-  /// The pointers down on the rows — the rail's and the cells' — and not
-  /// on the ruler: a scrub there is how a cut switch is MADE, and it is
-  /// the switch this hands its rows over for (I-57).
-  final Set<int> _pointersOnTheRows = {};
-
-  /// [rows], their pointers counted into [_pointersOnTheRows] and the
-  /// keyboard's focus in them held under [focus] — [_railFocus] or
-  /// [_cellsFocus].
-  Widget _countingHands(FocusNode focus, Widget rows) => Focus(
-    focusNode: focus,
-    includeSemantics: false,
-    child: Listener(
-      onPointerDown: (event) => _pointersOnTheRows.add(event.pointer),
-      onPointerUp: (event) => _pointersOnTheRows.remove(event.pointer),
-      onPointerCancel: (event) => _pointersOnTheRows.remove(event.pointer),
-      child: rows,
-    ),
-  );
-
-  /// The rows' own nodes in the focus tree, the rail's and the cells' —
-  /// never focused themselves, only stood over everything focusable in
-  /// them. ⛔Two, never one shared: a node stands in ONE place, and a
-  /// second [Focus] given it takes it from the first without a word.
-  final FocusNode _railFocus = _rowsNode('timeline rail rows');
-  final FocusNode _cellsFocus = _rowsNode('timeline cell rows');
-
-  static FocusNode _rowsNode(String label) => FocusNode(
-    debugLabel: label,
-    skipTraversal: true,
-    canRequestFocus: false,
-  );
-
-  /// Whether the keyboard's focus is inside a row — a number being typed.
-  ///
-  /// ⛔Asked of the FOCUS tree, never the element tree: the focus can sit in
-  /// a subtree being torn down — the text field of a project leaving the
-  /// screen, the tree a test pumps over — whose element may no longer be
-  /// asked for its ancestors (it asserted), while the focus tree has
-  /// already parked its node at the root.
-  bool _focusInARow() =>
-      FocusManager.instance.primaryFocus?.ancestors.any(
-        (node) => node == _railFocus || node == _cellsFocus,
-      ) ??
-      false;
 
   /// The cells themselves: one row of frame cells per row the window
   /// builds, scrolled with the rail beside it.
@@ -941,8 +886,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 contentWidth: totalFrameContentWidth,
                 contentHeight: verticalContentHeight,
                 child: TimelineFrameGridStack(
-                  rowsBody: _countingHands(
-                    _cellsFocus,
+                  rowsBody: _rowBerths.counting(
                     _buildFrameRowsBody(
                       rows,
                       window,
@@ -1511,8 +1455,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             verticalContentHeight,
                                                       ),
                                                   layerControlsRail:
-                                                      _countingHands(
-                                                        _railFocus,
+                                                      _rowBerths.counting(
                                                         _railRows
                                                             .buildLayerControlsRail(
                                                               drawnRows,

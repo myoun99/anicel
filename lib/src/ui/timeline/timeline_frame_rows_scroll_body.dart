@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -129,7 +128,7 @@ class _TimelineFrameRowsScrollBodyState
   /// shows beyond its Layer joins the key ([TimelineCellsRowFacts]) — the
   /// camera track, the SE waveform peaks — and lane rows, which are few,
   /// are not memoized ([keptTimelineCellsRow], the x-sheet's columns' too).
-  final Map<LayerId, KeptTimelineCellsRow> _rowMemo = {};
+  final KeptTimelineCellsRows _rowMemo = KeptTimelineCellsRows();
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).
   ///
@@ -269,7 +268,7 @@ class _TimelineFrameRowsScrollBodyState
           (context, layer) =>
               timelineLaneRowFrom(row, layer, _cellsRowGrid, _laneRowSpan),
         )
-      : keptTimelineCellsRow(_rowMemo, row, _cellsRowGrid);
+      : keptTimelineCellsRow(_rowMemo, widget.berths, row, _cellsRowGrid);
 
   /// The window's rows as this body lays them ([timelineFrameSide]). The
   /// window holds a graph's lanes whole ([TimelineRowEdges.window]).
@@ -341,15 +340,6 @@ class _TimelineFrameRowsScrollBodyState
           height: widget.metrics.layerRowHeight,
         ),
     ];
-
-    // Bound the memo to the rows built this pass (scrolled-out rows just
-    // rebuild when they come back).
-    final liveLayers = <LayerId>{
-      for (final row in widget.rows) row.layer.id,
-      if (pinnedLeading != null) pinnedLeading.layer.id,
-      if (pinnedTrailing != null) pinnedTrailing.layer.id,
-    };
-    _rowMemo.removeWhere((layerId, _) => !liveLayers.contains(layerId));
 
     return KeyedSubtree(
       key: const ValueKey<String>('timeline-frame-rows-scroll-body'),

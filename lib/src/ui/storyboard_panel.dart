@@ -2981,7 +2981,7 @@ class _StoryboardLabelShell extends StatelessWidget {
       child: layer == null || doubleClick == null
           ? surface
           : timelineLabelDoubleTapDetector(
-              layerId: layer,
+              layerId: () => layer,
               doubleClick: doubleClick,
               child: surface,
             ),

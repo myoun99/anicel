@@ -536,9 +536,7 @@ void main() {
           find.byKey(const ValueKey<String>('xsheet-frame-rail-scrub-area')),
         );
         // Where the frame rows sit before anyone touches anything.
-        final cells = find.byKey(
-          const ValueKey<String>('xsheet-column-layer-1-cells'),
-        );
+        final cells = find.named('xsheet-column-layer-1-cells');
         final before = tester.getRect(cells);
 
         for (final y in [rail.top + 2, rail.bottom - 2, rail.center.dy]) {

@@ -118,26 +118,29 @@ class _XSheetGridHeaders {
     );
     return keptLayerControlsRow(
       _kept,
+      _state._berths,
       entry,
       (facts: facts, drag: drag),
-      () => draggableHeader(
-        entry,
-        layerControlsRowFrom(facts, entry, grid, fold),
-      ),
+      build: () => layerControlsRowFrom(facts, entry, grid, fold),
+      wrap: (built) => draggableHeader(entry, built),
     );
   }
 
-  final Map<LayerId, KeptLayerControlsRow> _kept = {};
+  final KeptLayerControlsRows _kept = KeptLayerControlsRows();
 
   /// Every column's [header] where [edges] puts it — the room after a
   /// graph's last lane left empty, and a column of no extent no box, as
-  /// the rail leaves them (I-89 ③).
+  /// the rail leaves them (I-89 ③) — each in its column's BERTH.
   List<Widget> headers(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
   ) => [
     for (var index = 0; index < entries.length; index += 1) ...[
-      if (edges.extentOf(index) > 0) header(entries[index]),
+      if (edges.extentOf(index) > 0)
+        KeyedSubtree(
+          key: _state._berths.keyOf(entries[index]),
+          child: header(entries[index]),
+        ),
       if (edges.roomOf(index) > 0) SizedBox(width: edges.roomOf(index)),
     ],
   ];

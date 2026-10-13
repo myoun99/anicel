@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/layer.dart';
-import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
@@ -11,6 +10,7 @@ import '../widgets/tick_layer.dart';
 import 'lane_row_slice.dart';
 import 'memo_token.dart';
 import 'property_lane_model.dart';
+import 'row_berths.dart';
 import 'se_audio_lane.dart' show SeAudioLaneFrameRow, laneIsSeAudio;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
@@ -373,13 +373,13 @@ Widget timelineLaneRowFrom(
         );
 }
 
-/// What a grid keeps of a cells row: the row as built, and what it was
-/// built from.
-typedef KeptTimelineCellsRow = Kept<TimelineCellsRowFacts>;
+/// What a grid keeps of its cells rows, berth by berth.
+typedef KeptTimelineCellsRows = KeptByBerth<TimelineCellsRowFacts>;
 
-/// [row]'s cells row as [kept] holds it (F-244): the one it holds while its
-/// facts are what they were — on a commit, only the rows the edit touched
-/// come back new — else a new one, kept.
+/// [row]'s cells row as [kept] holds it in its berth of [berths] (F-244):
+/// the one it holds while its facts are what they were — on a commit, only
+/// the rows the edit touched come back new — else a new one, kept. The
+/// facts name the row's layer, so a cut switch hands back no row.
 ///
 /// ONE memo for the timeline's rows and the x-sheet's columns. Every
 /// non-lane row keeps (UI-R20 #4): the churny inputs the sparse kinds
@@ -395,12 +395,13 @@ typedef KeptTimelineCellsRow = Kept<TimelineCellsRowFacts>;
 /// clone, so the key answers for them like any other row. Lane rows, which
 /// are few and follow the cursor themselves, are not kept.
 Widget keptTimelineCellsRow(
-  Map<LayerId, KeptTimelineCellsRow> kept,
+  KeptTimelineCellsRows kept,
+  RowBerthMap berths,
   TimelineDisplayRow row,
   TimelineCellsRowGrid grid,
-) => keptWhileSame(
-  kept,
-  row.layer.id,
+) => kept.keep(
+  berths,
+  row,
   timelineCellsRowFacts(row, grid),
   // R10: a FOLDER row is a cells row. Its band arrives as the display
   // clone's own timeline, so it takes the shared painter, the shared press

@@ -286,7 +286,7 @@ void main() {
 
     final column = tester
         .getRect(
-          find.byKey(ValueKey<String>('xsheet-column-${_draw.value}-cells')),
+          find.named('xsheet-column-${_draw.value}-cells'),
         )
         .width;
     final view = _viewOf(tester, _columnsScroll(tester));
@@ -297,9 +297,7 @@ void main() {
     expect(
       tester
           .getRect(
-            find.byKey(
-              ValueKey<String>('xsheet-column-${_side.value}-position'),
-            ),
+            find.named('xsheet-column-${_side.value}-position'),
           )
           .width,
       moreOrLessEquals(laneGraphFoldedExtent),
@@ -393,7 +391,7 @@ ScrollPosition _rowsScroll(WidgetTester tester) => tester
 ScrollPosition _columnsScroll(WidgetTester tester) => tester
     .stateList<ScrollableState>(
       find.ancestor(
-        of: find.byKey(ValueKey<String>('xsheet-column-${_draw.value}-cells')),
+        of: find.named('xsheet-column-${_draw.value}-cells'),
         matching: find.byType(Scrollable),
       ),
     )
@@ -455,7 +453,7 @@ ScrollPosition? _layersScroll(WidgetTester tester) {
     return _rowsScroll(tester);
   }
   if (find
-      .byKey(ValueKey<String>('xsheet-column-${_draw.value}-cells'))
+      .named('xsheet-column-${_draw.value}-cells')
       .evaluate()
       .isNotEmpty) {
     return _columnsScroll(tester);
