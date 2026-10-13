@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🗣️I-32 (유저 2026-09-14): 「… fx펼치기, … 그룹펼치기 … 레이어에 있는 버튼
 /// 전부 조사하고 연결해서 일괄조작가능하게」 — on the APP's rail, whose twirl
 /// hooks the workspace hands over: a hook left on a single-row verb is a
@@ -19,7 +21,7 @@ void main() {
       'selected row', (tester) async {
     final (s, a, b) = await _app(tester);
 
-    await _tapVisible(tester, 'timeline-lane-toggle-${a.value}');
+    await _tapVisibleNamed(tester, 'timeline-lane-toggle-${a.value}');
 
     expect(s.railView.expandedLaneLayerIds.value, containsAll([a, b]));
   });
@@ -28,7 +30,7 @@ void main() {
       'selected base', (tester) async {
     final (s, a, b) = await _app(tester, attachRows: true);
 
-    await _tapVisible(tester, 'timeline-attach-twirl-${a.value}');
+    await _tapVisibleNamed(tester, 'timeline-attach-twirl-${a.value}');
 
     expect(s.railView.collapsedAttachBaseIds.value, containsAll([a, b]));
   });
@@ -86,6 +88,14 @@ Future<(EditorSessionManager, LayerId, LayerId)> _app(
 
 Future<void> _tapVisible(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey<String>(key));
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapVisibleNamed(WidgetTester tester, String name) async {
+  final finder = find.named(name);
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);

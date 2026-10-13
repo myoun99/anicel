@@ -1561,7 +1561,7 @@ class _FillSettings extends StatelessWidget {
           onChanged: (source) => onChanged(options.copyWith(source: source)),
           readLayerNames: readLayerNames,
           trailing: FillReferenceButton(
-            keyValue: 'fill-active-layer-reference',
+            name: 'fill-active-layer-reference',
             isOn: activeLayerIsFillReference,
             onPressed: onToggleActiveLayerFillReference,
           ),

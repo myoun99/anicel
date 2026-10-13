@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/reference_to.dart';
+import '../../helpers/named_finders.dart';
 
 void main() {
   Layer layerNamed(String id, {String? file}) {
@@ -59,7 +60,7 @@ void main() {
   );
 
   Finder button(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-reference-$id'));
+      find.named('timeline-layer-reference-$id');
 
   testWidgets('only a row that points at a FILE has the button — and only '
       'where the host can open its popover', (tester) async {
@@ -94,7 +95,7 @@ void main() {
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) async {}),
     );
     final area = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-name-ref')),
+      find.named('timeline-layer-name-ref'),
     );
     expect(
       tester.getRect(button('ref')).right,
@@ -106,10 +107,10 @@ void main() {
       'letters — and beside the button on a row that is both (I-89 Q1: '
       '「참조/링크가 동시에 될수있는거 말되니까 … 중복되도록」)', (tester) async {
     Rect area(String id) => tester.getRect(
-      find.byKey(ValueKey<String>('timeline-layer-name-$id')),
+      find.named('timeline-layer-name-$id'),
     );
     Rect badge(String id) => tester.getRect(
-      find.byKey(ValueKey<String>('timeline-layer-link-badge-$id')),
+      find.named('timeline-layer-link-badge-$id'),
     );
 
     await tester.pumpWidget(row(layerNamed('a'), linkPartners: const ['b']));

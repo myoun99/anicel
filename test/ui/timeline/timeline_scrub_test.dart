@@ -25,6 +25,8 @@ import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// The ruler-scrub performance invariant (R4): drag moves ride the cursor
 /// path — per-move frames go to the scrub callback WITHOUT a session
 /// notify, and the pointer's release commits the selection exactly once.
@@ -264,9 +266,7 @@ layers: layers,
       await standTheClassicRail(tester);
       notifies = 0;
 
-      final rowFinder = find.byKey(
-        const ValueKey<String>('timeline-row-cells-cel-a'),
-      );
+      final rowFinder = find.named('timeline-row-cells-cel-a');
       final rowBefore = tester.widget(rowFinder);
 
       final scrubArea = find.byKey(

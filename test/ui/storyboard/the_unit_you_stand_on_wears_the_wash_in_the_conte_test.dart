@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
 
 import '../storyboard_cut_block_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
 /// 전처럼 연하게」, 10-01 「재생헤드가 선 블록」), on the conte: the unit you
@@ -283,17 +284,13 @@ void main() {
   testWidgets('on a lane, its cell', (tester) async {
     await openConte(tester);
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-sb-track'),
-      ),
+      find.named('storyboard-track-lane-toggle-sb-track'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:sb-track-'
-          '${effectGroupLaneId(trackEffect)}',
-        ),
+      find.named(
+        'storyboard-lane-group-toggle-v-track:sb-track-'
+        '${effectGroupLaneId(trackEffect)}',
       ),
     );
     await tester.pumpAndSettle();

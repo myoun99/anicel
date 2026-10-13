@@ -30,6 +30,7 @@ import 'package:anicel/src/services/editing/default_layer_helpers.dart'
 import '../helpers/app_shortcuts.dart';
 import '../helpers/conte_track_fixture.dart';
 import '../helpers/home_page_probes.dart';
+import '../helpers/named_finders.dart';
 
 /// 🗣️유저 2026-09-24 — THE PANEL LAST TOUCHED ANSWERS, through the app:
 ///
@@ -201,8 +202,8 @@ void main() {
     await pumpHome(tester, project: conteTrackProject());
     final session = sessionOf(tester);
     await showStoryboardPanel(tester);
-    final twirl = find.byKey(
-      ValueKey<String>('storyboard-se-lane-toggle-${conteTrackId.value}-1'),
+    final twirl = find.named(
+      'storyboard-se-lane-toggle-${conteTrackId.value}-1',
     );
     await tester.ensureVisible(twirl);
     await tester.pumpAndSettle();
@@ -374,7 +375,7 @@ void main() {
     final hud = workspaceOf(tester).flipHud!;
     final layerId = session.activeLayerId!;
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-lane-toggle-${layerId.value}')),
+      find.named('timeline-lane-toggle-${layerId.value}'),
     );
     await tester.pumpAndSettle();
     session.standOnRow(LaneRowAddress(layerId, 'transform-group'));

@@ -14,6 +14,7 @@ import 'ui/timeline/timeline_row_chrome_probe.dart';
 
 import 'helpers/home_page_probes.dart';
 import 'helpers/the_classic_rail.dart';
+import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('switches between existing sample cuts', (
@@ -43,7 +44,7 @@ void main() {
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
+      find.named('timeline-row-cells-$secondCutRowId'),
       findsOneWidget,
     );
     expectCellText(secondCutRowId, 0, 'X');
@@ -93,7 +94,7 @@ void main() {
     await showTimelinePanel(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
+      find.named('timeline-row-cells-$secondCutRowId'),
       findsOneWidget,
     );
     expect(
@@ -248,9 +249,7 @@ void main() {
       // would over-scroll the custom frame viewport and push frame 0 out of
       // the virtualized window).
       await tester.ensureVisible(
-        find.byKey(
-          const ValueKey<String>('timeline-layer-row-default-layer-1'),
-        ),
+        find.named('timeline-layer-row-default-layer-1'),
       );
       await tester.pumpAndSettle();
 

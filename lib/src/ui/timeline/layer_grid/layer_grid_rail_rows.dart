@@ -111,28 +111,31 @@ class _LayerGridRailRows {
     mainExtent: null,
   );
 
-  /// Row [index]'s rail row where [edges] lay [rows], keyed to its layer —
-  /// none for a row of no extent: an open graph the enlarged one folds
-  /// stands as its first lane's strip (I-89 ③D).
+  /// Row [index]'s rail row where [window] lays [rows] — none for a row of
+  /// no extent: an open graph the enlarged one folds stands as its first
+  /// lane's strip (I-89 ③D).
+  ///
+  /// ONE builder for the window loop and the A5 pin site, so the two can
+  /// never drift: the row is built in its BERTH ([RowBerths]), which is
+  /// what re-matches the pinned element's State when the window returns,
+  /// and NAMED for its layer ([Named]) — a key spelled from the layer
+  /// remade every row of the rail on a cut switch (I-57).
   Widget? _railRowAt(
     List<TimelineDisplayRow> rows,
-    TimelineRowEdges edges,
+    _RowWindow window,
     int index,
-  ) => edges.extentOf(index) > 0
-      ? KeyedSubtree(
-          key: _railRowKey(rows[index]),
+  ) => window.edges.extentOf(index) > 0
+      ? Named(
+          _railRowName(rows[index]),
+          key: window.berths.keyOf(rows[index]),
           child: _railRowMemoized(rows[index]),
         )
       : null;
 
-  /// The rail row's element key — ONE builder for the window loop and the
-  /// A5 pin site, so the two can never drift and the pinned element
-  /// re-matches the same State when the window returns.
-  ValueKey<String> _railRowKey(TimelineDisplayRow row) => ValueKey<String>(
-    'timeline-rail-row-'
-    '${row.layer.id}-'
-    '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
-  );
+  String _railRowName(TimelineDisplayRow row) =>
+      'timeline-rail-row-'
+      '${row.layer.id}-'
+      '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}';
 
   /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
   /// legend-visible fact changes — zoom steps and unrelated session
@@ -329,7 +332,7 @@ class _LayerGridRailRows {
                       if (pinnedBefore) ...[
                         if (edges.startOf(pinnedIndex) > 0)
                           SizedBox(height: edges.startOf(pinnedIndex)),
-                        ?_railRowAt(rows, edges, pinnedIndex),
+                        ?_railRowAt(rows, window, pinnedIndex),
                         if (leadingRowSpacerHeight - edges.endOf(pinnedIndex) >
                             0)
                           SizedBox(
@@ -344,7 +347,7 @@ class _LayerGridRailRows {
                         index < rowWindow.endIndexExclusive;
                         index += 1
                       ) ...[
-                        ?_railRowAt(rows, edges, index),
+                        ?_railRowAt(rows, window, index),
                         // An open graph's room, after its last lane: no
                         // row, so nothing of a row's is built in it.
                         if (edges.roomOf(index) > 0)
@@ -359,7 +362,7 @@ class _LayerGridRailRows {
                                 edges.startOf(pinnedIndex) -
                                 edges.startOf(rowWindow.endIndexExclusive),
                           ),
-                        ?_railRowAt(rows, edges, pinnedIndex),
+                        ?_railRowAt(rows, window, pinnedIndex),
                         if (edges.total - edges.endOf(pinnedIndex) > 0)
                           SizedBox(
                             height: edges.total - edges.endOf(pinnedIndex),

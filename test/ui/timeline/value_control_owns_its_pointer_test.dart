@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// T11: pressing a VALUE CONTROL in a rail row must not also start the row's
 /// selection drag.
 ///
@@ -78,7 +80,7 @@ Future<void> _pump(WidgetTester tester) async {
 }
 
 Finder _opacitySlider(String layerId) =>
-    find.byKey(ValueKey<String>('timeline-layer-opacity-$layerId'));
+    find.named('timeline-layer-opacity-$layerId');
 
 void main() {
   testWidgets(
@@ -161,7 +163,7 @@ void main() {
     // this the fix could be "rows never select" and the two tests above
     // would still pass.
     await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-layer-name-a')),
+      find.named('timeline-layer-name-a'),
       const Offset(30, 0),
       kind: PointerDeviceKind.mouse,
     );

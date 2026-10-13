@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
+import '../../helpers/named_finders.dart';
+
 /// 🗣️F-222 (유저 2026-09-28): 「변형툴 사용시 내부 사각형 드래그하면
 /// 이동한다던가. 바깥은 회전이라던가. 이런거 싹 fx에 서있을때도 조작할떄
 /// 가능하도록. 지금은 브러시도구인상태로 fx서있을때 조작하려하면
@@ -135,9 +137,7 @@ void main() {
     final address = standOn(session);
     session.selectLayer(address.layerId);
     await pumpFrames(tester);
-    final toggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-${address.layerId.value}'),
-    );
+    final toggle = find.named('timeline-lane-toggle-${address.layerId.value}');
     await tester.ensureVisible(toggle);
     await tester.pumpAndSettle();
     await tester.tap(toggle);
@@ -398,9 +398,7 @@ void main() {
     session.selectFrameIndex(0);
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
     await pumpFrames(tester);
-    final toggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-${se.id.value}'),
-    );
+    final toggle = find.named('timeline-lane-toggle-${se.id.value}');
     await tester.ensureVisible(toggle);
     await tester.pumpAndSettle();
     await tester.tap(toggle);

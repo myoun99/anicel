@@ -20,7 +20,9 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../../helpers/row_berths_in_order.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// R28 #4: a ZOOM STEP MUST NOT REBUILD A PAINTED ROW.
 ///
@@ -81,6 +83,7 @@ void main() {
             scrollDirection: Axis.horizontal,
             child: TimelineFrameRowsScrollBody(
               rows: rows,
+              berths: berthsInOrder(rows),
               edges: timelineRowEdgesOf(rows, metrics),
               hooks: TimelineGridHooks(
                 activeLayerId: null,
@@ -249,9 +252,7 @@ void main() {
     List<String> labelTexts() =>
         (tester
                     .widget<CustomPaint>(
-                      find.byKey(
-                        const ValueKey<String>('timeline-row-cells-a'),
-                      ),
+                      find.named('timeline-row-cells-a'),
                     )
                     .foregroundPainter!
                 as TimelineRowRunLabelsPainter)

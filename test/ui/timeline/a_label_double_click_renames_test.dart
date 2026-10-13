@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨I-48 (유저 2026-09-26): 「레이어 라벨 더블클릭시 해당 레이어 이름변경
 /// 로직 발동. 버튼이랑 마찬가지로 여러레이어 선택한채로 해당 레이어
 /// 발동했을때 선택범위 안이면 다른레이어도 변경, 아니면 해당레이어만. … 동작
@@ -128,10 +130,10 @@ void main() {
       }
 
       Offset label(WidgetTester tester, LayerId id) => tester.getCenter(
-        find.byKey(ValueKey<String>('$prefix-layer-name-${id.value}')),
+        find.named('$prefix-layer-name-${id.value}'),
       );
       Offset eye(WidgetTester tester, LayerId id) => tester.getCenter(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-${id.value}')),
+        find.named('$prefix-layer-visibility-${id.value}'),
       );
 
       Future<void> twoPresses(
@@ -161,7 +163,7 @@ void main() {
         // The name is written from the area's start — along a row, or
         // stood up down a column.
         final name = tester.getRect(
-          find.byKey(ValueKey<String>('$prefix-layer-name-${a.value}')),
+          find.named('$prefix-layer-name-${a.value}'),
         );
         final letters = orientation == TimelineOrientation.vertical
             ? Offset(name.center.dx, name.top + 3)
@@ -182,9 +184,7 @@ void main() {
           tester
               .getRect(
                 find.descendant(
-                  of: find.byKey(
-                    ValueKey<String>('$prefix-layer-name-${a.value}'),
-                  ),
+                  of: find.named('$prefix-layer-name-${a.value}'),
                   matching: find.byType(RailEyeBuilder),
                 ),
               )
@@ -235,7 +235,7 @@ void main() {
         // The name's ground nearest the eye.
         final name = tester
             .getRect(
-              find.byKey(ValueKey<String>('$prefix-layer-name-${a.value}')),
+              find.named('$prefix-layer-name-${a.value}'),
             )
             .deflate(3);
         final eyeAt = eye(tester, a);
@@ -300,7 +300,7 @@ void main() {
 
     Future<void> doubleClick(WidgetTester tester, LayerId id) async {
       final at = tester.getCenter(
-        find.byKey(ValueKey<String>('timeline-layer-name-${id.value}')),
+        find.named('timeline-layer-name-${id.value}'),
       );
       await tester.tapAt(at, kind: PointerDeviceKind.stylus);
       await tester.pump(const Duration(milliseconds: 60));

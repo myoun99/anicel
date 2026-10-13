@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// A6 (2026-08-17): the layer colour label — 「①위치 = 레이어 영역 맨 왼쪽
 /// ②동그라미 → 세로로 꽉 채우는 심플 사각형, 패딩 절대 금지 ③가로폭 =
 /// 세로의 절반 ④가로쓰기 세로표시로 색 이름 텍스트 ⑤클릭 로직 그대로
@@ -84,10 +86,10 @@ void main() {
     await tester.pumpWidget(_panel());
 
     final chip = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     final row = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-a')),
+      find.named('timeline-layer-row-a'),
     );
 
     expect(
@@ -109,7 +111,7 @@ void main() {
     );
     final sectionCell = tester.getRect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-row-a')),
+        of: find.named('timeline-layer-row-a'),
         matching: find.byType(LayerSectionBandCell),
       ),
     );
@@ -129,10 +131,10 @@ void main() {
     // ⚠️`.first`: a labelled row draws TWO columns now (공정 + 수정), and
     // both wear the same ink by construction — the plate hands one colour
     // to every column it writes.
-    TextStyle? styleUnder(String key) {
+    TextStyle? styleUnder(String name) {
       final label = tester.widgetList<VerticalWritingText>(
         find.descendant(
-          of: find.byKey(ValueKey<String>(key)),
+          of: find.named(name),
           matching: find.byType(VerticalWritingText),
         ),
       ).first;
@@ -161,7 +163,7 @@ void main() {
 
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-mark-plain')),
+        of: find.named('timeline-layer-mark-plain'),
         matching: find.byType(VerticalWritingText),
       ),
       findsNothing,
@@ -170,7 +172,7 @@ void main() {
     );
     // The plate itself is still there — the click logic is untouched (⑤).
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-plain')),
+      find.named('timeline-layer-mark-plain'),
       findsOneWidget,
     );
   });
@@ -183,10 +185,10 @@ void _takeLabelPlate() {
     await tester.pumpWidget(_panel());
 
     final mark = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     final take = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+      find.named('timeline-layer-take-a'),
     );
 
     expect(
@@ -212,7 +214,7 @@ void _takeLabelPlate() {
     await tester.pumpWidget(_panel());
     // 기본 픽스처에는 테이크가 없다. 그래도 플레이트는 그려져 있어야 한다.
     final take = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+      find.named('timeline-layer-take-a'),
     );
     expect(
       take.width,
@@ -225,7 +227,7 @@ void _takeLabelPlate() {
     await tester.pumpWidget(_panel());
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+      find.named('timeline-layer-take-a'),
     );
     await tester.pumpAndSettle();
 
@@ -250,7 +252,7 @@ void _takeLabelPlate() {
     // **레이어이름처럼 디자인 통일**해서」.
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+        of: find.named('timeline-layer-take-a'),
         matching: find.byType(ColoredBox),
       ),
       findsNothing,
@@ -258,7 +260,7 @@ void _takeLabelPlate() {
     );
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        of: find.named('timeline-layer-mark-a'),
         matching: find.byType(ColoredBox),
       ),
       findsWidgets,
@@ -279,7 +281,7 @@ void _twoLevelPopover() {
   testWidgets('첫 겹은 공정만 낸다 — 수정은 아직 화면에 없다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
@@ -308,7 +310,7 @@ void _twoLevelPopover() {
   testWidgets('공정에 호버하면 그 공정의 수정만 옆에 뜬다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
@@ -347,7 +349,7 @@ void _twoLevelPopover() {
   testWidgets('용지는 수정이 없으므로 두 번째 겹도 없다 — 바로 골라진다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
@@ -397,7 +399,7 @@ void _submenuFollowsTheHover() {
   testWidgets('다른 공정에 호버하면 겹이 그 공정 것으로 바뀐다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
@@ -430,7 +432,7 @@ void _submenuFollowsTheHover() {
   testWidgets('겹이 없는 행에 호버하면 열려 있던 겹이 사라진다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
 
@@ -456,7 +458,7 @@ void _submenuFollowsTheHover() {
   testWidgets('겹은 부모 행의 오른쪽에 딱 붙는다 — 겹치지 않는다', (tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
     await mouseAt(tester, 'layer-mark-stage-layout');
@@ -489,7 +491,7 @@ void _stageComesFirst() {
     final texts = tester
         .widgetList<VerticalWritingText>(
           find.descendant(
-            of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+            of: find.named('timeline-layer-mark-a'),
             matching: find.byType(VerticalWritingText),
           ),
         )
@@ -498,13 +500,13 @@ void _stageComesFirst() {
 
     final first = tester.getRect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        of: find.named('timeline-layer-mark-a'),
         matching: find.byWidget(texts.first),
       ),
     );
     final second = tester.getRect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+        of: find.named('timeline-layer-mark-a'),
         matching: find.byWidget(texts.last),
       ),
     );
@@ -533,11 +535,11 @@ void _stageComesFirst() {
 /// 바꿔도 초록이었다(실제로 뮤테이션이 살아남았다). **그려진 글자**를 재야
 /// 늘어났는지 알 수 있다 — `getRect` 는 조상의 변환을 반영한다.
 void _glyphsFillTheirArea() {
-  Rect glyphRect(WidgetTester tester, String plateKey, int index) => tester
+  Rect glyphRect(WidgetTester tester, String plateName, int index) => tester
       .getRect(
         find
             .descendant(
-              of: find.byKey(ValueKey<String>(plateKey)),
+              of: find.named(plateName),
               matching: find.byType(VerticalWritingText),
             )
             .at(index),
@@ -549,12 +551,12 @@ void _glyphsFillTheirArea() {
     await tester.pumpWidget(_panel());
 
     final slot = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+      find.named('timeline-layer-take-a'),
     );
     final glyphs = tester.getRect(
       find
           .descendant(
-            of: find.byKey(const ValueKey<String>('timeline-layer-take-a')),
+            of: find.named('timeline-layer-take-a'),
             matching: find.byType(VerticalWritingText),
           )
           .first,
@@ -573,7 +575,7 @@ void _glyphsFillTheirArea() {
     await tester.pumpWidget(_panel());
 
     final plate = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     final stage = glyphRect(tester, 'timeline-layer-mark-a', 0);
     final revise = glyphRect(tester, 'timeline-layer-mark-a', 1);
@@ -596,7 +598,7 @@ void _glyphsFillTheirArea() {
     final twoGlyphs = glyphRect(tester, 'timeline-layer-mark-a', 0);
     final threeGlyphs = glyphRect(tester, 'timeline-layer-mark-b', 0);
     final plateB = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-b')),
+      find.named('timeline-layer-mark-b'),
     );
 
     expect(twoGlyphs.height, closeTo(threeGlyphs.height, 0.5));
@@ -610,12 +612,12 @@ void _glyphsFillTheirArea() {
     await tester.pumpWidget(_panel(orientation: TimelineOrientation.vertical));
 
     final plate = tester.getRect(
-      find.byKey(const ValueKey<String>('xsheet-layer-mark-a')),
+      find.named('xsheet-layer-mark-a'),
     );
     // 유저: 「x시트는 **가로쓰기 가로표기**로 위에 LO 아래에 작감」 — so the
     // sheet draws plain [Text], not the rail's upright column.
     final glyphs = find.descendant(
-      of: find.byKey(const ValueKey<String>('xsheet-layer-mark-a')),
+      of: find.named('xsheet-layer-mark-a'),
       matching: find.byType(Text),
     );
     final stage = tester.getRect(glyphs.first);
@@ -640,7 +642,7 @@ void _submenuRowsLightUpToo() {
   Future<void> openFlyout(WidgetTester tester) async {
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
   }
@@ -707,7 +709,7 @@ void _popoverTextFollowsTheLanguage() {
     AppText.settings.value = AppLanguageSettings(programLanguage: language);
     await tester.pumpWidget(_panel());
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
     await tester.pumpAndSettle();
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);

@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheetPainter, timelineLaneGround;
 
+import '../helpers/named_finders.dart';
+
 /// The V row's fx chain ON SCREEN: its lane rows show up under the Transform
 /// group, and grabbing a group header re-orders the chain — the layer rail's
 /// gesture, one level up (user 2026-08-08).
@@ -105,9 +107,7 @@ Future<EditorSessionManager> _pumpPanel(
   );
   await tester.pumpAndSettle();
   await tester.tap(
-    find.byKey(
-      const ValueKey<String>('storyboard-track-lane-toggle-fx-track'),
-    ),
+    find.named('storyboard-track-lane-toggle-fx-track'),
   );
   await tester.pumpAndSettle();
   return session;
@@ -258,11 +258,7 @@ void main() {
       _effect('fx-b', EffectKind.hueSaturation),
     ]);
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:fx-track-fx-group:fx-a',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-v-track:fx-track-fx-group:fx-a'),
     );
     await tester.pumpAndSettle();
     final parameter = find.byKey(

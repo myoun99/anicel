@@ -22,6 +22,8 @@ import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../helpers/named_finders.dart';
+
 /// Painted-cell glyph probe, X-sheet prefix (UI-R9 #12b).
 String _xsheetGlyph(WidgetTester tester, String layerId, int frameIndex) =>
     timelineCellModel(tester, layerId, frameIndex, prefix: 'xsheet').glyph;
@@ -46,7 +48,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-1')),
+      find.named('xsheet-layer-visibility-layer-1'),
       findsOneWidget,
     );
   });
@@ -69,7 +71,7 @@ void main() {
       _grid(onToggleLayerVisibility: (layerId) => toggledLayerId = layerId),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-2')),
+      find.named('xsheet-layer-visibility-layer-2'),
     );
 
     expect(toggledLayerId, const LayerId('layer-2'));
@@ -91,7 +93,7 @@ void main() {
       ),
     );
     await tester.drag(
-      find.byKey(const ValueKey<String>('xsheet-layer-opacity-layer-1')),
+      find.named('xsheet-layer-opacity-layer-1'),
       const Offset(-30, 0),
     );
 
@@ -108,7 +110,7 @@ void main() {
       _grid(onToggleLayerTimesheet: (layerId) => toggledLayerId = layerId),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-layer-timesheet-layer-2')),
+      find.named('xsheet-layer-timesheet-layer-2'),
     );
 
     expect(toggledLayerId, const LayerId('layer-2'));
@@ -127,7 +129,7 @@ void main() {
       ),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-layer-mark-layer-1')),
+      find.named('xsheet-layer-mark-layer-1'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -209,7 +211,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('xsheet-layer-name-layer-2')),
+      find.named('xsheet-layer-name-layer-2'),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
@@ -357,7 +359,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+      find.named('xsheet-selected-layer'),
       findsOneWidget,
     );
     expect(

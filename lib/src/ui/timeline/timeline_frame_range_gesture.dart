@@ -6,6 +6,7 @@ import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import '../widgets/instant_tap_region.dart' show InstantTapRegion;
+import '../widgets/named.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -507,10 +508,16 @@ class _TimelineFrameRangeGestureLayerState
     super.dispose();
   }
 
+  /// Named for its row, not keyed (I-57, 10-13): the row shows one layer
+  /// and then another in the same elements.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Named(
+    'timeline-range-gesture-${widget.row.keySuffix}',
+    child: _layer(context),
+  );
+
+  Positioned _layer(BuildContext context) {
     return Positioned.fill(
-      key: ValueKey<String>('timeline-range-gesture-${widget.row.keySuffix}'),
       // Two detectors: the TAP (any device — a finger tap clears the
       // selection too) and the PAN. Touch joined the pan set (UI-R17
       // #6/#8): stylus pens report as TOUCH on some Windows/tablet

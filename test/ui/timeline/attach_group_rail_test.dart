@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerKindIcon;
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// UI-R20 P6 (#8–#11): the attach-layer rail — placement arrows instead
 /// of kind icons, the group fold twirl, and the + flyout entrance.
@@ -96,7 +97,7 @@ layers: layers,
     Transform flipOf(String id) => tester.widget<Transform>(
       find
           .ancestor(
-            of: find.byKey(ValueKey<String>('timeline-layer-attach-arrow-$id')),
+            of: find.named('timeline-layer-attach-arrow-$id'),
             matching: find.byType(Transform),
           )
           .first,
@@ -110,7 +111,7 @@ layers: layers,
     // sheet slot beside it was reserved-and-empty on exactly those rows.
     IconData? typeGlyph(String id) => tester
         .appIconButton(
-          find.byKey(ValueKey<String>('timeline-layer-type-button-$id')),
+          find.named('timeline-layer-type-button-$id'),
         )
         .icon;
     expect(
@@ -125,7 +126,7 @@ layers: layers,
     );
     // …and the sheet toggle stays off attach rows: one slot, one mark.
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-timesheet-up1')),
+      find.named('timeline-layer-timesheet-up1'),
       findsNothing,
     );
   });
@@ -154,7 +155,7 @@ layers: layers,
         .widget<Transform>(
           find
               .ancestor(
-                of: find.byKey(ValueKey<String>('$id-layer-attach-arrow-f')),
+                of: find.named('$id-layer-attach-arrow-f'),
                 matching: find.byType(Transform),
               )
               .first,
@@ -210,17 +211,17 @@ layers: layers,
     );
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-attach-twirl-base')),
+      find.named('timeline-attach-twirl-base'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-attach-twirl-plain')),
+      find.named('timeline-attach-twirl-plain'),
       findsNothing,
       reason: 'no group, no twirl',
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-attach-twirl-base')),
+      find.named('timeline-attach-twirl-base'),
     );
     expect(toggled, [const LayerId('base')]);
   });
@@ -235,15 +236,15 @@ layers: layers,
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-up1')),
+      find.named('timeline-layer-row-up1'),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-down1')),
+      find.named('timeline-layer-row-down1'),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-base')),
+      find.named('timeline-layer-row-base'),
       findsOneWidget,
     );
 
@@ -260,11 +261,11 @@ layers: layers,
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-up1')),
+      find.named('timeline-layer-row-up1'),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-down1')),
+      find.named('timeline-layer-row-down1'),
       findsNothing,
     );
   });
@@ -402,17 +403,13 @@ layers: layers,
 
     // Both rows render with the placement arrow (no kind icon), and the
     // base row grew the fold twirl.
-    final arrows = find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      return key is ValueKey<String> &&
-          key.value.startsWith('timeline-layer-attach-arrow-');
-    });
+    final arrows = find.namedWhere(
+      (name) => name.startsWith('timeline-layer-attach-arrow-'),
+    );
     expect(arrows, findsNWidgets(2));
-    final twirls = find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      return key is ValueKey<String> &&
-          key.value.startsWith('timeline-attach-twirl-');
-    });
+    final twirls = find.namedWhere(
+      (name) => name.startsWith('timeline-attach-twirl-'),
+    );
     expect(twirls, findsOneWidget);
 
     // Folding while an attach row is ACTIVE hands the selection to the
@@ -423,7 +420,7 @@ layers: layers,
     expect(attachNamed('+1'), findsNothing);
     expect(attachNamed('-1'), findsNothing);
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
     );
   });

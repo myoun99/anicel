@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
+import '../helpers/named_finders.dart';
+
 Layer _layer(String id, LayerKind kind) {
   return Layer(
     id: LayerId(id),
@@ -200,12 +202,12 @@ void main() {
 
       final cameraTop = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('timeline-layer-row-cam')),
+            find.named('timeline-layer-row-cam'),
           )
           .dy;
       final drawingTop = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('timeline-layer-row-b')),
+            find.named('timeline-layer-row-b'),
           )
           .dy;
       expect(cameraTop, lessThan(drawingTop));
@@ -242,10 +244,10 @@ void main() {
         find.byKey(const ValueKey<String>('section-bracket-drawing')),
       );
       final rowB = tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-b')),
+        find.named('timeline-layer-row-b'),
       );
       final rowA = tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-layer-row-a')),
+        find.named('timeline-layer-row-a'),
       );
       expect(drawingZone.top, lessThanOrEqualTo(rowB.top + 1));
       expect(drawingZone.bottom, greaterThanOrEqualTo(rowA.bottom - 1));
@@ -317,7 +319,7 @@ void main() {
         // run and is on screen while most of the run is windowed away.
         final rowHeight = tester
             .getRect(
-              find.byKey(const ValueKey<String>('timeline-layer-row-cel-29')),
+              find.named('timeline-layer-row-cel-29'),
             )
             .height;
         final drawingZone = tester.getRect(
@@ -338,9 +340,7 @@ void main() {
         final delta = 3 *
             tester
                 .getRect(
-                  find.byKey(
-                    const ValueKey<String>('timeline-layer-row-cel-29'),
-                  ),
+                  find.named('timeline-layer-row-cel-29'),
                 )
                 .height;
         verticalPosition(tester).jumpTo(delta);
@@ -377,12 +377,12 @@ void main() {
 
       final cameraLeft = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-cam')),
+            find.named('xsheet-layer-row-cam'),
           )
           .dx;
       final drawingLeft = tester
           .getTopLeft(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-b')),
+            find.named('xsheet-layer-row-b'),
           )
           .dx;
       expect(cameraLeft, greaterThan(drawingLeft));

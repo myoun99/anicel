@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/drag_chip.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// I-39 (유저 2026-09-17): 「무언가를 드래그할때 커서에 생기는 그립ui,
 /// 공용화가 안되있는거같음. 패널탭띠 … 풀에서 드래그하는거랑 ui가 미묘한게
 /// 다른게 보여서 … 우선 레이어 선택범위로 선택/드래그할때 사용 … 레이어는
@@ -95,7 +97,7 @@ void main() {
   /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a drag that
   /// starts on a control is the control's.
   Finder railRow(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+      find.named('timeline-layer-name-$id');
 
   List<String> chipLabels(WidgetTester tester) => [
     for (final item in tester.widget<DragChip>(find.byType(DragChip)).items)
@@ -374,7 +376,7 @@ void main() {
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.values.first);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-b')),
+      find.named('timeline-lane-toggle-b'),
     );
     await tester.pumpAndSettle();
     final effectId = session.requireActiveCut.layers
@@ -413,7 +415,7 @@ void main() {
     await tester.pumpAndSettle();
     final column = await pickUp(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-name-a')),
+      find.named('xsheet-layer-name-a'),
       // The sheet runs the other way, so its select nudge does too.
       select: const Offset(0, 30),
       nudge: const Offset(12, 0),
@@ -527,7 +529,7 @@ void main() {
     expect([for (final item in vRow) item.label], [storyboardVideoRowName(0)]);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-track-lane-toggle-track-a')),
+      find.named('storyboard-track-lane-toggle-track-a'),
     );
     await tester.pumpAndSettle();
     final fxHeader = await pickUp(

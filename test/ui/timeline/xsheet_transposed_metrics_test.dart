@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// R10 R6 — THE X-SHEET IS THE TIMELINE, TURNED ON ITS SIDE.
 ///
@@ -222,8 +223,8 @@ void main() {
       addTearDown(rail.dispose);
       await tester.pumpWidget(_grid(railExtent: rail));
 
-      const headerKey = ValueKey<String>('xsheet-layer-row-layer-1');
-      final naturalHeader = tester.getSize(find.byKey(headerKey)).height;
+      final header = find.named('xsheet-layer-row-layer-1');
+      final naturalHeader = tester.getSize(header).height;
 
       rail.resizeBy(
         -100,
@@ -237,7 +238,7 @@ void main() {
       // NOTHING inside rearranged — that is the whole model. R10 R6 packed
       // the name here and R6a scaled the column; both would move this
       // number.
-      expect(tester.getSize(find.byKey(headerKey)).height, naturalHeader);
+      expect(tester.getSize(header).height, naturalHeader);
       // What changed is the WINDOW, and the legend beside it was cut at
       // exactly the same line (R6a's bug: the legend clipped while the
       // headers scaled, and below 494px they visibly parted).
@@ -346,7 +347,7 @@ void main() {
           ) -
           layerSectionLabelSlotWidth;
       final header = tester.getRect(
-        find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+        find.named('xsheet-layer-row-layer-1'),
       );
       expect(header.height, closeTo(expected, 0.01));
       expect(header.width, XSheetTimelineGrid.defaultMetrics.layerRowHeight);
@@ -392,7 +393,7 @@ void main() {
           reason: 'a $height panel overflowed',
         );
         final name = tester.getRect(
-          find.byKey(const ValueKey<String>('xsheet-layer-name-layer-1')),
+          find.named('xsheet-layer-name-layer-1'),
         );
         if (height >= 240) {
           expect(
@@ -404,7 +405,7 @@ void main() {
           // ladder's last rung, so a size alone proves nothing: a name
           // pushed past the clip still measures its forced extent.
           final header = tester.getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+            find.named('xsheet-layer-row-layer-1'),
           );
           expect(
             name.bottom,
@@ -496,7 +497,7 @@ void main() {
           .top;
       final headerTop = tester
           .getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+            find.named('xsheet-layer-row-layer-1'),
           )
           .top;
       // The header starts one band strip below the legend's own top.
@@ -507,7 +508,7 @@ void main() {
         find.byKey(const ValueKey<String>('legend-eye')),
       );
       final eyeRow = centerOf(
-        find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-1')),
+        find.named('xsheet-layer-visibility-layer-1'),
       );
       expect(
         eyeLegend - legendTop,
@@ -743,9 +744,7 @@ void main() {
                 .widget<Container>(
                   find
                       .descendant(
-                        of: find.byKey(
-                          ValueKey<String>('xsheet-layer-row-$id'),
-                        ),
+                        of: find.named('xsheet-layer-row-$id'),
                         matching: find.byType(Container),
                       )
                       .first,
@@ -824,17 +823,17 @@ layers: [folder, member],
       await tester.pumpWidget(gridWithFolder(onToggleCollapsed: folded.add));
 
       expect(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        find.named('xsheet-folder-twirl-f'),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-member')),
+        find.named('xsheet-folder-twirl-member'),
         findsNothing,
         reason: 'only a row that holds other rows has a fold',
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        find.named('xsheet-folder-twirl-f'),
       );
       await tester.pump();
       expect(folded, [const LayerId('f')]);
@@ -849,7 +848,7 @@ layers: [folder, member],
         );
         return tester
             .appIconButton(
-              find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+              find.named('xsheet-folder-twirl-f'),
             )
             .icon!;
       }
@@ -863,7 +862,7 @@ layers: [folder, member],
       await tester.pumpWidget(gridWithFolder(onToggleCollapsed: (_) {}));
       expect(
         tester.getSize(
-          find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+          find.named('xsheet-folder-twirl-f'),
         ),
         const Size(24, layerLaneToggleSlotWidth),
       );

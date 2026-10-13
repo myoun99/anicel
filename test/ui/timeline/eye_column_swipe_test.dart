@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// The Krita-style EYE SWIPE (R2): a vertical drag down the eye column
 /// toggles every row it crosses to the value latched from the first.
 ///
@@ -109,10 +111,10 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
   // next two — measured from the mounted widget, never from a constant, so
   // the test cannot agree with a wrong band by construction.
   final firstEye = tester.getCenter(
-    find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-a')),
+    find.named('timeline-layer-visibility-layer-a'),
   );
   final secondEye = tester.getCenter(
-    find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-b')),
+    find.named('timeline-layer-visibility-layer-b'),
   );
   final rowPitch = secondEye.dy - firstEye.dy;
 

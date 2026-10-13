@@ -50,16 +50,15 @@ const ledger = <String, Why>{
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
   // A header graph's two toggles (I-89 ③): the graph of the group whose
   // header or camera row wears it, and the pin of the lane it stands on.
-  'timeline/lane_graph_toggle.dart | keyValue': Why.aRow,
+  'timeline/lane_graph_toggle.dart | name': Why.aRow,
   'timeline/layer_label_controls.dart | '
           "'\$keyPrefix-layer-timesheet-\$layerId'":
       Why.aRow,
-  'timeline/layer_label_controls.dart | keyValue': Why.aRow,
-  'timeline/layer_label_controls.dart | widget.keyValue': Why.aRow,
+  'timeline/layer_label_controls.dart | name': Why.aRow,
+  'timeline/layer_label_controls.dart | widget.name': Why.aRow,
   // The one twirl (what a row holds under it) and the type cell (the row
-  // it stands on).
-  'timeline/layer_rail_columns.dart | keyValue': Why.aRow,
-  'timeline/layer_rail_columns.dart | key': Why.aRow,
+  // it stands on) — one line, as both pass their `name`.
+  'timeline/layer_rail_columns.dart | name': Why.aRow,
   // A header graph's own button (I-89 ③D): it enlarges the graph it
   // stands in over every other row, or lets it back.
   'timeline/timeline_lane_graph.dart | '
@@ -77,7 +76,7 @@ const ledger = <String, Why>{
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-onion-\${layer.id}'":
       Why.aRow,
-  'widgets/fill_reference_button.dart | keyValue': Why.aRow,
+  'widgets/fill_reference_button.dart | name': Why.aRow,
   // A menu row's own trailing button.
   'widgets/panel_flyout.dart | action.keyValue': Why.aRow,
 

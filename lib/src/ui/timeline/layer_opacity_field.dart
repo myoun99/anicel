@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/named.dart';
 
 /// A layer row's opacity slider, live-following the session's drag preview
 /// when it targets this layer (the master bar sweep, UI-R6 #2).
@@ -23,15 +24,17 @@ Widget layerOpacityField({
   // 18 at 1×, and its digits' growth where it is shown ([FieldSlider
   // .growthIn], text-scale-rail-rows).
   Widget slider(double value) => Builder(
-    builder: (context) => FieldSlider.opacity(
-      key: ValueKey<String>('$keyPrefix-layer-opacity-${layer.id}'),
-      axis: axis,
-      value: value,
-      height: 18 + FieldSlider.growthIn(context),
-      onChanged: (opacity) => onChanged(layer.id, opacity),
-      onChangeEnd: onChangeEnd == null
-          ? null
-          : (opacity) => onChangeEnd(layer.id, opacity),
+    builder: (context) => Named(
+      '$keyPrefix-layer-opacity-${layer.id}',
+      child: FieldSlider.opacity(
+        axis: axis,
+        value: value,
+        height: 18 + FieldSlider.growthIn(context),
+        onChanged: (opacity) => onChanged(layer.id, opacity),
+        onChangeEnd: onChangeEnd == null
+            ? null
+            : (opacity) => onChangeEnd(layer.id, opacity),
+      ),
     ),
   );
 

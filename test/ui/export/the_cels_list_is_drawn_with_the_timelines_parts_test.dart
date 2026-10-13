@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// The export window's Cels list ([ExportCelsBoard], F-289) — drawn with
 /// the timeline's own parts.
@@ -265,8 +266,8 @@ void main() {
       );
     }
     expect(tester.widget<Text>(keyed('export-cels-name-a')).data, 'A_r');
-    expect(keyed('export-cels-layer-attach-arrow-a'), findsOneWidget);
-    expect(keyed('export-cels-layer-attach-arrow-b'), findsNothing);
+    expect(find.named('export-cels-layer-attach-arrow-a'), findsOneWidget);
+    expect(find.named('export-cels-layer-attach-arrow-b'), findsNothing);
   });
 
   // export-four-tabs (유저 2026-10-09): 「접기 펼치기 없이 한 행만 보이면되」.

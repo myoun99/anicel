@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// THE frame-axis window (zoom round): the row's laid-out box stops being
 /// `frames * cellWidth` so a zoom step re-lays-out one box per row instead of
@@ -131,7 +132,7 @@ void main() {
   }) {
     // The row's cell strip: its render object is inside the frame-axis box,
     // so its size IS what the box lays the row out at.
-    final finder = find.byKey(ValueKey<String>('$prefix-row-cells-$layerId'));
+    final finder = find.named('$prefix-row-cells-$layerId');
     return tester.renderObject<RenderBox>(finder);
   }
 

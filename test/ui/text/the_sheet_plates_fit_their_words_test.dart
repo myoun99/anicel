@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/words_cut_off.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨text-scale-sheet-plates (유저 2026-09-25, answering
 /// text-scale-sheet-plates-Q1: 「판은 그대로, 글자를 판에 맞춰 줄인다(레일과
@@ -65,7 +66,7 @@ void main() {
 
       final plate = find.descendant(
         of: find.byType(XSheetTimelineGrid),
-        matching: find.byKey(ValueKey<String>('xsheet-layer-take-$layerId')),
+        matching: find.named('xsheet-layer-take-$layerId'),
       );
       expect(plate, findsOneWidget, reason: 'LIVENESS — the sheet shows it');
       final take = find.descendant(of: plate, matching: find.text('T1'));
@@ -98,7 +99,7 @@ void main() {
 
       final plate = find.descendant(
         of: find.byType(XSheetTimelineGrid),
-        matching: find.byKey(ValueKey<String>('xsheet-layer-mark-$layerId')),
+        matching: find.named('xsheet-layer-mark-$layerId'),
       );
       expect(plate, findsOneWidget, reason: 'LIVENESS — the sheet shows it');
       final words = find.descendant(of: plate, matching: find.byType(Text));

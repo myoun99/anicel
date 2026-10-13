@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart'
     show AppIconButtonFace;
 
+import '../../helpers/named_finders.dart';
+
 /// **I-89 ③D — a header graph is enlarged over every other row.**
 ///
 /// The mock (5판): its tools' last button gives the panel to the graph —
@@ -101,7 +103,7 @@ void main() {
     await _tap(tester, _enlarge('timeline', _draw));
 
     final strip = tester.getRect(
-      find.byKey(ValueKey<String>('timeline-row-${_side.value}-position')),
+      find.named('timeline-row-${_side.value}-position'),
     );
     expect(strip.height, moreOrLessEquals(laneGraphFoldedExtent));
     final key = find.byKey(
@@ -338,15 +340,13 @@ Finder _graph(String grid, LayerId layer) =>
 Finder _enlarge(String grid, LayerId layer) =>
     find.byKey(ValueKey<String>('$grid-lane-graph-enlarge-${_group(layer)}'));
 
-Finder _graphButton(LayerId layer) => find.byKey(
-  ValueKey<String>('timeline-lane-group-graph-${layer.value}-$_transform'),
-);
+Finder _graphButton(LayerId layer) =>
+    find.named('timeline-lane-group-graph-${layer.value}-$_transform');
 
 Finder _label(String grid, LayerId layer, String lane) =>
     find.byKey(ValueKey<String>('$grid-lane-label-${layer.value}-$lane'));
 
-Finder _cells(LayerId layer) =>
-    find.byKey(ValueKey<String>('timeline-row-${layer.value}-cells'));
+Finder _cells(LayerId layer) => find.named('timeline-row-${layer.value}-cells');
 
 AppIconButtonFace _face(WidgetTester tester, LayerId layer) =>
     tester.widget<AppIconButtonFace>(_enlarge('timeline', layer));
@@ -423,9 +423,7 @@ Future<void> _openEverything(WidgetTester tester) async {
 /// start after — where every row above the enlarged graph stands in view,
 /// however thin it folds.
 Future<void> _tap(WidgetTester tester, Object button) async {
-  final finder = button is Finder
-      ? button
-      : find.byKey(ValueKey<String>(button as String));
+  final finder = button is Finder ? button : find.named(button as String);
   await _reach(tester, finder);
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();

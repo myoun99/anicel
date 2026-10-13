@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// THE LEGEND'S LANE TOGGLE EXPANDS EVERY LANE — MEASURED.
 ///
 /// The legend header carries one toggle for all lanes: expand every
@@ -13,16 +15,12 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 /// through the per-layer twirl, and none pressed the legend. So this
 /// presses it and counts the lane rows the rail then shows.
 void main() {
-  Finder laneRows() => find.byWidgetPredicate((widget) {
-    final key = widget.key;
-    if (key is! ValueKey<String>) {
-      return false;
-    }
-    final value = key.value;
-    return value.startsWith('timeline-rail-row-') &&
-        !value.endsWith('-row') &&
-        !value.contains('-folder-');
-  });
+  Finder laneRows() => find.namedWhere(
+    (name) =>
+        name.startsWith('timeline-rail-row-') &&
+        !name.endsWith('-row') &&
+        !name.contains('-folder-'),
+  );
 
   testWidgets('one press on the legend opens every lane in the rail', (
     tester,

@@ -692,7 +692,7 @@ class _StoryboardPanelEdges extends StatelessWidget {
   Widget build(BuildContext context) {
     final grips = _grips();
     return TimelineRowEditChromeLayer(
-      paintKey: ValueKey<String>('storyboard-edit-chrome-$scope'),
+      paintName: 'storyboard-edit-chrome-$scope',
       gripGround: paper,
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.

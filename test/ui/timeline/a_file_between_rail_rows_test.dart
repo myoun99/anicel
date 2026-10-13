@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨A FILE LET GO ON THE LAYER AREA IS A NEW LAYER AT THE GAP (유저
 /// 2026-09-11, 미디어 배치 라운드: 「레이어 영역(가로선) → 새 레이어」). While
 /// it hovers, the rail shows its OWN caret there — the line a moved row
@@ -217,7 +219,7 @@ void main() {
     // Just inside A's rail row: the nearest gap is its top edge, between B
     // above it and A.
     const a = LayerId('A');
-    final railRowA = find.byKey(ValueKey<String>('timeline-rail-row-$a-row'));
+    final railRowA = find.named('timeline-rail-row-$a-row');
     expect(railRowA, findsOneWidget);
     final at = tester.getTopLeft(railRowA) + const Offset(24, 3);
     final gesture = await tester.startGesture(
@@ -319,9 +321,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final railRowA = find.byKey(
-      ValueKey<String>('timeline-rail-row-${const LayerId('A')}-row'),
-    );
+    final railRowA = find.named('timeline-rail-row-${const LayerId('A')}-row');
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(dragSourceKey)),
     );

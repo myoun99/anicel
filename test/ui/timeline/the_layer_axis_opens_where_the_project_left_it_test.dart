@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/scrollable_of.dart';
 
 /// 🚨★★★**THE LAYER AXIS OPENS WHERE THE PROJECT LEFT IT** (F-267).
@@ -80,16 +81,9 @@ void main() {
   /// The rows the rail has built right now — the window, by name.
   Set<String> builtRows() => {
     for (final element in find
-        .byWidgetPredicate(
-          (widget) => switch (widget.key) {
-            ValueKey<String>(:final value) => value.startsWith(
-              'timeline-layer-name-',
-            ),
-            _ => false,
-          },
-        )
+        .namedWhere((name) => name.startsWith('timeline-layer-name-'))
         .evaluate())
-      (element.widget.key! as ValueKey<String>).value,
+      nameOf(element)!,
   };
 
   testWidgets('🚨the timeline\'s rows are born where the project left them — '
@@ -111,6 +105,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(kept.value, 400, reason: 'a scroll of the rows is kept');
     final window = builtRows();
+    expect(window, isNotEmpty, reason: 'LIVENESS: the window\'s rows stand');
     expect(
       window,
       isNot(contains('timeline-layer-name-draw-0')),

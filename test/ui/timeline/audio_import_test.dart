@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../flyout_test_helpers.dart';
+import '../../helpers/named_finders.dart';
 
 const _seLayerId = LayerId('audio-se');
 const _celLayerId = LayerId('audio-cel');
@@ -495,12 +496,10 @@ void main() {
     // Each empty stretch carries its own target — before the block on 2..5
     // and after it — and nothing covers the block.
     expect(
-      find.byKey(const ValueKey<String>('timeline-se-cell-drop-audio-se-0')),
+      find.named('timeline-se-cell-drop-audio-se-0'),
       findsOneWidget,
     );
-    final cells = find.byKey(
-      const ValueKey<String>('timeline-se-cell-drop-audio-se-6'),
-    );
+    final cells = find.named('timeline-se-cell-drop-audio-se-6');
     expect(cells, findsOneWidget);
     // Cell 8: two cells into the stretch after the block.
     final at = tester.getTopLeft(cells) + const Offset(2 * 48 + 24, 8);
@@ -784,9 +783,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final dropTarget = find.byKey(
-      ValueKey<String>('timeline-layer-asset-drop-${drawing.id}'),
-    );
+    final dropTarget = find.named('timeline-layer-asset-drop-${drawing.id}');
     expect(dropTarget, findsOneWidget);
     // A whole-row target is WIDER THAN THE SCREEN — it spans every frame of
     // the cut — so its centre is off the 800x600 test view and a drag sent

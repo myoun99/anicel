@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
+import '../helpers/named_finders.dart';
+
 void main() {
   tearDown(debugClearValueControlPointers);
 
@@ -41,7 +43,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-layer-fx-${_other.value}')),
+      find.named('storyboard-layer-fx-${_other.value}'),
     );
     await tester.pumpAndSettle();
 
@@ -61,7 +63,7 @@ void main() {
     final s = await _rail(tester);
 
     await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-layer-mute-${_other.value}')),
+      find.named('storyboard-layer-mute-${_other.value}'),
     );
     await tester.pumpAndSettle();
     expect(

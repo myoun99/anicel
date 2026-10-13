@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'app_tooltip.dart';
+import 'named.dart';
 
 /// What a rail glyph draws: a glyph of an icon font ([RailIconGlyph]), or a
 /// word set in type ([RailTextGlyph] — the fx switch's `fx`).
@@ -79,7 +80,7 @@ final class RailTextGlyph extends RailGlyph {
 class RailGlyphButton extends StatelessWidget {
   const RailGlyphButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.tooltip,
     required this.glyph,
     required this.onPressed,
@@ -90,9 +91,12 @@ class RailGlyphButton extends StatelessWidget {
     this.semanticLabel,
   });
 
-  /// Stable widget key (the tests' handle) — it lands on the
-  /// [RailGlyphFace], the box the user sees and presses.
-  final String keyValue;
+  /// What a finder calls the [RailGlyphFace], the box the user sees and
+  /// presses — the tests' handle, a [Named] and never a key: a rail row
+  /// shows one layer and then another in the same elements (I-57, 10-13),
+  /// and a key spelled from the layer remade every button of every row on
+  /// every cut switch.
+  final String name;
 
   /// Empty is no tooltip at all, as an [AppTooltip]'s empty message is.
   final String tooltip;
@@ -120,25 +124,27 @@ class RailGlyphButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ControlPressClaim(
     onPressed: onPressed,
-    child: RailGlyphFace(
-      key: ValueKey<String>(keyValue),
-      tooltip: tooltip,
-      glyph: glyph,
-      // 🚨A screen reader is not a pointer: its activation arrives as
-      // SemanticsAction.tap, which the claim never hears, so the node gets
-      // the REAL callback — as an [AppIconButton]'s does.
-      onSemanticTap: onPressed,
-      semanticLabel: semanticLabel,
-      isSelected: isSelected,
-      danger: danger,
-      outlined: outlined,
-      size: size,
+    child: Named(
+      name,
+      child: RailGlyphFace(
+        tooltip: tooltip,
+        glyph: glyph,
+        // 🚨A screen reader is not a pointer: its activation arrives as
+        // SemanticsAction.tap, which the claim never hears, so the node
+        // gets the REAL callback — as an [AppIconButton]'s does.
+        onSemanticTap: onPressed,
+        semanticLabel: semanticLabel,
+        isSelected: isSelected,
+        danger: danger,
+        outlined: outlined,
+        size: size,
+      ),
     ),
   );
 }
 
 /// The part of a [RailGlyphButton] you can see and hear, as one render
-/// object. Public because it is what [RailGlyphButton.keyValue] names.
+/// object. Public because it is what [RailGlyphButton.name] names.
 class RailGlyphFace extends LeafRenderObjectWidget {
   const RailGlyphFace({
     super.key,

@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
+import '../../helpers/named_finders.dart';
+
 /// **I-89 ③ — a header graph's handle is pulled by the hand.**
 ///
 /// The mock (5판): an ease's handle dragged bends its segment. The press is
@@ -325,12 +327,12 @@ ScrollPosition _scrollOf(WidgetTester tester, String key, Axis axis) => tester
 /// The drawing's lanes twirled open and its Transform graph with them, its
 /// Rotation stood on — the one lane the graph then draws.
 Future<void> _openTheGraph(WidgetTester tester, EditorSessionManager s) async {
-  await _tap(tester, 'timeline-lane-toggle-${_drawId.value}');
-  await _tap(
+  await _tapNamed(tester, 'timeline-lane-toggle-${_drawId.value}');
+  await _tapNamed(
     tester,
     'timeline-lane-group-toggle-draw-${transformGroupHeaderLane.laneId}',
   );
-  await _tap(
+  await _tapNamed(
     tester,
     'timeline-lane-group-graph-draw-${transformGroupHeaderLane.laneId}',
   );
@@ -340,6 +342,14 @@ Future<void> _openTheGraph(WidgetTester tester, EditorSessionManager s) async {
 
 Future<void> _tap(WidgetTester tester, String key) async {
   final button = find.byKey(ValueKey<String>(key));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapNamed(WidgetTester tester, String name) async {
+  final button = find.named(name);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);

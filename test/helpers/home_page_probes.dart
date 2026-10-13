@@ -22,6 +22,7 @@ import '../ui/timeline/timeline_row_chrome_probe.dart';
 import '../ui/flyout_test_helpers.dart'
     show flyoutOwnerByItemKey, readCommandEnabled;
 import 'app_icon_button_probe.dart';
+import 'named_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
@@ -49,11 +50,7 @@ Future<void> addLayer(WidgetTester tester) async {
 }
 
 Finder timelineLayerRows() {
-  return find.byWidgetPredicate((widget) {
-    final key = widget.key;
-    return key is ValueKey<String> &&
-        key.value.startsWith('timeline-layer-row-');
-  });
+  return find.namedWhere((name) => name.startsWith('timeline-layer-row-'));
 }
 
 Future<void> tapHomeTimelineCell(
@@ -246,10 +243,7 @@ Future<void> dragCutOnto(
 // probe — finder evaluation needs no tester, so these keep their
 // tester-less signatures.
 TimelineRowCellsPainter rowPainter(String layerId) {
-  final element = find
-      .byKey(ValueKey<String>('timeline-row-cells-$layerId'))
-      .evaluate()
-      .single;
+  final element = find.named('timeline-row-cells-$layerId').evaluate().single;
   return (element.widget as CustomPaint).painter! as TimelineRowCellsPainter;
 }
 
@@ -393,7 +387,7 @@ String statusText(WidgetTester tester, ValueKey<String> key) {
 void expectActiveLayerName(String name) {
   expect(
     find.descendant(
-      of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      of: find.named('timeline-selected-layer'),
       matching: find.text(name),
     ),
     findsOneWidget,
@@ -418,12 +412,8 @@ String? selectedCellStateLabel(WidgetTester tester) {
   final ringTopLeft = tester.getTopLeft(
     find.byKey(const ValueKey<String>('timeline-selected-cell')),
   );
-  final paintedRows = find.byWidgetPredicate(
-    (widget) =>
-        widget.key is ValueKey<String> &&
-        (widget.key! as ValueKey<String>).value.startsWith(
-          'timeline-row-cells-',
-        ),
+  final paintedRows = find.namedWhere(
+    (name) => name.startsWith('timeline-row-cells-'),
   );
   for (final element in paintedRows.evaluate()) {
     final painter =
@@ -514,9 +504,7 @@ Future<void> dragBlockEndGrip(
   // away from the exact boundary. Sizing the second move alone is what
   // this helper used to do, and it silently grew every fixture by one
   // extra frame the moment the slop stopped being discarded.
-  await tester.ensureVisible(
-    find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
-  );
+  await tester.ensureVisible(find.named('timeline-layer-row-$layerId'));
   await tester.pumpAndSettle();
   final gesture = await tester.startGesture(
     timelineRowChromeCenter(
@@ -537,9 +525,7 @@ bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) =>
     tester.iconButtonIn(button).onPressed != null;
 
 IconData layerKindIcon(WidgetTester tester, String layerId) => tester
-    .appIconButton(
-      find.byKey(ValueKey<String>('timeline-layer-type-button-$layerId')),
-    )
+    .appIconButton(find.named('timeline-layer-type-button-$layerId'))
     .icon!;
 
 Future<void> expectCutOrder(WidgetTester tester, List<String> cutIds) async {

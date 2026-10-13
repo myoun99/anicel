@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// F-132 — a rail row's label is pressed without ink, on every rail.
 ///
 /// 유저 2026-09-14: 「x시트 레이어라벨만 클릭했을때 흰색으로 채워지는
@@ -35,26 +37,23 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// now ([ArenaTapHold]). So it reads that each body IS that: no theme can
 /// lend a splash to what has no ink.
 void main() {
-  List<Widget> labelBodies(
-    WidgetTester tester,
-    bool Function(String key) isLabel,
-  ) => tester
-      .widgetList(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget.key is ValueKey<String> &&
-              isLabel((widget.key! as ValueKey<String>).value),
-        ),
-      )
-      .toList();
+  Finder labelBodies(bool Function(String key) isLabel) =>
+      find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            isLabel((widget.key! as ValueKey<String>).value),
+      );
 
-  void expectInkless(WidgetTester tester, List<Widget> labels) {
-    expect(labels, isNotEmpty, reason: 'fixture: the rail draws labels');
-    for (final label in labels) {
+  void expectInkless(Finder labels) {
+    final found = labels.evaluate().toList();
+    expect(found, isNotEmpty, reason: 'fixture: the rail draws labels');
+    for (final label in found) {
       expect(
-        label,
+        label.widget,
         isA<ArenaTapHold>(),
-        reason: '${label.key}: the body holds its tap with no ink to spread',
+        reason:
+            '${nameOf(label) ?? label.widget.key}: the body holds its tap '
+            'with no ink to spread',
       );
     }
   }
@@ -85,8 +84,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
-      tester,
-      labelBodies(tester, (key) => key.startsWith('timeline-layer-row-')),
+      find.namedWhere((name) => name.startsWith('timeline-layer-row-')),
     );
 
     // Drain the prerender scheduler's debounced warming.
@@ -124,9 +122,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
-      tester,
       labelBodies(
-        tester,
         (key) =>
             key.startsWith('storyboard-track-select-') ||
             key.startsWith('storyboard-se-label-'),

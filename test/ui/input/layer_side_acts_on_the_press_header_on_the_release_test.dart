@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨★★★THE RULE, PINNED ON REAL WIDGETS (유저 확정 2026-08-30):
 ///
 /// > 「**레이어 쪽 버튼은 탭다운, 헤더쪽은 손떼면**으로 충분할거같은데
@@ -71,7 +73,7 @@ void main() {
     final before = session.onionSkin.isLayerOnionSkinEnabled(layerId);
     final gesture = await tester.startGesture(
       tester.getCenter(
-        find.byKey(ValueKey<String>('xsheet-layer-onion-$layerId')),
+        find.named('xsheet-layer-onion-$layerId'),
       ),
     );
     await tester.pump();
@@ -151,16 +153,14 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final layerId = session.activeLayerId!;
-    final laneToggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-$layerId'),
-    );
+    final laneToggle = find.named('timeline-lane-toggle-$layerId');
     await tester.ensureVisible(laneToggle);
     await tester.pumpAndSettle();
     await tester.tap(laneToggle);
     await tester.pumpAndSettle();
 
-    final twirl = find.byKey(
-      ValueKey<String>('timeline-lane-group-toggle-$layerId-transform-group'),
+    final twirl = find.named(
+      'timeline-lane-group-toggle-$layerId-transform-group',
     );
     expect(
       twirl,

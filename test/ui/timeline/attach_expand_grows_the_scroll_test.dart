@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-47 — **어태치를 펼치면 스크롤도 같이 자란다.**
 ///
 /// > 「스크롤이 젤 밑에있을때 어태치 레이어가 있는 레이어를 펼치고 다시 아래로
@@ -131,7 +133,7 @@ layers: layers,
     state.position.jumpTo(state.position.maxScrollExtent);
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-A')),
+      find.named('timeline-layer-row-A'),
       findsOneWidget,
       reason: '⛔바닥에서 A 가 원래 보여야 한다 — 아니면 빈 것을 쟀다',
     );
@@ -148,7 +150,7 @@ layers: layers,
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-A')),
+      find.named('timeline-layer-row-A'),
       findsOneWidget,
       reason:
           '유저: 「그 밑에있던 레이어가 **사라짐. 클릭도안됨**」 — 안 지어진 행은 '
@@ -206,13 +208,13 @@ layers: layers,
     scrollable().position.jumpTo(scrollable().position.maxScrollExtent);
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-A')),
+      find.named('timeline-layer-row-A'),
       findsOneWidget,
       reason: '⛔바닥에서 A 가 원래 보인다 — 아니면 빈 것을 쟀다',
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-attach-twirl-B')),
+      find.named('timeline-attach-twirl-B'),
     );
     await tester.pumpAndSettle();
 
@@ -220,7 +222,7 @@ layers: layers,
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-A')),
+      find.named('timeline-layer-row-A'),
       findsOneWidget,
       reason: '유저: 「그 밑에있던 레이어가 사라짐. 클릭도안됨」',
     );

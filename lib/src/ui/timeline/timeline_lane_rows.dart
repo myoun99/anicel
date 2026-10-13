@@ -747,7 +747,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget _groupTwirl() {
     final onToggleGroup = widget.onToggleLaneGroup;
     return LayerFoldTwirl(
-      keyValue: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+      name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
       axis: widget.axis,
       expanded: lane.groupExpanded,
       across: 16,
@@ -792,7 +792,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (verbs == null || key == null) return null;
     return LaneGraphToggle(
       kind: LaneGraphToggleKind.graph,
-      keyValue: '$_keyPrefix-lane-group-graph-${layer.id}-${lane.laneId}',
+      name: '$_keyPrefix-lane-group-graph-${layer.id}-${lane.laneId}',
       axis: widget.axis,
       on: widget.laneGraphs.open.containsKey(key),
       onToggle: () => verbs.toggle(key),
@@ -806,7 +806,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final onReset = widget.onResetLaneGroup;
     if (onReset == null) return null;
     return RailGlyphButton(
-      keyValue: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
+      name: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
       onPressed: () => onReset(layer, lane),
@@ -823,7 +823,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final onToggle = widget.onToggleLaneGroupEnabled;
     return RailSwipeColumnPointer(
       child: RailGlyphButton(
-        keyValue: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
+        name: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
         tooltip:
             (enabled
                     ? AppText.strings.tlBypassLaneTemplate
@@ -1061,7 +1061,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     }
     return LaneGraphToggle(
       kind: LaneGraphToggleKind.pin,
-      keyValue: '$_keyPrefix-lane-pin-${layer.id}-${lane.laneId}',
+      name: '$_keyPrefix-lane-pin-${layer.id}-${lane.laneId}',
       axis: widget.axis,
       on: widget.laneGraphs.pinned.contains(key),
       onToggle: () => verbs.togglePin(key),

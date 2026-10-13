@@ -3221,7 +3221,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                     ? null
                     : RailSwipeColumnPointer(
                         child: LayerFoldTwirl(
-                          keyValue:
+                          name:
                               'storyboard-se-lane-toggle-'
                               '${track.id.value}-${slot + 1}',
                           expanded: laneExpanded,
@@ -3288,7 +3288,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                         layerKindShowsFxToggle(layer.kind)
                     ? RailSwipeColumnPointer(
                         child: FxToggleButton(
-                          keyValue: 'storyboard-layer-fx-${layer.id}',
+                          name: 'storyboard-layer-fx-${layer.id}',
                           state:
                               layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
                           onToggle: () => onToggleLayerFx!(layer.id),
@@ -3298,7 +3298,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                 visibility: layer != null && onToggleLayerVisibility != null
                     ? RailSwipeColumnPointer(
                         child: LayerVisibilityToggleButton(
-                          keyValue: 'storyboard-layer-visibility-${layer.id}',
+                          name: 'storyboard-layer-visibility-${layer.id}',
                           isVisible: layer.isVisible,
                           onToggle: () => onToggleLayerVisibility!(layer.id),
                         ),
@@ -3308,7 +3308,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                     ? SizedBox(
                         height: 26,
                         child: LayerMuteToggleButton(
-                          keyValue: 'storyboard-layer-mute-${layer.id}',
+                          name: 'storyboard-layer-mute-${layer.id}',
                           muted: layer.muted,
                           soloed: isLayerSoloed?.call(layer.id) ?? false,
                           onOpenMixer: (anchorContext) =>
@@ -3488,7 +3488,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
                     ? null
                     : RailSwipeColumnPointer(
                         child: LayerVisibilityToggleButton(
-                          keyValue: 'storyboard-layer-visibility-${layer.id}',
+                          name: 'storyboard-layer-visibility-${layer.id}',
                           isVisible: layer.isVisible,
                           onToggle: () => onToggleVisibility(layer.id),
                         ),
@@ -4732,7 +4732,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     ? null
                     : RailSwipeColumnPointer(
                         child: LayerFoldTwirl(
-                          keyValue:
+                          name:
                               'storyboard-track-lane-toggle-${track.id.value}',
                           expanded: laneExpanded,
                           tooltip: layerLaneTwirlTooltip(
@@ -4805,7 +4805,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     ? null
                     : RailSwipeColumnPointer(
                         child: FxToggleButton(
-                          keyValue: 'storyboard-track-fx-${track.id.value}',
+                          name: 'storyboard-track-fx-${track.id.value}',
                           subject: RailSubject.track,
                           state: trackFxState,
                           onToggle: onToggleTrackFx!,
@@ -5047,9 +5047,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       'storyboard-plate-edit-chrome-slot-${track.id.value}',
     ),
     child: TimelineRowEditChromeLayer(
-      paintKey: ValueKey<String>(
-        'storyboard-plate-edit-chrome-${track.id.value}',
-      ),
+      paintName: 'storyboard-plate-edit-chrome-${track.id.value}',
       // What the triangles stand on: the plate, and over it the block's
       // label bands and pictures, each in its own ink (유저 2026-09-26:
       // 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 가능하지?」). ↩️One

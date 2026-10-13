@@ -13,6 +13,7 @@ import '../../models/layer_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
+import '../widgets/named.dart';
 import 'lane_graph.dart' show LaneGraphVerbs;
 import 'lane_graph_toggle.dart';
 import 'layer_label_controls.dart';
@@ -463,31 +464,40 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// identical reason. No hover glow on the ROW surface (UI-R24 #6):
   /// selection speaks through the background alone; only the buttons may
   /// brighten.
-  Widget _surface(BuildContext context, ColorScheme colorScheme) => ArenaTapHold(
-    key: ValueKey<String>(_rowKey),
-    child: Container(
-      width: _width,
-      height: _height,
-      padding: _padding,
-      decoration: _plate(colorScheme),
-      child: Semantics(
-        key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
-        label: active ? 'selected layer' : 'layer',
-        container: true,
-        explicitChildNodes: true,
-        // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
-        // shared skeleton in the shared order at the shared extents,
-        // running downward: the same list the rail's rows and the
-        // legend above read.
-        child: Flex(
-          direction: axis,
-          crossAxisAlignment: _crossAxisAlignment,
-          children: [
-            ..._leadingCells(),
-            ?_depthGuides(colorScheme),
-            _nameArea(context, colorScheme),
-            ..._trailingCells(colorScheme),
-          ],
+  ///
+  /// 🚨NAMES, NOT KEYS (I-57, 10-13): the row's handles are [Named]s. A
+  /// key spelled from the layer made a cut switch remount the row, and the
+  /// selected row's key — there while the row was active, gone when it was
+  /// not — remade the row's whole content whenever the selection moved.
+  Widget _surface(BuildContext context, ColorScheme colorScheme) => Named(
+    _rowName,
+    child: ArenaTapHold(
+      child: Container(
+        width: _width,
+        height: _height,
+        padding: _padding,
+        decoration: _plate(colorScheme),
+        child: Named(
+          active ? '$keyPrefix-selected-layer' : null,
+          child: Semantics(
+            label: active ? 'selected layer' : 'layer',
+            container: true,
+            explicitChildNodes: true,
+            // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
+            // shared skeleton in the shared order at the shared extents,
+            // running downward: the same list the rail's rows and the
+            // legend above read.
+            child: Flex(
+              direction: axis,
+              crossAxisAlignment: _crossAxisAlignment,
+              children: [
+                ..._leadingCells(),
+                ?_depthGuides(colorScheme),
+                _nameArea(context, colorScheme),
+                ..._trailingCells(colorScheme),
+              ],
+            ),
+          ),
         ),
       ),
     ),
@@ -495,7 +505,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.
-  String get _rowKey =>
+  String get _rowName =>
       '$keyPrefix-${layer.kind.groupsLayers ? 'folder' : 'layer'}'
       '-row-${layer.id}';
 
@@ -603,7 +613,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (!hasLanes || onToggleLanes == null) return null;
     return RailSwipeColumnPointer(
       child: LayerFoldTwirl(
-        keyValue: '$keyPrefix-lane-toggle-${layer.id}',
+        name: '$keyPrefix-lane-toggle-${layer.id}',
         axis: axis,
         expanded: lanesExpanded,
         tooltip: layerLaneTwirlTooltip(expanded: lanesExpanded),
@@ -695,8 +705,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// ends the name as a header's does. ↩️The link trailed the name's
   /// letters, wherever a name happened to end.
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
-    child: KeyedSubtree(
-      key: ValueKey<String>('$keyPrefix-layer-name-${layer.id}'),
+    child: Named(
+      '$keyPrefix-layer-name-${layer.id}',
       child: Flex(
         direction: axis,
         children: [
@@ -747,7 +757,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4),
       child: Builder(
         builder: (context) => RailGlyphButton(
-          keyValue: '$keyPrefix-layer-link-badge-${layer.id}',
+          name: '$keyPrefix-layer-link-badge-${layer.id}',
           tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
           size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
           // The link reads in the accent whatever the button's own rest
@@ -769,7 +779,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return LayerReferenceButton(
-      keyValue: '$keyPrefix-layer-reference-${layer.id}',
+      name: '$keyPrefix-layer-reference-${layer.id}',
       isSourceShort: isReferenceSourceShort,
       onOpen: (anchorContext) => onOpen(anchorContext, layer.id),
     );
@@ -784,7 +794,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return CameraPathButton(
-      keyValue: '$keyPrefix-layer-camera-path-${layer.id}',
+      name: '$keyPrefix-layer-camera-path-${layer.id}',
       onOpen: onOpen,
     );
   }
@@ -797,7 +807,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (verbs == null || key == null) return null;
     return LaneGraphToggle(
       kind: LaneGraphToggleKind.graph,
-      keyValue: '$keyPrefix-layer-graph-${layer.id}',
+      name: '$keyPrefix-layer-graph-${layer.id}',
       axis: axis,
       on: graphOpen,
       onToggle: () => verbs.toggle(key),
@@ -813,7 +823,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (!hasGroupFold || onToggleGroupFold == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
     return LayerFoldTwirl(
-      keyValue: '$keyPrefix-$kind-twirl-${layer.id}',
+      name: '$keyPrefix-$kind-twirl-${layer.id}',
       axis: axis,
       expanded: groupFoldExpanded,
       onToggle: () => onToggleGroupFold!(layer.id),
@@ -849,7 +859,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       axis,
       26,
       child: FillReferenceButton(
-        keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
+        name: '$keyPrefix-layer-fill-reference-${layer.id}',
         isOn: layer.isFillReference,
         size: railSlotBox(
           axis,
@@ -879,7 +889,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     }
     return RailSwipeColumnPointer(
       child: FxToggleButton(
-        keyValue: '$keyPrefix-layer-fx-${layer.id}',
+        name: '$keyPrefix-layer-fx-${layer.id}',
         state: fxState,
         onToggle: () => onToggle(layer.id),
       ),
@@ -900,7 +910,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       26,
       child: RailSwipeColumnPointer(
         child: RailGlyphButton(
-          keyValue: '$keyPrefix-layer-onion-${layer.id}',
+          name: '$keyPrefix-layer-onion-${layer.id}',
           tooltip: onionSkinEnabled
               ? AppText.strings.railOnionSkinOn
               : AppText.strings.railOnionSkin,
@@ -929,7 +939,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     child: RailEyeBuilder(
       layer: layer,
       builder: (context, eye) => LayerVisibilityToggleButton(
-        keyValue: '$keyPrefix-layer-visibility-${layer.id}',
+        name: '$keyPrefix-layer-visibility-${layer.id}',
         isVisible: eye.on,
         hiddenAbove: eye.hiddenAbove,
         onToggle: () => onToggleLayerVisibility(layer.id),
@@ -948,7 +958,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       axis,
       26,
       child: LayerMuteToggleButton(
-        keyValue: '$keyPrefix-layer-mute-${layer.id}',
+        name: '$keyPrefix-layer-mute-${layer.id}',
         muted: layer.muted,
         soloed: isLayerSoloed,
         width: _horizontal ? layerMuteSlotWidth : 26,
@@ -980,7 +990,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final isGroup = layer.kind.groupsLayers;
     return LayerBlendModeChip(
       axis: axis,
-      keyValue: '$keyPrefix-layer-blend-${layer.id}',
+      name: '$keyPrefix-layer-blend-${layer.id}',
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,

@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// THE edit-drag performance invariant (W1): an edge-drag step travels the
 /// scoped [dragPreview] channel only — it rebuilds the dragged layer's row
 /// gate (and the cursor overlay), never the other rows, the grid, or the
@@ -92,9 +94,7 @@ void main() {
         ),
       );
 
-      final rowB = find.byKey(
-        const ValueKey<String>('timeline-row-cells-layer-b'),
-      );
+      final rowB = find.named('timeline-row-cells-layer-b');
       final rowBBefore = tester.widget(rowB);
       // Base: block [0,2) — frame 2 is an empty X cell.
       expect(timelineCellModel(tester, 'layer-a', 2).glyph, 'X');
@@ -158,9 +158,7 @@ void main() {
         ),
       );
 
-      final columnB = find.byKey(
-        const ValueKey<String>('xsheet-row-cells-layer-b'),
-      );
+      final columnB = find.named('xsheet-row-cells-layer-b');
       final columnBBefore = tester.widget(columnB);
       expect(
         timelineCellModel(tester, 'layer-a', 2, prefix: 'xsheet').glyph,
@@ -314,12 +312,8 @@ void main() {
         gridHarness(layers: layers, cursor: cursor, height: 300),
       );
 
-      final nearCell = find.byKey(
-        const ValueKey<String>('timeline-row-cells-layer-0'),
-      );
-      final farCell = find.byKey(
-        const ValueKey<String>('timeline-row-cells-layer-38'),
-      );
+      final nearCell = find.named('timeline-row-cells-layer-0');
+      final farCell = find.named('timeline-row-cells-layer-38');
       expect(nearCell, findsOneWidget);
       expect(
         farCell,
@@ -382,12 +376,8 @@ void main() {
         ),
       );
 
-      final rowA = find.byKey(
-        const ValueKey<String>('timeline-row-cells-layer-a'),
-      );
-      final rowB = find.byKey(
-        const ValueKey<String>('timeline-row-cells-layer-b'),
-      );
+      final rowA = find.named('timeline-row-cells-layer-a');
+      final rowB = find.named('timeline-row-cells-layer-b');
       final rowABefore = tester.widget(rowA);
       final rowBBefore = tester.widget(rowB);
 

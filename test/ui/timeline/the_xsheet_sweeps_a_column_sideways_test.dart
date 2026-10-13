@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨★★★THE X-SHEET SWEEPS A COLUMN TOO — SIDEWAYS.
 ///
 /// 유저 2026-08-29: 「그건 **버튼이면 다 가능**하도록」·「**로직적으로 다른
@@ -74,7 +76,7 @@ void main() {
   }
 
   Finder eyeOf(String id) =>
-      find.byKey(ValueKey<String>('xsheet-layer-visibility-$id'));
+      find.named('xsheet-layer-visibility-$id');
 
   List<bool> visibilityOf(Map<LayerId, bool> visible) => [
     for (final l in layers) visible[l.id]!,
@@ -132,7 +134,7 @@ void main() {
     final visible = await pumpSheet(tester);
     final eye = tester.getRect(eyeOf('draw-0'));
     final header = tester.getRect(
-      find.byKey(const ValueKey<String>('xsheet-layer-row-draw-0')),
+      find.named('xsheet-layer-row-draw-0'),
     );
     final from = Offset(eye.center.dx, header.top + 8);
     expect(

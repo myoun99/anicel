@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 import '../storyboard_cut_block_probe.dart';
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🗣️F-228 (유저 2026-09-29): 「디렉션레이어나 트랜지션레이어만 코마텍스트가
 /// 없는데, 블록이라면 전부 코마텍스트가 존재해야함. 통일해서 적용」.
@@ -57,7 +58,7 @@ void main() {
     );
     return tester
             .widget<CustomPaint>(
-              find.byKey(ValueKey<String>('timeline-row-cells-${layer.id}')),
+              find.named('timeline-row-cells-${layer.id}'),
             )
             .foregroundPainter
         as TimelineRowRunLabelsPainter?;

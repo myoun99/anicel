@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// **I-89 ③ — a header graph turns from its own button, and from no other.**
 ///
@@ -77,7 +78,7 @@ void main() {
   ) async {
     final s = await _pump(tester);
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-graph-draw')),
+      find.named('timeline-layer-graph-draw'),
       findsNothing,
     );
 
@@ -95,10 +96,11 @@ void main() {
 
     Rect rectOf(String key) =>
         tester.getRect(find.byKey(ValueKey<String>(key)));
-    final cameraRow = rectOf('timeline-layer-row-cam');
-    final cameraName = rectOf('timeline-layer-name-cam');
-    final camera = rectOf('timeline-layer-graph-cam');
-    final header = rectOf(_headerGraph('timeline', _transform));
+    Rect rectNamed(String name) => tester.getRect(find.named(name));
+    final cameraRow = rectNamed('timeline-layer-row-cam');
+    final cameraName = rectNamed('timeline-layer-name-cam');
+    final camera = rectNamed('timeline-layer-graph-cam');
+    final header = rectNamed(_headerGraph('timeline', _transform));
 
     // 유저 2026-10-12: 「추가로 공간 만드는게아니라 이름공간을 줄여서
     // 오른쪽정렬로」 — out of the name, at its end. [twirl][name][graph]
@@ -118,7 +120,7 @@ void main() {
           'folds (F-29)',
     );
     expect(
-      rectOf('timeline-layer-camera-path-cam').right,
+      rectNamed('timeline-layer-camera-path-cam').right,
       moreOrLessEquals(camera.left, epsilon: 0.5),
     );
     expect(
@@ -139,10 +141,8 @@ void main() {
     final s = await _pump(tester);
     await _openLanes(tester, _drawId);
     await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
-    final from = find.byKey(
-      ValueKey<String>(_headerGraph('timeline', _transform)),
-    );
-    final to = find.byKey(ValueKey<String>(_headerGraph('timeline', _blur)));
+    final from = find.named(_headerGraph('timeline', _transform));
+    final to = find.named(_headerGraph('timeline', _blur));
     final rowHeight = tester
         .getRect(
           find.byKey(
@@ -185,11 +185,9 @@ void main() {
     // camera's group opens above it.
     final s = await _pump(tester, blur: false, height: 1600);
     await _openLanes(tester, _drawId);
-    final header = find.byKey(
-      ValueKey<String>(_headerGraph('timeline', _transform)),
-    );
+    final header = find.named(_headerGraph('timeline', _transform));
     final rowHeight = tester
-        .getRect(find.byKey(const ValueKey<String>('timeline-layer-row-cam')))
+        .getRect(find.named('timeline-layer-row-cam'))
         .height;
 
     /// From [across] on the camera row DOWN to the Transform header, a row
@@ -198,7 +196,7 @@ void main() {
     /// and every row under it moves.
     Future<void> sweepFrom(double Function(Rect button) across) async {
       final button = tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-layer-graph-cam')),
+        find.named('timeline-layer-graph-cam'),
       );
       expect(
         button.center.dy,
@@ -360,8 +358,8 @@ Future<EditorSessionManager> _pump(
 Future<void> _openLanes(WidgetTester tester, LayerId id) =>
     _tap(tester, 'timeline-lane-toggle-${id.value}');
 
-Future<void> _tap(WidgetTester tester, String key) async {
-  final button = find.byKey(ValueKey<String>(key));
+Future<void> _tap(WidgetTester tester, String name) async {
+  final button = find.named(name);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
@@ -371,5 +369,5 @@ Future<void> _tap(WidgetTester tester, String key) async {
 List<String> _graphs(EditorSessionManager s) =>
     s.railView.laneGraphs.value.open.keys.toList();
 
-bool _isOn(WidgetTester tester, String key) =>
-    tester.appIconButton(find.byKey(ValueKey<String>(key))).isSelected;
+bool _isOn(WidgetTester tester, String name) =>
+    tester.appIconButton(find.named(name)).isSelected;

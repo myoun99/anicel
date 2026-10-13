@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
+import '../helpers/named_finders.dart';
+
 Cut _cut(String id, int duration) {
   return Cut(
     id: CutId(id),
@@ -153,7 +155,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
       reason: 'the cut is still active, so its rail has a selected row',
     );

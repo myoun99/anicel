@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-26 — **x시트 선택 밴드는 헤더 밖으로 나가지 않는다.**
 ///
 /// > 「x시트만 … 지금 스샷보면 **위에 삐져나와서 x버튼을 덮고있었음. 훨씬
@@ -72,7 +74,7 @@ void main() {
     expect(band, findsWidgets, reason: '⛔밴드를 못 찾았다 — 빈 것을 쟀다');
 
     final header = tester.getRect(
-      find.byKey(const ValueKey<String>('xsheet-layer-row-B')),
+      find.named('xsheet-layer-row-B'),
     );
     final bandRect = tester.getRect(band.first);
 

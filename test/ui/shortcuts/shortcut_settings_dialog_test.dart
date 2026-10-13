@@ -20,6 +20,8 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
+import '../../helpers/named_finders.dart';
+
 void main() {
   Future<EditorShortcutBindings> pump(WidgetTester tester) async {
     final bindings = EditorShortcutBindings();
@@ -70,7 +72,7 @@ void main() {
   ];
   final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
   Finder twirlOf(ShortcutShelf shelf) =>
-      find.byKey(ValueKey<String>('shortcut-bundle-shelf-${shelf.name}'));
+      find.named('shortcut-bundle-shelf-${shelf.name}');
   ShortcutShelf shelfOf(EditorShortcutBindings bindings, String id) =>
       bindings.definitions.singleWhere((row) => row.id == id).shelf;
 
@@ -129,7 +131,7 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is LayerFoldTwirl &&
-                widget.keyValue == 'shortcut-bundle-shelf-${shelf.name}',
+                widget.name == 'shortcut-bundle-shelf-${shelf.name}',
           ),
         )
         .expanded;
@@ -306,7 +308,7 @@ void main() {
               find.byWidgetPredicate(
                 (widget) =>
                     widget is LayerFoldTwirl &&
-                    widget.keyValue == 'shortcut-bundle-shelf-${place.name}',
+                    widget.name == 'shortcut-bundle-shelf-${place.name}',
               ),
             )
             .onToggle,

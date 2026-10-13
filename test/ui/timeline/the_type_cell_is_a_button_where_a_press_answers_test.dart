@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// A row's TYPE CELL (UI-R24 #7) in its two forms since I-57 ①: where a
 /// press answers (the timeline's rows, the storyboard's), it is the rail's
@@ -22,9 +23,7 @@ void main() {
     ),
   );
 
-  final cell = find.byKey(
-    const ValueKey<String>('timeline-layer-type-button-l1'),
-  );
+  final cell = find.named('timeline-layer-type-button-l1');
 
   testWidgets('where a press answers, the cell is the rail\'s button: one '
       'press, the kind\'s glyph, the kind\'s name', (tester) async {

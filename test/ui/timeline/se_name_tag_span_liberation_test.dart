@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨C3 (2026-08-17): the SE row's NAME-TAG fx lanes obey the SAME range
 /// laws as the transform lanes — the span across member rows is the group's
 /// own display order ([seNameTagLaneSpan], the "complete twin of
@@ -98,17 +100,13 @@ void main() {
   }
 
   Future<void> openNameTagLanes(WidgetTester tester) async {
-    final laneToggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-${seLayerId.value}'),
-    );
+    final laneToggle = find.named('timeline-lane-toggle-${seLayerId.value}');
     await tester.ensureVisible(laneToggle);
     await tester.pumpAndSettle();
     await tester.tap(laneToggle);
     await tester.pumpAndSettle();
-    final groupToggle = find.byKey(
-      ValueKey<String>(
-        'timeline-lane-group-toggle-${seLayerId.value}-$seNameTagGroupLaneId',
-      ),
+    final groupToggle = find.named(
+      'timeline-lane-group-toggle-${seLayerId.value}-$seNameTagGroupLaneId',
     );
     await tester.ensureVisible(groupToggle);
     await tester.pumpAndSettle();
@@ -308,8 +306,8 @@ void main() {
       await openNameTagLanes(tester);
       const rowHeight = timelineLayerRowHeight;
 
-      final gestureLayer = find.byKey(
-        ValueKey<String>('timeline-range-gesture-${seLayerId.value}'),
+      final gestureLayer = find.named(
+        'timeline-range-gesture-${seLayerId.value}',
       );
       final start =
           tester.getTopLeft(gestureLayer) + const Offset(2.5 * 24, rowHeight / 2);

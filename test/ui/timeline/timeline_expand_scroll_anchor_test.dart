@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 import '../../helpers/scrollable_of.dart';
+import '../../helpers/named_finders.dart';
 
 /// UI-R5 #3: expanding an attach group must not SCROLL the timeline.
 ///
@@ -88,7 +89,7 @@ void main() {
 
   Future<void> tapTwirl(WidgetTester tester) async {
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-attach-twirl-base')),
+      find.named('timeline-attach-twirl-base'),
     );
     await tester.pumpAndSettle();
   }

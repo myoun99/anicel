@@ -46,6 +46,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// A straight key that holds from there on — AE's Toggle Hold Keyframe.
 const _heldOut = SidesKeyMark(
@@ -54,7 +55,7 @@ const _heldOut = SidesKeyMark(
 );
 
 const _cameraLayerId = LayerId('lane-cam-layer');
-const _laneToggleKey = ValueKey<String>('timeline-lane-toggle-lane-cam-layer');
+const _laneToggleName = 'timeline-lane-toggle-lane-cam-layer';
 
 Project _project({CutCamera? camera}) {
   return Project(
@@ -135,8 +136,8 @@ Future<void> _expandTransformGroup(
   String layerId, {
   String keyPrefix = 'timeline',
 }) async {
-  final toggle = find.byKey(
-    ValueKey<String>('$keyPrefix-lane-group-toggle-$layerId-transform-group'),
+  final toggle = find.named(
+    '$keyPrefix-lane-group-toggle-$layerId-transform-group',
   );
   if (toggle.evaluate().isEmpty) {
     return;
@@ -358,10 +359,10 @@ void main() {
       );
 
       // Collapsed by default: chevron present, lanes hidden.
-      expect(find.byKey(_laneToggleKey), findsOneWidget);
+      expect(find.named(_laneToggleName), findsOneWidget);
       expect(_laneLabel('position'), findsNothing);
 
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
 
       // ㉙ (유저 2026-08-12): the camera row has NO Transform group header —
@@ -396,7 +397,7 @@ void main() {
 
       // ㉙: no header to collapse here, so the ROW's twirl is the only fold —
       // and it takes every lane with it.
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       expect(_laneLabel('position'), findsNothing);
       expect(_laneLabel('scale'), findsNothing);
@@ -420,7 +421,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-cam-layer');
 
@@ -432,18 +433,14 @@ void main() {
     testWidgets('a lane group\'s twirl keeps the box its glyph had — the one '
         'twirl, as small as the header is', (tester) async {
       await _pump(tester, _project());
-      final rowTwirl = find.byKey(
-        const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-      );
+      final rowTwirl = find.named('timeline-lane-toggle-lane-draw-layer');
       await tester.ensureVisible(rowTwirl);
       await tester.pumpAndSettle();
       await tester.tap(rowTwirl);
       await tester.pumpAndSettle();
 
-      final groupTwirl = find.byKey(
-        const ValueKey<String>(
-          'timeline-lane-group-toggle-lane-draw-layer-transform-group',
-        ),
+      final groupTwirl = find.named(
+        'timeline-lane-group-toggle-lane-draw-layer-transform-group',
       );
       expect(groupTwirl, findsOneWidget, reason: 'fixture premise');
       expect(
@@ -485,9 +482,7 @@ void main() {
           .firstWhere((layer) => layer.id == const LayerId('lane-draw-layer'));
 
       // The drawing layer carries the twirl-down chevron now.
-      final toggle = find.byKey(
-        const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-      );
+      final toggle = find.named('timeline-lane-toggle-lane-draw-layer');
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
@@ -533,10 +528,10 @@ void main() {
     ) async {
       await _pump(tester, _project());
       for (final twirl in const [
-        ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-        _laneToggleKey,
+        'timeline-lane-toggle-lane-draw-layer',
+        _laneToggleName,
       ]) {
-        await tester.tap(find.byKey(twirl));
+        await tester.tap(find.named(twirl));
         await tester.pumpAndSettle();
       }
       await _expandTransformGroup(tester, 'lane-draw-layer');
@@ -705,9 +700,7 @@ void main() {
           .firstWhere((layer) => layer.id == seLayerId);
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('timeline-lane-toggle-lane-se-layer'),
-        ),
+        find.named('timeline-lane-toggle-lane-se-layer'),
       );
       await tester.pumpAndSettle();
 
@@ -816,9 +809,7 @@ void main() {
           .layers
           .firstWhere((layer) => layer.id == instructionLayerId);
 
-      final toggle = find.byKey(
-        const ValueKey<String>('timeline-lane-toggle-lane-instr-layer'),
-      );
+      final toggle = find.named('timeline-lane-toggle-lane-instr-layer');
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
@@ -1180,7 +1171,7 @@ void main() {
 
   group('camera lane key editing in the timeline', () {
     Future<void> expand(WidgetTester tester) async {
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-cam-layer');
     }
@@ -1274,9 +1265,7 @@ void main() {
       // atomic keyframes, they carry the lane selection domain, which is
       // what lets a press make the lane the verb's subject.
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-        ),
+        find.named('timeline-lane-toggle-lane-draw-layer'),
       );
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-draw-layer');
@@ -1623,7 +1612,7 @@ void main() {
   });
 
   group('camera property lanes in the X-sheet', () {
-    const laneToggleKey = ValueKey<String>('xsheet-lane-toggle-lane-cam-layer');
+    const laneToggleName = 'xsheet-lane-toggle-lane-cam-layer';
 
     Finder laneLabel(String laneId) => find.byKey(
       ValueKey<String>('xsheet-lane-label-lane-cam-layer-$laneId'),
@@ -1654,7 +1643,7 @@ void main() {
     }
 
     Future<void> expand(WidgetTester tester) async {
-      await tester.tap(find.byKey(laneToggleKey));
+      await tester.tap(find.named(laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(
         tester,
@@ -1672,7 +1661,7 @@ void main() {
 
       // Collapsed by default: chevron on the camera column header, no lane
       // columns.
-      expect(find.byKey(laneToggleKey), findsOneWidget);
+      expect(find.named(laneToggleName), findsOneWidget);
       expect(laneLabel('position'), findsNothing);
 
       await expand(tester);

@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/session/track_se_display.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// UI-R20 #4 (the "selecting a layer got slow" regression): the sparse
 /// rows (camera, SE) must reuse their cached row INSTANCES across
 /// unrelated session notifies — their display identities are cached
@@ -70,12 +72,10 @@ void main() {
 
     // Sparse rows (camera/SE) render through the widget path — their
     // stable key is the frame-row area.
-    final cameraRow = find.byKey(
-      ValueKey<String>('timeline-frame-row-area-${cameraLayer.id.value}'),
+    final cameraRow = find.named(
+      'timeline-frame-row-area-${cameraLayer.id.value}',
     );
-    final seRow = find.byKey(
-      ValueKey<String>('timeline-frame-row-area-${seLayer.id.value}'),
-    );
+    final seRow = find.named('timeline-frame-row-area-${seLayer.id.value}');
     expect(cameraRow, findsOneWidget);
     expect(seRow, findsOneWidget);
     final cameraBefore = tester.widget(cameraRow);
@@ -111,8 +111,8 @@ void main() {
     final cameraLayer = manager.layers.firstWhere(
       (layer) => layer.kind == LayerKind.camera,
     );
-    final cameraRow = find.byKey(
-      ValueKey<String>('timeline-frame-row-area-${cameraLayer.id.value}'),
+    final cameraRow = find.named(
+      'timeline-frame-row-area-${cameraLayer.id.value}',
     );
     final before = tester.widget(cameraRow);
 

@@ -33,6 +33,8 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🗣️I-73 (유저 2026-10-08): 「콘티행도 동일하게 하고싶으니까 어태치
 /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어
 /// 권고한대로 머리만 한벌 ok. 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」 ·
@@ -195,6 +197,7 @@ void main() {
   }
 
   Finder key(String value) => find.byKey(ValueKey<String>(value));
+  Finder named(String value) => find.named(value);
 
   /// The conte row's label at a seat — `conte`, `conte+1`, `conte-1`.
   Finder label(String word) => key('storyboard-$word-label-t1');
@@ -220,12 +223,12 @@ void main() {
 
       for (final cell in const ['mark', 'fx', 'visibility', 'opacity']) {
         expect(
-          key('storyboard-layer-$cell-a-conte'),
+          named('storyboard-layer-$cell-a-conte'),
           findsOneWidget,
           reason: 'the head carries its $cell',
         );
       }
-      expect(key('storyboard-layer-blend-a-conte'), findsOneWidget);
+      expect(named('storyboard-layer-blend-a-conte'), findsOneWidget);
       for (final cell in const [
         'timesheet',
         'onion',
@@ -233,18 +236,18 @@ void main() {
         'link-badge',
       ]) {
         expect(
-          key('storyboard-layer-$cell-a-conte'),
+          named('storyboard-layer-$cell-a-conte'),
           findsNothing,
           reason: 'the head mounts no $cell',
         );
       }
       expect(
-        key('storyboard-attach-twirl-a-conte'),
+        named('storyboard-attach-twirl-a-conte'),
         findsNothing,
         reason: 'no attach row rides the conte: nothing to fold',
       );
       // ONE head for the film: cut b's conte draws no row of its own.
-      expect(key('storyboard-layer-fx-b-conte'), findsNothing);
+      expect(named('storyboard-layer-fx-b-conte'), findsNothing);
     });
 
     testWidgets('🚨every control writes the conte of every cut', (
@@ -256,11 +259,11 @@ void main() {
         read(row(session, 'b-conte')),
       ];
 
-      await tester.tap(key('storyboard-layer-visibility-a-conte'));
+      await tester.tap(named('storyboard-layer-visibility-a-conte'));
       await tester.pumpAndSettle();
       expect(both((row) => row.isVisible), [false, false], reason: 'eye');
 
-      await tester.tap(key('storyboard-layer-fx-a-conte'));
+      await tester.tap(named('storyboard-layer-fx-a-conte'));
       await tester.pumpAndSettle();
       expect(
         both((row) => row.transformEnabled),
@@ -273,7 +276,7 @@ void main() {
         reason: 'and the button shows what it wrote',
       );
 
-      await tester.tap(key('storyboard-layer-blend-a-conte'));
+      await tester.tap(named('storyboard-layer-blend-a-conte'));
       await tester.pumpAndSettle();
       await tester.tap(
         key('storyboard-layer-blend-option-${LayerBlendMode.multiply.name}'),
@@ -285,7 +288,7 @@ void main() {
         reason: 'blend',
       );
 
-      final bar = tester.getRect(key('storyboard-layer-opacity-a-conte'));
+      final bar = tester.getRect(named('storyboard-layer-opacity-a-conte'));
       await tester.dragFrom(
         bar.centerRight - const Offset(2, 0),
         Offset(-bar.width / 2, 0),
@@ -300,7 +303,7 @@ void main() {
         'answers to — not the first cut\'s layer', (tester) async {
       final session = await pumpPanel(tester, film());
 
-      await tester.tap(key('storyboard-layer-name-a-conte'));
+      await tester.tap(named('storyboard-layer-name-a-conte'));
       await tester.pumpAndSettle();
 
       expect(
@@ -318,20 +321,20 @@ void main() {
 
       for (final cell in const ['fx', 'visibility', 'opacity']) {
         expect(
-          tester.getRect(key('storyboard-layer-$cell-a-conte')).left,
-          tester.getRect(key('storyboard-layer-$cell-$se')).left,
+          tester.getRect(named('storyboard-layer-$cell-a-conte')).left,
+          tester.getRect(named('storyboard-layer-$cell-$se')).left,
           reason: 'the $cell column is one column down the rail',
         );
       }
       // The blend is the last column, past the opacity's — on a rail whose
       // other rows have none to show.
       expect(
-        tester.getRect(key('storyboard-layer-blend-a-conte')).left,
+        tester.getRect(named('storyboard-layer-blend-a-conte')).left,
         greaterThanOrEqualTo(
-          tester.getRect(key('storyboard-layer-opacity-a-conte')).right,
+          tester.getRect(named('storyboard-layer-opacity-a-conte')).right,
         ),
       );
-      expect(key('storyboard-layer-blend-$se'), findsNothing);
+      expect(named('storyboard-layer-blend-$se'), findsNothing);
       expect(
         tester.getRect(label('conte')).width,
         tester
@@ -345,8 +348,8 @@ void main() {
         'it', (tester) async {
       final session = await pumpPanel(tester, film());
       const se = 't1-s1';
-      final from = tester.getCenter(key('storyboard-layer-visibility-$se'));
-      final to = tester.getCenter(key('storyboard-layer-visibility-a-conte'));
+      final from = tester.getCenter(named('storyboard-layer-visibility-$se'));
+      final to = tester.getCenter(named('storyboard-layer-visibility-a-conte'));
       expect(to.dy, greaterThan(from.dy), reason: 'fixture: conte is below');
 
       final gesture = await tester.startGesture(from);
@@ -446,10 +449,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(key('storyboard-layer-fx-a-over'), findsNothing);
+      expect(named('storyboard-layer-fx-a-over'), findsNothing);
       for (final cell in const ['visibility', 'opacity', 'blend']) {
         expect(
-          key('storyboard-layer-$cell-a-over'),
+          named('storyboard-layer-$cell-a-over'),
           findsOneWidget,
           reason: 'an attach row keeps its own $cell',
         );
@@ -459,9 +462,9 @@ void main() {
       expect(key('storyboard-conte-row-t1-conte+1'), findsOneWidget);
       expect(key('storyboard-conte-row-t1-conte-1'), findsOneWidget);
       // The twirl is the base's: a row that rides folds nothing.
-      expect(key('storyboard-attach-twirl-a-conte'), findsOneWidget);
-      expect(key('storyboard-attach-twirl-a-over'), findsNothing);
-      expect(key('storyboard-attach-twirl-a-under'), findsNothing);
+      expect(named('storyboard-attach-twirl-a-conte'), findsOneWidget);
+      expect(named('storyboard-attach-twirl-a-over'), findsNothing);
+      expect(named('storyboard-attach-twirl-a-under'), findsNothing);
       // And the button that makes a cut's conte — cut c has none — is the
       // conte row's alone.
       expect(key('storyboard-conte-create-t1'), findsOneWidget);
@@ -514,7 +517,7 @@ void main() {
       const se = 't1-s1';
       const group = ['a-over', 'a-conte', 'a-under'];
       Future<void> sweepDown(String cell) async {
-        final from = tester.getCenter(key('storyboard-layer-$cell-$se'));
+        final from = tester.getCenter(named('storyboard-layer-$cell-$se'));
         final to = tester.getRect(label('conte-1')).center.dy;
         expect(to, greaterThan(from.dy), reason: 'fixture: the group is below');
         final gesture = await tester.startGesture(from);
@@ -601,7 +604,7 @@ void main() {
     testWidgets('🚨the conte\'s twirl folds them — on this rail, and in '
         'every cut\'s timeline: the head is one', (tester) async {
       final session = await pumpPanel(tester, film(withRiders: true));
-      final twirl = key('storyboard-attach-twirl-a-conte');
+      final twirl = named('storyboard-attach-twirl-a-conte');
       expect(twirl, findsOneWidget);
       expect(headOf(tester, 'conte').groupFoldExpanded, isTrue);
 
@@ -629,7 +632,7 @@ void main() {
         'cut', (tester) async {
       final session = await pumpPanel(tester, film(withRiders: true));
 
-      await tester.tap(key('storyboard-layer-visibility-a-over'));
+      await tester.tap(named('storyboard-layer-visibility-a-over'));
       await tester.pumpAndSettle();
 
       expect(row(session, 'a-over').isVisible, isFalse);

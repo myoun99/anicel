@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
+import 'row_berths.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
@@ -17,12 +18,14 @@ import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
 import '../listenable_rebind.dart';
+import '../widgets/named.dart';
 
 class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
     required this.rows,
     required this.edges,
+    required this.berths,
     this.firstRowIndex = 0,
     required this.hooks,
     required this.frameStartIndex,
@@ -75,6 +78,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// Where the FULL row list sits along the layer axis — [rows] begins at
   /// its row [firstRowIndex].
   final TimelineRowEdges edges;
+
+  /// Which elements each row is built in — the rail's berths, so a row's
+  /// two halves are kept, and handed over, together ([RowBerths]).
+  final RowBerthMap berths;
 
   final int firstRowIndex;
   final int frameStartIndex;
@@ -208,10 +215,11 @@ class _TimelineFrameRowsScrollBodyState
     super.dispose();
   }
 
-  /// Every row keys off its own id; a lane row adds which lane it is.
+  /// Every row is named for its own id; a lane row adds which lane it is.
   /// R10 dropped the folder prefix with the folder's private band — a
-  /// folder row is a cells row now, so it keys like one.
-  String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
+  /// folder row is a cells row now, so it is named like one.
+  String _rowNameSuffix(TimelineDisplayRow row) =>
+      row.lane?.laneId ?? 'cells';
 
   /// The frames this body lays its lane rows over, and their selection
   /// domain ([timelineLaneRowFrom]).
@@ -223,21 +231,21 @@ class _TimelineFrameRowsScrollBodyState
     laneRange: widget.laneRange,
   );
 
-  Widget _buildRow(TimelineDisplayRow row) {
-    final rowKey = ValueKey<String>(
-      'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
-    );
+  /// The row built in its berth and named for its layer — a key spelled
+  /// from the layer remade every row's cells on a cut switch (I-57).
+  Widget _buildRow(TimelineDisplayRow row) => Named(
+    'timeline-row-${row.layer.id}-${_rowNameSuffix(row)}',
+    key: widget.berths.keyOf(row),
     // 🚨F-244: the row's own size, laid FRESH on every build. It is what
     // makes the tick layer's constraints tight — and a zoom step keeps the
     // memo entry below while it moves the content extent, so a box inside
     // the memo would hold the old width: the row cut short of its cells.
-    return SizedBox(
-      key: rowKey,
+    child: SizedBox(
       width: widget.totalFrameContentWidth,
       height: timelineDisplayRowExtent(row, widget.metrics),
       child: _layeredRow(row),
-    );
-  }
+    ),
+  );
 
   /// The rows as their cells see them — the x-sheet's columns read the same
   /// record turned on its side.

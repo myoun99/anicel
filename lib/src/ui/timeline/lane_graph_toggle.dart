@@ -27,14 +27,15 @@ class LaneGraphToggle extends StatelessWidget {
   const LaneGraphToggle({
     super.key,
     required this.kind,
-    required this.keyValue,
+    required this.name,
     required this.axis,
     required this.on,
     required this.onToggle,
   });
 
   final LaneGraphToggleKind kind;
-  final String keyValue;
+  /// What a finder calls the toggle — its [RailGlyphButton.name].
+  final String name;
   final Axis axis;
   final bool on;
   final VoidCallback onToggle;
@@ -59,7 +60,7 @@ class LaneGraphToggle extends StatelessWidget {
       26,
       child: RailSwipeColumnPointer(
         child: RailGlyphButton(
-          keyValue: keyValue,
+          name: name,
           tooltip: tooltip,
           size: railSlotBox(axis, slot: slot, across: 26, iconSize: 15),
           isSelected: on,

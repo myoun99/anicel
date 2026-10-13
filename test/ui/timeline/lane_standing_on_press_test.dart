@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/the_classic_rail.dart';
 
 /// 🚨C6 (2026-08-17): STANDING on an fx header/member row is the CELLS'
@@ -93,7 +94,7 @@ void main() {
       'timeline-lane-toggle-${drawId.value}',
       'timeline-lane-group-toggle-${drawId.value}-transform-group',
     ]) {
-      final toggle = find.byKey(ValueKey<String>(key));
+      final toggle = find.named(key);
       await tester.ensureVisible(toggle);
       await tester.pumpAndSettle();
       await tester.tap(toggle);

@@ -7,6 +7,7 @@ import 'package:anicel/src/models/camera_instruction.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
+import '../helpers/named_finders.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
 /// the TRACK carries fx transform keys (R4: track-owned lanes) — with the
@@ -113,14 +114,12 @@ void main() {
     // own one — so the twirl-down is its fx chain alone.
     final trackId = manager.activeTrack.id.value;
     await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-track-lane-toggle-$trackId')),
+      find.named('storyboard-track-lane-toggle-$trackId'),
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(
-        ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:$trackId-transform-group',
-        ),
+      find.named(
+        'storyboard-lane-group-toggle-v-track:$trackId-transform-group',
       ),
       findsNothing,
       reason: 'the V row lost its Transform group with the teardown',

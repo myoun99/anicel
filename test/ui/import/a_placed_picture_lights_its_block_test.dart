@@ -19,6 +19,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/named_finders.dart';
 
 /// F-155 (유저 2026-09-17), three reports of one placement:
 /// 「미디어 풀 파일 png를 기존 애니메이션 레이어의 프레임영역에 떨궈서
@@ -91,9 +92,7 @@ void main() {
 
     // The cell where the row's own drop target reads it: the target's box
     // starts at the first frame the row lays out.
-    final target = find.byKey(
-      ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
-    );
+    final target = find.named('timeline-layer-asset-drop-${row.id}');
     final frames = painterOf(tester, row.id).geometry.value;
     final at =
         tester.getTopLeft(target) +

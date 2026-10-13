@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// Selection must NEVER rewind: with onDoubleTap registered, an InkWell
 /// onTap resolves ~300ms late, so tapping cell B right after cell A used to
@@ -75,7 +76,7 @@ void main() {
 
   Offset cellCentre(WidgetTester tester, int frame) =>
       tester.getTopLeft(
-        find.byKey(const ValueKey<String>('timeline-row-cells-layer')),
+        find.named('timeline-row-cells-layer'),
       ) +
       Offset(frame * extent + extent / 2, cross / 2);
 

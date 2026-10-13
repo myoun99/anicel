@@ -17,8 +17,10 @@ import 'dart_sources.dart';
 
 /// [menuRowsUnder]'s scan, for every call of any of [callees] — a widget's
 /// constructor, or a private method that builds one on its owner's behalf
-/// (`_bar._barIconButton(…)`). A call with no key of its own is 「keyless
-/// [what] N」 among the keyless calls of its file.
+/// (`_bar._barIconButton(…)`). A call is known by its key, or by its NAME
+/// where the widget takes one instead ([Named] — the rail's buttons, I-57);
+/// a call with neither is 「keyless [what] N」 among the keyless calls of
+/// its file.
 ({Set<String> named, Set<String> silent}) callsNamingAnActionUnder(
   String dir,
   Set<String> callees, {
@@ -33,7 +35,7 @@ import 'dart_sources.dart';
     var keyless = 0;
     for (final callee in callees) {
       for (final call in _callsOf(callee, text)) {
-        final key = _argument('keyValue', call);
+        final key = _argument('keyValue', call) ?? _argument('name', call);
         final id = '$path | ${key ?? 'keyless $what ${++keyless}'}';
         (call.contains('shortcuts:') ? named : silent).add(id);
       }
@@ -79,9 +81,12 @@ int _closing(String text, int open) {
 }
 
 /// What [call] passes as [name], as written and on one line — or null.
+///
+/// The argument itself, not one whose name ends in it: `name:` is not
+/// `debugName:`.
 String? _argument(String name, String call) {
-  final at = call.indexOf('$name:');
-  if (at < 0) return null;
+  final at = RegExp('(?<![\\w\$])$name:').firstMatch(call)?.start;
+  if (at == null) return null;
   var depth = 0;
   final from = at + name.length + 1;
   for (var i = from; i < call.length; i++) {

@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 **다른 레이어의 버튼
 /// 누르면 작동안함.** 불투명도 슬라이더는 **한번 움직이고 드래그가 풀림.**
 /// 액티브 레이어만 작용같은 규칙 두지말고 **자유롭게 가능하도록.** 레이어에
@@ -81,7 +83,7 @@ void main() {
     final before = session.layers.firstWhere((l) => l.id == other).isVisible;
 
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-layer-visibility-$other')),
+      find.named('timeline-layer-visibility-$other'),
     );
     await tester.pumpAndSettle();
 
@@ -104,7 +106,7 @@ void main() {
         .firstWhere((id) => id != active);
 
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-layer-visibility-$other')),
+      find.named('timeline-layer-visibility-$other'),
     );
     await tester.pumpAndSettle();
 
@@ -132,7 +134,7 @@ void main() {
           .onTimesheet;
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-timesheet-$other')),
+        find.named('timeline-layer-timesheet-$other'),
       );
       await tester.pumpAndSettle();
 
@@ -154,7 +156,7 @@ void main() {
       final other = otherAnimationRow(session);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-mark-$other')),
+        find.named('timeline-layer-mark-$other'),
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -181,7 +183,7 @@ void main() {
       expect(session.effectsAndFx.layerFxState(other), LayerFxState.on);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-fx-$other')),
+        find.named('timeline-layer-fx-$other'),
       );
       await tester.pumpAndSettle();
 
@@ -204,7 +206,7 @@ void main() {
       expect(session.onionSkin.isLayerOnionSkinEnabled(other), isFalse);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-onion-$other')),
+        find.named('timeline-layer-onion-$other'),
       );
       await tester.pumpAndSettle();
 
@@ -229,7 +231,7 @@ void main() {
           .isFillReference;
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-fill-reference-$other')),
+        find.named('timeline-layer-fill-reference-$other'),
       );
       await tester.pumpAndSettle();
 
@@ -251,7 +253,7 @@ void main() {
       final other = otherAnimationRow(session);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-blend-$other')),
+        find.named('timeline-layer-blend-$other'),
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -283,7 +285,7 @@ void main() {
       final other = otherAnimationRow(session);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-lane-toggle-$other')),
+        find.named('timeline-lane-toggle-$other'),
       );
       await tester.pumpAndSettle();
 
@@ -321,7 +323,7 @@ void main() {
       expect(session.activeLayerId, outside);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-folder-twirl-$folder')),
+        find.named('timeline-folder-twirl-$folder'),
       );
       await tester.pumpAndSettle();
 
@@ -345,7 +347,7 @@ void main() {
       final se = session.layers.firstWhere((l) => l.kind == LayerKind.se).id;
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-mute-$se')),
+        find.named('timeline-layer-mute-$se'),
       );
       await tester.pumpAndSettle();
 

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// Test probes for the PAINTED drawing-row cells (UI-R9 #12b): cells are
 /// canvas work now, so `find.byKey('timeline-cell-…')` only exists for the
 /// sparse widget rows (SE / instruction / camera). Drawing-row assertions
@@ -17,7 +19,7 @@ TimelineRowCellsPainter timelineRowCellsPainterFor(
   String prefix = 'timeline',
 }) {
   final paint = tester.widget<CustomPaint>(
-    find.byKey(ValueKey<String>('$prefix-row-cells-$layerId')),
+    find.named('$prefix-row-cells-$layerId'),
   );
   return paint.painter! as TimelineRowCellsPainter;
 }
@@ -53,7 +55,7 @@ Offset timelineCellCenter(
   int frameIndex, {
   String prefix = 'timeline',
 }) {
-  final finder = find.byKey(ValueKey<String>('$prefix-row-cells-$layerId'));
+  final finder = find.named('$prefix-row-cells-$layerId');
   final painter = timelineRowCellsPainterFor(tester, layerId, prefix: prefix);
   final box = tester.renderObject(finder) as RenderBox;
   return box.localToGlobal(painter.cellRectFor(frameIndex).center);
@@ -66,7 +68,7 @@ Rect timelineCellGlobalRect(
   int frameIndex, {
   String prefix = 'timeline',
 }) {
-  final finder = find.byKey(ValueKey<String>('$prefix-row-cells-$layerId'));
+  final finder = find.named('$prefix-row-cells-$layerId');
   final painter = timelineRowCellsPainterFor(tester, layerId, prefix: prefix);
   final box = tester.renderObject(finder) as RenderBox;
   final local = painter.cellRectFor(frameIndex);
@@ -126,7 +128,7 @@ List<String> timelineCellSemanticsLabels(
   String prefix = 'timeline',
 }) {
   final node = tester.getSemantics(
-    find.byKey(ValueKey<String>('$prefix-row-cells-$layerId')),
+    find.named('$prefix-row-cells-$layerId'),
   );
   final labels = <String>[];
   void visit(SemanticsNode current) {

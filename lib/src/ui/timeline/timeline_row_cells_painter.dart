@@ -14,6 +14,7 @@ import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
+import '../widgets/named.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
@@ -1483,16 +1484,20 @@ Widget timelineRowCellsPaintArea({
         // row then owed the grid a redraw (D43-2). The grid sheet paints the
         // rows' grounds now, under all of them, and the row is its paper.
         child: SizedBox.expand(
-          child: CustomPaint(
-            key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
-            painter: painter,
-            // The block duration labels ride HERE rather than as their
-            // own Positioned.fill CustomPaint: same geometry, same
-            // repaint trigger, two fewer render objects per row to lay
-            // out on a zoom step. A foreground painter that does not
-            // implement `hitTest` never absorbs a pointer, which is what
-            // the IgnorePointer around it used to guarantee.
-            foregroundPainter: foregroundPainter,
+          // Named, not keyed (I-57, 10-13): the row shows one layer and
+          // then another in the same elements.
+          child: Named(
+            '$keyPrefix-row-cells-${layer.id}',
+            child: CustomPaint(
+              painter: painter,
+              // The block duration labels ride HERE rather than as their
+              // own Positioned.fill CustomPaint: same geometry, same
+              // repaint trigger, two fewer render objects per row to lay
+              // out on a zoom step. A foreground painter that does not
+              // implement `hitTest` never absorbs a pointer, which is what
+              // the IgnorePointer around it used to guarantee.
+              foregroundPainter: foregroundPainter,
+            ),
           ),
         ),
       ),

@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/reference_to.dart';
+import '../../helpers/named_finders.dart';
 
 /// The rail row memo's gate (frame-axis round): the row is ~200 Material
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
@@ -279,7 +280,7 @@ void main() {
     );
     IconData? eyeGlyph() => tester
         .appIconButton(
-          find.byKey(ValueKey<String>('timeline-layer-visibility-$activeId')),
+          find.named('timeline-layer-visibility-$activeId'),
         )
         .icon;
     bool plateLit() => tester

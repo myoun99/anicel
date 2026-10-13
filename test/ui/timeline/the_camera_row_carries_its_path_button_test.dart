@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// I-89 ④ — the camera's path button on its row (유저 2026-10-12: 「카메라
 /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」): the
 /// camera's row alone carries it, on the timeline and on the sheet, and it
@@ -55,20 +57,13 @@ void main() {
           .id;
 
       expect(
-        find.byWidgetPredicate(
-          (widget) => switch (widget.key) {
-            ValueKey<String>(:final value) => value.startsWith(
-              '$prefix-layer-camera-path-',
-            ),
-            _ => false,
-          },
+        find.namedWhere(
+          (name) => name.startsWith('$prefix-layer-camera-path-'),
         ),
         findsOneWidget,
         reason: 'one row of all of them',
       );
-      final button = find.byKey(
-        ValueKey<String>('$prefix-layer-camera-path-$camera'),
-      );
+      final button = find.named('$prefix-layer-camera-path-$camera');
       bool lit() => tester
           .widget<RailGlyphButton>(
             find.ancestor(of: button, matching: find.byType(RailGlyphButton)),

@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 const _cutId = CutId('inst-cut');
 const _camLayerId = LayerId('inst-cam');
@@ -132,9 +133,7 @@ void main() {
     expect(findBlockText('A'), findsOneWidget);
     expect(findBlockText('B'), findsOneWidget);
     // No X cells on instruction rows.
-    final rowArea = find.byKey(
-      const ValueKey<String>('timeline-frame-row-area-inst-cam'),
-    );
+    final rowArea = find.named('timeline-frame-row-area-inst-cam');
     expect(
       find.descendant(of: rowArea, matching: find.text('X')),
       findsNothing,
@@ -299,7 +298,7 @@ void main() {
     await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
 
     final row = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-inst-cam')),
+      find.named('timeline-row-cells-inst-cam'),
     );
     final paper = timelineRowPaperExtent(row.height);
     final start = tester.getRect(

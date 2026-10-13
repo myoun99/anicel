@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show TimelineSection;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 — and the drawn proposal: 「머리는 타임라인의 카메라
 /// 행 머리 부품 그대로(칩 · 아이콘 · Camera · fx · 눈 · 값)」.
@@ -170,7 +172,7 @@ void main() {
       await pumpPanel(tester, before: (session) => standIn(session, 30));
       final button = find.descendant(
         of: label,
-        matching: key('storyboard-layer-camera-path-b-cam'),
+        matching: find.named('storyboard-layer-camera-path-b-cam'),
       );
       expect(button, findsOneWidget);
 
@@ -218,7 +220,7 @@ void main() {
       expect(head(tester).layer.isVisible, isFalse, reason: 'the view is off');
       expect(head(tester).opacityOverride, same(dim));
 
-      await tester.tap(key('storyboard-layer-visibility-b-cam'));
+      await tester.tap(find.named('storyboard-layer-visibility-b-cam'));
       await tester.pumpAndSettle();
       expect(view.value, isTrue, reason: 'the eye turned the VIEW on');
       expect(head(tester).layer.isVisible, isTrue);
@@ -226,7 +228,7 @@ void main() {
       // The slider, pressed as the ROW (the 10-10 audit), still dims the
       // view rather than reaching for a layer's own opacity.
       final slider = tester.widget<FieldSlider>(
-        key('storyboard-layer-opacity-b-cam'),
+        find.named('storyboard-layer-opacity-b-cam'),
       );
       slider.onChanged!(0.7);
       expect(dim.value, 0.7);

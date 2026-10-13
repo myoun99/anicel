@@ -27,6 +27,7 @@ import '../text/vertical_writing_text.dart';
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'axis_turn.dart';
+import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
@@ -452,7 +453,7 @@ double layerBlendColumnGrowthIn(BuildContext context) => TextMeasure(
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.optionKeyPrefix,
     required this.blendMode,
     required this.onBlendModeSelected,
@@ -472,8 +473,9 @@ class LayerBlendModeChip extends StatelessWidget {
   /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
   final Axis axis;
 
-  /// The full widget key string ('timeline-layer-blend-a').
-  final String keyValue;
+  /// What a finder calls the chip ('timeline-layer-blend-a') — a [Named],
+  /// as a [RailGlyphButton.name] is and for its reason.
+  final String name;
 
   /// Prefix for the flyout option keys
   /// ('timeline-layer-blend-option-' + mode name).
@@ -515,30 +517,32 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: PanelFlyoutButton(
-          key: ValueKey<String>(keyValue),
-          axis: axis,
-          label: blendMode.labelFor(language),
-          tooltip: isGroup
-              ? AppText.strings.railFolderBlendMode
-              : AppText.strings.railLayerBlendMode,
-          showCaret: false,
-          expand: true,
-          fontSize: _blendFontSize,
-          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-          labelColor: nonNormal
-              ? AppColors.accent
-              : colorScheme.onSurfaceVariant,
-          padding: vertical
-              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
-              : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-          entriesBuilder: () => LayerBlendMode.optionsFor(
-            isGroup: isGroup,
-          ).asFlyoutChoices(
-            current: blendMode,
-            keyPrefix: optionKeyPrefix,
-            labelOf: (mode) => mode.labelFor(language),
-            onPicked: onBlendModeSelected,
+        child: Named(
+          name,
+          child: PanelFlyoutButton(
+            axis: axis,
+            label: blendMode.labelFor(language),
+            tooltip: isGroup
+                ? AppText.strings.railFolderBlendMode
+                : AppText.strings.railLayerBlendMode,
+            showCaret: false,
+            expand: true,
+            fontSize: _blendFontSize,
+            fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+            labelColor: nonNormal
+                ? AppColors.accent
+                : colorScheme.onSurfaceVariant,
+            padding: vertical
+                ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
+                : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            entriesBuilder: () => LayerBlendMode.optionsFor(
+              isGroup: isGroup,
+            ).asFlyoutChoices(
+              current: blendMode,
+              keyPrefix: optionKeyPrefix,
+              labelOf: (mode) => mode.labelFor(language),
+              onPicked: onBlendModeSelected,
+            ),
           ),
         ),
       ),
@@ -681,7 +685,7 @@ TextStyle fxGlyphStyle({
 class LayerVisibilityToggleButton extends StatelessWidget {
   const LayerVisibilityToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.isVisible,
     required this.onToggle,
     this.hiddenAbove = false,
@@ -700,8 +704,9 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// layer's Show/Hide pair, which is what every rail wants.
   final String? tooltip;
 
-  /// The full widget key string ('timeline-layer-visibility-a').
-  final String keyValue;
+  /// What a finder calls the eye ('timeline-layer-visibility-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   final bool isVisible;
   final VoidCallback onToggle;
@@ -719,7 +724,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       width: size,
       height: 26,
       child: RailGlyphButton(
-        keyValue: keyValue,
+        name: name,
         tooltip: tooltip ?? _showHide(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
@@ -765,7 +770,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
 class LayerMuteToggleButton extends StatelessWidget {
   const LayerMuteToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.muted,
     required this.onOpenMixer,
     this.soloed = false,
@@ -773,8 +778,9 @@ class LayerMuteToggleButton extends StatelessWidget {
     this.height = 26,
   });
 
-  /// The full widget key string ('timeline-layer-mute-a').
-  final String keyValue;
+  /// What a finder calls the speaker ('timeline-layer-mute-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   final bool muted;
 
@@ -791,7 +797,7 @@ class LayerMuteToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RailGlyphButton(
-      keyValue: keyValue,
+      name: name,
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
       // hardcoded English 'Mute layer'/'Unmute layer' went out with the
@@ -819,16 +825,17 @@ class LayerMuteToggleButton extends StatelessWidget {
 class FxToggleButton extends StatelessWidget {
   const FxToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.state,
     required this.onToggle,
     this.subject = RailSubject.layer,
     this.size = layerFxSlotWidth,
   });
 
-  /// The full widget key string — callers spell their own identity in
-  /// ('timeline-layer-fx-a', 'storyboard-cut-fx-3').
-  final String keyValue;
+  /// What a finder calls the switch — its [RailGlyphButton.name]; callers
+  /// spell their own identity in ('timeline-layer-fx-a',
+  /// 'storyboard-cut-fx-3').
+  final String name;
 
   /// R8: the row's FX as ONE value, so "on/off" and "mixed" cannot drift
   /// apart on their way here. A layer row is a MASTER over its per-group
@@ -861,7 +868,7 @@ class FxToggleButton extends StatelessWidget {
       width: size,
       height: 26,
       child: RailGlyphButton(
-        keyValue: keyValue,
+        name: name,
         tooltip: _tooltipFor(AppText.strings),
         // ⚠️The word sizes itself, so the box's iconSize reaches nothing
         // here — it is passed honest rather than zero.
@@ -990,7 +997,7 @@ class LayerTimesheetToggleButton extends StatelessWidget {
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
       child: RailGlyphButton(
-        keyValue: '$keyPrefix-layer-timesheet-$layerId',
+        name: '$keyPrefix-layer-timesheet-$layerId',
         tooltip: onTimesheet
             ? AppText.strings.railRemoveFromTimesheet
             : AppText.strings.railAddToTimesheet,
@@ -1047,9 +1054,9 @@ class LayerAttachArrowCell extends StatelessWidget {
           child: ExcludeSemantics(
             child: Transform.flip(
               flipY: above,
-              child: layerAttachmentArrowIcon(
-                context,
-                key: ValueKey<String>('$keyPrefix-layer-attach-arrow-$idValue'),
+              child: Named(
+                '$keyPrefix-layer-attach-arrow-$idValue',
+                child: layerAttachmentArrowIcon(context),
               ),
             ),
           ),
@@ -1075,9 +1082,8 @@ class LayerAttachArrowCell extends StatelessWidget {
 
 /// THE arrow that says "this row hangs off the one above it" — one size, one
 /// colour, whether the thing above is a folder or an attach base.
-Widget layerAttachmentArrowIcon(BuildContext context, {Key? key}) => Icon(
+Widget layerAttachmentArrowIcon(BuildContext context) => Icon(
   Icons.subdirectory_arrow_right,
-  key: key,
   size: 16,
   color: Theme.of(context).colorScheme.onSurfaceVariant,
 );
@@ -1208,7 +1214,7 @@ class LayerMarkChip extends StatelessWidget {
   /// stage's.
   Widget _takeTrigger(BuildContext context) {
     return RailFlyoutTrigger(
-      keyValue: '$keyPrefix-layer-take-$layerId',
+      name: '$keyPrefix-layer-take-$layerId',
       tooltip: AppText.strings.tlLayerTake,
       semanticLabel: AppText.strings.tlLayerTake,
       entriesBuilder: () => layerTakeFlyoutEntries(
@@ -1226,7 +1232,7 @@ class LayerMarkChip extends StatelessWidget {
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
     return RailFlyoutTrigger(
-      keyValue: '$keyPrefix-layer-mark-$layerId',
+      name: '$keyPrefix-layer-mark-$layerId',
       tooltip: AppText.strings.tlLayerMark,
       semanticLabel: AppText.strings.tlLayerMark,
       // No padding: the mark sits in a fixed `layerMarkSlotWidth` rail
@@ -1773,13 +1779,14 @@ String layerMarkLabel(LayerMark mark) => mark.labelFor(AppText.language);
 class LayerReferenceButton extends StatefulWidget {
   const LayerReferenceButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.onOpen,
     this.isSourceShort = false,
   });
 
-  /// The full widget key string ('timeline-layer-reference-a').
-  final String keyValue;
+  /// What a finder calls the button ('timeline-layer-reference-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   /// Opens the popover under THIS button's context. The button stays lit
   /// until the future completes — until the popover has closed.
@@ -1819,7 +1826,7 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
   @override
   Widget build(BuildContext context) {
     return RailGlyphButton(
-      keyValue: widget.keyValue,
+      name: widget.name,
       tooltip: AppText.strings.tlLayerReference,
       size: const AppIconButtonBox(
         width: LayerReferenceButton.side,
@@ -1849,12 +1856,13 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
 class CameraPathButton extends StatefulWidget {
   const CameraPathButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.onOpen,
   });
 
-  /// The full widget key string ('timeline-layer-camera-path-camera').
-  final String keyValue;
+  /// What a finder calls the button ('timeline-layer-camera-path-camera') —
+  /// its [RailGlyphButton.name].
+  final String name;
 
   /// Opens the list under THIS button's context. The button stays lit until
   /// the future completes — until the list has closed.
@@ -1880,7 +1888,7 @@ class _CameraPathButtonState extends State<CameraPathButton> {
 
   @override
   Widget build(BuildContext context) => RailGlyphButton(
-    keyValue: widget.keyValue,
+    name: widget.name,
     tooltip: AppText.strings.cameraPath,
     size: const AppIconButtonBox(
       width: LayerReferenceButton.side,

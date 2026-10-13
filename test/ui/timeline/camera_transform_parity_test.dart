@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨B4 (2026-08-17, device report): the CAMERA row's timeline interactions
 /// are THE SAME CODE as every other transform layer's — not similar, shared.
@@ -130,9 +131,7 @@ Finder _marker(LayerId layerId, String laneId, int frame) => find.byKey(
 );
 
 Future<void> _toggleLanes(WidgetTester tester, LayerId layerId) async {
-  final toggle = find.byKey(
-    ValueKey<String>('timeline-lane-toggle-${layerId.value}'),
-  );
+  final toggle = find.named('timeline-lane-toggle-${layerId.value}');
   await tester.ensureVisible(toggle);
   await tester.pumpAndSettle();
   await tester.tap(toggle);
@@ -140,10 +139,8 @@ Future<void> _toggleLanes(WidgetTester tester, LayerId layerId) async {
 }
 
 Future<void> _expandTransformGroup(WidgetTester tester, LayerId layerId) async {
-  final toggle = find.byKey(
-    ValueKey<String>(
-      'timeline-lane-group-toggle-${layerId.value}-transform-group',
-    ),
+  final toggle = find.named(
+    'timeline-lane-group-toggle-${layerId.value}-transform-group',
   );
   await tester.ensureVisible(toggle);
   await tester.pumpAndSettle();

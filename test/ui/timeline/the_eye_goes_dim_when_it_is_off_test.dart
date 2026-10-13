@@ -24,7 +24,7 @@ void main() {
         home: Scaffold(
           body: Center(
             child: LayerVisibilityToggleButton(
-              keyValue: 'eye-under-test',
+              name: 'eye-under-test',
               isVisible: visible,
               onToggle: () {},
             ),

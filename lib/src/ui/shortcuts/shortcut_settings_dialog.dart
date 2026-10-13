@@ -487,7 +487,7 @@ Widget _foldRow(VoidCallback toggle, Widget row) => ControlPressClaim(
 /// The fold of [bundle] — the app's one twirl, showing it ([_foldRow] is
 /// the press).
 Widget _twirl(String bundle, {required bool open}) => LayerFoldTwirl(
-  keyValue: 'shortcut-bundle-$bundle',
+  name: 'shortcut-bundle-$bundle',
   expanded: open,
   onToggle: null,
 );

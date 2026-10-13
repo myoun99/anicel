@@ -375,7 +375,7 @@ class _GuideRow extends StatelessWidget {
             // copy, the one that dimmed its OFF state in a colour of its
             // own while the five rails dimmed in none.
             LayerVisibilityToggleButton(
-              keyValue: 'guide-visible-${guide.id.value}',
+              name: 'guide-visible-${guide.id.value}',
               isVisible: guide.visible,
               tooltip: strings.guideShow,
               onToggle: () => onVisibleChanged(!guide.visible),

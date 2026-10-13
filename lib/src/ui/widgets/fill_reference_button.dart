@@ -15,13 +15,14 @@ import 'rail_glyph_button.dart';
 class FillReferenceButton extends StatelessWidget {
   const FillReferenceButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.isOn,
     required this.onPressed,
     this.size = AppIconButtonSize.bar,
   });
 
-  final String keyValue;
+  /// What a finder calls the button — its [RailGlyphButton.name].
+  final String name;
   final bool isOn;
   final VoidCallback? onPressed;
   final AppIconButtonMetrics size;
@@ -30,7 +31,7 @@ class FillReferenceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return RailGlyphButton(
-      keyValue: keyValue,
+      name: name,
       tooltip: isOn
           ? AppText.strings.railFillReferenceOn
           : AppText.strings.railFillReference,

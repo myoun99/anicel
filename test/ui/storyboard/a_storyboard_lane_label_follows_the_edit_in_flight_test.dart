@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// F-195 on the STORYBOARD's rail: a value scrubbed on an S row's lane or on
 /// the V row's fx chain is shown by the label itself through the one drag
 /// channel — the label no longer prints a scrubbed text of its own, so a
@@ -47,8 +49,8 @@ void main() {
     return session;
   }
 
-  Future<void> tapKey(WidgetTester tester, String key) async {
-    final target = find.byKey(ValueKey<String>(key));
+  Future<void> tapNamed(WidgetTester tester, String name) async {
+    final target = find.named(name);
     await tester.ensureVisible(target);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -86,8 +88,8 @@ void main() {
     final session = await pumpStoryboard(tester);
     final track = session.activeTrack.id.value;
     final se = session.activeTrack.seLayers.first.id.value;
-    await tapKey(tester, 'storyboard-se-lane-toggle-$track-1');
-    await tapKey(tester, 'storyboard-lane-group-toggle-$se-transform-group');
+    await tapNamed(tester, 'storyboard-se-lane-toggle-$track-1');
+    await tapNamed(tester, 'storyboard-lane-group-toggle-$se-transform-group');
     final value = 'storyboard-lane-value-$se-rotation';
     final before = label(tester, value);
 
@@ -125,8 +127,8 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     final carrier = trackTransformLaneCarrierId(trackId).value;
-    await tapKey(tester, 'storyboard-track-lane-toggle-${trackId.value}');
-    await tapKey(
+    await tapNamed(tester, 'storyboard-track-lane-toggle-${trackId.value}');
+    await tapNamed(
       tester,
       'storyboard-lane-group-toggle-$carrier-${effectGroupLaneId(effectId)}',
     );

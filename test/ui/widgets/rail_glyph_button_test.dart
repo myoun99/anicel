@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/named_finders.dart';
 
 /// I-57 ① (유저 2026-10-09: 「가볍기만하면 레일전용버튼해도 상관없어」): the
 /// rail's button is ONE render object where an [AppIconButton] is a tree,
@@ -48,6 +49,7 @@ void main() {
       GestureBinding.instance.pointerRouter.debugGlobalRouteCount;
 
   Finder byKey(String key) => find.byKey(ValueKey<String>(key));
+  Finder byName(String name) => find.named(name);
 
   group('it paints what the app\'s icon button paints', () {
     // The glyphs' own shapes, not the test font's boxes — without them
@@ -107,7 +109,7 @@ void main() {
           RepaintBoundary(
             key: const ValueKey<String>('rail'),
             child: RailGlyphButton(
-              keyValue: 'rail-face',
+              name: 'rail-face',
               tooltip: 'Same',
               glyph: glyph,
               onPressed: onPressed,
@@ -124,7 +126,7 @@ void main() {
     /// At rest, hovered and pressed, the rail's face against the app's.
     Future<void> expectTheSamePixels(WidgetTester tester) async {
       expect(
-        tester.getSize(byKey('rail-face')),
+        tester.getSize(byName('rail-face')),
         tester.getSize(byKey('app-face')),
         reason: 'the same box',
       );
@@ -138,7 +140,7 @@ void main() {
       await mouse.moveTo(tester.getCenter(byKey('app-face')));
       await tester.pump();
       final appHovered = await pixels(tester, 'app');
-      await mouse.moveTo(tester.getCenter(byKey('rail-face')));
+      await mouse.moveTo(tester.getCenter(byName('rail-face')));
       await tester.pump();
       expect(await pixels(tester, 'rail'), appHovered, reason: 'hovered');
       await mouse.moveTo(Offset.zero);
@@ -152,7 +154,7 @@ void main() {
       await onApp.up();
       await tester.pump();
       final onRail = await tester.startGesture(
-        tester.getCenter(byKey('rail-face')),
+        tester.getCenter(byName('rail-face')),
       );
       await tester.pump();
       expect(await pixels(tester, 'rail'), appPressed, reason: 'pressed');
@@ -267,7 +269,7 @@ void main() {
           RepaintBoundary(key: const ValueKey<String>('rail'), child: button);
       RailGlyphButton button({required bool on, required String word}) =>
           RailGlyphButton(
-            keyValue: 'changing',
+            name: 'changing',
             tooltip: 'Changing',
             glyph: RailTextGlyph(word, style: const TextStyle(fontSize: 13)),
             onPressed: () {},
@@ -287,12 +289,12 @@ void main() {
 
       // A bigger word: the face lays out again (a token's box grows with
       // its glyph, up to the token's width).
-      final small = tester.getSize(byKey('changing'));
+      final small = tester.getSize(byName('changing'));
       await pump(tester, rail(button(on: true, word: 'xxxxxxxx')));
-      final grown = tester.getSize(byKey('changing'));
+      final grown = tester.getSize(byName('changing'));
       await pump(tester, const SizedBox());
       await pump(tester, rail(button(on: true, word: 'xxxxxxxx')));
-      expect(grown, tester.getSize(byKey('changing')), reason: 'laid out');
+      expect(grown, tester.getSize(byName('changing')), reason: 'laid out');
       expect(grown, isNot(small), reason: '⛔CONTROL: the word moves the box');
     });
   });
@@ -307,7 +309,7 @@ void main() {
           mainAxisSize: MainAxisSize.min,
           children: [
             RailGlyphButton(
-              keyValue: 'a11y-a',
+              name: 'a11y-a',
               tooltip: 'Eye',
               glyph: const RailIconGlyph(Icons.visibility),
               onPressed: () {},
@@ -315,7 +317,7 @@ void main() {
               size: box,
             ),
             RailGlyphButton(
-              keyValue: 'a11y-b',
+              name: 'a11y-b',
               tooltip: 'Lock',
               glyph: const RailIconGlyph(Icons.lock),
               onPressed: () {},
@@ -325,7 +327,7 @@ void main() {
         ),
       );
       expect(
-        tester.getSemantics(byKey('a11y-a')),
+        tester.getSemantics(byName('a11y-a')),
         isSemantics(
           tooltip: 'Eye',
           isButton: true,
@@ -337,8 +339,8 @@ void main() {
         ),
       );
       expect(
-        tester.getSemantics(byKey('a11y-a')).id,
-        isNot(tester.getSemantics(byKey('a11y-b')).id),
+        tester.getSemantics(byName('a11y-a')).id,
+        isNot(tester.getSemantics(byName('a11y-b')).id),
         reason: 'a row of buttons is not one long button',
       );
       handle.dispose();
@@ -350,7 +352,7 @@ void main() {
       await pump(
         tester,
         RailGlyphButton(
-          keyValue: 'named',
+          name: 'named',
           tooltip: '',
           semanticLabel: 'Folder',
           glyph: const RailIconGlyph(Icons.folder),
@@ -359,7 +361,7 @@ void main() {
         ),
       );
       expect(
-        tester.getSemantics(byKey('named')),
+        tester.getSemantics(byName('named')),
         isSemantics(
           label: 'Folder',
           isButton: true,
@@ -379,14 +381,14 @@ void main() {
       await pump(
         tester,
         RailGlyphButton(
-          keyValue: 'reader',
+          name: 'reader',
           tooltip: 'Reader',
           glyph: const RailIconGlyph(Icons.draw),
           onPressed: () => fired += 1,
           size: box,
         ),
       );
-      final node = tester.getSemantics(byKey('reader'));
+      final node = tester.getSemantics(byName('reader'));
       tester.binding.renderViews.first.owner!.semanticsOwner!.performAction(
         node.id,
         SemanticsAction.tap,
@@ -394,7 +396,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       expect(fired, 1, reason: 'the screen reader pressed it');
 
-      await tester.tap(byKey('reader'));
+      await tester.tap(byName('reader'));
       await tester.pump(const Duration(seconds: 2));
       expect(fired, 2, reason: 'a finger presses it exactly once');
       handle.dispose();
@@ -407,14 +409,14 @@ void main() {
       await pump(
         tester,
         const RailGlyphButton(
-          keyValue: 'reader-dead',
+          name: 'reader-dead',
           tooltip: 'Reader dead',
           glyph: RailIconGlyph(Icons.draw),
           onPressed: null,
           size: box,
         ),
       );
-      final node = tester.getSemantics(byKey('reader-dead'));
+      final node = tester.getSemantics(byName('reader-dead'));
       expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
       expect(
         node,
@@ -432,7 +434,7 @@ void main() {
         mainAxisSize: MainAxisSize.min,
         children: [
           RailGlyphButton(
-            keyValue: 'live',
+            name: 'live',
             tooltip: 'Live',
             glyph: const RailIconGlyph(Icons.draw),
             onPressed: () {},
@@ -440,7 +442,7 @@ void main() {
           ),
           const SizedBox(width: 40),
           const RailGlyphButton(
-            keyValue: 'dead',
+            name: 'dead',
             tooltip: 'Dead',
             glyph: RailIconGlyph(Icons.draw),
             onPressed: null,
@@ -454,10 +456,10 @@ void main() {
     MouseCursor cursor() =>
         RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1)!;
 
-    await mouse.moveTo(tester.getCenter(byKey('live')));
+    await mouse.moveTo(tester.getCenter(byName('live')));
     await tester.pump();
     expect(cursor(), SystemMouseCursors.click);
-    await mouse.moveTo(tester.getCenter(byKey('dead')));
+    await mouse.moveTo(tester.getCenter(byName('dead')));
     await tester.pump();
     expect(cursor(), SystemMouseCursors.basic);
     await mouse.moveTo(const Offset(790, 590));
@@ -483,7 +485,7 @@ void main() {
               children: [
                 const SizedBox(width: 100, height: 40),
                 RailGlyphButton(
-                  keyValue: 'inner',
+                  name: 'inner',
                   tooltip: 'Inner',
                   glyph: const RailIconGlyph(Icons.delete),
                   onPressed: () => buttonTaps += 1,
@@ -495,7 +497,7 @@ void main() {
         ),
       );
 
-      await tester.tap(byKey('inner'));
+      await tester.tap(byName('inner'));
       await tester.pump(const Duration(seconds: 2));
       expect(buttonTaps, 1);
       expect(rowTaps, 0, reason: 'the row must not answer its button\'s press');
@@ -508,15 +510,17 @@ void main() {
     testWidgets('a button that goes dead under the finger stops looking '
         'pressed', (tester) async {
       Widget button(VoidCallback? onPressed) => RailGlyphButton(
-        keyValue: 'going',
+        name: 'going',
         tooltip: 'Going',
         glyph: const RailIconGlyph(Icons.draw),
         onPressed: onPressed,
         size: box,
       );
       await pump(tester, button(() {}));
-      final face = tester.renderObject<RenderRailGlyphFace>(byKey('going'));
-      final press = await tester.startGesture(tester.getCenter(byKey('going')));
+      final face = tester.renderObject<RenderRailGlyphFace>(byName('going'));
+      final press = await tester.startGesture(
+        tester.getCenter(byName('going')),
+      );
       await tester.pump();
       expect(face.debugState.pressed, isTrue, reason: '⛔CONTROL');
 
@@ -532,7 +536,7 @@ void main() {
     await pump(
       tester,
       RailGlyphButton(
-        keyValue: 'weight',
+        name: 'weight',
         tooltip: 'Weight',
         glyph: const RailIconGlyph(Icons.draw),
         onPressed: () {},
@@ -556,7 +560,7 @@ void main() {
 
   group('the one tooltip window', () {
     Widget rail(int index, {String? tooltip}) => RailGlyphButton(
-      keyValue: 'rail-$index',
+      name: 'rail-$index',
       tooltip: tooltip ?? 'tip $index',
       glyph: const RailIconGlyph(Icons.draw),
       onPressed: () {},
@@ -591,7 +595,7 @@ void main() {
       await pumpRail(tester);
       final bare = globalRoutes();
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await mouse.moveTo(tester.getCenter(byName('rail-3')));
       await settleTooltip(tester);
       expect(find.text('tip 3'), findsOneWidget);
       expect(SummonedTooltip.debugShownMessage, 'tip 3');
@@ -607,7 +611,7 @@ void main() {
     testWidgets('it fades in, as an AppTooltip does', (tester) async {
       await pumpRail(tester);
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await mouse.moveTo(tester.getCenter(byName('rail-3')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       double opacity() => tester
@@ -632,7 +636,7 @@ void main() {
       final bare = globalRoutes();
       await pumpRail(tester);
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await mouse.moveTo(tester.getCenter(byName('rail-3')));
       await settleTooltip(tester);
       expect(find.text('tip 3'), findsOneWidget);
 
@@ -649,9 +653,9 @@ void main() {
         'never a second beside it', (tester) async {
       await pumpRail(tester);
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-1')));
+      await mouse.moveTo(tester.getCenter(byName('rail-1')));
       await settleTooltip(tester);
-      await mouse.moveTo(tester.getCenter(byKey('rail-2')));
+      await mouse.moveTo(tester.getCenter(byName('rail-2')));
       await settleTooltip(tester);
       expect(find.text('tip 1'), findsNothing);
       expect(find.text('tip 2'), findsOneWidget);
@@ -663,7 +667,7 @@ void main() {
       await pumpRail(tester);
       final bare = globalRoutes();
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-3')));
+      await mouse.moveTo(tester.getCenter(byName('rail-3')));
       await settleTooltip(tester);
       expect(find.text('tip 3'), findsOneWidget);
 
@@ -683,7 +687,7 @@ void main() {
         'duration it goes and lets go', (tester) async {
       await pumpRail(tester);
       final bare = globalRoutes();
-      await tester.longPress(byKey('rail-4'));
+      await tester.longPress(byName('rail-4'));
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('tip 4'), findsOneWidget);
 
@@ -698,7 +702,7 @@ void main() {
     ) async {
       await pumpRail(tester);
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-0')));
+      await mouse.moveTo(tester.getCenter(byName('rail-0')));
       await settleTooltip(tester);
       expect(find.text('tip 0'), findsOneWidget);
 
@@ -715,7 +719,7 @@ void main() {
       await pumpRail(tester, tooltip: '');
       final bare = globalRoutes();
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('rail-2')));
+      await mouse.moveTo(tester.getCenter(byName('rail-2')));
       await settleTooltip(tester);
       expect(SummonedTooltip.debugTarget, isNull);
       expect(globalRoutes(), bare);
@@ -769,7 +773,7 @@ void main() {
       await mouse.moveTo(tester.getCenter(byKey('app-target')));
       await settleTooltip(tester);
       final app = tester.getSize(find.text('Same words'));
-      await mouse.moveTo(tester.getCenter(byKey('rail-9')));
+      await mouse.moveTo(tester.getCenter(byName('rail-9')));
       await settleTooltip(tester);
       expect(tester.getSize(find.text('Same words')), app);
       await mouse.moveTo(const Offset(790, 590));
@@ -791,7 +795,7 @@ void main() {
               children: [
                 const SizedBox(width: 100, height: 40),
                 RailFlyoutTrigger(
-                  keyValue: 'plate',
+                  name: 'plate',
                   tooltip: 'Plate tip',
                   semanticLabel: 'Plate',
                   entriesBuilder: () => [
@@ -819,7 +823,7 @@ void main() {
         tester,
         plate(onRow: () => rowTaps += 1, onPick: () => picks += 1),
       );
-      await tester.tap(byKey('plate'));
+      await tester.tap(byName('plate'));
       await tester.pumpAndSettle();
       expect(byKey('plate-pick'), findsOneWidget, reason: 'the list opened');
       expect(rowTaps, 0, reason: 'the row must not answer its plate\'s press');
@@ -832,11 +836,11 @@ void main() {
         'cursor says it is pressed', (tester) async {
       await pump(tester, plate(onRow: () {}, onPick: () {}));
       final mouse = await mouseAt(tester, Offset.zero);
-      await mouse.moveTo(tester.getCenter(byKey('plate')));
+      await mouse.moveTo(tester.getCenter(byName('plate')));
       await settleTooltip(tester);
       expect(SummonedTooltip.debugShownMessage, 'Plate tip');
       expect(
-        tester.renderObject<RenderRailPlateFace>(byKey('plate')).cursor,
+        tester.renderObject<RenderRailPlateFace>(byName('plate')).cursor,
         SystemMouseCursors.click,
       );
       await mouse.moveTo(const Offset(790, 590));
@@ -848,7 +852,7 @@ void main() {
         'its tooltip, whose activation opens the list', (tester) async {
       final semantics = tester.ensureSemantics();
       await pump(tester, plate(onRow: () {}, onPick: () {}));
-      final node = tester.getSemantics(byKey('plate'));
+      final node = tester.getSemantics(byName('plate'));
       final data = node.getSemanticsData();
       expect(data.flagsCollection.isButton, isTrue);
       expect(data.label, 'Plate');

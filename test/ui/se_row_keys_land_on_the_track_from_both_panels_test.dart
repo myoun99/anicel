@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
+import '../helpers/named_finders.dart';
+
 /// F-102's two HOSTS. Both panels key an SE row through `LaneVerbs`, and each
 /// tells the verbs which axis its frames are on: the timeline's rail speaks
 /// the ACTIVE cut's local frames, the storyboard's the track's global ones.
@@ -72,13 +74,11 @@ void main() {
     final se = session.activeTrack.seLayers.first.id.value;
     await _tapVisible(
       tester,
-      find.byKey(ValueKey<String>('timeline-lane-toggle-$se')),
+      find.named('timeline-lane-toggle-$se'),
     );
     await _tapVisible(
       tester,
-      find.byKey(
-        ValueKey<String>('timeline-lane-group-toggle-$se-transform-group'),
-      ),
+      find.named('timeline-lane-group-toggle-$se-transform-group'),
     );
     await _tapVisible(
       tester,
@@ -122,13 +122,11 @@ void main() {
     final se = session.activeTrack.seLayers.first.id.value;
     await _tapVisible(
       tester,
-      find.byKey(ValueKey<String>('storyboard-se-lane-toggle-$track-1')),
+      find.named('storyboard-se-lane-toggle-$track-1'),
     );
     await _tapVisible(
       tester,
-      find.byKey(
-        ValueKey<String>('storyboard-lane-group-toggle-$se-transform-group'),
-      ),
+      find.named('storyboard-lane-group-toggle-$se-transform-group'),
     );
     await _tapVisible(
       tester,

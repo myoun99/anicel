@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨F-185 (유저 2026-09-26): 「폴더에 대한 비지블버튼 조작시, 지금 로직은
 /// 맘에드는데, 비지블off일때 내부 레이어의 비지블이 on에다가 활성화색인데 그림
@@ -93,7 +94,7 @@ void main() {
           home: Scaffold(
             body: Center(
               child: LayerVisibilityToggleButton(
-                keyValue: 'eye-under-test',
+                name: 'eye-under-test',
                 isVisible: true,
                 hiddenAbove: true,
                 onToggle: () {},
@@ -226,7 +227,7 @@ void main() {
       await tester.pumpAndSettle();
 
       IconButtonReading eyeOf(String id) => tester.appIconButton(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-$id')),
+        find.named('$prefix-layer-visibility-$id'),
       );
       bool labelLit(String id) => tester
           .widget<LayerMarkChip>(
@@ -239,7 +240,7 @@ void main() {
 
       // I-62: the NAME wears what the label wears.
       Color? nameInk(String id) {
-        final name = find.byKey(ValueKey<String>('$prefix-layer-name-$id'));
+        final name = find.named('$prefix-layer-name-$id');
         Finder as(Type type) =>
             find.descendant(of: name, matching: find.byType(type));
         return orientation == TimelineOrientation.vertical
@@ -262,7 +263,7 @@ void main() {
       expect(lit.member, isNot(off.member), reason: 'CONTROL: lit at rest');
 
       await tester.tap(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-folder')),
+        find.named('$prefix-layer-visibility-folder'),
       );
       await tester.pumpAndSettle();
 
@@ -281,7 +282,7 @@ void main() {
       expect(nameInk('outside'), lit.outside);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-folder')),
+        find.named('$prefix-layer-visibility-folder'),
       );
       await tester.pumpAndSettle();
 
@@ -291,7 +292,7 @@ void main() {
 
       // ...and a row turned off by its OWN eye: the label and the name.
       await tester.tap(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-outside')),
+        find.named('$prefix-layer-visibility-outside'),
       );
       await tester.pumpAndSettle();
 

@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show railSelectedRowColor;
 
+import '../../helpers/named_finders.dart';
+
 /// R10 #19's RAIL half: the row you are standing on is drawn, and a
 /// property lane's LABEL is a place you can stand.
 ///
@@ -98,11 +100,11 @@ Future<void> _openLanes(
   String layerId = _drawId,
 }) async {
   await tester.tap(
-    find.byKey(ValueKey<String>('$keyPrefix-lane-toggle-$layerId')),
+    find.named('$keyPrefix-lane-toggle-$layerId'),
   );
   await tester.pumpAndSettle();
-  final groupToggle = find.byKey(
-    ValueKey<String>('$keyPrefix-lane-group-toggle-$layerId-transform-group'),
+  final groupToggle = find.named(
+    '$keyPrefix-lane-group-toggle-$layerId-transform-group',
   );
   await tester.ensureVisible(groupToggle);
   await tester.pumpAndSettle();
@@ -241,7 +243,7 @@ void main() {
 
       // And back: pressing the layer's own row takes it home.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-name-$_cameraId')),
+        find.named('timeline-layer-name-$_cameraId'),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(cellRing), findsOneWidget);
@@ -332,11 +334,7 @@ void main() {
       // The GROUP closes: its members leave, the header does not — so the
       // header is what you land on.
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-lane-group-toggle-$_drawId-transform-group',
-          ),
-        ),
+        find.named('timeline-lane-group-toggle-$_drawId-transform-group'),
       );
       await tester.pumpAndSettle();
       expect(
@@ -350,7 +348,7 @@ void main() {
 
       // The whole TWIRL-DOWN closes: every lane goes, so the layer takes it.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_drawId')),
+        find.named('timeline-lane-toggle-$_drawId'),
       );
       await tester.pumpAndSettle();
       expect(
@@ -369,16 +367,12 @@ void main() {
       await _openLanes(tester);
       final session = _sessionOf(tester);
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-name-$_drawId')),
+        find.named('timeline-layer-name-$_drawId'),
       );
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-lane-group-toggle-$_drawId-transform-group',
-          ),
-        ),
+        find.named('timeline-lane-group-toggle-$_drawId-transform-group'),
       );
       await tester.pumpAndSettle();
       expect(
@@ -449,11 +443,7 @@ void main() {
 
       // The chevron still owns the twirl.
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-lane-group-toggle-$_drawId-transform-group',
-          ),
-        ),
+        find.named('timeline-lane-group-toggle-$_drawId-transform-group'),
       );
       await tester.pumpAndSettle();
       expect(_laneLabel('position'), findsNothing);
@@ -565,7 +555,7 @@ void main() {
 
       // And back: the layer row takes strokes again.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-layer-name-$_drawId')),
+        find.named('timeline-layer-name-$_drawId'),
       );
       await tester.pumpAndSettle();
       expect(canvasTakesStrokes(), isTrue);
@@ -638,16 +628,12 @@ void main() {
       // lighting), and the camera stopped being a row that has one.
       await _pump(tester);
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_cameraId')),
+        find.named('timeline-lane-toggle-$_cameraId'),
       );
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-lane-group-toggle-$_cameraId-transform-group',
-          ),
-        ),
+        find.named('timeline-lane-group-toggle-$_cameraId-transform-group'),
         findsNothing,
         reason: 'the row already draws its members\' key union — a header on '
             'top of that is the same noun said twice',
@@ -661,16 +647,12 @@ void main() {
         'exception, not a new default', (tester) async {
       await _pump(tester);
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_drawId')),
+        find.named('timeline-lane-toggle-$_drawId'),
       );
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(
-          const ValueKey<String>(
-            'timeline-lane-group-toggle-$_drawId-transform-group',
-          ),
-        ),
+        find.named('timeline-lane-group-toggle-$_drawId-transform-group'),
         findsOneWidget,
       );
     });

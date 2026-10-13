@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
 /// offset value field.
@@ -182,7 +183,7 @@ void main() {
 
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('timeline-layer-mute-sea-voice')),
+      find.named('timeline-layer-mute-sea-voice'),
     );
     expect(
       find.byKey(const ValueKey<String>('se-layer-mixer')),
@@ -196,7 +197,7 @@ void main() {
 
     // The cel row carries no speaker — SE rows only.
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-mute-sea-cel')),
+      find.named('timeline-layer-mute-sea-cel'),
       findsNothing,
     );
 
@@ -213,7 +214,7 @@ void main() {
     await tester.pumpAndSettle();
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-mute-sea-voice')),
+      find.named('xsheet-layer-mute-sea-voice'),
     );
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
     await tester.pumpAndSettle();
@@ -228,9 +229,7 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
-    final speaker = find.byKey(
-      const ValueKey<String>('timeline-layer-mute-sea-voice'),
-    );
+    final speaker = find.named('timeline-layer-mute-sea-voice');
     IconButtonReading speakerIcon() => tester.appIconButton(speaker);
     expect(speakerIcon().iconColor, isNull, reason: 'not soloed yet');
 
@@ -270,7 +269,7 @@ void main() {
 
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-sea-voice')),
+      find.named('timeline-lane-toggle-sea-voice'),
     );
 
     expect(

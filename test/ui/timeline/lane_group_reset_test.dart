@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// R5 — AE's group Reset, in the user's words: **키를 삭제하진 않고 값만
 /// 리셋**, scoped to the playhead or, with a lane range live, to the keys it
 /// covers.
@@ -202,9 +204,7 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final layerId = session.activeLayerId!;
-    final toggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-$layerId'),
-    );
+    final toggle = find.named('timeline-lane-toggle-$layerId');
     await tester.ensureVisible(toggle);
     await tester.pumpAndSettle();
     await tester.tap(toggle);
@@ -221,8 +221,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final reset = find.byKey(
-      ValueKey<String>('timeline-lane-group-reset-$layerId-transform-group'),
+    final reset = find.named(
+      'timeline-lane-group-reset-$layerId-transform-group',
     );
     await tester.ensureVisible(reset);
     await tester.pumpAndSettle();

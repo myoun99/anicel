@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// THE CONTE ROWS' BUTTONS PRESS THE SELECTION (row-buttons-act-on-the-
 /// selection, 유저 2026-09-25: 「선택범위 내부 레이어 조절하면 선택범위
 /// 레이어 모두 적용」), and the shared verbs on a selection of them act on
@@ -123,19 +125,19 @@ Future<EditorSessionManager> _storyboard(WidgetTester tester) async {
   return s;
 }
 
-Finder _button(String key, String layer) =>
-    find.byKey(ValueKey<String>('storyboard-layer-$key-$layer')).first;
+Finder _button(String button, String layer) =>
+    find.named('storyboard-layer-$button-$layer').first;
 
 void main() {
   testWidgets('🚨the label wears the row in hand — the cut stood in\'s row at '
       'its seat, not the first cut\'s', (tester) async {
     await _storyboard(tester);
     expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-visibility-b-over')),
+      find.named('storyboard-layer-visibility-b-over'),
       findsWidgets,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-visibility-a-over')),
+      find.named('storyboard-layer-visibility-a-over'),
       findsNothing,
     );
   });

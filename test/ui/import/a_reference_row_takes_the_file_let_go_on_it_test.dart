@@ -33,6 +33,7 @@ import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/three_frame_gif.dart';
+import '../../helpers/named_finders.dart';
 
 /// I-47 (유저 2026-09-25): 「이미지 레이어의 프레임영역에 떨구면 참조변경 …
 /// 기존의 트랜스폼값같은거 안건들이고 진짜 참조대상만 변경하는느낌」 — and
@@ -175,9 +176,7 @@ void main() {
   /// answering how many frames the silhouette covered while it hovered,
   /// or null when none stood there.
   Future<int?> dragOnto(WidgetTester tester, Layer row, String path) async {
-    final target = find.byKey(
-      ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
-    );
+    final target = find.named('timeline-layer-asset-drop-${row.id}');
     final frames = tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))
         .map((paint) => paint.painter)

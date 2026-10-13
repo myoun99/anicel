@@ -42,6 +42,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show formatTransformLaneValue, transformGroupHeaderLane;
 
+import '../helpers/named_finders.dart';
+
 void main() {
   const frame = CanvasSize(width: 1920, height: 1080);
 
@@ -276,8 +278,8 @@ void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 
-  Future<void> tapKey(WidgetTester tester, String key) async {
-    final target = find.byKey(ValueKey<String>(key));
+  Future<void> tapNamed(WidgetTester tester, String name) async {
+    final target = find.named(name);
     await tester.ensureVisible(target);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -314,7 +316,7 @@ void main() {
       pose: panned,
     );
     await tester.pumpAndSettle();
-    await tapKey(tester, 'timeline-lane-toggle-${se.id.value}');
+    await tapNamed(tester, 'timeline-lane-toggle-${se.id.value}');
     // The header's NAME: the chevron twirls and the value cell edits, so
     // the label's text is what means 「stand here」.
     final header = find.byKey(

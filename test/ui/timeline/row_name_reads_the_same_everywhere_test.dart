@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// **F-26 — the x-sheet is the rail turned on its side, including its
 /// grammar.**
 ///
@@ -87,7 +89,7 @@ void main() {
 
     await pressAndHold(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-row-beta')),
+      find.named('xsheet-layer-row-beta'),
     );
 
     expect(
@@ -108,7 +110,7 @@ void main() {
     // press — ONE pick, not two.
     await pressAndHold(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-name-beta')),
+      find.named('xsheet-layer-name-beta'),
     );
 
     expect(picked, [const LayerId('beta')]);
@@ -121,9 +123,7 @@ void main() {
     final rail = tester
         .widget<Text>(
           find.descendant(
-            of: find.byKey(
-              const ValueKey<String>('timeline-layer-name-beta'),
-            ),
+            of: find.named('timeline-layer-name-beta'),
             matching: find.byType(Text),
           ),
         )
@@ -133,7 +133,7 @@ void main() {
     final sheet = tester
         .widget<VerticalWritingText>(
           find.descendant(
-            of: find.byKey(const ValueKey<String>('xsheet-layer-name-beta')),
+            of: find.named('xsheet-layer-name-beta'),
             matching: find.byType(VerticalWritingText),
           ),
         )

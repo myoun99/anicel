@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/named_finders.dart';
 import '../../helpers/words_cut_off.dart';
 
 /// 🚨text-scale-rail-columns (유저 2026-09-25, answering
@@ -40,18 +41,14 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
 
-  /// A row's opacity bar under [scope] — every rail keys it
+  /// A row's opacity bar under [scope] — every rail names it
   /// `<surface>-layer-opacity-<id>`.
   Rect rowOpacityBar(WidgetTester tester, Finder scope) => tester.getRect(
     find
         .descendant(
           of: scope,
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget.key is ValueKey<String> &&
-                (widget.key! as ValueKey<String>).value.contains(
-                  '-layer-opacity-',
-                ),
+          matching: find.namedWhere(
+            (name) => name.contains('-layer-opacity-'),
           ),
         )
         .first,
@@ -110,15 +107,7 @@ void main() {
           find.byKey(const ValueKey<String>('legend-opacity')),
         );
         final rowBar = tester.getRect(
-          find
-              .byWidgetPredicate(
-                (widget) =>
-                    widget.key is ValueKey<String> &&
-                    (widget.key! as ValueKey<String>).value.contains(
-                      '-layer-opacity-',
-                    ),
-              )
-              .first,
+          find.namedWhere((name) => name.contains('-layer-opacity-')).first,
         );
         expect(master.left, closeTo(rowBar.left, 0.5));
         expect(master.width, closeTo(rowBar.width, 0.5));

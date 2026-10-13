@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineRangeSelectionBandDecorationAt;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
+import '../helpers/named_finders.dart';
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -715,14 +716,14 @@ void main() {
         findsNothing,
         reason: 'no other row of the rail is lit',
       );
-      const lit = ValueKey<String>('storyboard-selected-layer');
-      expect(find.byKey(lit), findsOneWidget);
+      final lit = find.named('storyboard-selected-layer');
+      expect(lit, findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(
             ValueKey<String>('storyboard-conte-label-${_trackId.value}'),
           ),
-          matching: find.byKey(lit),
+          matching: lit,
         ),
         findsOneWidget,
       );

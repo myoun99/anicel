@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart'
     show DockEdgeSplitter;
 
+import '../../helpers/named_finders.dart';
+
 /// **I-89 ③ — a header graph is pulled to its height.**
 ///
 /// The mock (5판): the graph's bottom edge dragged — on the sheet, the
@@ -373,8 +375,8 @@ Future<void> _openTheGraph(WidgetTester tester, EditorSessionManager s) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _tap(WidgetTester tester, String key) async {
-  final button = find.byKey(ValueKey<String>(key));
+Future<void> _tap(WidgetTester tester, String name) async {
+  final button = find.named(name);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);

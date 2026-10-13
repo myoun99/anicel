@@ -18,6 +18,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../widgets/named.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
@@ -752,7 +753,7 @@ class TimelineRowGripCallbacks {
 class TimelineRowEditChromeLayer extends StatefulWidget {
   const TimelineRowEditChromeLayer({
     super.key,
-    required this.paintKey,
+    required this.paintName,
     required this.layerId,
     required this.resolver,
     required this.geometry,
@@ -765,9 +766,9 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     this.viewportMainExtent = 0,
   });
 
-  /// Key placed on the [CustomPaint] itself: tests read the painter (and
-  /// its render box, for target geometry) off this.
-  final Key paintKey;
+  /// What a finder calls the [CustomPaint] itself ([Named]): tests read the
+  /// painter (and its render box, for target geometry) off it.
+  final String paintName;
 
   /// The row's scroll window, as its cells take it — what the painter draws
   /// ([TimelineRowEditChromePainter.windowBucket]).
@@ -1303,9 +1304,11 @@ class _TimelineRowEditChromeLayerState
     return RepaintBoundary(child: _painted(context));
   }
 
-  Widget _painted(BuildContext context) {
+  Widget _painted(BuildContext context) =>
+      Named(widget.paintName, child: _paint(context));
+
+  CustomPaint _paint(BuildContext context) {
     return CustomPaint(
-      key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
         resolver: widget.resolver,
         geometry: widget.geometry,

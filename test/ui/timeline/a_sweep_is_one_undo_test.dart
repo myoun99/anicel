@@ -37,6 +37,8 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 
+import '../../helpers/named_finders.dart';
+
 void main() {
   // The claim set is global: a sweep that ends without its release leaves
   // the pointer claimed for the next case.
@@ -51,8 +53,8 @@ void main() {
 
     await _sweep(
       tester,
-      from: find.byKey(const ValueKey<String>('timeline-layer-visibility-l4')),
-      to: find.byKey(const ValueKey<String>('timeline-layer-visibility-l2')),
+      from: find.named('timeline-layer-visibility-l4'),
+      to: find.named('timeline-layer-visibility-l2'),
     );
     expect(
       _eyes(s, const ['l4', 'l3', 'l2']),
@@ -89,12 +91,8 @@ void main() {
 
     await _sweep(
       tester,
-      from: find.byKey(
-        const ValueKey<String>('storyboard-layer-visibility-t1-s1'),
-      ),
-      to: find.byKey(
-        const ValueKey<String>('storyboard-layer-visibility-t3-s1'),
-      ),
+      from: find.named('storyboard-layer-visibility-t1-s1'),
+      to: find.named('storyboard-layer-visibility-t3-s1'),
     );
     expect(
       _eyes(s, const ['t1-s1', 't2-s1', 't3-s1']),
@@ -153,7 +151,7 @@ void main() {
                   find.byWidgetPredicate(
                     (widget) =>
                         widget is LayerVisibilityToggleButton &&
-                        widget.keyValue == 'timeline-layer-visibility-$id',
+                        widget.name == 'timeline-layer-visibility-$id',
                   ),
                 )
                 .isVisible,
@@ -304,9 +302,8 @@ Future<_Hold> _press(
   String column,
   String row,
 ) async {
-  Offset centreOf(String row) => tester.getCenter(
-    find.byKey(ValueKey<String>('timeline-layer-$column-$row')),
-  );
+  Offset centreOf(String row) =>
+      tester.getCenter(find.named('timeline-layer-$column-$row'));
   var at = centreOf(row);
   final gesture = await tester.startGesture(at, kind: PointerDeviceKind.mouse);
   await tester.pump(const Duration(milliseconds: 16));

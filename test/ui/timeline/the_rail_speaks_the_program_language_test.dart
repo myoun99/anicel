@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨rail-subject-tooltips (found building F-124, 2026-09-17): the rail's
 /// shared controls carried their row as an English WORD and assembled their
@@ -43,19 +44,19 @@ void main() {
     // on the storyboard's V row — until that eye left the row (I-73,
     // 2026-10-08) and its two sentences left the table.
     Widget eye(String key, bool visible) => LayerVisibilityToggleButton(
-      keyValue: key,
+      name: key,
       isVisible: visible,
       onToggle: () {},
     );
     Widget fx(String key, RailSubject subject, LayerFxState state) =>
         FxToggleButton(
-          keyValue: key,
+          name: key,
           subject: subject,
           state: state,
           onToggle: () {},
         );
     Widget blend(String key, {required bool isGroup}) => LayerBlendModeChip(
-      keyValue: key,
+      name: key,
       optionKeyPrefix: '$key-option-',
       blendMode: LayerBlendMode.normal,
       isGroup: isGroup,
@@ -91,10 +92,10 @@ void main() {
       ),
     );
     String face(String key) => tester
-        .appIconButton(find.byKey(ValueKey<String>(key)))
+        .appIconButton(find.named(key))
         .tooltip;
     String chip(String key) => tester
-        .widget<PanelFlyoutButton>(find.byKey(ValueKey<String>(key)))
+        .widget<PanelFlyoutButton>(find.named(key))
         .tooltip!;
     return {
       for (final key in [
@@ -222,7 +223,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       String face(String key) => tester
-          .appIconButton(find.byKey(ValueKey<String>(key)))
+          .appIconButton(find.named(key))
           .tooltip;
       final id = layer.id;
       words[on ? 'lanes-open' : 'lanes-shut'] = face(
@@ -288,7 +289,7 @@ Future<Map<String, String>> _trackRow(
   );
   await tester.pumpAndSettle();
   String face(String key) => tester
-      .appIconButton(find.byKey(ValueKey<String>(key)))
+      .appIconButton(find.named(key))
       .tooltip;
   return {'fx-track-on': face('storyboard-track-fx-${track.id.value}')};
 }

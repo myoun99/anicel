@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
+import 'named.dart';
 import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -1204,16 +1205,17 @@ class PanelFlyoutTrigger extends StatelessWidget {
 class RailFlyoutTrigger extends StatelessWidget {
   const RailFlyoutTrigger({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.tooltip,
     required this.entriesBuilder,
     required this.child,
     this.semanticLabel,
   });
 
-  /// Stable widget key (the tests' handle) — it lands on the
-  /// [RailPlateFace], the box the user sees and presses.
-  final String keyValue;
+  /// What a finder calls the [RailPlateFace], the box the user sees and
+  /// presses — a [Named], as a [RailGlyphButton.name] is and for its
+  /// reason.
+  final String name;
   final String tooltip;
   final List<PanelFlyoutEntry> Function() entriesBuilder;
 
@@ -1228,12 +1230,14 @@ class RailFlyoutTrigger extends StatelessWidget {
     void open() => showPanelFlyout(context, entries: entriesBuilder());
     return ControlPressClaim(
       onPressed: open,
-      child: RailPlateFace(
-        key: ValueKey<String>(keyValue),
-        tooltip: tooltip,
-        onSemanticTap: open,
-        semanticLabel: semanticLabel,
-        child: child,
+      child: Named(
+        name,
+        child: RailPlateFace(
+          tooltip: tooltip,
+          onSemanticTap: open,
+          semanticLabel: semanticLabel,
+          child: child,
+        ),
       ),
     );
   }

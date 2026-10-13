@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// Test probes for a dense row's PAINTED edit chrome (R28 #4 tier 2): the
 /// comma grips and the run-edge [+]/property clusters are canvas work now,
 /// so `find.byKey('timeline-block-edge-grip-…')` no longer exists on the
@@ -15,7 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 /// sparse surfaces (instruction rows, storyboard SE strips) still mount
 /// `BlockEdgeGrip` widgets and keep their key finders.
 Finder timelineRowChromeFinder(String layerId, {String prefix = 'timeline'}) =>
-    find.byKey(ValueKey<String>('$prefix-edit-chrome-$layerId'));
+    find.named('$prefix-edit-chrome-$layerId');
 
 /// The row's chrome painter, or null when the row has no affordances at all
 /// (the layer is not mounted then — the successor of `findsNothing`).

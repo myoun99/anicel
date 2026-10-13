@@ -50,6 +50,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/named_finders.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
@@ -631,15 +632,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(
-        const ValueKey<String>('export-cels-stack-layer-attach-arrow-a-color'),
-      ),
+      find.named('export-cels-stack-layer-attach-arrow-a-color'),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-stack-layer-attach-arrow-a')),
-      findsNothing,
-    );
+    expect(find.named('export-cels-stack-layer-attach-arrow-a'), findsNothing);
     final before = tester.exportPreviewDocument!.look;
     await tester.settleExportPreview();
     final pictureBefore = tester.exportPreviewImage;

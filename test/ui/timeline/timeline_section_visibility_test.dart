@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 Layer _layer(String id, LayerKind kind) {
   return Layer(
@@ -64,7 +65,7 @@ Future<void> _pump(WidgetTester tester) async {
 }
 
 Finder _row(String layerId) =>
-    find.byKey(ValueKey<String>('timeline-layer-row-$layerId'));
+    find.named('timeline-layer-row-$layerId');
 
 // Menu-aware (R-toolbar round): the section show/hide items live in the
 // Layer ▾ flyout (both orientations); the horizontal rail additionally
@@ -143,11 +144,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-column-area-se-1')),
+      find.named('xsheet-frame-column-area-se-1'),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-column-area-cel-a')),
+      find.named('xsheet-frame-column-area-cel-a'),
       findsOneWidget,
     );
 

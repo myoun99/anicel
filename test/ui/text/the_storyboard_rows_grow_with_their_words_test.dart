@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/named_finders.dart';
 import '../../helpers/words_cut_off.dart';
 
 /// 🚨text-scale-storyboard-rows (유저 2026-09-24, 「행도 글자 크기를 따라
@@ -51,6 +52,10 @@ void main() {
         widget.key is ValueKey<String> &&
         (widget.key! as ValueKey<String>).value.startsWith(prefix),
   );
+
+  /// [keyed], for a handle that is a name rather than a key.
+  Finder named(String prefix) =>
+      find.namedWhere((name) => name.startsWith(prefix));
 
   /// [label] and [strip] are one row: the same top, the same height, and
   /// that height is [drawn] at 1× plus the name's growth.
@@ -123,7 +128,7 @@ void main() {
         atTextScale(tester, scale);
         final board = await openTheBoard(tester);
         final growth = timelineLayerRowGrowthIn(tester.element(board));
-        await tester.tap(keyed('storyboard-se-lane-toggle-').first);
+        await tester.tap(named('storyboard-se-lane-toggle-').first);
         await tester.pumpAndSettle();
 
         final labels = keyed('storyboard-lane-label-');

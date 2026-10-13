@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// R27 #23~#29 asked for a folder row that reads exactly like a layer row.
 /// It IS one now — the same widget, so parity is by construction and these
@@ -82,7 +83,7 @@ void main() {
       'timeline-layer-blend-f',
     ]) {
       expect(
-        find.byKey(ValueKey<String>(key)),
+        find.named(key),
         findsOneWidget,
         reason: '$key must be present',
       );
@@ -99,7 +100,7 @@ void main() {
       'reserved slot', (tester) async {
     await tester.pumpWidget(host(folder()));
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-timesheet-f')),
+      find.named('timeline-layer-timesheet-f'),
       findsNothing,
     );
   });
@@ -120,7 +121,7 @@ void main() {
     );
 
     // The fx button is a SWITCH — it must not open anything.
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-layer-fx-f')));
+    await tester.tap(find.named('timeline-layer-fx-f'));
     await tester.pump();
     expect(fxToggles, [const LayerId('f')]);
     expect(
@@ -132,7 +133,7 @@ void main() {
 
     // The LEADING twirl opens the lanes, like a layer row's.
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-f')),
+      find.named('timeline-lane-toggle-f'),
     );
     await tester.pump();
     expect(laneToggles, [const LayerId('f')]);
@@ -140,17 +141,17 @@ void main() {
     // The fold twirl sits RIGHT of the name (the attach-group twirl's
     // position — they are one control).
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-folder-twirl-f')),
+      find.named('timeline-folder-twirl-f'),
     );
     await tester.pump();
     expect(foldToggles, [const LayerId('f')]);
     expect(
       tester
-          .getRect(find.byKey(const ValueKey<String>('timeline-folder-twirl-f')))
+          .getRect(find.named('timeline-folder-twirl-f'))
           .left,
       greaterThan(
         tester
-            .getRect(find.byKey(const ValueKey<String>('timeline-lane-toggle-f')))
+            .getRect(find.named('timeline-lane-toggle-f'))
             .right,
       ),
       reason: 'the fold moved out of the leading slot to beside the name',
@@ -162,7 +163,7 @@ void main() {
     LayerId? selected;
     await tester.pumpWidget(host(folder(), onSelect: (id) => selected = id));
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-folder-row-f')),
+      find.named('timeline-folder-row-f'),
     );
     await tester.pump();
     expect(selected, const LayerId('f'));
@@ -171,7 +172,7 @@ void main() {
       final container = tester.widget<Container>(
         find
             .descendant(
-              of: find.byKey(const ValueKey<String>('timeline-folder-row-f')),
+              of: find.named('timeline-folder-row-f'),
               matching: find.byType(Container),
             )
             .first,
@@ -192,7 +193,7 @@ void main() {
       host(folder(), onBlend: (_, mode) => picked = mode),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-blend-f')),
+      find.named('timeline-layer-blend-f'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -271,11 +272,11 @@ void main() {
   // R5 #18. Nesting is a COUNT OF COLUMNS now, not an amount of blank.
   group('folder nesting is spent on the NAME, not on the buttons', () {
     double nameLeft(WidgetTester tester) => tester
-        .getRect(find.byKey(const ValueKey<String>('timeline-layer-name-f')))
+        .getRect(find.named('timeline-layer-name-f'))
         .left;
 
     double buttonLeft(WidgetTester tester) => tester
-        .getRect(find.byKey(const ValueKey<String>('timeline-layer-fx-f')))
+        .getRect(find.named('timeline-layer-fx-f'))
         .left;
 
     testWidgets('🆕the buttons keep one x at every depth', (tester) async {

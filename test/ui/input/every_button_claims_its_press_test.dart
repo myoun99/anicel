@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import '../../helpers/dart_sources.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
@@ -491,7 +492,7 @@ void main() {
       'xsheet-layer-onion-$layerId',
       'xsheet-layer-fill-reference-$layerId',
     ]) {
-      final finder = find.byKey(ValueKey<String>(id));
+      final finder = find.named(id);
       expect(finder, findsOneWidget, reason: '$id is not on the sheet');
       expect(
         await claimedWhileDown(tester, finder, pointer: pointer++),
@@ -536,13 +537,15 @@ void main() {
     await tester.pumpAndSettle();
 
     var pointer = 55;
-    for (final id in const [
-      'storyboard-track-lane-toggle-default-track',
-      'storyboard-se-lane-toggle-default-track-1',
-      'legend-lanes-toggle',
-      'legend-mute',
+    for (final (id, finder) in [
+      for (final name in const [
+        'storyboard-track-lane-toggle-default-track',
+        'storyboard-se-lane-toggle-default-track-1',
+      ])
+        (name, find.named(name)),
+      for (final key in const ['legend-lanes-toggle', 'legend-mute'])
+        (key, find.byKey(ValueKey<String>(key))),
     ]) {
-      final finder = find.byKey(ValueKey<String>(id));
       expect(finder, findsOneWidget, reason: '$id is not on the storyboard');
       expect(
         await claimedWhileDown(tester, finder, pointer: pointer++),

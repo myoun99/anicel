@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker;
 
+import '../../helpers/named_finders.dart';
+
 /// 🗣️I-73 ④ (유저 2026-10-08): 「카메라 행 범위는 키표시/이동/레인 등 모든거
 /// 콘티패널에서 가능. 컷 클램핑만 되도록」 — and the camera row's head is the
 /// timeline's camera row, so its twirl opens the camera's lanes under it as
@@ -138,7 +140,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     if (open) {
-      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();
     }
     return session;
@@ -253,7 +255,7 @@ void main() {
       expect(laneStrip('position'), findsNothing);
       expect(laneLabel('position'), findsNothing);
 
-      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();
 
       final row = tester.getRect(key('storyboard-camera-row-t1'));
@@ -301,7 +303,7 @@ void main() {
           cut.layers.cameraLayer!.id,
       ];
 
-      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();
       expect(
         twirls.value,
@@ -321,7 +323,7 @@ void main() {
 
       // The head is the camera of the cut stood in — the one just born.
       final head = session.requireActiveCut.layers.cameraLayer!.id;
-      await tester.tap(key('storyboard-lane-toggle-${head.value}'));
+      await tester.tap(find.named('storyboard-lane-toggle-${head.value}'));
       await tester.pumpAndSettle();
       expect(
         twirls.value.intersection(cameras().toSet()),
@@ -347,7 +349,7 @@ void main() {
     testWidgets('its head shuts them', (tester) async {
       await pumpPanel(tester);
 
-      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();
       expect(laneStrip('position'), findsNothing);
       expect(laneLabel('position'), findsNothing);
@@ -362,7 +364,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.storyboardStandingRow, LaneRowAddress(rowId, 'scale'));
 
-      await tester.tap(key('storyboard-lane-toggle-a-cam'));
+      await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();
 
       expect(session.storyboardStandingRow, LayerRowAddress(rowId));

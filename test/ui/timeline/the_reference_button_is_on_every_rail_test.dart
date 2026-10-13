@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/named_finders.dart';
 
 void main() {
   late Directory tempDir;
@@ -83,9 +84,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final button = find.byKey(
-        ValueKey<String>('$prefix-layer-reference-$id'),
-      );
+      final button = find.named('$prefix-layer-reference-$id');
       expect(button, findsOneWidget);
 
       await tester.tap(button);
@@ -137,7 +136,7 @@ void main() {
     await tester.pumpAndSettle();
     final buttons = [
       for (final id in [first, second])
-        find.byKey(ValueKey<String>('timeline-layer-reference-$id')),
+        find.named('timeline-layer-reference-$id'),
     ];
     for (final button in buttons) {
       expect(button, findsOneWidget, reason: 'the premise: two references');
@@ -194,7 +193,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(CollapsedRowOverlay),
-        matching: find.byKey(ValueKey<String>('timeline-layer-reference-$id')),
+        matching: find.named('timeline-layer-reference-$id'),
       ),
       findsOneWidget,
     );

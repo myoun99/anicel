@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_vertical_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// A page turn — the playhead crossing the frame window's bucket while it
 /// plays — repaints what follows the bucket, each on its own layer, and
 /// leaves the rows' layers as they were
@@ -83,13 +85,9 @@ void main() {
 
       // The row's own layer: the first boundary down its box.
       var rowLayer = tester.renderObject(
-        find.byKey(
-          ValueKey<String>(
-            sheet
-                ? 'xsheet-column-${layer.id}-cells'
-                : 'timeline-row-${layer.id}-cells',
-          ),
-        ),
+        sheet
+            ? find.byKey(ValueKey<String>('xsheet-column-${layer.id}-cells'))
+            : find.named('timeline-row-${layer.id}-cells'),
       );
       while (!rowLayer.isRepaintBoundary) {
         RenderObject? first;
@@ -97,7 +95,7 @@ void main() {
         rowLayer = first!;
       }
       final chrome = tester.renderObject(
-        find.byKey(ValueKey<String>('$prefix-edit-chrome-${layer.id}')),
+        find.named('$prefix-edit-chrome-${layer.id}'),
       );
 
       RenderObject? layerOf(RenderObject painted) {

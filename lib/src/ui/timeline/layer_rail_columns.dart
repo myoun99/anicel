@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
 import 'layer_label_controls.dart';
 import 'row_control_surface.dart';
@@ -127,7 +128,7 @@ IconData layerRailTwirlIcon({required bool expanded}) =>
 class LayerFoldTwirl extends StatelessWidget {
   const LayerFoldTwirl({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.expanded,
     required this.onToggle,
     this.axis = Axis.horizontal,
@@ -135,7 +136,9 @@ class LayerFoldTwirl extends StatelessWidget {
     this.across = 24,
   });
 
-  final String keyValue;
+  /// What a finder calls the twirl — its [RailGlyphButton.name], or the
+  /// glyph's own where the twirl only shows ([Named]).
+  final String name;
   final bool expanded;
 
   /// What a press on the twirl does — or null where the twirl only SHOWS
@@ -163,8 +166,8 @@ class LayerFoldTwirl extends StatelessWidget {
   Widget build(BuildContext context) {
     final toggle = onToggle;
     if (toggle == null) {
-      return KeyedSubtree(
-        key: ValueKey<String>(keyValue),
+      return Named(
+        name,
         child: alongBox(
           axis,
           layerLaneToggleSlotWidth,
@@ -177,7 +180,7 @@ class LayerFoldTwirl extends StatelessWidget {
       );
     }
     return RailGlyphButton(
-      keyValue: keyValue,
+      name: name,
       tooltip: tooltip,
       glyph: RailIconGlyph(layerRailTwirlIcon(expanded: expanded)),
       onPressed: toggle,
@@ -560,7 +563,7 @@ class LayerTypeButton extends StatelessWidget {
   /// Addresses the surface: 'timeline' | 'xsheet' | 'storyboard'.
   final String keyPrefix;
 
-  /// The subject's stable id for the keys — a [LayerId]'s string, or a
+  /// The subject's stable id for the names — a [LayerId]'s string, or a
   /// track's on the storyboard's V row.
   final String idValue;
 
@@ -601,7 +604,7 @@ class LayerTypeButton extends StatelessWidget {
         ? Theme.of(context).colorScheme.onSurfaceVariant
         : null;
     final iconSize = folder ? 16.0 : 18.0;
-    final key = '$keyPrefix-layer-type-button-$idValue';
+    final name = '$keyPrefix-layer-type-button-$idValue';
     final onTap = this.onTap;
     if (onTap == null) {
       // Nothing answers a press here (the export window's list), so it is
@@ -609,16 +612,18 @@ class LayerTypeButton extends StatelessWidget {
       // still stands, so the press is not a scroll.
       return ControlPressClaim(
         onPressed: null,
-        child: SizedBox(
-          key: ValueKey<String>(key),
-          width: layerTypeSlotWidth,
-          height: height,
-          child: Center(
-            child: Semantics(
-              label: label,
-              container: true,
-              child: ExcludeSemantics(
-                child: Icon(glyph, size: iconSize, color: color),
+        child: Named(
+          name,
+          child: SizedBox(
+            width: layerTypeSlotWidth,
+            height: height,
+            child: Center(
+              child: Semantics(
+                label: label,
+                container: true,
+                child: ExcludeSemantics(
+                  child: Icon(glyph, size: iconSize, color: color),
+                ),
               ),
             ),
           ),
@@ -628,7 +633,7 @@ class LayerTypeButton extends StatelessWidget {
     // The rail's button (I-57 ①): it hovers in the shape every rail button
     // hovers in, R26 #28's 「like every other」.
     return RailGlyphButton(
-      keyValue: key,
+      name: name,
       tooltip: '',
       semanticLabel: label,
       glyph: RailIconGlyph(glyph, color: color),

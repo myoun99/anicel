@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
+import '../../helpers/row_berths_in_order.dart';
+
 /// 🚨★★★**A WAVEFORM THAT LANDS AFTER ITS ROW WAS BUILT IS DRAWN** (유저
 /// 09-25: 「콘티패널에선 그냥 블록에서 파형보이는데 타임라인에선 안보여.
 /// … 이름/대사 지정하니까 보이네」, card `F-178` ⑥).
@@ -42,16 +44,18 @@ void main() {
     audioClips: [AudioClip(filePath: 'take.wav', frameId: const FrameId('f0'))],
   );
   final peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160));
+  final rows = buildTimelineDisplayRows(
+    layers: [layer],
+    expandedLayerIds: const {},
+    lanesForLayer: (_) => const [],
+  );
 
   Widget body(AudioPeaks? landed) => MaterialApp(
     home: Scaffold(
       body: Material(
         child: TimelineFrameRowsScrollBody(
-          rows: buildTimelineDisplayRows(
-            layers: [layer],
-            expandedLayerIds: const {},
-            lanesForLayer: (_) => const [],
-          ),
+          rows: rows,
+          berths: berthsInOrder(rows),
           edges: TimelineRowEdges.uniform(
             1,
             TimelineGridMetrics.defaults.layerRowHeight,

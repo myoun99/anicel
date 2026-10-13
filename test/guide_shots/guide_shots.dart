@@ -66,6 +66,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindow;
 
 import '../helpers/app_faces.dart';
 import '../helpers/home_page_probes.dart' show tapToolbarButton;
+import '../helpers/named_finders.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import 'guide_shortcut_table.dart';
@@ -749,13 +750,7 @@ Rect timelineRows(WidgetTester tester) {
   final dock = bottomDock(tester);
   var bottom = dock.top + 120;
   for (final e in find
-      .byWidgetPredicate(
-        (w) =>
-            w.key is ValueKey<String> &&
-            (w.key! as ValueKey<String>).value.startsWith(
-              'timeline-layer-row-',
-            ),
-      )
+      .namedWhere((name) => name.startsWith('timeline-layer-row-'))
       .evaluate()) {
     final box = e.renderObject as RenderBox?;
     if (box == null || !box.hasSize) continue;
@@ -765,13 +760,16 @@ Rect timelineRows(WidgetTester tester) {
   return Rect.fromLTRB(dock.left, dock.top, dock.right, bottom + 16);
 }
 
-/// Everything on screen whose string key starts with one of [prefixes],
-/// as one rect.
+/// Everything on screen whose string key, or name, starts with one of
+/// [prefixes], as one rect.
 Rect keyed(WidgetTester tester, List<String> prefixes) {
   Rect? all;
-  final found = find.byWidgetPredicate((w) {
-    final key = w.key;
-    return key is ValueKey<String> && prefixes.any(key.value.startsWith);
+  bool chosen(String? handle) =>
+      handle != null && prefixes.any(handle.startsWith);
+  final found = find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return chosen(key is ValueKey<String> ? key.value : null) ||
+        chosen(nameOf(e));
   });
   for (final e in found.evaluate()) {
     final box = e.renderObject as RenderBox?;
@@ -887,10 +885,10 @@ void guideShots(AppLanguage language) {
       await settleReal(tester, 4);
 
       // The sound: S2's lanes open, the bounce's waveform under it.
-      await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await tester.tap(find.named('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 10);
       await shot(tester, 'sound', rect: timelineRows(tester), ratio: 2);
-      await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await tester.tap(find.named('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 4);
 
       // The Edit button on a line of dialogue: S1's block, its window.
@@ -915,7 +913,7 @@ void guideShots(AppLanguage language) {
 
       // The labels: the A row's label menu, open over the rows.
       final markButton = 'timeline-layer-mark-${ballLayer.value}';
-      await tester.tap(byKey(markButton));
+      await tester.tap(find.named(markButton));
       await settleReal(tester, 4);
       await shot(
         tester,

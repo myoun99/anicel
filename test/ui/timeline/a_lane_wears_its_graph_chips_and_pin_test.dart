@@ -45,6 +45,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// **I-89 ③ — a lane on a rail that carries header graphs: its curve's
 /// chips before its name, its pin before its value.**
@@ -92,7 +93,7 @@ void main() {
 
     double insetOf(String laneId) =>
         tester.getTopRight(_cell('timeline', laneId)).dx -
-        tester.getCenter(find.byKey(ValueKey(_pin('timeline', laneId)))).dx;
+        tester.getCenter(find.named(_pin('timeline', laneId))).dx;
     expect(insetOf('scale'), moreOrLessEquals(insetOf('position')));
     expect(insetOf('rotation'), moreOrLessEquals(insetOf('position')));
   });
@@ -142,16 +143,14 @@ void main() {
     expect(_pinned(s), {laneGroupKey(_drawId, 'position')});
     expect(
       tester
-          .appIconButton(find.byKey(ValueKey(_pin('timeline', 'position'))))
+          .appIconButton(find.named(_pin('timeline', 'position')))
           .isSelected,
       isTrue,
     );
     await _tap(tester, _pin('timeline', 'position'));
     expect(_pinned(s), isEmpty);
 
-    final from = tester.getCenter(
-      find.byKey(ValueKey(_pin('timeline', 'position'))),
-    );
+    final from = tester.getCenter(find.named(_pin('timeline', 'position')));
     final rowHeight = tester.getRect(_cell('timeline', 'position')).height;
     // ⛔No frame between the press and the first step — the pin is read
     // live, as the graph's button is.
@@ -177,9 +176,7 @@ void main() {
   ) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    final pin = tester.getRect(
-      find.byKey(ValueKey(_pin('timeline', 'position'))),
-    );
+    final pin = tester.getRect(find.named(_pin('timeline', 'position')));
     final rowHeight = tester.getRect(_cell('timeline', 'position')).height;
 
     Future<void> sweepFrom(double x) async {
@@ -235,12 +232,11 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
     await tester.pumpAndSettle();
-    final position = find.byKey(ValueKey(_pin('xsheet', 'position')));
+    final position = find.named(_pin('xsheet', 'position'));
     await tester.ensureVisible(position);
     await tester.pumpAndSettle();
     final from = tester.getCenter(position);
-    final step =
-        tester.getCenter(find.byKey(ValueKey(_pin('xsheet', 'scale')))) - from;
+    final step = tester.getCenter(find.named(_pin('xsheet', 'scale'))) - from;
     expect(step.dy, moreOrLessEquals(0), reason: '⛔전제: one row of pins');
 
     final gesture = await tester.startGesture(
@@ -268,7 +264,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
     await tester.pumpAndSettle();
-    final position = find.byKey(ValueKey(_pin('xsheet', 'position')));
+    final position = find.named(_pin('xsheet', 'position'));
     await tester.ensureVisible(position);
     await tester.pumpAndSettle();
 
@@ -277,7 +273,7 @@ void main() {
 
     final pin = tester.getRect(position);
     final step =
-        tester.getCenter(find.byKey(ValueKey(_pin('xsheet', 'scale')))).dx -
+        tester.getCenter(find.named(_pin('xsheet', 'scale'))).dx -
         pin.center.dx;
     Future<void> sweepFrom(double y) async {
       final gesture = await tester.startGesture(
@@ -339,6 +335,9 @@ void main() {
     const pin = 'xsheet-lane-pin-draw-scale';
     const chip = 'xsheet-lane-chip-draw-scale-0';
     const keys = [value, navigator, link, pin, chip];
+    // The pin is a rail button, found by its NAME; the rest by their keys.
+    Finder handle(String key) =>
+        key == pin ? find.named(key) : find.byKey(ValueKey<String>(key));
 
     /// The least room the name got at any height.
     var leastName = double.infinity;
@@ -388,7 +387,7 @@ void main() {
           ),
         );
         for (final key in keys) {
-          final shown = find.byKey(ValueKey<String>(key)).evaluate();
+          final shown = handle(key).evaluate();
           if (first[key] == null && shown.isNotEmpty) {
             first[key] = height;
           } else if (key != navigator && first[key] != null && shown.isEmpty) {
@@ -653,8 +652,8 @@ Future<void> _openTransform(WidgetTester tester) async {
   await _tap(tester, 'timeline-lane-group-toggle-draw-$_transform');
 }
 
-Future<void> _tap(WidgetTester tester, String key) async {
-  final button = find.byKey(ValueKey<String>(key));
+Future<void> _tap(WidgetTester tester, String name) async {
+  final button = find.named(name);
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);

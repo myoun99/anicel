@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
 /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
 /// 레이어로 이동하면 펼치고 해당 레이어에 서게」.
@@ -106,11 +108,11 @@ Future<EditorSessionManager> _open(WidgetTester tester, Project project) async {
 }
 
 Finder _row(LayerId id) =>
-    find.byKey(ValueKey<String>('timeline-layer-row-${id.value}'));
+    find.named('timeline-layer-row-${id.value}');
 
 Future<void> _twirl(WidgetTester tester, LayerId base) async {
   await tester.tap(
-    find.byKey(ValueKey<String>('timeline-attach-twirl-${base.value}')),
+    find.named('timeline-attach-twirl-${base.value}'),
   );
   await tester.pumpAndSettle();
 }

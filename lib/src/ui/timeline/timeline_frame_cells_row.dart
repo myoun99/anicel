@@ -13,6 +13,7 @@ import '../../models/timeline_row_address.dart';
 import '../../models/transition_geometry.dart'
     show transitionEditableInCut, transitionMarkOf;
 import '../media/media_asset_drop_target.dart';
+import '../widgets/named.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
@@ -255,7 +256,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final grips = _spanGrips(frames);
     final chrome = _chromeResolver();
     final stack = Stack(
-      key: ValueKey<String>('$keyPrefix-frame-$_axisWord-area-${layer.id}'),
       // The frame-axis box below sizes this row, so the cell strip (the one
       // non-positioned child) takes the box outright instead of sizing it.
       fit: StackFit.expand,
@@ -286,7 +286,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
       geometry: geometry,
       crossAxisExtent: crossAxisExtent,
       axis: axis,
-      child: stack,
+      // Named, not keyed, as every handle in a row is (I-57, 10-13): the
+      // row shows one layer and then another in the same elements.
+      child: Named(
+        '$keyPrefix-frame-$_axisWord-area-${layer.id}',
+        child: stack,
+      ),
     );
     // The X-sheet column is cross-axis sized to the layer's row height (its
     // width); the horizontal row takes its height from the parent list.
@@ -635,17 +640,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
   Widget? _rangeGestureLayer() {
     final gesture = rangeGesture;
     if (gesture == null) return null;
-    return TimelineFrameRangeGestureLayer(
-      // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
-      // sibling overlays in this Stack — without a key the positional
-      // rematch REMOUNTS this layer and its dispose commits the move under
-      // the pointer.
-      key: ValueKey<String>('$keyPrefix-range-gesture-slot-${layer.id}'),
-      row: LayerRowAddress(layer.id),
-      geometry: geometry,
-      crossAxisExtent: crossAxisExtent,
-      callbacks: gesture,
-      axis: axis,
+    // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
+    // sibling overlays in this Stack — without a key the positional rematch
+    // REMOUNTS this layer and its dispose commits the move under the
+    // pointer. It says WHICH SLOT among its siblings, so it carries no
+    // layer (I-57, 10-13): the layer is the name's to say.
+    return Named(
+      '$keyPrefix-range-gesture-slot-${layer.id}',
+      key: ValueKey<String>('$keyPrefix-range-gesture-slot'),
+      child: TimelineFrameRangeGestureLayer(
+        row: LayerRowAddress(layer.id),
+        geometry: geometry,
+        crossAxisExtent: crossAxisExtent,
+        callbacks: gesture,
+        axis: axis,
+      ),
     );
   }
 
@@ -664,10 +673,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final drag = commaDrag;
     return Positioned.fill(
       // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
-      // sibling overlays in this Stack.
-      key: ValueKey<String>('$keyPrefix-edit-chrome-slot-${layer.id}'),
+      // sibling overlays in this Stack. Which slot, not which layer (I-57).
+      key: ValueKey<String>('$keyPrefix-edit-chrome-slot'),
       child: TimelineRowEditChromeLayer(
-        paintKey: ValueKey<String>('$keyPrefix-edit-chrome-${layer.id}'),
+        paintName: '$keyPrefix-edit-chrome-${layer.id}',
         layerId: layer.id,
         resolver: resolver,
         geometry: geometry,
@@ -729,7 +738,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           endIndexExclusive: frames.frameEndIndexExclusive,
         ),
         child: _LayerAssetDropTarget(
-          dropKey: ValueKey<String>('$keyPrefix-layer-asset-drop-${layer.id}'),
+          dropName: '$keyPrefix-layer-asset-drop-${layer.id}',
           layerId: layer.id,
           geometry: geometry,
           axis: axis,
@@ -768,9 +777,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             endIndexExclusive: gap.startIndex + gap.length,
           ),
           child: _LayerAssetDropTarget(
-            dropKey: ValueKey<String>(
-              '$keyPrefix-se-cell-drop-${layer.id}-${gap.startIndex}',
-            ),
+            dropName:
+                '$keyPrefix-se-cell-drop-${layer.id}-${gap.startIndex}',
             layerId: layer.id,
             geometry: geometry,
             axis: axis,
@@ -793,7 +801,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
 /// documents — this is the host that depends on it.
 class _LayerAssetDropTarget extends StatelessWidget {
   const _LayerAssetDropTarget({
-    required this.dropKey,
+    required this.dropName,
     required this.layerId,
     required this.geometry,
     required this.axis,
@@ -804,7 +812,8 @@ class _LayerAssetDropTarget extends StatelessWidget {
     this.onLeave,
   });
 
-  final Key dropKey;
+  /// What a finder calls the target ([Named]).
+  final String dropName;
   final LayerId layerId;
   final TimelineFrameGeometryHandle geometry;
   final Axis axis;
@@ -847,25 +856,27 @@ class _LayerAssetDropTarget extends StatelessWidget {
   Widget build(BuildContext context) {
     final accepts = acceptsDrop;
     final hover = onHoverAt;
-    return MediaAssetDropTarget(
-      key: dropKey,
-      accepts: accepts == null
-          ? null
-          : (data, globalPosition) => accepts(
-              layerId,
-              _frameIndexAt(context, globalPosition),
-              data.path,
-            ),
-      onHover: hover == null
-          ? null
-          : (data, globalPosition) => hover(
-              layerId,
-              _frameIndexAt(context, globalPosition),
-              data.path,
-            ),
-      onLeave: onLeave,
-      onDrop: (data, globalPosition) =>
-          onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
+    return Named(
+      dropName,
+      child: MediaAssetDropTarget(
+        accepts: accepts == null
+            ? null
+            : (data, globalPosition) => accepts(
+                layerId,
+                _frameIndexAt(context, globalPosition),
+                data.path,
+              ),
+        onHover: hover == null
+            ? null
+            : (data, globalPosition) => hover(
+                layerId,
+                _frameIndexAt(context, globalPosition),
+                data.path,
+              ),
+        onLeave: onLeave,
+        onDrop: (data, globalPosition) =>
+            onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
+      ),
     );
   }
 }

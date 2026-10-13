@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 const inks = BrushGroupId('inks');
@@ -461,9 +462,7 @@ void main() {
         ShortcutShelf.toolLibrary,
         ...brushActionShelves.values,
       ]) {
-        final twirl = find.byKey(
-          ValueKey<String>('shortcut-bundle-shelf-${shelf.name}'),
-        );
+        final twirl = find.named('shortcut-bundle-shelf-${shelf.name}');
         await wheelUntilVisible(tester, twirl);
         await tester.tap(twirl);
         await tester.pump();
@@ -473,8 +472,7 @@ void main() {
 
     Finder rowOf(String actionId) =>
         find.byKey(ValueKey<String>('shortcut-record-$actionId'));
-    Finder twirlOf(String bundle) =>
-        find.byKey(ValueKey<String>('shortcut-bundle-$bundle'));
+    Finder twirlOf(String bundle) => find.named('shortcut-bundle-$bundle');
 
     /// Whether [bundle]'s twirl stands open — as the twirl itself was told.
     bool isOpen(WidgetTester tester, String bundle) => tester
@@ -482,7 +480,7 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is LayerFoldTwirl &&
-                widget.keyValue == 'shortcut-bundle-$bundle',
+                widget.name == 'shortcut-bundle-$bundle',
           ),
         )
         .expanded;

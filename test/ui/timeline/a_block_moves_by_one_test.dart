@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_row_chrome_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🗣️F-238 (유저 2026-09-29): 「블록선택하고 이동, 1코마만 움직일려해도
 /// 안되고 2콤마 움직이는만큼 커서 움직여야 2콤마 움직이고, 다시 반대로
@@ -152,9 +153,7 @@ void main() {
       ),
       rowHeight: rowHeight,
     );
-    final layer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final layer = find.named('timeline-range-gesture-layer-a');
     // The middle of cell 1, halfway down the row.
     return (
       heard,

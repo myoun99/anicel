@@ -43,6 +43,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
+import '../../helpers/named_finders.dart';
+
 /// **I-89 ③ — an open header graph draws its lines.**
 ///
 /// The mock (5판): the group's lanes the rail names — the selected, else the
@@ -56,7 +58,7 @@ void main() {
       'picked ones — and its own pins besides', (tester) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     s.rowSelection.value = const [];
     await tester.pumpAndSettle();
@@ -69,7 +71,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(_ids(_painter(tester).own), ['scale', 'rotation']);
 
-    await _tap(tester, 'timeline-lane-pin-draw-opacity');
+    await _tapNamed(tester, 'timeline-lane-pin-draw-opacity');
     expect(_ids(_painter(tester).own), ['scale', 'rotation', 'opacity']);
     expect(_painter(tester).guests, isEmpty);
     expect(_tags('timeline'), findsNothing, reason: 'no guest to name');
@@ -79,11 +81,11 @@ void main() {
       'row\'s, and a folded group\'s too', (tester) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
-    await _tap(tester, 'timeline-lane-toggle-cam');
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
-    await _tap(tester, 'timeline-lane-pin-draw-$_blurWidth');
-    await _tap(tester, 'timeline-lane-pin-cam-position');
+    await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+    await _tapNamed(tester, 'timeline-lane-toggle-cam');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-pin-draw-$_blurWidth');
+    await _tapNamed(tester, 'timeline-lane-pin-cam-position');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.pumpAndSettle();
 
@@ -93,10 +95,10 @@ void main() {
     ];
     expect(guests(), [(_drawId, _blurWidth), (_camId, 'position')]);
 
-    await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
-    await _tap(tester, 'timeline-lane-toggle-cam');
+    await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+    await _tapNamed(tester, 'timeline-lane-toggle-cam');
     expect(
-      find.byKey(ValueKey<String>('timeline-lane-pin-draw-$_blurWidth')),
+      find.named('timeline-lane-pin-draw-$_blurWidth'),
       findsNothing,
       reason: '⛔전제: the Blur group is folded',
     );
@@ -107,9 +109,9 @@ void main() {
       'key', (tester) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
-    await _tap(tester, 'timeline-lane-pin-draw-$_blurWidth');
+    await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-pin-draw-$_blurWidth');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.pumpAndSettle();
 
@@ -187,7 +189,7 @@ void main() {
   ) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'scale'));
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
@@ -203,8 +205,8 @@ void main() {
     tester,
   ) async {
     final s = await _pump(tester);
-    await _tap(tester, 'timeline-lane-toggle-cam');
-    await _tap(tester, 'timeline-layer-graph-cam');
+    await _tapNamed(tester, 'timeline-lane-toggle-cam');
+    await _tapNamed(tester, 'timeline-layer-graph-cam');
     s.standOnRow(const LayerRowAddress(_drawId));
     await tester.pumpAndSettle();
 
@@ -217,7 +219,7 @@ void main() {
       'does, and a scroll moves the window by a repaint', (tester) async {
     final s = await _pump(tester, frames: 600);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.pumpAndSettle();
 
@@ -456,7 +458,7 @@ void main() {
       'back', (tester) async {
     final s = await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.pumpAndSettle();
 
@@ -503,7 +505,7 @@ void main() {
       'timeline\'s top left turned a quarter clockwise', (tester) async {
     final s = await _pump(tester, tall: true);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
@@ -527,7 +529,7 @@ void main() {
   ) async {
     await _pump(tester);
     await _openTransform(tester);
-    await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
 
     final graph = tester.getRect(_graph('timeline'));
     final column = tester.getRect(
@@ -843,21 +845,26 @@ Future<EditorSessionManager> _pump(
 /// Blur's width pinned to it: one guest.
 Future<void> _pinTheBlur(WidgetTester tester, EditorSessionManager s) async {
   await _openTransform(tester);
-  await _tap(tester, 'timeline-lane-group-toggle-draw-$_blur');
-  await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');
-  await _tap(tester, 'timeline-lane-pin-draw-$_blurWidth');
+  await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+  await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
+  await _tapNamed(tester, 'timeline-lane-pin-draw-$_blurWidth');
   s.standOnRow(const LaneRowAddress(_drawId, 'position'));
   await tester.pumpAndSettle();
 }
 
 /// The drawing row's lanes twirled open, and its Transform group.
 Future<void> _openTransform(WidgetTester tester) async {
-  await _tap(tester, 'timeline-lane-toggle-${_drawId.value}');
-  await _tap(tester, 'timeline-lane-group-toggle-draw-$_transform');
+  await _tapNamed(tester, 'timeline-lane-toggle-${_drawId.value}');
+  await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_transform');
 }
 
-Future<void> _tap(WidgetTester tester, String key) async {
-  final button = find.byKey(ValueKey<String>(key));
+Future<void> _tap(WidgetTester tester, String key) =>
+    _tapFound(tester, find.byKey(ValueKey<String>(key)));
+
+Future<void> _tapNamed(WidgetTester tester, String name) =>
+    _tapFound(tester, find.named(name));
+
+Future<void> _tapFound(WidgetTester tester, Finder button) async {
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);

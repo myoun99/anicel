@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_preview.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// The name tag's live preview on its group header — nothing named it
 /// (2026-09-05).
 ///
@@ -198,16 +200,20 @@ void main() {
         MaterialApp(home: HomePage(initialProject: _sRowProject())),
       );
       await tester.pumpAndSettle();
-      Future<void> press(String key) async {
-        final target = find.byKey(ValueKey<String>(key)).first;
+      Future<void> press(Finder button) async {
+        final target = button.first;
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
         await tester.tap(target);
         await tester.pumpAndSettle();
       }
 
-      await press('timeline-lane-toggle-${_seId.value}');
-      await press('timeline-orientation-toggle-button');
+      await press(find.named('timeline-lane-toggle-${_seId.value}'));
+      await press(
+        find.byKey(
+          const ValueKey<String>('timeline-orientation-toggle-button'),
+        ),
+      );
 
       final preview = find.byKey(
         ValueKey<String>('xsheet-lane-group-preview-${_seId.value}-'

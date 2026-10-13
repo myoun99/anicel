@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -185,11 +186,7 @@ void main() {
     bool vRowOpen() =>
         tester
             .appIconButton(
-              find.byKey(
-                const ValueKey<String>(
-                  'storyboard-track-lane-toggle-lane-track',
-                ),
-              ),
+              find.named('storyboard-track-lane-toggle-lane-track'),
             )
             .icon ==
         Icons.arrow_drop_down;
@@ -218,12 +215,8 @@ void main() {
   testWidgets('an S row\'s twirl is the timeline\'s, and stands as tall as '
       'the row\'s cells, as its InkWell did', (tester) async {
     await _pumpPanel(tester, project: _project());
-    final twirl = find.byKey(
-      const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-    );
-    final typeCell = find.byKey(
-      const ValueKey<String>('storyboard-layer-type-button-lane-track-s1'),
-    );
+    final twirl = find.named('storyboard-se-lane-toggle-lane-track-1');
+    final typeCell = find.named('storyboard-layer-type-button-lane-track-s1');
     expect(
       tester.getSize(twirl).height,
       tester.getSize(typeCell).height,
@@ -249,9 +242,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -269,9 +260,7 @@ void main() {
     expect(
       tester
           .appIconButton(
-            find.byKey(
-              const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-            ),
+            find.named('storyboard-track-lane-toggle-lane-track'),
           )
           .icon,
       Icons.arrow_right,
@@ -283,17 +272,13 @@ void main() {
       '— a track row does not own one', (tester) async {
     await _pumpPanel(tester, project: _project());
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
+      find.named('storyboard-track-lane-toggle-lane-track'),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
-        ),
+      find.named(
+        'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
       ),
       findsNothing,
     );
@@ -383,7 +368,7 @@ void main() {
     );
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-visibility-lane-se')),
+      find.named('storyboard-layer-visibility-lane-se'),
       findsOneWidget,
       reason: 'the SE eye survives the no-cut state',
     );
@@ -399,9 +384,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -449,11 +432,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
     for (final laneId in [
@@ -487,17 +466,11 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
 
@@ -529,17 +502,11 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
 
@@ -648,15 +615,13 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-layer-visibility-lane-se'),
-        ),
+        find.named('storyboard-layer-visibility-lane-se'),
       );
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-layer-mute-lane-se')),
+        find.named('storyboard-layer-mute-lane-se'),
       );
       await tester.drag(
-        find.byKey(const ValueKey<String>('storyboard-layer-opacity-lane-se')),
+        find.named('storyboard-layer-opacity-lane-se'),
         const Offset(-20, 0),
       );
       await tester.pumpAndSettle();
@@ -750,9 +715,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-        ),
+        find.named('storyboard-se-lane-toggle-lane-track-1'),
       );
       await tester.pumpAndSettle();
 
@@ -796,9 +759,7 @@ void main() {
         onToggleTrackFx: fxToggles.add,
       );
 
-      final fxFinder = find.byKey(
-        const ValueKey<String>('storyboard-track-fx-lane-track'),
-      );
+      final fxFinder = find.named('storyboard-track-fx-lane-track');
       expect(fxFinder, findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
@@ -825,7 +786,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
       );
       await tester.pumpAndSettle();
       expect(fxToggles.single.id.value, 'lane-track');
@@ -841,7 +802,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
         buttons: kSecondaryButton,
       );
       await tester.pumpAndSettle();
@@ -854,7 +815,7 @@ void main() {
     ) async {
       await _pumpPanel(tester, project: _project());
       expect(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
         findsNothing,
       );
     });

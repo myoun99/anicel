@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/placement_reading.dart';
 
 /// F-195 — 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이
@@ -112,8 +113,8 @@ void main() {
     }
   }
 
-  Future<void> tapKey(WidgetTester tester, String key) async {
-    final target = find.byKey(ValueKey<String>(key));
+  Future<void> tapNamed(WidgetTester tester, String name) async {
+    final target = find.named(name);
     await tester.ensureVisible(target);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -156,10 +157,10 @@ void main() {
     expect(landed, isNotNull, reason: 'LIVENESS — the ink landed');
     session.selectLayer(layer);
     await pumpFrames(tester);
-    await tapKey(tester, 'timeline-lane-toggle-${layer.value}');
+    await tapNamed(tester, 'timeline-lane-toggle-${layer.value}');
     for (final group
         in openGroups ?? [transformGroupHeaderLane.laneId]) {
-      await tapKey(
+      await tapNamed(
         tester,
         'timeline-lane-group-toggle-${layer.value}-$group',
       );
@@ -606,8 +607,8 @@ void main() {
     session.selectFrameIndex(0);
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
     await pumpFrames(tester);
-    await tapKey(tester, 'timeline-lane-toggle-${se.id.value}');
-    await tapKey(
+    await tapNamed(tester, 'timeline-lane-toggle-${se.id.value}');
+    await tapNamed(
       tester,
       'timeline-lane-group-toggle-${se.id.value}-'
       '${transformGroupHeaderLane.laneId}',

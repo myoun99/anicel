@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../../helpers/scrollable_of.dart';
+import '../../helpers/named_finders.dart';
 
 /// **F-8 — the layer area answers a finger the way the frame area does.**
 ///
@@ -81,14 +82,14 @@ void main() {
   ).controller!;
 
   Finder railRow(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-row-$id'));
+      find.named('timeline-layer-row-$id');
 
   /// Where a finger lands ON a row: its name. ⛔Not the row's centre — a
   /// drawing row's centre is its fill-reference button since the opacity
   /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a finger
   /// on a control is the control's.
   Finder railRowGrip(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+      find.named('timeline-layer-name-$id');
 
   Future<void> fingerDrag(WidgetTester tester, Finder at, Offset by) async {
     final gesture = await tester.startGesture(

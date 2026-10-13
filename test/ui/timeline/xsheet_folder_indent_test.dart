@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// UI-R5 #18, transposed: a COLUMN spells its folder nesting too.
 ///
 /// The rail indents along a row's long axis, where the name keeps whatever
@@ -71,7 +73,7 @@ void main() {
   }
 
   double nameRun(WidgetTester tester, String id) => tester
-      .getSize(find.byKey(ValueKey<String>('xsheet-layer-name-$id')))
+      .getSize(find.named('xsheet-layer-name-$id'))
       .height;
   testWidgets('🆕nesting costs the name a GUIDE per level, and there is no '
       'cap because there is no run to cap', (tester) async {
