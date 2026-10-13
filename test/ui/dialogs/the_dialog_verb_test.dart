@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/dialog_verb.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart';
 
 /// 🚨WHAT A DIALOG'S ANSWER IS ALLOWED TO DO — the law twenty sites used
 /// to write out by hand: ask, survive the await, drop a cancel, commit.
@@ -166,6 +168,58 @@ void main() {
 
     await open(tester, 'pop-nothing');
     expect(runs, 1, reason: 'a dismissed confirm is a decline');
+  });
+
+  testWidgets('saveActions: cancel pops nothing, so nothing is committed, '
+      'and save runs the window\'s own submit in the accent — both keyed '
+      'off one name', (tester) async {
+    final committed = <String>[];
+    late List<AppWindowAction> actions;
+    Widget window(BuildContext dialogContext) {
+      actions = saveActions(
+        dialogContext,
+        prefix: 'thing',
+        onSave: () => Navigator.of(dialogContext).pop('saved'),
+      );
+      return Dialog(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final action in actions)
+              TextButton(
+                key: action.actionKey,
+                onPressed: action.onPressed,
+                child: Text(action.label),
+              ),
+          ],
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      host(
+        (context) => askThenCommit<String>(
+          context,
+          dialog: window,
+          commit: committed.add,
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(actions.map((action) => (action.label, action.emphasis)), [
+      (AppText.strings.commonCancel, AppWindowActionEmphasis.quiet),
+      (AppText.strings.commonSave, AppWindowActionEmphasis.primary),
+    ]);
+    await tester.tap(find.byKey(const ValueKey<String>('thing-cancel-button')));
+    await tester.pumpAndSettle();
+    expect(committed, isEmpty, reason: 'a cancel pops nothing');
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('thing-save-button')));
+    await tester.pumpAndSettle();
+    expect(committed, ['saved']);
   });
 
   group('askAboutThenCommit', () {

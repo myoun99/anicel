@@ -4,6 +4,7 @@ import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
+import 'dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../widgets/pill_strip.dart';
 
@@ -238,19 +239,11 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
           ],
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('timesheet-format-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('timesheet-format-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: _submit,
-        ),
-      ],
+      actions: saveActions(
+        context,
+        prefix: 'timesheet-format',
+        onSave: _submit,
+      ),
     );
   }
 }

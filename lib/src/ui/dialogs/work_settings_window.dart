@@ -6,6 +6,7 @@ import '../../models/timesheet_info.dart';
 import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'dialog_verb.dart';
 import '../widgets/panel_flyout.dart';
 import 'staff_process_folds.dart';
 
@@ -142,19 +143,7 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
           ],
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('work-settings-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('work-settings-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: _submit,
-        ),
-      ],
+      actions: saveActions(context, prefix: 'work-settings', onSave: _submit),
     );
   }
 
