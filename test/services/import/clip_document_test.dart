@@ -599,8 +599,8 @@ void main() {
 
   /// A file of one 2D camera folder — resting at 1.5 times the frame, its
   /// pivot (100, 50) placed at (300, 200) — and a track whose one clip
-  /// moves it by [anim].
-  ClipDocument cameraDocument(List<CmtSpec> anim) {
+  /// moves it by [anim], from the timeline's tick [from] to its 120th.
+  ClipDocument cameraDocument(List<CmtSpec> anim, {double from = 0}) {
     final rest = ByteData(184)
       ..setFloat64(40, 1.5)
       ..setFloat64(48, 1.5)
@@ -616,23 +616,23 @@ void main() {
             'ActionNodeClip',
             'null',
             children: [
-              // Ticks at 60 a second: the clip is frames 0 … 48 at 24 fps,
-              // and tick 60 frame 24.
-              const CmtSpec(
+              // Ticks at 60 a second: from 0, the clip is frames 0 … 48 at
+              // 24 fps, and tick 60 frame 24.
+              CmtSpec(
                 'TimeClip',
                 'null',
                 children: [
-                  CmtSpec('Start', 'Double', value: 0),
-                  CmtSpec('End', 'Double', value: 120),
-                  CmtSpec('Rate', 'Double', value: 60),
+                  CmtSpec('Start', 'Double', value: from),
+                  const CmtSpec('End', 'Double', value: 120),
+                  const CmtSpec('Rate', 'Double', value: 60),
                 ],
               ),
-              const CmtSpec(
+              CmtSpec(
                 'MotionClip',
                 'null',
                 children: [
-                  CmtSpec('Start', 'Double', value: 0),
-                  CmtSpec('End', 'Double', value: 120),
+                  const CmtSpec('Start', 'Double', value: 0),
+                  CmtSpec('End', 'Double', value: 120 - from),
                 ],
               ),
               CmtSpec('AnimInfo', 'null', children: anim),
@@ -767,19 +767,20 @@ void main() {
         value: 150,
         attributes: {'Name': 'ImageScale'},
       ),
-      // Held from its first key; the second names a curve the reader does
-      // not know.
+      // Into a held key as into CLIP STUDIO's own (⚠️no sample shows what
+      // CLIP STUDIO moves at there), held from it, and the third names a
+      // curve the reader does not know.
       CmtSpec(
         'FCurve',
         'null',
         attributes: {'Type': 'ImageRotation'},
         children: [
-          CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
-          CmtSpec('Value', 'Double[]', value: [0, 10, 20]),
+          CmtSpec('Frame', 'Double[]', value: [0, 30, 60, 90]),
+          CmtSpec('Value', 'Double[]', value: [0, 12, 24, 36]),
           CmtSpec(
             'Interp',
             'String[]',
-            value: ['Constant', 'Bezier', 'Default'],
+            value: ['Default', 'Constant', 'Bezier', 'Default'],
           ),
         ],
       ),
@@ -823,8 +824,13 @@ void main() {
     expect(keys(move.scale), [(0.0, 1.5)], reason: 'its Param');
     expect(keys(move.pivotX), [(0.0, 100.0)], reason: 'its pair');
     expect(keys(move.pivotY), [(0.0, 50.0)]);
-    expect(keys(move.degrees), [(0.0, 0.0), (12.0, 10.0), (24.0, 20.0)]);
-    expect(ways(move.degrees), 'held, straight');
+    expect(keys(move.degrees), [
+      (0.0, 0.0),
+      (12.0, 12.0),
+      (24.0, 24.0),
+      (36.0, 36.0),
+    ]);
+    expect(ways(move.degrees), 'cubic 0.0 1.0, held, straight');
     expect(move.degrees.unread, isTrue, reason: 'a curve it does not know');
     expect(move.x.unread || move.y.unread, isFalse);
   });
@@ -850,6 +856,65 @@ void main() {
 
     expect(keys(move.scale), [(0.0, 1.0), (12.0, 1.5)]);
     expect(ways(move.scale), 'cubic 0.2 0.1');
+  });
+
+  test('a value no curve keys is its Param, keyed where the clip starts — '
+      'as is one whose curve keys nothing', () {
+    final move = moveOf(
+      cameraDocument(const [
+        CmtSpec(
+          'Param',
+          'Double2',
+          value: [100, 50],
+          attributes: {'Name': 'ImageCenter'},
+        ),
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImageCenter', 'Axis': 'X'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: <double>[]),
+            CmtSpec('Value', 'Double[]', value: <double>[]),
+          ],
+        ),
+      ], from: 30),
+    );
+
+    expect(move.span, (start: 12, end: 48));
+    expect(keys(move.pivotX), [(12.0, 100.0)]);
+    expect(keys(move.pivotY), [(12.0, 50.0)]);
+  });
+
+  test('a curve a file keeps oddly still reads: a pulled key with no slopes '
+      'kept runs straight, and is said; two keys on one tick bend '
+      'nothing', () {
+    final move = moveOf(
+      cameraDocument(const [
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 30]),
+            CmtSpec('Value', 'Double[]', value: [300, 330]),
+            CmtSpec('Interp', 'String[]', value: ['Hermite', 'Hermite']),
+          ],
+        ),
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 30, 30, 60]),
+            CmtSpec('Value', 'Double[]', value: [400, 410, 410, 420]),
+          ],
+        ),
+      ]),
+    );
+
+    expect(ways(move.x), 'straight');
+    expect(move.x.unread, isTrue);
+    expect(ways(move.y), 'cubic 0.0 0.0, cubic 0.0 0.0, cubic 0.0 0.0');
   });
 
   test('the shooting frame: its size, and its centre the canvas\'s moved by '

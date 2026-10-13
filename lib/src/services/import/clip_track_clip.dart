@@ -451,14 +451,10 @@ ClipCurve _curveOf(
   final slopes = <({double arriving, double leaving})?>[
     for (var i = 0; i < keys.length; i += 1)
       switch (i < kinds.length ? kinds[i] : null) {
-        'Hermite'
-            when slopeDivisor != 0 &&
-                i < arriving.length &&
-                i < leaving.length =>
-          (
-            arriving: arriving[i] / slopeDivisor,
-            leaving: leaving[i] / slopeDivisor,
-          ),
+        'Hermite' when i < arriving.length && i < leaving.length => (
+          arriving: arriving[i] / slopeDivisor,
+          leaving: leaving[i] / slopeDivisor,
+        ),
         null || 'Default' || 'Constant' => through(_ownSlope(keys, i)),
         _ => null,
       },

@@ -1517,6 +1517,21 @@ void main() {
       expect(result.cuts.single.camera.isEmpty, isTrue);
     });
 
+    test('with no frame, the camera\'s picture stands from the paper\'s '
+        'corner', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final track = row(
+        plan(root([camera]), [timeline([])]).cuts.single,
+        'camera',
+      ).transformTrack;
+
+      expect(
+        track.position.keys.values.single.value,
+        CanvasPoint(x: 100, y: 50),
+      );
+    });
+
     test('🎯a camera folder is a folder row of its own name, and the cut\'s '
         'camera stays the shooting frame however the folder moves — CLIP '
         'STUDIO\'s own camera is still (「진짜 존재하는 카메라는 고정되있음」)', () {
@@ -1649,7 +1664,7 @@ void main() {
       final camera = folder(
         'camera',
         [layer('BG')],
-        camera: placed(y: 90, scale: 2),
+        camera: placed(y: 90, scale: 2, degrees: 30),
       );
 
       final track = row(
@@ -1672,6 +1687,7 @@ void main() {
       expect((anchorOn(3).x, anchorOn(6).x), (100, 160));
       expect(anchorOn(3).y, 90);
       expect(track.scale.keys.values.single.value, CanvasPoint(x: 0.5, y: 0.5));
+      expect(track.rotation.keys.values.single.value, -30);
     });
 
     test('🎯between its clips CLIP STUDIO shows nothing of the folder — what '
@@ -1704,6 +1720,29 @@ void main() {
       expect(anchor.keys[0]!.outgoing, KeyExit.hold);
     });
 
+    test('where one clip ends and the next starts, the frame is the next '
+        'clip\'s', () {
+      final camera = folder('camera', [layer('BG')], camera: placed());
+
+      final anchor = row(
+        plan(
+          root([camera]),
+          [
+            timeline([
+              moving(camera, [
+                move((start: 0, end: 6), x: ClipCurve.held(0, 100)),
+                move((start: 6, end: 12), x: ClipCurve.held(6, 200)),
+              ]),
+            ]),
+          ],
+          frame: frame,
+        ).cuts.single,
+        'camera',
+      ).transformTrack.anchorPoint;
+
+      expect(resolveAnchorTrackAt(anchor, 6)!.x, 200);
+    });
+
     test('a cut that never shows the folder holds it at its rest', () {
       final camera = folder('camera', [layer('BG')], camera: placed(x: 500));
 
@@ -1730,7 +1769,7 @@ void main() {
     });
 
     test('a clip of the track that keys nothing holds the folder at its '
-        'rest', () {
+        'rest — beside one that moves it', () {
       final camera = folder('camera', [layer('BG')], camera: placed(x: 400));
 
       final track = row(
@@ -1740,10 +1779,16 @@ void main() {
             timeline([
               MapEntry(
                 camera.uuid,
-                const ClipTrack(
+                ClipTrack(
                   kind: 2005,
-                  pieces: [(span: (start: 0, end: 12), cels: [])],
-                  labels: [],
+                  pieces: const [
+                    (span: (start: 0, end: 6), cels: []),
+                    (span: (start: 6, end: 12), cels: []),
+                  ],
+                  labels: const [],
+                  cameraMoves: [
+                    move((start: 6, end: 12), x: ClipCurve.held(6, 100)),
+                  ],
                 ),
               ),
             ]),
@@ -1753,7 +1798,9 @@ void main() {
         'camera',
       ).transformTrack;
 
-      expect(track.anchorPoint.keys.values.single.value.x, 400);
+      CanvasPoint anchorOn(int frame) =>
+          resolveAnchorTrackAt(track.anchorPoint, frame)!;
+      expect((anchorOn(3).x, anchorOn(9).x), (400, 100));
     });
 
     test('🎯every camera folder moves what it holds, each its own — and a '
