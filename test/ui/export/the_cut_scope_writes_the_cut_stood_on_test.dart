@@ -136,11 +136,11 @@ void main() {
         cels: CelsExportSpec(scope: scope, kinds: threeKinds),
       ),
     );
-    // Half of it (F-337) the window this was written at: 1200 wide. At its
+    // Its share (F-337) the window this was written at: 1200 wide. At its
     // least (1018) the band's pair name runs past its room in the TEST font
     // — in the app's own faces it holds there
     // (a_linked_groups_cels_are_listed_in_the_windows_cut_test).
-    await tester.binding.setSurfaceSize(const Size(1700, 860));
+    await tester.binding.setSurfaceSize(const Size(1470, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

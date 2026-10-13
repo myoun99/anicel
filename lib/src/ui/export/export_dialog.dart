@@ -2813,10 +2813,10 @@ class ExportDialogState extends State<ExportDialog> {
   static const double _previewColumnWidth = ExportCelsBoard.minimumWidth + 16;
   static const double _settingsColumnWidth = 272;
 
-  /// The window's size and whether each drawer still fits: half the app
-  /// screen ([AppWindow.halfScreen]), never narrower than the four columns
-  /// with both drawers folded — the half yields before the preview does,
-  /// as the drawers do.
+  /// The window's size and whether each drawer still fits: its share of the
+  /// app screen ([AppWindow.screenShare]), never narrower than the four
+  /// columns with both drawers folded — the share yields before the preview
+  /// does, as the drawers do.
   ///
   /// The drawers yield before the preview does (v10: 전개 ~1020 / 최소
   /// ~700): a tight surface collapses the queue, then the presets, to
@@ -2824,7 +2824,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// drawer comes back the moment the room does.
   ({double width, double height, bool presetsOpen, bool queueOpen})
   _windowMetrics(BoxConstraints constraints) {
-    final room = AppWindow.halfScreen(
+    final room = AppWindow.screenShare(
       constraints,
       least: Size(_columnsWidth(presetsOpen: false, queueOpen: false), 0),
     );
@@ -2845,8 +2845,8 @@ class ExportDialogState extends State<ExportDialog> {
     //
     // The window used to be exactly the four columns' sum, so the preview —
     // the only column that stretches — got whatever the fixed three left,
-    // and the cel list ate into that. It takes half the app screen now
-    // (F-337 — ↩️all the room the screen leaves, from that day); [widthFor]
+    // and the cel list ate into that. It takes its share of the app screen
+    // now (F-337 — ↩️all the room the screen leaves, from that day); [widthFor]
     // stays because it answers a different question: whether a drawer
     // still fits.
     return (

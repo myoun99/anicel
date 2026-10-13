@@ -123,10 +123,10 @@ void main() {
     required ExportScopeKind scope,
   }) async {
     AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
-    // Half of it (F-337) a little wider than the window's least (1018): in
+    // Its share (F-337) a little wider than the window's least (1018): in
     // the TEST font the band's 「C1-C2」 runs 5 px past its room there — in
     // the app's own faces it holds (the last test here).
-    await tester.binding.setSurfaceSize(const Size(1480, 860));
+    await tester.binding.setSurfaceSize(const Size(1280, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -226,10 +226,10 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  /// F-337: the window takes half the screen, and never less than its four
-  /// columns with both drawers folded — where the list stands at its least,
-  /// under the band that names the pair. In the app's own faces the band
-  /// holds 「C1-C2」 there, in every language the program speaks.
+  /// F-337: the window takes its share of the screen, and never less than
+  /// its four columns with both drawers folded — where the list stands at
+  /// its least, under the band that names the pair. In the app's own faces
+  /// the band holds 「C1-C2」 there, in every language the program speaks.
   for (final language in AppLanguage.values) {
     testWidgets('🚨at the window\'s least the band holds the pair\'s name, in '
         'the app\'s own faces — ${language.name}', (tester) async {
@@ -241,7 +241,7 @@ void main() {
       );
       final session = linkedPair();
       addTearDown(session.dispose);
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
       await tester.pumpWidget(
@@ -262,8 +262,8 @@ void main() {
       expect(
         tester.widget<AppWindow>(find.byType(AppWindow)).width,
         1018,
-        reason: 'the four columns with both drawers folded — half of 1280 '
-            'is narrower',
+        reason: 'the four columns with both drawers folded — two thirds of '
+            '1200 by area is narrower',
       );
       expect(picker(tester).label, 'C1-C2');
       expect(tester.takeException(), isNull);

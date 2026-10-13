@@ -151,23 +151,34 @@ class AppWindow extends StatelessWidget {
   static const double titleBarHeight = 32;
   static const double tabBarHeight = 30;
 
-  /// A window that takes half the app [screen] by AREA — each side at √½
-  /// of the screen's — as the [width] and [height] to hand it. Never less
-  /// than [least], what the window's own columns lay out at, and never more
-  /// than the room the dialog leaves it ([_roomLeft]): a screen too small
-  /// for the least gives all the room it has.
+  /// The share of the app screen, by AREA, that a window sized by
+  /// [screenShare] takes.
+  ///
+  /// 🗣️F-337-Q2 (유저 2026-10-13): 「높이같은걸 고정픽셀로 생각하지 않고
+  /// 그냥 앱 기준 비율로 생각해서 앱 화면의 절반은 좀 작은거같고 2/3정도
+  /// 면적으로. 일단 그렇게만 해보고 판단」 — so no height floor in pixels
+  /// either. ↩️A half (F-337-Q1, 유저 2026-10-13: 「면적얘기야」) until then.
+  static const double screenAreaShare = 2 / 3;
+
+  /// A window that takes [screenAreaShare] of the app [screen] by AREA —
+  /// each side at its square root of the screen's — as the [width] and
+  /// [height] to hand it. Never less than [least], what the window's own
+  /// columns lay out at, and never more than the room the dialog leaves it
+  /// ([_roomLeft]): a screen too small for the least gives all the room it
+  /// has.
   ///
   /// 🗣️F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
-  /// 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」).
-  /// ↩️Both windows took all the room the dialog leaves: the export window
-  /// (유저 2026-09-16: 「그냥 출력 공용창 크기 자체를 더 크게 키우는게
-  /// 날거같기도? … 어차피 창은 이제 비율기준이니까 앱 전체 채워도
-  /// 문제는없잖아」), and the import window as it did (F-282-Q7, 유저
-  /// 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리 전체」).
-  static Size halfScreen(BoxConstraints screen, {Size least = Size.zero}) {
+  /// 절반정도로」, by area. ↩️Both windows took all the room the dialog
+  /// leaves: the export window (유저 2026-09-16: 「그냥 출력 공용창 크기
+  /// 자체를 더 크게 키우는게 날거같기도? … 어차피 창은 이제 비율기준이니까
+  /// 앱 전체 채워도 문제는없잖아」), and the import window as it did
+  /// (F-282-Q7, 유저 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리
+  /// 전체」).
+  static Size screenShare(BoxConstraints screen, {Size least = Size.zero}) {
     final room = _roomLeft(screen);
+    final scale = math.sqrt(screenAreaShare);
     double side(double whole, double atLeast, double atMost) =>
-        math.min(atMost, math.max(whole * math.sqrt1_2, atLeast));
+        math.min(atMost, math.max(whole * scale, atLeast));
     return Size(
       side(screen.maxWidth, least.width, room.width),
       side(screen.maxHeight, least.height, room.height),

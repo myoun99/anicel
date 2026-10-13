@@ -269,7 +269,7 @@ void main() {
       // ⚠️The key is on the Material `Dialog`, which lays out over the whole
       // screen; the window is the box inside it. Read off the key, this was
       // the screen — the same rect only while the window took all of it
-      // (F-337: half of it now).
+      // (F-337: a share of it now).
       final window = tester.getRect(
         find
             .descendant(

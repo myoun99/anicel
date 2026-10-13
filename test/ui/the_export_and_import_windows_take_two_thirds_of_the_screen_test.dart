@@ -22,10 +22,12 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
 /// F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
-/// 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」). Both
-/// windows read the one law, [AppWindow.halfScreen]. ↩️Both took all the
-/// room the screen leaves (유저 2026-09-16 · F-282-Q7), and the import
-/// window stood at 760 × 520 before that, whatever the screen.
+/// 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」), and
+/// then two thirds of it (F-337-Q2, the same day: 「앱 화면의 절반은 좀
+/// 작은거같고 2/3정도 면적으로」). Both windows read the one law,
+/// [AppWindow.screenShare]. ↩️Both took all the room the screen leaves
+/// (유저 2026-09-16 · F-282-Q7), and the import window stood at 760 × 520
+/// before that, whatever the screen.
 void main() {
   Future<void> screenOf(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -44,7 +46,9 @@ void main() {
         .first,
   );
 
-  testWidgets('the import window takes half the screen', (tester) async {
+  testWidgets('the import window takes two thirds of the screen', (
+    tester,
+  ) async {
     await screenOf(tester, const Size(1600, 1000));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -57,8 +61,8 @@ void main() {
     await tester.pump();
 
     final size = windowSize(tester, 'import-dialog');
-    expect(size.width, closeTo(1131.4, 0.1));
-    expect(size.height, closeTo(707.1, 0.1));
+    expect(size.width, closeTo(1306.4, 0.1));
+    expect(size.height, closeTo(816.5, 0.1));
   });
 
   group('the export window', () {
@@ -124,30 +128,29 @@ void main() {
 
     Finder keyed(String value) => find.byKey(ValueKey<String>(value));
 
-    testWidgets('takes half the screen, its drawers open where they fit', (
-      tester,
-    ) async {
+    testWidgets('takes two thirds of the screen, its drawers open where they '
+        'fit', (tester) async {
       await pumpOn(tester, const Size(1920, 1200));
 
       final size = windowSize(tester, 'export-dialog');
-      expect(size.width, closeTo(1357.6, 0.1));
-      expect(size.height, closeTo(848.5, 0.1));
+      expect(size.width, closeTo(1567.7, 0.1));
+      expect(size.height, closeTo(979.8, 0.1));
       expect(keyed('export-presets-collapse'), findsOneWidget);
       expect(keyed('export-queue-collapse'), findsOneWidget);
     });
 
     testWidgets('is never narrower than its four columns with both drawers '
-        'folded — the half yields before the preview does', (tester) async {
-      await pumpOn(tester, const Size(1280, 720));
+        'folded — its share yields before the preview does', (tester) async {
+      await pumpOn(tester, const Size(1200, 720));
 
       final size = windowSize(tester, 'export-dialog');
       expect(
         size.width,
         1018,
-        reason: 'half of 1280 is 905; the columns with both drawers folded '
-            'lay out at 1018',
+        reason: 'two thirds of 1200 by area is 980 wide; the columns with '
+            'both drawers folded lay out at 1018',
       );
-      expect(size.height, closeTo(509.1, 0.1));
+      expect(size.height, closeTo(587.9, 0.1));
       expect(keyed('export-presets-strip'), findsOneWidget);
       expect(keyed('export-queue-strip'), findsOneWidget);
     });
