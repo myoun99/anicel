@@ -725,7 +725,18 @@ void main() {
   /// and the lane names this one and no other class. ⛔Not split to fit: a
   /// seam cut for it would put the re-homing of the entries in a different
   /// file from the map that holds them.
-  const longClasses = 61;
+  ///
+  /// ⚠️61 → 62 on 2026-10-14, ONE name: `TimelineLayerControlsHeader`
+  /// crossed (582 → 626) in I-57 — the legend keeps itself (`KeptPiece`),
+  /// so a notify that changed nothing builds none of its ~15 tooltip and
+  /// flyout cells again on any grid, and what it grew by is its `facts`:
+  /// every field it shows, and the mutants three of them outlive.
+  /// 🔬`clean_code_diff` between the lane's base (`501bf027c`) and the lane
+  /// names this one and no other class. ⛔Not split to fit: the facts stand
+  /// in the class that declares the fields they name — the scan holding
+  /// every kept piece to naming its fields reads them there
+  /// (`a_kept_piece_names_every_field_in_its_facts_test`).
+  const longClasses = 62;
 
   late CleanCodeScan scan;
   setUpAll(() {
