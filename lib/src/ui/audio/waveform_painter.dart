@@ -93,6 +93,35 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     final startBucket = leadingPixels <= 0
         ? 0
         : (leadingPixels / pixelsPerBucket).floor();
+    // 🚨I-57 (10-13, profile, the user's project): the band is drawn as far
+    // as THIS PICTURE can show it — read off the canvas's own clip, as the
+    // bitmap surface reads its own (`BitmapSurfacePainter
+    // ._visibleCanvasRect`): the strip clips to its box, the row to its
+    // window. A sound running far past the window built every bucket of its
+    // length into the path at every paint — 6–20ms of a cut crossing's
+    // frame, more than all the rest of its paint. What the clip hides, no
+    // picture of this paint can show, so not drawing it moves no pixel.
+    final clip = canvas.getLocalClipBounds();
+    final shownFrom = math.max(
+      0.0,
+      axis == Axis.horizontal ? clip.left : clip.top,
+    );
+    final shownTo = math.min(
+      mainExtent,
+      axis == Axis.horizontal ? clip.right : clip.bottom,
+    );
+    if (shownTo <= shownFrom) {
+      return;
+    }
+    // The bucket before the clip's start — a bucket short of where its
+    // floor lands, so a rounding can never start the band inside the clip —
+    // and every bucket after it the band would draw, up to the first at or
+    // past the clip's end: the whole band's own vertices, cut where nobody
+    // sees.
+    final firstShown = math.max(
+      startBucket,
+      ((shownFrom + leadingPixels) / pixelsPerBucket).floor() - 1,
+    );
 
     // Where the audible part ends on the main axis: the span's own end or
     // the file running out, whichever is first — the fade-out anchor.
@@ -119,7 +148,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     final path = Path();
     final top = <Offset>[];
     final bottom = <Offset>[];
-    for (var bucket = startBucket; bucket < peaks.peaks.length; bucket += 1) {
+    for (var bucket = firstShown; bucket < peaks.peaks.length; bucket += 1) {
       var main = bucket * pixelsPerBucket - leadingPixels;
       var lastSample = false;
       // The offset usually lands MID-bucket: clamp the edge samples onto
@@ -136,7 +165,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeAt(main);
       top.add(offsetAlong(axis, along: main, across: center - amplitude));
       bottom.add(offsetAlong(axis, along: main, across: center + amplitude));
-      if (lastSample) {
+      if (lastSample || main >= shownTo) {
         break;
       }
     }

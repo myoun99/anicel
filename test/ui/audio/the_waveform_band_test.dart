@@ -232,4 +232,126 @@ void main() {
     expect(inkTotal(byFrames), greaterThan(0), reason: 'fixture: it drew');
     expect(bySeconds, byFrames);
   });
+
+  /// 🚨I-57 (10-13, profile, the user's project): a sound running far past
+  /// the window built every bucket of its length into the band at every
+  /// paint — 6–20ms of a cut crossing's frame. The band is drawn as far as
+  /// the picture's own clip can show it, and these two hold both halves:
+  /// what the clip shows is the band as a whole paint draws it, and what
+  /// the clip hides is not built.
+  group('a band drawn under a clip', () {
+    // A shaped band trimmed MID-bucket, so the clip's edges fall between
+    // two vertices and a band started a bucket late would open a gap.
+    final shaped = peaksOf(const [
+      0.2, 0.9, 0.4, 1.0, 0.1, 0.7, 0.5, 0.8, //
+      0.3, 0.6, 0.9, 0.2, 0.5, 1.0, 0.4, 0.7,
+    ]);
+
+    Future<Uint32List> paintUnder(WaveformPainter painter, Rect clip) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..clipRect(clip);
+      painter.paint(canvas, const Size(size, size));
+      final picture = recorder.endRecording();
+      try {
+        final image = await picture.toImage(size.toInt(), size.toInt());
+        try {
+          final data = await image.toByteData();
+          return data!.buffer.asUint32List();
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        picture.dispose();
+      }
+    }
+
+    for (final axis in Axis.values) {
+      test('${axis.name}: what the clip shows is the whole band\'s pixels',
+          () async {
+        final band = painter(peaks: shaped, leadingFrames: 13, axis: axis);
+        // Whole pixels, so no column is half the clip's own edge.
+        const from = 20;
+        const to = 44;
+        final clip = axis == Axis.horizontal
+            ? Rect.fromLTRB(from.toDouble(), 0, to.toDouble(), size)
+            : Rect.fromLTRB(0, from.toDouble(), size, to.toDouble());
+        final whole = await paint(band);
+        final clipped = await paintUnder(band, clip);
+
+        expect(inkTotal(clipped), greaterThan(0), reason: 'LIVENESS: it drew');
+        // The band's THICKNESS at each step along it, in pixels: the alpha
+        // across it, summed. ⚠️Not pixel for pixel — the rasterizer
+        // antialiases an edge by the whole path it belongs to, and a band
+        // cut short is another path: 🔬an edge pixel came out 165 where the
+        // whole band's was 196 (10-13). A band that started a bucket late
+        // or stopped a bucket short leaves whole steps bare.
+        final width = size.toInt();
+        double thicknessAt(Uint32List pixels, int along) {
+          var alpha = 0;
+          for (var across = 0; across < width; across += 1) {
+            final index = axis == Axis.horizontal
+                ? across * width + along
+                : along * width + across;
+            alpha += pixels[index] >>> 24;
+          }
+          return alpha / 255;
+        }
+
+        final wrong = <String>[];
+        for (var along = 0; along < width; along += 1) {
+          final inside = along >= from && along < to;
+          final expected = inside ? thicknessAt(whole, along) : 0.0;
+          final drawn = thicknessAt(clipped, along);
+          if ((drawn - expected).abs() > 0.5) {
+            wrong.add('$along: $drawn px where the whole band is $expected');
+          }
+        }
+        expect(wrong, isEmpty);
+      });
+    }
+
+    test('what the clip hides is not built', () {
+      // A long sound: four hundred buckets, a band 3200px long, of which
+      // the clip shows 64.
+      final band = WaveformPainter(
+        peaks: peaksOf(List<double>.filled(400, 1)),
+        frameRate: rate,
+        pixelsPerFrame: size / 24,
+        color: ink,
+      );
+      final whole = _BandSpy(clip: Rect.largest);
+      band.paint(whole, const Size(3200, size));
+      final clipped = _BandSpy(clip: const Rect.fromLTRB(1600, 0, 1664, size));
+      band.paint(clipped, const Size(3200, size));
+
+      expect(
+        whole.band!.getBounds().width,
+        closeTo(3200, 8),
+        reason: 'LIVENESS: unclipped, the band runs its whole length',
+      );
+      final bounds = clipped.band!.getBounds();
+      // A bucket is 8px here: the band may run a bucket or two past each
+      // edge to cross into the clip on its own segment, and no further.
+      expect(bounds.left, inInclusiveRange(1600 - 16, 1600));
+      expect(bounds.right, inInclusiveRange(1664, 1664 + 16));
+    });
+  });
+}
+
+/// A canvas that tells the painter where its clip stands and keeps the band
+/// it was handed.
+final class _BandSpy implements Canvas {
+  _BandSpy({required this.clip});
+
+  final Rect clip;
+  Path? band;
+
+  @override
+  Rect getLocalClipBounds() => clip;
+
+  @override
+  void drawPath(Path path, Paint paint) => band = path;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
