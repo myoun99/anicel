@@ -23,7 +23,10 @@ import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardConteCreatePainter, StoryboardPanel;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart'
+    show LaidOutAlone, TickLayer;
 
+import '../../helpers/frame_census.dart';
 import '../storyboard_cut_block_probe.dart';
 
 /// What the host hands the panel, each moved as the app moves it.
@@ -217,6 +220,36 @@ void main() {
     }
   });
 
+  testWidgets('🚨built again for nothing, it paints nothing but the layers '
+      'its body is laid out alone on, and its ticks', (tester) async {
+    final host = newHost(heard: peaks);
+    await pumpHost(tester, host);
+    final alone = {
+      for (final element in find.byType(LaidOutAlone).evaluate())
+        element.renderObject,
+    };
+    final ticks = [
+      for (final element in find.byType(TickLayer).evaluate())
+        element.renderObject!,
+    ];
+    expect(alone, isNotEmpty, reason: 'premise: its body is laid out alone');
+
+    final frame = await frameCensus(tester, () => host.notify.value += 1);
+
+    for (final painted in frame.painted) {
+      final boundary = _boundaryOver(painted);
+      expect(
+        alone.contains(boundary) ||
+            ticks.any((tick) => _isAtOrUnder(boundary, tick)),
+        isTrue,
+        reason:
+            '↩️a LayoutBuilder of the body run again for nothing laid out '
+            'and painted what holds it (I-57): ${painted.debugCreator}, '
+            'painted with ${boundary.debugCreator}',
+      );
+    }
+  });
+
   testWidgets('🚨a cut crossed builds no row of the strip — none of them '
       'shows which cut you stand in', (tester) async {
     final host = newHost(heard: peaks);
@@ -336,4 +369,24 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     expect(handedAnew.hearers, 0);
   });
+}
+
+/// The repaint boundary [painted] was painted with: the nearest one over
+/// it.
+RenderObject _boundaryOver(RenderObject painted) {
+  var over = painted.parent!;
+  while (!over.isRepaintBoundary) {
+    over = over.parent!;
+  }
+  return over;
+}
+
+/// Whether [object] is [over] or lies under it.
+bool _isAtOrUnder(RenderObject object, RenderObject over) {
+  for (RenderObject? at = object; at != null; at = at.parent) {
+    if (identical(at, over)) {
+      return true;
+    }
+  }
+  return false;
 }
