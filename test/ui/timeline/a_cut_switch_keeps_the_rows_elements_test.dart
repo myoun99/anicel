@@ -187,27 +187,37 @@ void main() {
       });
 
       group('a hand in the rows keeps the edit with its layer', () {
-        testWidgets('a pointer down on a row builds them afresh — and once '
-            'it is lifted the next switch keeps them again', (tester) async {
-          final session = await _open(tester, grid);
-          final before = grid.everyRow();
-          final hand = await tester.startGesture(
-            tester.getCenter(find.named('${grid.prefix}-layer-name-a2')),
-          );
+        // Every surface the rows stand on counts the hands on it: the
+        // rail's rows (the sheet's header strip) and the cells.
+        final places = <String, Offset Function(WidgetTester)>{
+          'a row': (tester) =>
+              tester.getCenter(find.named('${grid.prefix}-layer-name-a2')),
+          'a row\'s cells': (tester) =>
+              tester.getTopLeft(grid.cellsOf('a2')) + const Offset(4, 4),
+        };
+        for (final MapEntry(key: place, value: at) in places.entries) {
+          testWidgets('a pointer down on $place builds them afresh — and '
+              'once it is lifted the next switch keeps them again', (
+            tester,
+          ) async {
+            final session = await _open(tester, grid);
+            final before = grid.everyRow();
+            final hand = await tester.startGesture(at(tester));
 
-          session.selectCut(_second);
-          await tester.pump();
-          await tester.pump();
-          final held = grid.everyRow();
-          _expectAfresh(before, held);
+            session.selectCut(_second);
+            await tester.pump();
+            await tester.pump();
+            final held = grid.everyRow();
+            _expectAfresh(before, held);
 
-          await hand.up();
-          await tester.pumpAndSettle();
-          final lifted = grid.everyRow();
-          session.selectCut(_first);
-          await tester.pumpAndSettle();
-          _expectKept(lifted, grid.everyRow());
-        });
+            await hand.up();
+            await tester.pumpAndSettle();
+            final lifted = grid.everyRow();
+            session.selectCut(_first);
+            await tester.pumpAndSettle();
+            _expectKept(lifted, grid.everyRow());
+          });
+        }
 
         testWidgets('a pointer the system cancels is lifted too', (
           tester,
