@@ -1282,7 +1282,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
-      floorRailBand: floor?.rightRailBand,
+      floorLeftRailBand: floor?.leftRailBand,
+      floorRightRailBand: floor?.rightRailBand,
       floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
       availableFrameKeys: const [],

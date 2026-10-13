@@ -575,7 +575,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // opened in a rail column or the bottom panel is simply not under the
       // provider, and nothing lies on it.
       floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
-      floorRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
+      floorLeftRailBand: CanvasFloorInsets.maybeOf(context)?.leftRailBand,
+      floorRightRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
       // ⑩: what a control on the bottom edge has to clear.
       floorBottomOverlaySpan:
           CanvasFloorInsets.maybeOf(context)?.bottomOverlaySpan ?? 0,

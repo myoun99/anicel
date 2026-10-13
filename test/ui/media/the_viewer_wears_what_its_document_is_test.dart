@@ -448,4 +448,48 @@ void main() {
     expect(capsule.right, lessThanOrEqualTo(panel.right - cover.right));
     expect(capsule.bottom, lessThanOrEqualTo(panel.bottom - cover.bottom));
   });
+
+  testWidgets('the floor\'s viewer turns its pages beside a rail lying on '
+      'its left edge, not under it', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    const cover = EdgeInsets.only(left: 200);
+    await openPages(
+      tester,
+      pages: 3,
+      onFloor: (child) => CanvasFloorInsets(
+        insets: cover,
+        leftRailBand: (top: 0, bottom: 700),
+        child: child,
+      ),
+    );
+
+    final panel = tester.getRect(key('canvas-editor-panel-shell'));
+    expect(
+      tester.getRect(key(strip)).left,
+      greaterThanOrEqualTo(panel.left + cover.left),
+    );
+  });
+
+  testWidgets('the floor\'s viewer pans beside a rail lying on its right '
+      'edge, not under it', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    const cover = EdgeInsets.only(right: 150);
+    await openPages(
+      tester,
+      pages: 3,
+      onFloor: (child) => CanvasFloorInsets(
+        insets: cover,
+        rightRailBand: (top: 0, bottom: 700),
+        child: child,
+      ),
+    );
+
+    final panel = tester.getRect(key('canvas-editor-panel-shell'));
+    expect(
+      tester.getRect(key('canvas-panbar-vertical')).right,
+      lessThanOrEqualTo(panel.right - cover.right),
+    );
+  });
 }

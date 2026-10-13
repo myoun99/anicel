@@ -69,6 +69,9 @@ double pillBandOf(WidgetTester tester, {Finder? of}) {
 /// what the panel frames — the strip with its margin either side (F-346:
 /// it is cover as the pill is). Read off the strip as it lies, as
 /// [pillBandOf] reads the pill.
+///
+/// ⚠️For a strip on the box's own edge: one that stepped past a rail
+/// beside it would read the rail as margin.
 double pageStripBandOf(WidgetTester tester, {Finder? of}) {
   Finder inPanel(String key) {
     final finder = find.byKey(ValueKey<String>(key));

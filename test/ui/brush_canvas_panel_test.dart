@@ -70,6 +70,7 @@ Widget floorPillHarness({
   ValueChanged<CanvasViewport>? onViewportChanged,
   List<Widget> pageStrip = const [],
   EdgeInsets floorCover = EdgeInsets.zero,
+  CanvasFloorBand? floorLeftRailBand,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
@@ -77,6 +78,7 @@ Widget floorPillHarness({
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
     floorCover: floorCover,
+    floorLeftRailBand: floorLeftRailBand,
     pageStrip: pageStrip,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
@@ -119,7 +121,11 @@ Widget floorPillHarness({
           width: width,
           height: 420,
           child: onFloor
-              ? CanvasFloorInsets(insets: floorCover, child: panel)
+              ? CanvasFloorInsets(
+                  insets: floorCover,
+                  leftRailBand: floorLeftRailBand,
+                  child: panel,
+                )
               : panel,
         ),
       ),
@@ -409,20 +415,33 @@ void main() {
     expect(ringOf('canvas-panbar-horizontal').top, ring);
   });
 
-  testWidgets('F-346: on the floor the page strip stands on the box\'s own '
-      'left edge, so a rail lying on that edge costs Fit the rail or the '
-      'strip, whichever reaches further — never the two end to end', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1000, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    Future<double> fittedCentreX(double rail) async {
+  group('the page strip and a rail lying on the floor\'s left edge', () {
+    final shell = find.byKey(
+      const ValueKey<String>('canvas-editor-panel-shell'),
+    );
+    final stripCapsule = find.byKey(
+      const ValueKey<String>('canvas-page-strip'),
+    );
+    double stripLeft(WidgetTester tester) =>
+        tester.getRect(stripCapsule).left - tester.getRect(shell).left;
+
+    /// The floor at 900 × 420, a rail [rail] wide lying on its left edge
+    /// over [band] — under a region [top] tall docked on top — Fit pressed:
+    /// where the strip stands in from the box's edge, and where Fit put the
+    /// artwork's middle.
+    Future<({double left, double centre})> fitBeside(
+      WidgetTester tester, {
+      required double rail,
+      required CanvasFloorBand band,
+      double top = 0,
+    }) async {
       CanvasViewport? fitted;
       await tester.pumpWidget(
         floorPillHarness(
           width: 900,
           onFloor: true,
-          floorCover: EdgeInsets.only(left: rail),
+          floorCover: EdgeInsets.only(left: rail, top: top),
+          floorLeftRailBand: band,
           onViewportChanged: (view) => fitted = view,
           pageStrip: const [SizedBox(width: 26, height: 40)],
         ),
@@ -432,24 +451,165 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
       );
       await tester.pumpAndSettle();
-      return renderOf(
-        tester,
-        fitted!,
-      ).canvasToViewport(CanvasPoint(x: 150, y: 150)).x;
+      return (
+        left: stripLeft(tester),
+        centre: renderOf(
+          tester,
+          fitted!,
+        ).canvasToViewport(CanvasPoint(x: 150, y: 150)).x,
+      );
     }
 
-    final narrow = await fittedCentreX(20);
-    final strip = pageStripBandOf(tester);
-    expect(strip, greaterThan(20), reason: '⛔premise: the strip reaches past');
-    expect(narrow, closeTo(strip + (900 - strip) / 2, 0.5));
+    // A short rail panel: its band ends far above the strip, which stands
+    // in the middle of the 420px edge.
+    const above = (top: 0.0, bottom: 120.0);
 
-    final wide = await fittedCentreX(200);
-    expect(
-      pageStripBandOf(tester),
-      lessThan(200),
-      reason: '⛔premise: the rail lies over the strip',
-    );
-    expect(wide, closeTo(200 + (900 - 200) / 2, 0.5));
+    testWidgets('F-346: a rail that is not beside the strip leaves it on the '
+        'box\'s own left edge, so Fit pays the rail or the strip, whichever '
+        'reaches further — never the two end to end', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final narrow = await fitBeside(tester, rail: 20, band: above);
+      final strip = pageStripBandOf(tester);
+      expect(narrow.left, closeTo(6, 0.01), reason: 'on the box\'s own edge');
+      expect(strip, greaterThan(20), reason: '⛔premise: it reaches past');
+      expect(narrow.centre, closeTo(strip + (900 - strip) / 2, 0.5));
+
+      final wide = await fitBeside(tester, rail: 200, band: above);
+      expect(wide.left, closeTo(6, 0.01));
+      expect(
+        strip,
+        lessThan(200),
+        reason: '⛔premise: the rail\'s edge reaches past the strip',
+      );
+      expect(wide.centre, closeTo(200 + (900 - 200) / 2, 0.5));
+    });
+
+    testWidgets('🗣️R4 · R3 #5: a rail beside the strip takes it past the '
+        'rail, as the vertical bar steps past the right one — under a rail '
+        'no page could be turned — and then Fit pays the two end to end', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // Read where nothing is beside it: its band, and the span it holds.
+      await fitBeside(tester, rail: 200, band: above);
+      final strip = pageStripBandOf(tester);
+      final span = tester
+          .getRect(stripCapsule)
+          .shift(-tester.getRect(shell).topLeft);
+      final sum = 200 + strip + (900 - 200 - strip) / 2;
+      const larger = 200 + (900 - 200) / 2;
+
+      final along = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: 420),
+      );
+      expect(along.left, closeTo(206, 0.01), reason: 'the rail, the margin');
+      expect(along.centre, closeTo(sum, 0.5));
+
+      // ★At the strip's own ends: Fit asks with the height the strip was
+      // laid out at, not about the middle of the edge.
+      final reaching = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: span.top + 1),
+      );
+      expect(reaching.left, closeTo(206, 0.01), reason: 'one pixel into it');
+      expect(reaching.centre, closeTo(sum, 0.5));
+      final touching = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: span.top),
+      );
+      expect(touching.left, closeTo(6, 0.01), reason: 'ends where it starts');
+      expect(touching.centre, closeTo(larger, 0.5));
+      final below = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: span.bottom, bottom: 420),
+      );
+      expect(below.left, closeTo(6, 0.01), reason: 'starts where it ends');
+      expect(below.centre, closeTo(larger, 0.5));
+
+      // ★Under a region docked on top the strip holds the middle of what is
+      // left, and the rail's band is read on the floor's own axis.
+      await fitBeside(tester, rail: 200, band: above, top: 200);
+      final lower = tester
+          .getRect(stripCapsule)
+          .shift(-tester.getRect(shell).topLeft);
+      expect(lower.top, greaterThan(span.top), reason: '⛔premise: lower');
+      final underRegion = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 200, bottom: lower.top + 1),
+        top: 200,
+      );
+      expect(underRegion.left, closeTo(206, 0.01));
+      expect(underRegion.centre, closeTo(sum, 0.5));
+    });
+
+    testWidgets('a panel shorter than the strip gets the whole strip, '
+        'smaller, its margin kept above and below', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          pageStrip: const [SizedBox(width: 26, height: 600)],
+        ),
+      );
+      await tester.pumpAndSettle();
+      final box = tester.getRect(shell);
+      final capsule = tester.getRect(stripCapsule);
+      expect(capsule.top - box.top, closeTo(6, 0.01));
+      expect(box.bottom - capsule.bottom, closeTo(6, 0.01));
+    });
+
+    testWidgets('a strip that grows into a rail\'s band steps past it, and '
+        'the fit the panel paints follows the next frame: framing learns the '
+        'height the strip was laid out at', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // The band ends between the short strip's top and the tall one's.
+      Widget withStrip(double height) => floorPillHarness(
+        width: 900,
+        onFloor: true,
+        floorCover: const EdgeInsets.only(left: 200),
+        floorLeftRailBand: (top: 0, bottom: 150),
+        unframedFit: const Rect.fromLTWH(0, 0, 300, 300),
+        pageStrip: [SizedBox(width: 26, height: height)],
+      );
+      // What the panel paints: the fit resolves at the read, never stored.
+      double paintedCentre() => tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport
+          .canvasToViewport(CanvasPoint(x: 150, y: 150))
+          .x;
+
+      await tester.pumpWidget(withStrip(40));
+      await tester.pumpAndSettle();
+      final strip = pageStripBandOf(tester);
+      expect(
+        tester.getRect(stripCapsule).top - tester.getRect(shell).top,
+        greaterThan(150),
+        reason: '⛔premise: the short strip is clear of the band',
+      );
+      expect(paintedCentre(), closeTo(200 + (900 - 200) / 2, 0.5));
+
+      await tester.pumpWidget(withStrip(240));
+      await tester.pumpAndSettle();
+      expect(stripLeft(tester), closeTo(206, 0.01));
+      expect(
+        paintedCentre(),
+        closeTo(200 + strip + (900 - 200 - strip) / 2, 0.5),
+      );
+    });
   });
 
   testWidgets('🗣️playback\'s fit — the frame an owner hands a view nobody '
