@@ -665,7 +665,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     return CustomPaint(
       key: const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
       painter: PlaybackFramePainter(
-        image: null,
         canvasSize: widget.canvasSize,
         viewport: viewport,
         // The pan-phase snap's device grid — the blank-canvas paper must

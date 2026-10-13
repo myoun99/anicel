@@ -8,9 +8,13 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 
-/// R3b: the painter's fade is TRANSPARENCY — the cut's whole unit
-/// (pasteboard fill, paper, picture) thins as one layer, revealing what
-/// was painted behind it. No wash, no target color.
+/// R3b: the cut's whole unit — pasteboard fill, paper, picture — is what a
+/// fade thins, and the camera's view of it reaches past the paper onto the
+/// stage's apron.
+///
+/// ↩️The painter thinned the unit itself (`fadeOpacity`) while it drew a
+/// film's picture; the unit is laid around the painters now, as playback
+/// lays it (`a_film_frame_is_the_frame_playback_shows_test`).
 void main() {
   Future<(int, int, int, int)> pixelAt(
     PlaybackFramePainter painter, {
@@ -18,16 +22,9 @@ void main() {
     required int height,
     required int x,
     required int y,
-    Color? behind,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    if (behind != null) {
-      canvas.drawRect(
-        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-        Paint()..color = behind,
-      );
-    }
     painter.paint(canvas, Size(width.toDouble(), height.toDouble()));
     final picture = recorder.endRecording();
     final image = await picture.toImage(width, height);
@@ -43,62 +40,6 @@ void main() {
     );
   }
 
-  testWidgets('a mid-fade frame blends toward what lies BEHIND the unit — '
-      'not toward a wash color', (tester) async {
-    await tester.runAsync(() async {
-      const size = CanvasSize(width: 4, height: 4);
-      final painter = PlaybackFramePainter(
-        image: null,
-        canvasSize: size,
-        cameraPose: CameraPose(center: CanvasPoint(x: 2, y: 2)),
-        cameraFrameSize: size,
-        paperBackground: ProjectBackground.defaultBackground,
-        pasteboardColor: const Color(0xFFFFFFFF),
-        paintLetterbox: false,
-        fadeOpacity: 0.5,
-      );
-      // Behind = pure red: a white unit at fade 0.5 lands on pink —
-      // the wash model would have landed on grey (toward black) instead.
-      final (r, g, b, a) = await pixelAt(
-        painter,
-        width: 4,
-        height: 4,
-        x: 2,
-        y: 2,
-        behind: const Color(0xFFFF0000),
-      );
-      expect(a, 255);
-      expect(r, 255);
-      expect(g, closeTo(128, 2));
-      expect(b, closeTo(128, 2));
-    });
-  });
-
-  testWidgets('a fully faded frame vanishes — alpha 0 with nothing behind, '
-      'the backdrop untouched when there is one', (tester) async {
-    await tester.runAsync(() async {
-      const size = CanvasSize(width: 4, height: 4);
-      final painter = PlaybackFramePainter(
-        image: null,
-        canvasSize: size,
-        cameraPose: CameraPose(center: CanvasPoint(x: 2, y: 2)),
-        cameraFrameSize: size,
-        paperBackground: ProjectBackground.defaultBackground,
-        pasteboardColor: const Color(0xFFFFFFFF),
-        paintLetterbox: false,
-        fadeOpacity: 0,
-      );
-      final (_, _, _, a) = await pixelAt(
-        painter,
-        width: 4,
-        height: 4,
-        x: 2,
-        y: 2,
-      );
-      expect(a, 0, reason: 'the unit thinned away entirely');
-    });
-  });
-
   testWidgets('the camera sees the PASTEBOARD past the paper\'s edge — the '
       'stage apron is part of the unit', (tester) async {
     await tester.runAsync(() async {
@@ -107,7 +48,6 @@ void main() {
       const canvasSize = CanvasSize(width: 4, height: 4);
       const frameSize = CanvasSize(width: 8, height: 4);
       final painter = PlaybackFramePainter(
-        image: null,
         canvasSize: canvasSize,
         cameraPose: CameraPose(center: CanvasPoint(x: 2, y: 2)),
         cameraFrameSize: frameSize,

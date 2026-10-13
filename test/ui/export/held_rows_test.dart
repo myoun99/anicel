@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
@@ -107,19 +108,27 @@ void main() {
     );
   }
 
-  /// A picture made of [cels], in that order — what it was handed for each.
-  Future<List<ui.Image>> picture(List<String> cels) => rows.during(
-    (asked) async => [
-      for (final cel in cels) (await asked.of(read(cel), compose)).image,
-    ],
-  );
+  /// A picture made of [cels], in that order, each at [level] — what it was
+  /// handed for each.
+  Future<List<ui.Image>> picture(List<String> cels, {int level = 0}) =>
+      rows.during(
+        (asked) async => [
+          for (final cel in cels)
+            (await asked.of(read(cel), level, compose)).image,
+        ],
+      );
 
-  /// Frame [index] of the run starts, and a picture is made of [cels] — or
-  /// of nothing, where the frame is the picture the frame before it was.
-  Future<List<ui.Image>> frame(int index, [List<String>? cels]) async {
+  /// Frame [index] of the run starts, and a picture is made of [cels] at
+  /// [level] — or of nothing, where the frame is the picture the frame
+  /// before it was.
+  Future<List<ui.Image>> frame(
+    int index, [
+    List<String>? cels,
+    int level = 0,
+  ]) async {
     at = index;
     rows.nextFrame();
-    return cels == null ? const [] : await picture(cels);
+    return cels == null ? const [] : await picture(cels, level: level);
   }
 
   test('a picture\'s rows say of the renders they go to what the run says '
@@ -145,6 +154,26 @@ void main() {
     expect(identical(aAgain, aFirst), isTrue);
     expect(rows.made, 2, reason: 'a once, and b');
     expect(composed, hasLength(2));
+  });
+
+  test('🎯a cel asked for at another level is another row — and each is '
+      'the row composed for it, for as long as a frame ahead shows the cel',
+      () async {
+    // A camera zooming across a halving asks for a cel at two levels
+    // (`displayLevelOf`): a picture halved once is not the picture.
+    shows = {
+      'a': [0, 1, 2, 3],
+    };
+    final [whole] = await frame(0, ['a']);
+    final [halved] = await frame(1, ['a'], 1);
+    final [wholeAgain] = await frame(2, ['a']);
+    final [halvedAgain] = await frame(3, ['a'], 1);
+
+    expect(identical(halved, whole), isFalse);
+    expect(identical(wholeAgain, whole), isTrue);
+    expect(identical(halvedAgain, halved), isTrue);
+    expect(rows.made, 2, reason: 'a at each level, once');
+    expect(HeldRows.debugHeld - heldBefore, 2);
   });
 
   test('🚨a row is let go when a frame starts from which no frame shows '
@@ -356,7 +385,7 @@ void main() {
     await expectLater(
       rows.during((asked) async {
         for (final cel in ['a', 'b']) {
-          fresh.add((await asked.of(read(cel), compose)).image);
+          fresh.add((await asked.of(read(cel), 0, compose)).image);
         }
         throw StateError('no raster');
       }),
@@ -392,30 +421,30 @@ void main() {
 
     Future<ui.Image> render(
       CutFrameCompositeLayer layer, {
-      required bool displayLevels,
+      required CanvasSize output,
       RowPictures? rows,
     }) => const CameraFrameRenderService().renderThroughCamera(
       layers: [layer],
       pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
       cameraFrameSize: canvas,
-      // A quarter: the level halves twice when asked to.
-      outputSize: const CanvasSize(width: 2, height: 2),
-      displayLevels: displayLevels,
+      outputSize: output,
       rows: rows,
     );
 
-    for (final displayLevels in [false, true]) {
-      testWidgets('🚨displayLevels $displayLevels: draws what it is handed, '
-          'never lets it go, and draws what it would have composed', (
-        tester,
-      ) async {
+    // At full size the row is the cel's picture; at a quarter, halved twice.
+    for (final (name, output, level) in [
+      ('at full size', canvas, 0),
+      ('at a quarter', const CanvasSize(width: 2, height: 2), 2),
+    ]) {
+      testWidgets('🚨$name: draws what it is handed, never lets it go, and '
+          'draws what it would have composed', (tester) async {
         await tester.runAsync(() async {
           final layer = CutFrameCompositeLayer(surface: ink(), opacity: 1);
-          final alone = await render(layer, displayLevels: displayLevels);
+          final alone = await render(layer, output: output);
           final kept = <PositionedSurfaceImage>[];
           final handed = await render(
             layer,
-            displayLevels: displayLevels,
+            output: output,
             rows: _Keeping(kept),
           );
 
@@ -428,15 +457,32 @@ void main() {
         });
       });
 
-      testWidgets('🚨displayLevels $displayLevels: with nobody keeping its '
-          'rows, a render lets go of every picture it made but the one it '
-          'hands back — and with a keeper, of all but the kept', (
-        tester,
-      ) async {
+      testWidgets('🎯$name: asks for the row at the level it is drawn at, '
+          'and is handed it composed there — halved once for the keeper, '
+          'not at every render', (tester) async {
+        await tester.runAsync(() async {
+          final layer = CutFrameCompositeLayer(surface: ink(), opacity: 1);
+          final keeping = _Keeping([]);
+          (await render(layer, output: output, rows: keeping)).dispose();
+
+          expect(keeping.levels, [level]);
+          final row = keeping.kept.single;
+          expect(
+            (row.image.width, row.image.height),
+            (8 >> level, 8 >> level),
+          );
+          expect(row.worldRect, canvas.canvasRect, reason: 'the same rect');
+          row.image.dispose();
+        });
+      });
+
+      testWidgets('🚨$name: with nobody keeping its rows, a render lets go '
+          'of every picture it made but the one it hands back — and with a '
+          'keeper, of all but the kept', (tester) async {
         await tester.runAsync(() async {
           final layer = CutFrameCompositeLayer(surface: ink(), opacity: 1);
           // Warm: the tiles' own pictures are the tile cache's to keep.
-          (await render(layer, displayLevels: displayLevels)).dispose();
+          (await render(layer, output: output)).dispose();
           final live = <Object>{};
           void count(ObjectEvent event) {
             if (event.object is! ui.Image) {
@@ -454,14 +500,14 @@ void main() {
             () => FlutterMemoryAllocations.instance.removeListener(count),
           );
 
-          final alone = await render(layer, displayLevels: displayLevels);
+          final alone = await render(layer, output: output);
           expect(live, {alone}, reason: 'the picture it handed back, alone');
           alone.dispose();
 
           final kept = <PositionedSurfaceImage>[];
           final handed = await render(
             layer,
-            displayLevels: displayLevels,
+            output: output,
             rows: _Keeping(kept),
           );
           expect(live, {handed, kept.single.image});
@@ -480,6 +526,9 @@ final class _Keeping implements RowPictures {
 
   final List<PositionedSurfaceImage> kept;
 
+  /// The level each row was asked for at, in order.
+  final levels = <int>[];
+
   /// Each is handed to one render.
   @override
   bool get laidTexelForTexel => true;
@@ -487,8 +536,10 @@ final class _Keeping implements RowPictures {
   @override
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
+    int level,
     Future<PositionedSurfaceImage> Function() compose,
   ) async {
+    levels.add(level);
     final composed = await compose();
     kept.add(composed);
     return composed;

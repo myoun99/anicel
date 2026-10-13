@@ -252,7 +252,6 @@ class CanvasTrackStackView extends StatelessWidget {
             ),
           );
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
-      image: null,
       canvasSize: cut.canvasSize,
       viewport: view,
       devicePixelRatio: ratio,

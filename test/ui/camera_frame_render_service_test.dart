@@ -53,7 +53,7 @@ void main() {
     );
   }
 
-  const service = CameraFrameRenderService(filterQuality: FilterQuality.none);
+  const service = CameraFrameRenderService();
 
   /// One red pixel in the tile to the LEFT of the canvas: local (7,2) of the
   /// tile at x = -1 is world (-1, 2).

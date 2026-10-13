@@ -91,7 +91,6 @@ class CameraShot extends StatelessWidget {
           painter: shot == null
               ? null
               : PlaybackFramePainter(
-                  image: null,
                   canvasSize: canvasSize,
                   viewport: view,
                   devicePixelRatio: ratio,

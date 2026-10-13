@@ -1,19 +1,13 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
-import '../../models/transform_track.dart';
 import '../../models/transition_geometry.dart' show TransitionVeil;
 import '../../services/se_name_tag_plan.dart';
-import '../../services/composite_effect_paint.dart'
-    show alphaOnly, resolveCompositeEffectPlan;
-import '../canvas/subtree_image_composite.dart' show steppedForChain;
+import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../canvas/display_resample.dart';
 import '../../services/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
@@ -23,30 +17,36 @@ import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 import 'transition_veil_paint.dart';
 
-/// Paints one cached composite frame inside the canvas panel viewport.
+/// Paints what a frame lays around its picture inside the canvas panel
+/// viewport — the paper, the stage's apron, the letterbox past a camera's
+/// frame, and the names and veils over it. The picture is never this
+/// painter's: on screen it is the canvas's own rows (`CameraShot`,
+/// `CanvasTrackStackView`), and in a film the cut drawn through its camera
+/// (`ExportFrameRenderer._stackUnit`) — each laid between a painter of what
+/// goes under it and a painter of what goes over it.
 ///
-/// Canvas mode ([cameraPose] null) draws the paper and the composite in
-/// canvas space under the interactive [viewport] transform — the exact
-/// framing the editing canvas uses, so panel zoom/pan keep working during
-/// playback. A null [image] paints just the paper (the blank-canvas
-/// placeholder reuses this).
+/// Canvas mode ([cameraPose] null) draws in canvas space under the
+/// interactive [viewport] transform — the exact framing the editing canvas
+/// uses, so panel zoom/pan keep working during playback. The blank-canvas
+/// placeholder paints its paper with it.
 ///
 /// Camera mode looks through the pose instead: the camera's output frame
 /// takes the canvas's place under the SAME viewport transform (zoom/pan keep
-/// working here too), everything outside it letterboxed dark, and the
-/// canvas-space composite is projected with the transform the export
-/// renderer uses — no re-render, camera moves are pure GPU transforms over
-/// the cached image.
+/// working here too), everything outside it letterboxed dark, and what is
+/// laid in canvas space is projected with the transform the export renderer
+/// uses.
+///
+/// ↩️It drew the cut's composite too — the playback cache's picture, and a
+/// film's — until the screen played the canvas's rows
+/// (playback-plays-the-screen-material) and the film drew its cut through
+/// the camera as the canvas does (card video-export-speed-Q2, 유저
+/// 2026-10-13: 「캔버스 규칙으로」).
 class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   const PlaybackFramePainter({
-    required this.image,
     required this.canvasSize,
     this.viewport,
     this.cameraPose,
     this.cameraFrameSize,
-    this.cutPose,
-    this.cutEffects = const <ResolvedLayerEffect>[],
-    this.fadeOpacity = 1,
     this.imageOpacity = 1,
     this.veils = const [],
     // R28 #9: the one paper constant, not a repeated literal.
@@ -64,9 +64,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
          'Camera mode needs the camera frame size.',
        );
 
-  /// The cut's picture — the canvas's own size — drawn onto the canvas.
-  final ui.Image? image;
-
   final CanvasSize canvasSize;
 
   /// Pan/zoom of the panel viewport; identity when null.
@@ -76,56 +73,28 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
 
-  /// A pose for the FINISHED picture on the DISPLAY space, above the camera
-  /// projection (AE precomp semantics): null = identity, zero cost.
-  /// Display-time only, never baked into composites (the fade's rule). Canvas
-  /// mode keeps the PAPER static and moves only the merged content, clipped to
-  /// the canvas (R7-③: "the canvas stays put, the contents move as one") — the
-  /// paper is the panel's stage, not part of the cut's picture there.
-  ///
-  /// ⚠️NO CALLER passes this today. It was the V row's `Track.transformTrack`,
-  /// torn down in the O.L round: a whole track's output posed on the stage only
-  /// means something when several tracks stack, and there is no V-track
-  /// authoring. The slot stays because it is the shared renderer's capability
-  /// and a row that should own a transform declares that through
-  /// [timelineRowOwnsTransform] — but nothing declares it, so treat this as
-  /// unexercised until something does.
-  final TransformPose? cutPose;
-
-  /// The V track's EFFECT chain, already sampled at this frame
-  /// ([trackEffectPaintAt]) — a layer's fx one level up, filtering the cut's
-  /// finished PICTURE. It lands on the composite draw for the same reason
-  /// [imageOpacity] does: the paper is the panel's stage, not part of the
-  /// cut's picture, so a grade on the V row must not tint the stage. None
-  /// costs nothing.
-  final List<ResolvedLayerEffect> cutEffects;
-
-  /// The fade (the track's opacity lane): the cut's WHOLE contribution —
-  /// stage and picture together — thins as one (R3b, "fade is
-  /// transparency"): what a fade reveals is whatever lies BEHIND the cut
-  /// (the tracks below, then the backdrop), never a painted-on wash. The
-  /// old per-cut FO/WO target color is gone with the wash; a white-out is
-  /// a white cut on a lower track now. 1 costs nothing (no saveLayer).
-  ///
-  /// ↩️F-192 (유저 2026-09-27) took the one-sided transitions back out of
-  /// that sentence: 「컷의 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음.
-  /// 화이트인은 쌩 흰화면에서 바뀌는거고 … 백그라운드색을 바꾸는거말고
-  /// 구조적으로」. An F.I/F.O/W.I/W.O no longer thins the unit — it lays its
-  /// own screen over it ([veils]). What this still carries is the O.L's
-  /// dissolve and the track's own opacity, which are transparency.
-  final double fadeOpacity;
-
   /// The screens one-sided transitions lay over this cut's WHOLE unit — the
   /// camera frame, or the canvas without a camera — in order, each its
   /// color at its opacity ([cutTransitionVeilsAt], F-192). They are part of
-  /// the unit, so the unit's own thinning ([fadeOpacity], or [imageOpacity]
-  /// above the stage) thins them with it.
+  /// the unit, so the unit's own thinning — the stage's fade, which the
+  /// unit's caller lays around all of it, or [imageOpacity] above the
+  /// stage — thins them with it.
+  ///
+  /// ↩️F-192 (유저 2026-09-27) took the one-sided transitions out of the
+  /// fade: 「컷의 페이드인은 애초에 쌩 검은화면에서 바뀐단거였음. 화이트인은
+  /// 쌩 흰화면에서 바뀌는거고 … 백그라운드색을 바꾸는거말고 구조적으로」. An
+  /// F.I/F.O/W.I/W.O no longer thins the unit — it lays its own screen over
+  /// it. What still thins it is the O.L's dissolve and the track's own
+  /// opacity, which are transparency (R3b, "fade is transparency": what a
+  /// fade reveals is whatever lies BEHIND the cut — the tracks below, then
+  /// the backdrop — never a painted-on wash).
   final List<TransitionVeil> veils;
 
-  /// Alpha on the composite draw itself. The stacked views fade a
-  /// NON-bottom track through this instead of [fadeOpacity]: the bottom
-  /// track's fade takes its stage along, but a track above the stage
-  /// fading away should reveal it. 1 costs nothing.
+  /// How thin the cut's own contribution is laid over the stage — its names
+  /// and veils here, its picture beside them. A stacked track above the
+  /// stage fades through this, so that fading away it reveals the stage;
+  /// the stage's own fade takes its paper and apron along, and is laid
+  /// around the whole unit by its caller. 1 costs nothing.
   final double imageOpacity;
 
   /// What a camera view shows past its frame — the stage's floor there.
@@ -178,8 +147,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// rule): the text comes from the SE frames themselves, so a rename shows
   /// instantly without invalidating one cached composite. Each stands in
   /// its shot ([ResolvedSeNameTag.shot]), so through the camera projection
-  /// it holds its place in the frame (I-67-Q1); the cut pose carries it
-  /// with the picture.
+  /// it holds its place in the frame (I-67-Q1).
   final List<ResolvedSeNameTag> seNameTags;
 
   void _paintPaper(Canvas canvas, Rect rect, {required bool antiAlias}) {
@@ -249,14 +217,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // the canvas there, while the film was cut at the canvas's edge.
     final unit = frameRect ?? canvasSize.pasteboardRect;
 
-    // The FADE is transparency now (R3b): the cut's whole contribution —
-    // stage fill, paper, picture — thins as one layer, revealing whatever
-    // lies behind (the tracks below, then the backdrop). Only a mid-fade
-    // frame pays the saveLayer.
-    final fading = fadeOpacity < 1;
-    if (fading) {
-      canvas.saveLayer(unit, Paint()..color = alphaOnly(fadeOpacity));
-    }
     if (pose != null && pasteboardColor != null) {
       // The stage's apron: the camera sees the pasteboard wherever it
       // reaches past the paper — part of the cut unit, so it fades with
@@ -268,120 +228,28 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         paintAlphaCheckerboard(canvas, frameRect!);
       }
     }
-    // The cut pose (AE precomp semantics) transforms the cut's FINISHED
-    // picture over the display space — outermost, above the camera
-    // projection; the fade overlay below stays a screen dip on top.
-    //
-    // Canvas mode: the paper draws BEFORE the pose and the moving content
-    // clips to it — the canvas is the panel's static stage, only the merged
-    // picture moves inside it (R7-③). Camera mode keeps the paper under the
-    // pose: there the cut's finished picture (paper included) moves within
-    // the output frame, matching the MP4 bake.
-    final resolvedCutPose = cutPose;
-    final composite = image;
-    // The frames that STAND IN for the editing stack — canvas mode, no cut
-    // pose — cut the canvas's boundary the way the editing stack cuts it
-    // (`displayEdgeAntiAliased`, F-67-paper-edge), the paper and the
-    // composite alike, or a scrub would switch the edge line on and off.
-    // Camera mode and a cut pose keep the anti-aliased edge they had: their
-    // interiors are filtered too. ↩️A composite smaller than the canvas — a
-    // playback quality tier's — was a third such case until the tiers went
-    // (2026-10-08): a cut's picture is the canvas's own size.
-    final standsInForEditing = pose == null && resolvedCutPose == null;
+    // The canvas seen whole stands in for the editing stack's paper — the
+    // blank canvas is this — so it cuts the canvas's boundary the way the
+    // stack cuts it (`displayEdgeAntiAliased`, F-67-paper-edge), or a cel
+    // coming and going would switch the edge line on and off. Camera mode
+    // keeps the anti-aliased edge it had: the paper is projected there.
     final edgeAntiAlias =
         resolvedViewport == null ||
-        !standsInForEditing ||
+        pose != null ||
         displayEdgeAntiAliased(resolvedViewport, devicePixelRatio);
     if (pose == null) {
       _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
-    }
-    if (resolvedCutPose != null) {
-      canvas.save();
-      if (pose == null) {
-        canvas.clipRect(canvasRect);
-      }
-      applyLayerPlacement(
-        canvas,
-        placementOf((
-          pose: resolvedCutPose,
-          anchorPoint: null,
-        ), pose != null ? cameraFrameSize! : canvasSize),
-      );
-    }
-    if (pose != null) {
+    } else {
       canvas.save();
       applyCameraProjection(canvas, pose, cameraFrameSize!);
       _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
     }
-    if (composite != null && imageOpacity > 0) {
-      // 🚨SCRUB ↔ STILL PARITY (device report B2, 2026-08-17): in canvas
-      // mode with a canvas-resolution composite this draw IS the editing
-      // canvas's one resample — the same canvas-space pixels, under the
-      // same snapped viewport transform, standing in for the editing
-      // stack's buffer blit during a scrub. It must therefore follow the
-      // same T21 display law ([filterQualityForDisplayScale]: magnified
-      // and 1:1 sample `none`, reduced filters) — hardcoded `low` here
-      // made every axis-aligned edge land bilinear on this route and
-      // nearest on the editing one, a whole-picture 1px "반올림" at any
-      // fractional device phase (DPR 1.25/1.5 makes even 100% zoom one).
-      //
-      // The law's premise is a canvas-resolution image (displayScaleOf's
-      // premise: the image is at canvas resolution, so zoom × ratio is
-      // the scale it is resampled by) — which a cut's picture is. Camera
-      // mode (and the unexercised cut pose) project through transforms the
-      // editing canvas never renders, so they keep the sampling they
-      // always had.
-      final editingResample = standsInForEditing;
-      final imagePaint = Paint()
-        ..filterQuality = editingResample
-            ? filterQualityForDisplayScale(
-                displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio),
-              )
-            : FilterQuality.low
-        // The composite's edge is the canvas's edge: the same cut as the
-        // paper's above (F-67-paper-edge).
-        ..isAntiAlias = edgeAntiAlias
-        ..color = alphaOnly(imageOpacity);
-      // The V row's chain filters the picture on its way onto the stage.
-      //
-      // 🚨A CHAIN IS NOT ALWAYS ONE DRAW, and this is where a track's stopped
-      // pretending otherwise. A colour key is a fragment shader with no paint
-      // form, so a key that comes after painted state needs its own raster —
-      // the same steps a group and a layer image already take.
-      //
-      // ⚠️rasterScale 1 for the PAINT: the cut is drawn in canvas space
-      // here, so a blur radius is canvas pixels and Skia maps the sigma
-      // through the CTM. The STEPS raster the image at its own size, and
-      // read the ratio to the canvas off the image.
-      final plan = resolveCompositeEffectPlan(cutEffects);
-      plan.finalPaint.applyTo(imagePaint);
-      final stepped = steppedForChain(
-        image: composite,
-        plan: plan,
-        canvasExtent: canvasSize.width.toDouble(),
-      );
-      canvas.drawImageRect(
-        stepped,
-        Rect.fromLTWH(
-          0,
-          0,
-          stepped.width.toDouble(),
-          stepped.height.toDouble(),
-        ),
-        canvasRect,
-        imagePaint,
-      );
-      // ⛔The steps made a NEW image; `composite` belongs to the cache.
-      if (!identical(stepped, composite)) {
-        stepped.dispose();
-      }
-    }
     if (seNameTags.isNotEmpty) {
       // The tags belong to the cut's own contribution, so a stacked UPPER
       // track thins them with its picture: that track fades through
-      // [imageOpacity] (only the bottom track's [fadeOpacity] saveLayer
-      // above carries the tags for free), and an annotation left fully
-      // opaque over a fading picture reads as a bug.
+      // [imageOpacity] (only the stage's fade, laid around the whole unit,
+      // carries the tags for free), and an annotation left fully opaque
+      // over a fading picture reads as a bug.
       final thinning = imageOpacity < 1;
       if (thinning) {
         canvas.saveLayer(unit, Paint()..color = alphaOnly(imageOpacity));
@@ -394,30 +262,20 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     if (pose != null) {
       canvas.restore();
     }
-    if (resolvedCutPose != null) {
-      canvas.restore();
-    }
     // F-192: the transition's own screen over the whole unit, inside the
     // unit's fade so the stage's thinning takes it along; a track above the
     // stage thins it by its own weight, as it thins its picture.
     paintTransitionVeils(canvas, unit, veils, thinnedBy: imageOpacity);
-    if (fading) {
-      canvas.restore();
-    }
     canvas.restore();
   }
 
   @override
   Object get props => (
-    ByIdentity(image),
     canvasSize,
     viewport,
     cameraPose,
     cameraFrameSize,
-    cutPose,
-    ByList(cutEffects),
     ByList(veils),
-    fadeOpacity,
     imageOpacity,
     paperColor,
     paperBackground,

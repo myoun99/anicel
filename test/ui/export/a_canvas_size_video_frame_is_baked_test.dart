@@ -91,10 +91,19 @@ void main() {
     ),
   );
 
-  /// Parks a whole tile of one colour as [cut]'s drawing.
-  void ink(EditorSessionManager session, Cut cut, (int, int, int) rgb) {
+  /// Parks a tile of one colour as [cut]'s drawing — its first [columns],
+  /// the whole tile unless told.
+  void ink(
+    EditorSessionManager session,
+    Cut cut,
+    (int, int, int) rgb, {
+    int columns = 8,
+  }) {
     final pixels = Uint8List(8 * 8 * 4);
     for (var i = 0; i < pixels.length; i += 4) {
+      if ((i ~/ 4) % 8 >= columns) {
+        continue;
+      }
       pixels[i] = rgb.$1;
       pixels[i + 1] = rgb.$2;
       pixels[i + 2] = rgb.$3;
@@ -136,9 +145,9 @@ void main() {
     return bytes!.buffer.asUint8List();
   }
 
-  /// The pixel in the middle of [bytes], a square picture's.
-  (int, int, int, int) centreOf(Uint8List bytes, {int side = 8}) {
-    final offset = ((side ~/ 2) * side + side ~/ 2) * 4;
+  /// The pixel at ([x], [y]) of [bytes], a square picture's.
+  (int, int, int, int) pixelOf(Uint8List bytes, int x, int y, {int side = 8}) {
+    final offset = (y * side + x) * 4;
     return (
       bytes[offset],
       bytes[offset + 1],
@@ -146,6 +155,10 @@ void main() {
       bytes[offset + 3],
     );
   }
+
+  /// The pixel in the middle of [bytes], a square picture's.
+  (int, int, int, int) centreOf(Uint8List bytes, {int side = 8}) =>
+      pixelOf(bytes, side ~/ 2, side ~/ 2, side: side);
 
   testWidgets('a gap frame is the backdrop — and nothing at all under an '
       'alpha master', (tester) async {
@@ -167,12 +180,23 @@ void main() {
   // through the mix」: the V row's static opacity, which left with its bar
   // (I-73, 2026-10-08). A cut is thinned by a transition alone now.
 
-  testWidgets('the V row\'s chain filters the cut\'s picture', (tester) async {
+  testWidgets('the V row\'s chain filters the cut\'s picture — and never the '
+      'paper it stands on', (tester) async {
+    // ↩️The chain filtered the FINISHED frame, its ground included, so a
+    // grade on the V row tinted this route's paper and no other route's —
+    // until the chain went into the cut's tree, as every route lays it
+    // (`underTheCutsFx`, card video-export-speed-Q2).
     await tester.runAsync(() async {
-      final plain = sessionOf([cutOf('c')]);
+      // The cut's left half inked, its right half the paper.
+      EditorSessionManager halfInked({List<LayerEffect> effects = const []}) {
+        final session = sessionOf([cutOf('c')], effects: effects);
+        ink(session, session.requireActiveCut, (0, 0, 100), columns: 4);
+        return session;
+      }
+
+      final plain = halfInked();
       addTearDown(plain.dispose);
-      final graded = sessionOf(
-        [cutOf('c')],
+      final graded = halfInked(
         effects: [
           LayerEffect(
             id: const EffectId('fx'),
@@ -186,15 +210,21 @@ void main() {
       ExportFrameTask taskOf(EditorSessionManager session) =>
           ExportFrameTask(cut: session.requireActiveCut, frameIndex: 0);
 
+      final plainFrame = await videoFrame(plain, taskOf(plain));
       expect(
-        centreOf(await videoFrame(plain, taskOf(plain))),
-        (0, 255, 0, 255),
-        reason: 'CONTROL: the paper as it is',
+        (pixelOf(plainFrame, 1, 4), pixelOf(plainFrame, 6, 4)),
+        ((0, 0, 100, 255), (0, 255, 0, 255)),
+        reason: 'CONTROL: the ink and the paper as they are',
       );
-      final (r, g, b, _) = centreOf(await videoFrame(graded, taskOf(graded)));
-      expect(g, 255);
-      expect(r, greaterThan(40), reason: 'brightened');
-      expect(b, greaterThan(40));
+      final gradedFrame = await videoFrame(graded, taskOf(graded));
+      final (r, _, b, _) = pixelOf(gradedFrame, 1, 4);
+      expect(r, greaterThan(40), reason: 'the ink brightened');
+      expect(b, greaterThan(140));
+      expect(
+        pixelOf(gradedFrame, 6, 4),
+        (0, 255, 0, 255),
+        reason: 'the paper as it is',
+      );
     });
   });
 

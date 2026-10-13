@@ -691,9 +691,14 @@ void main() {
     }
 
     testWidgets('the camera moving over a held drawing: every frame is its '
-        'own picture, and the cut\'s picture under them is made ONCE', (
+        'own picture, and the rows under them are composed ONCE', (
       tester,
     ) async {
+      // ↩️It was the cut's PICTURE that was made once — a canvas-space
+      // composite the camera projected — until the film drew its cut
+      // through the camera as the canvas does (card video-export-speed-Q2):
+      // a picture is of its view now, and what the camera moves over is
+      // the rows it is made of.
       await tester.runAsync(() async {
         final s = sessionOf([
           cut(
@@ -717,13 +722,21 @@ void main() {
 
         final first = await frameAt(0);
         final made = renderer.debugPicturesMade;
+        final rows = renderer.debugRowsMade;
         expect(made, 2, reason: 'LIVENESS: the cut\'s picture and the frame');
+        expect(rows, 2, reason: 'LIVENESS: a1 and b1');
         final moved = await frameAt(1);
         expect(moved.isCloneOf(first), isFalse, reason: 'the camera moved');
         expect(
           renderer.debugPicturesMade,
-          made + 1,
-          reason: 'the frame alone — the cut\'s picture is the one it was',
+          made + 2,
+          reason: 'the cut through the camera where it stands now, and the '
+              'frame',
+        );
+        expect(
+          renderer.debugRowsMade,
+          rows,
+          reason: 'the rows are the ones they were',
         );
         final [before, after] = [
           for (final image in [first, moved]) await bytesOf(image),

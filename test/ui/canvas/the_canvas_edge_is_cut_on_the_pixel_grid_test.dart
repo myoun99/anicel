@@ -36,8 +36,10 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 /// every device pixel is wholly canvas or wholly not, and the leftmost
 /// texel keeps its column. This file pins it on the two routes that draw
 /// the boundary on screen — the editing stack's buffer blit and the
-/// playback painter that stands in for it during a scrub — and pins that
-/// the two agree byte for byte with the edge fractional.
+/// playback painter's paper, which the blank canvas is — and pins that the
+/// two agree byte for byte with the edge fractional. (↩️The painter stood
+/// in for the stack during a scrub with a composite of its own, until
+/// playback played the canvas's rows.)
 ///
 /// ⚠️The fixture is chosen so the edge really is fractional: the test reads
 /// the snapped translation back and refuses to run if it landed whole (a
@@ -55,14 +57,17 @@ void main() {
   /// The one tile: ink at the canvas's own corner, so the leftmost and
   /// topmost texel of the artwork sits on the fractional edge — an edge
   /// rounded INWARD would drop it, an anti-aliased one would blend it.
-  BitmapSurfacePainter cornerInkSurface() {
+  /// Without [ink], the paper alone.
+  BitmapSurfacePainter cornerInkSurface({bool ink = true}) {
     var tile = BitmapTile.blank(size: 4);
-    tile = writeRgbaColorToBitmapTile(
-      tile: tile,
-      x: 0,
-      y: 0,
-      color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
-    );
+    if (ink) {
+      tile = writeRgbaColorToBitmapTile(
+        tile: tile,
+        x: 0,
+        y: 0,
+        color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
+      );
+    }
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
@@ -79,6 +84,7 @@ void main() {
   Future<CustomPainter> pumpEditingStack(
     WidgetTester tester, {
     bool disableBuffer = false,
+    bool ink = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -101,7 +107,7 @@ void main() {
                 ),
                 canvasSize: canvasSize,
                 viewport: viewport,
-                activeSurfacePainter: cornerInkSurface(),
+                activeSurfacePainter: cornerInkSurface(ink: ink),
                 paintPaper: true,
                 paperBackground: paper,
                 debugDisableSingleBuffer: disableBuffer,
@@ -123,25 +129,6 @@ void main() {
         .toList();
     expect(painted, isNotEmpty);
     return painted.first.painter!;
-  }
-
-  /// The canvas-resolution composite the playback route serves: the same
-  /// four-by-four with ink at the corner.
-  Future<ui.Image> compositeImage() async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 1, 1),
-      Paint()
-        ..color = const Color(0xFFFF0000)
-        ..isAntiAlias = false,
-    );
-    final picture = recorder.endRecording();
-    try {
-      return await picture.toImage(canvasSize.width, canvasSize.height);
-    } finally {
-      picture.dispose();
-    }
   }
 
   /// Logical == device pixels: the painter snaps in device pixels through
@@ -174,7 +161,7 @@ void main() {
   const green = [0, 255, 0, 255];
   const red = [255, 0, 0, 255];
 
-  void expectCutOnTheGrid(Uint8List rgba, String route) {
+  void expectCutOnTheGrid(Uint8List rgba, String route, {bool ink = true}) {
     final snapped = renderSnappedViewport(viewport, 1.0);
     final left = snapped.panX;
     final top = snapped.panY;
@@ -216,7 +203,7 @@ void main() {
               'must be wholly canvas, not a 75% blend',
         );
         expect(
-          listEquals(pixel, green) || listEquals(pixel, red),
+          listEquals(pixel, green) || (ink && listEquals(pixel, red)),
           isTrue,
           reason: '$route ($x,$y) = $pixel: every canvas pixel is exactly '
               'paper or exactly ink — a blend is the anti-aliased edge',
@@ -225,7 +212,7 @@ void main() {
     }
     expect(
       rgbaAt(rgba, columns.first, rows.first),
-      red,
+      ink ? red : green,
       reason: '$route: the leftmost, topmost texel keeps its column and '
           'row — an edge rounded inward would have dropped it',
     );
@@ -264,18 +251,15 @@ void main() {
   );
 
   testWidgets(
-    'the playback painter cuts it on the same pixels — the scrub stand-in '
-    'agrees with the editing stack byte for byte, edge included',
+    'the playback painter cuts its paper on the same pixels — the blank '
+    'canvas agrees with the editing stack byte for byte, edge included',
     (tester) async {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetDevicePixelRatio);
-      final editing = await pumpEditingStack(tester);
+      final editing = await pumpEditingStack(tester, ink: false);
       final editingBytes = (await tester.runAsync(() => rasterize(editing)))!;
 
-      final composite = (await tester.runAsync(compositeImage))!;
-      addTearDown(composite.dispose);
       final playback = PlaybackFramePainter(
-        image: composite,
         canvasSize: canvasSize,
         viewport: viewport,
         devicePixelRatio: 1.0,
@@ -284,12 +268,12 @@ void main() {
       final playbackBytes = (await tester.runAsync(
         () => rasterize(playback),
       ))!;
-      expectCutOnTheGrid(playbackBytes, 'playback');
+      expectCutOnTheGrid(playbackBytes, 'playback', ink: false);
       expect(
         playbackBytes,
         equals(editingBytes),
         reason: 'the two routes must cut the boundary on the same pixel, '
-            'or a scrub switches the edge line on and off',
+            'or a cel coming and going switches the edge line on and off',
       );
     },
   );
@@ -300,10 +284,7 @@ void main() {
     // are the anti-aliasing this view must keep.
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final composite = (await tester.runAsync(compositeImage))!;
-    addTearDown(composite.dispose);
     final playback = PlaybackFramePainter(
-      image: composite,
       canvasSize: canvasSize,
       viewport: CanvasViewport(
         zoom: zoom,

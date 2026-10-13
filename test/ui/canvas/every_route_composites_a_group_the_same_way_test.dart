@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -174,9 +173,7 @@ void main() {
       // carries the number. Cut that wire and the folder still draws, at a
       // resolution nobody chose, next to siblings drawn at the right one.
       debugLastSubtreeRaster = null;
-      const service = CameraFrameRenderService(
-        filterQuality: FilterQuality.none,
-      );
+      const service = CameraFrameRenderService();
       final image = await service.renderThroughCamera(
         nodes: [
           CompositeGroup<CutFrameCompositeLayer>(

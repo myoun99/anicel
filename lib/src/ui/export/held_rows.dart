@@ -24,7 +24,10 @@ typedef RowNextShown = int? Function(Object address, int from);
 /// A row is the picture its CEL composes to and nothing more — its pose,
 /// opacity and effects are laid on at the draw — so it is held under the
 /// cel's address ([addressOf]: which cel, at which revision), and a cel read
-/// again is the row held for it.
+/// again is the row held for it. And at the level the render reduces it to
+/// (`displayLevelOf`): a camera that zooms across a halving asks for the
+/// cel at another, which is another picture; both are wanted for as long
+/// as a frame ahead shows the cel.
 ///
 /// ↩️It was held under the surface OBJECT, for as long as a held picture was
 /// made of it (10-07). 🔬Measured 2026-10-13 on the user's film (Surface Pro
@@ -64,7 +67,7 @@ class HeldRows {
   /// for texel ([RowPictures.laidTexelForTexel]).
   final bool Function() _laidTexelForTexel;
 
-  final _rows = <Object, _Row>{};
+  final _rows = <_RowAt, _Row>{};
 
   var _bytes = 0;
   var _said = 0;
@@ -108,7 +111,7 @@ class HeldRows {
   /// is composed again when it is.
   void nextFrame() {
     for (final row in [..._rows.values]) {
-      if (_nextShown(row.address, 0) == null) {
+      if (_nextShown(row.at.address, 0) == null) {
         _letGo(row);
       }
     }
@@ -135,24 +138,24 @@ class HeldRows {
     entries: [...(among ?? _rows.values)],
     heldBytes: _bytes,
     maxBytes: maxBytes,
-    wantedAt: (row) => _nextShown(row.address, 0),
+    wantedAt: (row) => _nextShown(row.at.address, 0),
     lastUsed: (row) => row.lastUsed,
     bytesOf: (row) => row.bytes,
     letGo: _letGo,
     laterThan: laterThan,
   );
 
-  /// [composed], held under [address] by the picture stamped [stamp] — or
-  /// null when no frame after this one shows it, or room cannot be made for
-  /// it but by letting go of a row shown sooner. The rows [inUse] are the
-  /// picture's own, still to be drawn, and stay.
+  /// [composed], held [at] its cel and level by the picture stamped
+  /// [stamp] — or null when no frame after this one shows it, or room
+  /// cannot be made for it but by letting go of a row shown sooner. The
+  /// rows [inUse] are the picture's own, still to be drawn, and stay.
   _Row? _keep(
-    Object address,
+    _RowAt at,
     PositionedSurfaceImage composed, {
     required int stamp,
     required Set<_Row> inUse,
   }) {
-    final next = _nextShown(address, 1);
+    final next = _nextShown(at.address, 1);
     if (next == null) {
       return null;
     }
@@ -171,15 +174,15 @@ class HeldRows {
     if (!fits) {
       return null;
     }
-    final row = _Row(address, composed, bytes)..lastUsed = stamp;
-    _rows[address] = row;
+    final row = _Row(at, composed, bytes)..lastUsed = stamp;
+    _rows[at] = row;
     _bytes += bytes;
     debugHeld += 1;
     return row;
   }
 
   void _letGo(_Row row) {
-    _rows.remove(row.address);
+    _rows.remove(row.at);
     row.picture.image.dispose();
     _bytes -= row.bytes;
     debugHeld -= 1;
@@ -195,11 +198,14 @@ class HeldRows {
   }
 }
 
+/// Which cel's row, at which level.
+typedef _RowAt = ({Object address, int level});
+
 /// One row picture held.
 final class _Row {
-  _Row(this.address, this.picture, this.bytes);
+  _Row(this.at, this.picture, this.bytes);
 
-  final Object address;
+  final _RowAt at;
   final PositionedSurfaceImage picture;
   final int bytes;
 
@@ -218,9 +224,9 @@ final class _RowsOfOnePicture implements RowPictures {
   /// The held rows this picture is made of.
   final _inUse = <_Row>{};
 
-  /// The rows composed for this picture alone, under their addresses — let
-  /// go when it is made.
-  final _passing = <Object, PositionedSurfaceImage>{};
+  /// The rows composed for this picture alone, under their cels and levels
+  /// — let go when it is made.
+  final _passing = <_RowAt, PositionedSurfaceImage>{};
 
   @override
   bool get laidTexelForTexel => _keeper._laidTexelForTexel();
@@ -228,29 +234,30 @@ final class _RowsOfOnePicture implements RowPictures {
   @override
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
+    int level,
     Future<PositionedSurfaceImage> Function() compose,
   ) async {
-    final address = _keeper._addressOf(surface);
-    final held = _keeper._rows[address];
+    final at = (address: _keeper._addressOf(surface), level: level);
+    final held = _keeper._rows[at];
     if (held != null) {
       held.lastUsed = _stamp;
       _inUse.add(held);
       return held.picture;
     }
-    final passing = _passing[address];
+    final passing = _passing[at];
     if (passing != null) {
       return passing;
     }
     final composed = await compose();
     _keeper._made += 1;
     final row = _keeper._keep(
-      address,
+      at,
       composed,
       stamp: _stamp,
       inUse: _inUse,
     );
     if (row == null) {
-      _passing[address] = composed;
+      _passing[at] = composed;
     } else {
       _inUse.add(row);
     }

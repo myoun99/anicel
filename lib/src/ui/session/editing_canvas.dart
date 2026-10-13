@@ -6,7 +6,6 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
-import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -16,6 +15,7 @@ import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, cutShowingDragPreview, layersShowingDragPreview;
+import '../track_effect_paint_policy.dart' show underTheCutsFx;
 import 'active_cut_controllers.dart';
 import 'editing_stack_map.dart';
 import 'opacity_verbs.dart';
@@ -265,10 +265,8 @@ class EditingCanvas {
     );
   }
 
-  /// [cutNodes] under the V row's fx ([_cutEffectsAt]) — one group around
-  /// the cut's picture, composed by the folder's own buffer law, so the
-  /// chain lands on the picture and never on the paper, as it does on every
-  /// other route that draws the cut.
+  /// [cutNodes] under the V row's fx ([_cutEffectsAt]), as every route that
+  /// draws the cut lays it ([underTheCutsFx]).
   ///
   /// 🚨THE CANVAS WAS THE ONE ROUTE WITHOUT IT (playback-plays-the-screen-
   /// material, 10-09): playback, the parked track stack and both exports
@@ -283,20 +281,7 @@ class EditingCanvas {
     CutId cutId,
     int frameIndex,
     List<CompositeNode<CanvasStackRow>> cutNodes,
-  ) {
-    final effects = _cutEffectsAt(cutId, frameIndex);
-    if (effects.isEmpty || cutNodes.isEmpty) {
-      return cutNodes;
-    }
-    return [
-      CompositeGroup<CanvasStackRow>(
-        children: cutNodes,
-        opacity: 1,
-        blendMode: LayerBlendMode.normal,
-        effects: effects,
-      ),
-    ];
-  }
+  ) => underTheCutsFx(cutNodes, _cutEffectsAt(cutId, frameIndex));
 
   /// [source] with the DRAGGED rows' opacity substituted in — display
   /// only, so the canvas follows an opacity drag without a repo write per

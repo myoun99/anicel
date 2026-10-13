@@ -42,7 +42,6 @@ void main() {
   PlaybackFramePainter unit({
     required List<({int color, double opacity})> veils,
   }) => PlaybackFramePainter(
-    image: null,
     canvasSize: size,
     cameraPose: CameraPose(center: CanvasPoint(x: 2, y: 2)),
     cameraFrameSize: size,

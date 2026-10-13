@@ -279,11 +279,6 @@ void main() {
       everyElement(isFalse),
       reason: 'the letterbox is the floor\'s, under every track',
     );
-    expect(
-      [for (final unit in units) unit.under.image ?? unit.over.image],
-      [null, null],
-      reason: 'no picture of a whole cut: each draws its rows\' images',
-    );
   });
 
   testWidgets('🚨each unit is its OWN cut\'s tree at its own frame, drawn '

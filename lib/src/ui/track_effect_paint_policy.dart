@@ -1,3 +1,5 @@
+import '../models/composite_tree.dart';
+import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show LayerEffect, ResolvedLayerEffect, resolveLayerEffectsAt;
 
@@ -42,4 +44,32 @@ List<ResolvedLayerEffect> trackEffectsAt(
     return const <ResolvedLayerEffect>[];
   }
   return resolveLayerEffectsAt(effects: effects, frameIndex: frameIndex);
+}
+
+/// [cutNodes] under the V row's chain [effects] ([trackEffectsAt]) — one
+/// group around the cut's picture, composed by the folder's own buffer law,
+/// so the chain lands on the picture and never on the paper or on what is
+/// laid over it. Every route that draws a cut wraps it here: the canvas,
+/// playback and the parked track stack (`EditingCanvas.playedStackAt`), and
+/// a film's frames.
+///
+/// ↩️A film filtered the cut's FINISHED picture instead (the painter's
+/// `cutEffects`, a canvas-size frame's chain): the same chain, on an image
+/// that was the canvas at full size — until the export drew the cut
+/// through its camera as the canvas does (card video-export-speed-Q2).
+List<CompositeNode<T>> underTheCutsFx<T>(
+  List<CompositeNode<T>> cutNodes,
+  List<ResolvedLayerEffect> effects,
+) {
+  if (effects.isEmpty || cutNodes.isEmpty) {
+    return cutNodes;
+  }
+  return [
+    CompositeGroup<T>(
+      children: cutNodes,
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      effects: effects,
+    ),
+  ];
 }
