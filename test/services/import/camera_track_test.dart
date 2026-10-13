@@ -241,25 +241,29 @@ void main() {
     expectPlaysBack(poses, camera);
   });
 
-  /// A wobble no one way follows — three times back and forth over [frames]
-  /// — that a way's tolerance must take whole for that way to stand alone.
-  double wobble(int frame, int frames) =>
-      math.sin(6 * math.pi * frame / (frames - 1));
+  /// A straight move over 25 frames, wobbled three times back and forth —
+  /// what no one way follows — by [by] px, by [zoomBy] of zoom and [turnBy]
+  /// degrees: a way's tolerance must take the wobble whole for the way to
+  /// stand alone.
+  SplayTreeMap<int, CameraPose> wobbled({
+    required double by,
+    required double zoomBy,
+    required double turnBy,
+  }) => baked(25, (f) {
+    final wobble = math.sin(6 * math.pi * f / 24);
+    return pose(
+      100 + 10.0 * f + by * wobble,
+      80,
+      zoom: 1 + f / 50 + zoomBy * wobble,
+      turn: 2.0 * f + turnBy * wobble,
+    );
+  });
 
   test('🗣️a way that plays the file\'s within a pixel is one way — and a '
       'zoom or a turn within what moves one (유저 10-13: 「1px 까지 '
       '허용」)', () {
-    // 0.6px, 3e-4 of zoom and 0.03° off straight: under a pixel's worth,
-    // over the quarter's the import kept before.
-    final poses = baked(
-      25,
-      (f) => pose(
-        100 + 10.0 * f + 0.6 * wobble(f, 25),
-        80,
-        zoom: 1 + f / 50 + 3e-4 * wobble(f, 25),
-        turn: 2.0 * f + 0.03 * wobble(f, 25),
-      ),
-    );
+    // Under a pixel's worth, over the quarter's the import kept before.
+    final poses = wobbled(by: 0.6, zoomBy: 3e-4, turnBy: 0.03);
     final camera = keyed(poses);
 
     expect(camera.track.position.keys.keys, [0, 24]);
@@ -268,16 +272,25 @@ void main() {
     expectPlaysBack(poses, camera);
   });
 
+  test('and one that misses by more than a pixel is keyed again, on every '
+      'lane', () {
+    final poses = wobbled(by: 1.5, zoomBy: 6e-4, turnBy: 0.06);
+    final camera = keyed(poses);
+
+    expect(camera.track.position.keys.length, greaterThan(2));
+    expect(camera.track.scale.keys.length, greaterThan(2));
+    expect(camera.track.rotation.keys.length, greaterThan(2));
+    expectPlaysBack(poses, camera);
+  });
+
   test('a camera folder\'s anchor is keyed to the same pixel', () {
-    final track = transformTrackOfFramePoses(
+    Iterable<int> keyedFor(double by) => transformTrackOfFramePoses(
       {
-        for (var f = 0; f < 25; f += 1)
-          f: (
+        for (final MapEntry(key: frame, value: pose)
+            in wobbled(by: by, zoomBy: 0, turnBy: 0).entries)
+          frame: (
             pose: TransformPose(center: CanvasPoint(x: 360, y: 270)),
-            anchorPoint: CanvasPoint(
-              x: 100 + 10.0 * f + 0.6 * wobble(f, 25),
-              y: 80,
-            ),
+            anchorPoint: pose.center,
           ),
       },
       keyedOn: (
@@ -286,8 +299,9 @@ void main() {
         scale: const [],
         rotation: const [],
       ),
-    );
+    ).anchorPoint.keys.keys;
 
-    expect(track.anchorPoint.keys.keys, [0, 24]);
+    expect(keyedFor(0.6), [0, 24]);
+    expect(keyedFor(1.5).length, greaterThan(2));
   });
 }

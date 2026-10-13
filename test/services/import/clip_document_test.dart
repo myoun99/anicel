@@ -595,12 +595,12 @@ void main() {
     ]);
   });
 
-  test('🎯a 2D camera folder holds where it rests, and its track\'s clip how '
-      'it moves: a curve per value, a Param for a value with none, keys on '
-      'the frames the ticks land on (memory `csp-clip-format-notes` §3, '
-      'the shape of s6)', () {
-    const uuidCamera = '22223333-4444-5555-6666-777788889999';
-    // Rests at 1.5 times the frame, its pivot (100, 50) placed at (300, 200).
+  const uuidCamera = '22223333-4444-5555-6666-777788889999';
+
+  /// A file of one 2D camera folder — resting at 1.5 times the frame, its
+  /// pivot (100, 50) placed at (300, 200) — and a track whose one clip
+  /// moves it by [anim].
+  ClipDocument cameraDocument(List<CmtSpec> anim) {
     final rest = ByteData(184)
       ..setFloat64(40, 1.5)
       ..setFloat64(48, 1.5)
@@ -612,13 +612,13 @@ void main() {
     final cameraTrack = trackDataBytes(
       cmtDocumentBytes(
         clipTrackSpec([
-          const CmtSpec(
+          CmtSpec(
             'ActionNodeClip',
             'null',
             children: [
               // Ticks at 60 a second: the clip is frames 0 … 48 at 24 fps,
               // and tick 60 frame 24.
-              CmtSpec(
+              const CmtSpec(
                 'TimeClip',
                 'null',
                 children: [
@@ -627,7 +627,7 @@ void main() {
                   CmtSpec('Rate', 'Double', value: 60),
                 ],
               ),
-              CmtSpec(
+              const CmtSpec(
                 'MotionClip',
                 'null',
                 children: [
@@ -635,82 +635,7 @@ void main() {
                   CmtSpec('End', 'Double', value: 120),
                 ],
               ),
-              CmtSpec(
-                'AnimInfo',
-                'null',
-                children: [
-                  CmtSpec(
-                    'Param',
-                    'Double2',
-                    value: [100, 50],
-                    attributes: {'Name': 'ImageCenter'},
-                  ),
-                  // A graph pulled on its first two keys: their slopes in
-                  // value per tick, 0.4 frames a tick; the last key CLIP
-                  // STUDIO's own.
-                  CmtSpec(
-                    'FCurve',
-                    'null',
-                    attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
-                    children: [
-                      CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
-                      CmtSpec('Value', 'Double[]', value: [300, 330, 360]),
-                      CmtSpec(
-                        'LeftSlope',
-                        'Double[]',
-                        value: [9, 0.5, 0.25],
-                      ),
-                      CmtSpec('RightSlope', 'Double[]', value: [2, 7, 3]),
-                      CmtSpec(
-                        'Interp',
-                        'String[]',
-                        value: ['Hermite', 'Hermite', 'Default'],
-                      ),
-                    ],
-                  ),
-                  CmtSpec(
-                    'FCurve',
-                    'null',
-                    attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
-                    children: [
-                      // Frames 0 · 7 · 17 · 29 · 40: a rise at 4.7, 2 and
-                      // 2.6 a frame, then a fall.
-                      CmtSpec(
-                        'Frame',
-                        'Double[]',
-                        value: [0, 17.5, 42.5, 72.5, 100],
-                      ),
-                      CmtSpec(
-                        'Value',
-                        'Double[]',
-                        value: [401, 434, 454, 485, 470],
-                      ),
-                    ],
-                  ),
-                  CmtSpec(
-                    'Param',
-                    'Double',
-                    value: 150,
-                    attributes: {'Name': 'ImageScale'},
-                  ),
-                  // Held from its first key; the second names a curve the
-                  // reader does not know.
-                  CmtSpec(
-                    'FCurve',
-                    'null',
-                    attributes: {'Type': 'ImageRotation'},
-                    children: [
-                      CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
-                      CmtSpec('Value', 'Double[]', value: [0, 10, 20]),
-                      CmtSpec(
-                        'Interp',
-                        'String[]',
-                        value: ['Constant', 'Bezier', 'Default'],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              CmtSpec('AnimInfo', 'null', children: anim),
             ],
           ),
         ]),
@@ -771,11 +696,94 @@ void main() {
         ])
         ..close();
     });
-
-    final document = readClipDocument(
+    return readClipDocument(
       write(database, {externalId(6): cameraTrack}),
       scratch: folder,
     );
+  }
+
+  ClipCameraMove moveOf(ClipDocument document) => document
+      .timelines
+      .single
+      .tracks[uuidCamera.replaceAll('-', '')]!
+      .cameraMoves
+      .single;
+  List<(double, double)> keys(ClipCurve curve) => [
+    for (final key in curve.keys) (key.frame, key.value),
+  ];
+  String ways(ClipCurve curve) => [
+    for (final way in curve.ways)
+      switch (way) {
+        ClipHold() => 'held',
+        ClipStraight() => 'straight',
+        ClipCubic(:final leaving, :final arriving) => 'cubic $leaving '
+            '$arriving',
+      },
+  ].join(', ');
+
+  test('🎯a 2D camera folder holds where it rests, and its track\'s clip how '
+      'it moves: a curve per value, a Param for a value with none, keys on '
+      'the frames the ticks land on (memory `csp-clip-format-notes` §3, '
+      'the shape of s6)', () {
+    final document = cameraDocument(const [
+      CmtSpec(
+        'Param',
+        'Double2',
+        value: [100, 50],
+        attributes: {'Name': 'ImageCenter'},
+      ),
+      // A graph pulled on its first two keys: their slopes in value per
+      // tick, 0.4 frames a tick; the last key CLIP STUDIO's own.
+      CmtSpec(
+        'FCurve',
+        'null',
+        attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
+        children: [
+          CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
+          CmtSpec('Value', 'Double[]', value: [300, 330, 360]),
+          CmtSpec('LeftSlope', 'Double[]', value: [9, 0.5, 0.25]),
+          CmtSpec('RightSlope', 'Double[]', value: [2, 7, 3]),
+          CmtSpec(
+            'Interp',
+            'String[]',
+            value: ['Hermite', 'Hermite', 'Default'],
+          ),
+        ],
+      ),
+      CmtSpec(
+        'FCurve',
+        'null',
+        attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
+        children: [
+          // Frames 0 · 7 · 17 · 29 · 40: a rise at 4.7, 2 and 2.6 a frame,
+          // then a fall.
+          CmtSpec('Frame', 'Double[]', value: [0, 17.5, 42.5, 72.5, 100]),
+          CmtSpec('Value', 'Double[]', value: [401, 434, 454, 485, 470]),
+        ],
+      ),
+      CmtSpec(
+        'Param',
+        'Double',
+        value: 150,
+        attributes: {'Name': 'ImageScale'},
+      ),
+      // Held from its first key; the second names a curve the reader does
+      // not know.
+      CmtSpec(
+        'FCurve',
+        'null',
+        attributes: {'Type': 'ImageRotation'},
+        children: [
+          CmtSpec('Frame', 'Double[]', value: [0, 30, 60]),
+          CmtSpec('Value', 'Double[]', value: [0, 10, 20]),
+          CmtSpec(
+            'Interp',
+            'String[]',
+            value: ['Constant', 'Bezier', 'Default'],
+          ),
+        ],
+      ),
+    ]);
 
     final camera = document.root.children.single;
     expect(camera.isFolder, isTrue, reason: 'a folder all the same');
@@ -788,22 +796,7 @@ void main() {
       pivotX: 100.0,
       pivotY: 50.0,
     ));
-    final move = document.timelines.single.tracks[uuidCamera.replaceAll(
-      '-',
-      '',
-    )]!.cameraMoves.single;
-    List<(double, double)> keys(ClipCurve curve) => [
-      for (final key in curve.keys) (key.frame, key.value),
-    ];
-    String ways(ClipCurve curve) => [
-      for (final way in curve.ways)
-        switch (way) {
-          ClipHold() => 'held',
-          ClipStraight() => 'straight',
-          ClipCubic(:final leaving, :final arriving) => 'cubic $leaving '
-              '$arriving',
-        },
-    ].join(', ');
+    final move = moveOf(document);
     expect(move.span, (start: 0, end: 48));
     expect(keys(move.x), [(0.0, 300.0), (12.0, 330.0), (24.0, 360.0)]);
     expect(
@@ -834,6 +827,29 @@ void main() {
     expect(ways(move.degrees), 'held, straight');
     expect(move.degrees.unread, isTrue, reason: 'a curve it does not know');
     expect(move.x.unread || move.y.unread, isFalse);
+  });
+
+  test('a pulled zoom keeps its slopes in percent a tick — moved, as its '
+      'values are, to times the frame a frame', () {
+    final move = moveOf(
+      cameraDocument(const [
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImageScale'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 30]),
+            CmtSpec('Value', 'Double[]', value: [100, 150]),
+            CmtSpec('LeftSlope', 'Double[]', value: [0, 4]),
+            CmtSpec('RightSlope', 'Double[]', value: [8, 0]),
+            CmtSpec('Interp', 'String[]', value: ['Hermite', 'Hermite']),
+          ],
+        ),
+      ]),
+    );
+
+    expect(keys(move.scale), [(0.0, 1.0), (12.0, 1.5)]);
+    expect(ways(move.scale), 'cubic 0.2 0.1');
   });
 
   test('the shooting frame: its size, and its centre the canvas\'s moved by '
