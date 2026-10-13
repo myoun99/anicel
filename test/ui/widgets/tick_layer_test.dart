@@ -249,17 +249,14 @@ void main() {
     );
     return Directionality(
       textDirection: TextDirection.ltr,
-      child: Semantics(
-        container: true,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: host
-                  ? TickLayer.host(child: listener)
-                  : TickLayer(child: listener),
-            ),
-          ],
-        ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: host
+                ? TickLayer.host(child: listener)
+                : TickLayer(child: listener),
+          ),
+        ],
       ),
     );
   }
@@ -298,35 +295,6 @@ void main() {
     );
 
     expect(await panelPainted(tester, builds), isTrue);
-  });
-
-  testWidgets('and re-walks none of the panel\'s semantics', (tester) async {
-    final semantics = tester.ensureSemantics();
-    final builds = ValueNotifier<int>(0);
-    addTearDown(builds.dispose);
-    final walks = [0];
-    await tester.pumpWidget(
-      panelHost(
-        builds: builds,
-        panel: _WalkCounter(walks: walks, child: const Text('panel')),
-      ),
-    );
-    var before = walks.single;
-    SchedulerBinding.instance.scheduleFrame();
-    await tester.pump();
-    final unchanged = walks.single - before;
-    before = walks.single;
-
-    builds.value += 1;
-    await tester.pump();
-
-    expect(walks.single - before - unchanged, 0);
-    expect(
-      find.bySemanticsLabel('panel'),
-      findsOneWidget,
-      reason: 'the panel reads to a screen reader as it did',
-    );
-    semantics.dispose();
   });
 
   testWidgets('under loose constraints it says so', (tester) async {

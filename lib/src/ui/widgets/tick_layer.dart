@@ -74,12 +74,15 @@ class TickLayer extends StatefulWidget {
   /// 🚨A HOST BUILT AGAIN IS NOT ITS PANEL PAINTED AGAIN (I-57, 10-14). A
   /// host is built again on every notify of what it listens to, and that
   /// rebuild is this layer's LayoutBuilder's to run: it lays the layer out,
-  /// and a layout paints and describes everything up to the boundaries
-  /// above it — the whole panel, for a notify that changed nothing in it
-  /// (the timesheet repainted its pill, swatches and panbars on every cut
-  /// crossed, measured). So the panel stands on a layer of its own INSIDE
-  /// the host's: the host's layer holds the LayoutBuilder alone, and the
-  /// panel's is painted and described again for what changed in it.
+  /// and a layout paints everything up to the boundary above it — the
+  /// whole panel, for a notify that changed nothing in it (the timesheet
+  /// repainted its pill, swatches and panbars on every cut crossed,
+  /// measured). So the panel stands on a layer of its own INSIDE the
+  /// host's: the host's layer holds the LayoutBuilder alone, and the
+  /// panel's is painted again for what changed in it. ⛔No semantics
+  /// boundary goes with it: a layout's mark is walked again only along
+  /// what changed, never through the panel whole (measured 10-14 — taken
+  /// away, the boundary spared no walk).
   const TickLayer.host({super.key, required this.child})
     : _drawnOverStill = false;
 
@@ -107,10 +110,7 @@ class _TickLayerState extends State<TickLayer> {
     final drawnOverStill = widget._drawnOverStill;
     final child = drawnOverStill
         ? widget.child
-        : Semantics(
-            container: true,
-            child: RepaintBoundary(child: widget.child),
-          );
+        : RepaintBoundary(child: widget.child);
     final laidOutAlone = LayoutBuilder(
       builder: (context, constraints) {
         assert(
