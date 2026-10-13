@@ -107,25 +107,74 @@ Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut(
 /// block that straddles an end there).
 ///
 /// The row wears its head's name and colour label ([conteHeadRowAt]).
+///
+/// 🚨ONE ROW FOR ONE LAYING (I-57, 10-14). Made anew on every call, the
+/// row was a new layer on every build of the storyboard — a cut crossed
+/// under the playhead among them — and the timeline's row painter knows
+/// its row by identity: each build repainted the whole film's conte cells
+/// and said every one of them again to a screen reader (🔬the largest cost
+/// of a crossing's frame on the AMMI OP). So the row is kept on the
+/// track's id for the cuts as last laid, and handed back while they are
+/// laid alike — the same cuts at the same places.
 Layer trackConteRowShown(
   TrackId trackId,
   Iterable<StoryboardTimelineLayoutEntry> entries, {
   int seat = 0,
 }) {
+  final laid = [
+    for (final entry in entries)
+      (cut: entry.cut, startFrame: entry.startFrame, duration: entry.duration),
+  ];
+  final kept = (_conteRowsShown[trackId] ??= {})[seat];
+  if (kept != null && _laidAlike(kept.laid, laid)) {
+    return kept.row;
+  }
+  final row = _conteRowLaid(trackId, laid, seat);
+  _conteRowsShown[trackId]![seat] = (laid: laid, row: row);
+  return row;
+}
+
+/// A cut of a track's conte row as laid on the track's axis.
+typedef _LaidCut = ({Cut cut, int startFrame, int duration});
+
+/// The conte rows last shown of each track, by seat, with the laying each
+/// was made of — on the track's id, which every version of the track
+/// shares, so they go with the project.
+final Expando<Map<int, ({List<_LaidCut> laid, Layer row})>> _conteRowsShown =
+    Expando('conte rows shown');
+
+/// Whether [a] and [b] lay the same cuts — the very instances — at the
+/// same places.
+bool _laidAlike(List<_LaidCut> a, List<_LaidCut> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var i = 0; i < a.length; i += 1) {
+    if (!identical(a[i].cut, b[i].cut) ||
+        a[i].startFrame != b[i].startFrame ||
+        a[i].duration != b[i].duration) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// [trackConteRowShown] made from [laid].
+Layer _conteRowLaid(TrackId trackId, List<_LaidCut> laid, int seat) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   final frames = <Frame>[];
-  for (final entry in entries) {
-    final cells = _conteCellsOf(entry, seat);
+  for (final cut in laid) {
+    final cells = _conteCellsOf(cut, seat);
     if (cells == null) {
       continue;
     }
     frames.addAll(cells.row.frames);
     for (final MapEntry(key: conteFrame, value: block)
         in cells.blocks.entries) {
-      timeline[entry.startFrame + conteFrame] = block;
+      timeline[cut.startFrame + conteFrame] = block;
     }
   }
-  final cuts = [for (final entry in entries) entry.cut];
+  final cuts = [for (final cut in laid) cut.cut];
   return Layer(
     id: trackConteRowId(trackId, seat: seat),
     name: trackConteRowName(cuts, seat: seat),
@@ -140,7 +189,7 @@ Layer trackConteRowShown(
 /// 0 at the cut's start on the track; null where the cut holds no row
 /// there, or nothing of it to show.
 ({Layer row, Map<int, TimelineExposure> blocks})? _conteCellsOf(
-  StoryboardTimelineLayoutEntry entry,
+  _LaidCut entry,
   int seat,
 ) {
   final base = storyboardLayerForCut(entry.cut);

@@ -123,6 +123,40 @@ void main() {
       expect(row.kind, LayerKind.storyboard);
     });
 
+    test('🚨laid alike, it is the same row — what draws it knows it by '
+        'identity (I-57)', () {
+      final a = cut('a', 10, conteLayer: conte('a', {0: block('a1', 10)}));
+      final row = trackConteRowShown(trackId, entriesOf([a]));
+
+      expect(
+        trackConteRowShown(trackId, entriesOf([a])),
+        same(row),
+        reason: '↩️a new row each build: the storyboard repainted the whole '
+            'film\'s conte cells, and said them all again, for a cut '
+            'crossed under the playhead',
+      );
+      expect(
+        trackConteRowShown(trackId, entriesOf([cut('z', 4), a])),
+        isNot(same(row)),
+        reason: 'the same cut laid elsewhere is another row',
+      );
+      expect(
+        trackConteRowShown(
+          trackId,
+          entriesOf([
+            cut('a', 10, conteLayer: conte('a', {0: block('a2', 10)})),
+          ]),
+        ),
+        isNot(same(row)),
+        reason: 'and so is another cut in its place',
+      );
+      expect(
+        trackConteRowShown(trackId, entriesOf([a]), seat: 1),
+        isNot(same(row)),
+        reason: 'and the row at another seat',
+      );
+    });
+
     test('a cut with no conte layer, and a gap, hold nothing', () {
       final entries = entriesOf([
         cut('a', 10),
