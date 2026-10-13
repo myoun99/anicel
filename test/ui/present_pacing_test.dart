@@ -488,6 +488,7 @@ void main() {
     ) async {
       await settle(tester);
       final clock = LookingTicker((_) {});
+      addTearDown(clock.stop);
 
       clock.start(const TestVSync());
       expect(display.composing, [true]);
@@ -503,6 +504,8 @@ void main() {
       await settle(tester);
       final film = LookingTicker((_) {});
       final sound = LookingTicker((_) {});
+      addTearDown(film.stop);
+      addTearDown(sound.stop);
 
       film.start(const TestVSync());
       sound.start(const TestVSync());
@@ -517,6 +520,7 @@ void main() {
         'let rest between', (tester) async {
       await settle(tester);
       final clock = LookingTicker((_) {});
+      addTearDown(clock.stop);
 
       clock.start(const TestVSync());
       clock.start(const TestVSync());
@@ -529,6 +533,7 @@ void main() {
     testWidgets('a clock stopped twice says it once', (tester) async {
       await settle(tester);
       final clock = LookingTicker((_) {});
+      addTearDown(clock.stop);
 
       clock.start(const TestVSync());
       clock.stop();
