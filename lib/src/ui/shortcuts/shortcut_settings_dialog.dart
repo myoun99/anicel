@@ -10,7 +10,6 @@ import '../input/control_press_claim.dart'
 import '../timeline/layer_label_controls.dart' show layerLaneToggleSlotWidth;
 import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
-import '../widgets/pill_strip.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
@@ -355,6 +354,11 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ),
   );
 
+  /// A preset's name in the program language — the app's own name in every
+  /// one.
+  static String _presetName(ShortcutPreset preset) =>
+      AppText.strings.shortcutPresetName(preset.name, preset.label);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -380,22 +384,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 🗣️I-63: the preset the keys below start from. Picking one
-              // shows ITS keys and what was recorded under it.
+              // shows ITS keys and what was recorded under it — from a
+              // list, as every preset is picked (유저 2026-10-12, I-93:
+              // 「이런 프리셋 변경은 특히 앱 통틀어서 리스트 팝오버로」).
+              // ↩️It was a pill strip until then.
               Align(
                 alignment: Alignment.centerLeft,
-                child: PillStrip(
-                  items: [
-                    for (final preset in ShortcutPreset.values)
-                      PillItem(
-                        keyValue: 'shortcut-preset-${preset.name}',
-                        label: AppText.strings.shortcutPresetName(
-                          preset.name,
-                          preset.label,
-                        ),
-                        selected: bindings.preset == preset,
-                        onTap: () => bindings.setPreset(preset),
-                      ),
-                  ],
+                child: PanelFlyoutButton(
+                  key: const ValueKey<String>('shortcut-preset'),
+                  label: _presetName(bindings.preset),
+                  entriesBuilder: () => ShortcutPreset.values.asFlyoutChoices(
+                    current: bindings.preset,
+                    keyPrefix: 'shortcut-preset-',
+                    labelOf: _presetName,
+                    onPicked: bindings.setPreset,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),

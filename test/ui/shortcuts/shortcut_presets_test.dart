@@ -30,7 +30,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../guide_shots/guide_shortcut_table.dart';
 import '../../helpers/app_shortcuts.dart';
@@ -676,11 +676,34 @@ void main() {
       return bindings;
     }
 
-    Finder pillOf(ShortcutPreset preset) =>
-        find.byKey(ValueKey<String>('shortcut-preset-${preset.name}'));
+    final presetButton = find.byKey(const ValueKey<String>('shortcut-preset'));
+
+    /// The preset list's rows as its button builds them.
+    Map<ShortcutPreset, PanelFlyoutItem> rows(WidgetTester tester) {
+      final items = tester
+          .widget<PanelFlyoutButton>(presetButton)
+          .entriesBuilder()
+          .whereType<PanelFlyoutItem>();
+      return {
+        for (final preset in ShortcutPreset.values)
+          preset: items.singleWhere(
+            (item) => item.keyValue == 'shortcut-preset-${preset.name}',
+          ),
+      };
+    }
 
     bool chosen(WidgetTester tester, ShortcutPreset preset) =>
-        tester.widget<Pill>(pillOf(preset)).selected;
+        rows(tester)[preset]!.selected;
+
+    /// Picks [preset] the way a hand does: the list's button, then its row.
+    Future<void> pick(WidgetTester tester, ShortcutPreset preset) async {
+      await tester.tap(presetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey<String>('shortcut-preset-${preset.name}')),
+      );
+      await tester.pumpAndSettle();
+    }
 
     /// The key chips on [actionId]'s row, as written.
     List<String> chipsOf(WidgetTester tester, String actionId) {
@@ -696,12 +719,17 @@ void main() {
       ];
     }
 
-    testWidgets('offers every preset as one pill strip, the one in use '
-        'chosen', (tester) async {
+    // 🗣️유저 2026-10-12 (I-93): 「이런 프리셋 변경은 특히 앱 통틀어서 리스트
+    // 팝오버로 구현하도록」. ↩️The presets were a pill strip until then.
+    testWidgets('offers every preset in one list, the one in use marked and '
+        'named on its button', (tester) async {
       await pump(tester);
-      expect(find.byType(PillStrip), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('shortcut-preset-anicel')),
+        findsNothing,
+        reason: 'the presets are a list, not pills on the window',
+      );
       for (final preset in ShortcutPreset.values) {
-        expect(pillOf(preset), findsOneWidget, reason: preset.name);
         expect(
           chosen(tester, preset),
           preset == ShortcutPreset.clipStudio,
@@ -709,12 +737,16 @@ void main() {
         );
       }
       expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.tvpaint)).label,
+        tester.widget<PanelFlyoutButton>(presetButton).label,
+        ShortcutPreset.clipStudio.label,
+      );
+      expect(
+        rows(tester)[ShortcutPreset.tvpaint]!.label,
         ShortcutPreset.tvpaint.label,
       );
     });
 
-    testWidgets('a pill reads in the program language — the app\'s own name '
+    testWidgets('a row reads in the program language — the app\'s own name '
         'in every one', (tester) async {
       final before = AppText.settings.value;
       AppText.settings.value = const AppLanguageSettings(
@@ -724,20 +756,21 @@ void main() {
       addTearDown(() => AppText.settings.value = before);
       await pump(tester);
       expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.clipStudio)).label,
+        rows(tester).map((preset, row) => MapEntry(preset, row.label)),
+        {
+          ShortcutPreset.anicel: 'Anicel',
+          ShortcutPreset.clipStudio: '클립 스튜디오 기반',
+          ShortcutPreset.tvpaint: 'TVPaint 기반',
+        },
+      );
+      expect(
+        tester.widget<PanelFlyoutButton>(presetButton).label,
         '클립 스튜디오 기반',
-      );
-      expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.tvpaint)).label,
-        'TVPaint 기반',
-      );
-      expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.anicel)).label,
-        'Anicel',
+        reason: 'the button names the preset in use as its row does',
       );
     });
 
-    testWidgets('a pill puts its preset in use, and the rows show its keys', (
+    testWidgets('a row puts its preset in use, and the rows show its keys', (
       tester,
     ) async {
       final bindings = await pump(tester);
@@ -748,16 +781,14 @@ void main() {
       await tester.pump();
       expect(chipsOf(tester, EditorActionIds.toolFill), ['G']);
 
-      await tester.tap(pillOf(ShortcutPreset.anicel));
-      await tester.pump();
+      await pick(tester, ShortcutPreset.anicel);
 
       expect(bindings.preset, ShortcutPreset.anicel);
       expect(chosen(tester, ShortcutPreset.anicel), isTrue);
       expect(chosen(tester, ShortcutPreset.clipStudio), isFalse);
       expect(chipsOf(tester, EditorActionIds.toolFill), ['F']);
 
-      await tester.tap(pillOf(ShortcutPreset.tvpaint));
-      await tester.pump();
+      await pick(tester, ShortcutPreset.tvpaint);
       expect(bindings.preset, ShortcutPreset.tvpaint);
       expect(
         chipsOf(tester, EditorActionIds.toolFill),
@@ -765,8 +796,7 @@ void main() {
         reason: 'F is the bucket\'s there',
       );
 
-      await tester.tap(pillOf(ShortcutPreset.clipStudio));
-      await tester.pump();
+      await pick(tester, ShortcutPreset.clipStudio);
       expect(bindings.preset, ShortcutPreset.clipStudio);
       expect(chipsOf(tester, EditorActionIds.toolFill), ['G']);
     });
