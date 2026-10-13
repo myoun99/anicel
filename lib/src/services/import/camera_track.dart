@@ -305,24 +305,19 @@ final class _NearestEase {
   final List<double> times;
   final List<double> shares;
 
-  /// The ease, fitted from a straight ramp and from the speeds the first
-  /// and the last step take, the nearer of the two.
+  /// The ease, fitted from a straight ramp.
+  ///
+  /// ⛔Not from a second start as well — the speeds the first and the last
+  /// step take, the nearer of the two fits kept: on every calibration file
+  /// and reference cut the second start changed no key, and alone it keyed
+  /// a cut once more (measured 2026-10-13).
   (EaseSide, EaseSide) sides() {
-    final straight = _nearestFrom([
+    final sides = _nearestFrom([
       EaseSide.easeInfluence,
       1,
       EaseSide.easeInfluence,
       1,
-    ]);
-    final stepped = _nearestFrom([
-      EaseSide.easeInfluence,
-      shares.first / times.first,
-      EaseSide.easeInfluence,
-      (1 - shares.last) / (1 - times.last),
-    ]);
-    final sides = _squared(straight.missed) <= _squared(stepped.missed)
-        ? straight.sides
-        : stepped.sides;
+    ]).sides;
     return (
       EaseSide(influence: sides[0], speed: sides[1]),
       EaseSide(influence: sides[2], speed: sides[3]),
@@ -374,11 +369,9 @@ final class _NearestEase {
               normal[m][n] + (m == n ? damping * (normal[m][m] + 1e-12) : 0.0),
           ],
       ], pull);
-      final sides = change == null
-          ? null
-          : _withinReach([
-              for (var k = 0; k < 4; k += 1) at.sides[k] + change[k],
-            ]);
+      final sides = _withinReach([
+        for (var k = 0; k < 4; k += 1) at.sides[k] + change[k],
+      ]);
       if (sides != null) {
         final missed = _missesOf(sides);
         if (_squared(missed) < cost) {
@@ -389,14 +382,15 @@ final class _NearestEase {
     return null;
   }
 
-  /// How the misses change as the [k]th number of [at] does — by a small
-  /// step, back where a step forward would take an influence past all of
-  /// the segment.
+  /// How the misses change as the [k]th number of [at] does, by a small
+  /// step forward.
+  ///
+  /// ⛔Forward for an influence too, though one at all of its segment is
+  /// then asked a millionth past it: [segmentProgress] answers as near, and
+  /// a step back measured a fit that keyed a reference cut once more
+  /// (2026-10-13).
   List<double> _slopeOf(_Fitting at, int k) {
-    var step = 1e-6 * math.max(1, at.sides[k].abs());
-    if (k.isEven && at.sides[k] + step > 1) {
-      step = -step;
-    }
+    final step = 1e-6 * math.max(1, at.sides[k].abs());
     final moved = [...at.sides];
     moved[k] += step;
     final missedThere = _missesOf(moved);
@@ -411,8 +405,8 @@ double _squared(List<double> misses) =>
     misses.fold(0.0, (sum, miss) => sum + miss * miss);
 
 /// [sides] with each influence within what a side may take
-/// ([EaseSide.leastInfluence] to all of the segment) — null where a speed
-/// ran off to no number.
+/// ([EaseSide.leastInfluence] to all of the segment) — null where any of
+/// them ran off to no number.
 List<double>? _withinReach(List<double> sides) {
   if (!sides.every((value) => value.isFinite)) {
     return null;
@@ -430,34 +424,24 @@ double _dot(List<double> a, List<double> b) {
   return sum;
 }
 
-/// [matrix] · x = [right] solved for x by elimination — null when the
-/// matrix has no inverse.
+/// [matrix] · x = [right] solved for x by elimination, the diagonal the
+/// pivot all the way: the damped normal equations a fit's step solves are
+/// positive definite, so no row need trade places. A matrix too near
+/// singular comes out as numbers that are not finite, which the step
+/// refuses ([_withinReach]).
 ///
-/// ⛔`solveHomography` eliminates the same way inside its own system, and
-/// the two are not merged: this is the SECOND, and the rule of three holds.
-/// They refuse a matrix at different sizes — there a pivot under 1e-9, a
-/// quad folded flat in canvas units; here only a pivot of no size at all,
-/// as the normal equations of a fit's small slopes still solve — and two
-/// do not yet show which of those is the law. 🔜The third linear solve
+/// ⛔`solveHomography` eliminates inside its own system too, and the two
+/// are not merged: this is the SECOND, and the rule of three holds. Theirs
+/// is a general system — rows trade places for the largest pivot, and a
+/// pivot under 1e-9, a quad folded flat in canvas units, is refused — and
+/// two do not yet show which of those is the law. 🔜The third linear solve
 /// merges all three.
-List<double>? _solved(List<List<double>> matrix, List<double> right) {
-  final rows = [
-    for (var m = 0; m < right.length; m += 1) [...matrix[m], right[m]],
-  ];
+List<double> _solved(List<List<double>> matrix, List<double> right) {
   final size = right.length;
+  final rows = [
+    for (var m = 0; m < size; m += 1) [...matrix[m], right[m]],
+  ];
   for (var column = 0; column < size; column += 1) {
-    var pivot = column;
-    for (var row = column + 1; row < size; row += 1) {
-      if (rows[row][column].abs() > rows[pivot][column].abs()) {
-        pivot = row;
-      }
-    }
-    if (rows[pivot][column].abs() < 1e-300) {
-      return null;
-    }
-    final swap = rows[column];
-    rows[column] = rows[pivot];
-    rows[pivot] = swap;
     for (var row = 0; row < size; row += 1) {
       if (row == column) {
         continue;
