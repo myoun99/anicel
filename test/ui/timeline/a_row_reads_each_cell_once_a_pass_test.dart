@@ -121,6 +121,36 @@ void main() {
     );
   });
 
+  test('🚨what a row says to a screen reader asks each cell once too — and '
+      'says what the cell\'s model says', () {
+    final (:painter, :asked) = countedRow(
+      rowLayer(),
+      cellExtent: 4,
+      frames: 40,
+    );
+
+    final said = [
+      for (final node in painter.semanticsBuilder(const Size(160, 28)))
+        node.properties.label,
+    ];
+
+    expect(said, isNotEmpty, reason: 'premise: the row says something');
+    expect(
+      {
+        for (final MapEntry(key: frame, value: times) in asked.entries)
+          if (times > 1) frame: times,
+      },
+      isEmpty,
+      reason: '↩️it asked each cell for its whole model outside any pass — '
+          'its block off both neighbours — for a sentence that reads its '
+          'exposure: the largest cost of a cut crossing\'s frame (I-57)',
+    );
+    expect(said, [
+      for (var frame = 0; frame < 40; frame += 1)
+        ?painter.cellModelAt(frame).semanticsLabel,
+    ]);
+  });
+
   test('a frame line inside a block asks no cell of its own — its stretch '
       'answers for it', () {
     // One long block at 24px a frame, the lines on: a line at every

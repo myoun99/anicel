@@ -1299,13 +1299,30 @@ class TimelineRowCellsPainter extends CustomPainter
   // exists), windowed with the paint pass — the per-cell widget tree
   // used to emit these; the painted rows keep the a11y surface without
   // the widget cost.
+  //
+  // 🚨ONE PASS, AND ONLY WHAT THE SENTENCE READS (I-57, 10-14). It asked
+  // each cell for its whole model outside any pass — the block off both
+  // neighbours, the writing — five exposure searches a cell for a
+  // sentence that reads one: 🔬on the AMMI OP, half the SEMANTICS of a
+  // cut crossing's frame, and SEMANTICS was half the frame (CPU samples).
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => frameWindowSemantics(
-        window: visibleFrameWindow(),
-        rectFor: cellRectFor,
-        labelFor: (frameIndex) => cellModelAt(frameIndex).semanticsLabel,
+      (size) => readInOnePass(
+        () => frameWindowSemantics(
+          window: visibleFrameWindow(),
+          rectFor: cellRectFor,
+          labelFor: _semanticsLabelAt,
+        ),
       );
+
+  /// What the cell at [frameIndex] says to a screen reader — its model's
+  /// [TimelineRowCellModel.semanticsLabel], read off the two things the
+  /// sentence is made of.
+  String? _semanticsLabelAt(int frameIndex) => timelineCellSemanticsLabel(
+    layerKind: layer.kind,
+    exposureState: _stateAt(frameIndex),
+    frameName: frameNameForLayer?.call(layer, frameIndex),
+  );
 }
 
 /// The painted cell strip + its row-level interaction, shared by the
