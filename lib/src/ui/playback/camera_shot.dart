@@ -7,6 +7,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
+import '../../models/project_background.dart';
 import '../canvas/display_resample.dart'
     show
         displayEdgeAntiAliased,
@@ -53,6 +54,7 @@ class CameraShot extends StatelessWidget {
     required this.view,
     required this.shot,
     required this.canvasSize,
+    required this.background,
     required this.pasteboardColor,
     required this.pasteboardNone,
     required this.child,
@@ -67,6 +69,10 @@ class CameraShot extends StatelessWidget {
 
   final CanvasSize canvasSize;
 
+  /// The project's paper: [child]'s own, drawn with its rows — laid here
+  /// only where it is ABSENT (F-114), as the checkerboard in its place.
+  final ProjectBackground background;
+
   /// The stage's apron: what the camera sees past the paper. An ABSENT
   /// pasteboard (F-114) is the checkerboard here, as on the editing canvas.
   final Color pasteboardColor;
@@ -78,12 +84,6 @@ class CameraShot extends StatelessWidget {
   Widget build(BuildContext context) {
     final shot = this.shot;
     final ratio = EffectiveDevicePixelRatio.of(context);
-    final cut = shot == null
-        ? null
-        : shotClipOnScreen(
-            pictureOutlineOnScreen(view, shot, canvasSize, ratio),
-            ratio,
-          );
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -97,19 +97,51 @@ class CameraShot extends StatelessWidget {
                   devicePixelRatio: ratio,
                   cameraPose: shot.pose,
                   cameraFrameSize: shot.frameSize,
-                  // The paper is the canvas's own, drawn with its rows.
-                  paintPaper: false,
+                  // The paper is the canvas's own, drawn with its rows;
+                  // here is only its plane where it is ABSENT — the
+                  // checkerboard, as the film lays it through the camera.
+                  // ↩️Nothing was laid, so the apron showed in the paper's
+                  // place on a cut's run and the checkerboard on the film.
+                  paperBackground: background,
+                  paintPaper: background.none,
                   pasteboardColor: pasteboardColor,
                   pasteboardNone: pasteboardNone,
                   checkersAbsentPlanes: true,
                 ),
         ),
-        ClipPath(
-          clipBehavior: cut?.behavior ?? Clip.none,
-          clipper: cut == null ? null : OutlineClipper(cut.corners),
+        ShotClip(
+          outline: pictureOutlineOnScreen(view, shot, canvasSize, ratio),
           child: child,
         ),
       ],
+    );
+  }
+}
+
+/// [child] cut to [outline] as a run is cut ([shotClipOnScreen]) — and cut
+/// nowhere without one: a cut seen through no camera shows what its canvas
+/// shows, past its edge too.
+///
+/// ⛔THERE EITHER WAY, for [CameraShot]'s reason: a clip that came and went
+/// with the camera would mount [child] again.
+class ShotClip extends StatelessWidget {
+  const ShotClip({super.key, required this.outline, required this.child});
+
+  /// Where on the screen [child] is cut — null where nothing is.
+  final List<Offset>? outline;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final outline = this.outline;
+    final cut = outline == null
+        ? null
+        : shotClipOnScreen(outline, EffectiveDevicePixelRatio.of(context));
+    return ClipPath(
+      clipBehavior: cut?.behavior ?? Clip.none,
+      clipper: cut == null ? null : OutlineClipper(cut.corners),
+      child: child,
     );
   }
 }
@@ -174,19 +206,21 @@ Rect? _squareBounds(List<Offset> outline) {
   return bounds;
 }
 
-/// Where a cut's picture is cut on a screen of [devicePixelRatio]: its
-/// canvas's own edge where the panel's [view] shows it — and, seen through
-/// a camera ([shot]), inside the camera's frame too, its canvas's edge where
-/// the camera puts it. The film shows no pasteboard
-/// (「페이스트보드는 포함 안 시킴」), and a cut seen whole shows what its
-/// canvas holds.
-List<Offset> pictureOutlineOnScreen(
+/// Where a cut's picture is cut on a screen of [devicePixelRatio] — seen
+/// through a camera ([shot]), at its canvas's edge where the camera puts it
+/// inside the camera's frame: the film shows no pasteboard
+/// (「페이스트보드는 포함 안 시킴」). Seen through none, nowhere (null): a cut
+/// played whole shows what the canvas shows standing still, past its edge
+/// too (conte-playback-hides-the-pasteboard, 유저 10-13 「둘 다 보인다(편집
+/// 캔버스처럼)」). ↩️The film cut there at the canvas's edge while a cut's run
+/// on the canvas did not — the same question, two answers.
+List<Offset>? pictureOutlineOnScreen(
   CanvasViewport view,
   CameraShotAt? shot,
   CanvasSize canvasSize,
   double devicePixelRatio,
 ) => shot == null
-    ? outlineOnScreen(canvasSize.canvasRect, view, devicePixelRatio)
+    ? null
     : convexIntersection(
         cameraFrameOnScreen(view, shot.frameSize, devicePixelRatio),
         outlineOnScreen(canvasSize.canvasRect, shot.frameView, devicePixelRatio),

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 
 /// [CameraShot] (playback-plays-the-screen-material ②): a run seen through
@@ -45,6 +46,7 @@ void main() {
                 view: CanvasViewport(),
                 shot: throughIt ? shot : null,
                 canvasSize: const CanvasSize(width: 30, height: 20),
+                background: ProjectBackground.defaultBackground,
                 pasteboardColor: apron,
                 pasteboardNone: false,
                 // The canvas's picture, reaching past its own edge as

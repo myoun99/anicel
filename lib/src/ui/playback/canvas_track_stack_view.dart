@@ -14,9 +14,9 @@ import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import '../canvas/outline_clipper.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter, paintAlphaCheckerboard;
+import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_frame_painter.dart';
@@ -223,9 +223,10 @@ class CanvasTrackStackView extends StatelessWidget {
     );
   }
 
-  /// One covered cut's share of the frame: the stage's apron and paper under
-  /// it when it is the stage, its rows' images cut to its canvas — and to the
-  /// camera's frame through the camera — and its names and veils over it.
+  /// One covered cut's share of the frame: the stage's planes under it when
+  /// it is the stage, its rows' images — cut to its canvas inside the
+  /// camera's frame through the camera, and nowhere without one — and its
+  /// names and veils over it.
   Widget _unit(
     TrackStackContribution position,
     double weight, {
@@ -259,8 +260,8 @@ class CanvasTrackStackView extends StatelessWidget {
       cameraFrameSize: pose == null ? null : cameraFrameSize,
       paperBackground: background,
       // The paper is the canvas's own, drawn with its rows (as the camera's
-      // shot leaves it). Here is only its plane where it is ABSENT
-      // (F-114): the checkerboard in its place.
+      // shot leaves it). Here, through the camera, is only its plane where
+      // it is ABSENT (F-114): the checkerboard in its place.
       // 🚨playback-picture-is-not-the-canvas-picture (유저 10-13 「끝에 흰
       // 선」): painted here under the rows, the paper filled the canvas
       // to its edge — under a level image whose last pixel the edge cuts
@@ -276,9 +277,7 @@ class CanvasTrackStackView extends StatelessWidget {
       paintLetterbox: false,
       // The apron rides the camera view: it is what the camera sees past
       // the paper.
-      pasteboardColor: under && isStage && pose != null
-          ? Color(pasteboardArgb)
-          : null,
+      pasteboardColor: under && isStage ? Color(pasteboardArgb) : null,
       // F-114: absent planes show the checkerboard here as on the editing
       // canvas — on screen only.
       pasteboardNone: pasteboardNone,
@@ -290,19 +289,32 @@ class CanvasTrackStackView extends StatelessWidget {
       imageOpacity: isStage ? 1 : weight,
       veils: under ? const [] : position.veils,
     );
-    final clip = shotClipOnScreen(
-      pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
-      ratio,
-    );
+    // 🚨Seen through no camera the stage is the EDITING CANVAS's — its
+    // pasteboard where its cut's pasteboard is, the checkerboard where the
+    // paper is absent, laid by the painter the canvas lays them with — and
+    // nothing of the picture is cut: a cut played whole shows what it shows
+    // standing still (conte-playback-hides-the-pasteboard, 유저 10-13 「둘 다
+    // 보인다(편집 캔버스처럼)」). ↩️The film cut every cut at its canvas's
+    // edge on the floor while a cut's run on the canvas showed the
+    // pasteboard. Through the camera, the planes are what the camera sees.
+    final CustomPainter? planes = pose != null
+        ? painter(under: true)
+        : isStage
+        ? StagePlanesPainter(
+            pasteboard: (color: Color(pasteboardArgb), none: pasteboardNone),
+            paperNone: background.none,
+            canvasSize: cut.canvasSize,
+            viewport: view,
+          )
+        : null;
     final unit = Stack(
       fit: StackFit.expand,
       children: [
-        CustomPaint(painter: painter(under: true)),
+        CustomPaint(painter: planes),
         Opacity(
           opacity: isStage ? 1 : weight,
-          child: ClipPath(
-            clipBehavior: clip.behavior,
-            clipper: OutlineClipper(clip.corners),
+          child: ShotClip(
+            outline: pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
             child: CanvasLayerStackView(
               nodes: stackOf(cut, localFrame),
               imageCache: imageCache,

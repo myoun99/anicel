@@ -274,14 +274,17 @@ void main() {
               as RepaintOnProps)
           .props;
 
-  testWidgets('🚨seen through the camera, what is over the picture is in the '
-      'camera\'s frame with it: the SE tags ride the camera, the fade\'s unit '
-      'is the frame, the O.L\'s other cut is seen through the camera too, and '
-      'nothing of them shows past the frame', (tester) async {
+  /// The first of two cuts run alone and stood three frames before the end
+  /// of it, inside an O.L into the second — with a name tag on its SE row:
+  /// everything a run lays over its picture.
+  Future<EditorSessionManager> runningIntoAnOl(
+    WidgetTester tester, {
+    required bool cameraView,
+  }) async {
     late int boundary;
     final (s, _) = await pumpArea(
       tester,
-      cameraView: true,
+      cameraView: cameraView,
       prepare: (s) {
         s.cutVerbs.createCut();
         final cuts = s.repository.requireProject().tracks.first.cuts;
@@ -304,6 +307,62 @@ void main() {
     await tester.pump();
     playback.seekToGlobalFrame(boundary - 3);
     await tester.pump();
+    return s;
+  }
+
+  /// The clip over what lies over the picture: the one around the fade's
+  /// wash.
+  ClipPath clipOverThePicture(WidgetTester tester) => tester.widget<ClipPath>(
+    find
+        .ancestor(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is CustomPaint &&
+                widget.painter.runtimeType.toString() == '_CutFadeWashPainter',
+          ),
+          matching: find.byType(ClipPath),
+        )
+        .first,
+  );
+
+  testWidgets('🚨seen through no camera, nothing over the picture is cut, '
+      'and the fade thins the cut\'s unit as far as its pasteboard — as the '
+      'film thins it (conte-playback-hides-the-pasteboard)', (tester) async {
+    final s = await runningIntoAnOl(tester, cameraView: false);
+
+    final (_, unit, _, _, _) =
+        propsOf(tester, '_CutFadeWashPainter')
+            as (CanvasViewport, Rect, Object, Color, double);
+    expect(
+      unit,
+      s.activeCutOrNull!.canvasSize.pasteboardRect,
+      reason: 'the pasteboard and what is drawn on it thin with the paper',
+    );
+    expect(
+      clipOverThePicture(tester).clipBehavior,
+      Clip.none,
+      reason: 'a cut played whole is cut nowhere, over its picture either',
+    );
+    expect(
+      tester
+          .widget<CanvasTrackStackView>(
+            find.byKey(const ValueKey<String>('canvas-ol-partner')),
+          )
+          .cameraViewEnabled,
+      isFalse,
+      reason: 'the O.L\'s other cut is seen as the canvas sees it',
+    );
+
+    s.playbackRig.playback.stop();
+    await drain(tester);
+  });
+
+  testWidgets('🚨seen through the camera, what is over the picture is in the '
+      'camera\'s frame with it: the SE tags ride the camera, the fade\'s unit '
+      'is the frame, the O.L\'s other cut is seen through the camera too, and '
+      'nothing of them shows past the frame', (tester) async {
+    final s = await runningIntoAnOl(tester, cameraView: true);
+    final playback = s.playbackRig.playback;
 
     final shotWidget = tester.widget<CameraShot>(find.byType(CameraShot));
     final shot = shotWidget.shot!;
@@ -333,19 +392,7 @@ void main() {
       isTrue,
       reason: 'the O.L\'s other cut is seen through the camera too',
     );
-    final over = tester.widget<ClipPath>(
-      find
-          .ancestor(
-            of: find.byWidgetPredicate(
-              (widget) =>
-                  widget is CustomPaint &&
-                  widget.painter.runtimeType.toString() ==
-                      '_CutFadeWashPainter',
-            ),
-            matching: find.byType(ClipPath),
-          )
-          .first,
-    );
+    final over = clipOverThePicture(tester);
     final ratio = EffectiveDevicePixelRatio.of(
       tester.element(find.byType(CameraShot)),
     );

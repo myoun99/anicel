@@ -669,6 +669,7 @@ class _InteractiveCanvasBuild {
       view: viewport,
       shot: shot,
       canvasSize: _canvasSize,
+      background: session.projectSettings.projectBackground,
       pasteboardColor: Color(project.pasteboardArgb),
       pasteboardNone: project.pasteboardNone,
       // The view the frame is drawn through — the one its rows were made
@@ -881,22 +882,18 @@ class _InteractiveCanvasBuild {
     CanvasViewport viewport,
     CameraShotAt? shot,
     Widget over,
-  ) {
-    final ratio = EffectiveDevicePixelRatio.of(context);
-    // Cut as the picture under it is ([shotClipOnScreen]): a fade that
-    // thins the frame thins every pixel the picture shows.
-    final cut = shot == null
+  ) => ShotClip(
+    // Cut as the picture under it is: a fade that thins the frame thins
+    // every pixel the picture shows.
+    outline: shot == null
         ? null
-        : shotClipOnScreen(
-            cameraFrameOnScreen(viewport, shot.frameSize, ratio),
-            ratio,
-          );
-    return ClipPath(
-      clipBehavior: cut?.behavior ?? Clip.none,
-      clipper: cut == null ? null : OutlineClipper(cut.corners),
-      child: over,
-    );
-  }
+        : cameraFrameOnScreen(
+            viewport,
+            shot.frameSize,
+            EffectiveDevicePixelRatio.of(context),
+          ),
+    child: over,
+  );
 
   /// The standing row's box, over every tool
   /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the

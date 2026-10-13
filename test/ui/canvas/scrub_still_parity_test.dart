@@ -375,6 +375,7 @@ void main() {
                 frameView: CanvasViewport(),
               ),
               canvasSize: canvasSize,
+              background: ProjectBackground.defaultBackground,
               pasteboardColor: const Color(0xFF123456),
               pasteboardNone: false,
               child: const SizedBox.expand(),

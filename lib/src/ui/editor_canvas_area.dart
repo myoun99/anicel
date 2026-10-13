@@ -55,7 +55,6 @@ import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/canvas_look.dart';
-import 'canvas/outline_clipper.dart';
 import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'playback/camera_shot.dart';
@@ -1621,6 +1620,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       //
       // A run seen through the camera has the camera's frame for its unit
       // ([PlaybackFramePainter.veils]), and its O.L partner the camera too.
+      // Seen through none the unit reaches as far as the pasteboard: its
+      // plane and what is drawn on it thin with the paper, as the film
+      // thins them (conte-playback-hides-the-pasteboard). ↩️The wash
+      // covered the canvas alone — what only a film cut at the canvas's
+      // edge agreed with.
       //
       // F-192: a one-sided transition's own screen is part of the unit,
       // so it goes down FIRST and the wash thins it with the rest.
@@ -1639,7 +1643,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             CustomPaint(
               painter: _CutFadeWashPainter(
                 viewport: viewport,
-                unit: throughCamera ? frame.canvasRect : canvasSize.canvasRect,
+                unit: throughCamera
+                    ? frame.canvasRect
+                    : canvasSize.pasteboardRect,
                 veils: veils,
                 color: Color(
                   session.repository.requireProject().backdropArgb,
@@ -1763,9 +1769,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 }
 
 /// The editing canvas's cut-fade wash (R9-C): the fade target color over
-/// the canvas rect at (1 − fadeOpacity), under the panel viewport — the
-/// same overlay playback paints, so an fx-on faded frame reads identically
-/// while editing.
+/// the cut's unit at (1 − fadeOpacity), under the panel viewport — what
+/// playback's thinning of the unit shows, so an fx-on faded frame reads
+/// identically while editing.
 class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
@@ -1777,7 +1783,7 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
 
   final CanvasViewport viewport;
 
-  /// The cut's unit in the space [viewport] shows — the canvas, or the
+  /// The cut's unit in the space [viewport] shows — its pasteboard, or the
   /// camera's frame a run is seen through.
   final Rect unit;
 

@@ -140,8 +140,9 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// The PASTEBOARD fill behind the paper (R3b, camera mode only): the
   /// bottom covered track's stage fills its whole output frame with this
   /// before the paper lands — the cut unit the fade thins is
-  /// pasteboard + paper + picture. Null = no stage fill (upper tracks,
-  /// canvas mode where the panel supplies its own surroundings).
+  /// pasteboard + paper + picture. Null = no stage fill (upper tracks, and
+  /// canvas mode — where the stage's planes are the editing canvas's,
+  /// `StagePlanesPainter`, laid under this).
   final Color? pasteboardColor;
 
   /// Whether the pasteboard is ABSENT (F-114) — [pasteboardColor] is then
@@ -241,6 +242,12 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       );
       canvas.clipRect(frameRect);
     }
+    // The cut's UNIT — what its fade thins and its transition's screen
+    // covers: the camera's frame through the camera; seen through none, as
+    // far as its pasteboard reaches — the plane and what is drawn on it
+    // thin with the paper (conte-playback-hides-the-pasteboard). ↩️It was
+    // the canvas there, while the film was cut at the canvas's edge.
+    final unit = frameRect ?? canvasSize.pasteboardRect;
 
     // The FADE is transparency now (R3b): the cut's whole contribution —
     // stage fill, paper, picture — thins as one layer, revealing whatever
@@ -248,10 +255,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // frame pays the saveLayer.
     final fading = fadeOpacity < 1;
     if (fading) {
-      canvas.saveLayer(
-        frameRect ?? canvasRect,
-        Paint()..color = alphaOnly(fadeOpacity),
-      );
+      canvas.saveLayer(unit, Paint()..color = alphaOnly(fadeOpacity));
     }
     if (pose != null && pasteboardColor != null) {
       // The stage's apron: the camera sees the pasteboard wherever it
@@ -380,10 +384,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       // opaque over a fading picture reads as a bug.
       final thinning = imageOpacity < 1;
       if (thinning) {
-        canvas.saveLayer(
-          frameRect ?? canvasRect,
-          Paint()..color = alphaOnly(imageOpacity),
-        );
+        canvas.saveLayer(unit, Paint()..color = alphaOnly(imageOpacity));
       }
       paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
       if (thinning) {
@@ -399,12 +400,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // F-192: the transition's own screen over the whole unit, inside the
     // unit's fade so the stage's thinning takes it along; a track above the
     // stage thins it by its own weight, as it thins its picture.
-    paintTransitionVeils(
-      canvas,
-      frameRect ?? canvasRect,
-      veils,
-      thinnedBy: imageOpacity,
-    );
+    paintTransitionVeils(canvas, unit, veils, thinnedBy: imageOpacity);
     if (fading) {
       canvas.restore();
     }

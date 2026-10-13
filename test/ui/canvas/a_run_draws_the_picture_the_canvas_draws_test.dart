@@ -21,6 +21,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -35,6 +36,7 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/services/viewport_transform_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
@@ -55,6 +57,11 @@ import '../../helpers/temp_dir.dart';
 /// filled to the canvas's edge, on a canvas that is no whole number of
 /// tiles and halves to an odd size, is where the roads part if they part
 /// anywhere.
+///
+/// 🚨Seen through no camera, that holds PAST the canvas too
+/// (conte-playback-hides-the-pasteboard, 유저 10-13 「둘 다 보인다(편집
+/// 캔버스처럼)」): the film shows the pasteboard and what is drawn on it as
+/// the canvas shows them standing still.
 void main() {
   const tileSize = 16;
   // 60 × 38: no whole number of tiles, and odd on the way down — 30 × 19,
@@ -65,6 +72,12 @@ void main() {
   // cuts no pixel.
   const viewSize = Size(80, 48);
   const fill = [0x10, 0x20, 0x30, 0xFF];
+  // Where the cel holds no ink: the paper — or its absence — shows there.
+  // On every level's grid down to an eighth, so no level pixel mixes ink
+  // and hole: a mixed one rounds apart between a cel's whole image and its
+  // tiles' pyramid at an eighth (1/255 — the halving's two draws,
+  // level-halving-rounds-apart), which is not a road's difference.
+  const hole = Rect.fromLTRB(16, 8, 32, 24);
   // Past the canvas every road shows this one colour — the editing
   // canvas's pasteboard, the camera's apron and letterbox, the film's
   // floor — so a pixel that differs is the picture's own.
@@ -122,14 +135,17 @@ void main() {
 
   tearDown(() => deleteTempQuietly(tempDir));
 
-  /// The tile at ([tx], [ty]) of a cel filled to the canvas's edge and not a
-  /// pixel past it, as the fill leaves one.
-  BitmapTile tileAt(int tx, int ty) {
+  /// The tile at ([tx], [ty]) of a cel filled [reach] pixels past the
+  /// canvas's right and bottom edges and not a pixel further — to the edge
+  /// itself at 0, as the fill leaves one — but for the [hole].
+  BitmapTile tileAt(int tx, int ty, {required int reach}) {
     final pixels = Uint8List(tileSize * tileSize * 4);
     for (var y = 0; y < tileSize; y += 1) {
       for (var x = 0; x < tileSize; x += 1) {
-        if (tx * tileSize + x >= canvasSize.width ||
-            ty * tileSize + y >= canvasSize.height) {
+        final at = Offset(tx * tileSize + x + 0.5, ty * tileSize + y + 0.5);
+        if (at.dx >= canvasSize.width + reach ||
+            at.dy >= canvasSize.height + reach ||
+            hole.contains(at)) {
           continue;
         }
         pixels.setRange(
@@ -142,12 +158,12 @@ void main() {
     return BitmapTile(size: tileSize, pixels: pixels);
   }
 
-  final tilesAcross = (canvasSize.width + tileSize - 1) ~/ tileSize;
-  final tilesDown = (canvasSize.height + tileSize - 1) ~/ tileSize;
-
-  /// A store holding [key]'s cel as a FILE-BACKED entry — the image cache
-  /// refuses a cel without a drawing state at its first gate.
-  BrushFrameStore storeWithTheCel() {
+  /// A store holding [key]'s cel, filled [reach] pixels past the canvas, as
+  /// a FILE-BACKED entry — the image cache refuses a cel without a drawing
+  /// state at its first gate.
+  BrushFrameStore storeWithTheCel({int reach = 0}) {
+    final tilesAcross = (canvasSize.width + reach + tileSize - 1) ~/ tileSize;
+    final tilesDown = (canvasSize.height + reach + tileSize - 1) ~/ tileSize;
     final blob = AnicelCelBlob.encode(
       AnicelCelEntry.fromSurface(
         key,
@@ -157,7 +173,7 @@ void main() {
           tiles: {
             for (var ty = 0; ty < tilesDown; ty += 1)
               for (var tx = 0; tx < tilesAcross; tx += 1)
-                TileCoord(x: tx, y: ty): tileAt(tx, ty),
+                TileCoord(x: tx, y: ty): tileAt(tx, ty, reach: reach),
           },
         ),
       ),
@@ -203,45 +219,58 @@ void main() {
   );
 
   /// The editing canvas's stack, as the canvas area mounts it: inside the
-  /// camera's shot, which cuts nothing without a [shot].
+  /// camera's shot, which cuts nothing without a [shot] — on the stage's
+  /// [planes], where the canvas panel lays them under all of it.
   Widget canvas(
     LayerFrameImageCache images, {
     required CanvasViewport view,
     required bool bake,
     BitmapSurfacePainter? live,
     CameraShotAt? shot,
-  }) => CameraShot(
-    view: view,
-    shot: shot,
-    canvasSize: canvasSize,
-    pasteboardColor: past,
-    pasteboardNone: false,
-    child: CanvasLayerStackView(
-      // Each road a stack of its own: nothing one drew is handed to the
-      // other.
-      key: ValueKey<(bool, bool)>((live != null, shot != null)),
-      nodes: live != null
-          ? [
-              const CompositeLeaf<CanvasStackRow>(
-                CanvasActiveLayerRow(opacity: 1, frameKey: key),
-              ),
-            ]
-          : rows,
-      imageCache: images,
+    StagePlanesPainter? planes,
+    Color pasteboard = past,
+    ProjectBackground paper = ProjectBackground.defaultBackground,
+  }) => CustomPaint(
+    painter: planes,
+    child: CameraShot(
+      view: view,
+      shot: shot,
       canvasSize: canvasSize,
-      viewport: shot?.frameView ?? view,
-      activeSurfacePainter: live,
-      debugDisableBake: !bake,
-      // White paper under the ink, as every cut has.
-      paintPaper: true,
+      background: paper,
+      pasteboardColor: pasteboard,
+      pasteboardNone: false,
+      child: CanvasLayerStackView(
+        // Each road a stack of its own: nothing one drew is handed to the
+        // other.
+        key: ValueKey<(bool, bool)>((live != null, shot != null)),
+        nodes: live != null
+            ? [
+                const CompositeLeaf<CanvasStackRow>(
+                  CanvasActiveLayerRow(opacity: 1, frameKey: key),
+                ),
+              ]
+            : rows,
+        imageCache: images,
+        canvasSize: canvasSize,
+        viewport: shot?.frameView ?? view,
+        activeSurfacePainter: live,
+        debugDisableBake: !bake,
+        // The paper under the ink, as every cut has — white unless it is
+        // absent.
+        paintPaper: true,
+        paperBackground: paper,
+      ),
     ),
   );
 
-  /// The film's track stack at the cut's one frame.
+  /// The film's track stack at the cut's one frame, on a [past] floor.
   Widget film(
     LayerFrameImageCache images, {
     required CanvasViewport view,
     required bool throughTheCamera,
+    Color pasteboard = past,
+    bool pasteboardNone = false,
+    ProjectBackground paper = ProjectBackground.defaultBackground,
   }) => CanvasTrackStackView(
     key: ValueKey<bool>(throughTheCamera),
     globalFrame: const AlwaysStoppedAnimation<int?>(0),
@@ -256,8 +285,10 @@ void main() {
     cameraViewEnabled: throughTheCamera,
     cameraPoseOf: (_, _) => atRest,
     viewport: view,
+    background: paper,
     backdropArgb: past.toARGB32(),
-    pasteboardArgb: past.toARGB32(),
+    pasteboardArgb: pasteboard.toARGB32(),
+    pasteboardNone: pasteboardNone,
   );
 
   /// What the last pump put on the screen, in device pixels.
@@ -291,6 +322,12 @@ void main() {
     (y * shot.width + x) * 4 + 4,
   );
 
+  /// [color] as [pixelAt] reads it.
+  List<int> rgbaOf(Color color) => [
+    for (final channel in [color.r, color.g, color.b, color.a])
+      (channel * 255).round(),
+  ];
+
   /// The device pixels where the two pictures differ, as `(x, y): a → b`.
   List<String> differences(Shot a, Shot b) => [
     for (var y = 0; y < a.height; y += 1)
@@ -299,9 +336,32 @@ void main() {
           '($x, $y): ${pixelAt(a, x, y)} → ${pixelAt(b, x, y)}',
   ];
 
-  /// The canvas standing still at [zoom], with the cel as the active row,
-  /// and [road] after it — the cel's image made at the display's level as
-  /// a run makes it — each on a stack of its own.
+  /// What [picture] puts on the screen once everything it asked for landed.
+  Future<Shot> shown(WidgetTester tester, Widget picture) async {
+    await pump(tester, picture);
+    await landEverything(tester);
+    return onScreen(tester);
+  }
+
+  /// The cel's image made at the display's level through [view], as a run
+  /// makes it.
+  Future<void> madeForTheRun(
+    WidgetTester tester,
+    LayerFrameImageCache images,
+    CanvasViewport view,
+  ) => tester.runAsync(
+    () => images.prepare(
+      key: key,
+      canvasSize: canvasSize,
+      quality: rowQualityThrough(view, tester.view.devicePixelRatio),
+      sourceEffects: const [],
+    ),
+  );
+
+  /// The canvas standing still at [zoom], with the cel — filled [reach]
+  /// pixels past the canvas — as the active row, on the stage's [planes],
+  /// and [road] after it — the cel's image made at the display's level as a
+  /// run makes it — each on a stack of its own.
   Future<({Shot still, Shot running})> stillThen(
     WidgetTester tester, {
     required double zoom,
@@ -309,14 +369,17 @@ void main() {
     required Widget Function(LayerFrameImageCache images, CanvasViewport view)
     road,
     bool bake = true,
+    int reach = 0,
+    StagePlanesPainter Function(CanvasViewport view)? planes,
+    ProjectBackground paper = ProjectBackground.defaultBackground,
   }) async {
-    final store = storeWithTheCel();
+    final store = storeWithTheCel(reach: reach);
     final images = LayerFrameImageCache(frameStore: store);
     addTearDown(images.dispose);
     addTearDown(() => TilePyramid.instance.drop(lineage));
     final view = CanvasViewport(zoom: zoom);
 
-    await pump(
+    final still = await shown(
       tester,
       canvas(
         images,
@@ -327,22 +390,13 @@ void main() {
           showTransparentBackground: false,
           lineage: lineage,
         ),
+        planes: planes?.call(view),
+        paper: paper,
       ),
     );
-    await landEverything(tester);
-    final still = await onScreen(tester);
 
-    await tester.runAsync(
-      () => images.prepare(
-        key: key,
-        canvasSize: canvasSize,
-        quality: rowQualityThrough(view, tester.view.devicePixelRatio),
-        sourceEffects: const [],
-      ),
-    );
-    await pump(tester, road(images, view));
-    await landEverything(tester);
-    final running = await onScreen(tester);
+    await madeForTheRun(tester, images, view);
+    final running = await shown(tester, road(images, view));
     expect(
       pixelAt(still, 0, 0),
       fill,
@@ -352,7 +406,8 @@ void main() {
     return (still: still, running: running);
   }
 
-  /// The camera at rest seen through [view]: what a run through it draws.
+  /// The camera at rest seen through [view]: what a cut's run through it
+  /// draws.
   CameraShotAt shotAtRest(CanvasViewport view) => (
     pose: atRest,
     frameSize: canvasSize,
@@ -424,6 +479,86 @@ void main() {
     }
   });
 
+  group('past the canvas, seen through no camera', () {
+    // The ink runs onto the pasteboard past the canvas's right and bottom
+    // edges, the pasteboard is a colour of its own, and the backdrop lies
+    // past it.
+    const reach = 12;
+    const pasteboard = Color(0xFF5A4630);
+    const stages = {
+      'the stage\'s planes': (pasteboardNone: false, paperNone: false),
+      'an absent pasteboard': (pasteboardNone: true, paperNone: false),
+      'an absent paper': (pasteboardNone: false, paperNone: true),
+    };
+
+    for (final MapEntry(key: stage, value: (:pasteboardNone, :paperNone))
+        in stages.entries) {
+      final paper = ProjectBackground.color(
+        ProjectBackground.defaultPaperArgb,
+        none: paperNone,
+      );
+      for (final ratio in ratios) {
+        for (final zoom in zooms) {
+          final where = at(zoom, ratio);
+          testWidgets('🚨with $stage, at $where the film shows, pixel for '
+              'pixel, what the canvas shows past its edge standing still', (
+            tester,
+          ) async {
+            tester.view.devicePixelRatio = ratio;
+            addTearDown(tester.view.resetDevicePixelRatio);
+
+            final (:still, :running) = await stillThen(
+              tester,
+              zoom: zoom,
+              reach: reach,
+              lineage: 'past-the-canvas-$stage-$where',
+              // The stage's planes as the canvas panel lays them.
+              planes: (view) => StagePlanesPainter(
+                backdrop: (color: past, none: false),
+                pasteboard: (color: pasteboard, none: pasteboardNone),
+                paperNone: paperNone,
+                canvasSize: canvasSize,
+                viewport: view,
+              ),
+              paper: paper,
+              road: (images, view) => film(
+                images,
+                view: view,
+                throughTheCamera: false,
+                pasteboard: pasteboard,
+                pasteboardNone: pasteboardNone,
+                paper: paper,
+              ),
+            );
+            if (zoom == 1) {
+              // At 1:1 the ink past the canvas is on the screen, and the
+              // pasteboard past the ink.
+              final y = (5 * ratio).floor();
+              expect(
+                pixelAt(still, (66 * ratio).floor(), y),
+                fill,
+                reason: 'LIVENESS: the ink past the canvas shows standing '
+                    'still',
+              );
+              expect(
+                pixelAt(still, (76 * ratio).floor(), y),
+                isNot(rgbaOf(past)),
+                reason: 'LIVENESS: and the pasteboard past the ink',
+              );
+            }
+
+            expect(
+              differences(still, running),
+              isEmpty,
+              reason: 'a cut played whole shows what the canvas shows, past '
+                  'its edge too',
+            );
+          });
+        }
+      }
+    }
+  });
+
   group('through the camera at rest', () {
     for (final ratio in ratios) {
       for (final zoom in zooms) {
@@ -469,6 +604,70 @@ void main() {
             differences(still, running),
             isEmpty,
             reason: 'a camera framing the canvas cuts nothing of it',
+          );
+        });
+      }
+    }
+  });
+
+  /// Through the camera an absent paper is the checkerboard in its place on
+  /// a cut's run as on the film (conte-playback-hides-the-pasteboard).
+  /// ↩️A cut's run laid nothing there, and the camera's apron showed in the
+  /// paper's place.
+  group('an absent paper through the camera at rest', () {
+    // The apron a colour of its own, so the paper's place shows which of
+    // the two lies in it.
+    const apron = Color(0xFF5A4630);
+    const paper = ProjectBackground.color(
+      ProjectBackground.defaultPaperArgb,
+      none: true,
+    );
+    for (final ratio in ratios) {
+      for (final zoom in zooms) {
+        final where = at(zoom, ratio);
+        testWidgets('🚨at $where a cut\'s run lays, pixel for pixel, what the '
+            'film lays in the paper\'s place', (tester) async {
+          tester.view.devicePixelRatio = ratio;
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final images = LayerFrameImageCache(frameStore: storeWithTheCel());
+          addTearDown(images.dispose);
+          final view = CanvasViewport(zoom: zoom);
+          await madeForTheRun(tester, images, view);
+
+          final theFilm = await shown(
+            tester,
+            film(
+              images,
+              view: view,
+              throughTheCamera: true,
+              pasteboard: apron,
+              paper: paper,
+            ),
+          );
+          final aCutsRun = await shown(
+            tester,
+            canvas(
+              images,
+              view: view,
+              bake: true,
+              shot: shotAtRest(view),
+              pasteboard: apron,
+              paper: paper,
+            ),
+          );
+          if (zoom == 1) {
+            expect(
+              pixelAt(theFilm, (20 * ratio).floor(), (12 * ratio).floor()),
+              isNot(rgbaOf(apron)),
+              reason: 'LIVENESS: in the hole the film lays the '
+                  'checkerboard, not the apron',
+            );
+          }
+
+          expect(
+            differences(theFilm, aCutsRun),
+            isEmpty,
+            reason: 'one paper, absent, through one camera',
           );
         });
       }
