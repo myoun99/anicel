@@ -48,9 +48,9 @@ typedef _StoryboardStripGrip = ({
 /// ([_StoryboardPanelEdges]). What is the CONTE's alone stays on seat 0 —
 /// the button that makes a cut's conte, and edges that are the cut's own
 /// length.
-class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
+class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   const _StoryboardConteRow({
-    required this.track,
+    required this.trackId,
     required this.seat,
     required this.layoutEntries,
     required this.width,
@@ -68,7 +68,8 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
     this.onEditConteBlock,
   });
 
-  final Track track;
+  /// The track whose row this is — its keys' and its verbs' word.
+  final TrackId trackId;
 
   /// Which row of the track's conte group this is (`models/conte_group
   /// .dart`): 0 the conte, +k the k-th attach row above it, −k below.
@@ -82,8 +83,8 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
   /// the row had before it had seats — and the seat's word after it for an
   /// attach row.
   String get _scope => seat == 0
-      ? track.id.value
-      : '${track.id.value}-'
+      ? trackId.value
+      : '${trackId.value}-'
             '${_StoryboardRowsAndLabels.conteLabelKeyName(seat)}';
 
   /// The scroll content's full width — the V row's own.
@@ -256,14 +257,44 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
     return (frame) {
       final strip = _stripAt(frame);
       if (strip != null) {
-        onEditConteBlock(track.id, strip.layer.id, frame);
+        onEditConteBlock(trackId, strip.layer.id, frame);
       }
     };
   }
 
+  /// What the row shows — its cuts by how they lie
+  /// ([StoryboardTimelineLayoutEntry.==]: the very cuts, at the same
+  /// places), which is all its blocks, its buttons and its edges are made
+  /// of.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed, the row built its cells again — 🔬what they say to a
+  /// screen reader was the largest part of a crossing's semantics on the
+  /// AMMI OP.
   @override
-  Widget build(BuildContext context) {
-    final shown = trackConteRowShown(track.id, layoutEntries, seat: seat);
+  Object? get facts => (
+    trackId,
+    seat,
+    ByList(layoutEntries),
+    width,
+    height,
+    timelineScale.pixelsPerFrame,
+    timelineScale.minBlockWidth,
+    ByIdentity(frameGeometry),
+    ByIdentity(windowBucket),
+    viewportWidth,
+    showSeconds,
+    projectFrameRate,
+    onRowFramePress != null,
+    stripEdges != null,
+    stripSelect != null,
+    onCreateStoryboardLayer != null,
+    onEditConteBlock != null,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
+    final shown = trackConteRowShown(trackId, layoutEntries, seat: seat);
     final stripGesture = _stripGesture();
     final stripEdges = this.stripEdges;
     final stripSelect = this.stripSelect;
@@ -322,7 +353,7 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
       Positioned.fill(
         key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
         child: _StoryboardPanelEdges(
-          track: track,
+          trackId: trackId,
           seat: seat,
           scope: _scope,
           layoutEntries: layoutEntries,
@@ -534,7 +565,7 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
 /// 띠에만」); a block of this row has no picture to keep clear of.
 class _StoryboardPanelEdges extends StatelessWidget {
   const _StoryboardPanelEdges({
-    required this.track,
+    required this.trackId,
     required this.seat,
     required this.scope,
     required this.layoutEntries,
@@ -546,7 +577,7 @@ class _StoryboardPanelEdges extends StatelessWidget {
     required this.viewportWidth,
   });
 
-  final Track track;
+  final TrackId trackId;
 
   /// Which row of the track's conte group this is ([_StoryboardConteRow]).
   final int seat;
@@ -712,7 +743,7 @@ class _StoryboardPanelEdges extends StatelessWidget {
               endGrip: grips[index].endGrip,
             ),
         ],
-        gripIdScope: trackConteRowId(track.id, seat: seat).value,
+        gripIdScope: trackConteRowId(trackId, seat: seat).value,
         layer: null,
         baseLayer: null,
         // I-44: the chrome stands on the block's PAPER — the row short of

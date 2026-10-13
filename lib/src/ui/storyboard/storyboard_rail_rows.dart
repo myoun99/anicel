@@ -2095,7 +2095,7 @@ class _StoryboardRailRows {
       // lanes with it, or every row under it parts from its label.
       if (_filterAllowsTrackRow(track)) ...[
         _StoryboardTrackRow(
-          track: track,
+          trackId: track.id,
           layoutEntries: entries,
           onRowFramePress: _state.widget.onRowFramePress,
           onDropMediaAsset: _state.widget.onDropMediaAsset,
@@ -2148,7 +2148,7 @@ class _StoryboardRailRows {
     TimelineScale scale,
   ) => _onTheReaches(track, strip, (reaches) {
     final row = _StoryboardCameraRow(
-      track: track,
+      trackId: track.id,
       reaches: reaches,
       width: width,
       height: _state._rowHeights.camera,
@@ -2240,7 +2240,7 @@ class _StoryboardRailRows {
     return [
       for (final lane in lanes)
         _StoryboardProjectionLaneRow(
-          track: track,
+          trackId: track.id,
           projection: projection,
           laneId: lane.laneId,
           reaches: strip.reaches,
@@ -2270,7 +2270,7 @@ class _StoryboardRailRows {
   ) => [
     for (final seat in _shownConteSeats(track)) ...[
       _StoryboardConteRow(
-        track: track,
+        trackId: track.id,
         seat: seat,
         layoutEntries: strip.entries,
         width: width,
@@ -2536,22 +2536,15 @@ final class _TrackStrip {
   final List<StoryboardTimelineLayoutEntry> entries;
   final Layer transitionRow;
 
+  /// The entries' own sameness — the very cuts at the same places
+  /// ([StoryboardTimelineLayoutEntry.==]), which the same cut objects in the
+  /// same order always are.
   @override
-  bool operator ==(Object other) {
-    if (other is! _TrackStrip || other.entries.length != entries.length) {
-      return false;
-    }
-    for (var i = 0; i < entries.length; i += 1) {
-      if (!identical(entries[i].cut, other.entries[i].cut)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool operator ==(Object other) =>
+      other is _TrackStrip && listEquals(other.entries, entries);
 
   @override
-  int get hashCode =>
-      Object.hashAll([for (final entry in entries) identityHashCode(entry.cut)]);
+  int get hashCode => Object.hashAll(entries);
 }
 
 /// The row a pointer [crossOffset] from the top of [anchorIndex]'s row

@@ -533,6 +533,58 @@ void main() {
         layerMarkColor(_art).toARGB32(),
       ]);
     });
+
+    // 🚨I-57 (10-14): the row is kept while what it shows holds, so a stand
+    // the panel is handed — the rail's own row, which no listenable carries
+    // — reaches its bands as news, never as a row built again.
+    testWidgets('🚨stood on by the rail\'s own row while the row is kept: '
+        'its bands are told', (tester) async {
+      final under = ValueNotifier<CutId?>(const CutId('cut-1'));
+      addTearDown(under.dispose);
+      final project = _project(
+        storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+        cutMark: _art,
+      );
+      Widget panel({TimelineRowAddress? on}) => MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: project,
+            activeCutId: const CutId('cut-1'),
+            cutUnderPlayhead: under,
+            selectedRow: on,
+            pixelsPerFrame: 12,
+          ),
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(1400, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(panel());
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-band-track'),
+      );
+      final kept = tester.widget(row);
+      expect(
+        painted(tester).bands.first,
+        layerMarkColor(_art).toARGB32(),
+        reason: 'premise: standing nowhere on this rail',
+      );
+
+      await tester.pumpWidget(
+        panel(on: const TrackRowAddress(_trackId)),
+        phase: EnginePhase.layout,
+      );
+
+      expect(tester.widget(row), same(kept), reason: 'premise: kept');
+      expect(
+        tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
+        isTrue,
+        reason: 'the stand repaints the row',
+      );
+      await tester.pump();
+      final cut = layerMarkColor(_art);
+      expect(painted(tester).bands, [washed(cut), washed(cut)]);
+    });
   });
 
   test('a selected band you stand on wears both — the wash under the '

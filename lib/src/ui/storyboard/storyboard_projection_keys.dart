@@ -12,8 +12,8 @@ part of '../storyboard_panel.dart';
 /// drawn as the row is, from its own lane of each cut's layer — on the
 /// timeline a lane is drawn as its row is too ([TimelineLaneFrameRow]): the
 /// same marks, the same line, held to the same cut.
-mixin _StoryboardProjectionKeys on StatelessWidget {
-  Track get track;
+mixin _StoryboardProjectionKeys on Widget {
+  TrackId get trackId;
 
   /// The track's cuts as this step lays them, each with its own frames on
   /// the track ([cameraRowReachesOf]).
@@ -109,7 +109,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
     required void Function(int frame)? onEdit,
     required List<Widget> over,
   }) => SizedBox(
-    key: ValueKey<String>('storyboard-$_keyName-row-${track.id.value}'),
+    key: ValueKey<String>('storyboard-$_keyName-row-${trackId.value}'),
     width: math.max(
       _storyboardCutsExtent([
         for (final reach in reaches) reach.entry,
@@ -122,7 +122,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
         _ground(context),
         _StoryboardCutStarts(
           paintKey: ValueKey<String>(
-            'storyboard-$_keyName-cut-starts-${track.id.value}',
+            'storyboard-$_keyName-cut-starts-${trackId.value}',
           ),
           starts: [for (final reach in reaches) reach.entry.startFrame],
           geometry: frameGeometry,
@@ -133,7 +133,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
         if (onRowFramePress != null || onCameraCutPress != null || onEdit != null)
           _storyboardRowPressLayer(
             key: ValueKey<String>(
-              'storyboard-$_keyName-press-${track.id.value}',
+              'storyboard-$_keyName-press-${trackId.value}',
             ),
             row: _address,
             cellExtent: timelineScale.pixelsPerFrame,
@@ -156,7 +156,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
       child: RepaintBoundary(
         child: CustomPaint(
           key: ValueKey<String>(
-            'storyboard-$_keyName-ground-${track.id.value}',
+            'storyboard-$_keyName-ground-${trackId.value}',
           ),
           painter: StoryboardCameraRowPainter(
             reaches: reaches,
@@ -226,7 +226,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
   }) => Positioned(
     key: ValueKey<String>(
       'storyboard-$_keyName-gesture-${upper ? 'upper' : 'lower'}-'
-      '${track.id.value}',
+      '${trackId.value}',
     ),
     left: 0,
     right: 0,
@@ -265,7 +265,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
           );
           return TimelineFrameSpanLayout(
             key: ValueKey<String>(
-              'storyboard-$_keyName-keys-${track.id.value}',
+              'storyboard-$_keyName-keys-${trackId.value}',
             ),
             geometry: frameGeometry,
             crossAxisExtent: height,
@@ -449,7 +449,7 @@ mixin _StoryboardProjectionKeys on StatelessWidget {
 class _StoryboardProjectionLaneRow extends StatelessWidget
     with _StoryboardProjectionKeys {
   const _StoryboardProjectionLaneRow({
-    required this.track,
+    required this.trackId,
     required this.projection,
     required this.laneId,
     required this.reaches,
@@ -465,7 +465,7 @@ class _StoryboardProjectionLaneRow extends StatelessWidget
   });
 
   @override
-  final Track track;
+  final TrackId trackId;
 
   /// The projection row whose lane this is.
   final _ProjectionLanes projection;

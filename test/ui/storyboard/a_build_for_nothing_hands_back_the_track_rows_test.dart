@@ -77,13 +77,14 @@ void main() {
   );
 
   /// The panel as a host builds it: again whenever [notify] moves, on the
-  /// project [project] holds then, its sounds' peaks [heard] as the store
-  /// has them then.
+  /// project [project] holds then, standing in the cut [active] names then,
+  /// its sounds' peaks [heard] as the store has them then.
   Future<void> pumpHost(
     WidgetTester tester, {
     required ValueNotifier<int> notify,
     required ValueNotifier<Project> project,
     required ValueNotifier<AudioPeaks?> heard,
+    required ValueNotifier<CutId> active,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -91,7 +92,7 @@ void main() {
           valueListenable: notify,
           builder: (_, _, _) => StoryboardPanel(
             project: project.value,
-            activeCutId: const CutId('c1'),
+            activeCutId: active.value,
             pixelsPerFrame: 8,
             projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? heard.value : null,
@@ -102,35 +103,58 @@ void main() {
   );
 
   final seRow = find.byKey(const ValueKey<String>('storyboard-se-row-0-1'));
-  final transitionRow = find.byKey(
-    const ValueKey<String>('storyboard-transition-row-t'),
-  );
   final waveform = find.byKey(
     const ValueKey<String>('storyboard-audio-clip-se-0-b0'),
   );
+
+  /// Every row of the track's strip, by the key it wears.
+  final rows = {
+    for (final key in [
+      'storyboard-camera-row-t',
+      'storyboard-transition-row-t',
+      'storyboard-se-row-0-1',
+      'storyboard-track-timeline-area-t',
+      'storyboard-conte-row-t',
+    ])
+      key: find.byKey(ValueKey<String>(key)),
+  };
 
   ({
     ValueNotifier<int> notify,
     ValueNotifier<Project> project,
     ValueNotifier<AudioPeaks?> heard,
+    ValueNotifier<CutId> active,
   })
   host({AudioPeaks? heard}) {
     final notify = ValueNotifier<int>(0);
     final project = ValueNotifier<Project>(projectWith(seLayer()));
     final heardNow = ValueNotifier<AudioPeaks?>(heard);
+    final active = ValueNotifier<CutId>(const CutId('c1'));
     addTearDown(notify.dispose);
     addTearDown(project.dispose);
     addTearDown(heardNow.dispose);
-    return (notify: notify, project: project, heard: heardNow);
+    addTearDown(active.dispose);
+    return (notify: notify, project: project, heard: heardNow, active: active);
   }
 
-  testWidgets('built again for nothing, its S row and its transition row '
-      'are the rows it had', (tester) async {
-    final (:notify, :project, :heard) = host(heard: peaks);
-    await pumpHost(tester, notify: notify, project: project, heard: heard);
+  /// Each row's widget as it stands.
+  Map<String, Widget> rowsNow(WidgetTester tester) => {
+    for (final MapEntry(:key, value: row) in rows.entries)
+      key: tester.widget(row),
+  };
+
+  testWidgets('built again for nothing, every row of its strip is the row '
+      'it had', (tester) async {
+    final (:notify, :project, :heard, :active) = host(heard: peaks);
+    await pumpHost(
+      tester,
+      notify: notify,
+      project: project,
+      heard: heard,
+      active: active,
+    );
     final panelBefore = tester.widget(find.byType(StoryboardPanel));
-    final seBefore = tester.widget(seRow);
-    final transitionBefore = tester.widget(transitionRow);
+    final before = rowsNow(tester);
     expect(waveform, findsOneWidget, reason: 'premise: the sound is drawn');
 
     notify.value += 1;
@@ -141,14 +165,42 @@ void main() {
       isNot(same(panelBefore)),
       reason: 'premise: the panel was built again',
     );
-    expect(tester.widget(seRow), same(seBefore));
-    expect(tester.widget(transitionRow), same(transitionBefore));
+    for (final MapEntry(:key, value: row) in rowsNow(tester).entries) {
+      expect(row, same(before[key]), reason: key);
+    }
+  });
+
+  testWidgets('🚨a cut crossed builds no row of the strip — none of them '
+      'shows which cut you stand in', (tester) async {
+    final (:notify, :project, :heard, :active) = host(heard: peaks);
+    await pumpHost(
+      tester,
+      notify: notify,
+      project: project,
+      heard: heard,
+      active: active,
+    );
+    final before = rowsNow(tester);
+
+    active.value = const CutId('c2');
+    notify.value += 1;
+    await tester.pump();
+
+    for (final MapEntry(:key, value: row) in rowsNow(tester).entries) {
+      expect(row, same(before[key]), reason: key);
+    }
   });
 
   testWidgets('🚨a waveform heard after its row was built is drawn — what '
       'the store answers is what the row shows', (tester) async {
-    final (:notify, :project, :heard) = host();
-    await pumpHost(tester, notify: notify, project: project, heard: heard);
+    final (:notify, :project, :heard, :active) = host();
+    await pumpHost(
+      tester,
+      notify: notify,
+      project: project,
+      heard: heard,
+      active: active,
+    );
     expect(waveform, findsNothing, reason: 'premise: still extracting');
 
     heard.value = peaks;
@@ -159,8 +211,14 @@ void main() {
   });
 
   testWidgets('a sound edited is its row built again', (tester) async {
-    final (:notify, :project, :heard) = host(heard: peaks);
-    await pumpHost(tester, notify: notify, project: project, heard: heard);
+    final (:notify, :project, :heard, :active) = host(heard: peaks);
+    await pumpHost(
+      tester,
+      notify: notify,
+      project: project,
+      heard: heard,
+      active: active,
+    );
     // The words are painted, fitted to the block: read off the widget.
     String said() => tester
         .widget<DialogueFitText>(

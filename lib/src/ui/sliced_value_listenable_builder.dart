@@ -125,6 +125,14 @@ class SlicedListenable<S> extends ChangeNotifier {
   /// was handed is older than that rebuild.
   S reread() => _shown = _slice();
 
+  /// The slice asked again by a holder whose answer can move WITHOUT
+  /// [_listenable] saying so — passed on if it changed.
+  ///
+  /// [reread]'s other half: a rebuild from above shows the new slice itself,
+  /// but a listener it hands back as it was — a kept row's painter (I-57,
+  /// 10-14) — hears it only here.
+  void recheck() => _onChanged();
+
   void _onChanged() {
     final next = _slice();
     if (next == _shown) {

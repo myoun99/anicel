@@ -93,7 +93,7 @@ class _StoryboardFolded {
   ) => (
     rail: () => _state._rows._conteLabel(track, seat, chromeless: true),
     frames: (context, geometry) => _StoryboardConteRow(
-      track: track,
+      trackId: track.id,
       seat: seat,
       layoutEntries: entries,
       width: 0,
@@ -116,7 +116,7 @@ class _StoryboardFolded {
     return (
       rail: () => _state._rows._cameraLabel(track, chromeless: true),
       frames: (context, geometry) => _StoryboardCameraRow(
-        track: track,
+        trackId: track.id,
         reaches: cameraRowReachesOf(
           entries,
           transitionRowSpans(track.transitionLayer, instructions),

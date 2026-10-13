@@ -197,7 +197,8 @@ import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
 import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
-import 'timeline/memo_token.dart' show ByIdentity, ByList, KeptPiece;
+import 'timeline/memo_token.dart'
+    show ByIdentity, ByList, BySet, KeptPiece;
 import 'repaint_props.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
@@ -220,7 +221,8 @@ import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
 import 'listenable_rebind.dart';
 import 'session/row_spans.dart' show trackRowMaterialBlocks;
-import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
+import 'sliced_value_listenable_builder.dart'
+    show SlicedListenable, SlicedListenableBuilder;
 
 part 'storyboard/storyboard_projection_keys.dart';
 part 'storyboard/storyboard_camera_row.dart';
@@ -1703,6 +1705,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.removeListener(_frameAxis.handleScroll);
     _frameAxis.dispose();
     _letGoOfKeptRows?.call();
+    _standing.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();
     // ⛔Only our own — the host's outlives this panel by design.
@@ -4986,9 +4989,9 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
   }
 }
 
-class _StoryboardTrackRow extends StatelessWidget {
+class _StoryboardTrackRow extends KeptPiece {
   const _StoryboardTrackRow({
-    required this.track,
+    required this.trackId,
     required this.layoutEntries,
     required this.onRowFramePress,
     required this.onDropMediaAsset,
@@ -5032,7 +5035,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// keeps the icon display-only.
   final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
 
-  final Track track;
+  final TrackId trackId;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
 
   /// The scroll content's full width — the SE rows' own. The row used to
@@ -5113,10 +5116,10 @@ class _StoryboardTrackRow extends StatelessWidget {
     StoryboardCutBlocksPainter blocksPainter,
   ) => Positioned.fill(
     key: ValueKey<String>(
-      'storyboard-plate-edit-chrome-slot-${track.id.value}',
+      'storyboard-plate-edit-chrome-slot-${trackId.value}',
     ),
     child: TimelineRowEditChromeLayer(
-      paintName: 'storyboard-plate-edit-chrome-${track.id.value}',
+      paintName: 'storyboard-plate-edit-chrome-${trackId.value}',
       // What the triangles stand on: the plate, and over it the block's
       // label bands and pictures, each in its own ink (유저 2026-09-26:
       // 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 가능하지?」). ↩️One
@@ -5145,7 +5148,7 @@ class _StoryboardTrackRow extends StatelessWidget {
               endGrip: true,
             ),
         ],
-        gripIdScope: track.id.value,
+        gripIdScope: trackId.value,
         layer: null,
         baseLayer: null,
         crossAxisExtent: laneHeight,
@@ -5180,7 +5183,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// that the selection IS a range on this row's own axis.
   bool _isSelectedAt(int frame) => _storyboardRangeCovers(
     cutSelect?.selectedRange.value,
-    TrackRowAddress(track.id),
+    TrackRowAddress(trackId),
     frame,
   );
 
@@ -5204,11 +5207,11 @@ class _StoryboardTrackRow extends StatelessWidget {
       isInSelection: (_, frame) => cutSelect == null || _isSelectedAt(frame),
       onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
           cutSelect?.onDrag(
-            trackId: track.id,
+            trackId: trackId,
             anchorGlobalFrame: anchorIndex,
             headGlobalFrame: headIndex,
             headRow: railRowAt?.call(
-              TrackRowAddress(track.id),
+              TrackRowAddress(trackId),
               headCrossOffset,
             ),
           ),
@@ -5248,7 +5251,7 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   void _handlePressDown(PointerDownEvent event) {
     onRowFramePress?.call(
-      TrackRowAddress(track.id),
+      TrackRowAddress(trackId),
       _frameAtX(event.localPosition.dx),
     );
   }
@@ -5260,8 +5263,45 @@ class _StoryboardTrackRow extends StatelessWidget {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
   }
 
+  /// What the row shows — its cuts by how they lie
+  /// ([StoryboardTimelineLayoutEntry.==]), the cut you stand on by the one
+  /// listenable its track holds ([_StoryboardStanding.standingCutOn]), the
+  /// linked cuts by who they are, and the pictures by the store they come
+  /// from.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed, the row painted every cut block of the track again, its
+  /// pictures and its words, and said them again to a screen reader.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackId,
+    ByList(layoutEntries),
+    laneHeight,
+    width,
+    timelineScale.pixelsPerFrame,
+    timelineScale.minBlockWidth,
+    ByIdentity(frameGeometry),
+    ByIdentity(hoveredCutId),
+    ByIdentity(standingCutId),
+    ByIdentity(windowBucket),
+    viewportWidth,
+    showSeconds,
+    projectFrameRate,
+    thumbnails,
+    BySet(linkedCutIds),
+    onRowFramePress != null,
+    onDropMediaAsset != null,
+    acceptsMediaAsset != null,
+    stripEdges != null,
+    cutMove != null,
+    cutSelect != null,
+    railRowAt != null,
+    onOpenCutLinks != null,
+    onEditCutBlock != null,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     final timelineWidth = _storyboardCutsExtent(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
     final drop = onDropMediaAsset;
@@ -5278,7 +5318,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       crossAxisExtent: laneHeight,
       minBlockWidth: timelineScale.minBlockWidth,
       selectedRange: cutSelect?.selectedRange,
-      rowAddress: TrackRowAddress(track.id),
+      rowAddress: TrackRowAddress(trackId),
       hoveredCutId: hoveredCutId,
       standingCutId: standingCutId,
       colorScheme: Theme.of(context).colorScheme,
@@ -5293,10 +5333,10 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
 
     return KeyedSubtree(
-      key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
+      key: ValueKey<String>('storyboard-track-row-${trackId.value}'),
       child: SizedBox(
         key: ValueKey<String>(
-          'storyboard-track-timeline-area-${track.id.value}',
+          'storyboard-track-timeline-area-${trackId.value}',
         ),
         width: math.max(timelineWidth, width),
         height: laneHeight,
@@ -5309,7 +5349,7 @@ class _StoryboardTrackRow extends StatelessWidget {
               child: RepaintBoundary(
                 child: CustomPaint(
                   key: ValueKey<String>(
-                    'storyboard-cut-blocks-${track.id.value}',
+                    'storyboard-cut-blocks-${trackId.value}',
                   ),
                   painter: blocksPainter,
                 ),
@@ -5321,7 +5361,7 @@ class _StoryboardTrackRow extends StatelessWidget {
             // It carries the HOVER too, which the block widgets used to
             // track one InkWell apiece.
             Positioned.fill(
-              key: ValueKey<String>('storyboard-cut-press-${track.id.value}'),
+              key: ValueKey<String>('storyboard-cut-press-${trackId.value}'),
               child: MouseRegion(
                 onHover: _handleHover,
                 onExit: (_) => hoveredCutId.value = null,
@@ -5358,9 +5398,9 @@ class _StoryboardTrackRow extends StatelessWidget {
             if (rangeGesture != null)
               TimelineFrameRangeGestureLayer(
                 key: ValueKey<String>(
-                  'storyboard-cut-range-gesture-slot-${track.id.value}',
+                  'storyboard-cut-range-gesture-slot-${trackId.value}',
                 ),
-                row: TrackRowAddress(track.id),
+                row: TrackRowAddress(trackId),
                 geometry: frameGeometry,
                 crossAxisExtent: laneHeight,
                 callbacks: rangeGesture,
@@ -5379,10 +5419,10 @@ class _StoryboardTrackRow extends StatelessWidget {
               Positioned.fill(
                 child: _storyboardRowDropTarget(
                   key: ValueKey<String>(
-                    'storyboard-track-asset-drop-${track.id.value}',
+                    'storyboard-track-asset-drop-${trackId.value}',
                   ),
                   rowContext: context,
-                  row: TrackRowAddress(track.id),
+                  row: TrackRowAddress(trackId),
                   frameAtX: _frameAtX,
                   onRowFramePress: onRowFramePress,
                   drop: drop,
@@ -5424,9 +5464,9 @@ class _StoryboardTrackRow extends StatelessWidget {
       return null;
     }
     return (
-      row: TrackRowAddress(track.id),
+      row: TrackRowAddress(trackId),
       cells: cellAt(frame),
-      open: () => onEditCutBlock(track.id, frame),
+      open: () => onEditCutBlock(trackId, frame),
     );
   }
 

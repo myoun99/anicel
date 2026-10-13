@@ -24,6 +24,33 @@ class StoryboardTimelineLayoutEntry {
   final int endFrame;
   final int duration;
   final Cut cut;
+
+  /// Two entries are one when they lay the very same cut at the same place.
+  ///
+  /// 🚨The cut by IDENTITY, never by its deep `==`, which walks every frame
+  /// of every layer: the storyboard's rows are kept while their cuts lie
+  /// alike (I-57, 10-14), asked on every build of the panel — every notify,
+  /// every cut crossed — of every entry of the track.
+  @override
+  bool operator ==(Object other) =>
+      other is StoryboardTimelineLayoutEntry &&
+      identical(other.cut, cut) &&
+      other.trackId == trackId &&
+      other.cutId == cutId &&
+      other.trackIndex == trackIndex &&
+      other.cutIndex == cutIndex &&
+      other.startFrame == startFrame &&
+      other.endFrame == endFrame &&
+      other.duration == duration;
+
+  @override
+  int get hashCode => Object.hash(
+    identityHashCode(cut),
+    trackIndex,
+    cutIndex,
+    startFrame,
+    endFrame,
+  );
 }
 
 List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(

@@ -48,6 +48,21 @@ class CameraRowReach {
   /// the LEAVING one there, drawn on the upper line.
   final int leavingFrom;
 
+  /// The same cut laid alike ([StoryboardTimelineLayoutEntry.==]) over the
+  /// same frames — what the camera row is kept while (I-57, 10-14).
+  @override
+  bool operator ==(Object other) =>
+      other is CameraRowReach &&
+      other.entry == entry &&
+      other.mediaStart == mediaStart &&
+      other.mediaEnd == mediaEnd &&
+      other.arrivingUntil == arrivingUntil &&
+      other.leavingFrom == leavingFrom;
+
+  @override
+  int get hashCode =>
+      Object.hash(entry, mediaStart, mediaEnd, arrivingUntil, leavingFrom);
+
   /// Whether [trackFrame] is one of the cut's own frames.
   bool reaches(int trackFrame) =>
       trackFrame >= mediaStart && trackFrame < mediaEnd;

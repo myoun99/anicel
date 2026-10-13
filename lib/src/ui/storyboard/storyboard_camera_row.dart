@@ -25,10 +25,10 @@ part of '../storyboard_panel.dart';
 /// ([TimelineLaneKeysLine]), which steps between the lines where the cut
 /// does, and named over it by the shared word ([timelineStretchWordSpan]).
 /// A row has nothing of its own to draw them with.
-class _StoryboardCameraRow extends StatelessWidget
+class _StoryboardCameraRow extends KeptPiece
     with _StoryboardProjectionKeys {
   const _StoryboardCameraRow({
-    required this.track,
+    required this.trackId,
     required this.reaches,
     required this.width,
     required this.height,
@@ -44,7 +44,7 @@ class _StoryboardCameraRow extends StatelessWidget
   });
 
   @override
-  final Track track;
+  final TrackId trackId;
   @override
   final List<CameraRowReach> reaches;
   @override
@@ -81,7 +81,7 @@ class _StoryboardCameraRow extends StatelessWidget
   /// 콘티패널에서 가능. 컷 클램핑만 되도록」 (유저 2026-10-08).
   final StoryboardStripSelectCallbacks? stripSelect;
 
-  LayerId get _rowId => trackCameraRowId(track.id);
+  LayerId get _rowId => trackCameraRowId(trackId);
 
   @override
   TimelineRowAddress get _address => LayerRowAddress(_rowId);
@@ -101,8 +101,34 @@ class _StoryboardCameraRow extends StatelessWidget
   PropertyLaneRow _laneOf(Cut cut, Layer layer) =>
       cameraUnionHeader(cut.camera.track, defById: instructionDefById);
 
+  /// What the row shows — its cuts by how they lie and how far each one's
+  /// own frames reach ([CameraRowReach.==]), and the vocabulary its moves
+  /// are named in: one lookup of one set while the set is the same.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed, the row handed its LayoutBuilders new builders — 🔬two of
+  /// the layouts a crossing ran in the strip on the AMMI OP, each painting
+  /// the whole strip's layer again.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackId,
+    ByList(reaches),
+    width,
+    height,
+    timelineScale.pixelsPerFrame,
+    timelineScale.minBlockWidth,
+    ByIdentity(frameGeometry),
+    ByIdentity(windowBucket),
+    viewportWidth,
+    instructionDefById,
+    onRowFramePress != null,
+    onCameraCutPress != null,
+    onEditCameraCell != null,
+    stripSelect != null,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     final onEdit = onEditCameraCell;
     return _strip(
       context,
