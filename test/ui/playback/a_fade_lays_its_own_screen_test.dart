@@ -93,7 +93,6 @@ void main() {
     PlaybackFramePainter seenThroughNone({
       required List<({int color, double opacity})> veils,
     }) => PlaybackFramePainter(
-      image: null,
       canvasSize: size,
       viewport: CanvasViewport(zoom: 0.5),
       paintPaper: false,
