@@ -28,6 +28,7 @@ import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'axis_turn.dart';
 import 'berth_row.dart';
+import 'memo_token.dart' show KeptPiece;
 import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
 
@@ -104,7 +105,7 @@ class LayerSectionBandCell extends StatelessWidget {
 /// hides SE and CAM, and nothing else in that menu was wanted. The x-sheet
 /// band never had the flyout, so deleting it is also what finally makes
 /// the two surfaces agree.
-class SectionBandZone extends StatelessWidget {
+class SectionBandZone extends KeptPiece {
   const SectionBandZone({super.key, required this.label, this.extent});
 
   final String label;
@@ -120,8 +121,15 @@ class SectionBandZone extends StatelessWidget {
   static const double fontSize = 9;
   static const double lineHeight = 1.15;
 
+  /// What the band shows. ↩️Built again with its rail, the band handed its
+  /// LayoutBuilder a new builder, which ran again in layout and so painted
+  /// the rail's whole viewport (I-57, 10-14 — 🔬78 render objects of a
+  /// storyboard crossing).
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (label, extent);
+
+  @override
+  Widget buildKept(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: layerSectionLabelSlotWidth,

@@ -68,6 +68,39 @@ void main() {
     );
   });
 
+  testWidgets('🚨nor the host\'s controls on its left: the row moves them, '
+      'it does not paint them', (tester) async {
+    final cursor = ValueNotifier<int>(8);
+    addTearDown(cursor.dispose);
+    await tester.pumpWidget(
+      _bar(
+        cursor,
+        leading: const Row(
+          key: ValueKey<String>('host-controls'),
+          children: [Text('Host'), SizedBox(width: 400), Text('controls')],
+        ),
+      ),
+    );
+    final line = at(tester, 'timeline-local-frame-counter');
+    final controls = at(tester, 'host-controls');
+
+    final frame = await frameCensus(tester, () => cursor.value = 9);
+
+    expect(
+      frame.painted.where((object) => !identical(object, line)),
+      isNotEmpty,
+      reason: 'premise: 9 to 10 is a wider counter',
+    );
+    expect(
+      frame.painted.any((object) => identical(object, controls)) ||
+          paintedInside(frame.painted, controls),
+      isFalse,
+      reason: '↩️a counter or a cut name of another width painted the '
+          'host\'s toolbar again — 🔬86 render objects of the '
+          'storyboard\'s, the frame after every crossing (I-57, 10-14)',
+    );
+  });
+
   testWidgets('🚨a counter tick re-describes its line alone, and a bar '
       'described again stops at the zoom beside it', (tester) async {
     final semantics = tester.ensureSemantics();
@@ -132,7 +165,7 @@ void main() {
   });
 }
 
-Widget _bar(ValueNotifier<int> cursor) => MaterialApp(
+Widget _bar(ValueNotifier<int> cursor, {Widget? leading}) => MaterialApp(
   theme: buildAppTheme(),
   home: Scaffold(
     body: Align(
@@ -140,6 +173,7 @@ Widget _bar(ValueNotifier<int> cursor) => MaterialApp(
       child: SizedBox(
         width: 900,
         child: TimelineCommandBar(
+          leading: leading,
           cluster: TimelineViewCluster(
             frameCursor: cursor,
             projectFrameRate: ProjectFrameRate.fps24,

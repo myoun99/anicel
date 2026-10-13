@@ -110,7 +110,13 @@ class TimelineCommandBar extends StatelessWidget {
               // overflows and costs no layout when it does not.
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: _Seat(_Piece.leading),
+                // 🚨On a layer of its own (I-57, 10-14): a counter or a cut
+                // name that changed its width moved the row, and the
+                // scroller laid out at its new width painted the host's
+                // controls again — 🔬86 render objects of the storyboard's
+                // toolbar the frame after every crossing. Laid out with no
+                // width from the row, they are moved, not painted.
+                child: RepaintBoundary(child: _Seat(_Piece.leading)),
               ),
             ),
           ),

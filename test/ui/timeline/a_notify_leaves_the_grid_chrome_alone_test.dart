@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart'
     show TimelineLayerControlsHeader;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show SectionBandZone;
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/memo_token.dart' show KeptPiece;
 
@@ -102,6 +104,30 @@ void main() {
       final frame = await frameCensus(tester, sessionOf(tester).notifyChanged);
 
       expectNonePainted(pieces, frame);
+    });
+  }
+
+  for (final grid in ['timeline', 'storyboard']) {
+    testWidgets('nor the $grid rail\'s section bands', (tester) async {
+      await pumpApp(tester, grid);
+      final bands = tester
+          .renderObjectList(
+            inThePanel(find.byType(SectionBandZone), panel: grid),
+          )
+          .toList();
+      expect(bands, isNotEmpty, reason: 'premise: the rail has its bands');
+
+      final frame = await frameCensus(tester, sessionOf(tester).notifyChanged);
+
+      for (final band in bands) {
+        expect(
+          paintedInside(frame.painted, band),
+          isFalse,
+          reason: '↩️a band built again with its rail ran its '
+              'LayoutBuilder again and painted the rail\'s viewport — 🔬78 '
+              'render objects of a storyboard crossing',
+        );
+      }
     });
   }
 
