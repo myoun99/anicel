@@ -131,6 +131,33 @@ void main() {
     });
   }
 
+  testWidgets('and a kept band follows its run: lanes opened stretch it as '
+      'they stretch a band built with them open', (tester) async {
+    List<Size> bands() => [
+      for (final band in tester.renderObjectList(
+        inThePanel(find.byType(SectionBandZone)),
+      ))
+        (band as RenderBox).size,
+    ];
+    Future<void> openTheLanes() async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('legend-lanes-toggle')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpApp(tester, 'timeline');
+    final closed = bands();
+    await openTheLanes();
+    final followed = bands();
+    await tester.pumpWidget(const SizedBox());
+    await pumpApp(tester, 'timeline');
+    await openTheLanes();
+
+    expect(followed, isNot(closed), reason: 'premise: the lanes stretch a run');
+    expect(followed, bands());
+  });
+
   testWidgets('nor any of the timeline\'s legend', (tester) async {
     await pumpApp(tester, 'timeline');
     final legend = tester.renderObject(
