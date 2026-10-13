@@ -119,6 +119,30 @@ double frameVisibleX({
       timelineFrameEdge(frameStartIndex, frameCellWidth);
 }
 
+/// The frame whose cell holds [visibleX] in that surface — [frameVisibleX]
+/// read backwards, never below frame 0; the caller holds it to its own
+/// frames. What a press on a row lands on.
+///
+/// 🚨ONE reading for every press on a row (I-57, 10-13): the cells, the
+/// range drag over them and a lane's each read it their own way, and the
+/// range drag's plain quotient missed the law's whole-pixel boundaries — a
+/// press a pixel short of one, at a zoom whose cell is no whole number of
+/// pixels, picked one cell and anchored a drag on the next.
+int frameAtVisibleX({
+  required double visibleX,
+  required int frameStartIndex,
+  required double frameCellWidth,
+  required double leadingFrameSpacerWidth,
+}) {
+  final frame = timelineFrameAt(
+    visibleX -
+        leadingFrameSpacerWidth +
+        timelineFrameEdge(frameStartIndex, frameCellWidth),
+    frameCellWidth,
+  );
+  return frame < 0 ? 0 : frame;
+}
+
 double frameRangeVisibleWidth({
   required int startFrameIndex,
   required int endFrameIndexExclusive,

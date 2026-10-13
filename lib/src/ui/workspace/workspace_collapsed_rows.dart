@@ -518,7 +518,8 @@ class _WorkspaceCollapsedRows {
             // The CAMERA row's union summary (B4) — the same shared
             // markers the timeline row mounts; ⑩ root C says this overlay
             // mounts the real row, columns and all.
-            unionLane: timelineCameraUnionLane(layer: layer, session: session),
+            unionLaneFor: (layer) =>
+                timelineCameraUnionLane(layer: layer, session: session),
             // `commaDrag`/`rangeGesture` stay null — display-only, same
             // reason.
             onSelectLayer: (_) {},

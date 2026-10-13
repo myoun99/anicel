@@ -121,13 +121,13 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 
 class _TimelineFrameRowsScrollBodyState
     extends State<TimelineFrameRowsScrollBody> {
-  /// Identity-gated row memo (the timesheet-document memo, per row): on a
-  /// commit-time rebuild the untouched layers come back as the SAME Layer
-  /// instances from the repository, so their rows reuse the cached widget
-  /// INSTANCE and Flutter skips their whole subtree rebuild. What a row
-  /// shows beyond its Layer joins the key ([TimelineCellsRowFacts]) — the
-  /// camera track, the SE waveform peaks — and lane rows, which are few,
-  /// are not memoized ([keptTimelineCellsRow], the x-sheet's columns' too).
+  /// The cells rows' memo, berth by berth: a row of the same SHAPE comes
+  /// back as the cached widget INSTANCE, so Flutter skips its subtree and
+  /// only the pieces that draw what changed are built again — a commit's
+  /// untouched layers come back as the same Layer instances and draw
+  /// nothing new, and a cut switch repaints ([TimelineCellsRowFacts],
+  /// [BerthWorld]). Lane rows, which are few, are not memoized
+  /// ([keptTimelineCellsRow], the x-sheet's columns' too).
   final KeptTimelineCellsRows _rowMemo = KeptTimelineCellsRows();
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).

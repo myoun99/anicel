@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// 🚨F-244: AN EDIT KEEPS EVERY X-SHEET COLUMN IT LEFT ALONE.
@@ -24,9 +25,13 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 /// The timeline's rows kept theirs (`zoom_does_not_rebuild_rows_test`,
 /// `timeline_row_memo_test`); the x-sheet built every column again at every
 /// commit — and every bucket crossing — the same row turned on its side
-/// with nothing kept. Both keep a row by one reading of what it shows now
+/// with nothing kept. Both keep a row by one reading of it
 /// ([keptTimelineCellsRow]), so an edit to one layer hands every other
 /// column back as the widget it already was.
+///
+/// 🚨I-57 (10-13): that reading is the row's SHAPE now, so the edited
+/// column comes back whole too — the edit reaches its picture alone
+/// ([BerthRow.shows]), and the others' pictures are not built again.
 void main() {
   Project project() => Project(
     id: const ProjectId('kept-rows'),
@@ -75,11 +80,23 @@ void main() {
     for (final row in tester.widgetList<TimelineFrameCellsRow>(
       find.byType(TimelineFrameCellsRow),
     ))
-      row.baseLayer!.id.value: row,
+      row.layer.id.value: row,
   };
 
-  testWidgets('a comma drag released on B hands the x-sheet\'s A, C and D '
-      'columns back as they were', (tester) async {
+  /// Each column's cells picture, by the layer it draws.
+  Map<String, TimelineRowCellsPainter> pictures(WidgetTester tester) => {
+    for (final paint in tester.widgetList<CustomPaint>(
+      find.descendant(
+        of: find.byType(XSheetTimelineGrid),
+        matching: find.byType(CustomPaint),
+      ),
+    ))
+      if (paint.painter case final TimelineRowCellsPainter painter)
+        painter.layer.id.value: painter,
+  };
+
+  testWidgets('a comma drag released on B hands every x-sheet column back '
+      'as it was, and draws B\'s alone anew', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -102,10 +119,16 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final before = columns(tester);
+    final drawnBefore = pictures(tester);
     expect(
       before.keys,
       containsAll(const ['a', 'b', 'c', 'd']),
       reason: 'premise: every layer has its cells column on screen',
+    );
+    expect(
+      drawnBefore.keys,
+      containsAll(const ['a', 'b', 'c', 'd']),
+      reason: 'premise: every column draws its cells',
     );
 
     expect(
@@ -123,16 +146,29 @@ void main() {
     await tester.pumpAndSettle();
 
     final after = columns(tester);
+    final drawnAfter = pictures(tester);
     expect(
-      identical(after['b'], before['b']),
+      identical(drawnAfter['b'], drawnBefore['b']),
       isFalse,
       reason: 'premise: the edit reached the column it changed',
     );
+    expect(
+      drawnAfter['b']!.layer.timeline,
+      isNot(drawnBefore['b']!.layer.timeline),
+      reason: 'the edited column draws the edit',
+    );
+    for (final column in const ['a', 'b', 'c', 'd']) {
+      expect(
+        identical(after[column], before[column]),
+        isTrue,
+        reason: 'column $column is the shape it was',
+      );
+    }
     for (final untouched in const ['a', 'c', 'd']) {
       expect(
-        identical(after[untouched], before[untouched]),
+        identical(drawnAfter[untouched], drawnBefore[untouched]),
         isTrue,
-        reason: 'column $untouched showed nothing the edit changed',
+        reason: 'column $untouched drew nothing the edit changed',
       );
     }
   });

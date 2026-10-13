@@ -253,6 +253,20 @@ import '../../tool/refactor/clone_scan.dart';
 /// the walk the strips' sweep made, so the walk is ONE `_addressedRowAt`
 /// both ask now, and the sweep's body no longer holds the index arithmetic
 /// the pair had in common.
+///
+/// 87 → 88 (2026-10-13, I-57 — a kept cells row reads its row at the
+/// press), under the ceiling a pair had left. The new pair is the two
+/// range layers' `_startDrag` (43 tokens): each begins a select the same
+/// way — its mode, its anchor, the grip taken, the first select told — on
+/// callbacks of their own. The cells' layer reads its row once at the
+/// press now, and the `widget.row` the tail spelled became one name like
+/// the lane's `_rowAddress`. ⛔Not merged: two of them, and the third is
+/// what earns a merge. The same lane put the cell under a press in ONE
+/// place (`frameAtVisibleX`): the cells, the range drag over them and a
+/// lane's had read it three ways, and the pair its first spelling made
+/// with the lane's `_frameAt` is gone with them.
+/// 🔬Measured on the lane against master (`16812efd7`, at 87): that one
+/// added, none gone.
 /// 🔬Measured on the lane against its base (`71ec1f1f0`, at 89): that one
 /// gone, none added.
 void main() {

@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/ui/timeline/berth_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/named.dart';
 
@@ -33,11 +35,12 @@ extension NamedFinders on CommonFinders {
 
 /// The name a [Named] directly over [element] gives it, or null.
 ///
-/// A KEPT controls row's names are spelled with the layer it was BUILT for,
-/// and a cut switch may have stood it for another since ([BerthRow], I-57
-/// ㉣) — so a name is read as the row stands: the built-for id that ends it
-/// is read as the id of the layer the row stands for now. Every name in a
-/// row that carries its layer ENDS with the layer's id
+/// A KEPT row's names are spelled with the layer it was BUILT for — a
+/// controls row's ([BerthRow], I-57 ㉣) and a cells row's (kept by its
+/// shape, I-57) — and a cut switch may have stood it for another since, so
+/// a name is read as the row stands: the built-for id that ends it is read
+/// as the id of the layer the row stands for now. Every name in a row that
+/// carries its layer ENDS with the layer's id
 /// (`a_kept_row_acts_on_the_layer_it_stands_for_test.dart` holds that).
 String? nameOf(Element element) {
   String? name;
@@ -55,10 +58,14 @@ String _asTheRowStands(Element named, String name) {
   if (now == null) {
     return name;
   }
-  final row = named.findAncestorWidgetOfExactType<TimelineLayerControlsRow>();
-  final builtFor = row?.layer.id.value;
+  final builtFor = _keptRowAround(named)?.id.value;
   if (builtFor == null || builtFor == now || !name.endsWith('-$builtFor')) {
     return name;
   }
   return '${name.substring(0, name.length - builtFor.length)}$now';
 }
+
+/// The layer the kept row around [named] was built for.
+Layer? _keptRowAround(Element named) =>
+    named.findAncestorWidgetOfExactType<TimelineLayerControlsRow>()?.layer ??
+    named.findAncestorWidgetOfExactType<TimelineFrameCellsRow>()?.layer;

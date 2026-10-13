@@ -206,10 +206,10 @@ final class RowBerthKey extends LocalKey {
 /// built from (I-57 ㉣, 10-13). A berth's entry lives while its berth
 /// does: the memo holds the berths of the latest pass and no others.
 ///
-/// A row whose facts name its layer (the cells') can only be handed back
-/// to that layer; a row whose facts do not (the controls rows' face) is
-/// handed back to whichever layer stands in its berth now, and acts
-/// through [BerthRow].
+/// No row's facts name its layer: a row is handed back to whichever layer
+/// stands in its berth now, and acts through [BerthRow] — the controls rows
+/// by their face, the cells rows by their shape, drawing what the berth
+/// shows ([BerthRow.shows]).
 final class KeptByBerth<F> {
   final Map<RowBerthKey, Kept<F>> _held = {};
   RowBerthMap? _heldFor;

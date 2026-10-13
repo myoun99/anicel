@@ -26,14 +26,19 @@ import '../../helpers/row_berths_in_order.dart';
 /// … 이름/대사 지정하니까 보이네」, card `F-178` ⑥).
 ///
 /// A take's conform runs after the take is placed, so its SE row is first
-/// built with no peaks. The timeline memoizes rows by their Layer, and the
+/// built with no peaks. The timeline memoized rows by their Layer, and the
 /// store's notification rebuilds the host with the SAME layer — the memo
 /// handed the blank row back until an edit made a new one. The storyboard
 /// keeps no such memo, which is why it showed the waveform all along.
 ///
-/// ⚠️[_uncovered] is ONE function for every pump, as the session's tear-off
-/// is in the app: a fresh closure is a new memo key, and a memo that misses
-/// on every pump would pass the first pin with the key left as it was.
+/// 🚨I-57 (10-13): a row is kept by its shape now, and the peaks reach it
+/// as its world ([BerthWorld]) — its pictures are built again, the row is
+/// not.
+///
+/// ⚠️[_uncovered] and [_peaksFor] are ONE function for every pump, as the
+/// session's tear-offs are in the app: a fresh closure is a new memo key,
+/// and a memo that misses on every pump would pass the first pin with the
+/// world left as it was.
 void main() {
   final layer = Layer(
     id: const LayerId('se-1'),
@@ -50,7 +55,9 @@ void main() {
     lanesForLayer: (_) => const [],
   );
 
-  Widget body(AudioPeaks? landed) => MaterialApp(
+  setUp(() => _landed = null);
+
+  Widget body() => MaterialApp(
     home: Scaffold(
       body: Material(
         child: TimelineFrameRowsScrollBody(
@@ -71,7 +78,7 @@ void main() {
             onLayerOpacityChanged: (_, _) {},
             onToggleLayerTimesheet: (_) {},
             onLayerMarkSelected: (_, _) {},
-            audioPeaksFor: (_) => landed,
+            audioPeaksFor: _peaksFor,
             projectFrameRate: ProjectFrameRate.fps24,
           ),
           frameStartIndex: 0,
@@ -91,10 +98,12 @@ void main() {
 
   testWidgets('🚨the same layer, rebuilt once the peaks land, shows them — '
       'no edit needed', (tester) async {
-    await tester.pumpWidget(body(null));
+    await tester.pumpWidget(body());
     expect(waveforms, findsNothing, reason: 'the premise: still extracting');
+    final row = tester.widget(find.byType(TimelineFrameCellsRow));
 
-    await tester.pumpWidget(body(peaks));
+    _landed = peaks;
+    await tester.pumpWidget(body());
 
     expect(
       waveforms,
@@ -103,22 +112,40 @@ void main() {
           'the memo handed the row built before the peaks back, until an '
           'edit replaced the layer',
     );
+    expect(
+      identical(tester.widget(find.byType(TimelineFrameCellsRow)), row),
+      isTrue,
+      reason: 'the peaks reach the row as its world; its shape is the same',
+    );
   });
 
   testWidgets('and a rebuild with nothing new hands the same row back — '
       'the memo still holds', (tester) async {
-    await tester.pumpWidget(body(peaks));
+    _landed = peaks;
+    await tester.pumpWidget(body());
     final first = tester.widget(find.byType(TimelineFrameCellsRow));
+    final drawn = tester.widget(waveforms);
 
-    await tester.pumpWidget(body(peaks));
+    await tester.pumpWidget(body());
 
     expect(
       identical(tester.widget(find.byType(TimelineFrameCellsRow)), first),
       isTrue,
-      reason: 'only the waveform the row paints joined its key',
+      reason: 'only the waveform the row paints joined its world',
+    );
+    expect(
+      identical(tester.widget(waveforms), drawn),
+      isTrue,
+      reason: 'a world that did not move builds no picture again',
     );
   });
 }
+
+/// The conform store as the host reads it: peaks land when they land.
+AudioPeaks? _landed;
+
+/// The store's peaks, from one function for every pump.
+AudioPeaks? _peaksFor(String _) => _landed;
 
 /// Every cell uncovered, from one function for every pump.
 TimelineCellExposureState _uncovered(Layer _, int _) =>

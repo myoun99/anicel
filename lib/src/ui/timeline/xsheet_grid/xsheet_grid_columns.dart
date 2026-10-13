@@ -54,10 +54,10 @@ class _XSheetGridColumns {
       );
 
   /// One column: a layer of its own size, and in it the row's gate — an
-  /// edge-drag step re-runs the builder with the preview layer substituted
-  /// for the drag target's column only. A layer's CELLS column is kept
-  /// while nothing it is built from changed ([keptTimelineCellsRow] — the
-  /// timeline's rows' memo, F-244); a lane's is built every pass.
+  /// edge-drag step shows the preview layer in the drag target's column
+  /// only. A layer's CELLS column is kept while its shape is what it was
+  /// ([keptTimelineCellsRow] — the timeline's rows' memo, F-244); a lane's
+  /// is built every pass.
   Widget _gatedColumn(
     TimelineDisplayRow entry,
     TimelineVirtualizationPlan plan,

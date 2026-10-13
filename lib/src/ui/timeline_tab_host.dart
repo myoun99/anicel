@@ -4,6 +4,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
+import '../models/camera_instruction.dart' show CameraInstructionDef;
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
@@ -324,6 +325,20 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     session: _session,
     expandedGroupKeys: widget.expandedLaneGroupKeys,
   );
+
+  /// The CAMERA row's union summary (B4): the shared transform-header union
+  /// lane, re-derived per row rebuild from the session's preview-aware
+  /// camera track.
+  ///
+  /// A method, as the term lookup below is: a kept cells row holds its
+  /// resolvers by equality ([TimelineCellsRowFacts]), and a closure built
+  /// per pass would build every row again at every pass (I-57, 10-13).
+  PropertyLaneRow? _cameraUnionLane(Layer layer) =>
+      timelineCameraUnionLane(layer: layer, session: _session);
+
+  /// The term a CAM row's chip names, from the registry as it stands.
+  CameraInstructionDef? _instructionDefById(String instructionId) =>
+      _session.camera.cameraInstructionSet.defById(instructionId);
 
   // ⛔THE HOST'S LANE-EDIT BODIES ARE GONE (F-102, 2026-09-15). The key
   // toggle, the typed value and the effect eyeball are [LaneVerbs]' now, for
@@ -661,8 +676,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               instructionDefs: _session.camera.cameraInstructionSet,
             ),
             onActivateCell: _activateCellEditor,
-            instructionDefById: (instructionId) =>
-                _session.camera.cameraInstructionSet.defById(instructionId),
+            instructionDefById: _instructionDefById,
             // D26: the crossing-fade refusal marker — this surface shows
             // the cut-local display clone, so the session answers by the
             // clone's PROJECTED keys. Always-on (a refusal warning takes
@@ -962,11 +976,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
-            // The CAMERA row's union summary (B4): the shared
-            // transform-header union lane, re-derived per row rebuild from
-            // the session's preview-aware camera track.
-            unionLaneForLayer: (layer) =>
-                timelineCameraUnionLane(layer: layer, session: _session),
+            unionLaneForLayer: _cameraUnionLane,
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the
             // row's effects, told apart by the lane the tap carries.

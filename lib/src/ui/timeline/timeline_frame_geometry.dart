@@ -89,19 +89,25 @@ class TimelineFrameGeometry {
   /// The frame whose cell holds [mainOffset] — [edgeAt] read backwards, and
   /// it lives beside it so the two cannot drift. Row-local coordinates, so a
   /// windowed row's scrolled offsets answer without knowing about the window.
-  /// Clamped INTO the row: a drop past either end names the end frame rather
-  /// than an index the row does not have.
+  /// Never below frame 0, and held to nothing else: what a press lands on,
+  /// which its row then asks whether it is one of its cells
+  /// ([frameAtVisibleX]).
+  int cellAt(double mainOffset) => frameAtVisibleX(
+    visibleX: mainOffset,
+    frameStartIndex: frameStartIndex,
+    frameCellWidth: frameCellExtent,
+    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+  );
+
+  /// [cellAt] clamped INTO the row: a drop past either end names the end
+  /// frame rather than an index the row does not have.
   int frameIndexAt(double mainOffset) {
     if (frameCellExtent <= 0 || frameEndIndexExclusive <= frameStartIndex) {
       return frameStartIndex;
     }
-    final frame = timelineFrameAt(
-      mainOffset -
-          leadingFrameSpacerWidth +
-          timelineFrameEdge(frameStartIndex, frameCellExtent),
-      frameCellExtent,
-    );
-    return frame.clamp(frameStartIndex, frameEndIndexExclusive - 1);
+    return cellAt(
+      mainOffset,
+    ).clamp(frameStartIndex, frameEndIndexExclusive - 1);
   }
 
   /// The same geometry seen through a window starting at [originPx] and

@@ -20,8 +20,8 @@ import 'package:anicel/src/ui/timeline/instance_editor_commands.dart'
     show editActiveInstance;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
-import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
-    show TimelineFrameCellsRow;
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart'
+    show TimelineRowCellsPainter;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
 import 'package:anicel/src/ui/session/transitions.dart';
@@ -169,15 +169,19 @@ void main() {
         ),
       );
 
-  /// The transition row as the cut's grid draws it right now.
+  /// The transition row as the cut's grid draws it right now — what its
+  /// cells picture paints, which a kept row's own layer is not (I-57: the
+  /// row is the layer it was built for, kept by its shape).
   Layer shownTransitionRow(WidgetTester tester) => tester
-      .widgetList<TimelineFrameCellsRow>(
+      .widgetList<CustomPaint>(
         find.descendant(
           of: find.byType(TimelineTabHost),
-          matching: find.byType(TimelineFrameCellsRow),
+          matching: find.byType(CustomPaint),
         ),
       )
-      .map((row) => row.layer)
+      .map((paint) => paint.painter)
+      .whereType<TimelineRowCellsPainter>()
+      .map((painter) => painter.layer)
       .singleWhere((layer) => layer.kind == LayerKind.transition);
 
   /// Every instruction-span overlay currently mounted, by its widget key.
