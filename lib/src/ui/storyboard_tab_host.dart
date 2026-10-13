@@ -256,6 +256,63 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   late final PanelInSightValueListenable<TimelineDragPreview?> _dragPreview =
       PanelInSightValueListenable(_session.dragPreview);
 
+  /// The rail's row-order drag: the S rows re-order their track's list, the
+  /// V rows the tracks.
+  ///
+  /// 🚨Bound ONCE, as the timeline host binds its own (F-244): the rail
+  /// keeps each of its rows — the drag wrapper with it — only while this is
+  /// the same object (I-57, 10-14). Nothing in it reads the build it was
+  /// made in: the verbs are the session's, and the closures ask the session
+  /// at the event.
+  late final TimelineRowDragHooks _rowDragHooks = TimelineRowDragHooks(
+    drag: _session.layerRowDragVerbs.inFlight,
+    onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
+    onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
+    onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
+    // R5 #9: the V row re-orders TRACKS, and the track list is the
+    // composite order (user, 2026-08-09) — so this is only offered where
+    // tracks are on screen.
+    onTrackUpdate: _session.layerRowDragVerbs.updateTrackRowDrag,
+    onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
+    onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
+    onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
+    // 🚨A5-3② (유저 2026-08-22): 「스토리보드패널에서는 되긴 하는데 **통일이
+    // 안 돼 있다** — 선택범위로 선택하고 이동하는 게 규칙인데 **그냥 바로
+    // 드래그 작동**해버림」.
+    //
+    // ⑨'s law is ONE law: the first drag SELECTS, and a drag that starts
+    // INSIDE the selection moves it. It was never the timeline's own — it
+    // is the cells' grammar transposed, and both rails draw cells. This
+    // rail simply passed null for the three hooks, and null means "this
+    // surface takes no part in row selection", so every press here went
+    // straight to the move.
+    //
+    // 🚨THE V ROWS ARE IN NOW (유저 2026-08-29). They used to answer null —
+    // "this subject takes no part in row selection" — which left a track
+    // drag moving on the first press. The comment here said putting tracks
+    // behind a select step was "not mine to make unasked". It was then
+    // asked:
+    //
+    // > 「v행트랙이든 뭐든 **선택범위는 작동하게**. 거기서 드래그는 뭐
+    // > 트랜지션은 불가로 남아있잖아? 그런식으로 **행에따라 불가는
+    // > 남아있지만 선택범위는 다 작동해야해**」
+    //
+    // ⇒ And it is CLAUDE.md's second absolute command spelled out:
+    // 「선택범위는 레이어 불문 자유롭게. 행의 종류로 막지 않는다」. A row
+    // type may still refuse to MOVE — that rule lives with the drop policy,
+    // where it can say which rows accept what — but it may not refuse to be
+    // SELECTED.
+    isInRowSelection: (subject) => _session.rowSelectionVerbs.rowIsSelected(
+      timelineRowAddressOfDragSubject(subject),
+    ),
+    onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
+      timelineRowAddressOfDragSubject(subject),
+    ),
+    onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
+    // I-39: what a picked-up row carries, named at the pointer.
+    rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
+  );
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -1003,65 +1060,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         panel: WorkingPanel.storyboard,
                       ),
                     ),
-                    // The S rows take the rail's row-order drag; the V rows
-                    // are tracks and keep their order.
-                    rowDragHooks: TimelineRowDragHooks(
-                      drag: _session.layerRowDragVerbs.inFlight,
-                      onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
-                      onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
-                      onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
-                      // R5 #9: the V row re-orders TRACKS, and the track list
-                      // is the composite order (user, 2026-08-09) — so this
-                      // is only offered where tracks are on screen.
-                      onTrackUpdate: _session.layerRowDragVerbs.updateTrackRowDrag,
-                      onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
-                      onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
-                      onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
-                      // 🚨A5-3② (유저 2026-08-22): 「스토리보드패널에서는 되긴
-                      // 하는데 **통일이 안 돼 있다** — 선택범위로 선택하고
-                      // 이동하는 게 규칙인데 **그냥 바로 드래그 작동**해버림」.
-                      //
-                      // ⑨'s law is ONE law: the first drag SELECTS, and a drag
-                      // that starts INSIDE the selection moves it. It was
-                      // never the timeline's own — it is the cells' grammar
-                      // transposed, and both rails draw cells. This rail
-                      // simply passed null for the three hooks, and null means
-                      // "this surface takes no part in row selection", so
-                      // every press here went straight to the move.
-                      //
-                      // 🚨THE V ROWS ARE IN NOW (유저 2026-08-29). They used
-                      // to answer null — "this subject takes no part in row
-                      // selection" — which left a track drag moving on the
-                      // first press. The comment here said putting tracks
-                      // behind a select step was "not mine to make unasked".
-                      // It was then asked:
-                      //
-                      // > 「v행트랙이든 뭐든 **선택범위는 작동하게**. 거기서
-                      // > 드래그는 뭐 트랜지션은 불가로 남아있잖아? 그런식으로
-                      // > **행에따라 불가는 남아있지만 선택범위는 다
-                      // > 작동해야해**」
-                      //
-                      // ⇒ And it is CLAUDE.md's second absolute command
-                      // spelled out: 「선택범위는 레이어 불문 자유롭게. 행의
-                      // 종류로 막지 않는다」. A row type may still refuse to
-                      // MOVE — that rule lives with the drop policy, where it
-                      // can say which rows accept what — but it may not
-                      // refuse to be SELECTED.
-                      isInRowSelection: (subject) =>
-                          _session.rowSelectionVerbs.rowIsSelected(
-                            timelineRowAddressOfDragSubject(subject),
-                          ),
-                      onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
-                        timelineRowAddressOfDragSubject(subject),
-                      ),
-                      onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
-                      // I-39: what a picked-up row carries, named at the
-                      // pointer.
-                      rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
-                    ),
-                    // The span half — the three hooks above only ARM the
-                    // selection; without this the press would select one row
-                    // and then refuse to grow.
+                    rowDragHooks: _rowDragHooks,
+                    // The span half — the select hooks of [_rowDragHooks] only
+                    // ARM the selection; without this the press would select
+                    // one row and then refuse to grow.
                     onRowSelectionSpan:
                         _session.rowSelectionVerbs.updateRowSelectionOver,
                     rowSelection: _session.rowSelection,
