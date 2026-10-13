@@ -80,13 +80,15 @@ class TimelineCommandBar extends StatelessWidget {
   /// two pieces reach their seats in it through [_BarPieces].
   ///
   /// 🚨I-57 (10-13): the frame was made anew on every build, round a
-  /// toolbar its host makes anew on every notify. A new frame laid the
-  /// scroller out again — the scroller's own LayoutBuilders and semantics
-  /// with it — and the tick layer round them, while the toolbar it held
-  /// handed back the same buttons. Measured on the user's project: a
-  /// notify that changed nothing cost 4.3ms with the bar made anew, 3.6
-  /// with it held. Now a new piece is a seat's rebuild and nothing round
-  /// it.
+  /// toolbar its host makes anew on every notify, and the whole bar was
+  /// built again for it — the tick layer, the row and the overflow
+  /// scroller with its own LayoutBuilders — while the toolbar it held
+  /// handed back the same buttons. Now a new piece is its seat's rebuild.
+  /// ⚠️The seat rebuilds inside the tick layer's scope, so the layer is
+  /// still laid out and painted for it (counted 10-14: a notify that
+  /// changed nothing rebuilt 9 widgets fewer, and laid out and painted
+  /// the same) — sparing those takes a toolbar handed back whole while
+  /// nothing on it changed.
   ///
   /// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
   /// and its width moves the row — it grows into the room on its left
