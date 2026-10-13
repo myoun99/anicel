@@ -1300,19 +1300,18 @@ class TimelineRowCellsPainter extends CustomPainter
   // used to emit these; the painted rows keep the a11y surface without
   // the widget cost.
   //
-  // 🚨ONE PASS, AND ONLY WHAT THE SENTENCE READS (I-57, 10-14). It asked
-  // each cell for its whole model outside any pass — the block off both
-  // neighbours, the writing — five exposure searches a cell for a
-  // sentence that reads one: 🔬on the AMMI OP, half the SEMANTICS of a
-  // cut crossing's frame, and SEMANTICS was half the frame (CPU samples).
+  // 🚨ONLY WHAT THE SENTENCE READS (I-57, 10-14). It asked each cell for
+  // its whole model outside any pass — the block off both neighbours, the
+  // writing — five exposure searches a cell for a sentence that reads
+  // one: 🔬on the AMMI OP, half the SEMANTICS of a cut crossing's frame,
+  // and SEMANTICS was half the frame (CPU samples). Read so, a cell is
+  // asked once and no pass has anything to keep.
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => readInOnePass(
-        () => frameWindowSemantics(
-          window: visibleFrameWindow(),
-          rectFor: cellRectFor,
-          labelFor: _semanticsLabelAt,
-        ),
+      (size) => frameWindowSemantics(
+        window: visibleFrameWindow(),
+        rectFor: cellRectFor,
+        labelFor: _semanticsLabelAt,
       );
 
   /// What the cell at [frameIndex] says to a screen reader — its model's
