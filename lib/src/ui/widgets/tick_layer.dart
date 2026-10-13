@@ -58,7 +58,22 @@ import 'still_raster.dart' show TickSceneLayer;
 /// repainted 17 boundaries, measured). So the layer is built once per
 /// child and handed back whole while the child is the same widget.
 class TickLayer extends StatefulWidget {
-  const TickLayer({super.key, required this.child}) : _drawnOverStill = true;
+  const TickLayer({super.key, required this.child}) : _kind = _Kind.built;
+
+  /// A layer whose ticks are HEARD — what moves on it listens to its tick
+  /// and lays out or paints itself ([TickText]), so nothing is built for
+  /// one — laid out, painted and described alone as a built tick's is,
+  /// with no build scope of its own.
+  ///
+  /// 🚨A build scope is what a built tick needs and what a heard one pays
+  /// for (I-57, 10-14). The command bar stood on a layer with one for its
+  /// counter, and the host handed it a toolbar made anew on every notify:
+  /// its seat was built in the layer's scope, and the bar was laid out and
+  /// painted again (🔬24 render objects) for a toolbar handing back the
+  /// buttons it had. Without a scope of its own the seat is built in its
+  /// host's, and a toolbar handed back as it was touches nothing.
+  const TickLayer.heard({super.key, required this.child})
+    : _kind = _Kind.heard;
 
   /// A panel's HOST on a layer of its own — laid out, painted and described
   /// alone, as a tick is, for the same reasons — that a still region keeps
@@ -83,15 +98,18 @@ class TickLayer extends StatefulWidget {
   /// boundary goes with it: a layout's mark is walked again only along
   /// what changed, never through the panel whole (measured 10-14 — taken
   /// away, the boundary spared no walk).
-  const TickLayer.host({super.key, required this.child})
-    : _drawnOverStill = false;
+  const TickLayer.host({super.key, required this.child}) : _kind = _Kind.host;
 
   final Widget child;
-  final bool _drawnOverStill;
+  final _Kind _kind;
 
   @override
   State<TickLayer> createState() => _TickLayerState();
 }
+
+/// What a [TickLayer] holds: a tick that is built, one that is heard, or a
+/// panel's host.
+enum _Kind { built, heard, host }
 
 class _TickLayerState extends State<TickLayer> {
   /// The layer as built round the child it holds.
@@ -101,33 +119,37 @@ class _TickLayerState extends State<TickLayer> {
   void didUpdateWidget(covariant TickLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.child, widget.child) ||
-        oldWidget._drawnOverStill != widget._drawnOverStill) {
+        oldWidget._kind != widget._kind) {
       _built = _layer();
     }
   }
 
   Widget _layer() {
-    final drawnOverStill = widget._drawnOverStill;
-    final child = drawnOverStill
-        ? widget.child
-        : RepaintBoundary(child: widget.child);
-    final laidOutAlone = LayoutBuilder(
-      builder: (context, constraints) {
-        assert(
-          constraints.isTight,
-          'A TickLayer keeps its layout in only under tight constraints '
-          '(got $constraints).',
-        );
-        return child;
-      },
-    );
+    final child = widget.child;
     return Semantics(
       container: true,
-      child: drawnOverStill
-          ? _TickBoundary(child: laidOutAlone)
-          : RepaintBoundary(child: laidOutAlone),
+      child: switch (widget._kind) {
+        _Kind.built => _TickBoundary(child: _laidOutAlone(child)),
+        _Kind.heard => _TickBoundary(child: child),
+        _Kind.host => RepaintBoundary(
+          child: _laidOutAlone(RepaintBoundary(child: child)),
+        ),
+      },
     );
   }
+
+  /// [child] under a LayoutBuilder of its own: the scope a build inside
+  /// the layer runs in.
+  static Widget _laidOutAlone(Widget child) => LayoutBuilder(
+    builder: (context, constraints) {
+      assert(
+        constraints.isTight,
+        'A TickLayer keeps its layout in only under tight constraints '
+        '(got $constraints).',
+      );
+      return child;
+    },
+  );
 
   @override
   Widget build(BuildContext context) => _built;

@@ -84,11 +84,10 @@ class TimelineCommandBar extends StatelessWidget {
   /// built again for it — the tick layer, the row and the overflow
   /// scroller with its own LayoutBuilders — while the toolbar it held
   /// handed back the same buttons. Now a new piece is its seat's rebuild.
-  /// ⚠️The seat rebuilds inside the tick layer's scope, so the layer is
-  /// still laid out and painted for it (counted 10-14: a notify that
-  /// changed nothing rebuilt 9 widgets fewer, and laid out and painted
-  /// the same) — sparing those takes a toolbar handed back whole while
-  /// nothing on it changed.
+  /// ↩️The seat rebuilt inside the tick layer's build scope, so the layer
+  /// was still laid out and painted for it (counted 10-14: 24 render
+  /// objects on a notify that changed nothing) — the layer is a HEARD one
+  /// now, with no scope of its own, and the seat is built in the host's.
   ///
   /// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
   /// and its width moves the row — it grows into the room on its left
@@ -96,8 +95,9 @@ class TimelineCommandBar extends StatelessWidget {
   /// paints THIS bar; one that keeps its width paints its line alone
   /// ([TickText], I-57 10-14). Rebuilt bare, the counter laid out the
   /// dock's panel scroller and repainted the panel and the dock around it
-  /// on every playback frame.
-  static const Widget _frame = TickLayer(
+  /// on every playback frame. Its lines hear their ticks, so nothing on
+  /// the bar is built for one ([TickLayer.heard]).
+  static const Widget _frame = TickLayer.heard(
     child: Padding(
       padding: padding,
       child: Row(
@@ -122,7 +122,7 @@ class TimelineCommandBar extends StatelessWidget {
   );
 
   /// [_frame] with no leading: the cluster still pinned right.
-  static const Widget _frameWithoutLeading = TickLayer(
+  static const Widget _frameWithoutLeading = TickLayer.heard(
     child: Padding(
       padding: padding,
       child: Row(
