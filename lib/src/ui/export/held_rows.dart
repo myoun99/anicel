@@ -48,15 +48,21 @@ class HeldRows {
     required void Function(int bytes) onHeld,
     required Object Function(BitmapSurface surface) addressOf,
     required RowNextShown nextShown,
+    required bool Function() laidTexelForTexel,
   }) : _room = room,
        _onHeld = onHeld,
        _addressOf = addressOf,
-       _nextShown = nextShown;
+       _nextShown = nextShown,
+       _laidTexelForTexel = laidTexelForTexel;
 
   final int Function() _room;
   final void Function(int bytes) _onHeld;
   final Object Function(BitmapSurface surface) _addressOf;
   final RowNextShown _nextShown;
+
+  /// The run's word that every picture it makes lays its rows down texel
+  /// for texel ([RowPictures.laidTexelForTexel]).
+  final bool Function() _laidTexelForTexel;
 
   final _rows = <Object, _Row>{};
 
@@ -215,6 +221,9 @@ final class _RowsOfOnePicture implements RowPictures {
   /// The rows composed for this picture alone, under their addresses — let
   /// go when it is made.
   final _passing = <Object, PositionedSurfaceImage>{};
+
+  @override
+  bool get laidTexelForTexel => _keeper._laidTexelForTexel();
 
   @override
   Future<PositionedSurfaceImage> of(

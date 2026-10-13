@@ -11,6 +11,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
+import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
@@ -31,6 +32,11 @@ const int _uploadOffloadPixelThreshold = 512 * 512;
 /// Test override for the isolate cutoff; null = [_uploadOffloadPixelThreshold].
 @visibleForTesting
 int? debugUploadOffloadPixelThreshold;
+
+/// Test hatch: every row composed whole — what the byte-for-byte pins
+/// render the ink against (`a_row_drawn_from_its_ink_is_the_same_bytes_test`).
+@visibleForTesting
+bool debugComposesRowsWhole = false;
 
 /// Converts a tiled [BitmapSurface] into one [ui.Image].
 ///
@@ -173,6 +179,29 @@ class CameraFrameRenderService {
   }) async {
     final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
+    // 🚨A ROW IS COMPOSED AS ITS INK ALONE ONLY WHERE IT IS LAID DOWN TEXEL
+    // FOR TEXEL — the playback cache's law (`inkCropDrawsTheSame`,
+    // `LayerFrameImageCache.prepare`'s `inkSuffices`), asked of this route.
+    // A projection that moves every canvas pixel onto an output pixel whole
+    // draws the ink exactly as it draws the whole image; any other has a
+    // crop laid back to the whole first ([drawPosedLayerImage]), which pays
+    // again the raster the crop saved — and so does every render a kept row
+    // is handed to, which is why [rows] has to vouch for all of them. A
+    // video frame's composites are drawn that way — the track stack's
+    // identity camera, and the camera standing square over a canvas-size
+    // frame.
+    // 🔬2026-10-13, the user's film (1,857 frames, card
+    // export-folders-and-rows-at-their-extent): 151 → 132 s, the video's
+    // bytes the same.
+    final texelCopy = cameraMovesPixelsWhole(
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    final rowsAsInk =
+        texelCopy &&
+        (rows?.laidTexelForTexel ?? true) &&
+        !debugComposesRowsWhole;
     final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
     // What this render made, and so lets go of when it is done: every row's
     // picture that [rows] does not keep, and every halving's.
@@ -215,6 +244,15 @@ class CameraFrameRenderService {
                   layer.surface,
                   reuse: BitmapTileImageCache.instance,
                   missing: MissingTilePictures.madeAtOnce,
+                  over:
+                      rowsAsInk &&
+                          inkCropDrawsTheSame(
+                            placement: layer.placement,
+                            blendMode: layer.blendMode,
+                            effects: layer.effects,
+                          )
+                      ? surfaceInkWorldRect(layer.surface)
+                      : null,
                 ))!;
             if (rows != null) {
               layerImages[layer] = await rows.of(layer.surface, compose);
@@ -374,15 +412,18 @@ class CameraFrameRenderService {
             drawPosedLayerImage(
               canvas,
               image: layerImage.image,
-              // Composed here over the whole content, never a cache's ink.
+              // The ink alone where it was composed so ([rowsAsInk]), and
+              // otherwise the whole content.
               worldRect: layerImage.worldRect,
-              extent: layerImage.worldRect,
+              extent: surfaceContentWorldRect(layer.surface),
               placement: layer.placement,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: layer.effects,
-              // Drawn through the camera's projection: never a texel copy.
-              texelScale: null,
+              // A texel copy where the projection moves pixels whole, at
+              // the scale this canvas is at — a folder's buffer cut down to
+              // its cap lays a crop back.
+              texelScale: texelCopy ? rasterScale : null,
               filterQuality: leafQuality,
               // ⚠️And the image a texel a canvas pixel: a level
               // ([displayLevels]) spans the canvas at half and less, and
@@ -418,12 +459,19 @@ class CameraFrameRenderService {
 /// renders ([CameraFrameRenderService.renderThroughCamera]'s `rows`).
 ///
 /// [of] hands back the picture [surface] composes to — one kept from an
-/// earlier render, or [compose]'s — and it is the keeper's either way.
+/// earlier render, or [compose]'s — and it is the keeper's either way. It
+/// may be the ink alone ([laidTexelForTexel]).
 abstract interface class RowPictures {
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
     Future<PositionedSurfaceImage> Function() compose,
   );
+
+  /// Whether every render a row kept here is handed to lays it down texel
+  /// for texel — so one composed as its ink alone is never laid back whole
+  /// to be drawn, which would pay that raster at every draw
+  /// ([drawPosedLayerImage]).
+  bool get laidTexelForTexel;
 }
 
 /// [composed] with its image halved [level] times over the same canvas

@@ -33,6 +33,28 @@ Matrix4 cameraProjectionMatrix(
     ..multiply(Matrix4.translationValues(-pose.center.x, -pose.center.y, 0));
 }
 
+/// Whether [cameraProjectionMatrix] moves every canvas pixel onto an output
+/// pixel whole — a translation by whole pixels, and nothing else — so a
+/// render through it lays an image down texel for texel.
+bool cameraMovesPixelsWhole(
+  CameraPose pose,
+  CanvasSize cameraFrameSize, {
+  CanvasSize? outputSize,
+}) {
+  final m = cameraProjectionMatrix(
+    pose,
+    cameraFrameSize,
+    outputSize: outputSize,
+  ).storage;
+  bool whole(double value) => value == value.roundToDouble();
+  return m[0] == 1 &&
+      m[1] == 0 &&
+      m[4] == 0 &&
+      m[5] == 1 &&
+      whole(m[12]) &&
+      whole(m[13]);
+}
+
 /// The camera's SHOT → canvas: where a point of the frame the camera shows
 /// lies on the canvas — [cameraProjectionMatrix] run backwards, as the
 /// placement a row's artwork takes ([LayerPlacement]).

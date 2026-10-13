@@ -36,6 +36,10 @@ void main() {
   /// The frame of the run being drawn.
   late int at;
 
+  /// What the run says of its pictures: do they lay rows down texel for
+  /// texel.
+  late bool laid;
+
   /// The cel each surface was read for.
   final celOf = Expando<String>('cel');
 
@@ -48,6 +52,7 @@ void main() {
     room = 1 << 30;
     shows = {};
     at = 0;
+    laid = true;
     rows = HeldRows(
       room: () => room,
       onHeld: told.add,
@@ -59,6 +64,7 @@ void main() {
         ];
         return ahead.isEmpty ? null : ahead.first;
       },
+      laidTexelForTexel: () => laid,
     );
     composed.clear();
   });
@@ -115,6 +121,14 @@ void main() {
     rows.nextFrame();
     return cels == null ? const [] : await picture(cels);
   }
+
+  test('a picture\'s rows say of the renders they go to what the run says '
+      'of its pictures', () async {
+    for (final said in [true, false]) {
+      laid = said;
+      expect(await rows.during((rows) async => rows.laidTexelForTexel), said);
+    }
+  });
 
   test('🎯a cel shown again is the row composed for it — read again, '
       'another surface, across a frame that does not show it', () async {
@@ -465,6 +479,10 @@ final class _Keeping implements RowPictures {
   _Keeping(this.kept);
 
   final List<PositionedSurfaceImage> kept;
+
+  /// Each is handed to one render.
+  @override
+  bool get laidTexelForTexel => true;
 
   @override
   Future<PositionedSurfaceImage> of(

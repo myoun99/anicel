@@ -36,6 +36,8 @@ import '../../services/camera_frame_corners.dart'
     show CameraView, cameraViewOver, pictureView;
 import '../../models/sheet_paint_layer.dart';
 import '../../services/camera_path.dart';
+import '../../services/camera_projection_matrix.dart'
+    show cameraMovesPixelsWhole;
 import '../camera/camera_frame_render_service.dart';
 import '../camera/camera_path_overlay.dart';
 import '../conte/conte_fonts.dart' show conteTextStyle;
@@ -149,6 +151,7 @@ class ExportFrameRenderer {
     onHeld: session.playbackRig.playbackCache.lend,
     addressOf: (surface) => _celAddresses[surface] ?? surface,
     nextShown: (address, from) => _run?.nextShown(address, from),
+    laidTexelForTexel: () => _run?.laidTexelForTexel ?? false,
   );
 
   /// The address of each cel this renderer has read ([_readSurface]) — what
@@ -555,6 +558,12 @@ class ExportFrameRenderer {
   /// ([ExportRun.frame]), every row held from the frame that composes it
   /// until no frame ahead shows it ([HeldRows]). Each frame is made of the
   /// cuts [_cutsOfVideoFrame] names.
+  ///
+  /// Its rows are laid down texel for texel wherever they are drawn: both
+  /// composites a video frame is made of look through a camera square over
+  /// the canvas — the track stack's identity camera ([_stackPainter]) and
+  /// the canvas-size frame's ([_canvasPicture]) — and the cut's real camera
+  /// projects the composite after.
   ExportRun videoRun(
     List<ExportFrameTask> plan,
     ExportSizeMode mode, {
@@ -563,6 +572,7 @@ class ExportFrameRenderer {
     plan,
     cutsOf: (task) => _cutsOfVideoFrame(task, mode),
     draw: (task) => _videoFrame(task, mode, preserveAlpha: preserveAlpha),
+    laidTexelForTexel: true,
   );
 
   /// A run of STILLS of [plan] in [mode] — a picture sequence's frames,
@@ -570,11 +580,22 @@ class ExportFrameRenderer {
   /// run holds its own: a frame made of what the frame before it was made
   /// of is that frame's picture, handed again ([_stillFrame]), and every
   /// row is held until no frame ahead shows it.
+  ///
+  /// Its rows are laid down texel for texel when every frame looks through
+  /// a camera that moves canvas pixels whole — a canvas-size sequence
+  /// always, a camera-size one when its camera stands on whole pixels
+  /// throughout. A camera that leaves them for a frame has its rows
+  /// composed whole: a row composed as its ink for one frame would be laid
+  /// back whole at every frame after ([RowPictures.laidTexelForTexel]).
   ExportRun stillRun(List<ExportFrameTask> plan, ExportSizeMode mode) =>
       _runOf(
         plan,
         cutsOf: (task) => [(task.cut, task.frameIndex)],
         draw: (task) => _stillFrame(task, mode),
+        laidTexelForTexel: plan.every((task) {
+          final view = _viewFor(task.cut, task.frameIndex, mode);
+          return cameraMovesPixelsWhole(view.pose, view.frameSize);
+        }),
       );
 
   /// A run of [plan] whose frames [draw] draws, each made of the cuts
@@ -592,6 +613,7 @@ class ExportFrameRenderer {
     List<ExportFrameTask> plan, {
     required List<(Cut, int)> Function(ExportFrameTask task) cutsOf,
     required Future<ui.Image> Function(ExportFrameTask task) draw,
+    required bool laidTexelForTexel,
   }) {
     final shown = <_CelAddress, List<int>>{};
     for (final (index, task) in plan.indexed) {
@@ -611,7 +633,7 @@ class ExportFrameRenderer {
       this,
       plan: plan,
       draw: draw,
-      shown: _ShownAhead(shown),
+      shown: _ShownAhead(shown, laidTexelForTexel: laidTexelForTexel),
     );
   }
 
@@ -1202,9 +1224,13 @@ typedef _SharedTransitionSpace = ({
 /// The frames of a run each cel shows, in order, and the frame being
 /// drawn ([at]) — what tells a held row how long it is wanted.
 final class _ShownAhead {
-  _ShownAhead(this._frames);
+  _ShownAhead(this._frames, {required this.laidTexelForTexel});
 
   final Map<_CelAddress, List<int>> _frames;
+
+  /// Whether every picture of the run lays its rows down texel for texel
+  /// ([HeldRows]' other question, [RowPictures.laidTexelForTexel]).
+  final bool laidTexelForTexel;
 
   int at = 0;
 
