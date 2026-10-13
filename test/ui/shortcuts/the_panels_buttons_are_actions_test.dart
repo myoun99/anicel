@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
@@ -51,6 +52,8 @@ const panelButtons = [
   EditorActionIds.mediaPoolImport,
   EditorActionIds.timesheetFormat,
   EditorActionIds.timesheetDataMode,
+  EditorActionIds.conteFormat,
+  EditorActionIds.envelopeFormat,
   ...toolSettingsButtons,
 ];
 
@@ -293,6 +296,8 @@ void main() {
       );
       expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
       expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
+      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식…');
+      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식…');
       expect(
         editorActionLabel(EditorActionIds.timesheetDataMode),
         '표기 시트 / 데이터 시트',
@@ -366,6 +371,39 @@ void main() {
       await tester.sendKeyEvent(k);
       await tester.pumpAndSettle();
       expect(dataSheet(), before);
+    });
+
+    testWidgets('the conte sheet\'s and the cut envelope\'s format windows '
+        'open by key once their panel is up — a panel that is shut has no '
+        'button to press', (tester) async {
+      await pumpHome(tester);
+      final conte = find.byKey(const ValueKey<String>('conte-format-window'));
+      await pressKeyOf(tester, EditorActionIds.conteFormat);
+      expect(conte, findsNothing, reason: 'the sheet ships shut');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-mode-conte-button')),
+      );
+      await tester.pumpAndSettle();
+      await pressKeyOf(tester, EditorActionIds.conteFormat);
+      expect(conte, findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      final envelope = find.byKey(
+        const ValueKey<String>('envelope-format-window'),
+      );
+      tester
+          .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
+          .firstWhere(
+            (host) => host.tabs.any(
+              (tab) => tab.id == EditorWorkspace.envelopeTabId,
+            ),
+          )
+          .onTabSelected(EditorWorkspace.envelopeTabId);
+      await tester.pumpAndSettle();
+      expect(envelope, findsNothing, reason: '⛔premise');
+      await pressKeyOf(tester, EditorActionIds.envelopeFormat);
+      expect(envelope, findsOneWidget);
     });
 
     testWidgets('the media pool\'s ＋ asks for files — whatever tool is in '

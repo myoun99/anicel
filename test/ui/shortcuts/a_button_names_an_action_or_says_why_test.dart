@@ -86,8 +86,6 @@ const ledger = <String, Why>{
   // a layer's Scale lane alike — one button since tool-settings-panel-
   // tidy (2026-10-10); it stood on the lane row as that row's own.
   'widgets/scale_chain_button.dart | keyValue': Why.aSetting,
-  "envelope/cut_envelope_tab_host.dart | 'envelope-form-\${form.id}'":
-      Why.aSetting,
   'widgets/boolean_dot.dart | keyValue': Why.aSetting,
   // A value's ± — a bar's and a number box's, one pair since tool-settings-
   // panel-tidy (2026-10-10); they were the settings bar's own until then.

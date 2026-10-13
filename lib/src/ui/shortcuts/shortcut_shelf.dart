@@ -15,8 +15,8 @@
 /// keeps the rail's undo and redo; the onion and the solo are the rail's
 /// too, beside the view; the guide ＋ and the text 🗑 are their tool's
 /// panel's, under the tool library; and a panel's own buttons (media ·
-/// timesheet · conte sheet) stand in a fifth place, 「패널 안」 — the
-/// answer's four have none for them.
+/// timesheet · conte sheet · cut envelope) stand in a fifth place,
+/// 「패널 안」 — the answer's four have none for them.
 ///
 /// ★AN ACTION NAMES ITS SHELF AND NOTHING ELSE: every heading above it is
 /// the shelf's [parent]s, so a shelf added here arrives in the window, in
@@ -59,7 +59,8 @@ enum ShortcutShelf {
   inAPanel('In a panel'),
   media('Media', inAPanel),
   timesheet('Timesheet', inAPanel),
-  conteSheet('Conte Sheet', inAPanel);
+  conteSheet('Conte Sheet', inAPanel),
+  envelope('Cut envelope', inAPanel);
 
   const ShortcutShelf(this.label, [this.parent]);
 

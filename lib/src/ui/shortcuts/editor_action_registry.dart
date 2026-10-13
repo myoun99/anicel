@@ -759,6 +759,8 @@ abstract final class EditorActionIds {
   static const mediaPoolImport = 'media-pool-import';
   static const timesheetFormat = 'timesheet-format';
   static const timesheetDataMode = 'timesheet-data-mode';
+  static const conteFormat = 'conte-format';
+  static const envelopeFormat = 'envelope-format';
 
   /// The tool settings' own buttons (I-40), pressed the same way, as the
   /// settings of the tool in hand.
@@ -772,9 +774,6 @@ abstract final class EditorActionIds {
   static const guideAddVanishingPoint = 'guide-add-vanishing-point';
   static const textIntoDrawing = 'text-into-drawing';
 
-  /// The conte sheet's settings rows (I-40) — its front's two switches.
-  static const conteCover = 'conte-cover';
-  static const conteBlankPage = 'conte-blank-page';
   static const canvasRotateCcw = 'canvas-rotate-ccw';
   static const canvasRotateCw = 'canvas-rotate-cw';
   static const canvasFlipHorizontal = 'canvas-flip-horizontal';
@@ -1978,21 +1977,23 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     panelButton: true,
   ),
-  // I-40: the conte sheet's settings rows — the front its book is printed
-  // with, a cover and a blank page, each a switch.
+  // The other sheets' format windows, opened as the timesheet's is (I-93).
+  // ↩️The conte's cover and blank page were rows of its settings list, each
+  // an action (I-40), until they moved into its window — whose switches,
+  // as every window's, take no key (I-40-Q1).
   EditorActionDefinition.composed(
-    id: EditorActionIds.conteCover,
-    name: (language) => AppStrings.of(language).conteCoverPage,
+    id: EditorActionIds.conteFormat,
+    name: (language) => '${AppStrings.of(language).conteFormatTitle}…',
     shelf: ShortcutShelf.conteSheet,
     defaultActivators: const [],
-    menuRow: true,
+    panelButton: true,
   ),
   EditorActionDefinition.composed(
-    id: EditorActionIds.conteBlankPage,
-    name: (language) => AppStrings.of(language).conteBlankPage,
-    shelf: ShortcutShelf.conteSheet,
+    id: EditorActionIds.envelopeFormat,
+    name: (language) => '${AppStrings.of(language).envelopeFormatTitle}…',
+    shelf: ShortcutShelf.envelope,
     defaultActivators: const [],
-    menuRow: true,
+    panelButton: true,
   ),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs

@@ -25,7 +25,9 @@ import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../helpers/envelope_format.dart';
 import '../helpers/frame_census.dart';
 
 /// The envelope PANEL: the sheet inside the canvas shell, with the ink a
@@ -301,8 +303,8 @@ void main() {
       }
     });
 
-    testWidgets('the status strip offers both bundled forms and switching '
-        'reprints the sheet', (tester) async {
+    testWidgets('the format window lists both bundled forms, the one in use '
+        'marked, and a form saved reprints the sheet', (tester) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       await tester.binding.setSurfaceSize(const Size(900, 700));
@@ -324,14 +326,28 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>(
-            'envelope-form-${CutEnvelopePresets.digitalId}',
-          ),
-        ),
+        find.byKey(const ValueKey<String>('envelope-format-button')),
+      );
+      await tester.pumpAndSettle();
+      final rows = tester
+          .widget<PanelFlyoutButton>(
+            find.byKey(const ValueKey<String>('envelope-format-form')),
+          )
+          .entriesBuilder()
+          .whereType<PanelFlyoutItem>();
+      expect(
+        [for (final row in rows) (row.keyValue, row.selected)],
+        [
+          ('envelope-format-form-${CutEnvelopePresets.analogId}', true),
+          ('envelope-format-form-${CutEnvelopePresets.digitalId}', false),
+        ],
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('envelope-format-cancel-button')),
       );
       await tester.pumpAndSettle();
 
+      await pickEnvelopeForm(tester, CutEnvelopePresets.digitalId);
       expect(formId, CutEnvelopePresets.digitalId);
       final painter =
           tester

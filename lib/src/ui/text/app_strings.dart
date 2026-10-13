@@ -714,6 +714,11 @@ enum AppStrings {
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
   String get conteBlankPage => _s('conteBlankPage');
+  String get conteFormatTitle => _s('conteFormatTitle');
+  String get conteFrontIn => _s('conteFrontIn');
+  String get conteFrontOut => _s('conteFrontOut');
+  String get envelopeFormatTitle => _s('envelopeFormatTitle');
+  String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
 
@@ -2209,6 +2214,11 @@ enum AppStrings {
     'sheetBrushAllow': 'Allow Brush',
     'conteCoverPage': 'Cover',
     'conteBlankPage': 'Blank page',
+    'conteFormatTitle': 'Conte sheet format',
+    'conteFrontIn': 'Included',
+    'conteFrontOut': 'Left out',
+    'envelopeFormatTitle': 'Envelope format',
+    'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
     'instructionsTitle': 'Instructions',
@@ -3376,6 +3386,11 @@ enum AppStrings {
     'sheetBrushAllow': 'ブラシを許可',
     'conteCoverPage': '表紙',
     'conteBlankPage': '白紙',
+    'conteFormatTitle': 'コンテ用紙書式',
+    'conteFrontIn': '入れる',
+    'conteFrontOut': '入れない',
+    'envelopeFormatTitle': 'カット袋書式',
+    'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
     'instructionsTitle': '指示記号',
@@ -3430,6 +3445,7 @@ enum AppStrings {
     'shortcutShelf.media': 'メディア',
     'shortcutShelf.timesheet': 'タイムシート',
     'shortcutShelf.conteSheet': 'コンテ用紙',
+    'shortcutShelf.envelope': 'カット袋',
     'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutPreset.tvpaint': 'TVPaint ベース',
     'shortcutAction.frame-previous': '前のフレーム',
@@ -4866,6 +4882,11 @@ enum AppStrings {
     'sheetBrushAllow': '브러시 허용',
     'conteCoverPage': '표지',
     'conteBlankPage': '빈 용지',
+    'conteFormatTitle': '콘티 용지 서식',
+    'conteFrontIn': '넣음',
+    'conteFrontOut': '뺌',
+    'envelopeFormatTitle': '컷 봉투 서식',
+    'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
     'instructionsTitle': '지시 기호',
@@ -4920,6 +4941,7 @@ enum AppStrings {
     'shortcutShelf.media': '미디어',
     'shortcutShelf.timesheet': '타임시트',
     'shortcutShelf.conteSheet': '콘티 용지',
+    'shortcutShelf.envelope': '컷 봉투',
     'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutPreset.tvpaint': 'TVPaint 기반',
     'shortcutAction.frame-previous': '이전 프레임',
@@ -6388,6 +6410,11 @@ enum AppStrings {
     'sheetBrushAllow': 'Autoriser le pinceau',
     'conteCoverPage': 'Couverture',
     'conteBlankPage': 'Page blanche',
+    'conteFormatTitle': 'Format de la feuille de conte',
+    'conteFrontIn': 'Incluse',
+    'conteFrontOut': 'Retirée',
+    'envelopeFormatTitle': 'Format de l\'enveloppe',
+    'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
     'instructionsTitle': 'Indications',
@@ -6442,6 +6469,7 @@ enum AppStrings {
     'shortcutShelf.media': 'Médias',
     'shortcutShelf.timesheet': 'Feuille de temps',
     'shortcutShelf.conteSheet': 'Feuille de conte',
+    'shortcutShelf.envelope': 'Enveloppe de plan',
     'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutPreset.tvpaint': 'Base TVPaint',
     'shortcutAction.frame-previous': 'Image précédente',
@@ -7920,6 +7948,11 @@ enum AppStrings {
     'sheetBrushAllow': '允许画笔',
     'conteCoverPage': '封面',
     'conteBlankPage': '空白页',
+    'conteFormatTitle': '分镜用纸格式',
+    'conteFrontIn': '包含',
+    'conteFrontOut': '不含',
+    'envelopeFormatTitle': '卡袋版式',
+    'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
     'instructionsTitle': '指示记号',
@@ -7973,6 +8006,7 @@ enum AppStrings {
     'shortcutShelf.media': '媒体',
     'shortcutShelf.timesheet': '摄影表',
     'shortcutShelf.conteSheet': '分镜用纸',
+    'shortcutShelf.envelope': '卡袋',
     'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutPreset.tvpaint': '基于 TVPaint',
     'shortcutAction.frame-previous': '上一帧',

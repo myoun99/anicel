@@ -60,6 +60,7 @@ void main() {
       ShortcutShelf.media,
       ShortcutShelf.timesheet,
       ShortcutShelf.conteSheet,
+      ShortcutShelf.envelope,
     ]);
     expect(ShortcutShelf.pills.path, [
       ShortcutShelf.timeline,
@@ -93,7 +94,8 @@ void main() {
       (EditorActionIds.textDeleteText, ShortcutShelf.texts),
       (EditorActionIds.mediaPoolImport, ShortcutShelf.media),
       (EditorActionIds.timesheetFormat, ShortcutShelf.timesheet),
-      (EditorActionIds.conteCover, ShortcutShelf.conteSheet),
+      (EditorActionIds.conteFormat, ShortcutShelf.conteSheet),
+      (EditorActionIds.envelopeFormat, ShortcutShelf.envelope),
     ]) {
       expect(shelfOf(id), shelf, reason: id);
     }
