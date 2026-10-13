@@ -89,10 +89,12 @@ T withLayerPlacement<T>(
 ///
 /// [texelScale] is how many target pixels one canvas unit is on [canvas]
 /// when [canvas] is a pixel raster whose grid is aligned to canvas space —
-/// the display buffer, a sub-tree raster, the playback composite — and null
-/// when it is not (the screen, a projection). It is what tells a texel copy
-/// from a resample ([_isTexelCopy]). ⛔REQUIRED, the A4 way: a route that
-/// inherited a guess would draw a resample unfiltered.
+/// the display buffer, a sub-tree raster, a camera's output where its
+/// projection moves canvas pixels onto it whole — and null when it is not
+/// (the screen, a projection that turns, zooms or stands between pixels).
+/// It is what tells a texel copy from a resample ([_isTexelCopy]).
+/// ⛔REQUIRED, the A4 way: a route that inherited a guess would draw a
+/// resample unfiltered.
 ///
 /// A4 — [filterQuality] is REQUIRED, deliberately. A default here is how
 /// the sampling drift this file exists to end comes back: a new route
@@ -174,9 +176,9 @@ void drawPosedLayerImage(
       // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
       // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
       // — the sub-tree blit, the tile blits, the buffer carry — asked of a
-      // layer image: below 100% the buffer and the playback composite lay
-      // each level image down one texel per pixel, and filtering that is
-      // only a copy on paper. 🔬Measured against the source image: bilinear
+      // layer image: below 100% the buffer lays each level image down one
+      // texel per pixel, and so does a camera that moves pixels whole, and
+      // filtering that is only a copy on paper. 🔬Measured against the source image: bilinear
       // at 1:1 IS the copy on the Windows app (Impeller GLES) and the test
       // runner, and is NOT on Impeller Vulkan — Android's default — up to
       // 9/255 off at a 2340×1654 image and 4/255 at the fit-zoom level,

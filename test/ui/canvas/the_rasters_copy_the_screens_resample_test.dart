@@ -37,15 +37,22 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/placement_reading.dart';
 
 /// 🚨★★★WHICH ROUTES COPY A LAYER IMAGE AND WHICH RESAMPLE IT (유저
-/// 2026-09-24 「통일해서」) — the four that draw one, each asked.
+/// 2026-09-24 「통일해서」) — the routes that draw one, each asked.
 ///
 /// A raster on canvas space's grid lays each image down one texel per pixel
 /// — a copy, drawn at `none` like the active layer's tiles
 /// (`a_texel_copy_is_drawn_unfiltered_test`): the editing stack's display
-/// buffer and the playback composite. A route that draws onto the screen or
-/// through a projection moves the image off the pixel grid and has to
-/// resample it with the filter its zoom chose: the editing stack's walk and
-/// the camera render.
+/// buffer, and the camera render where its projection moves canvas pixels
+/// onto output pixels whole. A route that draws onto the screen, or through
+/// a projection that moves the image off the pixel grid, has to resample it
+/// with the filter its zoom chose: the editing stack's walk, and the camera
+/// render where it turns, zooms or stands between pixels.
+///
+/// ↩️The camera resampled at every pose, the identity too: a sort of the
+/// routes when the law was written (f047e8aa2), not a ruling on cameras. A
+/// camera that moves pixels whole is a raster on canvas space's grid, and
+/// laying its rows down as copies is what lets an export compose a row from
+/// its ink alone (card export-folders-and-rows-at-their-extent, 2026-10-13).
 ///
 /// ⚠️The copies are read off the draw counter because their pixels cannot
 /// tell: in this runner a bilinear draw at 1:1 IS a copy (it is not on
@@ -226,7 +233,7 @@ void main() {
     });
   });
 
-  testWidgets('the camera resamples, even at the identity', (tester) async {
+  group('the camera', () {
     const canvasSize = CanvasSize(width: 8, height: 8);
     final pixels = Uint8List(8 * 8 * 4);
     const offset = (2 * 8 + 2) * 4;
@@ -237,18 +244,47 @@ void main() {
       tileSize: 8,
       tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
     );
-    await tester.runAsync(() async {
+
+    /// The texel copies one render of the row through [pose] draws.
+    Future<int> copiesThrough(WidgetTester tester, CameraPose pose) async {
       debugTexelCopies = 0;
-      const service = CameraFrameRenderService(
-        filterQuality: FilterQuality.none,
-      );
-      final image = await service.renderThroughCamera(
-        layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
-        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
-        cameraFrameSize: canvasSize,
-      );
-      expect(debugTexelCopies, 0);
-      image.dispose();
-    });
+      await tester.runAsync(() async {
+        const service = CameraFrameRenderService();
+        final image = await service.renderThroughCamera(
+          layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
+          pose: pose,
+          cameraFrameSize: canvasSize,
+        );
+        image.dispose();
+      });
+      return debugTexelCopies;
+    }
+
+    CameraPose at(double x, double y, {double zoom = 1, double turn = 0}) =>
+        CameraPose(
+          center: CanvasPoint(x: x, y: y),
+          zoom: zoom,
+          rotationDegrees: turn,
+        );
+
+    for (final (says, pose) in [
+      ('at the identity', at(4, 4)),
+      ('moved by whole pixels', at(6, 3)),
+    ]) {
+      testWidgets('🎯copies the row $says — its projection moves canvas '
+          'pixels onto output pixels whole', (tester) async {
+        expect(await copiesThrough(tester, pose), greaterThan(0));
+      });
+    }
+
+    for (final (says, pose) in [
+      ('turned', at(4, 4, turn: 30)),
+      ('zoomed', at(4, 4, zoom: 1.5)),
+      ('between pixels', at(4.5, 4)),
+    ]) {
+      testWidgets('resamples the row $says', (tester) async {
+        expect(await copiesThrough(tester, pose), 0);
+      });
+    }
   });
 }
