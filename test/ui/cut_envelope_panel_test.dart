@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/envelope_format.dart';
 import '../helpers/frame_census.dart';
 
@@ -301,6 +302,19 @@ void main() {
       for (final window in windows) {
         expect(window.inputSettings(), next.toInputSettings());
       }
+    });
+
+    testWidgets('with nowhere to write the form back to, the format button '
+        'keeps its place, off', (tester) async {
+      await pumpEnvelope(tester);
+      expect(
+        tester
+            .appIconButton(
+              find.byKey(const ValueKey<String>('envelope-format-button')),
+            )
+            .onPressed,
+        isNull,
+      );
     });
 
     testWidgets('the format window lists both bundled forms, the one in use '
