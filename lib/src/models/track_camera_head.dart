@@ -8,15 +8,19 @@ import 'layer_id.dart';
 /// storyboard draws the cameras of a track's cuts as one row, whose name and
 /// fx switch are one; the colour label stays each cut's own.
 ///
-/// [camera] wearing [head]'s head: its name and its fx switch. ⛔Not its
-/// label, and nothing it holds — its keys are its own cut's.
+/// [camera] wearing [head]'s head: its name and its fx switch — and its
+/// twirl, the row's since F-360, which the storyboard's one camera row
+/// opens on every camera (I-73 ④ⓔ). ⛔Not its label, and nothing it holds —
+/// its keys are its own cut's.
 ///
 /// A camera is BORN wearing it when its cut joins a track
-/// (`projectWithCutInserted`); after that the name and the switch are
-/// written to every camera of the track at once (`cameraHeadTargets`).
+/// (`projectWithCutInserted`); after that the name, the switch and the
+/// twirl are written to every camera of the track at once
+/// (`cameraHeadTargets`).
 Layer cameraWearingHeadOf(Layer head, Layer camera) => camera.copyWith(
   name: head.name,
   transformEnabled: head.transformEnabled,
+  lanesExpanded: head.lanesExpanded,
 );
 
 /// The camera whose head a cut joining [cuts] wears: the first of their
@@ -31,7 +35,7 @@ Layer? cameraHeadOf(Iterable<Cut> cuts) {
 }
 
 /// The cameras of [cuts] — the rows that wear a track's one camera head,
-/// and so twirl as one (`RailView.followHeads`).
+/// and so twirl as one and show one graph (`RailView.followHeads`).
 List<LayerId> cameraHeadFamilyOf(Iterable<Cut> cuts) => [
   for (final cut in cuts)
     if (cut.layers.cameraLayer case final camera?) camera.id,

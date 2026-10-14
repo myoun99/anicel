@@ -293,6 +293,11 @@ List<LayerId> conteHeadFamilyAt(Iterable<Cut> cuts, int seat) => [
 /// A row is BORN wearing it (`plannedAddLayerCommand`); after that every
 /// head field is written to all the rows at the seat at once
 /// (`headMirrorTargets`, and `conteHeadTargets` for the eye).
+///
+/// Its folds and twirls too (I-73 「콘티행도 동일하게 … 어태치
+/// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」): they are the
+/// row's since F-360, and a row born open beside a folded family is the
+/// row `RailView.followHeads` was there to fold.
 Layer layerWearingHeadOf(Layer head, Layer row) => row.copyWith(
   name: head.name,
   mark: head.mark,
@@ -301,4 +306,7 @@ Layer layerWearingHeadOf(Layer head, Layer row) => row.copyWith(
   isVisible: head.isVisible,
   transformEnabled: head.transformEnabled,
   effects: effectChainWithSharedShape(head.effects, onto: row.effects),
+  collapsed: head.collapsed,
+  lanesExpanded: head.lanesExpanded,
+  expandedLaneGroups: head.expandedLaneGroups,
 );

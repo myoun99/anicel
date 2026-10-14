@@ -1,7 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+import '../../models/attached_layer_resolve.dart' show canCarryAttachedLayers;
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/project.dart';
+import '../../services/project_lookup.dart' show projectLayersAnywhere;
 import '../timeline/lane_graph.dart' show LaneGraphsView;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
@@ -12,13 +16,23 @@ import '../timeline/timeline_section_policy.dart';
 /// that seat a row outside the session's own rebuild.
 typedef StandingLaw = void Function({bool reveal, bool filterSparesStanding});
 
-/// THE RAIL'S VIEW — which layer rows the rail leaves off the screen by a
-/// choice of the user's that is not the document's: the hidden sections,
-/// the row filter and the folded attach groups — and which it opens up: the
-/// property-lane twirls, and the graphs standing in a group's lanes' place.
-/// View state: session-only, never saved, and it
-/// outlives the panels that draw it (a tab switch keeps it). A FOLDER's fold
-/// is not here — it is `Layer.collapsed`, the file's.
+/// THE RAIL'S VIEW — which layer rows the rail leaves off the screen: by a
+/// choice of the user's that is not the document's, the hidden sections and
+/// the row filter; by the rows' own folds, the folded attach groups — and
+/// which it opens up: the property-lane twirls and their groups (the rows'
+/// own too), and the graphs standing in a group's lanes' place. It outlives
+/// the panels that draw it (a tab switch keeps it).
+///
+/// 🚨★★★F-360 (유저 2026-10-14: 「어태치레이어 분명 접은채로 저장했는데
+/// 다시열면 펼쳐져있음. fx나 폴더나 이런 접음/펼침상태가 기록이 안되는건지?
+/// 제대로 기록되도록」): THE FOLDS AND TWIRLS ARE THE ROWS' — `Layer.collapsed`,
+/// `Layer.lanesExpanded`, `Layer.expandedLaneGroups`, the folder's path:
+/// written by one command on every row of the row's head, undone, saved.
+/// What is here of them is the rail's READING of the document
+/// ([readFolds]), which nothing outside can write. ↩️They were view state
+/// here — session-only, never saved, kept in agreement across a link group
+/// and a head by [followLinks] and [followHeads] beside a folder's fold
+/// that the commands carried — two ways for one fold.
 ///
 /// 🚨F-169 (유저 2026-09-24): 「보이는거만 선택가능하고 안보이는거 선택되는
 /// 상황엔 다른 보이는레이어 선택하도록」. The three lived on the workspace, and
@@ -47,29 +61,76 @@ class RailView {
     TimelineRowFilter.none,
   );
 
-  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9). Default open: a
-  /// fresh attach layer must be visible the moment it is made.
-  final ValueNotifier<Set<LayerId>> collapsedAttachBaseIds = ValueNotifier(
-    const <LayerId>{},
-  );
+  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9) — the bases whose
+  /// `collapsed` is set ([readFolds]). Default open: a fresh attach layer
+  /// must be visible the moment it is made.
+  ValueListenable<Set<LayerId>> get collapsedAttachBaseIds =>
+      _collapsedAttachBaseIds;
+  final _collapsedAttachBaseIds = ValueNotifier(const <LayerId>{});
 
-  /// Layers whose AE-style property-lane twirl-down is open. The walk
-  /// reads it too: property rows are stops (R10 #19).
-  final ValueNotifier<Set<LayerId>> expandedLaneLayerIds = ValueNotifier(
-    const <LayerId>{},
-  );
+  /// Layers whose AE-style property-lane twirl-down is open
+  /// (`Layer.lanesExpanded`). The walk reads it too: property rows are
+  /// stops (R10 #19).
+  ValueListenable<Set<LayerId>> get expandedLaneLayerIds =>
+      _expandedLaneLayerIds;
+  final _expandedLaneLayerIds = ValueNotifier(const <LayerId>{});
 
   /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
-  /// collapse — default collapsed). Keyed by `laneGroupKey`, because a row
-  /// carries more than one group: Transform, plus one header per R6 effect.
-  final ValueNotifier<Set<String>> expandedLaneGroupKeys = ValueNotifier(
-    const <String>{},
-  );
+  /// collapse — default collapsed; `Layer.expandedLaneGroups`). Keyed by
+  /// `laneGroupKey`, because a row carries more than one group: Transform,
+  /// plus one header per R6 effect.
+  ValueListenable<Set<String>> get expandedLaneGroupKeys =>
+      _expandedLaneGroupKeys;
+  final _expandedLaneGroupKeys = ValueNotifier(const <String>{});
+
+  /// The document the three above were last read off.
+  Project? _foldsReadOff;
+
+  /// The rows' folds and twirls as [project] holds them — the three sets
+  /// above, each told only where it changed. Asked after every history
+  /// change, after a write outside history that opens a fold (the standing
+  /// law's reveal), and when the session is made: a fold is not written
+  /// anywhere else. Free while the project is the one it last read.
+  void readFolds(Project? project) {
+    if (identical(project, _foldsReadOff)) {
+      return;
+    }
+    _foldsReadOff = project;
+    final folded = <LayerId>{};
+    final twirled = <LayerId>{};
+    final groups = <String>{};
+    final layers = project == null
+        ? const <Layer>[]
+        : projectLayersAnywhere(project);
+    for (final layer in layers) {
+      if (layer.collapsed && canCarryAttachedLayers(layer)) {
+        folded.add(layer.id);
+      }
+      if (layer.lanesExpanded) {
+        twirled.add(layer.id);
+      }
+      for (final laneId in layer.expandedLaneGroups) {
+        groups.add(laneGroupKey(layer.id, laneId));
+      }
+    }
+    _tell(_collapsedAttachBaseIds, folded);
+    _tell(_expandedLaneLayerIds, twirled);
+    _tell(_expandedLaneGroupKeys, groups);
+  }
+
+  static void _tell<T>(ValueNotifier<Set<T>> rows, Set<T> next) {
+    if (!setEquals(next, rows.value)) {
+      rows.value = next;
+    }
+  }
 
   /// The HEADER GRAPHS (I-89 ③): which lane groups stand open as a graph,
-  /// and the lanes pinned to every graph. View state as the twirls beside
-  /// it are, and followed as they are ([followLinks], [followHeads]): a
-  /// graph and a pin are keyed by a row's lane, as an open group is.
+  /// and the lanes pinned to every graph. View state, followed across a
+  /// link group and a head ([followLinks], [followHeads]): a graph and a
+  /// pin are keyed by a row's lane, as an open group is.
+  ///
+  /// ⚠️Still the view's alone, and not saved: how a graph is to be kept —
+  /// as a view setting, or as a fold — is F-360-Q1's to answer.
   final ValueNotifier<LaneGraphsView> laneGraphs = ValueNotifier(
     LaneGraphsView.none,
   );
@@ -96,90 +157,75 @@ class RailView {
     const <String>{},
   );
 
-  /// The link table the view state below was last made to agree with.
+  /// The link table the graphs were last made to agree with.
   LayerLinkRegistry? _followed;
 
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
   /// 상태 접힌 상태 공유하라는것. 법통일」 — a row that JOINED a link group
-  /// wears the group's twirls and folds: its CANONICAL row's
+  /// wears the group's graphs and pins: its CANONICAL row's
   /// ([LayerLinkGroup.canonical] — the row a 겸용 cut was made from).
   ///
-  /// A press reaches every use of its row by itself (the toggles take the
-  /// row's other uses along), so the sets already agree inside every group
-  /// that stood; this is for the uses a command just made — a new 겸용 cut's
-  /// rows have ids nothing was ever folded by. Asked after a command, an
-  /// undo and a redo, and it answers at once while [links] is the table it
-  /// last saw.
+  /// A press reaches every use of its row by itself (the presses take the
+  /// row's other uses along), so the graphs already agree inside every
+  /// group that stood; this is for the uses a command just made — a new 겸용
+  /// cut's rows have ids no graph was ever opened by. Asked after a
+  /// command, an undo and a redo, and it answers at once while [links] is
+  /// the table it last saw.
+  ///
+  /// ↩️It made the rows' folds and twirls agree too, until F-360 put them on
+  /// the rows: a new use is born wearing them, as it is born wearing its
+  /// name.
   void followLinks(LayerLinkRegistry links) {
     if (identical(links, _followed)) {
       return;
     }
     _followed = links;
-    for (final rows in [collapsedAttachBaseIds, expandedLaneLayerIds]) {
-      final next = Set<LayerId>.of(rows.value);
-      for (final group in links.groups) {
-        final uses = [for (final member in group.members) member.layerId];
-        if (next.contains(group.canonical.layerId)) {
-          next.addAll(uses);
-        } else {
-          next.removeAll(uses);
-        }
-      }
-      if (!setEquals(next, rows.value)) {
-        rows.value = next;
-      }
-    }
     Map<String, V> likeCanonical<V>(Map<String, V> worn) =>
         _wornLikeCanonical(worn, links);
-    _followLanes(likeCanonical);
+    _followGraphs(likeCanonical);
   }
 
   /// Rows that wear ONE head though no link holds them — a track's conte
   /// rows at one seat (I-73, 유저 2026-10-08: 「콘티레이어 권고한대로 머리만
-  /// 한벌 ok. 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」) — fold and twirl
-  /// as one, as a link group's rows do ([followLinks]).
+  /// 한벌 ok. 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」) — open their
+  /// graphs as one, as a link group's rows do ([followLinks]).
   ///
   /// A press reaches every row of the family by itself, so inside a family
-  /// that stood the sets already agree; this is for the row a command just
-  /// made — a new cut's conte, an attach row added to one — which takes on
-  /// what the others wear. ⚠️No row of a family is its canonical one (the
-  /// head is whichever cut comes first, and a cut can be put before it), so
-  /// the rule asks the family: where ANY row is in a set, every row is.
+  /// that stood the graphs already agree; this is for the row a command
+  /// just made — a new cut's conte, an attach row added to one — which
+  /// takes on what the others wear. ⚠️No row of a family is its canonical
+  /// one (the head is whichever cut comes first, and a cut can be put
+  /// before it), so the rule asks the family: where ANY row has one, every
+  /// row has.
   ///
-  /// [families] is read once, and only while something is folded or open:
-  /// it is asked after every history change, a stroke's included.
+  /// [families] is read once, and only while a graph is open or a lane
+  /// pinned: it is asked after every history change, a stroke's included.
+  ///
+  /// ↩️The folds and the twirls were followed here too, until F-360 — the
+  /// row a command makes in a family is born wearing them
+  /// (`layerWearingHeadOf`, `cameraWearingHeadOf`).
   void followHeads(Iterable<List<LayerId>> families) {
     List<List<LayerId>>? read;
     List<List<LayerId>> every() => read ??= families.toList();
-    for (final rows in [collapsedAttachBaseIds, expandedLaneLayerIds]) {
-      if (rows.value.isEmpty) {
-        continue;
-      }
-      final next = Set<LayerId>.of(rows.value);
-      for (final family in every()) {
-        if (family.any(next.contains)) {
-          next.addAll(family);
-        }
-      }
-      if (!setEquals(next, rows.value)) {
-        rows.value = next;
-      }
-    }
     Map<String, V> acrossFamilies<V>(Map<String, V> worn) =>
         worn.isEmpty ? worn : _wornAcrossFamilies(worn, every());
-    _followLanes(acrossFamilies);
+    _followGraphs(acrossFamilies);
   }
 
-  /// What the rail keeps by a row's LANE — the groups open inside its
-  /// lanes, its open graphs and its pins — made to wear what [wear] says,
-  /// each told only where that changed. ONE rule for the three, so a group
-  /// and the graph standing in its lanes cannot follow a row two ways.
-  void _followLanes(Map<String, V> Function<V>(Map<String, V> worn) wear) {
-    final groups = wear(_worn(expandedLaneGroupKeys.value)).keys.toSet();
-    if (!setEquals(groups, expandedLaneGroupKeys.value)) {
-      expandedLaneGroupKeys.value = groups;
-    }
+  /// What the rail keeps by a row's LANE — its open graphs and its pins —
+  /// made to wear what [wear] says, told only where that changed. ONE rule
+  /// for the two.
+  ///
+  /// ↩️The groups open inside a row's lanes were the third — 「ONE rule for
+  /// the three, so a group and the graph standing in its lanes cannot
+  /// follow a row two ways」. F-360 put the groups on the rows, so a group
+  /// follows its row by the head's one command and a born row's head, and a
+  /// graph by this, until F-360-Q1 says where a graph is kept. They agree
+  /// on every row that is born from another — a new use and a new conte
+  /// row take the rows they come from — and on every press, which reaches
+  /// both through the same head.
+  void _followGraphs(Map<String, V> Function<V>(Map<String, V> worn) wear) {
     final graphs = laneGraphs.value;
     final followed = graphs.copyWith(
       open: wear(graphs.open),
@@ -193,9 +239,9 @@ class RailView {
   void dispose() {
     hiddenSections.dispose();
     rowFilter.dispose();
-    collapsedAttachBaseIds.dispose();
-    expandedLaneLayerIds.dispose();
-    expandedLaneGroupKeys.dispose();
+    _collapsedAttachBaseIds.dispose();
+    _expandedLaneLayerIds.dispose();
+    _expandedLaneGroupKeys.dispose();
     laneGraphs.dispose();
     storyboardSeAudioRows.dispose();
     storyboardTransformTracks.dispose();

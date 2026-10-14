@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/row_folds.dart';
 
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
 /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
@@ -349,7 +350,7 @@ void main() {
         _drawing('x'),
       ]);
       s.selectLayer(plusOne);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown();
@@ -370,7 +371,7 @@ void main() {
     test('③ a group opened for where you went asks for the scroll too', () {
       final s = session(_reported);
       s.selectLayer(_bMinus1);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown(reveal: true);
@@ -396,7 +397,7 @@ void main() {
         _drawing('x', mark: red),
       ]);
       s.selectLayer(plusOne);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       s.railView.rowFilter.value = TimelineRowFilter(markColors: {red});
 
       s.standing.keepStandingShown();
@@ -463,8 +464,9 @@ void main() {
       // 싹다」 — the lane twirl beside it already was), so the undo below
       // would take the FOLD back first and never reach the delete. The law
       // this pins is the unfolding, so the group is folded the way the undo
-      // stream does not hold — the rail's view set, written directly.
-      session.railView.collapsedAttachBaseIds.value = {_b};
+      // stream does not hold — the base's fold, written outside history
+      // (↩️the rail's view set, until F-360 put the fold on the base).
+      setRowFolds(session, _b, collapsed: true);
       await tester.pumpAndSettle();
       expect(_row(_bMinus2), findsNothing);
 
@@ -554,7 +556,7 @@ void main() {
         ),
       );
       addTearDown(s.dispose);
-      s.railView.collapsedAttachBaseIds.value = {base};
+      setRowFolds(s, base, collapsed: true);
       s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
       s.playbackRig.playback.seekToGlobalFrame(12);
       await tester.pump();

@@ -3,9 +3,10 @@ import '../../models/layer_id.dart';
 import '../project_repository.dart';
 import 'link_mirrored_layer_field_command.dart';
 
-/// Folds or opens a row's GROUP — a folder's members — mirrored across its
-/// link group, like its blend and its static opacity. One undo step puts
-/// back every member's own.
+/// Folds or opens a row's GROUP — a folder's members, a base's attach group
+/// (`Layer.collapsed`, F-360) — mirrored across its link group and its
+/// head, like its blend and its static opacity. One undo step puts back
+/// every member's own.
 ///
 /// 🚨유저 2026-10-05 (F-302): 「겸용컷, 레이어에서 fx 접기펼치기, 폴더/어태치
 /// 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태

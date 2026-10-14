@@ -209,6 +209,8 @@ void main() {
               blendMode: LayerBlendMode.multiply,
               isFillReference: true,
               collapsed: true,
+              lanesExpanded: true,
+              expandedLaneGroups: const {'transform-group'},
               audioGain: 0.4,
               audioPan: -0.6,
               seNameTag: const SeNameTag(),
@@ -244,6 +246,8 @@ void main() {
         expect(copy.blendMode, LayerBlendMode.multiply);
         expect(copy.isFillReference, isTrue);
         expect(copy.collapsed, isTrue);
+        expect(copy.lanesExpanded, isTrue);
+        expect(copy.expandedLaneGroups, {'transform-group'});
         expect(copy.audioGain, 0.4);
         expect(copy.audioPan, -0.6);
         expect(copy.seNameTag, isNotNull);

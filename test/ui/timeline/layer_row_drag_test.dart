@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/row_folds.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -813,10 +814,8 @@ void main() {
       'the inside of a group nobody can see', (tester) async {
     await _pump(tester, project: _facingGroupsProject());
     final session = _sessionOf(tester);
-    session.railView.collapsedAttachBaseIds.value = {
-      const LayerId('b1'),
-      const LayerId('b2'),
-    };
+    setRowFolds(session, const LayerId('b1'), collapsed: true);
+    setRowFolds(session, const LayerId('b2'), collapsed: true);
     await tester.pumpAndSettle();
     expect(_railRow('b2down'), findsNothing, reason: '⛔전제: folded');
     expect(_railRow('b1up'), findsNothing, reason: '⛔전제: folded');

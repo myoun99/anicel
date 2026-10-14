@@ -5,7 +5,6 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../services/commands/toggle_id_in_set_command.dart';
 import '../../services/project_lookup.dart'
     show cutIdOfLayer, layerAnywhereOrNull, requireCut;
 import '../editor_session_manager.dart';
@@ -157,29 +156,21 @@ class SessionRowButtonPresses {
         ).isEmpty) {
       return null;
     }
-    return session.railView.expandedLaneLayerIds.value.contains(id);
+    return layer.lanesExpanded;
   }
 
   /// 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
   /// property-lane twirl — the one the fx lanes live under — is a button
-  /// on a layer row like any other.
+  /// on a layer row like any other, and the row's own (F-360): every use
+  /// of a linked row twirls with it (F-302), every row of its head too.
   ///
   /// ⛔The closing half still runs here and NOT inside the command: the
   /// fold law hands the standing row to the layer when its lanes leave
   /// the screen (R5 #11), and that is a selection move, not part of the
-  /// membership this undoes.
+  /// twirl this undoes.
   void _toggleLanesOf(LayerId id) {
-    final expanded = session.railView.expandedLaneLayerIds;
-    final closing = expanded.value.contains(id);
-    session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: expanded,
-        layerId: id,
-        // F-302: every use of a linked row twirls with it.
-        alongWith: session.rowsFoldingWith(id),
-        debugLabel: 'Toggle layer lanes',
-      ),
-    );
+    final closing = _row(id)?.lanesExpanded ?? false;
+    session.layerSwitches.toggleLayerLanes(id);
     if (closing) {
       session.handOffCurrentRowOnFold(id);
     }
@@ -194,22 +185,27 @@ class SessionRowButtonPresses {
   /// linked row's effects are one chain, so its groups are one too.
   ///
   /// ↩️It was the workspace's own, and wrote the pressed row's key alone.
+  /// ↩️It was then the rail's view, outside history — the one fold that did
+  /// not undo — until F-360 put it on the row beside its twirl.
   void toggleLaneGroup(String groupKey) {
-    final expanded = session.railView.expandedLaneGroupKeys;
-    final next = Set<String>.of(expanded.value);
     final row = parseLaneGroupKey(groupKey);
-    final everyUse = _everyUseOf(groupKey);
-    if (next.contains(groupKey)) {
-      next.removeAll(everyUse);
+    // A key that names no row has no row to keep its twirl on — the
+    // storyboard's track lanes keep theirs on the storyboard.
+    final layer = row == null ? null : _row(row.layerId);
+    if (row == null || layer == null) {
+      return;
+    }
+    final closing = layer.expandedLaneGroups.contains(row.laneId);
+    if (closing) {
       // Closing: only this group's MEMBERS go, so the header is what
       // swallows them and where the standing row lands (R5 #11).
-      if (row != null) {
-        session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
-      }
-    } else {
-      next.addAll(everyUse);
+      session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
     }
-    expanded.value = next;
+    session.layerSwitches.setLayerLaneGroupExpanded(
+      row.layerId,
+      row.laneId,
+      expanded: !closing,
+    );
   }
 
   /// The header graphs' buttons as a grid is handed them (I-89 ③).
@@ -228,11 +224,11 @@ class SessionRowButtonPresses {
   /// A graph stands in its lanes' place, so one turned on over a shut group
   /// opens the group with it — through the group's own twirl, the camera
   /// row's being the row's (㉙). Shutting the group keeps the graph for
-  /// when it opens again. ⚠️View state, as the group's twirl: no undo.
+  /// when it opens again. ⚠️View state: no undo — while the twirl it opens
+  /// is the row's, and does (F-360).
   ///
-  /// The graph is written BEFORE the group opens: the camera row's twirl
-  /// is a command, and what follows a command reads the graphs as they
-  /// stand.
+  /// The graph is written BEFORE the group opens: the twirl is a command,
+  /// and what follows a command reads the graphs as they stand.
   void toggleLaneGraph(String groupKey) {
     final graphs = session.railView.laneGraphs;
     final open = Map<String, LaneGraph>.of(graphs.value.open);
@@ -255,7 +251,7 @@ class SessionRowButtonPresses {
   /// every use of its row, as what it plots and how far it stands are; and
   /// every other graph let back with it: one group's graph is enlarged at
   /// a time (I-89 ③D, the mock's 5판). A graph that is shut stays shut.
-  /// View state, as its twirl: no undo.
+  /// View state, as the graph is: no undo.
   void enlargeLaneGraph(String groupKey) {
     final graphs = session.railView.laneGraphs;
     final open = graphs.value.open;
@@ -321,22 +317,25 @@ class SessionRowButtonPresses {
     if (row == null) {
       return;
     }
-    if (_isCamera(row.layerId)) {
-      if (!session.railView.expandedLaneLayerIds.value.contains(
-        row.layerId,
-      )) {
+    final layer = _row(row.layerId);
+    if (layer == null) {
+      return;
+    }
+    if (layer.kind == LayerKind.camera) {
+      if (!layer.lanesExpanded) {
         _toggleLanesOf(row.layerId);
       }
       return;
     }
-    if (!session.railView.expandedLaneGroupKeys.value.contains(groupKey)) {
+    if (!layer.expandedLaneGroups.contains(row.laneId)) {
       toggleLaneGroup(groupKey);
     }
   }
 
   /// The keys a press on one row's lane reaches: [key] itself, and the
-  /// same lane on every use of its row (F-302) — what a group's twirl, its
-  /// graph and a lane's pin are written to.
+  /// same lane on every use of its row (F-302) — what a group's graph and a
+  /// lane's pin are written to. ↩️Its twirl too, until F-360 put the twirl
+  /// on the row, whose command walks the row's head.
   List<String> _everyUseOf(String key) {
     final row = parseLaneGroupKey(key);
     return [
@@ -353,13 +352,10 @@ class SessionRowButtonPresses {
     if (layer == null || layers == null) {
       return null;
     }
-    if (layer.kind.groupsLayers) {
-      return !layer.collapsed;
-    }
-    if (attachedLayersOf(id, layers).isEmpty) {
+    if (!layer.kind.groupsLayers && attachedLayersOf(id, layers).isEmpty) {
       return null;
     }
-    return !session.railView.collapsedAttachBaseIds.value.contains(id);
+    return !layer.collapsed;
   }
 
   void _toggleGroupOf(LayerId id) {
@@ -372,10 +368,10 @@ class SessionRowButtonPresses {
 
   /// A base's attach group, folded or opened — undoable like the lane
   /// twirl beside it (「아무튼 레이어에 있는 버튼 싹다」), which it was not
-  /// until I-32 pressed it across a selection.
+  /// until I-32 pressed it across a selection. The base's own `collapsed`,
+  /// the folder's field and command (F-360).
   void _toggleAttachFoldOf(LayerId baseId) {
-    final folded = session.railView.collapsedAttachBaseIds;
-    if (!folded.value.contains(baseId)) {
+    if (!(_row(baseId)?.collapsed ?? false)) {
       // FOLDING while one of the group's attach rows is active (UI-R24
       // #4): hand the selection to the BASE so the group actually
       // disappears — the active-attach-stays-visible rule otherwise kept
@@ -389,15 +385,8 @@ class SessionRowButtonPresses {
       // this hand-off is what keeps the fold from shutting over you.
       session.handOffCurrentRowOnAttachFold(baseId);
     }
-    session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: folded,
-        layerId: baseId,
-        // F-302: every use of a linked base folds its group with it.
-        alongWith: session.rowsFoldingWith(baseId),
-        debugLabel: 'Toggle attach group',
-      ),
-    );
+    // F-302: every use of a linked base folds its group with it.
+    session.folders.toggleAttachGroup(baseId);
   }
 
   void previewOpacity(LayerId pressed, double opacity) {
@@ -526,8 +515,7 @@ class SessionRowButtonPresses {
   /// — none while it is open.
   List<Layer> _foldedRidersOf(LayerId base) {
     final layers = _stackOf(base);
-    if (layers == null ||
-        !session.railView.collapsedAttachBaseIds.value.contains(base)) {
+    if (layers == null || !(_row(base)?.collapsed ?? false)) {
       return const [];
     }
     return attachedLayersOf(base, layers);

@@ -22,7 +22,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart'
     show projectedLayerInHand;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08, of a row riding
 /// the conte on the storyboard: 「서면 — 블록」 · 「플립 — 블록 단위」 ·
@@ -316,7 +320,9 @@ void main() {
     test('🚨and a row born at a seat whose rows have their lanes open is '
         'born with its own open — its seat\'s, not the conte\'s', () {
       final session = sessionOf();
-      session.railView.expandedLaneLayerIds.value = {const LayerId('a-over')};
+      // The seat's twirl, as a press writes it: on every row of its head
+      // (F-360 — ↩️the rail's set, which the rail then spread).
+      session.layerSwitches.toggleLayerLanes(const LayerId('a-over'));
 
       bearAConteIn(session);
 
@@ -327,6 +333,23 @@ void main() {
           const LayerId('b-over'),
           bornAt(session, 1).id,
         },
+      );
+    });
+
+    test('…and with the lane groups its seat\'s rows have open', () {
+      final session = sessionOf();
+      final group = transformGroupHeaderLane.laneId;
+      session.layerSwitches.setLayerLaneGroupExpanded(
+        const LayerId('a-over'),
+        group,
+        expanded: true,
+      );
+
+      bearAConteIn(session);
+
+      expect(
+        session.railView.expandedLaneGroupKeys.value,
+        contains(laneGroupKey(bornAt(session, 1).id, group)),
       );
     });
 

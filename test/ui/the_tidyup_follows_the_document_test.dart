@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/services/commands/toggle_id_in_set_command.dart';
+import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🚨★★★**UNDOING SOMETHING THAT DID NOT MOVE THE DOCUMENT MUST NOT TIDY
@@ -14,40 +14,37 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// for an edit that moved no row.
 ///
 /// 🔬**THE WHOLE FAMILY.** Of the 53 command classes that enter history,
-/// five never touch the repository — the three pixel commands,
+/// five never touched the repository — the three pixel commands,
 /// `ToggleIdInSetCommand`, and `RekeyBrushFramesCommand` (which is only
 /// ever composed into a step that also moves layers, so its group does move
 /// the document and does get the tidy-up). One question answers all of
 /// them: did the project object change.
 ///
-/// ⚠️**THE WITNESS IS A `ToggleIdInSetCommand` IN THE SESSION'S OWN
-/// HISTORY** — a real command that enters the history `undo()` walks and
-/// touches no project. ⛔A stroke driven through a standalone
-/// `BrushFrameEditingCoordinator` is NOT a witness — it never enters the
-/// session's history, so `undo()` steps something else entirely and the
-/// test passes or fails for the wrong reason. That mistake cost a round.
+/// ⚠️**THE WITNESS IS A STEP IN THE SESSION'S OWN HISTORY** — a real
+/// command that enters the history `undo()` walks and touches no project.
+/// ⛔A stroke driven through a standalone `BrushFrameEditingCoordinator` is
+/// NOT a witness — it never enters the session's history, so `undo()` steps
+/// something else entirely and the test passes or fails for the wrong
+/// reason. That mistake cost a round.
 ///
-/// ↩️It was the onion-skin toggle, the session verb that pushed that command
-/// (유저 2026-08-29: 「아무튼 어니언 적용 미적용만 되면 되는건데」), until
-/// F-162 (유저 2026-09-24: 「어니언/비지블솔로 등 내가 말한건 빼도록」) took
-/// the onion out of the history. The command's other door — the property
-/// lane twirl — is the workspace's, which a session test cannot press, so
-/// the command is executed here as that door executes it.
+/// ↩️It was the onion-skin toggle, the session verb that pushed
+/// `ToggleIdInSetCommand` (유저 2026-08-29: 「아무튼 어니언 적용 미적용만 되면
+/// 되는건데」), until F-162 (유저 2026-09-24: 「어니언/비지블솔로 등 내가 말한건
+/// 빼도록」) took the onion out of the history; then that command as the
+/// property-lane twirl executed it, until F-360 put the twirl on the row
+/// (a twirl moves the document now) and the command was gone. What is left
+/// writes the brush store, which a session test does not reach — so the
+/// witness is a step of the same shape, written here: a view set's
+/// membership.
 void main() {
-  /// What the lane twirl pushes: one row's membership of a view set.
+  /// A step that writes one row's membership of a view set and no project.
   ValueNotifier<Set<LayerId>> pushANonDocumentStep(
     EditorSessionManager session,
     LayerId layerId,
   ) {
     final twirled = ValueNotifier<Set<LayerId>>(<LayerId>{});
     addTearDown(twirled.dispose);
-    session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: twirled,
-        layerId: layerId,
-        debugLabel: 'Toggle layer lanes',
-      ),
-    );
+    session.historyManager.execute(_ViewSetStep(twirled, layerId));
     return twirled;
   }
 
@@ -238,4 +235,22 @@ void main() {
       expect(session.clipboard.bankedRowLayerIds, banked);
     });
   });
+}
+
+/// One row's membership of a view set, flipped — a step that enters the
+/// history and touches no project.
+class _ViewSetStep implements Command {
+  _ViewSetStep(this.rows, this.layerId);
+
+  final ValueNotifier<Set<LayerId>> rows;
+  final LayerId layerId;
+
+  @override
+  String get description => 'Toggle view set $layerId';
+
+  @override
+  void execute() => rows.value = {...rows.value, layerId};
+
+  @override
+  void undo() => rows.value = {...rows.value}..remove(layerId);
 }

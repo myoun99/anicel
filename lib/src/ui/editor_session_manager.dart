@@ -263,7 +263,10 @@ class EditorSessionManager extends ChangeNotifier
     // PCM copy, and outside live playback the activation rebuild covers
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
-    historyManager.addListener(_railFollowsItsHeads);
+    historyManager.addListener(_railFollowsTheDocument);
+    // F-360: the rows' folds as the opened file holds them, before any
+    // history change asks again.
+    railView.readFolds(repository.currentProject);
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
@@ -790,7 +793,8 @@ class EditorSessionManager extends ChangeNotifier
   /// What the rail leaves off the screen (sections, the row filter, folded
   /// attach groups) and what it twirls open — held here because the
   /// standing law reads it (F-169), and the rows it names are this
-  /// project's (I-7).
+  /// project's (I-7). The folds and twirls in it are read off the rows
+  /// (F-360).
   late final RailView railView = RailView();
 
   /// Every use of [row] — the rows that twirl and fold as one with it: the
@@ -813,6 +817,11 @@ class EditorSessionManager extends ChangeNotifier
   /// (I-73 ④ⓔ). ↩️It asked the active cut, and in a gap answered the row
   /// alone — a head shut there shut one row, and [RailView.followHeads] let
   /// it back open beside the rest.
+  ///
+  /// ↩️The folds and the twirls are written on these rows by their own
+  /// commands since F-360 (`LinkMirroredLayerFieldCommand` walks the same
+  /// head); what still asks here is what the rail keeps of them — a graph
+  /// and a pin.
   List<LayerId> rowsFoldingWith(LayerId row) {
     final project = repository.requireProject();
     final cutId = cutIdOfLayer(project, row) ?? activeCutId;
@@ -1352,10 +1361,11 @@ class EditorSessionManager extends ChangeNotifier
   // three one answer.
   late final FolderBands folderBands = FolderBands(project: this);
 
-  /// A row a command made in a track's conte family — or a camera its cut
-  /// brought onto a track — wears the family's folds and twirls
-  /// ([RailView.followHeads]) — asked after EVERY history change: a
-  /// command, an undo, a redo.
+  /// The rail reads the rows' folds and twirls off the document
+  /// ([RailView.readFolds], F-360), and a row a command made in a track's
+  /// conte family — or a camera its cut brought onto a track — wears the
+  /// family's graphs ([RailView.followHeads]) — asked after EVERY history
+  /// change: a command, an undo, a redo.
   ///
   /// ↩️Asked in [refreshAfterCutCommand], beside the links, until a pin
   /// found the doors that make such a row never come through it
@@ -1364,10 +1374,11 @@ class EditorSessionManager extends ChangeNotifier
   /// group was born open — folded on the storyboard's rail, whose head is
   /// the first cut's, and open in its own cut's timeline.
   ///
-  /// The families are read only while something is folded or twirled open
+  /// The families are read only while a graph is open or a lane pinned
   /// (`expand` is lazy): a stroke is a history change too.
-  void _railFollowsItsHeads() {
+  void _railFollowsTheDocument() {
     final project = repository.currentProject;
+    railView.readFolds(project);
     if (project != null) {
       railView.followHeads(
         project.tracks.expand(
@@ -1398,8 +1409,10 @@ class EditorSessionManager extends ChangeNotifier
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
     );
-    // F-302: a row the command linked wears its group's twirls and folds —
-    // BEFORE the standing law asks which rows the rail shows.
+    // F-302: a row the command linked wears its group's graphs. Its folds
+    // it wears already — they are its own (F-360), and the rail read them
+    // off the document as the command entered history, before the standing
+    // law below asks which rows the rail shows.
     railView.followLinks(repository.requireProject().linkRegistry);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
@@ -1533,7 +1546,7 @@ class EditorSessionManager extends ChangeNotifier
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
-    () => historyManager.removeListener(_railFollowsItsHeads),
+    () => historyManager.removeListener(_railFollowsTheDocument),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -1969,12 +1982,15 @@ class EditorSessionManager extends ChangeNotifier
     // same silence; it was the one direction that shouted.
     //
     // 🔬**THE WHOLE FAMILY, not the symptom.** Of the 53 command classes
-    // that enter history, exactly five never touch the repository:
+    // that enter history, exactly five never touched the repository:
     // `BrushStrokeHistoryCommand`, `BrushLiftMoveHistoryCommand`,
     // `CelPixelOverwriteCommand`, `ToggleIdInSetCommand` and
     // `RekeyBrushFramesCommand` — and the last is only ever composed INTO a
     // step that also moves layers, so its group does move the document and
-    // does get the tidy-up. One question answers all five.
+    // does get the tidy-up. One question answers all five. ↩️F-360 put the
+    // twirls and the attach fold that `ToggleIdInSetCommand` wrote on the
+    // rows and deleted it: undoing one moves the document now, and tidies
+    // up as undoing a folder's fold always did.
     //
     // ⚠️`identical` on the PROJECT is that question exactly, not a proxy
     // for it: `ProjectRepository` swaps the whole immutable project on

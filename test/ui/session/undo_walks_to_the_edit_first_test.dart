@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
+import '../../helpers/row_folds.dart';
 
 /// 🚨★★★I-41 — UNDO WALKS TO THE EDIT FIRST, AND REDO IS ITS MIRROR.
 ///
@@ -335,7 +336,7 @@ void main() {
     final made = drawingsOn(s, attached);
     await settle();
     s.selectLayer(base);
-    s.railView.collapsedAttachBaseIds.value = {base};
+    setRowFolds(s, base, collapsed: true);
 
     s.undo();
     expect(s.activeLayerId, attached, reason: '그 편집의 행에 섰다');

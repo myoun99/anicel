@@ -28,8 +28,9 @@ import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
-    show headMirrorRows, linkMirrorTargets;
+    show headMirrorTargets;
 import '../../services/commands/update_layer_collapsed_command.dart';
+import '../../services/project_lookup.dart' show cutIdOfLayer;
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -1238,26 +1239,38 @@ class Standing {
     if (shut.isEmpty) {
       return;
     }
-    final repository = _project.repository;
-    final cutId = _project.requireActiveCut.id;
-    for (final folder in shut) {
-      // Every use of the folder opens with it: its fold is the link
-      // group's (F-302), and a walk that opened this cut's alone would
-      // leave one folder folded two ways.
-      for (final use in linkMirrorTargets(
-        repository.requireProject(),
-        cutId: cutId,
-        layerId: folder,
-      )) {
-        UpdateLayerCollapsedCommand.writeCollapsed(
-          repository,
-          cutId: use.cutId,
-          layerId: use.layerId,
-          value: false,
-        );
-      }
-    }
+    shut.forEach(_openFold);
     _changes.notifyChanged();
+  }
+
+  /// Opens [row]'s fold — a folder's members, a base's attach group
+  /// (`Layer.collapsed`) — OUTSIDE history ([_openFoldersAbove] says why),
+  /// on every row the fold's own command writes ([headMirrorTargets]): its
+  /// fold is its link group's (F-302) and its head's (I-73), and a walk that
+  /// opened this cut's alone would leave one fold folded two ways. The rail
+  /// reads it at once ([RailView.readFolds]).
+  ///
+  /// ONE write for the two folds the standing law opens: the folders above
+  /// a row an undo walks back to, and the attach group a row you went to
+  /// rides. ↩️The attach group's was a write of its own on the rail's view
+  /// until F-360, and the folders' reached the link group alone.
+  void _openFold(LayerId row) {
+    final repository = _project.repository;
+    final project = repository.requireProject();
+    // A folder and a base stand in a cut; a row no cut holds folds nothing.
+    final cutId = cutIdOfLayer(project, row);
+    if (cutId == null) {
+      return;
+    }
+    for (final use in headMirrorTargets(project, cutId: cutId, layerId: row)) {
+      UpdateLayerCollapsedCommand.writeCollapsed(
+        repository,
+        cutId: use.cutId,
+        layerId: use.layerId,
+        value: false,
+      );
+    }
+    _railView.readFolds(repository.currentProject);
   }
 
   /// 🚨★★THE STANDING LAW (F-169, 유저 2026-09-24): ①「보이는거만 선택가능하고
@@ -1269,9 +1282,13 @@ class Standing {
   /// a cut switch, a new row, and the rail's own view changes — through the
   /// same [layerRowHiddenBy] the grids draw by. When the row is hidden:
   ///   - [reveal]: you WENT there — made the row, or an undo brought you back
-  ///     to it. What the rail's VIEW hides it with opens: its attach group
-  ///     unfolds, its section shows. A folder's fold is the document's, not
-  ///     the view's, and does not open here.
+  ///     to it. What hides it opens: its attach group unfolds (UI-R20 #9 —
+  ///     a fresh attach layer is visible the moment it is made), its section
+  ///     shows. A shut folder above it opens on the undo's walk
+  ///     ([_openFoldersAbove], I-41), not here. ↩️This read 「what the
+  ///     rail's VIEW hides it with — a folder's fold is the document's」
+  ///     until F-360 made the attach group's fold the document's too; the
+  ///     two still open where they did.
   ///   - otherwise another row takes the standing: the head of the fold it
   ///     is in (the attach group's base, the outermost shut folder — the
   ///     fold law's swallower, R5 #11), else the nearest shown row ABOVE it
@@ -1379,7 +1396,8 @@ class Standing {
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and
-  /// the attach group it rides unfolds. One write each, only when shut.
+  /// the attach group it rides unfolds ([_openFold]). One write each, only
+  /// when shut.
   void _openViewAround(Layer layer, List<Layer> stack) {
     final section = timelineSectionForLayerKind(layer.kind);
     final hidden = _railView.hiddenSections.value;
@@ -1387,21 +1405,11 @@ class Standing {
       _railView.hiddenSections.value = {...hidden}..remove(section);
     }
     final baseId = attachGroupBaseOf(layer, stack);
-    final folded = _railView.collapsedAttachBaseIds.value;
-    if (baseId != null && folded.contains(baseId)) {
+    if (baseId != null &&
+        _railView.collapsedAttachBaseIds.value.contains(baseId)) {
       // Every use of the base unfolds with it (F-302) — every row that
       // wears its head (I-73).
-      final cutId = _project.activeCutId;
-      _railView.collapsedAttachBaseIds.value = {...folded}
-        ..removeAll(
-          cutId == null
-              ? [baseId]
-              : headMirrorRows(
-                  _project.repository.requireProject(),
-                  cutId: cutId,
-                  layerId: baseId,
-                ),
-        );
+      _openFold(baseId);
     }
   }
 

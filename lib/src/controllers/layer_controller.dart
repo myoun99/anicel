@@ -15,6 +15,8 @@ import '../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
+import '../services/commands/update_layer_lane_group_expanded_command.dart';
+import '../services/commands/update_layer_lanes_expanded_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
@@ -384,12 +386,12 @@ class LayerController {
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold
-  /// for every use of the row. Folder rows use it to swallow their members;
-  /// the eye, static opacity and blend a folder carries need no method of
-  /// their own, because a folder IS a layer and rides
-  /// [toggleLayerVisibility] / [setLayerOpacity] / [setLayerBlendMode] —
-  /// the eye per-use since T9, the opacity and the blend its link group's
-  /// (F-278).
+  /// for every use of the row. Folder rows use it to swallow their members,
+  /// bases their attach group (F-360); the eye, static opacity and blend a
+  /// folder carries need no method of their own, because a folder IS a
+  /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
+  /// [setLayerBlendMode] — the eye per-use since T9, the opacity and the
+  /// blend its link group's (F-278).
   ///
   /// ↩️It was per-use like the eye. 유저 2026-10-05 (F-302): 「겸용컷 …
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
@@ -402,6 +404,10 @@ class LayerController {
   /// no: the rule is 「무언가를 바꾸는 동작은 기본 이럼」, and a fold is
   /// something you did and may want back. Attach rows need no separate
   /// answer: they fold through this same `collapsed` field.
+  ///
+  /// ↩️That last sentence was not so when it was written — the attach fold
+  /// was a set on the rail's view (`RailView`), undone through a command of
+  /// its own, and every reload opened it back up. It is so since F-360.
   void toggleLayerCollapsed(LayerId layerId) {
     final cutId = _cutOfRow(layerId);
     if (cutId == null) {
@@ -417,6 +423,49 @@ class LayerController {
         cutId: cutId,
         layerId: layerId,
         collapsed: !collapsed,
+      ),
+    );
+  }
+
+  /// The row's property-lane twirl — the fx and Transform lanes live under
+  /// it — on every row of its head ([UpdateLayerLanesExpandedCommand]).
+  void toggleLayerLanes(LayerId layerId) {
+    final cutId = _cutOfRow(layerId);
+    if (cutId == null) {
+      return;
+    }
+    final expanded = requireLayerAnywhere(
+      _repository.requireProject(),
+      layerId,
+    ).lanesExpanded;
+    _historyManager.execute(
+      UpdateLayerLanesExpandedCommand(
+        repository: _repository,
+        cutId: cutId,
+        layerId: layerId,
+        expanded: !expanded,
+      ),
+    );
+  }
+
+  /// [laneId]'s group inside the row's twirl-down, twirled to [expanded] on
+  /// every row of its head ([UpdateLayerLaneGroupExpandedCommand]).
+  void setLayerLaneGroupExpanded(
+    LayerId layerId,
+    String laneId, {
+    required bool expanded,
+  }) {
+    final cutId = _cutOfRow(layerId);
+    if (cutId == null) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateLayerLaneGroupExpandedCommand(
+        repository: _repository,
+        cutId: cutId,
+        layerId: layerId,
+        laneId: laneId,
+        expanded: expanded,
       ),
     );
   }

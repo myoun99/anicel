@@ -41,6 +41,8 @@ class Layer {
     List<AudioClip> audioClips = const [],
     this.isVisible = true,
     this.collapsed = false,
+    this.lanesExpanded = false,
+    Set<String> expandedLaneGroups = const {},
     this.muted = false,
     this.audioGain = 1.0,
     this.audioPan = 0.0,
@@ -77,6 +79,7 @@ class Layer {
        // result. The composite honours that by taking a raster per key
        // (`resolveCompositeEffectPlan`) instead of reordering the list.
        effects = List.unmodifiable(effects),
+       expandedLaneGroups = Set.unmodifiable(expandedLaneGroups),
        baseFrameLinks = Map.unmodifiable(baseFrameLinks);
 
   final LayerId id;
@@ -103,10 +106,30 @@ class Layer {
   final List<AudioClip> audioClips;
   final bool isVisible;
 
-  /// The row's twirl: a collapsed FOLDER swallows its member rows in the
-  /// layer list (persisted, like CSP). Meaningless on other kinds today —
-  /// the attach-group fold is still session view state.
+  /// The row's GROUP fold: a collapsed FOLDER swallows its member rows, a
+  /// collapsed BASE its attach group. One control — a row that holds other
+  /// rows, folding them (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
+  /// 어태치든」) — and a row is a folder or a base, never both
+  /// (`canCarryAttachedLayers`). Persisted, like CSP.
+  ///
+  /// ↩️The attach-group fold was session view state (`RailView`, UI-R20 #9,
+  /// 07-18) and every reload opened it back up, until F-360 (유저
+  /// 2026-10-14: 「어태치레이어 분명 접은채로 저장했는데 다시열면
+  /// 펼쳐져있음 … 제대로 기록되도록」).
   final bool collapsed;
+
+  /// Whether the row's AE-style property-lane twirl-down is open — its
+  /// Transform and fx lanes live under it. The row's own, as its fold is
+  /// (F-360): one command writes it on every row of its head, it undoes,
+  /// and the file keeps it. ↩️It was `RailView.expandedLaneLayerIds`,
+  /// session-only.
+  final bool lanesExpanded;
+
+  /// The LANE GROUPS twirled open inside the row's twirl-down, by lane id —
+  /// Transform, plus one header per effect (AE group collapse, default
+  /// shut). The row's own, as [lanesExpanded] is (F-360). ↩️It was
+  /// `RailView.expandedLaneGroupKeys`, session-only and outside history.
+  final Set<String> expandedLaneGroups;
 
   /// Whether this layer's sounds are silenced (SE rows' speaker button —
   /// the audio counterpart of [isVisible]): playback and export skip the
@@ -269,6 +292,8 @@ class Layer {
     List<AudioClip>? audioClips,
     bool? isVisible,
     bool? collapsed,
+    bool? lanesExpanded,
+    Set<String>? expandedLaneGroups,
     bool? muted,
     double? audioGain,
     double? audioPan,
@@ -299,6 +324,8 @@ class Layer {
       audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
       collapsed: collapsed ?? this.collapsed,
+      lanesExpanded: lanesExpanded ?? this.lanesExpanded,
+      expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
       muted: muted ?? this.muted,
       audioGain: audioGain ?? this.audioGain,
       audioPan: audioPan ?? this.audioPan,
@@ -352,6 +379,9 @@ class Layer {
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
     if (collapsed) 'collapsed': true,
+    if (lanesExpanded) 'lanesExpanded': true,
+    if (expandedLaneGroups.isNotEmpty)
+      'expandedLaneGroups': [...expandedLaneGroups]..sort(),
     if (muted) 'muted': true,
     if (audioGain != 1.0) 'audioGain': audioGain,
     if (audioPan != 0.0) 'audioPan': audioPan,
@@ -402,6 +432,12 @@ class Layer {
             ],
       isVisible: json['isVisible'] as bool,
       collapsed: json['collapsed'] as bool? ?? false,
+      lanesExpanded: json['lanesExpanded'] as bool? ?? false,
+      expandedLaneGroups: {
+        for (final laneId
+            in json['expandedLaneGroups'] as List<dynamic>? ?? const [])
+          laneId as String,
+      },
       muted: json['muted'] as bool? ?? false,
       audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
       audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
@@ -460,10 +496,12 @@ class Layer {
       identical(this, other) ||
       other is Layer &&
           sameBesideTimeline(other) &&
-          mapEquals(other.timeline, timeline);
+          mapEquals(other.timeline, timeline) &&
+          foldsLike(other);
 
-  /// Whether [other] is this layer in every field but its [timeline] — the
-  /// ONE list of those fields, and [==]'s own.
+  /// Whether [other] is this layer in every field but its [timeline] and
+  /// its folds ([foldsLike]) — the ONE list of those fields, and [==]'s
+  /// own.
   ///
   /// 🚨F-244: the timeline's tiles keep what an edit left alone across the
   /// new instance the edit made (`firstCellThatMayDiffer`), and this is
@@ -480,7 +518,6 @@ class Layer {
           mapEquals(other._storedInstructions, _storedInstructions) &&
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
-          other.collapsed == collapsed &&
           other.muted == muted &&
           other.audioGain == audioGain &&
           other.audioPan == audioPan &&
@@ -501,6 +538,19 @@ class Layer {
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
           other.folderId == folderId;
 
+  /// Whether [other] folds and twirls as this layer does — [collapsed],
+  /// [lanesExpanded] and [expandedLaneGroups]: how the rail is laid out
+  /// around the row (F-360).
+  ///
+  /// ⚠️Not in [sameBesideTimeline]: none of the row's cells reads them —
+  /// the rows they show or hide are rows of their own — and in that list a
+  /// twirl would bake every tile of the row again (F-244 measured 25–57ms
+  /// for a step that did that on a heavy cut).
+  bool foldsLike(Layer other) =>
+      other.collapsed == collapsed &&
+      other.lanesExpanded == lanesExpanded &&
+      setEquals(other.expandedLaneGroups, expandedLaneGroups);
+
   @override
   int get hashCode => Object.hash(
     id,
@@ -514,7 +564,12 @@ class Layer {
     ),
     Object.hashAll(audioClips),
     // Folded with isVisible: Object.hash caps at 20 positional args.
-    Object.hash(isVisible, collapsed),
+    Object.hash(
+      isVisible,
+      collapsed,
+      lanesExpanded,
+      Object.hashAllUnordered(expandedLaneGroups),
+    ),
     muted,
     Object.hash(audioGain, audioPan),
     // Folded with opacity: Object.hash caps at 20 positional args.

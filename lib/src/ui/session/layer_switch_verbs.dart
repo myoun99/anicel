@@ -52,6 +52,23 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
+  /// The row's property-lane twirl, and [laneId]'s group inside it — the
+  /// row's own, undone as its fold is (F-360). ⚠️No session notify: the
+  /// rails read them off the document ([RailView.readFolds]), which every
+  /// history change re-reads — as they heard the view's sets before.
+  void toggleLayerLanes(LayerId layerId) =>
+      _controllers.layerController.toggleLayerLanes(layerId);
+
+  void setLayerLaneGroupExpanded(
+    LayerId layerId,
+    String laneId, {
+    required bool expanded,
+  }) => _controllers.layerController.setLayerLaneGroupExpanded(
+    layerId,
+    laneId,
+    expanded: expanded,
+  );
+
   /// Silences/unsilences an SE row's sounds: playback and export skip
   /// muted layers' clips, waveforms keep displaying. An undoable edit, so
   /// the history listener re-uploads a live mix — no refresh of its own.
