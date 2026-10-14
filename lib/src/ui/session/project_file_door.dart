@@ -12,6 +12,8 @@
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
@@ -48,7 +50,9 @@ import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
-    show cutPositionOf, projectAudioSourcePaths;
+    show cutPositionOf, projectAudioSourcePaths, projectLayerIdValues;
+import '../timeline/lane_graph.dart' show LaneGraphsView;
+import '../timeline/property_lane_model.dart' show parseLaneGroupKey;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
@@ -131,10 +135,12 @@ class ProjectFileDoor {
     required PlaybackRig playback,
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
+    required ValueNotifier<LaneGraphsView> laneGraphs,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
+       _laneGraphs = laneGraphs,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -165,6 +171,10 @@ class ProjectFileDoor {
   /// Whose conte zoom and panel scrolls a save keeps and an open puts back
   /// ([ProjectResume.storyboardZoom], [ProjectResume.frameAxisOffsets]).
   final PanelViewMemory _panelViews;
+
+  /// Whose header graphs and pinned lanes a save keeps and an open puts
+  /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
+  final ValueNotifier<LaneGraphsView> _laneGraphs;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -894,6 +904,7 @@ class ProjectFileDoor {
     layerAxisOffsets: PanelViewMemory.awayFromTheStart(
       _panelViews.layerAxisOffsets,
     ),
+    laneGraphs: _laneGraphs.value,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1169,7 +1180,26 @@ class ProjectFileDoor {
       _panelViews.layerAxisOffsets,
       resume.layerAxisOffsets,
     );
+    // The header graphs and their pins as they stood (F-360-Q1) — each on a
+    // row the project still has: a new row's id is minted afresh every
+    // session, skipping only the ids in use, so a graph kept for a row
+    // deleted since would open on the next row minted with its id.
+    _laneGraphs.value = _graphsOnRowsOf(project, resume.laneGraphs);
   }
+}
+
+/// [graphs] less every graph and pin of a row [project] does not hold.
+LaneGraphsView _graphsOnRowsOf(Project project, LaneGraphsView graphs) {
+  final rows = projectLayerIdValues(project);
+  bool onARow(String key) =>
+      rows.contains(parseLaneGroupKey(key)?.layerId.value);
+  return LaneGraphsView(
+    open: {
+      for (final MapEntry(:key, :value) in graphs.open.entries)
+        if (onARow(key)) key: value,
+    },
+    pinned: graphs.pinned.where(onARow).toSet(),
+  );
 }
 
 /// A .anicel as READ — everything an open needs from the file, before any

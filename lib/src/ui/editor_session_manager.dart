@@ -3512,6 +3512,7 @@ class EditorSessionManager extends ChangeNotifier
     playback: playbackRig,
     timelineZoom: timelineZoom,
     panelViews: panelViews,
+    laneGraphs: railView.laneGraphs,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

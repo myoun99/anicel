@@ -129,8 +129,11 @@ class RailView {
   /// link group and a head ([followLinks], [followHeads]): a graph and a
   /// pin are keyed by a row's lane, as an open group is.
   ///
-  /// ⚠️Still the view's alone, and not saved: how a graph is to be kept —
-  /// as a view setting, or as a fold — is F-360-Q1's to answer.
+  /// 🗣️A VIEW SETTING (유저 답 F-360-Q1 「보기 설정처럼 — 저장은 되고 언두는
+  /// 안 됨」): the file keeps it beside the project with the zooms and the
+  /// scrolls (`ProjectResume.laneGraphs`), and turning one takes no undo
+  /// step and marks nothing unsaved — where the groups it stands in are the
+  /// rows' folds (F-360), undone and saved with the project.
   final ValueNotifier<LaneGraphsView> laneGraphs = ValueNotifier(
     LaneGraphsView.none,
   );
@@ -221,7 +224,7 @@ class RailView {
   /// the three, so a group and the graph standing in its lanes cannot
   /// follow a row two ways」. F-360 put the groups on the rows, so a group
   /// follows its row by the head's one command and a born row's head, and a
-  /// graph by this, until F-360-Q1 says where a graph is kept. They agree
+  /// graph — a view setting (F-360-Q1) — by this. They agree
   /// on every row that is born from another — a new use and a new conte
   /// row take the rows they come from — and on every press, which reaches
   /// both through the same head.

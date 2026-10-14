@@ -82,8 +82,9 @@ class LaneGraph {
   int get hashCode => Object.hash(extent, mode, enlarged);
 }
 
-/// THE RAIL'S HEADER GRAPHS (I-89 ③) — view state, as the twirls are: which
-/// lane groups stand open as a graph, and the lanes pinned to every graph.
+/// THE RAIL'S HEADER GRAPHS (I-89 ③) — a view setting, kept in the file
+/// beside the project as the zooms are (F-360-Q1): which lane groups stand
+/// open as a graph, and the lanes pinned to every graph.
 ///
 /// 🗣️유저 2026-10-10: 「그래프누르면 해당 fx에서만 작동하도록」 · 「그래프를
 /// 누른 레일만 상태변경」 — [open] is keyed by the group (`laneGroupKey`), so

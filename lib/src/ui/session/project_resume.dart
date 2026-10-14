@@ -3,6 +3,8 @@ import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
+import '../timeline/lane_graph.dart'
+    show LaneGraph, LaneGraphMode, LaneGraphsView;
 
 /// Where the work stood when the project was saved — the cut, the row and
 /// the frame in front of the person, and what their tools were holding —
@@ -39,6 +41,7 @@ class ProjectResume {
     this.storyboardZoom,
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
+    this.laneGraphs = LaneGraphsView.none,
   });
 
   static const ProjectResume none = ProjectResume();
@@ -78,6 +81,13 @@ class ProjectResume {
   /// pixels (F-267); a rail left at its start is not here.
   final Map<String, double> layerAxisOffsets;
 
+  /// The header graphs standing open — how tall, plotting what, enlarged or
+  /// not — and the lanes pinned to them (I-89 ③): a view setting kept here
+  /// as the zooms are (유저 답 F-360-Q1 「보기 설정처럼 — 저장은 되고 언두는
+  /// 안 됨」). Turning one is no edit, so no undo step takes it back and
+  /// nothing marks the film unsaved, and the file still keeps it.
+  final LaneGraphsView laneGraphs;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
@@ -91,6 +101,16 @@ class ProjectResume {
     if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
+    if (laneGraphs.open.isNotEmpty)
+      'laneGraphs': {
+        for (final MapEntry(:key, value: graph) in laneGraphs.open.entries)
+          key: {
+            if (graph.extent != null) 'extent': graph.extent,
+            if (graph.mode != LaneGraphMode.value) 'mode': graph.mode.name,
+            if (graph.enlarged) 'enlarged': true,
+          },
+      },
+    if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -117,8 +137,33 @@ class ProjectResume {
       storyboardZoom: _positive(json['storyboardZoom']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
+      laneGraphs: LaneGraphsView(
+        open: {
+          for (final MapEntry(:key, :value)
+              in anicelObjectMapField(json['laneGraphs']).entries)
+            if (key.isNotEmpty && value is Map)
+              key: _laneGraph(anicelObjectMapField(value)),
+        },
+        pinned: {
+          if (json['pinnedLanes'] case final List<Object?> keys)
+            for (final key in keys)
+              if (key is String && key.isNotEmpty) key,
+        },
+      ),
     );
   }
+
+  /// The header graph [json] holds — a part it does not hold readably
+  /// stands as on a graph nobody has sized, plotted or enlarged.
+  static LaneGraph _laneGraph(Map<String, Object?> json) => LaneGraph(
+    extent: _positive(json['extent']),
+    mode:
+        LaneGraphMode.values
+            .where((mode) => mode.name == json['mode'])
+            .firstOrNull ??
+        LaneGraphMode.value,
+    enlarged: json['enlarged'] == true,
+  );
 
   /// [value] as a zoom or an offset can be read back: a finite number above
   /// zero — at zero, or anything else, nothing was saved.
