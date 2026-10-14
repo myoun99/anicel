@@ -312,10 +312,12 @@ void main() {
       // out, so adding a kind to the viewer's list (movies, 2026-08-29)
       // broke a test about de-duplication for a reason that had nothing to
       // do with de-duplication.
-      final utis = FileTypeGroups.utisFor([
-        FileTypeGroups.images,
-        FileTypeGroups.poolMedia,
-      ]);
+      const stills = XTypeGroup(
+        label: 'Stills',
+        extensions: ['png'],
+        uniformTypeIdentifiers: ['public.image'],
+      );
+      final utis = FileTypeGroups.utisFor([stills, FileTypeGroups.poolMedia]);
       expect(utis.toSet(), hasLength(utis.length), reason: 'no repeats');
       expect(
         utis,

@@ -237,27 +237,13 @@ abstract final class FileTypeGroups {
   );
 
   /// A plain WAV, for the one dialog that WRITES one: the pool's conform
-  /// export. Apple publishes a UTI for this format, so unlike the TVPaint
-  /// case below there is nothing to split per platform.
+  /// export. Apple publishes a UTI for this format, so unlike [brushesFor]
+  /// below there is nothing to split per platform.
   static const XTypeGroup wav = XTypeGroup(
     label: 'WAV audio',
     extensions: ['wav'],
     uniformTypeIdentifiers: ['com.microsoft.waveform-audio'],
   );
-
-  /// TVPaint project files. Same Apple-platform split as [brushesFor]:
-  /// TVPaint publishes no UTI, so iOS gets `public.data` (a wrong filter
-  /// greys out the very file the user came for) and macOS gets the
-  /// extension alone (the umbrella would swallow it).
-  static XTypeGroup tvppProjectFor(String operatingSystem) => XTypeGroup(
-    label: 'TVPaint project',
-    extensions: const ['tvpp'],
-    uniformTypeIdentifiers: operatingSystem == 'macos'
-        ? const []
-        : const [_utiData],
-  );
-
-  static XTypeGroup get tvppProject => tvppProjectFor(Platform.operatingSystem);
 
   /// Anicel's OWN brush file, for the one place that WRITES one: the preset
   /// panel's export. We own the type, so it is declared rather than borrowed
@@ -299,13 +285,6 @@ abstract final class FileTypeGroups {
     uniformTypeIdentifiers: operatingSystem == 'macos'
         ? const []
         : const [_utiData],
-  );
-
-  /// Still images — the brush tip importer.
-  static const XTypeGroup images = XTypeGroup(
-    label: 'Images',
-    extensions: imageFileExtensions,
-    uniformTypeIdentifiers: [_utiImage],
   );
 
   /// Everything the media pool will register, movies included — what the

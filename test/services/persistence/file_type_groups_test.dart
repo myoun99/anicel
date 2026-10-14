@@ -38,7 +38,6 @@ void main() {
     'anicelProject': FileTypeGroups.anicelProject,
     'anicelBrush': FileTypeGroups.anicelBrush,
     'brushes': FileTypeGroups.brushesFor('ios'),
-    'images': FileTypeGroups.images,
     'poolMedia': FileTypeGroups.poolMedia,
   };
 
