@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// 🚨★★★THE STORYBOARD RAIL SWIPES A COLUMN, LIKE THE TIMELINE RAIL DOES.
 ///
@@ -111,10 +112,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -576,10 +581,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,

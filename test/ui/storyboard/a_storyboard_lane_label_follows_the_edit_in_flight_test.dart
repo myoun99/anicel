@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
 
 /// F-195 on the STORYBOARD's rail: a value scrubbed on an S row's lane or on
 /// the V row's fx chain is shown by the label itself through the one drag
@@ -31,10 +32,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,

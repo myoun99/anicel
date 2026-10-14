@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// A COMMITTED SEEK — an arrow-key flip, a ruler release, a `.`/`,` step —
 /// must not rebuild the storyboard panel. It reaches exactly the places
@@ -42,11 +43,16 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            // The workspace's storyboard-tab listenable, verbatim.
-            listenable: manager,
-            builder: (context, _) => StoryboardTabHost(
+          // The workspace's storyboard-tab listenable: the session and the
+          // rows' twirls — no seek channel.
+          body: withStoryboardTwirls(
+            manager,
+            (twirls) => StoryboardTabHost(
               session: manager,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,

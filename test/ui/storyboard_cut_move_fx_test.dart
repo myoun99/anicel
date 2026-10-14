@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
 /// the TRACK carries fx transform keys (R4: track-owned lanes) — with the
@@ -31,14 +32,21 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ListenableBuilder(
-            listenable: Listenable.merge([manager, manager.frameSeekCommitted]),
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
+            listenable: manager.frameSeekCommitted,
+            builder: (context, _) => withStoryboardTwirls(
+              manager,
+              (twirls) => StoryboardTabHost(
+                session: manager,
+                expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+                onToggleLayerLanes: twirls.onToggleLayerLanes,
+                expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+                onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+                pixelsPerFrame: 12,
+                onPixelsPerFrameChanged: (_) {},
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+                thumbnails: null,
+              ),
             ),
           ),
         ),

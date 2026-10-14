@@ -149,8 +149,9 @@ void main() {
       'timeline-lane-label-${_seId.value}-',
     );
 
+    // No press here: the S row's twirl is its SE row's own since F-360's
+    // second half, so the timeline's opened it on this panel too.
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _pressNamed(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
     final storyboard = _laneIdsDownTheRail(
       tester,
       'storyboard-lane-label-${_seId.value}-',
@@ -234,8 +235,9 @@ void main() {
     expect(tool.value.scaleLinked, isFalse, reason: "the timeline's press");
     expect(tester.appIconButton(chain('timeline')).isSelected, isFalse);
 
+    // The row and its Transform group stand open as the timeline twirled
+    // them — the twirls are the row's.
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _pressNamed(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
     await openTransform('storyboard');
     expect(
       tester.appIconButton(chain('storyboard')).isSelected,

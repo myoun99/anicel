@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
 
 /// 🚨I-57 (10-14): A STORYBOARD BUILT AGAIN FOR NOTHING — OR ACROSS A CUT —
 /// HANDS BACK EVERY ROW OF ITS RAIL AS IT WAS, its label and the drag
@@ -143,17 +144,18 @@ void main() {
   );
 
   /// The tab as the workspace mounts it, on [project]: built again on every
-  /// notify the session makes — and on the camera VIEW [cameraView], which
-  /// is none. [turned] hears every lane twirl the rail turns; [openLanes]
-  /// are the layers whose lanes stand open, [openGroups] the conte rows'
-  /// lane groups that do; [rowFilter] is the legend's.
+  /// notify the session makes and every twirl its rows turn — and on the
+  /// camera VIEW [cameraView], which is none. [turned] hears every lane
+  /// twirl the rail turns, in place of the session's verb; [openLanes] are
+  /// the layers whose lanes stand open and [openGroups] the conte rows' lane
+  /// groups that do, in place of the session's; [rowFilter] is the legend's.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
     ValueNotifier<bool>? cameraView,
     List<LayerId>? turned,
-    Set<LayerId> openLanes = const {},
-    Set<String> openGroups = const {},
+    Set<LayerId>? openLanes,
+    Set<String>? openGroups,
     TimelineRowFilter rowFilter = TimelineRowFilter.none,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
@@ -163,9 +165,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
@@ -174,9 +176,10 @@ void main() {
               thumbnails: null,
               rowFilter: rowFilter,
               cameraViewEnabled: cameraView,
-              expandedLaneLayerIds: openLanes,
-              expandedLaneGroupKeys: openGroups,
-              onToggleLayerLanes: turned?.add,
+              expandedLaneLayerIds: openLanes ?? twirls.expandedLaneLayerIds,
+              expandedLaneGroupKeys: openGroups ?? twirls.expandedLaneGroupKeys,
+              onToggleLayerLanes: turned?.add ?? twirls.onToggleLayerLanes,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
             ),
           ),
         ),
