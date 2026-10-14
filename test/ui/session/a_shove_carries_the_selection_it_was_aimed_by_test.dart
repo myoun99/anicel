@@ -105,7 +105,7 @@ void main() {
 
   test('with nothing selected a shove selects nothing', () {
     final (:s, :row) = secondBlockSelected();
-    s.clearAllSelections();
+    s.clearTimelineSelections();
     s.selectFrameIndex(4);
 
     shoveOf(s).pushFrames(1);

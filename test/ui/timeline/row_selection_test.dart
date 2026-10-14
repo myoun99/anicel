@@ -152,7 +152,7 @@ void main() {
   // 물건 클릭해도 사라지도록 하고싶어. 선택레이어로 ABC선택하고, C 클릭하면
   // 사라지도록. 프레임셀쪽도 마찬가지」.
   group('a CLICK clears — even a click inside the selection', () {
-    test('clearAllSelections empties every kind at once', () {
+    test('clearTimelineSelections empties every timeline kind at once', () {
       final s = session();
       final drawing = s.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
@@ -164,12 +164,12 @@ void main() {
         headIndex: 3,
       );
       expect(s.frameRangeSelection.value, isNotNull);
-      s.clearAllSelections();
+      s.clearTimelineSelections();
       expect(s.frameRangeSelection.value, isNull);
 
       s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.rowSelection.value, isNotEmpty);
-      s.clearAllSelections();
+      s.clearTimelineSelections();
       expect(s.rowSelection.value, isEmpty);
     });
 

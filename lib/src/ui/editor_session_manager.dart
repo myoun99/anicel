@@ -1110,9 +1110,6 @@ class EditorSessionManager extends ChangeNotifier
     bool frameIsGlobal = false,
   ]) =>
       rangeSelections.standingInsideSelection(row, frameIndex, frameIsGlobal);
-  bool get hasAnySelection => rangeSelections.hasAnySelection;
-  @override
-  void clearAllSelections() => rangeSelections.clearAllSelections();
   @override
   void clearTimelineSelections() => rangeSelections.clearTimelineSelections();
   void claimSelection(TimelineSelectionKind kind) =>

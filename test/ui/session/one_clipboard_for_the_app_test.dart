@@ -137,7 +137,7 @@ void main() {
       final a = open();
       final se = a.activeTrack.seLayers.first.id;
       a
-        ..clearAllSelections()
+        ..clearTimelineSelections()
         ..selectLayer(se)
         ..selectFrameIndex(1);
       a.seEntries.createSeEntryAtCurrentFrame(
@@ -149,7 +149,7 @@ void main() {
       // then says something else.
       final b = open(a);
       b
-        ..clearAllSelections()
+        ..clearTimelineSelections()
         ..selectLayer(se)
         ..selectFrameIndex(1);
       b.seEntries.updateSelectedSeEntry(
@@ -160,7 +160,7 @@ void main() {
 
       a.copyFrameAtCurrentFrame();
       b
-        ..clearAllSelections()
+        ..clearTimelineSelections()
         ..selectLayer(se)
         ..selectFrameIndex(8);
       b.pasteIndependentFrameAtCurrentFrame();

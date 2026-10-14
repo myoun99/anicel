@@ -347,18 +347,10 @@ void main() {
   ) async {
     final projects = await pumpApp(tester);
     final first = projects.active;
-    expect(
-      first.rangeSelections.canvasHasSelection,
-      isNotNull,
-      reason: 'CONTROL',
-    );
+    expect(first.pixelVerbs.pixelVerbCanvas, isNotNull, reason: 'CONTROL');
     await newProject(tester);
-    expect(first.rangeSelections.canvasHasSelection, isNull);
-    expect(first.rangeSelections.clearCanvasSelection, isNull);
     expect(first.pixelVerbs.pixelVerbCanvas, isNull);
     final second = projects.active;
-    expect(second.rangeSelections.canvasHasSelection, isNotNull);
-    expect(second.rangeSelections.clearCanvasSelection, isNotNull);
     expect(second.pixelVerbs.pixelVerbCanvas, isNotNull);
   });
 

@@ -188,7 +188,7 @@ void main() {
       endIndexExclusive: 3,
     );
     s.copyFrameAtCurrentFrame();
-    s.clearAllSelections();
+    s.clearTimelineSelections();
     s.selectLayer(picture);
     s.selectFrameIndex(3);
     expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);

@@ -1,34 +1,36 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/range_selections.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import 'timeline_cell_probe.dart';
 
-/// deselect-button — **the tablet's Esc.**
+/// deselect-button — **the tablet's Esc.** 유저: 「선택해제 버튼 (태블릿엔
+/// 키보드가 없다)」.
 ///
-/// 유저: 「선택해제 버튼 (태블릿엔 키보드가 없다)」. Every other way out of a
-/// selection is a TAP somewhere, and a tap also moves the playhead or the
-/// standing row. This is the one that only lets go.
+/// 🗣️IT LETS GO OF THE SELECTION TOOL'S SELECTION AND NOTHING ELSE (유저
+/// 2026-10-14, I-40): 「선택해제 버튼/기능은 대상은 오직 선택도구의
+/// 선택한것만이야. 프레임이나 레이어 선택범위 작동한건 대상이아니야」 — the
+/// button, and the key it wears. A tap on the timeline lets go of the
+/// timeline's selections (T10), and of nothing on the artwork (F-86).
 ///
 /// 🚨THERE IS ONE OF IT (유저 2026-08-27: 「선택해제 타임라인에 중복으로
 /// 존재하는거」). For one round there were two — this rail button letting go of
 /// the marquee, a `shared-deselect-button` on the timeline pill letting go of
 /// the timeline's selections — both called 선택 해제, both wearing
-/// `Icons.deselect`, and nothing on screen saying which was which.
-///
-/// The rail's is the one that stayed, and it lets go of ALL FIVE kinds. The
-/// marquee is the fifth: deliberately outside `claimSelection`'s switch,
-/// because space and time are different axes and the pixel verbs need both at
-/// once — but 「지금 뭔가 선택됐나」 has to count it, or the button leaves a
-/// selection sitting on screen.
-/// The collaborator whose `hasAnySelection` this button reads — named so
-/// `tool/mutation_run.dart` has a suite to run for it.
+/// `Icons.deselect`. ↩️The pill's went and, until 10-14, its half was poured
+/// into this one: it let go of all five kinds, and so did every tap on the
+/// timeline.
+/// The collaborator whose `clearTimelineSelections` the timeline's tap runs —
+/// named so `tool/mutation_run.dart` has a suite to run for it.
 RangeSelections rangeSelectionsOf(EditorSessionManager session) =>
     session.rangeSelections;
 
@@ -47,6 +49,43 @@ void main() {
         .session;
   }
 
+  CanvasSelectionCommands marqueeOf(WidgetTester tester) => tester
+      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+      .canvasSelectionCommands!;
+
+  /// A marquee on the artwork. ⚠️Pumped, not settled, from here on: a
+  /// marquee's ants never settle.
+  Future<void> drawMarquee(WidgetTester tester) async {
+    marqueeOf(tester).setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 8, bottom: 8),
+      ),
+    );
+    await tester.pump();
+    expect(marqueeOf(tester).region, isNotNull, reason: '⛔premise');
+  }
+
+  /// Frames 0–2 of the first row, swept.
+  Future<void> sweepFrames(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    session.updateFrameRangeSelectionDrag(
+      layerId: session.layers.first.id,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    await tester.pump();
+    expect(session.frameRangeSelection.value, isNotNull, reason: '⛔premise');
+  }
+
+  Future<void> pressCtrlD(WidgetTester tester) async {
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+  }
+
   testWidgets('it is there and DIM with nothing selected', (tester) async {
     await pump(tester);
 
@@ -63,23 +102,10 @@ void main() {
     );
   });
 
-  testWidgets('a live selection lights it, and pressing it lets go', (
-    tester,
-  ) async {
+  testWidgets('a marquee lights it, and pressing it lets go of the marquee '
+      'and nothing else — the playhead stays', (tester) async {
     final session = await pump(tester);
-    final layer = session.layers.first;
-
-    session.updateFrameRangeSelectionDrag(
-      layerId: layer.id,
-      anchorIndex: 0,
-      headIndex: 2,
-    );
-    await tester.pumpAndSettle();
-    expect(
-      session.frameRangeSelection.value,
-      isNotNull,
-      reason: 'fixture premise',
-    );
+    await drawMarquee(tester);
     expect(
       tester.appIconButton(find.byKey(button)).onPressed,
       isNotNull,
@@ -87,9 +113,9 @@ void main() {
     );
 
     await tester.tap(find.byKey(button));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
-    expect(session.frameRangeSelection.value, isNull);
+    expect(marqueeOf(tester).region, isNull);
     expect(
       session.currentFrameIndex,
       0,
@@ -98,99 +124,63 @@ void main() {
     );
   });
 
-  testWidgets('a ROW selection lights it too — one question, four kinds', (
+  testWidgets('🎯a timeline selection does not light it, and the press that '
+      'lets go of a marquee leaves the timeline\'s selection where it is', (
     tester,
   ) async {
     final session = await pump(tester);
-
-    session.rowSelectionVerbs.beginRowSelection(session.currentRow);
-    await tester.pumpAndSettle();
-    expect(session.rowSelection.value, isNotEmpty, reason: 'fixture premise');
-
+    await sweepFrames(tester, session);
     expect(
       tester.appIconButton(find.byKey(button)).onPressed,
-      isNotNull,
+      isNull,
+      reason: '⛔a frame selection is not its to let go of',
     );
 
-    await tester.tap(find.byKey(button));
-    await tester.pumpAndSettle();
-    expect(session.rowSelection.value, isEmpty);
-  });
-
-  testWidgets('the MARQUEE is the fifth kind — it lights the button and the '
-      'press lets go of it too', (tester) async {
-    final session = await pump(tester);
-    final ranges = rangeSelectionsOf(session);
-    expect(
-      ranges.canvasHasSelection,
-      isNotNull,
-      reason: 'the workspace publishes it; without that the button is blind '
-          'to half of what it clears',
-    );
-
-    var marquee = true;
-    var cleared = false;
-    ranges.canvasHasSelection = () => marquee;
-    ranges.clearCanvasSelection = () {
-      marquee = false;
-      cleared = true;
-    };
-    // The rail rebuilds on the selection object's own channel; a stand-in
-    // has none, so nudge the session the way any selection change would.
-    session.notifyListeners();
-    await tester.pumpAndSettle();
-
-    expect(
-      ranges.hasAnySelection,
-      isTrue,
-      reason: 'a marquee alone counts — 「지금 뭔가 선택됐나」',
-    );
-    expect(tester.appIconButton(find.byKey(button)).onPressed, isNotNull);
-
-    await tester.tap(find.byKey(button));
-    await tester.pumpAndSettle();
-    expect(
-      cleared,
-      isTrue,
-      reason: '⛔the one button lets go of EVERYTHING, not the timeline half',
-    );
-  });
-
-  // The key is the button's — it wears it in its tooltip. ↩️It kept the
-  // marquee-only road of 07-11 when this button took all five, and Ctrl+D
-  // left a timeline selection on screen.
-  testWidgets('🎯its key lets go of what it lets go of — the timeline\'s '
-      'selection and the marquee', (tester) async {
-    final session = await pump(tester);
-    // ⚠️Pumped, not settled: a marquee's ants never settle.
-    Future<void> pressCtrlD() async {
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pump();
-    }
-
-    session.updateFrameRangeSelectionDrag(
-      layerId: session.layers.first.id,
-      anchorIndex: 0,
-      headIndex: 2,
-    );
-    await tester.pumpAndSettle();
-    expect(session.frameRangeSelection.value, isNotNull, reason: '⛔premise');
-    await pressCtrlD();
-    expect(session.frameRangeSelection.value, isNull);
-
-    final marquee = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .canvasSelectionCommands!;
-    marquee.setRegion(
-      CanvasSelectionRegion.shape(
-        CanvasSelectionShape.rect(left: 0, top: 0, right: 8, bottom: 8),
-      ),
-    );
+    session.rowSelectionVerbs.beginRowSelection(session.currentRow);
     await tester.pump();
-    expect(marquee.region, isNotNull, reason: '⛔premise');
-    await pressCtrlD();
-    expect(marquee.region, isNull);
+    expect(session.rowSelection.value, isNotEmpty, reason: '⛔premise');
+    expect(
+      tester.appIconButton(find.byKey(button)).onPressed,
+      isNull,
+      reason: '⛔nor a row selection',
+    );
+
+    await sweepFrames(tester, session);
+    await drawMarquee(tester);
+    await tester.tap(find.byKey(button));
+    await tester.pump();
+    expect(marqueeOf(tester).region, isNull);
+    expect(session.frameRangeSelection.value, isNotNull);
+  });
+
+  testWidgets('🎯its key is the same: Ctrl+D lets go of the marquee and '
+      'leaves the timeline\'s selection', (tester) async {
+    final session = await pump(tester);
+    await sweepFrames(tester, session);
+    await drawMarquee(tester);
+
+    await pressCtrlD(tester);
+
+    expect(marqueeOf(tester).region, isNull);
+    expect(session.frameRangeSelection.value, isNotNull);
+  });
+
+  testWidgets('🎯a tap on the timeline lets go of the timeline\'s selection '
+      'and leaves the marquee (T10 · F-86)', (tester) async {
+    final session = await pump(tester);
+    await sweepFrames(tester, session);
+    await drawMarquee(tester);
+
+    // INSIDE the swept frames: the press keeps them — it could be the start
+    // of a move — and it is the release, the press settling as a tap, that
+    // lets them go.
+    await tester.tapAt(
+      timelineCellCenter(tester, session.layers.first.id.value, 1),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(session.frameRangeSelection.value, isNull);
+    expect(marqueeOf(tester).region, isNotNull);
   });
 }

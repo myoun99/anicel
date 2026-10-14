@@ -493,11 +493,11 @@ class TimelineActionToolbar extends StatelessWidget {
   /// ⚠️It listens to ALL FOUR selection channels, not two.
   ///
   /// The row selection and the standing row were enough while every button
-  /// here read a row or the playhead. The deselect button reads
-  /// [EditorSessionManager.hasAnySelection], which asks the cell band, the
-  /// lane band and the cut band as well — and a gate that is not listened to
-  /// is a button that lights one notify late. (Found by the button's own
-  /// test: a live cell band left it dark.)
+  /// here read a row or the playhead. The copy, cut and paste gates read the
+  /// clipboard's band — the cell band or the cut band — and a gate that is
+  /// not listened to is a button that lights one notify late. (Found first
+  /// by the deselect button's test, a live cell band leaving it dark, while
+  /// that button was here; it left this pill on 08-26.)
   Widget _sharedPill() => ListenableBuilder(
     listenable: Listenable.merge([
       session.rowSelection,
@@ -573,10 +573,11 @@ class TimelineActionToolbar extends StatelessWidget {
         // which was which (유저 2026-08-27: 「선택해제 타임라인에 중복으로
         // 존재하는거」).
         //
-        // The rail's is the one that stayed, and it lets go of ALL FIVE kinds
-        // now — see `hasAnySelection`. ⚠️The 취소 button, if it is built, goes
-        // beside THAT one; the note about holding its neighbour slot moved
-        // with the button it was about.
+        // The rail's is the one that stayed, and it lets go of the marquee
+        // alone (유저 2026-10-14, I-40) — a tap lets go of the timeline's
+        // selections (T10). ⚠️The 취소 button, if it is built, goes beside
+        // THAT one; the note about holding its neighbour slot moved with the
+        // button it was about.
         // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
         // 「지금 무엇이 선택됐나」 and that is what this pill is for.
         //

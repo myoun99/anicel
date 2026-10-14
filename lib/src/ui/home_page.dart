@@ -1099,11 +1099,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _canvasViewCommands.fit();
       case EditorActionIds.canvasResetView:
         _canvasViewCommands.resetView();
-      // 🗣️The key lets go of what its button lets go of — all five kinds
-      // (유저 2026-08-27: 「선택해제 타임라인에 중복으로 존재하는거」). ↩️It
-      // kept the marquee-only road of 07-11 when the button took all five.
+      // 🗣️The selection tool's selection and nothing else, as its button
+      // (유저 2026-10-14, I-40: 「선택해제 버튼/기능은 대상은 오직 선택도구의
+      // 선택한것만이야. 프레임이나 레이어 선택범위 작동한건 대상이아니야」).
+      // ↩️For a day it let go of the timeline's selections too, after the
+      // button's five kinds — the button was wrong, not the key.
       case EditorActionIds.selectionDeselect:
-        _session.clearAllSelections();
+        _canvasSelectionCommands.deselect();
       case EditorActionIds.selectionInvert:
         _invertSelection();
       case EditorActionIds.layerUp:

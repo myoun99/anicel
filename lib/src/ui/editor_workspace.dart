@@ -1288,13 +1288,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
-    // The marquee, as the fifth selection kind — so one 선택 해제 can let go
-    // of everything rather than half of it.
-    // ⛔Not a cascade: an arrow closure swallows the next `..` section.
-    session.rangeSelections.canvasHasSelection = () =>
-        widget.canvasSelectionCommands?.hasRegion ?? false;
-    session.rangeSelections.clearCanvasSelection = () =>
-        widget.canvasSelectionCommands?.deselect();
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1420,9 +1413,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
-    session.rangeSelections
-      ..canvasHasSelection = null
-      ..clearCanvasSelection = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );
@@ -1524,7 +1514,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // the same row with the arrows kept it, and the frame flip — which does
     // clear — disagreed with its own sibling.
     //
-    // ⛔The fix is not another `clearAllSelections()` here. The law has a
+    // ⛔The fix is not another `clearTimelineSelections()` here. The law has a
     // house, and the way to obey it is to walk through the door rather than
     // to copy the sentence written on it.
     session.standOnRow(target);

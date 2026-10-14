@@ -29,7 +29,7 @@ typedef _RailAnswers = ({
   bool canRedo,
   bool onionOn,
   bool canToggleOnion,
-  bool anySelection,
+  bool hasMarquee,
   bool canConfirm,
   bool soloOn,
 });
@@ -103,15 +103,6 @@ class _WorkspaceRail {
         // mutates inside builds and gesture handlers, so its notify is
         // microtask-deferred rather than riding a session notify.
         ?selection,
-        // 🚨…and the timeline's four kinds, each on its own notifier. The
-        // button lets go of ALL FIVE now, so it has to hear all five — it
-        // used to answer `hasRegion` alone and could afford to listen to the
-        // marquee alone. ⛔A `session` notify does not carry these: they are
-        // ValueNotifiers of their own.
-        session.frameRangeSelection,
-        session.laneRangeSelection,
-        session.trackFrameRangeSelection,
-        session.rowSelection,
       ]),
       // 🚨The buttons rebuild when an ANSWER moves, not when news arrives
       // (2026-09-26). The session notifies constantly and every stroke's
@@ -129,7 +120,7 @@ class _WorkspaceRail {
               layer != null &&
               session.onionSkin.layerIds.value.contains(layer.id),
           canToggleOnion: session.onionSkin.canToggleOnionSkin,
-          anySelection: session.hasAnySelection,
+          hasMarquee: selection?.hasRegion ?? false,
           canConfirm: confirm?.canConfirm ?? false,
           soloOn: session.visibilitySolo.layerVisibilitySoloEnabled,
         );
@@ -210,16 +201,17 @@ class _WorkspaceRail {
                 // `hasSelection` keeps its own job: arrow keys nudge instead
                 // of flipping frames, and that one really does need a live
                 // layer to nudge.
-                // 🚨ONE question, and it is the SESSION's — the marquee is
-                // one of five selection kinds, and this button is now the
-                // only door out of any of them (유저 2026-08-27: 「선택해제
-                // 타임라인에 중복으로 존재하는거」 — the pill's copy is gone).
                 //
-                // ⚠️`hasRegion` alone was right while this cleared only the
-                // marquee. It would now light for half of what it does.
-                onPressed: answers.anySelection
-                    ? session.clearAllSelections
-                    : null,
+                // 🗣️THE MARQUEE AND NOTHING ELSE (유저 2026-10-14, I-40):
+                // 「선택해제 버튼/기능은 대상은 오직 선택도구의 선택한것만이야.
+                // 프레임이나 레이어 선택범위 작동한건 대상이아니야」 — and the
+                // button was asked for because 「선택해제 버튼 — 태블릿엔
+                // 키보드가 없다」 (deselect-button). ↩️From 08-26 it let go of
+                // the timeline's four kinds too, a session's own reading of
+                // 유저 2026-08-27 「선택해제 타임라인에 중복으로 존재하는거」:
+                // the timeline's copy of this button went, and its half was
+                // poured in here, which nobody asked for.
+                onPressed: answers.hasMarquee ? selection.deselect : null,
               ),
             ],
             // 🗣️확정 (유저 2026-09-24, confirm-button-Q1): 「버튼 하나 · 아이콘

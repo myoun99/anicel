@@ -196,7 +196,7 @@ void main() {
       'asks, not about two buttons', (tester) async {
     final (:session, :commands) = await inkUnderASelection(tester);
 
-    session.clearAllSelections();
+    session.clearTimelineSelections();
     await tester.pump();
 
     expect(

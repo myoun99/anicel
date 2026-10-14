@@ -83,7 +83,6 @@ abstract interface class SelectionAccess {
     bool Function(Layer layer) accepts,
     bool Function(Layer layer) atPlayhead,
   );
-  void clearAllSelections();
   void clearFrameRangeSelection();
   void clearRowSelection();
   void clearStoryboardCutSelection();

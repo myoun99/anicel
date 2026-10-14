@@ -649,7 +649,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // be the start of a move — so something has to clear when the
             // press turns out to have been a tap. This is that something,
             // and it is the same verb for the cells and the rail rows.
-            onSettledPress: _session.clearAllSelections,
+            // ⛔The timeline's selections, not the marquee (F-86 — moving
+            // the playhead is not putting the selection tool down).
+            onSettledPress: _session.clearTimelineSelections,
             // Ruler drags: per-move seeks ride the cursor path (value-only —
             // the playhead and the canvas preview follow, nothing rebuilds);
             // the release commits the selection as ONE ordinary seek.

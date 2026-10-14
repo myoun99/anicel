@@ -96,19 +96,6 @@ class RangeSelections {
   final void Function(TimelineRowAddress row, {WorkingPanel panel})
   _standOnRow;
 
-  /// Whether the artwork carries a marquee, published by whoever owns it —
-  /// the fifth kind [hasAnySelection] counts.
-  ///
-  /// ⚠️Kept HERE, by the one collaborator that asks, and not on the session:
-  /// `SessionInternals` only shrank, until it was deleted (ARCH-session-state,
-  /// the eleventh family). The workspace publishes it while its canvas is
-  /// mounted and clears it when the project goes behind.
-  bool Function()? canvasHasSelection;
-
-  /// Lets go of the marquee, published by whoever owns it — the fifth kind
-  /// [clearAllSelections] lets go of.
-  void Function()? clearCanvasSelection;
-
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
   ///
@@ -197,30 +184,7 @@ class RangeSelections {
   /// Clicking INSIDE the selection clears it too. That is the user's own
   /// call, and it is written out here because it is the surprising half —
   /// the ordinary desktop idiom keeps a selection you click into.
-  /// Whether [clearAllSelections] has anything to clear — the deselect
-  /// button's gate, and its verb's own question (T25: one answer behind
-  /// both).
   ///
-  /// 🚨deselect-button (유저): 「선택해제 버튼 — 태블릿엔 키보드가 없다」. Esc
-  /// is not reachable on a tablet, and every other way out of a selection is
-  /// a TAP somewhere, which also moves the playhead or the standing row. This
-  /// is the one that only lets go.
-  ///
-  /// ⚠️It asks all four TIMELINE kinds because the ONE-SELECTION LAW means at
-  /// most one of them is live — so "is anything selected" is one question
-  /// wherever it is asked from.
-  ///
-  /// 🚨AND THE FIFTH KIND: the marquee on the artwork. It is deliberately NOT
-  /// in [claimSelection]'s switch — space and time are different axes and the
-  /// pixel verbs need both at once — but 「지금 뭔가 선택됐나」 has to count it,
-  /// or a button saying 선택 해제 leaves a selection sitting on screen.
-  bool get hasAnySelection =>
-      _selection.frameRangeSelection.value != null ||
-      _selection.laneRangeSelection.value != null ||
-      _selection.trackFrameRangeSelection.value != null ||
-      _selection.rowSelection.value.isNotEmpty ||
-      (canvasHasSelection?.call() ?? false);
-
   /// The four TIMELINE selections — and NOT the marquee on the artwork.
   ///
   /// 🚨F-86 (유저 2026-09-12): 「선택툴 선택한채로 프레임이나 인덱스 이동하면
@@ -230,26 +194,21 @@ class RangeSelections {
   /// ARTWORK. The marquee is a tool the user is still holding; moving the
   /// playhead is not putting it down.
   ///
-  /// ⛔This is NOT the deselect button's half. That button says 「let go」 and
-  /// means all five kinds ([clearAllSelections]) — the 2026-08-27 answer to
-  /// two buttons that each let go of a different half. The line drawn here is
-  /// between WHO asks: a button that says 선택 해제, or a verb that is about
-  /// to work somewhere else.
+  /// 🗣️AND 선택 해제 DOES NOT REACH IN HERE (유저 2026-10-14, I-40): 「선택해제
+  /// 버튼/기능은 대상은 오직 선택도구의 선택한것만이야. 프레임이나 레이어
+  /// 선택범위 작동한건 대상이아니야」. The button and its key let go of the
+  /// marquee alone; a tap on the timeline lets go of these alone.
+  ///
+  /// ↩️From 08-26 to 10-14 the marquee was a fifth kind here, and one 선택
+  /// 해제 let go of all five. That was a session's own answer to 유저
+  /// 2026-08-27 「선택해제 타임라인에 중복으로 존재하는거」 — which asked for the
+  /// timeline's copy of the button to go, not for the two to become one —
+  /// and it made every tap on the timeline let go of the marquee too.
   void clearTimelineSelections() {
     clearFrameRangeSelection();
     clearLaneRangeSelection();
     _selection.clearStoryboardCutSelection();
     _selection.clearRowSelection();
-  }
-
-  void clearAllSelections() {
-    clearTimelineSelections();
-    // ⛔ALL of them, the marquee included. 유저 2026-08-27 found two buttons
-    // both called 선택 해제, both wearing `Icons.deselect`, each letting go of
-    // a different half — the rail's cleared the marquee, the timeline's
-    // cleared the timeline, and nothing on screen said which was which.
-    // 「Let go」 means let go.
-    clearCanvasSelection?.call();
   }
 
   /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
