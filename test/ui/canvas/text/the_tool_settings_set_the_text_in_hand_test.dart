@@ -3,21 +3,37 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
+import 'package:anicel/src/ui/brush/text_tool_settings.dart'
+    show TextToolSettings;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/brush/tool_settings_section.dart'
+    show ToolSettingsSection;
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
-    show ToolSettingAction;
+    show ToolSettingAction, ToolSettingChoiceRow, ToolSettingRow;
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/shortcuts/panel_keys.dart' show PanelKeysBinding;
 import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
 import 'package:anicel/src/ui/text/readout_text.dart' show columnValueText;
+import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:anicel/src/ui/widgets/settings_rows.dart'
+    show SettingsSwitchRow;
+import 'package:flutter/gestures.dart'
+    show
+        PointerDeviceKind,
+        PointerDownEvent,
+        PointerMoveEvent,
+        PointerUpEvent,
+        kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_tool_harness.dart';
+import '../../../helpers/frame_census.dart';
 import '../../../helpers/tool_setting_action_probe.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
@@ -35,6 +51,12 @@ import '../../../helpers/tool_setting_action_probe.dart';
 /// a text being typed.
 void main() {
   Finder row(String name) => find.byKey(ValueKey<String>('text-tool-$name'));
+
+  /// The box [name] reading [number].
+  Finder reading(String name, double number) => find.descendant(
+    of: row(name),
+    matching: find.text(columnValueText(number)),
+  );
 
   /// The real app with the text tool in hand and its settings on screen.
   ///
@@ -681,12 +703,6 @@ void main() {
     Offset landedCentre(WidgetTester tester) =>
         celTextBoxOf(celOf(tester).texts.single.content).centre;
 
-    /// The box [name] reading [number].
-    Finder reading(String name, double number) => find.descendant(
-      of: row(name),
-      matching: find.text(columnValueText(number)),
-    );
-
     DragValueLabel box(WidgetTester tester, String name) =>
         tester.widget<DragValueLabel>(
           find.ancestor(of: row(name), matching: find.byType(DragValueLabel)),
@@ -822,6 +838,166 @@ void main() {
 
       expect(landedCentre(tester), offsetMoreOrLessEquals(middle));
       expect(history.undoCount, steps + 2);
+    });
+  });
+
+  // 🚨text-settings-redrawn-per-drag-sample (10-14): the hand tells of every
+  // sample of a drag, and the settings were ONE builder on it — every row
+  // was built again for each. A control hears only what it shows (F-164,
+  // the transform tool's numbers: 「패널리빌드하지말고 글자만 바꾸게」).
+  group('one sample of a drag on the canvas', () {
+    /// What no sample of a drag of the text in hand builds again: the
+    /// section, its rows and keys, and every control whose value such a
+    /// drag does not move.
+    const steady = [
+      TextToolSettings,
+      ToolSettingsSection,
+      PanelKeysBinding,
+      ToolSettingRow,
+      SettingsSwitchRow,
+      ToolSettingChoiceRow<bool>,
+      ToolSettingChoiceRow<TextCelAlign>,
+      ColorSwatchButton,
+      PanelFlyoutButton,
+    ];
+
+    /// The mouse, event by event: the census is of ONE sample, and the
+    /// harness's gestures pump between theirs.
+    const mouse = 41;
+    PointerDownEvent downAt(Offset at) => PointerDownEvent(
+      pointer: mouse,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+      position: at,
+    );
+    PointerMoveEvent moveTo(Offset at) => PointerMoveEvent(
+      pointer: mouse,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+      position: at,
+    );
+
+    /// A drag on the screen from [from] by [first] and then [then], the
+    /// census taken of the second sample alone — [meanwhile] asked before
+    /// the mouse lets go.
+    Future<List<Type>> dragged(
+      WidgetTester tester,
+      Offset from, {
+      required Offset first,
+      required Offset then,
+      required void Function() meanwhile,
+    }) async {
+      final binding = tester.binding;
+      binding.handlePointerEvent(downAt(from));
+      await tester.pump();
+      binding.handlePointerEvent(moveTo(from + first));
+      await tester.pump();
+      final census = await frameCensus(
+        tester,
+        () => binding.handlePointerEvent(moveTo(from + first + then)),
+      );
+      meanwhile();
+      binding.handlePointerEvent(
+        PointerUpEvent(
+          pointer: mouse,
+          kind: PointerDeviceKind.mouse,
+          position: from + first + then,
+        ),
+      );
+      await pumpFrames(tester);
+      return census.rebuilt;
+    }
+
+    Offset shownCentre(WidgetTester tester) =>
+        textToolOf(tester).session!.shown.layout.onCanvas.centre;
+
+    testWidgets('🚨the text CARRIED builds its X again — and nothing else of '
+        'the settings, not even its Y', (tester) async {
+      final c = await hiInHand(tester);
+      await reach(tester, 'x');
+      final before = shownCentre(tester);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, c.dx + 10, c.dy + 30),
+        first: const Offset(20, 0),
+        then: const Offset(20, 0),
+        meanwhile: () {
+          final centre = shownCentre(tester);
+          expect(centre.dx, greaterThan(before.dx), reason: '⛔fixture');
+          expect(reading('x', centre.dx), findsOneWidget, reason: 'LIVENESS');
+        },
+      );
+
+      expect(
+        rebuilt.where((type) => type == DragValueLabel),
+        hasLength(1),
+        reason: 'the X — and not the Y, which stood still',
+      );
+      for (final type in [...steady, FieldSlider]) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
+    });
+
+    testWidgets('🚨the text SIZED by a corner builds its size again — and no '
+        'row, switch, choice, colour or list of the settings', (tester) async {
+      await hiInHand(tester);
+      await reach(tester, 'size');
+      final before = textToolOf(tester).contentInHand!.spans.single.style;
+      final corner = textToolOf(tester).session!.shown.layout.onCanvas.corners
+          .reduce((a, b) => a.dx + a.dy > b.dx + b.dy ? a : b);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, corner.dx, corner.dy),
+        first: const Offset(10, 10),
+        then: const Offset(20, 20),
+        meanwhile: () {
+          final sized = textToolOf(tester).contentInHand!.spans.single.style;
+          expect(
+            sized.fontSize,
+            isNot(before.fontSize),
+            reason: '⛔fixture: the corner sizes it',
+          );
+          expect(
+            tester.widget<FieldSlider>(row('size')).value,
+            sized.fontSize,
+            reason: 'LIVENESS',
+          );
+        },
+      );
+
+      expect(rebuilt, contains(FieldSlider));
+      for (final type in steady) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
+    });
+
+    testWidgets('🚨letters SWEPT OVER that agree on everything build nothing '
+        'of the settings again', (tester) async {
+      final c = await hiInHand(tester);
+      // Into the letters — a click inside the box, beside the cross in its
+      // middle.
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+      expect(textToolOf(tester).hold, CelTextHold.letters, reason: '⛔fixture');
+      Offset along(double pixels) =>
+          onLayer(tester, pixels, 0) - onLayer(tester, 0, 0);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, c.dx + 5, c.dy + 30),
+        first: along(40),
+        then: along(45),
+        meanwhile: () => expect(
+          textToolOf(tester).letters!.selection,
+          const TextSelection(baseOffset: 0, extentOffset: 2),
+          reason: 'LIVENESS: the letters were swept over',
+        ),
+      );
+
+      for (final type in [...steady, FieldSlider, DragValueLabel]) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
     });
   });
 }
