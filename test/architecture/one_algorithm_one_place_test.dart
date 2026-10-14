@@ -269,8 +269,32 @@ import '../../tool/refactor/clone_scan.dart';
 /// added, none gone.
 /// 🔬Measured on the lane against its base (`71ec1f1f0`, at 89): that one
 /// gone, none added.
+///
+/// 88 → 89 (2026-10-14, F-317 — a text's box takes a height by its top
+/// and its bottom), over a ceiling one above the count. Two pairs came,
+/// and they are one law twice, on the box's other axis:
+///
+///     82 tokens
+///       lib/src/services/cel_text_box_edits.dart  celTextBoxWidened
+///       lib/src/services/cel_text_box_edits.dart  celTextBoxDeepened
+///     48 tokens
+///       lib/src/ui/canvas/text/cel_text_press.dart  _WidthPress._move
+///       lib/src/ui/canvas/text/cel_text_press.dart  _DepthPress._move
+///
+/// The reading CONFIRMS both: an edge sizes the box — the far edge changes
+/// the size alone, the edge the anchor is on carries the anchor by what the
+/// size lost — along the letters' way for the width and the way the lines
+/// stack for the height, and the press reads the hand's travel along that
+/// way. ⛔Not merged: the SECOND, and the rule of three holds. A shared
+/// body would take the axis as hooks — the way, the field it writes
+/// (`wrapWidth` · `minHeight`) and the floor (the least room · the
+/// letters' depth) — invented for a shape seen twice. 🔜The third edge
+/// that sizes a box by carrying its anchor merges all three and lowers
+/// this back.
+/// 🔬Measured on the lane against master (`a33780650`, at 87): these two
+/// added, none gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
