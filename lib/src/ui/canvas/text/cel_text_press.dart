@@ -555,7 +555,8 @@ final class _TurnPress extends _BoxEditPress {
 /// On nothing: let go where it went down, a text that grows; dragged, a
 /// box with the drag's room for its letters — as wide as it for a text in
 /// lines, as long as it for one in columns, which hangs from the drag's
-/// top RIGHT corner.
+/// top RIGHT corner. The drag IS the box: its letters go in as far as a
+/// box reaches past them ([celTextBoxPad]).
 final class _EmptyPress extends CelTextPress {
   _EmptyPress(super.event, this.artwork);
 
@@ -575,14 +576,21 @@ final class _EmptyPress extends CelTextPress {
       scene.onBegin(celTextWholePixel(artwork));
       return;
     }
-    // Which way the next text is written is the tool's settings' to say.
-    final columns = scene.tool.host.options.vertical;
+    // Which way the next text is written, and how large its letters are,
+    // is the tool's settings' to say.
+    final host = scene.tool.host;
+    final columns = host.options.vertical;
+    final letters = traced.deflate(
+      celTextBoxPad(
+        host.options.letters(brushColour: host.brushColour).fontSize,
+      ),
+    );
     scene.onBegin(
-      celTextWholePixel(columns ? traced.topRight : traced.topLeft),
+      celTextWholePixel(columns ? letters.topRight : letters.topLeft),
       wrapWidth: math.max(
         extentAlong(
           celTextLettersAxis(vertical: columns),
-          traced.size,
+          letters.size,
         ).roundToDouble(),
         celTextMinWrapWidth,
       ),

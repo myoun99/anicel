@@ -18,8 +18,9 @@ import '../../../helpers/cel_text_tool_harness.dart';
 /// the text still in hand when the hand comes up.
 ///
 /// In the test font 「hi」 at the tool's own size is 96 wide on a line 60
-/// tall: its box stands from the pixel in view `c` to `c + (96, 60)`, its
-/// centre at `c + (48, 30)`.
+/// tall: its letters stand from the pixel in view `c` to `c + (96, 60)`,
+/// and its box reaches a quarter of their 48 past them on every side — from
+/// `c - (12, 12)` to `c + (108, 72)`, its centre at `c + (48, 30)`.
 void main() {
   const black = [0, 0, 0, 255];
 
@@ -37,7 +38,9 @@ void main() {
     return c;
   }
 
-  /// A box 220 wide holding 「hi」 at the pixel in view, in hand by its box.
+  /// A box 220 wide from the pixel in view holding 「hi」, in hand by its
+  /// box: its letters hung 12 in from its corner, at `c + (12, 12)`, with
+  /// 196 of room — and the box 84 tall, the line and its 12 above and below.
   Future<Offset> boxInHand(WidgetTester tester) async {
     await pumpTextToolApp(tester);
     await takeTextTool(tester);
@@ -46,9 +49,11 @@ void main() {
     await typeText(tester, 'hi');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await pumpFrames(tester);
+    final content = celOf(tester).texts.single.content;
+    expect(content.wrapWidth, 196, reason: '⛔fixture');
     expect(
-      celOf(tester).texts.single.content.wrapWidth,
-      220,
+      content.anchor,
+      CanvasPoint(x: c.dx + 12, y: c.dy + 12),
       reason: '⛔fixture',
     );
     return c;
@@ -63,8 +68,8 @@ void main() {
     // The corner taken twice as far from the centre: everything doubles.
     await dragFrom(
       tester,
-      Offset(c.dx + 96, c.dy + 60),
-      Offset(c.dx + 144, c.dy + 90),
+      Offset(c.dx + 108, c.dy + 72),
+      Offset(c.dx + 168, c.dy + 114),
     );
 
     final scaled = celOf(tester).texts.single.content;
@@ -126,8 +131,8 @@ void main() {
       final steps = history.undoCount;
       final before = celOf(tester);
 
-      final mouse = await pressAt(tester, c.dx + 96, c.dy + 60);
-      await mouse.moveTo(onScreen(tester, c.dx + 144, c.dy + 90));
+      final mouse = await pressAt(tester, c.dx + 108, c.dy + 72);
+      await mouse.moveTo(onScreen(tester, c.dx + 168, c.dy + 114));
       await pumpFrames(tester);
       final tool = textToolOf(tester);
       expect(
@@ -201,13 +206,13 @@ void main() {
 
       await dragFrom(
         tester,
-        Offset(c.dx + 220, c.dy + 30),
-        Offset(c.dx + 300.4, c.dy + 75),
+        Offset(c.dx + 220, c.dy + 42),
+        Offset(c.dx + 300.4, c.dy + 87),
       );
 
       final widened = celOf(tester).texts.single.content;
-      expect(widened.wrapWidth, 300);
-      expect(widened.anchor, CanvasPoint(x: c.dx, y: c.dy));
+      expect(widened.wrapWidth, 276);
+      expect(widened.anchor, CanvasPoint(x: c.dx + 12, y: c.dy + 12));
       expect(history.undoCount, steps + 1);
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     });
@@ -220,21 +225,21 @@ void main() {
 
       await dragFrom(
         tester,
-        Offset(c.dx, c.dy + 30),
-        Offset(c.dx + 40, c.dy + 30),
+        Offset(c.dx, c.dy + 42),
+        Offset(c.dx + 40, c.dy + 42),
       );
 
       final narrowed = celOf(tester).texts.single.content;
-      expect(narrowed.wrapWidth, 180);
-      expect(narrowed.anchor, CanvasPoint(x: c.dx + 40, y: c.dy));
+      expect(narrowed.wrapWidth, 156);
+      expect(narrowed.anchor, CanvasPoint(x: c.dx + 52, y: c.dy + 12));
       expect(history.undoCount, steps + 1);
 
       history.undo();
       await pumpFrames(tester);
 
       final back = celOf(tester).texts.single.content;
-      expect(back.wrapWidth, 220);
-      expect(back.anchor, CanvasPoint(x: c.dx, y: c.dy));
+      expect(back.wrapWidth, 196);
+      expect(back.anchor, CanvasPoint(x: c.dx + 12, y: c.dy + 12));
     });
   });
 
@@ -343,8 +348,8 @@ void main() {
       // The corner taken twice as far from the middle of the box.
       await dragFrom(
         tester,
-        Offset(c.dx + 96, c.dy + 60),
-        Offset(c.dx + 144, c.dy + 90),
+        Offset(c.dx + 108, c.dy + 72),
+        Offset(c.dx + 168, c.dy + 114),
       );
 
       final scaled = celOf(tester).texts.single.content;
@@ -483,10 +488,10 @@ void main() {
       // The box's own edge on the layer, and how the dashes go round it:
       // three of line, three of none, from its first corner.
       final corners = [
-        onLayer(tester, c.dx, c.dy),
-        onLayer(tester, c.dx + 96, c.dy),
-        onLayer(tester, c.dx + 96, c.dy + 60),
-        onLayer(tester, c.dx, c.dy + 60),
+        onLayer(tester, c.dx - 12, c.dy - 12),
+        onLayer(tester, c.dx + 108, c.dy - 12),
+        onLayer(tester, c.dx + 108, c.dy + 72),
+        onLayer(tester, c.dx - 12, c.dy + 72),
       ];
       final edge =
           2 * ((corners[1] - corners[0]).distance) +
@@ -498,14 +503,14 @@ void main() {
           ..path(
             includes: [
               onLayer(tester, c.dx + 48, c.dy + 30),
-              onLayer(tester, c.dx + 2, c.dy + 2),
-              onLayer(tester, c.dx + 94, c.dy + 58),
+              onLayer(tester, c.dx - 10, c.dy - 10),
+              onLayer(tester, c.dx + 106, c.dy + 70),
             ],
             excludes: [
-              onLayer(tester, c.dx - 2, c.dy + 30),
-              onLayer(tester, c.dx + 98, c.dy + 30),
-              onLayer(tester, c.dx + 48, c.dy - 2),
-              onLayer(tester, c.dx + 48, c.dy + 62),
+              onLayer(tester, c.dx - 14, c.dy + 30),
+              onLayer(tester, c.dx + 110, c.dy + 30),
+              onLayer(tester, c.dx + 48, c.dy - 14),
+              onLayer(tester, c.dx + 48, c.dy + 74),
             ],
             color: Colors.white,
             style: PaintingStyle.stroke,

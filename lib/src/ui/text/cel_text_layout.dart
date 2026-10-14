@@ -58,22 +58,25 @@ class CelTextLayout {
   /// and as wide as they are.
   ui.Rect get block => _setting.block;
 
-  /// How far the box filled behind the letters reaches past [block] on
-  /// every side; zero for a text with none.
+  /// How far the text's box reaches past [block] on every side
+  /// ([celTextBoxPad]) — the box filled behind the letters too, for a text
+  /// with one.
   final double pad;
 
-  /// What a person sees as this text's box, in its own frame — the block,
-  /// and the box behind it where it has one. The frame it is selected by is
-  /// drawn here, and a press inside it is a press on the text.
+  /// What a person sees as this text's box, in its own frame — the block
+  /// with [pad] of room around it, filled where the text has a box behind
+  /// its letters. The frame it is selected by is drawn here, and a press
+  /// inside it is a press on the text.
   ui.Rect get box => block.inflate(pad);
 
   /// A canvas rect, in whole pixels, that holds everything [paint] draws.
   ///
   /// ⚠️NOT THE TIGHT BOX OF THE INK — the engine says where a line's box
   /// is, never how far a glyph reaches out of it, and a swash or a stack of
-  /// accents does. It is the box grown by a whole letter's size
-  /// ([_glyphReach]); the tiles a bake finds empty are dropped there, so
-  /// the room costs a larger raster and nothing that is kept.
+  /// accents does. It is what is drawn — the block, and the box behind it
+  /// where it has one — grown by a whole letter's size ([_glyphReach]); the
+  /// tiles a bake finds empty are dropped there, so the room costs a larger
+  /// raster and nothing that is kept.
   late final ui.Rect inkBounds = _wholePixelsAround(
     _cornersOf(block.inflate(_reach), toCanvas),
   );
@@ -325,18 +328,31 @@ CelTextLayout layoutCelText(
     0.0,
     (size, style) => math.max(size, style.fontSize),
   );
-  // The SE tag's box (`layoutTextCel`): a quarter of the letter's size of
-  // breathing room. Here the largest letter's, so the box clears them all.
-  final pad = content.backgroundColor == null ? 0.0 : largest * 0.25;
+  // The largest letter's, so the box clears them all.
+  final pad = celTextBoxPad(largest);
+  // Only a box behind the letters draws its room.
+  final drawnPad = content.backgroundColor == null ? 0.0 : pad;
   return CelTextLayout._(
     content: content,
     pad: pad,
-    reach: pad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
+    reach: drawnPad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
     setting: content.vertical
         ? _ColumnsSetting(content, nextLetterStyle)
         : _linesOf(content, nextLetterStyle),
   );
 }
+
+/// How far a text's box reaches past its letters on every side, its largest
+/// letter being [largestLetterSize]: a quarter of it — the SE tag's breathing
+/// room (`layoutTextCel`).
+///
+/// 🗣️유저 2026-10-08 (R9-rest): 「그냥 클릭해도 사각형 보이게하고싶음. 최소치로.
+/// 지금은 너무 최소치가 작아서 하나의 선으로 보임 … 사각형으로 최소치 패딩? 두고
+/// 그 중앙에 커서 점멸」 — every text's box has it, so one with no letters
+/// yet is a box with its caret in the middle. ↩️Only a text with a box
+/// BEHIND its letters had it; one with none was its letters' block, and
+/// with no letters a line.
+double celTextBoxPad(double largestLetterSize) => largestLetterSize * 0.25;
 
 /// The widest outline any of [letters] is stroked with — a width with no
 /// colour is no outline.

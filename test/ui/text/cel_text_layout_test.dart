@@ -568,11 +568,13 @@ void main() {
       final text = set([run('ab')], x: 50, y: 30, turn: 90);
 
       expect(text.block, const ui.Rect.fromLTWH(0, 0, 40, 20));
+      // Its box is 5 further out on every side: (-5, -5)–(45, 25), and a
+      // quarter turn about the anchor takes (x, y) to (-y, x).
       final corners = text.boxCorners;
-      expect(corners[0], near(const ui.Offset(50, 30)));
-      expect(corners[1], near(const ui.Offset(50, 70)));
-      expect(corners[2], near(const ui.Offset(30, 70)));
-      expect(corners[3], near(const ui.Offset(30, 30)));
+      expect(corners[0], near(const ui.Offset(55, 25)));
+      expect(corners[1], near(const ui.Offset(55, 75)));
+      expect(corners[2], near(const ui.Offset(25, 75)));
+      expect(corners[3], near(const ui.Offset(25, 25)));
     });
 
     test('a point goes to the canvas and back', () {
@@ -629,14 +631,30 @@ void main() {
     });
   });
 
-  group('the box behind the letters', () {
-    test('a text with none has a box that is its lines\' block', () {
-      final text = set([run('ab')]);
+  group('the box', () {
+    test('🎯a text with no letters yet is a box, its caret in the middle — '
+        'not a line', () {
+      final text = set(
+        const [],
+        nextLetterStyle: const TextLetterStyle(fontSize: 40),
+      );
+      final caret = text.caretRect(const TextPosition(offset: 0));
 
-      expect(text.pad, 0);
-      expect(text.box, text.block);
+      expect(text.block.width, 0, reason: 'LIVENESS: its letters are none');
+      expect(text.box, const ui.Rect.fromLTRB(-10, -10, 10, 50));
+      expect(caret.center, text.box.center);
     });
 
+    test('a text with no box behind its letters has the same room around '
+        'them', () {
+      final text = set([run('ab')]);
+
+      expect(text.pad, 5);
+      expect(text.box, text.block.inflate(5));
+    });
+  });
+
+  group('the box behind the letters', () {
     test('reaches a quarter of the LARGEST letter\'s size past the block', () {
       final text = set(
         [run('a'), run('b', size: 40)],
@@ -663,8 +681,8 @@ void main() {
       expect(text.boxContains(const ui.Offset(44, 28)), isFalse);
       expect(
         set([run('ab')], x: 50, y: 30).boxContains(const ui.Offset(47, 28)),
-        isFalse,
-        reason: 'a text with no box behind it ends at its block',
+        isTrue,
+        reason: 'a text with no box behind it reaches as far',
       );
     });
 

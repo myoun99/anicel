@@ -83,8 +83,12 @@ void main() {
     expect(celsOfTheRow(tester), hasLength(2));
     final tool = textToolOf(tester);
     expect(tool.hold, CelTextHold.letters);
-    expect(tool.session!.content.anchor, CanvasPoint(x: c.dx, y: c.dy));
-    expect(tool.session!.content.wrapWidth, 220);
+    // The drag is the box, its letters a quarter of their 48 in from it.
+    expect(
+      tool.session!.content.anchor,
+      CanvasPoint(x: c.dx + 12, y: c.dy + 12),
+    );
+    expect(tool.session!.content.wrapWidth, 196);
   });
 
   testWidgets('a click that comes up before the cel is here still begins '

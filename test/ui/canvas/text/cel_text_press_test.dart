@@ -36,7 +36,8 @@ import '../../../helpers/placement_reading.dart';
 ///
 /// The stage is the 32×32 test canvas at FOUR screen pixels a canvas pixel
 /// unless a test says otherwise, so the canvas pixel (x, y) is at (4x, 4y)
-/// on the panel. In the test font 「ab」 at 8 is 16 wide on a line 10 tall.
+/// on the panel. In the test font 「ab」 at 8 is 16 wide on a line 10 tall,
+/// and its box reaches 2 past it on every side — a quarter of its 8.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -179,7 +180,10 @@ void main() {
       up(scene, down, 6.4, 3.8);
 
       expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
-      expect(begun, [(anchor: CanvasPoint(x: 6, y: 4), wrapWidth: 14)]);
+      // The drag IS the box: its letters go in as far as a box reaches
+      // past them, a quarter of the 8 they are written at — 9.8 of room,
+      // hung from (8.4, 5.8).
+      expect(begun, [(anchor: CanvasPoint(x: 8, y: 6), wrapWidth: 10)]);
     });
 
     // 세로쓰기 (유저 2026-10-06): the drag's room is its letters' — down.
@@ -194,7 +198,8 @@ void main() {
       up(scene, down, 6.4, 3.8);
 
       expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
-      expect(begun, [(anchor: CanvasPoint(x: 20, y: 4), wrapWidth: 10)]);
+      // 6.2 of room down the column, hung from (18.2, 5.8).
+      expect(begun, [(anchor: CanvasPoint(x: 18, y: 6), wrapWidth: 6)]);
     });
 
     test('🚨a hand that wandered less than its slop is still a click, and '
@@ -212,10 +217,12 @@ void main() {
       final back = table();
       final drag = press(back.scene, 10, 10)!;
       move(back.scene, drag, 18, 14);
-      move(back.scene, drag, 14, 10);
-      up(back.scene, drag, 14, 10);
+      move(back.scene, drag, 16, 10);
+      up(back.scene, drag, 16, 10);
 
-      expect(back.begun.single.wrapWidth, 4);
+      // As wide as where it came back to — 6, less the box's 2 on either
+      // side — and not as far as it went.
+      expect(back.begun.single.wrapWidth, 2);
     });
 
     // 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): a pen the
@@ -291,7 +298,7 @@ void main() {
 
       expect(begun, [
         (anchor: CanvasPoint(x: 10, y: 10), wrapWidth: null),
-        (anchor: CanvasPoint(x: 10, y: 10), wrapWidth: 12),
+        (anchor: CanvasPoint(x: 12, y: 12), wrapWidth: 8),
       ]);
     });
   });
@@ -493,7 +500,7 @@ void main() {
     test('the side edge of a TURNED box sets its width along the text\'s '
         'own line', () async {
       // A box 16 wide turned a quarter: its line runs DOWN from (16, 4), and
-      // the middle of its far edge is at (11, 20).
+      // the middle of its far edge is at (11, 22) — 2 past its letters.
       final turned = CelTextContent(
         spans: const [CelTextSpan(text: 'ab', style: letters)],
         anchor: CanvasPoint(x: 16, y: 4),
@@ -507,9 +514,9 @@ void main() {
       expect(tool.session!.textId, 4, reason: '⛔fixture');
 
       // Three across the line and four along it.
-      final edge = press(scene, 11, 20)!;
-      move(scene, edge, 14, 24);
-      up(scene, edge, 14, 24);
+      final edge = press(scene, 11, 22)!;
+      move(scene, edge, 14, 26);
+      up(scene, edge, 14, 26);
       await baker.pending.answer();
 
       final widened = textOf(scene, 4).content;
@@ -518,8 +525,9 @@ void main() {
     });
 
     group('a box in COLUMNS', () {
-      /// 「ab」 lying down a column 16 long, hung from (16, 4): the box is
-      /// 8 wide — from 8 to 16 — and runs from 4 down to 20.
+      /// 「ab」 lying down a column 16 long, hung from (16, 4): its letters
+      /// stand 8 wide — from 8 to 16 — and run from 4 down to 20, and its
+      /// box reaches 2 past them, from 6 to 18 and from 2 down to 22.
       final box = CelTextContent(
         spans: const [CelTextSpan(text: 'ab', style: letters)],
         anchor: CanvasPoint(x: 16, y: 4),
@@ -536,8 +544,8 @@ void main() {
         final handles = celTextHandlesOf(layout);
 
         expect(handles, hasLength(6));
-        expect(handles[4], const Offset(12, 4));
-        expect(handles[5], const Offset(12, 20));
+        expect(handles[4], const Offset(12, 2));
+        expect(handles[5], const Offset(12, 22));
 
         // ⛔CONTROL: in lines they are on its two sides.
         final lines = layoutCelText(
@@ -550,8 +558,8 @@ void main() {
         );
         addTearDown(lines.dispose);
         expect(celTextHandlesOf(lines).sublist(4), const [
-          Offset(8, 8),
-          Offset(24, 8),
+          Offset(6, 8),
+          Offset(26, 8),
         ]);
       });
 
@@ -564,9 +572,9 @@ void main() {
         expect(tool.session!.textId, 4, reason: '⛔fixture');
 
         // Three across the column and four down it.
-        final edge = press(scene, 12, 20)!;
-        move(scene, edge, 15, 24);
-        up(scene, edge, 15, 24);
+        final edge = press(scene, 12, 22)!;
+        move(scene, edge, 15, 26);
+        up(scene, edge, 15, 26);
         await baker.pending.answer();
 
         final lengthened = textOf(scene, 4).content;
@@ -582,9 +590,9 @@ void main() {
         press(scene, 12, 12);
         expect(tool.session!.textId, 4, reason: '⛔fixture');
 
-        final edge = press(scene, 12, 4)!;
-        move(scene, edge, 12, 8);
-        up(scene, edge, 12, 8);
+        final edge = press(scene, 12, 2)!;
+        move(scene, edge, 12, 6);
+        up(scene, edge, 12, 6);
         await baker.pending.answer();
 
         final shortened = textOf(scene, 4).content;
@@ -635,9 +643,10 @@ void main() {
   // 「기본값은 중심인데, 그걸 유저가 드래그해서 움직이는방식 … 앵커포인트는
   // 회전시 앵커를 기준으로 회전해」, and 확대/축소 is 「항상 상자의 중심」.
   //
-  // 「ab」 stands from (8, 8) to (24, 18): its middle, and its cross until
-  // a hand carries it, at (16, 13). At four screen pixels a canvas pixel the
-  // cross's arms reach 1.75 canvas pixels from it.
+  // 「ab」 stands from (8, 8) to (24, 18), and its box from (6, 6) to
+  // (26, 20): its middle, and its cross until a hand carries it, at
+  // (16, 13). At four screen pixels a canvas pixel the cross's arms reach
+  // 1.75 canvas pixels from it.
   group('the cross of a text in hand by its box', () {
     /// Takes 「ab」 by its box — a click on it, off the cross.
     void take(CelTextScene scene) {
@@ -739,30 +748,30 @@ void main() {
         texts: [carried(4, says('ab'))],
       );
       take(scene);
-      // Six down: a pixel past the box's own edge. Nothing clamps it.
-      carry(tool, scene, 0, 6);
-      expect(crossOf(tool), const Offset(16, 19), reason: '⛔fixture');
+      // Eight down: a pixel past the box's own edge. Nothing clamps it.
+      carry(tool, scene, 0, 8);
+      expect(crossOf(tool), const Offset(16, 21), reason: '⛔fixture');
 
       // From due right of the cross to due below it: a quarter turn, the
       // way a clock's hand goes.
-      final turn = press(scene, 26, 19)!;
-      move(scene, turn, 16, 29);
-      up(scene, turn, 16, 29);
+      final turn = press(scene, 30, 21)!;
+      move(scene, turn, 16, 35);
+      up(scene, turn, 16, 35);
       await baker.pending.answer();
 
       final landed = textOf(scene, 4).content;
       expect(landed.rotationDegrees, closeTo(90, 1e-9));
-      // The anchor stood (−8, −11) from the cross; it stands (11, −8) now.
-      expect(landed.anchor.x, closeTo(27, 1e-9));
-      expect(landed.anchor.y, closeTo(11, 1e-9));
-      // And the middle of the box, which stood six above it, six to its
+      // The anchor stood (−8, −13) from the cross; it stands (13, −8) now.
+      expect(landed.anchor.x, closeTo(29, 1e-9));
+      expect(landed.anchor.y, closeTo(13, 1e-9));
+      // And the middle of the box, which stood eight above it, eight to its
       // right.
       final middle = tool.session!.shown.layout.onCanvas.centre;
-      expect(middle.dx, closeTo(22, 1e-9));
-      expect(middle.dy, closeTo(19, 1e-9));
+      expect(middle.dx, closeTo(24, 1e-9));
+      expect(middle.dy, closeTo(21, 1e-9));
       expect(crossOf(tool).dx, closeTo(16, 1e-9));
-      expect(crossOf(tool).dy, closeTo(19, 1e-9));
-      expect(tool.crossOffCentre, const Offset(0, 6));
+      expect(crossOf(tool).dy, closeTo(21, 1e-9));
+      expect(tool.crossOffCentre, const Offset(0, 8));
       expect((tool.host as _Host).history.undoCount, 1);
     });
 
@@ -778,9 +787,9 @@ void main() {
 
       // The corner taken twice as far from the middle (16, 13): everything
       // doubles — about the cross it would have left the anchor at (6, 0).
-      final corner = press(scene, 24, 18)!;
-      move(scene, corner, 32, 23);
-      up(scene, corner, 32, 23);
+      final corner = press(scene, 26, 20)!;
+      move(scene, corner, 36, 27);
+      up(scene, corner, 36, 27);
       await baker.pending.answer();
 
       final landed = textOf(scene, 4).content;

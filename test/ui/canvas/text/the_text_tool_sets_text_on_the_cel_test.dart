@@ -409,9 +409,10 @@ void main() {
       await mouse.up();
       await pumpFrames(tester);
 
-      // The box of the text that began — one box, and its caret.
+      // The box of the text that began — one box, and its caret: its
+      // letters 12 in from either side of it.
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
-      expect(textToolOf(tester).session!.content.wrapWidth, 120);
+      expect(textToolOf(tester).session!.content.wrapWidth, 96);
     });
 
     testWidgets('the letters an IME is still composing wear a line under '
@@ -636,8 +637,17 @@ void main() {
 
     final tool = textToolOf(tester);
     expect(tool.hold, CelTextHold.letters);
-    expect(tool.session!.content.anchor, CanvasPoint(x: c.dx, y: c.dy));
-    expect(tool.session!.content.wrapWidth, 220);
+    // 🎯The drag IS the box: its letters go in from its edges as far as
+    // every text's box reaches past its letters — a quarter of their 48
+    // (R9-rest, 유저 2026-10-08) — so its top edge stays where it was traced.
+    final [topLeft, topRight, _, _] = tool.session!.shown.layout.boxCorners;
+    expect(topLeft, c);
+    expect(topRight, Offset(c.dx + 220, c.dy));
+    expect(
+      tool.session!.content.anchor,
+      CanvasPoint(x: c.dx + 12, y: c.dy + 12),
+    );
+    expect(tool.session!.content.wrapWidth, 196);
   });
 
   testWidgets('🚨the brush does not draw with the text tool in hand', (
