@@ -33,8 +33,16 @@ class BrushPresetFileService {
   /// Absolute path of the preset library file.
   final String filePath;
 
-  static String defaultBrushPresetFilePath() =>
-      appSettingsFilePath('brush_presets.json');
+  /// ⚠️Sandboxed under `FLUTTER_TEST`: the workspace builds the preset
+  /// library itself when no service is handed in, so every widget test that
+  /// pumps HomePage reaches this through the production wiring — and read,
+  /// and could WRITE INTO, the developer's own library without the redirect
+  /// (an English test showed someone's Korean brush names; board
+  /// `tests-read-the-real-brush-library`).
+  static String defaultBrushPresetFilePath() => testRedirectedAppSettingsPath(
+    'brush_presets.json',
+    sandbox: 'brush_presets',
+  );
 
   /// Library file format version. A file that does not carry EXACTLY this
   /// version is replaced by the built-in defaults on load.

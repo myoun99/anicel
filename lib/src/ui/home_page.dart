@@ -129,9 +129,10 @@ class HomePage extends StatefulWidget {
   final WorkspaceLayoutStore? layoutStore;
 
   /// Where the workspace's preset library loads from. Null lets the
-  /// workspace decide — the app's own files, nothing under FLUTTER_TEST, so
-  /// the library is empty in tests — and a test that measures applying a
-  /// preset hands one in here, the same road as [layoutStore].
+  /// workspace decide — the app's own file, or under FLUTTER_TEST the run's
+  /// own sandbox ([BrushPresetFileService.defaultBrushPresetFilePath]), so
+  /// each run starts from the built-in library — and a test that measures
+  /// applying a preset hands one in here, the same road as [layoutStore].
   final BrushPresetFileService? presetFileService;
 
   /// Where the workspace's tip library loads from — the presets reference

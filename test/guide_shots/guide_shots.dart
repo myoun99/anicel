@@ -54,8 +54,6 @@ import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_preset_file_service.dart';
-import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -173,24 +171,13 @@ Future<void> pumpApp(
   );
   scratch = Directory.systemTemp.createTempSync('anicel_guide_');
   deleteAfterSessionEnds(scratch);
-  // A brush library of its own, born in [language]: left to itself the
-  // workspace opens the developer's (`%APPDATA%`), and the pages showed
-  // someone's own brushes under their own language's names.
   await tester.pumpWidget(
     RepaintBoundary(
       key: shotKey,
       child: MaterialApp(
         theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
-        home: HomePage(
-          initialProject: project,
-          presetFileService: BrushPresetFileService(
-            filePath: '${scratch.path}/brush_presets.json',
-          ),
-          tipLibraryService: BrushTipLibraryService(
-            directoryPath: '${scratch.path}/tips',
-          ),
-        ),
+        home: HomePage(initialProject: project),
       ),
     ),
   );
