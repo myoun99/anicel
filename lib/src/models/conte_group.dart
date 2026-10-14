@@ -108,7 +108,21 @@ typedef ConteSeat = ({int seat, Layer row});
 /// A seat counts the base's attach ROWS in the cut's own stack — the list
 /// keeps a group as `[below…, base, above…]` — and passes over the
 /// organizer folders among them: a folder files rows, it is not one.
-List<ConteSeat> conteGroupOf(Cut cut) {
+///
+/// 🚨ONE GROUP PER CUT (I-57, 10-14): a cut is immutable, so its group is
+/// what it was the first time it was asked, and every later ask is handed
+/// that list ([_conteGroups]). Read off the cut per ask, every ask of the
+/// storyboard rail's seat list read the group of every cut of the track
+/// again — and that list was 18% of a cut crossing's layout on the AMMI OP
+/// (🔬CPU samples, 10-14).
+List<ConteSeat> conteGroupOf(Cut cut) =>
+    _conteGroups[cut] ??= _conteGroupReadOff(cut);
+
+/// [conteGroupOf]'s answer for each cut instance, held weakly — it goes
+/// when the cut does.
+final Expando<List<ConteSeat>> _conteGroups = Expando('conte group');
+
+List<ConteSeat> _conteGroupReadOff(Cut cut) {
   final layers = cut.layers;
   final baseIndex = layers.indexWhere(isConteBase);
   if (baseIndex < 0) {
@@ -123,11 +137,11 @@ List<ConteSeat> conteGroupOf(Cut cut) {
     for (var index = baseIndex - 1; index >= 0; index -= 1)
       if (layers[index].attachedToLayerId == base.id) layers[index],
   ];
-  return [
+  return List.unmodifiable([
     for (var k = above.length; k >= 1; k -= 1) (seat: k, row: above[k - 1]),
     (seat: 0, row: base),
     for (var k = 1; k <= below.length; k += 1) (seat: -k, row: below[k - 1]),
-  ];
+  ]);
 }
 
 /// Where [layerId] sits in [cut]'s conte group; null when it is not in it.
