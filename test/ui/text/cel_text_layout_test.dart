@@ -746,7 +746,7 @@ void main() {
     test('follows the turn', () {
       final text = set([run('ab')], x: 50, y: 30, turn: 90);
 
-      // The box is (30, 30)–(50, 70) on the canvas; the room is 20.
+      // The block is (30, 30)–(50, 70) on the canvas; the room is 20.
       expect(text.inkBounds, const ui.Rect.fromLTRB(10, 10, 70, 90));
     });
   });
