@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models/brush_hand_settings.dart';
 import '../models/brush_preset.dart';
+import '../models/import/import_warning.dart';
 
 /// The extension of a brush file Anicel writes itself.
 const String anicelBrushExtension = 'anibrush';
@@ -47,13 +48,8 @@ class BrushPack {
 }
 
 /// Thrown when a file cannot be read as an Anicel brush pack.
-class BrushPackFormatException implements Exception {
-  const BrushPackFormatException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'BrushPackFormatException: $message';
+class BrushPackFormatException extends ImportRefusal {
+  const BrushPackFormatException(super.reason);
 }
 
 /// The format's version.
@@ -81,31 +77,34 @@ BrushPack decodeBrushPack(String source) {
   try {
     decoded = jsonDecode(source);
   } on FormatException {
-    throw const BrushPackFormatException(
-      'This file is not readable as an Anicel brush file.',
-    );
+    throw const BrushPackFormatException(_unreadable);
   }
   if (decoded is! Map<String, dynamic>) {
-    throw const BrushPackFormatException(
-      'This file is not readable as an Anicel brush file.',
-    );
+    throw const BrushPackFormatException(_unreadable);
   }
   final version = decoded['anicelBrushPack'];
   if (version is! int) {
     throw const BrushPackFormatException(
-      'This file is not an Anicel brush file.',
+      ImportWarning(
+        'brushPackNotOurs',
+        'This file is not an Anicel brush file.',
+      ),
     );
   }
   if (version > brushPackVersion) {
     throw BrushPackFormatException(
-      'This brush file was written by a newer version of Anicel '
-      '(format $version); this build reads up to $brushPackVersion.',
+      ImportWarning(
+        'brushPackNewer',
+        'This brush file was written by a newer version of Anicel '
+            '(format {version}); this build reads up to {readable}.',
+        {'version': '$version', 'readable': '$brushPackVersion'},
+      ),
     );
   }
   final presetsJson = decoded['presets'];
   if (presetsJson is! List || presetsJson.isEmpty) {
     throw const BrushPackFormatException(
-      'This brush file contains no brushes.',
+      ImportWarning('brushPackEmpty', 'This brush file contains no brushes.'),
     );
   }
   final List<BrushPreset> presets;
@@ -124,8 +123,17 @@ BrushPack decodeBrushPack(String source) {
     // throws its own type, and what the user needs to hear is the same
     // sentence for all of them.
     throw const BrushPackFormatException(
-      'This brush file is damaged and could not be read.',
+      ImportWarning(
+        'brushPackDamaged',
+        'This brush file is damaged and could not be read.',
+      ),
     );
   }
   return BrushPack(presets: presets, handSettings: hand);
 }
+
+/// What a file that is not JSON, or not a JSON object, is told.
+const _unreadable = ImportWarning(
+  'brushPackUnreadable',
+  'This file is not readable as an Anicel brush file.',
+);

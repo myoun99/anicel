@@ -117,6 +117,39 @@ void main() {
       expect(await garbled.importFromFile(), ko.brImportUnreadable);
     });
 
+    test('🎯each reader\'s refusal is said in the program language — the '
+        'Anicel brush file, Photoshop\'s and CLIP STUDIO\'s (F-273)', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      const untabled = ' ';
+      final ko = AppStrings.of(AppLanguage.ko);
+      Future<String?> refusalOf(String name, List<int> bytes) async {
+        final library = BrushPresetLibrary(
+          fileService: service,
+          filePicker: () async =>
+              (name: name, bytes: Uint8List.fromList(bytes)),
+        );
+        addTearDown(library.dispose);
+        return library.importFromFile();
+      }
+
+      expect(
+        await refusalOf('x.anibrush', utf8.encode('{"presets":[]}')),
+        ko.importWarning('brushPackNotOurs', untabled),
+      );
+      expect(
+        await refusalOf('x.abr', const [0, 6]),
+        ko.importWarning('abrTooShort', untabled),
+      );
+      // An empty file is an empty database to SQLite: no tables at all.
+      expect(
+        await refusalOf('x.sut', const []),
+        ko.importWarning('sutNoBrushData', untabled),
+      );
+    });
+
     test('a file that lands with warnings says so in the program language — '
         'its brushes counted, and how many said something', () async {
       AppText.settings.value = const AppLanguageSettings(

@@ -14,6 +14,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/import/import_warning.dart';
 import '../brush_tip_image_codec.dart';
 
 /// Result of decoding a Clip Studio Paint `.sut`/`.sutg` brush file.
@@ -25,13 +26,8 @@ class SutImportResult {
 }
 
 /// Thrown when the file cannot be read as a Clip Studio brush at all.
-class SutDecodeException implements Exception {
-  const SutDecodeException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'SutDecodeException: $message';
+class SutDecodeException extends ImportRefusal {
+  const SutDecodeException(super.reason);
 }
 
 /// Decodes a Clip Studio Paint brush file — a SQLite database holding tool
@@ -57,13 +53,21 @@ Future<SutImportResult> decodeSutBrushFile({
   try {
     database = sqlite3.open(filePath, mode: OpenMode.readOnly);
   } on SqliteException catch (error) {
-    throw SutDecodeException('Could not open the file: ${error.message}');
+    throw SutDecodeException(
+      ImportWarning('sutCannotOpen', 'Could not open the file: {error}', {
+        'error': error.message,
+      }),
+    );
   }
   try {
     return await _decode(database, sourceName: sourceName);
   } on SqliteException catch (error) {
     throw SutDecodeException(
-      'This file is not a readable Clip Studio brush (${error.message}).',
+      ImportWarning(
+        'sutUnreadable',
+        'This file is not a readable Clip Studio brush ({error}).',
+        {'error': error.message},
+      ),
     );
   } finally {
     database.close();
@@ -80,7 +84,10 @@ Future<SutImportResult> _decode(
       .toSet();
   if (!tables.contains('Node') || !tables.contains('Variant')) {
     throw const SutDecodeException(
-      'No Clip Studio brush data found in this file.',
+      ImportWarning(
+        'sutNoBrushData',
+        'No Clip Studio brush data found in this file.',
+      ),
     );
   }
 
@@ -215,7 +222,12 @@ Future<SutImportResult> _decode(
   }
 
   if (presets.isEmpty) {
-    throw const SutDecodeException('The file contained no importable brushes.');
+    throw const SutDecodeException(
+      ImportWarning(
+        'sutNothingImportable',
+        'The file contained no importable brushes.',
+      ),
+    );
   }
   return SutImportResult(presets: presets, warnings: warnings);
 }

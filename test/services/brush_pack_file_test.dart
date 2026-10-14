@@ -139,8 +139,8 @@ void main() {
         () => decodeBrushPack(future),
         throwsA(
           isA<BrushPackFormatException>().having(
-            (error) => error.message,
-            'message',
+            (error) => error.reason.english,
+            'reason',
             contains('newer version'),
           ),
         ),
@@ -159,8 +159,8 @@ void main() {
         () => decodeBrushPack('{"anicelBrushPack":1,"presets":[{"id":3}]}'),
         throwsA(
           isA<BrushPackFormatException>().having(
-            (error) => error.message,
-            'message',
+            (error) => error.reason.english,
+            'reason',
             contains('damaged'),
           ),
         ),

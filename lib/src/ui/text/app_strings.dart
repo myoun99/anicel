@@ -143,6 +143,12 @@ enum AppStrings {
   String exclusionReason(String key, String fallback) =>
       _values['exclusionReason.$key'] ?? fallback;
 
+  /// A file type's name in the save window, by the extensions it writes —
+  /// the contract of [importWarning]: the English is the group's own label
+  /// (`file_type_groups.dart`), the other languages are here (F-273).
+  String fileTypeLabel(String extensions, String fallback) =>
+      _values['fileType.$extensions'] ?? fallback;
+
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
   String get programLanguageHelp => _s('programLanguageHelp');
@@ -3812,6 +3818,30 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
     'importWarning.clipNotColour': '{name}: グレー・モノクロのレイヤー — 描画していません。',
     'importWarning.clipTransform': '{name}: 画像の拡大縮小・回転は適用していません。',
+    'importWarning.brushPackUnreadable':
+        'このファイルは Anicel のブラシファイルとして読み込めません。',
+    'importWarning.brushPackNotOurs': 'このファイルは Anicel のブラシファイルではありません。',
+    'importWarning.brushPackNewer':
+        'このブラシファイルは新しいバージョンの Anicel で書かれています（形式 {version}）。'
+        'このビルドが読めるのは {readable} までです。',
+    'importWarning.brushPackEmpty': 'このブラシファイルにはブラシが入っていません。',
+    'importWarning.brushPackDamaged': 'このブラシファイルは壊れていて読み込めませんでした。',
+    'importWarning.abrTooShort': 'ABR ファイルとしては短すぎます。',
+    'importWarning.abrOldVersion':
+        'ABR バージョン {version}（Photoshop 6 の頃）にはまだ対応していません。'
+        '新しい Photoshop でブラシを保存し直してください。',
+    'importWarning.abrUnknownVersion': '対応していない ABR ファイルです（バージョン {version}）。',
+    'importWarning.abrCorruptSection': 'ABR のセクションの長さが壊れています。',
+    'importWarning.abrNoBrushes': 'ABR ファイルにブラシが見つかりません。',
+    'importWarning.abrNothingImportable': 'ABR ファイルに読み込めるブラシがありませんでした。',
+    'importWarning.sutCannotOpen': 'ファイルを開けませんでした: {error}',
+    'importWarning.sutUnreadable':
+        'このファイルは読み込める CLIP STUDIO のブラシではありません（{error}）。',
+    'importWarning.sutNoBrushData': 'このファイルに CLIP STUDIO のブラシデータが見つかりません。',
+    'importWarning.sutNothingImportable': 'ファイルに読み込めるブラシがありませんでした。',
+    'fileType.anicel': 'Anicel プロジェクト',
+    'fileType.wav': 'WAV 音声',
+    'fileType.anibrush': 'Anicel ブラシ',
     'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
     'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
     'exclusionReason.unrecognized': '認識できない名前',
@@ -5304,6 +5334,29 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.clipNotColour': '{name}: 그레이 · 모노크롬 레이어 — 그리지 않았습니다.',
     'importWarning.clipTransform': '{name}: 그림의 크기 · 회전은 적용하지 않았습니다.',
+    'importWarning.brushPackUnreadable': '이 파일은 Anicel 브러시 파일로 읽을 수 없습니다.',
+    'importWarning.brushPackNotOurs': '이 파일은 Anicel 브러시 파일이 아닙니다.',
+    'importWarning.brushPackNewer':
+        '이 브러시 파일은 더 새 버전의 Anicel 에서 썼습니다(형식 {version}). '
+        '이 빌드는 {readable} 까지 읽습니다.',
+    'importWarning.brushPackEmpty': '이 브러시 파일에는 브러시가 없습니다.',
+    'importWarning.brushPackDamaged': '이 브러시 파일은 손상되어 읽지 못했습니다.',
+    'importWarning.abrTooShort': 'ABR 파일이라기엔 너무 짧습니다.',
+    'importWarning.abrOldVersion':
+        'ABR 버전 {version}(Photoshop 6 시절)은 아직 지원하지 않습니다. '
+        '새 Photoshop 으로 브러시를 다시 저장해 주세요.',
+    'importWarning.abrUnknownVersion': '지원하지 않는 ABR 파일입니다(버전 {version}).',
+    'importWarning.abrCorruptSection': 'ABR 구역의 길이가 손상되었습니다.',
+    'importWarning.abrNoBrushes': 'ABR 파일에서 브러시를 찾지 못했습니다.',
+    'importWarning.abrNothingImportable': 'ABR 파일에 가져올 수 있는 브러시가 없습니다.',
+    'importWarning.sutCannotOpen': '파일을 열지 못했습니다: {error}',
+    'importWarning.sutUnreadable':
+        '이 파일은 읽을 수 있는 CLIP STUDIO 브러시가 아닙니다({error}).',
+    'importWarning.sutNoBrushData': '이 파일에서 CLIP STUDIO 브러시 데이터를 찾지 못했습니다.',
+    'importWarning.sutNothingImportable': '파일에 가져올 수 있는 브러시가 없습니다.',
+    'fileType.anicel': 'Anicel 프로젝트',
+    'fileType.wav': 'WAV 오디오',
+    'fileType.anibrush': 'Anicel 브러시',
     'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
     'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
     'exclusionReason.unrecognized': '알 수 없는 이름',
@@ -6903,6 +6956,39 @@ enum AppStrings {
         '{name} : calque gris ou monochrome — non dessiné.',
     'importWarning.clipTransform':
         '{name} : l\'échelle ou la rotation de l\'image n\'est pas appliquée.',
+    'importWarning.brushPackUnreadable':
+        'Ce fichier ne peut pas être lu comme un fichier de brosses Anicel.',
+    'importWarning.brushPackNotOurs':
+        'Ce fichier n’est pas un fichier de brosses Anicel.',
+    'importWarning.brushPackNewer':
+        'Ce fichier de brosses a été écrit par une version plus récente '
+        'd’Anicel (format {version}) ; cette version lit jusqu’au format '
+        '{readable}.',
+    'importWarning.brushPackEmpty':
+        'Ce fichier de brosses ne contient aucune brosse.',
+    'importWarning.brushPackDamaged':
+        'Ce fichier de brosses est endommagé et n’a pas pu être lu.',
+    'importWarning.abrTooShort':
+        'Fichier trop court pour être un fichier ABR.',
+    'importWarning.abrOldVersion':
+        'La version ABR {version} (époque de Photoshop 6) n’est pas encore '
+        'prise en charge ; réenregistrez les brosses avec un Photoshop récent.',
+    'importWarning.abrUnknownVersion':
+        'Fichier ABR non pris en charge (version {version}).',
+    'importWarning.abrCorruptSection': 'Longueur de section ABR corrompue.',
+    'importWarning.abrNoBrushes': 'Aucune brosse trouvée dans le fichier ABR.',
+    'importWarning.abrNothingImportable':
+        'Le fichier ABR ne contient aucune brosse importable.',
+    'importWarning.sutCannotOpen': 'Impossible d’ouvrir le fichier : {error}',
+    'importWarning.sutUnreadable':
+        'Ce fichier n’est pas une brosse CLIP STUDIO lisible ({error}).',
+    'importWarning.sutNoBrushData':
+        'Aucune donnée de brosse CLIP STUDIO trouvée dans ce fichier.',
+    'importWarning.sutNothingImportable':
+        'Le fichier ne contient aucune brosse importable.',
+    'fileType.anicel': 'Projet Anicel',
+    'fileType.wav': 'Audio WAV',
+    'fileType.anibrush': 'Brosse Anicel',
     'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
     'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
     'exclusionReason.unrecognized': 'non reconnu',
@@ -8347,6 +8433,26 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',
     'importWarning.clipTransform': '{name}：未应用图片的缩放或旋转。',
+    'importWarning.brushPackUnreadable': '无法将此文件读取为 Anicel 画笔文件。',
+    'importWarning.brushPackNotOurs': '此文件不是 Anicel 画笔文件。',
+    'importWarning.brushPackNewer':
+        '此画笔文件由更新版本的 Anicel 写入（格式 {version}）；此版本最多读取到 {readable}。',
+    'importWarning.brushPackEmpty': '此画笔文件中没有画笔。',
+    'importWarning.brushPackDamaged': '此画笔文件已损坏，无法读取。',
+    'importWarning.abrTooShort': '文件太短，不是 ABR 文件。',
+    'importWarning.abrOldVersion':
+        '尚不支持 ABR 版本 {version}（Photoshop 6 时代）；请用新版 Photoshop 重新保存画笔。',
+    'importWarning.abrUnknownVersion': '不支持的 ABR 文件（版本 {version}）。',
+    'importWarning.abrCorruptSection': 'ABR 区段长度已损坏。',
+    'importWarning.abrNoBrushes': '在 ABR 文件中未找到画笔。',
+    'importWarning.abrNothingImportable': 'ABR 文件中没有可导入的画笔。',
+    'importWarning.sutCannotOpen': '无法打开文件：{error}',
+    'importWarning.sutUnreadable': '此文件不是可读取的 CLIP STUDIO 画笔（{error}）。',
+    'importWarning.sutNoBrushData': '在此文件中未找到 CLIP STUDIO 画笔数据。',
+    'importWarning.sutNothingImportable': '文件中没有可导入的画笔。',
+    'fileType.anicel': 'Anicel 项目',
+    'fileType.wav': 'WAV 音频',
+    'fileType.anibrush': 'Anicel 画笔',
     'exclusionReason.processSubfolder': '工序子文件夹（存档）',
     'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
     'exclusionReason.unrecognized': '无法识别',

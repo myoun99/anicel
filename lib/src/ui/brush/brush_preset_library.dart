@@ -20,8 +20,10 @@ import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
 import 'picked_file.dart';
 import '../../models/brush_hand_settings.dart';
+import '../../models/import/import_warning.dart' show ImportRefusal;
 import '../../services/brush_pack_file.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 
 /// The brush preset library: the groups, the preset list and every
 /// mutation on them — save/rename/reorder/
@@ -490,12 +492,8 @@ class BrushPresetLibrary extends ChangeNotifier {
         imported = result.presets;
         warnings = result.warnings;
       }
-    } on BrushPackFormatException catch (error) {
-      return error.message;
-    } on AbrDecodeException catch (error) {
-      return error.message;
-    } on SutDecodeException catch (error) {
-      return error.message;
+    } on ImportRefusal catch (error) {
+      return error.reason.textFor(AppText.language);
     } on Exception {
       return AppText.strings.brImportUnreadable;
     }

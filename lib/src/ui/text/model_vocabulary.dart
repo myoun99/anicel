@@ -1,3 +1,5 @@
+import 'package:file_selector/file_selector.dart' show XTypeGroup;
+
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/key_side.dart' show KeySideKind;
@@ -122,4 +124,27 @@ extension ImportWarningWords on ImportWarning {
 extension ExclusionReasonWords on ExclusionReason {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).exclusionReason(name, label);
+}
+
+/// A save window's file type, its name said in a language — the group keeps
+/// its English `label` (`file_type_groups.dart`), the tables the rest.
+///
+/// ⚠️Keyed by EVERY extension the group names, joined, so a group of
+/// several is never answered by the row of one of them.
+extension FileTypeGroupWords on XTypeGroup {
+  XTypeGroup labelledFor(AppLanguage language) {
+    final english = label;
+    if (english == null) {
+      return this;
+    }
+    return XTypeGroup(
+      label: AppStrings.of(
+        language,
+      ).fileTypeLabel((extensions ?? const []).join(','), english),
+      extensions: extensions,
+      mimeTypes: mimeTypes,
+      uniformTypeIdentifiers: uniformTypeIdentifiers,
+      webWildCards: webWildCards,
+    );
+  }
 }

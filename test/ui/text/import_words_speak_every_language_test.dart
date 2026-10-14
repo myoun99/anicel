@@ -29,7 +29,8 @@ void main() {
   /// own — `psd*` the Photoshop reader and its layer plan, `folder*` the
   /// cut folder's parse and plan, `tvp*`/`tvpp*` the TVPaint planner,
   /// parser and converter, three the .tvpp door itself, `clip*` the CLIP
-  /// STUDIO planner and door — and `unsupportedLayerKind` every decoder's
+  /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` the brush file
+  /// readers' refusals (F-273) — and `unsupportedLayerKind` every decoder's
   /// one word (`import_warning.dart`).
   const keys = [
     'psdBitDepth',
@@ -75,6 +76,21 @@ void main() {
     'clipNotColour',
     'clipTransform',
     'clipVectorUnread',
+    'brushPackUnreadable',
+    'brushPackNotOurs',
+    'brushPackNewer',
+    'brushPackEmpty',
+    'brushPackDamaged',
+    'abrTooShort',
+    'abrOldVersion',
+    'abrUnknownVersion',
+    'abrCorruptSection',
+    'abrNoBrushes',
+    'abrNothingImportable',
+    'sutCannotOpen',
+    'sutUnreadable',
+    'sutNoBrushData',
+    'sutNothingImportable',
     'unsupportedLayerKind',
   ];
 
