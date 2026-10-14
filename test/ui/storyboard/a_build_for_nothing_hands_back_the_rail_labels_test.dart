@@ -9,6 +9,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -808,16 +809,40 @@ void main() {
   });
 
   testWidgets('🚨a V row its tracks can re-order takes its group\'s height '
-      'as an S row opens its lanes', (tester) async {
-    await pumpPanel(tester, twoTracks());
-    final closed = wrapper(tester, vLabel).rowExtent;
+      'as a group of its own lanes twirls open — its label as it was', (
+    tester,
+  ) async {
+    // Its own lanes run BELOW it: the group grows, the part above it — the
+    // grip's offset, which an S row's lanes move as well — does not.
+    final two = twoTracks();
+    await pumpPanel(
+      tester,
+      editTracks(
+        two,
+        (track) => track.id == trackId
+            ? track.copyWith(
+                effects: [
+                  LayerEffect.defaults(
+                    id: const EffectId('fx-a'),
+                    kind: EffectKind.blur,
+                  ),
+                ],
+              )
+            : track,
+      ),
+    );
+    await tester.tap(find.named('storyboard-track-lane-toggle-t1'));
+    await tester.pump();
+    final label = tester.widget(vLabel);
+    final open = wrapper(tester, vLabel).rowExtent;
 
     await tester.tap(
-      find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
+      find.named('storyboard-lane-group-toggle-v-track:t1-fx-group:fx-a'),
     );
     await tester.pump();
 
-    expect(wrapper(tester, vLabel).rowExtent, greaterThan(closed));
+    expect(tester.widget(vLabel), same(label), reason: 'premise: kept');
+    expect(wrapper(tester, vLabel).rowExtent, greaterThan(open));
   });
 
   /// Hooks hearing every move a row's drag makes: the rows it was handed,
