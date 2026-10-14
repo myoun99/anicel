@@ -736,7 +736,7 @@ void main() {
   final transformGroupTwirl = find.byWidgetPredicate(
     (widget) =>
         widget is LayerFoldTwirl &&
-        (widget.name?.endsWith('-transform-group') ?? false),
+        widget.name.endsWith('-transform-group'),
   );
 
   testWidgets('🚨an S row\'s wrapper takes its group\'s height as a group of '
