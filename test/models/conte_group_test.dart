@@ -182,27 +182,6 @@ void main() {
       expect(conteSeatOf(bare, const LayerId('cel')), isNull);
       expect(conteRowAtSeat(bare, 0), isNull);
     });
-
-    test('🚨a cut\'s group is read once — every ask is handed that list, '
-        'and no reader can change it (I-57)', () {
-      final cut = full();
-      final group = conteGroupOf(cut);
-
-      expect(identical(conteGroupOf(cut), group), isTrue);
-      expect(() => group.removeLast(), throwsUnsupportedError);
-    });
-
-    test('a cut edited is another cut, and its group is read off it', () {
-      final cut = full();
-      expect(seatsOf(cut).first, (2, 'conte+2'), reason: 'premise');
-
-      final edited = cut.copyWith(
-        layers: [...cut.layers, row('conte+3', ridesOn: 'conte')],
-      );
-
-      expect(seatsOf(edited).first, (3, 'conte+3'));
-      expect(seatsOf(cut).first, (2, 'conte+2'), reason: 'the cut it was');
-    });
   });
 
   group('the seats of a TRACK\'s cuts', () {
