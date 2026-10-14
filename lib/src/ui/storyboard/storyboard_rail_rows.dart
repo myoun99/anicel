@@ -131,34 +131,51 @@ class _StoryboardRailRows {
   /// opened by hand while it opened its neighbours. Written once per
   /// direction, the two guards were the same sentence with the sense
   /// flipped, and only one of them could be right about it.
+  ///
+  /// ONE undo step for the press, as the timeline's
+  /// ([RailSweepHistory.asOneStep]): a twirl the rows carry is written
+  /// through history (F-360).
   void _setAllLanes({required bool expanded}) {
+    RailSweepHistory.asOneStep(
+      _state.context,
+      expanded ? 'Expand all lanes' : 'Collapse all lanes',
+      () {
+        for (final track in _state.widget.project.tracks) {
+          _setTrackLanes(track, expanded: expanded);
+        }
+      },
+    );
+  }
+
+  /// [track]'s rows' twirls turned to [expanded] — its S rows, its V row
+  /// and its projection rows ([_setProjectionLanes]).
+  void _setTrackLanes(Track track, {required bool expanded}) {
     final toggleSe = _state.widget.onToggleSeRowLane;
     final toggleTrack = _state.widget.onToggleTrackLane;
     final toggleLayer = _state.widget.onToggleLayerLanes;
-    for (final track in _state.widget.project.tracks) {
-      if (toggleSe != null) {
-        for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-          final open = _state.widget.expandedSeAudioRows.contains(
-            StoryboardPanel.seRowKey(track, slot),
-          );
-          if (open != expanded) {
-            toggleSe(track, slot);
-          }
-        }
-      }
-      if (toggleTrack != null) {
-        final open = _state.widget.expandedTransformTracks.contains(
-          track.id.value,
+    if (toggleSe != null) {
+      for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+        final open = _state.widget.expandedSeAudioRows.contains(
+          StoryboardPanel.seRowKey(track, slot),
         );
         if (open != expanded) {
-          toggleTrack(track);
+          toggleSe(track, slot);
         }
       }
-      if (toggleLayer != null) {
-        _setProjectionLanes(track, toggleLayer, expanded: expanded);
+    }
+    if (toggleTrack != null) {
+      final open = _state.widget.expandedTransformTracks.contains(
+        track.id.value,
+      );
+      if (open != expanded) {
+        toggleTrack(track);
       }
     }
+    if (toggleLayer != null) {
+      _setProjectionLanes(track, toggleLayer, expanded: expanded);
+    }
   }
+
   /// [track]'s projection rows' twirls turned to [expanded] (I-73 ④ⓔ): the
   /// camera row's, and each conte row's that has lanes to show — each
   /// through the layer its twirl turns ([_cameraTwirlOf], [_conteTwirlOf]).

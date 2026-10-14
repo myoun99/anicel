@@ -118,6 +118,23 @@ class RailSweepHistory extends InheritedWidget {
   static RailSweepHistory? maybeOf(BuildContext context) =>
       context.getInheritedWidgetOfExactType<RailSweepHistory>();
 
+  /// Runs [body] — ONE press that writes many rows, the legend's twirl-all
+  /// over a rail whose twirls are the rows' (F-360) — as ONE undo step, the
+  /// same 「다 한번에 언두」 as a sweep's ([HistoryGestures.runAsOneStep]).
+  /// Absent, [body] writes row by row, as a sweep does.
+  static void asOneStep(
+    BuildContext context,
+    String description,
+    VoidCallback body,
+  ) {
+    final history = maybeOf(context)?.history;
+    if (history == null) {
+      body();
+      return;
+    }
+    history.runAsOneStep(description, body);
+  }
+
   @override
   bool updateShouldNotify(RailSweepHistory oldWidget) =>
       history != oldWidget.history;

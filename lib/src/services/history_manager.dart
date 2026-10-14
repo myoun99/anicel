@@ -643,6 +643,14 @@ class HistoryGestures {
   int _pushed = 0;
   int _retracted = 0;
 
+  /// Runs [body] as ONE entry — a gesture that writes many rows in ONE
+  /// event (the legend's twirl-all), so it needs no [mark]: the synchronous
+  /// run [HistoryManager.runAsOneStep] groups before anything is pushed.
+  /// ⛔Not [foldSince] after it: a stack at its depth cap trims under the
+  /// writes, and the fold leaves them a step per row.
+  void runAsOneStep(String description, void Function() body) =>
+      _history.runAsOneStep(description, body);
+
   /// Where the stack stands now — taken before a gesture's first write.
   HistoryMark get mark => (
     pushed: _pushed,
