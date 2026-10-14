@@ -26,6 +26,11 @@ void main() {
       'it, smaller', (tester) async {
     const sill = ValueKey<String>('sill');
     const sillWidth = 200.0;
+    // Taller than the strip, as a 48px button is: the sill is laid out in
+    // the strip's height, as the strip's stretched row always laid it, and
+    // only a lack of WIDTH shows it smaller.
+    const sillHeight = 100.0;
+    expect(sillHeight, greaterThan(EditorPanelTabs.stripHeight));
     Future<void> pumpStrip(double width) => tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -48,7 +53,11 @@ void main() {
                       sillTrailing: (context) => const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(key: sill, width: sillWidth, height: 20),
+                          SizedBox(
+                            key: sill,
+                            width: sillWidth,
+                            height: sillHeight,
+                          ),
                         ],
                       ),
                     ),
@@ -65,7 +74,11 @@ void main() {
 
     await pumpStrip(600);
     expect(overflow, findsNothing, reason: '⛔premise: all three fit');
-    expect(tester.getSize(find.byKey(sill)).width, sillWidth);
+    expect(
+      tester.getRect(find.byKey(sill)).width,
+      sillWidth,
+      reason: 'where the strip holds it, the sill stands at its own width',
+    );
 
     await pumpStrip(150);
 
@@ -138,6 +151,11 @@ void main() {
     );
     bool givesWay() =>
         tester.getRect(sill).width < tester.getSize(sill).width - 0.5;
+    expect(
+      givesWay(),
+      isFalse,
+      reason: '⛔premise: at the rail\'s own width the sill stands whole',
+    );
     for (var step = 0; step < 60 && !givesWay(); step += 1) {
       final at = handle();
       expect(at, isNotNull, reason: 'premise: the rail\'s grip is free');
