@@ -220,6 +220,94 @@ void main() {
       );
       expect(differing(carried, landed), 0);
     });
+
+    testWidgets('🚨keyed AGAIN while a text is in hand, it floats through '
+        'the row\'s new keys — and so do the texts above it', (tester) async {
+      LayerEffect keyOf({double red = 0, double green = 0}) => LayerEffect(
+        id: const EffectId('text-tool-key'),
+        kind: EffectKind.deleteColor,
+        parameters: {
+          'keyRed': EffectParameter(value: red),
+          'keyGreen': EffectParameter(value: green),
+          'amount': EffectParameter(value: 100),
+        },
+      );
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(effects: [keyOf(red: 255)]),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      textToolOf(
+        tester,
+      ).changeLetters((style) => style.copyWith(color: 0xFFFF0000));
+      await typeText(tester, 'hi');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+      await clickAt(tester, c.dx, c.dy + 120);
+      textToolOf(
+        tester,
+      ).changeLetters((style) => style.copyWith(color: 0xFFFF0000));
+      await typeText(tester, 'yo');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+      // 「hi」 taken, by its letters at the second click, and typed into:
+      // lifted, 「yo」 with it.
+      await clickAt(tester, c.dx + 10, c.dy + 30);
+      await clickAt(tester, c.dx + 30, c.dy + 55);
+      await typeText(tester, 'hiz');
+      final region = regionAround(c);
+      final width = region.width.toInt();
+      List<int> at(Uint8List raster, double dx, double dy) => pixelOf(
+        raster,
+        width,
+        (c.dx - region.left + dx).toInt(),
+        (c.dy - region.top + dy).toInt(),
+      );
+      expect(
+        [for (final text in celOf(tester).texts) text.content.text],
+        ['hi', 'yo'],
+        reason: '⛔fixture: nothing landed yet',
+      );
+      expect(
+        canvasShows(tester).texts,
+        isEmpty,
+        reason: '⛔fixture: lifted, 「yo」 with it',
+      );
+      final keyed = await canvasRaster(tester, region);
+      expect(
+        [at(keyed, 10, 10), at(keyed, 10, 130)],
+        [
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+        ],
+        reason: '⛔fixture: the red key takes both off the canvas',
+      );
+
+      sessionOf(
+        tester,
+      ).effectsAndFx.updateLayerEffects(textToolLayerId, [keyOf(green: 255)]);
+      await pumpFrames(tester);
+      final rekeyed = await canvasRaster(tester, region);
+      expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final landed = await canvasRaster(tester, region);
+
+      expect(
+        [for (final text in celOf(tester).texts) text.content.text],
+        ['hiz', 'yo'],
+        reason: '⛔fixture: landed',
+      );
+      expect(
+        [at(landed, 10, 10), at(landed, 10, 130)],
+        [
+          [255, 0, 0, 255],
+          [255, 0, 0, 255],
+        ],
+        reason: '⛔fixture: the green key leaves both',
+      );
+      expect(differing(rekeyed, landed), 0);
+    });
   });
 
   group('over a drawing', () {

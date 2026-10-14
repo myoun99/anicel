@@ -1284,6 +1284,71 @@ void main() {
       expect(floating.pixels.plate, same(tool.session!.shown.plate));
     });
 
+    test('🚨F-344: the text taken is on shownInHand at once — another '
+        'taken is, and none is once it is let go of', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [first, second]);
+
+      tool.takeText(cel, first);
+      final one = tool.shownInHand.value;
+      tool.takeText(cel, second);
+      final other = tool.shownInHand.value;
+      final session = tool.session!;
+      tool.confirm();
+
+      expect(one?.content, first.content);
+      expect(other, same(session.shown));
+      expect(tool.shownInHand.value, isNull);
+    });
+
+    test('🚨F-344: a text carried and DELETED leaves nothing lifted — the '
+        'next one carried lifts off in its turn, and the panel is told', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, :host, baker: _, :cel) = hand(texts: [first, second]);
+      tool.takeText(cel, first);
+      final one = tool.session!;
+      one.showMoved(one.moveOrigin, dx: 4, dy: 0);
+      tool
+        ..deleteText()
+        ..takeText(cel, second);
+      final other = tool.session!;
+      final taken = host.redrawn;
+
+      other.showMoved(other.moveOrigin, dx: 4, dy: 0);
+
+      expect(textsOn(cel), [(5, 'cd')], reason: '⛔fixture: deleted');
+      expect(host.redrawn, taken + 1, reason: 'lifted off');
+    });
+
+    test('🚨F-344: the text in hand landed as it is shown tells the panel '
+        'ONCE that it is put back — with another let go of still owed its '
+        'landing', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, :host, :baker, :cel) = hand(texts: [first, second]);
+      tool
+        ..takeText(cel, first)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      // The other taken: this one is let go of, its last want owed.
+      tool.takeText(cel, second);
+      final session = tool.session!;
+      session.showMoved(session.moveOrigin, dx: 4, dy: 0);
+      final carrying = host.redrawn;
+      expect(
+        baker.pending.content.text,
+        'abc',
+        reason: '⛔fixture: the one let go of is still owed its last want',
+      );
+
+      expect(tool.landShown(), isTrue);
+
+      expect(host.ran, hasLength(1), reason: 'the one in hand, as shown');
+      expect(host.redrawn, carrying + 1, reason: 'put back, once');
+    });
+
     test('a NEW text has nothing above it: its hole is its cel, and it '
         'floats over all of the cel\'s texts', () async {
       final standing = carried(4, said([run('ab')]));

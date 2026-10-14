@@ -27,6 +27,7 @@ import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -269,6 +270,37 @@ void main() {
             'came out different from the live row drawing them — the two '
             'shapes of one row went two ways',
       );
+    });
+  }
+
+  // 🚨F-344: the text in hand floats as the live painter's OWN landing
+  // preview (`BitmapSurfacePainter.landingPreview`), over a hole that can
+  // be empty — a new text on an empty cel. A route that draws its slot by
+  // the slot's extent has to be told the float is part of what the
+  // painter draws, or it cuts the float away.
+  for (final MapEntry(key: name, value: paint) in routes.entries) {
+    testWidgets('$name: the live painter\'s own float is drawn over a cel '
+        'with nothing on it', (tester) async {
+      final landing = ValueNotifier<LandingPreview?>(floatOf(1).value);
+      addTearDown(landing.dispose);
+      Future<Uint8List> shown() async => shot(
+        tester,
+        await pumpStack(
+          tester,
+          nodes: [liveRow(paint)],
+          live: BitmapSurfacePainter(
+            surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8),
+            showTransparentBackground: false,
+            landingPreview: landing,
+          ),
+        ),
+      );
+
+      final floating = await shown();
+      landing.value = null;
+      final bare = await shown();
+
+      expect(_differing(floating, bare), greaterThan(0));
     });
   }
 
