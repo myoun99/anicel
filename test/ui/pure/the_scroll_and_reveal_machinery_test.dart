@@ -449,6 +449,54 @@ void main() {
         reason: 'and so it is where a run\'s next turn stands it',
       );
     });
+
+    testWidgets('🚨born where the axis stands, it is built for the room '
+        'reaching the view there, and its first read keeps that room — none '
+        'grown where the fill papers the view already', (tester) async {
+      // A 400px view of 20px cells over 4 frames, papered by 20.
+      final controller = await pumpScrollable(tester);
+      TimelineFrameAxisFollower bornAt(double at) {
+        final offset = ValueNotifier<double>(at);
+        final bucket = ValueNotifier<int>(0);
+        addTearDown(offset.dispose);
+        addTearDown(bucket.dispose);
+        final follower = TimelineFrameAxisFollower(
+          controller: controller,
+          frameAxisOffset: offset,
+          frameWindowBucket: bucket,
+          cellExtent: () => 20,
+          baseFrameCount: () => 4,
+          viewportFillFrames: () => 20,
+          rebuild: (fn) => fn(),
+          isMounted: () => true,
+        );
+        addTearDown(follower.dispose);
+        return follower;
+      }
+
+      final atTheStart = bornAt(0);
+      atTheStart.handleScroll();
+      expect(
+        (atTheStart.trailingFrames, atTheStart.renderedFrameCount),
+        (0, 20),
+        reason: 'the fill papers the view standing at the start: a room '
+            'grown there is grown for nothing, and a host reads it',
+      );
+
+      final pastTheEnd = bornAt(1000);
+      expect(
+        pastTheEnd.renderedFrameCount,
+        70,
+        reason: 'built to the end of the view standing at 1000px',
+      );
+      controller.jumpTo(1000);
+      pastTheEnd.handleScroll();
+      expect(
+        pastTheEnd.renderedFrameCount,
+        70,
+        reason: '🚨its first read keeps the room it was built for',
+      );
+    });
   });
 
   group('keepWhereShown — the one write both axes keep theirs through', () {
