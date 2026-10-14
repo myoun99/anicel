@@ -151,8 +151,13 @@ void main() {
       expect(session.railView.collapsedAttachBaseIds.value, {_b});
     });
 
-    testWidgets('undoing the Add Layer stands on the base too — and the redo '
-        'brings you back to the row it made', (tester) async {
+    // ↩️The undo stood on B, the deletion law's shown row, until F-350 (유저
+    // 2026-10-12: 「레이어 여러개 생성하고 언두할때 매번 카메라 레이어로 이동하는
+    // 1개 과정이 있음. 한번에 바로 삭제해야하는데」) handed an undone row's
+    // stand back to the row its add found you on. A is shown, so ① holds.
+    testWidgets('undoing the Add Layer hands you back to the row it was added '
+        'from, and the group stays shut — and the redo brings you back to '
+        'the row it made', (tester) async {
       final session = await _open(tester, _project(_reported));
       await _twirl(tester, _b);
       session.selectLayer(_a);
@@ -162,7 +167,7 @@ void main() {
 
       session.undo();
       await tester.pumpAndSettle();
-      expect(session.activeLayerId, _b);
+      expect(session.activeLayerId, _a);
       expect(_row(_bMinus1), findsNothing);
 
       session.redo();
