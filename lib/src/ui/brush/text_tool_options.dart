@@ -103,17 +103,22 @@ class TextToolOptions {
   );
 
   /// A text with no letters yet, standing at [anchor] — as wide as
-  /// [wrapWidth] says, or growing with what is typed.
-  CelTextContent newTextAt(CanvasPoint anchor, {double? wrapWidth}) =>
-      CelTextContent(
-        spans: const [],
-        anchor: anchor,
-        wrapWidth: wrapWidth,
-        align: align,
-        lineHeight: lineHeight,
-        backgroundColor: backgroundColor,
-        vertical: vertical,
-      );
+  /// [wrapWidth] says and at least [minHeight] tall, or growing with what
+  /// is typed.
+  CelTextContent newTextAt(
+    CanvasPoint anchor, {
+    double? wrapWidth,
+    double? minHeight,
+  }) => CelTextContent(
+    spans: const [],
+    anchor: anchor,
+    wrapWidth: wrapWidth,
+    minHeight: minHeight,
+    align: align,
+    lineHeight: lineHeight,
+    backgroundColor: backgroundColor,
+    vertical: vertical,
+  );
 
   /// These with the box's values given — the letters are [withLetters]'.
   TextToolOptions copyWith({

@@ -89,6 +89,7 @@ void main() {
       CanvasPoint(x: c.dx + 12, y: c.dy + 12),
     );
     expect(tool.session!.content.wrapWidth, 196);
+    expect(tool.session!.content.minHeight, 166, reason: 'and as tall (F-317)');
   });
 
   testWidgets('a click that comes up before the cel is here still begins '
@@ -115,6 +116,26 @@ void main() {
 
     expect(textsUnderTool(tester).single.content.text, 'hi');
     expect(history.undoCount, steps + 1);
+  });
+
+  testWidgets('a DRAG that comes up before the cel is here still begins its '
+      'box on it, as wide and as tall as the drag', (tester) async {
+    final c = await onTheEmptyFrame(tester);
+
+    // Down, along and up inside one frame.
+    final mouse = await tester.startGesture(
+      onScreen(tester, c.dx + 220, c.dy + 190),
+      kind: PointerDeviceKind.mouse,
+    );
+    await mouse.moveTo(onScreen(tester, c.dx, c.dy));
+    await mouse.up();
+    expect(celUnderTool(tester), isNull, reason: '⛔fixture: not here yet');
+    await pumpFrames(tester);
+
+    final content = textToolOf(tester).session!.content;
+    expect(content.anchor, CanvasPoint(x: c.dx + 12, y: c.dy + 12));
+    expect(content.wrapWidth, 196);
+    expect(content.minHeight, 166);
   });
 
   testWidgets('let go of with nothing typed, the cel stays — the press '

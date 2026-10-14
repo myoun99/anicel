@@ -284,6 +284,20 @@ void main() {
       expect(identical(celTextUnboxed(growing), growing), isTrue);
     });
 
+    test('🚨how tall a box was at least goes with the box (F-317): its lines '
+        'stood at its top, so none of them moves', () {
+      final tall = said(
+        [run('ab cd')],
+        wrapWidth: 70,
+      ).copyWith(minHeight: 100);
+
+      final growing = celTextUnboxed(tall);
+
+      expect(growing.wrapWidth, isNull);
+      expect(growing.minHeight, isNull);
+      expectSameLetters(tall, growing);
+    });
+
     test('one with no letters is a text with none, where its lines would '
         'stand', () {
       final box = said(const [], wrapWidth: 70, align: TextCelAlign.center);
@@ -395,7 +409,33 @@ void main() {
       // Columns 40 long hold two letters each: three columns, 60 by 40.
       expect(columns.wrapWidth, 40);
       expect(blockOf(columns), const ui.Size(60, 40));
+      expect(columns.minHeight, isNull, reason: 'it was as tall as its lines');
       expect(celTextWrittenAs(columns, vertical: false).wrapWidth, 60);
+    });
+
+    test('🚨a box at least TALLER than its lines keeps its shape too: how '
+        'tall it was is how long its columns are, and how wide it was is '
+        'how wide they are at least (F-317)', () {
+      // Two lines 40 tall, in a box at least 100: 60 by 100.
+      final tall = said(
+        [run('あいうえおか')],
+        wrapWidth: 60,
+      ).copyWith(minHeight: 100);
+      expect(blockOf(tall), const ui.Size(60, 100), reason: '⛔fixture');
+
+      final columns = celTextWrittenAs(tall, vertical: true);
+
+      // Columns 100 long hold all six in two, 40 wide — and it is 60.
+      expect(columns.wrapWidth, 100);
+      expect(columns.minHeight, 60);
+      expect(blockOf(columns), const ui.Size(60, 100));
+      expect((cornerOf(columns) - cornerOf(tall)).distance, lessThan(1e-9));
+
+      final back = celTextWrittenAs(columns, vertical: false);
+
+      expect(back.wrapWidth, 60);
+      expect(back.minHeight, 100);
+      expect((cornerOf(back) - cornerOf(tall)).distance, lessThan(1e-9));
     });
 
     test('a text that grows stays one that grows', () {

@@ -24,8 +24,8 @@ const double celTextMinFontSize = 1;
 const double celTextMinWrapWidth = 1;
 
 /// [content] with every LENGTH of it [factor] times what it was — the
-/// letters' size, their tracking and their outline, and the box's width —
-/// about [centre], which stays where it is.
+/// letters' size, their tracking and their outline, and the box's width
+/// and least height — about [centre], which stays where it is.
 ///
 /// 🗣️The press table 유저 took on 2026-10-06: a corner scales 「글자가
 /// 커진다, 중심 기준」 — the letters themselves, not a picture of them.
@@ -45,6 +45,7 @@ CelTextContent celTextScaledAbout(
       ? math.max(factor, celTextMinFontSize / smallest)
       : factor;
   final wrapWidth = content.wrapWidth;
+  final minHeight = content.minHeight;
   return content.copyWith(
     spans: [
       for (final span in content.spans)
@@ -60,6 +61,9 @@ CelTextContent celTextScaledAbout(
     wrapWidth: wrapWidth == null
         ? null
         : math.max(wrapWidth * scale, celTextMinWrapWidth),
+    minHeight: minHeight == null
+        ? null
+        : math.max(minHeight * scale, celTextMinWrapWidth),
     anchor: CanvasPoint(
       x: centre.x + (content.anchor.x - centre.x) * scale,
       y: centre.y + (content.anchor.y - centre.y) * scale,
@@ -126,6 +130,66 @@ CelTextContent celTextBoxWidened(
   final along = before - after;
   return content.copyWith(
     wrapWidth: after,
+    anchor: CanvasPoint(
+      x: content.anchor.x + along * way.dx,
+      y: content.anchor.y + along * way.dy,
+    ),
+  );
+}
+
+/// The way [content]'s lines stack, as one step of it on the canvas: down
+/// them — or, written in columns, leftwards across them — turned as the
+/// text is. A quarter turn clockwise from the way its letters run
+/// ([celTextLettersWay]), in lines and in columns alike.
+///
+/// What a box's least height is measured along
+/// ([CelTextContent.minHeight]), and so what a hand on the edge that sets
+/// it travels along.
+({double dx, double dy}) celTextStackingWay(CelTextContent content) {
+  final letters = celTextLettersWay(content);
+  return (dx: -letters.dy, dy: letters.dx);
+}
+
+/// How deep [content]'s box is — across its lines, or the way its columns
+/// stack — with its letters [lettersDepth] deep: as deep as they are, or
+/// as deep as it is at least ([CelTextContent.minHeight]) where that is
+/// more (F-317-Q2: 「넘치면 상자가 늘어난다」).
+double celTextBoxDepth(
+  CelTextContent content, {
+  required double lettersDepth,
+}) => math.max(lettersDepth, content.minHeight ?? 0);
+
+/// A box [content] at least [height] tall, by one of the two edges its
+/// lines stack between — its top or its bottom, or written in columns its
+/// right or its left: the other edge stays where it is, as
+/// [celTextBoxWidened]'s does.
+///
+/// A box is never less than its lines, [lettersDepth] tall: a hand that
+/// takes an edge past them leaves it there (F-317-Q2: 「끈 높이는 최소치」).
+/// It hangs from its anchor, on its top edge — in columns its right — so
+/// the FAR edge only changes the height, and the edge the anchor is on
+/// ([byLeadingEdge]) carries the anchor the way the lines stack by what
+/// the height lost.
+///
+/// ⛔For a box only: a text that grows has no box to be tall.
+CelTextContent celTextBoxDeepened(
+  CelTextContent content,
+  double height, {
+  required double lettersDepth,
+  required bool byLeadingEdge,
+}) {
+  if (content.wrapWidth == null) {
+    throw ArgumentError.value(content, 'content', 'has no box to deepen');
+  }
+  final before = celTextBoxDepth(content, lettersDepth: lettersDepth);
+  final after = math.max(math.max(height, lettersDepth), celTextMinWrapWidth);
+  if (!byLeadingEdge) {
+    return content.copyWith(minHeight: after);
+  }
+  final way = celTextStackingWay(content);
+  final along = before - after;
+  return content.copyWith(
+    minHeight: after,
     anchor: CanvasPoint(
       x: content.anchor.x + along * way.dx,
       y: content.anchor.y + along * way.dy,

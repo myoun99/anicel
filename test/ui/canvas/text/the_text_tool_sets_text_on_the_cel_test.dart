@@ -413,6 +413,7 @@ void main() {
       // letters 12 in from either side of it.
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
       expect(textToolOf(tester).session!.content.wrapWidth, 96);
+      expect(textToolOf(tester).session!.content.minHeight, 66);
     });
 
     testWidgets('the letters an IME is still composing wear a line under '

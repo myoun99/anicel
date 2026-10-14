@@ -74,7 +74,8 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   /// A text whose press came up before the cel it had asked for arrived:
   /// it begins when the cel does ([_celChanged]).
-  ({CanvasPoint anchor, double? wrapWidth})? _textAwaitingCel;
+  ({CanvasPoint anchor, double? wrapWidth, double? minHeight})?
+  _textAwaitingCel;
 
   /// Where history stood when a press made the cel its text is to be set
   /// on — until that text begins, and the two land as one step
@@ -136,7 +137,11 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       _tool.confirm();
       if (awaited != null && widget.cel != null) {
         // The press that made this cel came up before it was here.
-        _beginText(awaited.anchor, wrapWidth: awaited.wrapWidth);
+        _beginText(
+          awaited.anchor,
+          wrapWidth: awaited.wrapWidth,
+          minHeight: awaited.minHeight,
+        );
       }
     });
   }
@@ -144,10 +149,18 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// A press on nothing came up: its text begins on the cel under the tool
   /// — or, where the press made that cel and it is not here yet, when it
   /// comes ([_celChanged]).
-  void _beginText(CanvasPoint anchor, {double? wrapWidth}) {
+  void _beginText(
+    CanvasPoint anchor, {
+    double? wrapWidth,
+    double? minHeight,
+  }) {
     final cel = widget.cel;
     if (cel == null) {
-      _textAwaitingCel = (anchor: anchor, wrapWidth: wrapWidth);
+      _textAwaitingCel = (
+        anchor: anchor,
+        wrapWidth: wrapWidth,
+        minHeight: minHeight,
+      );
       return;
     }
     final celMadeSince = _celMadeSince;
@@ -156,6 +169,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       cel,
       anchor,
       wrapWidth: wrapWidth,
+      minHeight: minHeight,
       celMadeSince: celMadeSince,
     );
   }

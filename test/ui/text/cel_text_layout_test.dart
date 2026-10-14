@@ -51,6 +51,7 @@ void main() {
     double x = 0,
     double y = 0,
     double? wrapWidth,
+    double? minHeight,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = 1,
@@ -62,6 +63,7 @@ void main() {
         spans: spans,
         anchor: CanvasPoint(x: x, y: y),
         wrapWidth: wrapWidth,
+        minHeight: minHeight,
         rotationDegrees: turn,
         align: align,
         lineHeight: lineHeight,
@@ -283,6 +285,29 @@ void main() {
       expect(first(TextCelAlign.left).left, 0);
       expect(first(TextCelAlign.center).left, 30);
       expect(first(TextCelAlign.right).left, 60);
+    });
+
+    // F-317-Q1 · Q2 (유저 2026-10-14): 「상자가 글자를 따라 늘어난다 — 끈
+    // 높이는 최소치」.
+    test('🚨a box at least TALLER than its lines is that tall: they stand at '
+        'its top, and it reaches down past them', () {
+      // 「ab」 is one line 20 tall, in a box at least 50.
+      final tall = set([run('ab')], wrapWidth: 100, minHeight: 50);
+
+      expect(tall.block, const ui.Rect.fromLTWH(0, 0, 100, 50));
+      expect(tall.box, const ui.Rect.fromLTWH(-5, -5, 110, 60));
+      expect(tall.lettersDepth, 20);
+      expect(tall.caretRect(const TextPosition(offset: 0)).top, 0);
+      expect(tall.boxContains(const ui.Offset(50, 45)), isTrue);
+    });
+
+    test('🚨a box with MORE lines than it is tall at least grows down to '
+        'hold them all', () {
+      // Three lines of two: 60 tall.
+      final grown = set([run('abcdef')], wrapWidth: 50, minHeight: 30);
+
+      expect(grown.block, const ui.Rect.fromLTWH(0, 0, 50, 60));
+      expect(grown.lettersDepth, 60);
     });
   });
 

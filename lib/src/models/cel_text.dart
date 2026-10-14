@@ -47,6 +47,7 @@ class CelTextContent {
     required List<CelTextSpan> spans,
     required this.anchor,
     this.wrapWidth,
+    this.minHeight,
     this.rotationDegrees = 0,
     this.align = TextCelAlign.left,
     this.lineHeight = defaultLineHeight,
@@ -58,7 +59,15 @@ class CelTextContent {
     // pitch of nothing as no lines at all, and a plate baked from either
     // is a picture nobody asked for that the cel then keeps.
     _requireLength(wrapWidth, 'wrapWidth');
+    _requireLength(minHeight, 'minHeight');
     _requireLength(lineHeight, 'lineHeight');
+    if (minHeight != null && wrapWidth == null) {
+      throw ArgumentError.value(
+        minHeight,
+        'minHeight',
+        'A text that grows has no box to be tall.',
+      );
+    }
     if (!rotationDegrees.isFinite) {
       throw ArgumentError.value(
         rotationDegrees,
@@ -110,6 +119,20 @@ class CelTextContent {
   /// the next one begins: the same room, along the way the letters go.
   final double? wrapWidth;
 
+  /// How tall a box is AT LEAST — dragged out with it, or set by its top
+  /// and bottom edges: its lines go in from the top, and a box with more of
+  /// them than that grows down to hold them all. Null for a box as tall as
+  /// its lines, and for a text that grows, which has no box.
+  ///
+  /// 🗣️F-317 (유저 2026-10-08): 「위아래 크기지정도 처음에 사각형 만들때
+  /// 살린다던가 그런식으로 로직통일하면서」 — and F-317-Q1 · Q2 (10-14):
+  /// 「상자가 글자를 따라 늘어난다 — 끈 높이는 최소치」, kept over Premiere's
+  /// and Clip Studio's fixed box that hides what runs over.
+  ///
+  /// Written in columns it is how WIDE the box is at least: the same room,
+  /// the way the columns stack.
+  final double? minHeight;
+
   /// Clockwise, in canvas degrees, about [anchor].
   final double rotationDegrees;
 
@@ -160,6 +183,7 @@ class CelTextContent {
     List<CelTextSpan>? spans,
     CanvasPoint? anchor,
     Object? wrapWidth = _sentinel,
+    Object? minHeight = _sentinel,
     double? rotationDegrees,
     TextCelAlign? align,
     double? lineHeight,
@@ -173,6 +197,9 @@ class CelTextContent {
     wrapWidth: identical(wrapWidth, _sentinel)
         ? this.wrapWidth
         : (wrapWidth as num?)?.toDouble(),
+    minHeight: identical(minHeight, _sentinel)
+        ? this.minHeight
+        : (minHeight as num?)?.toDouble(),
     rotationDegrees: rotationDegrees ?? this.rotationDegrees,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,
@@ -186,6 +213,7 @@ class CelTextContent {
     'spans': [for (final span in spans) span.toJson()],
     'anchor': anchor.toJson(),
     if (wrapWidth != null) 'wrapWidth': wrapWidth,
+    if (minHeight != null) 'minHeight': minHeight,
     if (rotationDegrees != 0) 'rotationDegrees': rotationDegrees,
     'align': align.jsonValue,
     'lineHeight': lineHeight,
@@ -200,6 +228,7 @@ class CelTextContent {
     ],
     anchor: CanvasPoint.fromJson(json['anchor'] as Map<String, dynamic>),
     wrapWidth: (json['wrapWidth'] as num?)?.toDouble(),
+    minHeight: (json['minHeight'] as num?)?.toDouble(),
     rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0,
     align: TextCelAlign.fromJson(json['align'] as String?),
     lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? defaultLineHeight,
@@ -214,6 +243,7 @@ class CelTextContent {
           listEquals(other.spans, spans) &&
           other.anchor == anchor &&
           other.wrapWidth == wrapWidth &&
+          other.minHeight == minHeight &&
           other.rotationDegrees == rotationDegrees &&
           other.align == align &&
           other.lineHeight == lineHeight &&
@@ -225,6 +255,7 @@ class CelTextContent {
     Object.hashAll(spans),
     anchor,
     wrapWidth,
+    minHeight,
     rotationDegrees,
     align,
     lineHeight,

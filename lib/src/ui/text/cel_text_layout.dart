@@ -6,6 +6,8 @@ import 'package:flutter/painting.dart';
 
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
+import '../../services/cel_text_box_edits.dart' show celTextBoxDepth;
+import '../timeline/axis_turn.dart' show extentAcross;
 import 'canvas_letter_faces.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
@@ -55,8 +57,37 @@ class CelTextLayout {
   /// The letters' block in the text's own frame — its lines', as wide as
   /// the longest line (or as the box, for a text that wraps) and as tall
   /// as they are; or its columns', as long as the longest (or as the box)
-  /// and as wide as they are.
-  ui.Rect get block => _setting.block;
+  /// and as wide as they are. A box is never less than it is at least
+  /// ([CelTextContent.minHeight]): it grows past its lines from the edge it
+  /// hangs from, down from its top — or written in columns, leftwards from
+  /// its right — and its letters stay where they are.
+  late final ui.Rect block = _asDeepAsTheBox(_setting.block);
+
+  /// How deep the letters themselves are — across their lines, or the way
+  /// their columns stack — whatever a box's least height says.
+  double get lettersDepth => extentAcross(
+    celTextLettersAxis(vertical: content.vertical),
+    _setting.block.size,
+  );
+
+  ui.Rect _asDeepAsTheBox(ui.Rect letters) {
+    // Nothing at all, to the bit, for a box no deeper than its letters.
+    final past =
+        celTextBoxDepth(content, lettersDepth: lettersDepth) - lettersDepth;
+    return content.vertical
+        ? ui.Rect.fromLTRB(
+            letters.left - past,
+            letters.top,
+            letters.right,
+            letters.bottom,
+          )
+        : ui.Rect.fromLTRB(
+            letters.left,
+            letters.top,
+            letters.right,
+            letters.bottom + past,
+          );
+  }
 
   /// How far the text's box reaches past [block] on every side
   /// ([celTextBoxPad]) — the box filled behind the letters too, for a text

@@ -12,7 +12,7 @@ import '../../../services/cel_text_box_edits.dart';
 import '../../../services/input/pen_sidecars.dart';
 import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
-import '../../timeline/axis_turn.dart' show extentAlong;
+import '../../timeline/axis_turn.dart' show extentAcross, extentAlong;
 import '../box_press.dart';
 import 'cel_text_session.dart';
 import 'cel_text_stage.dart';
@@ -43,9 +43,15 @@ class CelTextScene {
   final void Function(Rect? box) onTraced;
 
   /// A press on nothing came up: a text begins at [anchor], as wide as
-  /// [wrapWidth] or growing with what is typed — on the cel under the tool
-  /// THEN, which for the press that made its cel is not [cel].
-  final void Function(CanvasPoint anchor, {double? wrapWidth}) onBegin;
+  /// [wrapWidth] and at least [minHeight] tall, or growing with what is
+  /// typed — on the cel under the tool THEN, which for the press that made
+  /// its cel is not [cel].
+  final void Function(
+    CanvasPoint anchor, {
+    double? wrapWidth,
+    double? minHeight,
+  })
+  onBegin;
 }
 
 /// [cel]'s picture as it stands.
@@ -166,11 +172,18 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
       centre: centre,
       reach: _reachOf(scene, event.localPosition, centre),
     ),
-    BoxPress.handle => _WidthPress(
+    BoxPress.handle when hit!.handle < _leadingDepthHandle => _WidthPress(
       event,
       artwork,
       start: session.content,
-      byLeadingEdge: hit!.handle == _leadingEdgeHandle,
+      byLeadingEdge: hit.handle == _leadingEdgeHandle,
+    ),
+    BoxPress.handle => _DepthPress(
+      event,
+      artwork,
+      start: session.content,
+      lettersDepth: layout.lettersDepth,
+      byLeadingEdge: hit!.handle == _leadingDepthHandle,
     ),
     BoxPress.inside => _InsidePress(event, artwork, cel: cel, held: true),
     // Outside the box: another text if one is there. Else on stage it is
@@ -223,11 +236,16 @@ CelText? _textAt(CelTextTool tool, CelTextCel cel, Offset artwork) {
 /// corners in [celTextHandlesOf] — the edge its anchor is on first.
 const int _leadingEdgeHandle = 4;
 
+/// The handles of the two edges a box's lines stack between follow those —
+/// the edge its anchor is on first.
+const int _leadingDepthHandle = 6;
+
 /// Where a text held by its box can be taken, on the artwork: its four
-/// corners — the scale — and, for a box, the middle of the two edges its
-/// letters run between: its room. The side edges of a text in lines, the
-/// top and the bottom of one in columns. The chrome draws these and a press
-/// is asked of them, so what is seen is what is grabbed.
+/// corners — the scale — and, for a box, the middle of each edge: the two
+/// its letters run between, its room — the side edges of a text in lines,
+/// the top and the bottom of one in columns — and the two its lines stack
+/// between, how tall it is at least (F-317). The chrome draws these and a
+/// press is asked of them, so what is seen is what is grabbed.
 List<Offset> celTextHandlesOf(CelTextLayout layout) {
   final corners = layout.boxCorners;
   if (layout.content.wrapWidth == null) {
@@ -235,15 +253,15 @@ List<Offset> celTextHandlesOf(CelTextLayout layout) {
   }
   // Top left, top right, bottom right, bottom left.
   final [topLeft, topRight, bottomRight, bottomLeft] = corners;
+  final top = (topLeft + topRight) / 2;
+  final bottom = (bottomLeft + bottomRight) / 2;
+  final left = (topLeft + bottomLeft) / 2;
+  final right = (topRight + bottomRight) / 2;
   return [
     ...corners,
-    if (layout.content.vertical) ...[
-      (topLeft + topRight) / 2,
-      (bottomLeft + bottomRight) / 2,
-    ] else ...[
-      (topLeft + bottomLeft) / 2,
-      (topRight + bottomRight) / 2,
-    ],
+    ...layout.content.vertical
+        ? [top, bottom, right, left]
+        : [left, right, top, bottom],
   ];
 }
 
@@ -516,6 +534,41 @@ final class _WidthPress extends _BoxEditPress {
   }
 }
 
+/// On an edge of a box its lines stack between: how tall it is at least, in
+/// whole pixels, by how far the hand has gone the way they stack
+/// ([celTextStackingWay]) — never less than its lines, [lettersDepth] tall
+/// (F-317).
+final class _DepthPress extends _BoxEditPress {
+  _DepthPress(
+    super.event,
+    this.artwork, {
+    required super.start,
+    required this.lettersDepth,
+    required this.byLeadingEdge,
+  });
+
+  final Offset artwork;
+  final double lettersDepth;
+  final bool byLeadingEdge;
+
+  @override
+  void _move(CelTextScene scene, Offset local, Offset artwork) {
+    final way = celTextStackingWay(start);
+    final along =
+        (artwork.dx - this.artwork.dx) * way.dx +
+        (artwork.dy - this.artwork.dy) * way.dy;
+    final height = celTextBoxDepth(start, lettersDepth: lettersDepth);
+    scene.tool.showEdit(
+      celTextBoxDeepened(
+        start,
+        (byLeadingEdge ? height - along : height + along).roundToDouble(),
+        lettersDepth: lettersDepth,
+        byLeadingEdge: byLeadingEdge,
+      ),
+    );
+  }
+}
+
 /// Outside the box, on stage: dragged, the text turns about its cross
 /// ([celTextCrossOf] — the middle of the box until a hand carries it), which
 /// the turn leaves where it is; let go where it went down, the tool lets go
@@ -572,8 +625,10 @@ final class _TurnPress extends _BoxEditPress {
 /// On nothing: let go where it went down, a text that grows; dragged, a
 /// box with the drag's room for its letters — as wide as it for a text in
 /// lines, as long as it for one in columns, which hangs from the drag's
-/// top RIGHT corner. The drag IS the box: its letters go in as far as a
-/// box reaches past them ([celTextBoxPad]).
+/// top RIGHT corner — and at least as tall as it, or in columns as wide
+/// (F-317: 「위아래 크기지정도 처음에 사각형 만들때 살린다」). The drag IS
+/// the box: its letters go in as far as a box reaches past them
+/// ([celTextBoxPad]).
 final class _EmptyPress extends CelTextPress {
   _EmptyPress(super.event, this.artwork);
 
@@ -602,13 +657,15 @@ final class _EmptyPress extends CelTextPress {
         host.options.letters(brushColour: host.brushColour).fontSize,
       ),
     );
+    final axis = celTextLettersAxis(vertical: columns);
     scene.onBegin(
       celTextWholePixel(columns ? letters.topRight : letters.topLeft),
       wrapWidth: math.max(
-        extentAlong(
-          celTextLettersAxis(vertical: columns),
-          letters.size,
-        ).roundToDouble(),
+        extentAlong(axis, letters.size).roundToDouble(),
+        celTextMinWrapWidth,
+      ),
+      minHeight: math.max(
+        extentAcross(axis, letters.size).roundToDouble(),
         celTextMinWrapWidth,
       ),
     );

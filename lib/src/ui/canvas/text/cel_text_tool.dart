@@ -287,8 +287,8 @@ class CelTextTool extends ChangeNotifier {
   HistoryMark? get historyMark => host.historyMark;
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as
-  /// wide as [wrapWidth] says, or growing with what is typed. Whatever was
-  /// in hand lands first.
+  /// wide as [wrapWidth] says and at least [minHeight] tall, or growing
+  /// with what is typed. Whatever was in hand lands first.
   ///
   /// [celMadeSince] is [historyMark] as the press that MADE [cel] found
   /// it: the text and its cel then land as one step
@@ -297,6 +297,7 @@ class CelTextTool extends ChangeNotifier {
     CelTextCel cel,
     CanvasPoint anchor, {
     double? wrapWidth,
+    double? minHeight,
     HistoryMark? celMadeSince,
   }) {
     confirm();
@@ -310,7 +311,11 @@ class CelTextTool extends ChangeNotifier {
         _sessionOn(
           cel,
           standing: null,
-          content: options.newTextAt(anchor, wrapWidth: wrapWidth),
+          content: options.newTextAt(
+            anchor,
+            wrapWidth: wrapWidth,
+            minHeight: minHeight,
+          ),
         ),
         cel,
         celMadeSince: celMadeSince,

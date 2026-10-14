@@ -40,7 +40,8 @@ void main() {
 
   /// A box 220 wide from the pixel in view holding 「hi」, in hand by its
   /// box: its letters hung 12 in from its corner, at `c + (12, 12)`, with
-  /// 196 of room — and the box 84 tall, the line and its 12 above and below.
+  /// 196 of room — and the box as tall as the drag, 190 (F-317), its line
+  /// at its top: the middle of its side edges 95 down.
   Future<Offset> boxInHand(WidgetTester tester) async {
     await pumpTextToolApp(tester);
     await takeTextTool(tester);
@@ -51,6 +52,7 @@ void main() {
     await pumpFrames(tester);
     final content = celOf(tester).texts.single.content;
     expect(content.wrapWidth, 196, reason: '⛔fixture');
+    expect(content.minHeight, 166, reason: '⛔fixture');
     expect(
       content.anchor,
       CanvasPoint(x: c.dx + 12, y: c.dy + 12),
@@ -235,8 +237,8 @@ void main() {
 
       await dragFrom(
         tester,
-        Offset(c.dx + 220, c.dy + 42),
-        Offset(c.dx + 300.4, c.dy + 87),
+        Offset(c.dx + 220, c.dy + 95),
+        Offset(c.dx + 300.4, c.dy + 140),
       );
 
       final widened = celOf(tester).texts.single.content;
@@ -254,8 +256,8 @@ void main() {
 
       await dragFrom(
         tester,
-        Offset(c.dx, c.dy + 42),
-        Offset(c.dx + 40, c.dy + 42),
+        Offset(c.dx, c.dy + 95),
+        Offset(c.dx + 40, c.dy + 95),
       );
 
       final narrowed = celOf(tester).texts.single.content;
@@ -456,13 +458,13 @@ void main() {
       expect(chrome, crossAt(onLayer(tester, c.dx + 48, c.dy + 30)));
     });
 
-    testWidgets('a box: a handle on each side edge too — what is drawn is '
+    testWidgets('a box: a handle on each of its edges too — what is drawn is '
         'what is grabbed', (tester) async {
       await boxInHand(tester);
 
       final chrome = tester.renderObject(textChrome());
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
-      expect(chrome, paintsExactlyCountTimes(#drawRect, 6 * 2));
+      expect(chrome, paintsExactlyCountTimes(#drawRect, 8 * 2));
       expect(chrome, paintsExactlyCountTimes(#drawLine, 4));
     });
 
