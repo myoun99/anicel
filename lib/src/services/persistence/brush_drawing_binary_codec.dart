@@ -199,9 +199,6 @@ BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
 /// negative coords. v1 files (u32 coords) still decode.
 const int anicelCelBinaryVersion = 3;
 
-/// Encodes a baked cel: key, canvas geometry, then each tile's coord and
-/// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
-/// line art extremely well — no inner compression layer).
 /// The same bytes [encodeCelEntry] writes, taken straight off the
 /// SURFACE — without the defensive pixel copy per tile that building
 /// an [AnicelCelEntry] first would make.
@@ -217,14 +214,6 @@ const int anicelCelBinaryVersion = 3;
 /// ⛔`readPixels`, never the `pixels` getter: that getter IS the
 /// defensive copy this exists to avoid (see BitmapTile.readPixels for
 /// why the tile must stay the receiver).
-/// The cel stream's header, written in ONE place.
-///
-/// ⛔Two routes write this stream — one from an [AnicelCelEntry] and one
-/// straight off a [BitmapSurface] — and they must not each spell the
-/// header out. The clone ratchet caught exactly that when the second
-/// route arrived (88 → 89, 2026-09-10): a file format with two spellings
-/// of its own header is a format that can drift from itself.
-
 Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
   final writer = _ByteWriter();
   writer.celStreamHeader(
@@ -246,6 +235,9 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
   return writer.takeBytes();
 }
 
+/// Encodes a baked cel: key, canvas geometry, then each tile's coord and
+/// RAW straight-alpha RGBA bytes — nothing is compressed in the stream: the
+/// blob around it compresses it whole ([AnicelCelBlob.ofPayload]).
 Uint8List encodeCelEntry(AnicelCelEntry entry) {
   final writer = _ByteWriter();
   writer.celStreamHeader(
