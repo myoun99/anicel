@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -228,14 +229,61 @@ Finder textField() => find.byKey(
   skipOffstage: false,
 );
 
-/// The picture the canvas is DRAWING for the cel under the tool — what the
-/// person sees there, texts laid in, whether or not any of it has landed.
-BitmapSurface canvasShows(WidgetTester tester) => tester
+/// The picture the canvas draws IN THE PLACE of the cel under the tool,
+/// texts laid in: the cel itself, or with a text in hand the hole it left
+/// — what floats over that is [canvasPixel]'s (F-344).
+BitmapSurface canvasShows(WidgetTester tester) =>
+    _canvasPainter(tester).surface;
+
+/// One pixel of what the canvas DRAWS for the cel under the tool, as
+/// straight RGBA — [canvasShows] and what floats over it, the text in hand,
+/// drawn by the canvas's own painter at full size.
+Future<List<int>> canvasPixel(WidgetTester tester, int x, int y) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)
+    ..translate(-x.toDouble(), -y.toDouble())
+    ..clipRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1));
+  _canvasPainter(tester).paintContentInto(canvas);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(1, 1);
+  picture.dispose();
+  final bytes = await tester.runAsync(
+    () => image.toByteData(format: ui.ImageByteFormat.rawStraightRgba),
+  );
+  image.dispose();
+  return List<int>.from(bytes!.buffer.asUint8List());
+}
+
+/// What the canvas DRAWS for the cel under the tool over [region] of the
+/// canvas, at [level] — 100% at 0, half that at each level up — as raw
+/// RGBA: [canvasPixel]'s draw, of a whole region.
+Future<Uint8List> canvasRaster(
+  WidgetTester tester,
+  Rect region, {
+  int level = 0,
+}) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)
+    ..scale(1 / (1 << level))
+    ..translate(-region.left, -region.top)
+    ..clipRect(region);
+  _canvasPainter(tester).paintContentInto(canvas, level: level);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(
+    region.width.toInt() >> level,
+    region.height.toInt() >> level,
+  );
+  picture.dispose();
+  final bytes = await tester.runAsync(image.toByteData);
+  image.dispose();
+  return bytes!.buffer.asUint8List();
+}
+
+BitmapSurfacePainter _canvasPainter(WidgetTester tester) => tester
     .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
     .map((stack) => stack.activeSurfacePainter)
     .whereType<BitmapSurfacePainter>()
-    .single
-    .surface;
+    .single;
 
 /// The hand the canvas holds texts with.
 CelTextTool textToolOf(WidgetTester tester) =>

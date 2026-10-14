@@ -226,7 +226,7 @@ void main() {
     const tokens = (
       overlay: <Object, Object>{},
       tiles: <Object, Object>{'t': 'made-with-the-head'},
-      ghost: null,
+      previews: <({Object value, Rect rect})>[],
     );
 
     /// A head with a snapshot on its way — the shape `_composeMiss` makes.
@@ -375,7 +375,7 @@ void main() {
     const tokens = (
       overlay: <Object, Object>{},
       tiles: <Object, Object>{'t': 'kept'},
-      ghost: null,
+      previews: <({Object value, Rect rect})>[],
     );
     const small = Rect.fromLTWH(0, 0, 2, 2);
 
@@ -468,7 +468,7 @@ void main() {
     const tokens = (
       overlay: <Object, Object>{},
       tiles: <Object, Object>{'t': 'drawn'},
-      ghost: null,
+      previews: <({Object value, Rect rect})>[],
     );
 
     test('it counts as a patch, and there is no head to derive from', () {

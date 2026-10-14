@@ -54,6 +54,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     this.viewport,
     this.overlayModel,
     this.stampPreview,
+    this.landingPreview,
     this.showTransparentBackground = true,
     this.lineage,
     this.devicePixelRatio = 1.0,
@@ -62,7 +63,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   }) : surface = celSurfaceWithTextsLaid(surface),
        tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        pictureBudget = pictureBudget ?? TilePictureBudget.instance,
-       super(repaint: Listenable.merge([?overlayModel, ?stampPreview]));
+       super(
+         repaint: Listenable.merge([
+           ?overlayModel,
+           ?stampPreview,
+           ?landingPreview,
+         ]),
+       );
 
   /// The tiles this painter draws — the picture AS SHOWN.
   ///
@@ -109,6 +116,31 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// ⛔The image inside is BORROWED from the held piece — see
   /// [CutStampPreview]. Nothing here disposes it.
   final ValueListenable<CutStampPreview?>? stampPreview;
+
+  /// 🚨★★★F-344 — WHAT A PENDING LANDING WILL PUT OVER [surface], in its
+  /// own space: the text the text tool holds, floated over the hole its
+  /// lifting left (`CelTextFloat`), the way a lifted selection floats over
+  /// its own.
+  ///
+  /// 🗣️유저 2026-10-12: 「텍스트도구, 잡고 이동할때나 변형할때나 너무 느림.
+  /// 변형로직같은거 참고/재사용하면서 라이브 빠르게 움직이도록 구조개편」. A
+  /// text in hand was LAID INTO THE TILES on every move of the hand: its
+  /// plate cut again, each tile under it stamped and pictured again, and
+  /// the panel built again for the painter that surface then needed.
+  ///
+  /// A LISTENABLE, for [stampPreview]'s reason: a new painter per position
+  /// would break the memo that keeps the whole stack from recompositing.
+  /// Drawn where the selection's float is ([paintContentInto]'s `float`),
+  /// so it composites as this layer at every zoom (F-240).
+  final ValueListenable<LandingPreview?>? landingPreview;
+
+  /// [landingPreview] as the paint draws it — null while it draws nothing.
+  RowFloat? get _ownFloat {
+    final preview = landingPreview?.value;
+    return preview == null || preview.drawnWorldRect.isEmpty
+        ? null
+        : (preview: preview, canvasToRow: null);
+  }
 
   final bool showTransparentBackground;
 
@@ -187,6 +219,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     if (ghost != null && ghost.image != null) {
       add(ghost.canvasRect);
     }
+    add(_ownFloat?.preview.drawnWorldRect);
     return drawn ?? Rect.zero;
   }
 
@@ -301,6 +334,11 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     if (stampPreview?.value?.image != null) {
       return false;
     }
+    // F-344: the text in hand floats OVER the hole it left — the ghost's
+    // reason, and the same answer.
+    if (_ownFloat != null) {
+      return false;
+    }
     if (showTransparentBackground) {
       return false;
     }
@@ -320,7 +358,8 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
   ///
   /// [float] is a selection's lifted float, drawn over this surface's
-  /// coordinates ([RowFloat]).
+  /// coordinates ([RowFloat]) — and with it this painter's own
+  /// [landingPreview].
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,

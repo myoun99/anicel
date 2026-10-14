@@ -20,6 +20,9 @@ import '../../services/brush_stroke_commit_data.dart';
 import '../../services/undo_surface_snapshot.dart';
 import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
+import '../../models/cel_text.dart';
+import '../../models/tile_coord.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
@@ -54,7 +57,9 @@ import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import 'promoted_touch_aim_policy.dart' show aimIsPromotedTouch;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
+import '../canvas/landing_preview.dart';
 import '../canvas/selection_float_overlay.dart';
+import '../canvas/tile_pyramid.dart' show TilePyramid;
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';
@@ -94,6 +99,7 @@ import 'text_tool_options.dart';
 import 'transform_tool_options.dart';
 import '../canvas/text/cel_text_stage.dart';
 import '../canvas/text/cel_text_tool.dart';
+import '../canvas/text/cel_text_float.dart';
 import '../canvas/text/cel_text_tool_layer.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_book.dart';
@@ -1148,6 +1154,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null || overlay == null) {
       _memoActiveSurfacePainter = null;
       _activeSurfacePainterToken = null;
+      _text.floatOver(null);
       ShownCels.instance.hide(this);
       return null;
     }
@@ -1174,6 +1181,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ? null
         : _lift.holedSurfaceFor(identity.key) ??
               _text.shownSurfaceFor(identity.key, identity.surface);
+    // F-344: what floats over the text tool's hole, made for the cel this
+    // painter draws.
+    _text.floatOver(identity);
     final token = identity == null || held == null
         ? identity
         : (surface: held, key: identity.key, fx: identity.fx);
@@ -1209,6 +1219,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       showTransparentBackground: false,
       lineage: (token.key.layerId, token.key.frameId),
       stampPreview: _stampPreview,
+      landingPreview: _text.float,
     );
   }
 

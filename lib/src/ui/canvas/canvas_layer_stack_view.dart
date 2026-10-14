@@ -2061,8 +2061,10 @@ class _LayerStackPainter extends CustomPainter {
     }
     // F-130: the stamp's ghost is part of what the live surface looks like
     // (F-33 draws it inside this painter), so it is part of the tokens —
-    // by value, with the rect it covers, so a hover can be patched.
+    // by value, with the rect it covers, so a hover can be patched. F-344:
+    // and so is the text in hand floated over its hole, for a drag.
     final ghost = surfacePainter.stampPreview?.value;
+    final landing = surfacePainter.landingPreview?.value;
     return (
       overlay: <TileCoord, Object>{
         ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
@@ -2071,7 +2073,10 @@ class _LayerStackPainter extends CustomPainter {
         for (final entry in surfacePainter.surface.tiles.entries)
           entry.key: entry.value,
       },
-      ghost: ghost == null ? null : (value: ghost, rect: ghost.canvasRect),
+      previews: [
+        if (ghost != null) (value: ghost, rect: ghost.canvasRect),
+        if (landing != null) (value: landing, rect: landing.drawnWorldRect),
+      ],
     );
   }
 
@@ -2124,14 +2129,16 @@ class _LayerStackPainter extends CustomPainter {
       activeSurfacePainter!.surface.tileSize,
     );
     // F-130: a ghost that moved (or came, or went) dirties where it WAS and
-    // where it IS — the old place has to be repainted without it.
-    final ghostWas = kept.ghost;
-    final ghostNow = now.ghost;
-    if (ghostWas?.value != ghostNow?.value) {
-      for (final ghost in [ghostWas, ghostNow]) {
-        if (ghost != null) {
-          dirty = dirty?.expandToInclude(ghost.rect) ?? ghost.rect;
-        }
+    // where it IS — the old place has to be repainted without it. So does
+    // any preview the painter draws (F-344).
+    final were = kept.previews;
+    final are = now.previews;
+    if (!listEquals(
+      [for (final preview in were) preview.value],
+      [for (final preview in are) preview.value],
+    )) {
+      for (final preview in [...were, ...are]) {
+        dirty = dirty?.expandToInclude(preview.rect) ?? preview.rect;
       }
     }
     return (located: true, dirty: dirty?.inflate(1), now: now);
@@ -2225,8 +2232,13 @@ class _LayerStackPainter extends CustomPainter {
     // the silent failure this whole key exists to prevent.
     //
     // Its own `==` is identity on the piece and the image plus value on the
-    // rect and the opacity, which is exactly what a hover changes.
-    live = Object.hash(live, surfacePainter.stampPreview?.value);
+    // rect and the opacity, which is exactly what a hover changes. F-344:
+    // the text in hand, floated over its hole, for the same reason.
+    live = Object.hash(
+      live,
+      surfacePainter.stampPreview?.value,
+      surfacePainter.landingPreview?.value,
+    );
     return Object.hash(compositeKey, live);
   }
 

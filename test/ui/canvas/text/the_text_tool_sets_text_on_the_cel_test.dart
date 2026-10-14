@@ -67,7 +67,7 @@ void main() {
 
     expect(tool.session!.shown.content.text, 'hi', reason: 'it is shown');
     expect(
-      shownPixel(canvasShows(tester), c.dx.toInt() + 10, c.dy.toInt() + 10),
+      await canvasPixel(tester, c.dx.toInt() + 10, c.dy.toInt() + 10),
       black,
       reason: '🚨the canvas draws it while it is typed',
     );

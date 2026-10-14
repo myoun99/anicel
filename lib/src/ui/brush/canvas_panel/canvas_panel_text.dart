@@ -13,7 +13,8 @@ class _CanvasPanelText implements CelTextToolHost {
 
   final _BrushCanvasPanelState _state;
 
-  late final CelTextTool tool = CelTextTool(host: this);
+  late final CelTextTool tool = CelTextTool(host: this)
+    ..shownInHand.addListener(_shownInHand);
 
   /// The app's channel this hand is bound to, so that it is the one let go
   /// of on the way out.
@@ -34,6 +35,7 @@ class _CanvasPanelText implements CelTextToolHost {
     _boundTo?.unbind(tool);
     _boundTo = null;
     tool.dispose();
+    float.dispose();
   }
 
   /// Whether the tool is in hand on a panel that runs it.
@@ -141,10 +143,119 @@ class _CanvasPanelText implements CelTextToolHost {
   }
 
   /// What the interactive painter draws for [key] in place of [cel] while a
-  /// text of it is in hand — null when none is, or the one that is shows
-  /// exactly as the cel carries it.
+  /// text of it is in hand — null when none is: the HOLE the text in hand
+  /// left, with [float] over it.
   BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) =>
       tool.shownSurfaceFor(key, cel);
+
+  // ── the float ───────────────────────────────────────────────────────
+
+  /// What floats over the hole the text in hand left (F-344,
+  /// [CelTextTool.floatingOn]) — read by the painter of that hole itself
+  /// (`BitmapSurfacePainter.landingPreview`), so a hand carrying the text
+  /// draws the canvas again and builds nothing.
+  final ValueNotifier<LandingPreview?> float = ValueNotifier(null);
+
+  /// The cel the painter of the hole was made for, which is the cel the
+  /// float is made over until that painter is made again.
+  ({BitmapSurface surface, BrushFrameKey key, String fx})? _floatOn;
+
+  /// Makes [float] over [identity], the cel the painter is drawing now —
+  /// asked as that painter is chosen, so the hole and what floats over it
+  /// are of one moment.
+  ///
+  /// A write during build is safe here for the selection layer's reason
+  /// (`_publishFloats`): a repaint is all it triggers.
+  void floatOver(({BitmapSurface surface, BrushFrameKey key, String fx})? on) {
+    _floatOn = on;
+    float.value = on == null ? null : _floatOf(on);
+  }
+
+  /// The text in hand showed something else — a hand carried it, a bake
+  /// made it.
+  void _shownInHand() {
+    final on = _floatOn;
+    float.value = on == null ? null : _floatOf(on);
+  }
+
+  CelTextFloat? _floatOf(
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final floating = tool.floatingOn(on.key, on.surface);
+    if (floating == null) {
+      return null;
+    }
+    final (:pixels, :above) = floating;
+    // The pasteboard: what crosses it is cut there, as it is on the cel.
+    final wall = on.surface.canvasSize.pasteboardRect;
+    return CelTextFloat(
+      held: SelectionFloatPaint(
+        surface: _heldPainter(pixels.plate, on),
+        surfaceOffset: CanvasPoint(
+          x: pixels.dx.toDouble(),
+          y: pixels.dy.toDouble(),
+        ),
+        clip: wall,
+      ),
+      above: above.isEmpty
+          ? null
+          : SelectionFloatPaint(surface: _abovePainter(above, on), clip: wall),
+    );
+  }
+
+  /// The painter of a plate, made once for it: through the row's keys
+  /// ([celSurfaceAsShown]), as its cel shows it.
+  BitmapSurfacePainter _heldPainter(
+    Map<TileCoord, BitmapTile> plate,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final kept = _held;
+    if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
+      return kept.painter;
+    }
+    final painter = _floatPainter(
+      BitmapSurface(
+        canvasSize: on.surface.canvasSize,
+        tileSize: on.surface.tileSize,
+        tiles: plate,
+      ),
+    );
+    _held = (of: plate, fx: on.fx, painter: painter);
+    return painter;
+  }
+
+  ({Object of, String fx, BitmapSurfacePainter painter})? _held;
+
+  /// The painter of the texts above the one in hand, made once for them.
+  BitmapSurfacePainter _abovePainter(
+    List<CelText> above,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final kept = _above;
+    if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
+      return kept.painter;
+    }
+    final painter = _floatPainter(
+      BitmapSurface(
+        canvasSize: on.surface.canvasSize,
+        tileSize: on.surface.tileSize,
+        texts: above,
+      ),
+    );
+    _above = (of: above, fx: on.fx, painter: painter);
+    return painter;
+  }
+
+  ({Object of, String fx, BitmapSurfacePainter painter})? _above;
+
+  /// A painter of what floats: drawn in its row's own space by the painter
+  /// it floats over, so it brings no paper and is nobody's cel.
+  BitmapSurfacePainter _floatPainter(BitmapSurface surface) =>
+      BitmapSurfacePainter(
+        surface: celSurfaceAsShown(surface, _state.widget.activeSourceEffects),
+        showTransparentBackground: false,
+        lineage: TilePyramid.noLineage,
+      );
 
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(

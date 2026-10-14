@@ -436,11 +436,10 @@ void main() {
     test('🚨moves the PIXELS, at once — the engine is not asked — and the '
         'text with them', () {
       final standing = carried(4, says('ab'));
-      final cel = picture([standing]);
       final (:session, :baker) = holding(standing);
       final origin = session.moveOrigin;
 
-      session.showMoved(origin, cel, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 8, dy: 0);
 
       expect(session.shown.content, says('ab', x: 16));
       expect(session.content, says('ab', x: 16));
@@ -462,13 +461,12 @@ void main() {
     test('is measured from where the text STOOD when the hand took it, '
         'never from the last move', () {
       final standing = carried(4, says('ab'));
-      final cel = picture([standing]);
       final (:session, baker: _) = holding(standing);
       final origin = session.moveOrigin;
 
       session
-        ..showMoved(origin, cel, dx: 8, dy: 0)
-        ..showMoved(origin, cel, dx: 16, dy: 8);
+        ..showMoved(origin, dx: 8, dy: 0)
+        ..showMoved(origin, dx: 16, dy: 8);
 
       expect(session.shown.content, says('ab', x: 24, y: 16));
       expect(session.shown.plate.keys, [TileCoord(x: 3, y: 2)]);
@@ -482,8 +480,8 @@ void main() {
       final origin = session.moveOrigin;
 
       session
-        ..showMoved(origin, cel, dx: 8, dy: 0)
-        ..showMoved(origin, cel, dx: 0, dy: 0);
+        ..showMoved(origin, dx: 8, dy: 0)
+        ..showMoved(origin, dx: 0, dy: 0);
 
       expect(session.shown.plate, same(origin.plate));
       expect(session.shownOver(cel), same(cel));
@@ -493,18 +491,17 @@ void main() {
     test('🚨ACROSS THE PASTEBOARD WALL it is set again, not cut — and a '
         'move made while that is under way waits its turn', () async {
       final standing = carried(4, says('ab'));
-      final cel = picture([standing]);
       final (:session, :baker) = holding(standing);
       final origin = session.moveOrigin;
 
       // Its pixels can reach x = 32; 40 further is past the wall at 64.
-      session.showMoved(origin, cel, dx: 40, dy: 0);
+      session.showMoved(origin, dx: 40, dy: 0);
 
       expect(baker.asked.single.content, says('ab', x: 48));
       expect(session.shown.content, says('ab'), reason: 'until it is set');
 
       // Back inside, where a move alone would do — but a bake is under way.
-      session.showMoved(origin, cel, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 8, dy: 0);
 
       expect(baker.asked, hasLength(1));
       expect(session.shown.content, says('ab'));
@@ -525,12 +522,7 @@ void main() {
         final standing = carried(4, says('ab'));
         final (:session, :baker) = holding(standing);
 
-        session.showMoved(
-          session.moveOrigin,
-          picture([standing]),
-          dx: dx,
-          dy: dy,
-        );
+        session.showMoved(session.moveOrigin, dx: dx, dy: dy);
 
         expect(baker.asked, hasLength(1), reason: 'past it by ($dx, $dy)');
       }
@@ -538,12 +530,7 @@ void main() {
         final standing = carried(4, says('ab'));
         final (:session, :baker) = holding(standing);
 
-        session.showMoved(
-          session.moveOrigin,
-          picture([standing]),
-          dx: dx,
-          dy: dy,
-        );
+        session.showMoved(session.moveOrigin, dx: dx, dy: dy);
 
         expect(baker.asked, isEmpty, reason: 'up to it by ($dx, $dy)');
         expect(session.settled, isTrue);
@@ -553,28 +540,65 @@ void main() {
     test('a hand that has not moved a whole pixel since the last move '
         'changes nothing, and nobody is told', () {
       final standing = carried(4, says('ab'));
-      final cel = picture([standing]);
       final (:session, baker: _) = holding(standing);
       final origin = session.moveOrigin;
-      session.showMoved(origin, cel, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 8, dy: 0);
       final layout = session.shown.layout;
       var told = 0;
-      session.addListener(() => told += 1);
+      session
+        ..addListener(() => told += 1)
+        ..showing.addListener(() => told += 1);
 
-      session.showMoved(origin, cel, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 8, dy: 0);
 
       expect(told, 0);
       expect(session.shown.layout, same(layout));
+    });
+
+    test('🚨F-344: a carry is told on `showing` ALONE — it is no other '
+        'text, so whoever listens for one (the settings, the panel) is '
+        'not told', () {
+      final standing = carried(4, says('ab'));
+      final (:session, baker: _) = holding(standing);
+      final origin = session.moveOrigin;
+      var shown = 0;
+      var told = 0;
+      session
+        ..showing.addListener(() => shown += 1)
+        ..addListener(() => told += 1);
+
+      session
+        ..showMoved(origin, dx: 8, dy: 0)
+        ..showMoved(origin, dx: 9, dy: 2);
+
+      expect(shown, 2);
+      expect(told, 0);
+      expect(session.showing.value, same(session.shown));
+    });
+
+    test('🚨F-344: carried, its pixels ARE the plate the hand took, drawn '
+        'as far as the hand carried them — what lands is those pixels on '
+        'the grid', () {
+      final standing = carried(4, says('ab'));
+      final (:session, baker: _) = holding(standing);
+      final origin = session.moveOrigin;
+
+      session.showMoved(origin, dx: 8, dy: 0);
+
+      final shown = session.shown;
+      expect(shown.pixels.plate, same(origin.plate));
+      expect((shown.pixels.dx, shown.pixels.dy), (8, 0));
+      expect(shown.plate.keys, [TileCoord(x: 2, y: 1)]);
+      expect(shown.plate.values.single, standing.plate.values.single);
     });
 
     test('a text that stands ACROSS the wall is set again wherever it goes: '
         'what the wall cut away is not in its pixels', () {
       // Its pixels can reach x = 68, past the wall at 64.
       final standing = carried(4, says('ab', x: 44));
-      final cel = picture([standing]);
       final (:session, :baker) = holding(standing);
 
-      session.showMoved(session.moveOrigin, cel, dx: -24, dy: 0);
+      session.showMoved(session.moveOrigin, dx: -24, dy: 0);
 
       expect(baker.asked.single.content, says('ab', x: 20));
     });

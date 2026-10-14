@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
 import '../../../models/bitmap_surface.dart';
@@ -25,6 +26,21 @@ import 'cel_text_session.dart';
 
 part 'cel_text_tool_list.dart';
 part 'cel_text_tool_way_out.dart';
+
+/// What floats over the hole the text in hand left in its cel
+/// ([CelTextTool.floatingOn]): its pixels as they are drawn, and the texts
+/// of the cel above it.
+typedef CelTextFloating = ({CelTextPixels pixels, List<CelText> above});
+
+/// The text in hand lifted off a picture: the picture, which text, the
+/// picture without it and the texts above it — and those texts.
+typedef _Lift = ({
+  BitmapSurface picture,
+  CelTextSession session,
+  int? id,
+  BitmapSurface hole,
+  List<CelText> above,
+});
 
 /// A cel a text can be set on: its key, what holds its picture, the canvas
 /// it is cut for, and who is told when it changes.
@@ -81,8 +97,11 @@ abstract interface class CelTextToolHost {
   /// Where history stands now — null where there is none to stand in.
   HistoryMark? get historyMark;
 
-  /// What the tool shows on the canvas changed: the cel has to be drawn
-  /// again.
+  /// What the canvas draws for a cel in place of its picture changed — a
+  /// text taken or let go of, one let go of set or landed
+  /// ([CelTextTool.shownSurfaceFor]): it has to be drawn again. What the
+  /// text in hand makes of itself floats, and is told on
+  /// [CelTextTool.shownInHand] instead.
   void shownChanged();
 }
 
@@ -230,12 +249,7 @@ class CelTextTool extends ChangeNotifier {
       showEdit(celTextContentMoved(from.content, dx: dx, dy: dy));
       return;
     }
-    session.showMoved(
-      from.origin,
-      held.cel.coordinator.currentSurfaceOf(held.cel.key),
-      dx: dx,
-      dy: dy,
-    );
+    session.showMoved(from.origin, dx: dx, dy: dy);
   }
 
   /// The way out of the hand: the landing of what it lets go of, and the
@@ -246,22 +260,93 @@ class CelTextTool extends ChangeNotifier {
 
   // ── what the canvas shows ───────────────────────────────────────────
 
-  /// [cel] — [key]'s picture as it stands — with every text this tool has
-  /// in hand laid in as it is shown, or null when it holds none on that
-  /// cel that differs from what the cel carries.
+  /// What the canvas draws for [key] in place of [cel] — [key]'s picture
+  /// as it stands — or null when that is [cel] itself: the texts let go of
+  /// that still owe a landing laid in as they are shown, and the text in
+  /// hand LIFTED OFF, with every text above it ([floatingOn] floats them).
+  ///
+  /// 🚨★★★F-344 — A TEXT IN HAND IS A FLOAT OVER ITS HOLE, as a lifted
+  /// selection is (유저 2026-10-12: 「변형로직같은거 참고/재사용하면서 라이브
+  /// 빠르게 움직이도록 구조개편」). ↩️It was laid into the cel here instead,
+  /// as it was shown, so every move of a hand on its box cut its plate
+  /// again, stamped and pictured every tile under it again, and built the
+  /// panel again for a painter of the surface that made. The hole is made
+  /// when the text is taken, and what the hand does to the text after that
+  /// changes only what floats.
   BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) {
+    final picture = _withLeaving(key, cel);
+    final surface = _liftOff(key, picture)?.hole ?? picture;
+    return identical(surface, cel) ? null : surface;
+  }
+
+  /// What floats over the hole [shownSurfaceFor] answers for [key]: the
+  /// text in hand as it is shown, and the texts [cel] carries above it, as
+  /// they stand — or null with none of [cel]'s texts in hand.
+  ///
+  /// ⛔THE TEXTS ABOVE FLOAT WITH IT. On the cel they are over it wherever
+  /// they meet (유저 2026-10-02: 「그림/텍스트/텍스트」), and a hole holding them
+  /// would put the text in hand over them while it is carried.
+  CelTextFloating? floatingOn(BrushFrameKey key, BitmapSurface cel) {
+    final lift = _liftOff(key, _withLeaving(key, cel));
+    return lift == null
+        ? null
+        : (pixels: lift.session.shown.pixels, above: lift.above);
+  }
+
+  /// [cel] with the texts let go of that still owe a landing laid in as
+  /// they are shown.
+  BitmapSurface _withLeaving(BrushFrameKey key, BitmapSurface cel) {
     var surface = cel;
     for (final leaving in _wayOut.leaving) {
       if (leaving.session.key == key) {
         surface = leaving.session.shownOver(surface);
       }
     }
-    final held = _held;
-    if (held != null && held.session.key == key) {
-      surface = held.session.shownOver(surface);
-    }
-    return identical(surface, cel) ? null : surface;
+    return surface;
   }
+
+  /// The text in hand lifted off [picture], [key]'s — null when the text in
+  /// hand is on another cel, or none is, or it is shown as the cel carries
+  /// it: then the cel itself is the picture ([_lifts]). A text new to the
+  /// cel is over all of them, so nothing is above it and its hole is the
+  /// picture itself.
+  ///
+  /// Made once for a picture and a text, so the painter of the hole is
+  /// made once too (`_activeSurfacePainterToken`).
+  _Lift? _liftOff(BrushFrameKey key, BitmapSurface picture) {
+    final session = _held?.session;
+    if (session == null || session.key != key || session.shownAsCarried) {
+      return _lift = null;
+    }
+    final id = session.textId;
+    final kept = _lift;
+    if (kept != null &&
+        identical(kept.picture, picture) &&
+        identical(kept.session, session) &&
+        kept.id == id) {
+      return kept;
+    }
+    final texts = picture.texts;
+    final at = texts.indexWhere((text) => text.id == id);
+    return _lift = (
+      picture: picture,
+      session: session,
+      id: id,
+      hole: at < 0 ? picture : picture.withTexts(texts.sublist(0, at)),
+      above: at < 0 ? const <CelText>[] : texts.sublist(at + 1),
+    );
+  }
+
+  _Lift? _lift;
+
+  /// What of the text in hand is on screen, told whenever it is another — a
+  /// bake made, a hand carried it, another text taken. Null with none.
+  ///
+  /// ⛔ITS OWN LINE, for [crossCarried]'s reason: a text a hand carries is
+  /// no other text, so neither the panel is built again at every move nor
+  /// the settings. Whoever draws the text listens here.
+  ValueListenable<CelTextShown?> get shownInHand => _shownInHand;
+  final ValueNotifier<CelTextShown?> _shownInHand = ValueNotifier(null);
 
   /// Where the texts of [key]'s cel stand that are in NOBODY'S hand:
   /// [cel]'s own, but for the ones this tool speaks for — and, of those,
@@ -407,7 +492,9 @@ class CelTextTool extends ChangeNotifier {
   );
 
   void _hold(_Holding holding) {
-    holding.session.addListener(_sessionChanged);
+    holding.session
+      ..addListener(_sessionChanged)
+      ..showing.addListener(_sessionShown);
     _held = holding;
     _changed();
   }
@@ -680,15 +767,61 @@ class CelTextTool extends ChangeNotifier {
   void _retire(CelTextSession session) {
     session
       ..removeListener(_sessionChanged)
+      ..showing.removeListener(_sessionShown)
       ..dispose();
   }
 
-  void _sessionChanged() => _changed();
+  /// A text this tool holds or still owes a landing made something of
+  /// itself.
+  ///
+  /// 🚨F-344: THE PANEL IS BUILT AGAIN ONLY WHERE WHAT IT DRAWS IN THE
+  /// CEL'S PLACE CHANGED ([shownSurfaceFor]) — the text in hand lifted off
+  /// or put back ([_lifts]), or one let go of, laid in there, set again.
+  /// The text in hand floats over that ([floatingOn]) and is drawn again
+  /// from [shownInHand].
+  void _sessionChanged() {
+    if (_disposed) {
+      return;
+    }
+    if (!_tellIfLifted() && _wayOut.leaving.isNotEmpty) {
+      host.shownChanged();
+    }
+    notifyListeners();
+  }
+
+  void _sessionShown() {
+    if (_disposed) {
+      return;
+    }
+    _shownInHand.value = _held?.session.shown;
+    _tellIfLifted();
+  }
+
+  /// Whether the text in hand is lifted off its cel: in hand, and shown as
+  /// something other than what the cel carries.
+  bool get _lifts => !(_held?.session.shownAsCarried ?? true);
+
+  /// [_lifts] as the panel was last told of it.
+  bool _toldLifted = false;
+
+  /// Tells the panel when [_lifts] is not what it was told — and answers
+  /// whether it did.
+  bool _tellIfLifted() {
+    final lifts = _lifts;
+    if (lifts == _toldLifted) {
+      return false;
+    }
+    _toldLifted = lifts;
+    host.shownChanged();
+    return true;
+  }
 
   void _changed() {
     if (_disposed) {
       return;
     }
+    _shownInHand.value = _held?.session.shown;
+    _toldLifted = _lifts;
     host.shownChanged();
     notifyListeners();
   }
@@ -699,6 +832,7 @@ class CelTextTool extends ChangeNotifier {
     _disposed = true;
     _wayOut.landAll();
     _crossCarried.dispose();
+    _shownInHand.dispose();
     super.dispose();
   }
 }
