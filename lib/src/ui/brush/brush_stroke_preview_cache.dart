@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../core/bake_once_lru.dart';
+import '../../core/worker_count.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
@@ -67,19 +68,16 @@ class BrushStrokePreviewCache {
   /// of two competing with it. The old comment said two workers "keep the UI
   /// isolate free", and on the machines that need that most they did not.
   ///
-  /// ⚠️Same formula as the .tvpp import pool (`tvpp_import_door.dart`), which
-  /// is the other place in the app that fans work out over isolates. Only the
-  /// ceiling differs, and it differs because it was measured HERE.
+  /// ⚠️The formula is the app's one ([workersFor]) — the import pools and
+  /// the cel thaw fan out by it too. Only the ceiling is this cache's, and it
+  /// is because it was measured HERE.
   static final int _maxConcurrentRasters = kIsWeb
       ? 1
       : rasterWorkersFor(Platform.numberOfProcessors);
 
   /// How many rasters a machine with [cores] processors may run at once.
-  ///
-  /// ⛔`cores - 1`, never `cores`: the UI isolate is one of the things
-  /// competing for them, and it is the one the user is looking at.
   @visibleForTesting
-  static int rasterWorkersFor(int cores) => math.max(1, math.min(cores - 1, 4));
+  static int rasterWorkersFor(int cores) => workersFor(cores, ceiling: 4);
 
   /// The workers, and who is waiting for one.
   ///

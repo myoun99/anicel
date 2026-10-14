@@ -10,6 +10,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -324,7 +325,7 @@ final class ClipImportDoor {
     final reader = await File(source.path).open();
     try {
       final work = _workOf(read._plan, ClipContainer.indexOf(reader), warnings);
-      final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
+      final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
         final windows = <List<Uint8List>>[];

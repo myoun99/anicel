@@ -15,6 +15,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/worker_count.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/import/tvpp_convert.dart';
@@ -245,7 +246,7 @@ class TvppImportDoor {
     void Function(double fraction)? onProgress,
   }) async {
     final work = _tvppBakeWork(read._plans);
-    final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
+    final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
     var bakedSoFar = 0;
     // 🚨READ BY OFFSET, ONE SLOT AT A TIME.
     //
