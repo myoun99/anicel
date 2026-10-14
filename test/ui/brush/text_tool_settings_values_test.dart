@@ -572,7 +572,8 @@ void main() {
     });
 
     test('🚨with its LETTERS held the scrub carries the text and they stay '
-        'held — and it lands with the visit', () async {
+        'held — a letter typed after it goes where it was carried — and '
+        'it lands with the visit', () async {
       final (:values, options: _, :tool, :host, :baker, :cel) = settings(
         text: said([run('ab')]),
       );
@@ -587,10 +588,21 @@ void main() {
       expect(tool.session!.shown.content.anchor, CanvasPoint(x: 10, y: 8));
       expect(host.ran, isEmpty);
 
+      // The letters held are the ones carried: a text moved under them
+      // alone would go back where it stood at the next letter.
+      tool.letters!.value = const TextEditingValue(
+        text: 'aXb',
+        selection: TextSelection.collapsed(offset: 2),
+      );
+      await allMade(baker);
+
+      expect(tool.session!.shown.content.anchor, CanvasPoint(x: 10, y: 8));
+
       tool.stopTyping();
       await allMade(baker);
 
       expect(landed(cel).anchor, CanvasPoint(x: 10, y: 8));
+      expect(landed(cel).text, 'aXb');
       expect(host.ran, hasLength(1));
     });
 
