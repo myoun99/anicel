@@ -12,6 +12,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 /// 🚨ONE PRESS ON THE LEGEND'S TWIRL-ALL IS ONE UNDO (유저 08-28: 「일괄로
@@ -127,11 +128,13 @@ void main() {
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1600, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // The workspace's wiring of the twirls (`workspace_tabs.dart`).
+    final twirls = session.railView.expandedLaneLayerIds;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: ListenableBuilder(
-            listenable: session,
+            listenable: Listenable.merge([session, twirls]),
             builder: (context, _) => StoryboardTabHost(
               session: session,
               pixelsPerFrame: 12,
@@ -139,6 +142,8 @@ void main() {
               showSeconds: false,
               onShowSecondsChanged: (_) {},
               thumbnails: null,
+              expandedLaneLayerIds: twirls.value,
+              onToggleLayerLanes: SessionRowButtonPresses(session).toggleLanes,
             ),
           ),
         ),
