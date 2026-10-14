@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
@@ -17,6 +16,8 @@ import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
 import 'level_image.dart';
 import 'raster_picture.dart';
+import 'surface_region_picture.dart';
+import 'tile_blocks.dart';
 import 'tile_origin.dart';
 
 /// A composed surface image plus the CANVAS-SPACE rect it covers.
@@ -48,8 +49,11 @@ class PositionedSurfaceImage {
 /// forgot — and a text that reaches past the drawing grows the rect a
 /// compose rasters exactly as a stroke there would. A surface that carries
 /// no text comes back as the object it was.
+BitmapSurface _shownBy(BitmapSurface surface) =>
+    celSurfaceWithTextsLaid(surface);
+
 Map<TileCoord, BitmapTile> _tilesShownBy(BitmapSurface surface) =>
-    celSurfaceWithTextsLaid(surface).tiles;
+    _shownBy(surface).tiles;
 
 /// The canvas rect UNIONED with every stored tile's rect — the extent a
 /// positioned compose rasters. Integer-aligned by construction.
@@ -93,8 +97,8 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 }
 
 /// How an asynchronous compose makes the pictures of the tiles that have
-/// none. Either way a picture comes through the one door
-/// ([BitmapTileImageCache.pictureOfTile]), is the compose's own, and is let
+/// none. Either way a picture is a block's ([tileBlocksOf]), comes through
+/// the one door ([surfaceRegionPicture]), is the compose's own, and is let
 /// go right after it; what differs is whether the compose gives way while
 /// it makes them.
 enum MissingTilePictures {
@@ -134,9 +138,9 @@ enum MissingTilePictures {
   madeAtOnce,
 }
 
-/// How long [MissingTilePictures.madeInTurn] makes tile pictures before it
-/// gives way: the bound the decode rounds kept — 「an interactive input
-/// stops an opportunistic compose within ~one tile (1–2ms)」 (R13-4).
+/// How long [MissingTilePictures.madeInTurn] makes pictures before it gives
+/// way: the bound the decode rounds kept — 「an interactive input stops an
+/// opportunistic compose within ~one tile (1–2ms)」 (R13-4).
 ///
 /// ⛔A LENGTH OF TIME, NOT A COUNT OF PICTURES. A count is a different
 /// length on every machine — 0.04 ms a picture on the desk it was measured
@@ -185,25 +189,25 @@ Future<void> _giveWay() {
 /// Tiles already pictured in [reuse] (typically [BitmapTileImageCache.instance],
 /// which the editing canvas keeps warm for the frame on screen) are drawn
 /// as-is, so rebuilding the ACTIVE frame after a stroke uploads nothing:
-/// cost scales with the changed tiles, not the canvas. Missing tiles are
-/// pictured transiently ([missing] says how) and disposed right after the
-/// compose — cold frames pay one upload per stored tile without pinning GPU
-/// copies of every frame's artwork.
+/// cost scales with the changed tiles, not the canvas. A block with a tile
+/// that has none is pictured transiently, whole ([tileBlocksOf], [missing]
+/// says how), and disposed right after the compose — cold frames pay one
+/// upload a block without pinning GPU copies of every frame's artwork.
 ///
 /// Byte-parity with the CPU assembly path ([bitmapSurfaceToImage]): tile
 /// bytes premultiply through the SAME mul-div-255 rounding
-/// ([BitmapTileImageCache.premultipliedTileUpload]) and are drawn 1:1 at
-/// integer offsets with [ui.FilterQuality.none] over a transparent base, so
-/// srcOver passes the premultiplied bytes through unchanged.
+/// ([SurfaceRegionBytes]) and are drawn 1:1 at integer offsets with
+/// [ui.FilterQuality.none] over a transparent base, so srcOver passes the
+/// premultiplied bytes through unchanged.
 ///
 /// The caller owns (and must dispose) the returned image.
 ///
 /// [shouldAbort] (R13-4, abandonable work only): checked before every
-/// tile picture and before the final full-canvas raster — the two cost
+/// block's picture and before the final full-canvas raster — the two cost
 /// centers — so an interactive input stops an opportunistic compose within
-/// one run of tile pictures ([tilePictureRun]), not one canvas. Aborts
-/// return null with nothing cached and the transient pictures disposed;
-/// without [shouldAbort] the result is never null.
+/// one run of pictures ([tilePictureRun]), not one canvas. Aborts return
+/// null with nothing cached and the transient pictures disposed; without
+/// [shouldAbort] the result is never null.
 Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
@@ -245,8 +249,9 @@ class _TileLaying {
   final ui.Paint _paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final List<LevelSource> _halvings = [];
 
-  void lay(PlacedTile placed, ui.Image picture) {
-    final origin = tileOriginOffset(placed);
+  /// Lays [picture] with its top-left at the canvas-space [origin] — a
+  /// tile's ([tileOriginOffset]) or a block's.
+  void lay(ui.Offset origin, ui.Image picture) {
     if (halved) {
       _halvings.add((image: picture, at: (origin - over.topLeft) / 2));
     } else {
@@ -265,9 +270,10 @@ class _TileLaying {
   int get height => (over.height / (halved ? 2 : 1)).round();
 }
 
-/// THE tile compose, async: draw every tile at its place ([_TileLaying]) and
-/// raster the canvas-space rect [over] (the canvas, the content grown by
-/// the pasteboard, or the part of it that holds the ink).
+/// THE tile compose, async: draw every tile at its place ([_TileLaying]) —
+/// a block of them in one picture where a tile has none ([tileBlocksOf]) —
+/// and raster the canvas-space rect [over] (the canvas, the content grown
+/// by the pasteboard, or the part of it that holds the ink).
 ///
 /// Four functions in this file used to carry this loop — canvas-size and
 /// positioned, each async and sync — and they differed only in the origin,
@@ -296,24 +302,27 @@ Future<ui.Image?> _composeAsync(
   var runBegan = now();
 
   try {
-    for (final entry in _tilesShownBy(surface).entries) {
-      final tile = entry.value;
-      var image = reuse?.imageFor(tile);
-      if (image == null) {
-        if (missing == MissingTilePictures.madeInTurn &&
-            now() - runBegan >= tilePictureRun.inMicroseconds) {
-          await _giveWay();
-          runBegan = now();
-        }
-        if (shouldAbort?.call() ?? false) {
-          recorder.endRecording().dispose();
-          recorderClosed = true;
-          return null;
-        }
-        image = BitmapTileImageCache.pictureOfTile(tile);
-        transient.add(image);
+    final shown = _shownBy(surface);
+    for (final block in tileBlocksOf(shown)) {
+      if (_layHeldPictures(laying, block, reuse)) {
+        continue;
       }
-      laying.lay((coord: entry.key, tile: tile), image);
+      if (missing == MissingTilePictures.madeInTurn &&
+          now() - runBegan >= tilePictureRun.inMicroseconds) {
+        await _giveWay();
+        runBegan = now();
+      }
+      if (shouldAbort?.call() ?? false) {
+        recorder.endRecording().dispose();
+        recorderClosed = true;
+        return null;
+      }
+      final image = surfaceRegionPicture(shown, block.region);
+      transient.add(image);
+      laying.lay(
+        ui.Offset(block.region.left.toDouble(), block.region.top.toDouble()),
+        image,
+      );
     }
     laying.finish();
 
@@ -342,6 +351,36 @@ Future<ui.Image?> _composeAsync(
       image.dispose();
     }
   }
+}
+
+/// Lays every tile of [block] from the picture [reuse] holds for it, and
+/// answers true — or lays nothing and answers false when a tile has none,
+/// and the block is pictured whole.
+///
+/// ⚠️WHOLE, the tiles that have a picture with the rest: a block's picture
+/// is the surface's pixels over its region ([surfaceRegionPicture]), and a
+/// tile drawn from both would be laid over itself — a translucent pixel
+/// twice is not the pixel.
+bool _layHeldPictures(
+  _TileLaying laying,
+  TileBlock block,
+  BitmapTileImageCache? reuse,
+) {
+  if (reuse == null) {
+    return false;
+  }
+  final held = <ui.Image>[];
+  for (final placed in block.tiles) {
+    final image = reuse.imageFor(placed.tile);
+    if (image == null) {
+      return false;
+    }
+    held.add(image);
+  }
+  for (var index = 0; index < held.length; index += 1) {
+    laying.lay(tileOriginOffset(block.tiles[index]), held[index]);
+  }
+  return true;
 }
 
 /// THE tile compose, sync: the same draw, rastered deferred on the GPU —
@@ -389,7 +428,7 @@ Future<ui.Image?> _composeAsync(
       recorder.endRecording().dispose();
       return null;
     }
-    laying.lay((coord: entry.key, tile: tile), image);
+    laying.lay(tileOriginOffset((coord: entry.key, tile: tile)), image);
   }
   laying.finish();
   return rasterPictureAndSnapshot(
@@ -503,9 +542,9 @@ composePositionedSurfaceImageSync(
 /// it lives (`raster_picture.dart`).
 ///
 /// The tiles' pictures are the shared ones the canvas keeps
-/// ([BitmapTileImageCache.instance]); one a tile lacks is made in turn
-/// ([MissingTilePictures.madeInTurn]) — a level is made off the frame, by
-/// the warm or for a row the canvas fills in.
+/// ([BitmapTileImageCache.instance]); a block with a tile that lacks one is
+/// pictured whole, in turn ([MissingTilePictures.madeInTurn]) — a level is
+/// made off the frame, by the warm or for a row the canvas fills in.
 Future<ui.Image?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
   bool Function()? shouldAbort,
