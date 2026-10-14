@@ -48,7 +48,6 @@ import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
-        conteGroupReorders,
         existenceMirrorTargets,
         headMirrorTargets,
         linkCounterpartIn,
@@ -566,9 +565,9 @@ class CutCommandCoordinator {
     // sits outside every span. The sweep follows the invalidity, not the
     // emptiness.
     //
-    // The row goes with its SEAT (I-73 — an attach row of a track's conte
-    // is one row of the conte's head, [existenceMirrorTargets]), so every
-    // cut it goes from is asked what it leaves empty there.
+    // The row goes from every cut whose conte holds its row of the track's
+    // structure (I-73, F-343 — [existenceMirrorTargets]), so every cut it
+    // goes from is asked what it leaves empty there.
     if (isAttachedLayer(layer)) {
       final project = repository.requireProject();
       final emptied = [
@@ -589,7 +588,7 @@ class CutCommandCoordinator {
               repository: repository,
               cutId: cutId,
               layerId: layerId,
-              withItsSeat: true,
+              withItsConteRow: true,
             ),
             for (final gone in emptied)
               DeleteLayerCommand(
@@ -614,7 +613,7 @@ class CutCommandCoordinator {
           repository: repository,
           cutId: cutId,
           layerId: layerId,
-          withItsSeat: true,
+          withItsConteRow: true,
         ),
       );
       return;
@@ -1036,7 +1035,10 @@ class CutCommandCoordinator {
     LayerAttachDrop attach = const LayerAttachDrop(),
     String description = 'Move layers',
   }) {
-    final project = repository.requireProject();
+    // ↩️A re-ordering of a track's conte, and a row mounted on it, used to
+    // be written into every other cut's conte here, seat by seat
+    // (I-73-one-head-Q2). The track's structure carries them now (F-343,
+    // `trackWithItsConteLaid`): this writes the cut it was given.
     historyManager.executeAsOneStep(description, [
       ...layerPlacementCommands(
         cutId: cutId,
@@ -1052,35 +1054,6 @@ class CutCommandCoordinator {
         cutId: cutId,
         attach: attach,
         description: description,
-      ),
-      // A re-ordering of the conte group is every cut's of the track, in
-      // the same step (I-73-one-head-Q2, [conteGroupReorders]).
-      for (final mirror in conteGroupReorders(
-        project,
-        cutId: cutId,
-        order: order,
-        attach: attach,
-      )) ...[
-        SetLayerPlacementCommand(
-          repository: repository,
-          cutId: mirror.cutId,
-          order: mirror.order,
-          description: description,
-        ),
-        if (mirror.sideChanges.isNotEmpty)
-          ...layerAttachmentCommands(
-            cutId: mirror.cutId,
-            attach: LayerAttachDrop(sideChanges: mirror.sideChanges),
-            description: description,
-          ),
-      ],
-      // …and a row mounted on the conte is born on the same seat of every
-      // cut's, empty, wearing its head ([conteMountBirthCommands]).
-      ...conteMountBirthCommands(
-        repository: repository,
-        cutId: cutId,
-        order: order,
-        attach: attach,
       ),
     ]);
   }

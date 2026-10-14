@@ -1,14 +1,12 @@
-import '../../models/attached_layer_mount.dart' show LayerAttachDrop;
-import '../../models/attached_layer_resolve.dart'
-    show attachedGroupEndIndex, attachedGroupStartIndex;
-import '../../models/attached_placement.dart';
-import '../../models/conte_group.dart';
+import '../../models/attached_layer_resolve.dart' show attachedGroupSlice;
+import '../../models/conte_key.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
-import '../../models/layer.dart' show Layer, LayerStackQueries, isAttachedLayer;
+import '../../models/layer.dart' show Layer, LayerStackQueries;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/track_conte_laying.dart' show conteBaseOf;
 import '../../models/transform_track.dart';
 import '../project_lookup.dart';
 
@@ -74,8 +72,17 @@ List<LayerId> linkMirrorRows(
 /// shape of its fx. What stays each cut's own is what the row HOLDS — its
 /// panels, its pictures, the values and keys of its fx.
 ///
-/// Every (cut, row) at [layerId]'s SEAT in the conte groups of its track
-/// ([conteSeatOf]) — the row itself first. Empty when it sits in none.
+/// Every (cut, row) of [layerId]'s track that is the same row of the
+/// track's conte as [layerId] — the conte itself in every cut that has one,
+/// or the rows that name its row of the structure ([Layer.conteKey]) — the
+/// row itself first. Empty for a row riding no conte.
+///
+/// ↩️It found them by SEAT, and the head was written to each of them by
+/// the verb that changed it. Since F-343 the structure lays the head on
+/// every one of them (`trackWithItsConteLaid`), and a verb writes the row
+/// it was given; this only NAMES them — for what a delete takes together
+/// ([existenceMirrorTargets]) and the view the rail keeps by row
+/// ([rowsWearingOneHead]).
 ///
 /// The row's cut is FOUND, not handed in: a rail that draws one head for
 /// every cut presses it under whichever cut is active, and a layer id is
@@ -85,16 +92,53 @@ List<LayerId> linkMirrorRows(
 /// cel bank and the named keys' values ([linkMirrorTargets] answers for
 /// those too), and two cuts' conte rows in one group would turn every pair
 /// of same-named panels into one picture. The head is a relation of its own
-/// — computed from where a row sits, stored nowhere.
+/// — the track's structure, which holds no picture.
 List<({CutId cutId, LayerId layerId})> conteHeadTargets(
   Project project,
   LayerId layerId,
 ) => _rowsAtOnePlace(
   project,
   layerId,
-  placeOf: (cut) => conteSeatOf(cut, layerId),
-  rowAt: conteRowAtSeat,
+  placeOf: (cut) => _contePlaceOf(cut, layerId),
+  rowAt: _conteRowAt,
 );
+
+/// Where [layerId] stands in [cut]'s conte: the conte itself (no key), or
+/// the row of the structure its key names — null when it is neither.
+({ConteKey? key})? _contePlaceOf(Cut cut, LayerId layerId) {
+  final base = conteBaseOf(cut);
+  if (base == null) {
+    return null;
+  }
+  if (base.id == layerId) {
+    return (key: null);
+  }
+  for (final member in attachedGroupSlice(base.id, cut.layers)) {
+    if (member.id == layerId) {
+      return switch (member.conteKey) {
+        final key? => (key: key),
+        null => null,
+      };
+    }
+  }
+  return null;
+}
+
+/// [cut]'s row at [place] of its conte ([_contePlaceOf]) — null where it
+/// holds none.
+Layer? _conteRowAt(Cut cut, ({ConteKey? key}) place) {
+  final base = conteBaseOf(cut);
+  final key = place.key;
+  if (base == null || key == null) {
+    return base;
+  }
+  for (final member in attachedGroupSlice(base.id, cut.layers)) {
+    if (member.conteKey == key && member.id != base.id) {
+      return member;
+    }
+  }
+  return null;
+}
 
 /// Every (cut, row) of the track that holds [layerId] — the row itself
 /// first — at the place [placeOf] finds it at in its cut: the rows ONE head
@@ -151,140 +195,82 @@ List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
   rowAt: (cut, _) => cut.layers.cameraLayer,
 );
 
-/// One cut's conte group as a re-ordering of it leaves it: the stack's new
-/// [order], and the riders whose side of the conte flipped.
-typedef ConteGroupReorder = ({
-  CutId cutId,
-  List<LayerId> order,
-  List<({LayerId layerId, AttachedPlacement placement})> sideChanges,
-});
-
-/// A placement in [cutId] that RE-ORDERS its conte group's rows, as every
-/// other cut of the track takes it: the row at each seat moved to the seat
-/// the row at that seat in [cutId] moved to.
-///
-/// 🗣️I-73-one-head-Q2 (유저 2026-10-09 → `all`): 「넷 다 모든 컷에 함께」 —
-/// of the attach structure the track's cuts wear as one head, 순서 바꾸기
-/// is one of the four. Only a pure re-ordering carries ([attach] mounts or
-/// lets go of nothing), and only into a cut whose group holds the same
-/// seats.
-///
-/// ⛔A group with an organizer folder in it — in [cutId] or in the other
-/// cut — stands down, as `folder_mirror` does where structures diverged:
-/// a folder files rows, so its members' seats and the folder's place are
-/// two answers a seat alone cannot carry. 겸용 siblings are left to the
-/// link mirror, which moves them as the same rows.
-List<ConteGroupReorder> conteGroupReorders(
-  Project project, {
-  required CutId cutId,
-  required List<LayerId> order,
-  required LayerAttachDrop attach,
-}) {
-  if (attach.mounts.isNotEmpty || attach.detachIds.isNotEmpty) {
-    return const [];
-  }
-  final cut = requireCut(project, cutId);
-  final before = plainConteGroupOf(cut);
-  if (before == null || before.length < 2) {
-    return const [];
-  }
-  final byId = {for (final layer in cut.layers) layer.id: layer};
-  final turned = {
-    for (final change in attach.sideChanges) change.layerId: change.placement,
-  };
-  final after = conteGroupOf(
-    cut.copyWith(
-      layers: [
-        for (final id in order)
-          if (byId[id] case final layer?)
-            if (turned[id] case final placement?)
-              layer.copyWith(attachedPlacement: placement)
-            else
-              layer,
-      ],
-    ),
-  );
-  final seatOf = {for (final entry in after) entry.row.id: entry.seat};
-  final moved = {
-    for (final entry in before) entry.seat: ?seatOf[entry.row.id],
-  };
-  if (moved.length != before.length ||
-      moved.entries.every((entry) => entry.key == entry.value)) {
-    return const [];
-  }
-  final seats = [for (final entry in before) entry.seat];
-  final siblings = linkedCutSiblings(project, cutId: cutId).toSet();
-  final track = project.tracks.firstWhere(
-    (track) => track.cuts.any((other) => other.id == cutId),
-  );
-  return [
-    for (final other in track.cuts)
-      if (other.id != cutId && !siblings.contains(other.id))
-        ?_reorderedLike(other, moved, seats),
-  ];
-}
-
-/// [cut]'s conte group re-ordered by [moved] — each seat to its new one —
-/// when it holds exactly [seats] and no organizer folder; else null.
-ConteGroupReorder? _reorderedLike(
-  Cut cut,
-  Map<int, int> moved,
-  List<int> seats,
-) {
-  final group = plainConteGroupOf(cut);
-  if (group == null ||
-      group.length != seats.length ||
-      !group.indexed.every((entry) => entry.$2.seat == seats[entry.$1])) {
-    return null;
-  }
-  final flipped = [
-    for (final entry in group)
-      if (entry.seat.sign * moved[entry.seat]!.sign < 0) entry,
-  ];
-  // The group's rows in their new stack order: lowest seat first.
-  final regrouped = [...group]
-    ..sort((a, b) => moved[a.seat]!.compareTo(moved[b.seat]!));
-  final base = group.firstWhere((entry) => entry.seat == 0).row;
-  final start = attachedGroupStartIndex(base.id, cut.layers);
-  final end = attachedGroupEndIndex(base.id, cut.layers);
-  return (
-    cutId: cut.id,
-    order: [
-      for (final layer in cut.layers.sublist(0, start)) layer.id,
-      for (final entry in regrouped) entry.row.id,
-      for (final layer in cut.layers.sublist(end)) layer.id,
-    ],
-    sideChanges: [
-      for (final entry in flipped)
-        (
-          layerId: entry.row.id,
-          placement: moved[entry.seat]! > 0
-              ? AttachedPlacement.above
-              : AttachedPlacement.below,
-        ),
-    ],
-  );
-}
-
 /// The addresses a HEAD edit lands on: the row's link group
-/// ([linkMirrorTargets]) and, of a row of a conte group, the rows at its
-/// seat in every cut of the track ([conteHeadTargets]) — the closure of the
-/// two, the row itself first and each address once. A 겸용 sibling's conte
-/// on another track brings that track's conte rows with it: one head is one
-/// head.
+/// ([linkMirrorTargets]) and, of a camera field ([cameraHead]), every
+/// camera of the track ([cameraHeadTargets]) — the closure of the two, the
+/// row itself first and each address once.
 ///
 /// What walks it: a row's name, label, blend, static opacity and fold, its
 /// transform switch and the shape of its effect chain. ⛔Never the named
 /// keys' space or the cel bank — those are the link group's alone.
 ///
+/// ⛔A track's conte rows are not walked (F-343): the edit lands on the row
+/// in its own cut, and the track's structure lays it on the rest
+/// (`trackWithItsConteLaid`) — a 겸용 sibling's conte on another track
+/// taking it from the sibling the same way. One head is one head.
+///
 /// [cameraHead]: whether the field is one a track's cameras wear as one as
-/// well ([cameraHeadTargets]) — the name, the transform switch and the
-/// twirl, and not the label.
+/// well — the name, the transform switch and the twirl, and not the label.
 List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   Project project, {
   required CutId cutId,
   required LayerId layerId,
   bool cameraHead = false,
+}) => _oneHeadOf(
+  project,
+  cutId: cutId,
+  layerId: layerId,
+  conte: false,
+  cameraHead: cameraHead,
+);
+
+/// The ROWS of [headMirrorTargets] — what [linkMirrorRows] is to the link
+/// group: every row a head edit is written to, by id.
+List<LayerId> headMirrorRows(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  bool cameraHead = false,
+}) => [
+  for (final target in headMirrorTargets(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+    cameraHead: cameraHead,
+  ))
+    target.layerId,
+];
+
+/// Every row that WEARS the head ([cutId], [layerId]) wears, by id — its
+/// link group's, its track's conte rows that are the same row of the
+/// structure ([conteHeadTargets]), and of a camera ([cameraHead]) every
+/// camera of the track: what the rail keeps one view for — the twirls and
+/// the folds (F-302, I-73).
+List<LayerId> rowsWearingOneHead(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  bool cameraHead = false,
+}) => [
+  for (final target in _oneHeadOf(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+    conte: true,
+    cameraHead: cameraHead,
+  ))
+    target.layerId,
+];
+
+/// The closure of the rows one head reaches from ([cutId], [layerId]): its
+/// link group, and — as [conte] and [cameraHead] ask — its track's conte
+/// rows and cameras, the row itself first and each address once.
+List<({CutId cutId, LayerId layerId})> _oneHeadOf(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  required bool conte,
+  required bool cameraHead,
 }) {
   // From the cut that HOLDS the row ([conteHeadTargets] says why): the
   // registry keys a row's group by its own cut, and would call a row
@@ -297,7 +283,7 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
     final at = reached[index];
     final next = [
       ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
-      ...conteHeadTargets(project, at.layerId),
+      if (conte) ...conteHeadTargets(project, at.layerId),
       if (cameraHead) ...cameraHeadTargets(project, at.layerId),
     ];
     for (final target in next) {
@@ -313,10 +299,12 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
 /// takes together.
 ///
 /// A linked row is one layer seen from several cuts ([linkMirrorTargets]).
-/// And an ATTACH ROW OF A TRACK'S CONTE is one row of its head (I-73, the
-/// drawn proposal 유저 took on 2026-10-08: 「머리 — … 어태치 구성 … —
-/// 트랙의 모든 컷이 하나」): it goes from every cut of the track at once,
-/// each cut's own link group with it ([headMirrorTargets]).
+/// And a ROW OF A TRACK'S CONTE — an attach row, or a 공정 folder filing
+/// them — is one row of its structure (I-73, the drawn proposal 유저 took
+/// on 2026-10-08: 「머리 — … 어태치 구성 … — 트랙의 모든 컷이 하나」, and
+/// F-343): it goes from every cut of the track at once, each cut's own link
+/// group with it. Taken from one cut alone, the structure would give it
+/// back to that cut, empty.
 ///
 /// ⛔Not the conte itself. A cut has a conte or has none, cut by cut — the
 /// rail keeps the button that makes one in every cut that has none — so
@@ -326,32 +314,20 @@ List<({CutId cutId, LayerId layerId})> existenceMirrorTargets(
   required CutId cutId,
   required LayerId layerId,
 }) {
-  final layer = layerAnywhereOrNull(project, layerId);
+  final ofTheStructure = conteHeadTargets(project, layerId);
   final ridesAConte =
-      layer != null &&
-      isAttachedLayer(layer) &&
-      conteHeadTargets(project, layerId).isNotEmpty;
+      ofTheStructure.isNotEmpty &&
+      layerAnywhereOrNull(project, layerId)?.conteKey != null;
   return ridesAConte
-      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
+      ? _oneHeadOf(
+          project,
+          cutId: cutId,
+          layerId: layerId,
+          conte: true,
+          cameraHead: false,
+        )
       : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
 }
-
-/// The ROWS of [headMirrorTargets] — what [linkMirrorRows] is to the link
-/// group: every row that wears the head, by id.
-List<LayerId> headMirrorRows(
-  Project project, {
-  required CutId cutId,
-  required LayerId layerId,
-  bool cameraHead = false,
-}) => [
-  for (final target in headMirrorTargets(
-    project,
-    cutId: cutId,
-    layerId: layerId,
-    cameraHead: cameraHead,
-  ))
-    target.layerId,
-];
 
 /// The transform track ([cutId], [layerId]) keys: the row's own, except the
 /// CAMERA row's — the row is its cut's transform header (F-17), and its

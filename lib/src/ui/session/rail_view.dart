@@ -206,8 +206,9 @@ class RailView {
   /// pinned: it is asked after every history change, a stroke's included.
   ///
   /// ↩️The folds and the twirls were followed here too, until F-360 — the
-  /// row a command makes in a family is born wearing them
-  /// (`layerWearingHeadOf`, `cameraWearingHeadOf`).
+  /// row a command makes in a family wears them: a conte row its track's
+  /// structure's (`ConteHead`, F-343), a camera the track's camera head
+  /// (`cameraWearingHeadOf`).
   void followHeads(Iterable<List<LayerId>> families) {
     List<List<LayerId>>? read;
     List<List<LayerId>> every() => read ??= families.toList();

@@ -1,8 +1,5 @@
-import 'attached_layer_resolve.dart'
-    show attachedGroupEndIndex, attachedGroupStartIndex;
 import 'cut.dart';
 import 'layer.dart';
-import 'layer_effect.dart' show effectChainWithSharedShape;
 import 'layer_id.dart';
 import 'layer_kind.dart';
 
@@ -18,6 +15,8 @@ import 'layer_kind.dart';
 ///
 /// So a row of the group needs a name that is the same in every cut, and
 /// no layer id is one — each cut keeps its own layers. That name is its
+/// row of the TRACK'S CONTE STRUCTURE ([Layer.conteKey], F-343), which
+/// lays every cut's conte alike — so the rail reads the rows by their
 /// SEAT: 0 for the base, +k for the k-th attach row above it and −k for
 /// the k-th below, counted from the base outward in the cut's stack.
 
@@ -165,67 +164,6 @@ Layer? conteRowAtSeat(Cut cut, int seat) {
   return null;
 }
 
-/// [cut]'s conte group when its slice of the stack holds the conte and its
-/// attach rows alone — no organizer folder, no row filed in one; else null,
-/// a cut with no conte included.
-///
-/// The groups a STRUCTURE edit is carried between (I-73-one-head-Q2): a
-/// folder files rows, so its members' seats and its own place are two
-/// answers a seat alone cannot carry, and a group holding one stands down
-/// as `folder_mirror` does where structures diverged.
-List<ConteSeat>? plainConteGroupOf(Cut cut) {
-  final group = conteGroupOf(cut);
-  if (group.isEmpty) {
-    return null;
-  }
-  final base = group.firstWhere((entry) => entry.seat == 0).row;
-  final slice = cut.layers.sublist(
-    attachedGroupStartIndex(base.id, cut.layers),
-    attachedGroupEndIndex(base.id, cut.layers),
-  );
-  final plain = slice.every(
-    (layer) =>
-        layer.id == base.id ||
-        (layer.attachedToLayerId == base.id &&
-            layer.folderId == base.folderId),
-  );
-  return plain && slice.length == group.length ? group : null;
-}
-
-/// Where a row BORN at [seat] of [cut]'s conte group goes in the stack —
-/// on that seat, the rows from it outward each one seat farther — while
-/// the group is plain ([plainConteGroupOf]) and holds, on [seat]'s side of
-/// the conte, exactly the seats of [seats] — the group it was born in,
-/// before it; null otherwise: a group shaped differently there would put
-/// it on another seat. The other side numbers its seats from the conte on
-/// its own, so it is not asked.
-int? conteSeatInsertIndex(Cut cut, int seat, {required List<int> seats}) {
-  final group = plainConteGroupOf(cut);
-  final side = [
-    for (final held in seats)
-      if (held.sign == seat.sign) held,
-  ];
-  final there = group == null
-      ? null
-      : [
-          for (final entry in group)
-            if (entry.seat.sign == seat.sign) entry.seat,
-        ];
-  if (there == null ||
-      there.length != side.length ||
-      !there.indexed.every((entry) => entry.$2 == side[entry.$1])) {
-    return null;
-  }
-  // The row it sits beside on the conte's side: the seat one nearer.
-  final nearer = conteRowAtSeat(cut, seat > 0 ? seat - 1 : seat + 1);
-  if (nearer == null) {
-    return null;
-  }
-  final at = cut.layers.indexWhere((layer) => layer.id == nearer.id);
-  // Above, it goes over the nearer row; below, under it.
-  return seat > 0 ? at + 1 : at;
-}
-
 /// The seats the conte groups of [cuts] hold between them, TOP ROW FIRST:
 /// from the highest attach row any cut has, through the base, to the lowest.
 /// The base's seat is always there — a track whose cuts have no conte yet
@@ -277,36 +215,3 @@ List<LayerId> conteHeadFamilyAt(Iterable<Cut> cuts, int seat) => [
   for (final cut in cuts)
     if (conteRowAtSeat(cut, seat) case final row?) row.id,
 ];
-
-/// [row] wearing [head]'s HEAD — everything a track's conte rows have as
-/// one: the name, the label, the blend, the static opacity, the eye, the
-/// transform switch, and the SHAPE of the fx chain laid over [row]'s own
-/// values ([effectChainWithSharedShape]).
-///
-/// 🗣️The list is the drawn proposal's (I-73, 2026-10-08): 「머리 — 이름 ·
-/// 라벨 · 블렌드 · 불투명도 · 눈 · 어태치 구성 · fx 구성 — 트랙의 모든 컷이
-/// 하나」 · 「칸 — 칸의 자리와 길이, fx 의 값과 키 — 컷마다」. What a row
-/// HOLDS stays its own: its kind, its pictures and panels, its fx values —
-/// and whether it prints on its cut's timesheet, which that list does not
-/// name.
-///
-/// A row is BORN wearing it (`plannedAddLayerCommand`); after that every
-/// head field is written to all the rows at the seat at once
-/// (`headMirrorTargets`, and `conteHeadTargets` for the eye).
-///
-/// Its folds and twirls too (I-73 「콘티행도 동일하게 … 어태치
-/// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」): they are the
-/// row's since F-360, and a row born open beside a folded family is the
-/// row `RailView.followHeads` was there to fold.
-Layer layerWearingHeadOf(Layer head, Layer row) => row.copyWith(
-  name: head.name,
-  mark: head.mark,
-  blendMode: head.blendMode,
-  opacity: head.opacity,
-  isVisible: head.isVisible,
-  transformEnabled: head.transformEnabled,
-  effects: effectChainWithSharedShape(head.effects, onto: row.effects),
-  collapsed: head.collapsed,
-  lanesExpanded: head.lanesExpanded,
-  expandedLaneGroups: head.expandedLaneGroups,
-);

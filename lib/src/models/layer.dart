@@ -7,6 +7,7 @@ import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
 import 'camera_instruction.dart';
+import 'conte_key.dart';
 import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
 import 'frame.dart';
@@ -62,6 +63,7 @@ class Layer {
     this.attachedMode = AttachedMode.synced,
     Map<FrameId, FrameId> baseFrameLinks = const {},
     this.folderId,
+    this.conteKey,
   }) : frames = List.unmodifiable(
          _spansLaidAsBlocks(kind, id, frames, timeline, instructions).frames,
        ),
@@ -168,6 +170,16 @@ class Layer {
   /// share one folder (never split across a folder boundary; the commands
   /// keep the invariant).
   final LayerId? folderId;
+
+  /// Which row of its TRACK'S CONTE this is (F-343, `TrackConte`) — set on
+  /// a row or 공정 folder riding a cut's conte, null on every other row and
+  /// on the conte itself. The structure is the track's and this row is one
+  /// cut's copy of one row of it: what it wears and where it sits are laid
+  /// from the track on every write, and only what it holds is its own.
+  ///
+  /// ⛔Not an id: each cut's copy of the row has a layer id of its own, and
+  /// they all carry this one.
+  final ConteKey? conteKey;
 
   /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse): a
   /// fill set to read its references reads ONLY the flagged layers — paint
@@ -313,6 +325,7 @@ class Layer {
     Object? folderId = copyWithSentinel,
     Object? mediaReference = copyWithSentinel,
     Object? seNameTag = copyWithSentinel,
+    Object? conteKey = copyWithSentinel,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -362,6 +375,10 @@ class Layer {
       seNameTag: identical(seNameTag, copyWithSentinel)
           ? this.seNameTag
           : seNameTag as SeNameTag?,
+      // Sentinel: a row the track's conte lets go of says so with null.
+      conteKey: identical(conteKey, copyWithSentinel)
+          ? this.conteKey
+          : conteKey as ConteKey?,
     );
   }
 
@@ -395,6 +412,7 @@ class Layer {
     if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
     if (seNameTag != null) 'seNameTag': seNameTag!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
+    if (conteKey case final key?) 'conteKey': key.value,
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     // Default true omitted — pre-R8 files read back with their FX applied.
     if (!transformEnabled) 'transformEnabled': false,
@@ -477,6 +495,9 @@ class Layer {
       folderId: json['folderId'] == null
           ? null
           : LayerId.fromJson(json['folderId'] as Map<String, dynamic>),
+      conteKey: json['conteKey'] == null
+          ? null
+          : ConteKey(json['conteKey'] as String),
       baseFrameLinks: json['baseFrameLinks'] == null
           ? const {}
           : {
@@ -536,7 +557,8 @@ class Layer {
           other.attachedPlacement == attachedPlacement &&
           other.attachedMode == attachedMode &&
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
-          other.folderId == folderId;
+          other.folderId == folderId &&
+          other.conteKey == conteKey;
 
   /// Whether [other] folds and twirls as this layer does — [collapsed],
   /// [lanesExpanded] and [expandedLaneGroups]: how the rail is laid out
@@ -588,7 +610,8 @@ class Layer {
         (entry) => Object.hash(entry.key, entry.value),
       ),
     ),
-    folderId,
+    // Folded with folderId: Object.hash caps at 20 positional args.
+    Object.hash(folderId, conteKey),
   );
 
   @override

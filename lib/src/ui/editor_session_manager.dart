@@ -59,6 +59,7 @@ import '../models/track.dart';
 import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
+import '../services/conte_step_scope.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
@@ -76,7 +77,7 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/link_mirror.dart' show headMirrorRows;
+import '../services/commands/link_mirror.dart' show rowsWearingOneHead;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -211,7 +212,9 @@ class EditorSessionManager extends ChangeNotifier
        _ownsAppSettings = appSettings == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
-    historyManager = HistoryManager()..places.placeNow = () => standingPlace;
+    historyManager = HistoryManager()
+      ..scope = ConteStepScope(repository)
+      ..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -801,9 +804,9 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Every use of [row] — the rows that twirl and fold as one with it: the
   /// rows that wear its head, in whichever cuts they stand
-  /// ([headMirrorRows] — its link group's, a track's conte rows at its seat
-  /// and a track's cameras), and itself alone for a row that is none of
-  /// these or that no cut holds (a track's).
+  /// ([rowsWearingOneHead] — its link group's, a track's conte rows that are
+  /// its row of the track's structure, and a track's cameras), and itself
+  /// alone for a row that is none of these or that no cut holds (a track's).
   ///
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
@@ -829,7 +832,7 @@ class EditorSessionManager extends ChangeNotifier
     final cutId = cutIdOfLayer(project, row) ?? activeCutId;
     return cutId == null
         ? [row]
-        : headMirrorRows(
+        : rowsWearingOneHead(
             project,
             cutId: cutId,
             layerId: row,

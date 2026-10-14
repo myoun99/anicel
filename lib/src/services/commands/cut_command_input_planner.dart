@@ -1,7 +1,4 @@
-import '../../core/inserted_at.dart';
-import '../../models/attached_layer_mount.dart' show LayerAttachDrop;
 import '../../models/attached_layer_resolve.dart';
-import '../../models/attached_placement.dart';
 import '../../models/conte_group.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteHandwritingOfACopy, conteInkRowLayerId;
@@ -13,7 +10,6 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
-import '../../models/track.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../command.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
@@ -487,27 +483,7 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   required Project project,
   required CutId cutId,
   required Layer layer,
-}) => _planAddLayerMirrors(_Planting(project), cutId: cutId, layer: layer);
-
-/// What the rows ONE step plants share: the project they are planned
-/// against, the ids minted so far — no two rows of the step take the same
-/// one — and the cuts the step has already put its row in.
-class _Planting {
-  _Planting(this.project) : ids = _ProjectIdSnapshot.fromProject(project);
-
-  final Project project;
-  final _ProjectIdSnapshot ids;
-  final Set<CutId> planted = {};
-}
-
-/// [planAddLayerCommandInput] as one of the rows [step] plants: its ids are
-/// the step's.
-AddLayerCommandInputPlan _planAddLayerMirrors(
-  _Planting step, {
-  required CutId cutId,
-  required Layer layer,
 }) {
-  final project = step.project;
   if (!layer.kind.linksIntoLinkedCut) {
     return AddLayerCommandInputPlan.none;
   }
@@ -515,6 +491,7 @@ AddLayerCommandInputPlan _planAddLayerMirrors(
   if (siblings.isEmpty) {
     return AddLayerCommandInputPlan.none;
   }
+  final ids = _ProjectIdSnapshot.fromProject(project);
 
   LayerId? counterpart(LayerId anchor, CutId sibling) => linkCounterpartIn(
     project,
@@ -544,7 +521,7 @@ AddLayerCommandInputPlan _planAddLayerMirrors(
         (base != null && mirroredBase == null)) {
       continue;
     }
-    final mirrorId = step.ids.nextLayerId();
+    final mirrorId = ids.nextLayerId();
     mirrors.add(
       AddLayerMirror(
         cutId: sibling,
@@ -563,7 +540,7 @@ AddLayerCommandInputPlan _planAddLayerMirrors(
 
   return AddLayerCommandInputPlan(
     mirrors: mirrors,
-    linkGroupId: step.ids.nextLinkGroupId(),
+    linkGroupId: ids.nextLinkGroupId(),
   );
 }
 
@@ -574,362 +551,28 @@ AddLayerCommandInputPlan _planAddLayerMirrors(
 /// Layer, on the cut the canvas stands on, and the conte row a picture's
 /// first stroke makes, on the picture's cut.
 ///
-/// 🚨A ROW OF A TRACK'S CONTE IS PLANTED IN EVERY CUT'S (I-73). The drawn
-/// proposal 유저 took on 2026-10-08 lists what a track's conte rows have
-/// as one — 「머리 — 이름 · 라벨 · 블렌드 · 불투명도 · 눈 · 어태치 구성 ·
-/// fx 구성 — 트랙의 모든 컷이 하나」 — and the attach rows a conte carries
-/// are in it. So, in the one undo step:
-///
-/// - an attach row added to a cut's conte is added to the conte of every
-///   other cut of the track ([_conteFamilyRowsOf]);
-/// - a conte born into a track whose contes carry attach rows is born
-///   carrying them ([_conteAttachRowsBornWith]);
-/// - and each of those rows arrives wearing the head of the seat it lands
-///   on ([conteBornWearingItsHead]).
-///
-/// ⛔They join no link group for it (the proposal: 「머리의 통일은 링크
-/// 그룹으로 만들지 않습니다」) — a link group is one cel bank, and two
-/// cuts' rows in one would make every pair of same-named cels one picture.
-/// A planted row's 겸용 siblings still take it AS the same layer: that is
-/// the cuts' own relation, planned row by row.
+/// ↩️A row added to a track's conte was planted in every other cut's here,
+/// wearing the head of its seat, and a conte born into the track was born
+/// carrying the track's attach rows (I-73). The track's conte structure
+/// lays both now (F-343, `trackWithItsConteLaid`): this adds the one row.
 Command plannedAddLayerCommand({
   required ProjectRepository repository,
   required CutId cutId,
   required Layer layer,
   int? insertionIndex,
 }) {
-  final step = _Planting(repository.requireProject());
-  final born = conteBornWearingItsHead(
-    step.project,
+  final plan = planAddLayerCommandInput(
+    project: repository.requireProject(),
     cutId: cutId,
     layer: layer,
   );
-  final first = _planted(step, repository, (
-    cutId: cutId,
-    layer: born,
-    index: insertionIndex,
-  ));
-  return oneStepOf(first.description, [
-    first,
-    for (final row in _conteFamilyRowsOf(step, cutId, born, insertionIndex))
-      _planted(step, repository, row),
-    ..._conteAttachRowsBornWith(step, first),
-  ])!;
-}
-
-/// One row a step plants: the cut, the row as it is born there, and where
-/// in that cut's stack (null: its top).
-typedef _PlantedRow = ({CutId cutId, Layer layer, int? index});
-
-/// [layer] as it is born into [cutId]: wearing the head of the SEAT of its
-/// track's conte it lands on (I-73 — [layerWearingHeadOf]) — a cut's conte
-/// itself, or an attach row added to it. The one head is there before this
-/// row is, so the row arrives in it rather than with a kind's defaults that
-/// the next head edit would have to overwrite. The first row at a seat —
-/// and every row that lands on none — is born as it is.
-Layer conteBornWearingItsHead(
-  Project project, {
-  required CutId cutId,
-  required Layer layer,
-}) {
-  final track = _trackHolding(project, cutId);
-  final seat = track == null
-      ? null
-      : _conteSeatBornAt(requireCut(project, cutId), layer);
-  if (track == null || seat == null) {
-    return layer;
-  }
-  final head = conteHeadRowAt(
-    track.cuts.where((cut) => cut.id != cutId),
-    seat,
-  );
-  return head == null ? layer : layerWearingHeadOf(head, layer);
-}
-
-Track? _trackHolding(Project project, CutId cutId) {
-  for (final track in project.tracks) {
-    if (track.cuts.any((cut) => cut.id == cutId)) {
-      return track;
-    }
-  }
-  return null;
-}
-
-/// The seat of [cut]'s conte group a row being ADDED lands on: 0 for the
-/// conte itself; for an attach row put at the end of its side of the group
-/// ([newAttachedRowIndex]), the seat past the farthest one there. Null for
-/// a row that lands on none — any other row, and an attach row filed into
-/// an organizer folder, which stands where the folder does.
-int? _conteSeatBornAt(Cut cut, Layer layer) {
-  if (isConteBase(layer)) {
-    return 0;
-  }
-  final base = storyboardLayerForCut(cut);
-  if (base == null ||
-      layer.attachedToLayerId != base.id ||
-      layer.folderId != base.folderId) {
-    return null;
-  }
-  final group = conteGroupOf(cut);
-  return layer.attachedPlacement == AttachedPlacement.above
-      ? group.first.seat + 1
-      : group.last.seat - 1;
-}
-
-/// The rows an attach row [added] to [cutId]'s conte is planted as in the
-/// OTHER cuts of the track: one riding each cut's own conte, where that
-/// conte's group is exactly the one row short — so the new row lands on the
-/// same seat in every cut. A cut whose group is shaped otherwise is left as
-/// it is: a row added there would land on another seat, and wear another
-/// head.
-///
-/// ⚠️LAZY, and it has to be: a row is planned once the one before it is
-/// PLANTED. Planting marks the cuts it put the row in — the pressed cut,
-/// and every 겸용 sibling that took it as the same layer — and a marked cut
-/// already holds the row.
-///
-/// The seat is where [added] lands at [index] — the end of its side, or
-/// inside the group: an organizer folder's row too (I-73-one-head-Q2,
-/// 유저 2026-10-09: 「넷 다 모든 컷에 함께」 — 오거나이저 안 추가), whose
-/// copy in a plain group rides the conte without a folder.
-Iterable<_PlantedRow> _conteFamilyRowsOf(
-  _Planting step,
-  CutId cutId,
-  Layer added,
-  int? index,
-) {
-  if (!isAttachedLayer(added)) {
-    return const [];
-  }
-  final cut = requireCut(step.project, cutId);
-  final seat = conteSeatOf(
-    cut.copyWith(layers: insertedAt(cut.layers, added, index)),
-    added.id,
-  );
-  return seat == null
-      ? const []
-      : _conteSeatRowsOf(step, cutId, head: added, seat: seat);
-}
-
-/// A row born at [seat] of [cutId]'s conte group as the track's other cuts
-/// take it: an empty row wearing [head]'s head at the same seat of each
-/// one whose group held the same seats on that side as the born cut's did
-/// before it ([conteSeatInsertIndex]). Lazy, as its callers' planting is.
-Iterable<_PlantedRow> _conteSeatRowsOf(
-  _Planting step,
-  CutId cutId, {
-  required Layer head,
-  required int seat,
-}) sync* {
-  final track = _trackHolding(step.project, cutId);
-  if (track == null) {
-    return;
-  }
-  // The step's project is the one before the row: the born cut's group as
-  // it stood.
-  final seats = [
-    for (final entry in conteGroupOf(requireCut(step.project, cutId)))
-      entry.seat,
-  ];
-  for (final cut in track.cuts) {
-    final base = step.planted.contains(cut.id)
-        ? null
-        : storyboardLayerForCut(cut);
-    final index = base == null
-        ? null
-        : conteSeatInsertIndex(cut, seat, seats: seats);
-    if (base == null || index == null) {
-      continue;
-    }
-    yield (
-      cutId: cut.id,
-      layer: layerWearingHeadOf(
-        head,
-        Layer(
-          id: step.ids.nextLayerId(),
-          name: head.name,
-          frames: const [],
-          timeline: const {},
-          kind: head.kind,
-          onTimesheet: head.onTimesheet,
-          attachedToLayerId: base.id,
-          attachedPlacement: seat > 0
-              ? AttachedPlacement.above
-              : AttachedPlacement.below,
-          attachedMode: head.attachedMode,
-          folderId: base.folderId,
-        ),
-      ),
-      index: index,
-    );
-  }
-}
-
-/// The commands that plant a row MOUNTED on [cutId]'s conte by a drag
-/// ([attach], landing in [order]) into the track's other cuts: empty,
-/// wearing its head, on the seat it landed on, each with its 겸용
-/// siblings' as an added row's are (I-73-one-head-Q2 — 끌어서 장착). None
-/// for a drop that mounts nothing on the conte, or more than one row (a
-/// folder's members, which stand where the folder does).
-List<Command> conteMountBirthCommands({
-  required ProjectRepository repository,
-  required CutId cutId,
-  required List<LayerId> order,
-  required LayerAttachDrop attach,
-}) {
-  final step = _Planting(repository.requireProject());
-  final cut = requireCut(step.project, cutId);
-  final base = storyboardLayerForCut(cut);
-  final mount = attach.mounts.length == 1 ? attach.mounts.single : null;
-  if (base == null || mount == null || mount.baseId != base.id) {
-    return const [];
-  }
-  final byId = {for (final layer in cut.layers) layer.id: layer};
-  final mounted = byId[mount.layerId];
-  if (mounted == null || mounted.kind.groupsLayers) {
-    return const [];
-  }
-  final landed = mounted.copyWith(
-    attachedToLayerId: base.id,
-    attachedPlacement: mount.placement,
-    folderId: base.folderId,
-  );
-  final seat = conteSeatOf(
-    cut.copyWith(
-      layers: [
-        for (final id in order)
-          if (id == mounted.id) landed else ?byId[id],
-      ],
-    ),
-    mounted.id,
-  );
-  if (seat == null) {
-    return const [];
-  }
-  // The cut it landed in, and its 겸용 siblings, hold it already.
-  step.planted
-    ..add(cutId)
-    ..addAll(linkedCutSiblings(step.project, cutId: cutId));
-  return [
-    for (final row in _conteSeatRowsOf(step, cutId, head: landed, seat: seat))
-      _planted(step, repository, row),
-  ];
-}
-
-/// [row] as an add command of [step], with the 겸용 siblings that take it
-/// as the same layer — and the cuts it reaches marked planted, so the next
-/// row of the step passes them by.
-AddLayerCommand _planted(
-  _Planting step,
-  ProjectRepository repository,
-  _PlantedRow row,
-) {
-  final plan = _planAddLayerMirrors(step, cutId: row.cutId, layer: row.layer);
-  step.planted
-    ..add(row.cutId)
-    ..addAll([for (final mirror in plan.mirrors) mirror.cutId]);
   return AddLayerCommand(
     repository: repository,
-    cutId: row.cutId,
-    layer: row.layer,
-    insertionIndex: row.index,
+    cutId: cutId,
+    layer: layer,
+    insertionIndex: insertionIndex,
     mirrors: plan.mirrors,
     linkGroupId: plan.linkGroupId,
-  );
-}
-
-/// The attach rows a conte is BORN with: one for every seat the track's
-/// other contes carry a row at, wearing that seat's head and holding
-/// nothing — added after [conte] itself, around where it lands
-/// ([_seatsBornAround]). Each is mirrored into the cuts the conte is
-/// mirrored into, riding the conte's copy there.
-List<AddLayerCommand> _conteAttachRowsBornWith(
-  _Planting step,
-  AddLayerCommand conte,
-) {
-  final track = _trackHolding(step.project, conte.cutId);
-  if (track == null || !isConteBase(conte.layer)) {
-    return const [];
-  }
-  final others = [
-    for (final cut in track.cuts)
-      if (cut.id != conte.cutId) cut,
-  ];
-  // Where the conte lands — an index past the stack's end lands at its
-  // end ([insertedAt]).
-  final stack = requireCut(step.project, conte.cutId).layers.length;
-  final asked = conte.insertionIndex ?? stack;
-  return [
-    for (final (:seat, :index) in _seatsBornAround(
-      conteSeatsOf(others),
-      baseIndex: asked < 0 ? 0 : (asked > stack ? stack : asked),
-    ))
-      _conteAttachRowBorn(step, conte, conteHeadRowAt(others, seat)!, index),
-  ];
-}
-
-/// Each attach seat of [seats] with the index its row is added at, in the
-/// order they are added, around a conte standing at [baseIndex]: the rows
-/// below it first, nearest first — each goes in under the conte, which it
-/// pushes up a place — then the rows above it, each over the last.
-List<({int seat, int index})> _seatsBornAround(
-  List<int> seats, {
-  required int baseIndex,
-}) {
-  final below = [
-    for (final seat in seats)
-      if (seat < 0) seat,
-  ]..sort((a, b) => b.compareTo(a));
-  final above = [
-    for (final seat in seats)
-      if (seat > 0) seat,
-  ]..sort();
-  return [
-    for (final seat in below) (seat: seat, index: baseIndex),
-    for (final (place, seat) in above.indexed)
-      (seat: seat, index: baseIndex + below.length + 1 + place),
-  ];
-}
-
-/// One attach row [conte] is born with: riding it at [index], wearing
-/// [head] and holding nothing, and mirrored into each cut the conte is
-/// mirrored into as the same layer.
-AddLayerCommand _conteAttachRowBorn(
-  _Planting step,
-  AddLayerCommand conte,
-  Layer head,
-  int index,
-) {
-  final mirrors = [
-    for (final mirror in conte.mirrors)
-      AddLayerMirror(
-        cutId: mirror.cutId,
-        layerId: step.ids.nextLayerId(),
-        folderId: mirror.folderId,
-        attachedToLayerId: mirror.layerId,
-      ),
-  ];
-  return AddLayerCommand(
-    repository: conte.repository,
-    cutId: conte.cutId,
-    layer: layerWearingHeadOf(
-      head,
-      Layer(
-        id: step.ids.nextLayerId(),
-        name: head.name,
-        frames: const [],
-        timeline: const {},
-        kind: head.kind,
-        onTimesheet: false,
-        attachedToLayerId: conte.layer.id,
-        attachedPlacement: head.attachedPlacement,
-        attachedMode: head.attachedMode,
-        folderId: conte.layer.folderId,
-      ),
-    ),
-    insertionIndex: index,
-    mirrors: mirrors,
-    linkGroupId: mirrors.isEmpty ? null : step.ids.nextLinkGroupId(),
   );
 }
 

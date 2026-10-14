@@ -11,7 +11,6 @@ import '../models/layer_kind.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
-import '../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
@@ -378,25 +377,18 @@ class LayerController {
     // 🚨A TRACK'S CONTE ROWS WEAR ONE EYE (I-73, 유저 2026-10-08: 「6.
     // 이거만 눈이랑 불투명도조차 링크하도록. 그거마저 머리로서 하나로되도록
     // 통일」) — the one row whose eye is its head's, where a link group's is
-    // still each use's own (T9, [UpdateLayerDisplayCommand]). Every row at
-    // the seat SETS the value the pressed one takes, in one step; a row in
-    // no conte group has no seat, and is written alone as it always was.
-    final seat = [
-      for (final row in conteHeadTargets(project, layerId)) row.layerId,
-    ];
-    Command show(LayerId row) => UpdateLayerDisplayCommand(
-      repository: _repository,
-      layerId: row,
-      debugLabel: 'Toggle layer visibility',
-      apply: (layer) => layer.copyWith(isVisible: nextVisible),
+    // still each use's own (T9, [UpdateLayerDisplayCommand]). The pressed
+    // row takes it, and the track's conte structure lays it on the rest
+    // (F-343, `trackWithItsConteLaid`) — ↩️where every row at the seat was
+    // written here.
+    _historyManager.execute(
+      UpdateLayerDisplayCommand(
+        repository: _repository,
+        layerId: layerId,
+        debugLabel: 'Toggle layer visibility',
+        apply: (layer) => layer.copyWith(isVisible: nextVisible),
+      ),
     );
-    if (seat.length <= 1) {
-      _historyManager.execute(show(layerId));
-      return;
-    }
-    _executeAsOneStep('Toggle layer visibility', [
-      for (final row in seat) show(row),
-    ]);
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold

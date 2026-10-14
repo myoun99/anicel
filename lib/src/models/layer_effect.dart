@@ -770,3 +770,21 @@ List<LayerEffect> effectChainWithSharedShape(
       },
   ];
 }
+
+/// Whether [a] and [b] are chains of one SHAPE ([effectChainWithSharedShape]
+/// lays [b]'s over [a] as [a]): the same effects in the same order, each
+/// switched the same way — whatever their numbers.
+bool sameEffectChainShape(List<LayerEffect> a, List<LayerEffect> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    final (left, right) = (a[index], b[index]);
+    if (left.id != right.id ||
+        left.kind != right.kind ||
+        left.enabled != right.enabled) {
+      return false;
+    }
+  }
+  return true;
+}

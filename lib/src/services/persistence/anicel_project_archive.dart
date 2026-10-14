@@ -65,6 +65,22 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v17 (2026-10-14, F-343 — 「콘티행을 확실하게 글로벌행으로」): a track
+/// keeps the STRUCTURE its cuts' contes wear — `conte` on a track
+/// (`TrackConte.toJson`: the conte's head, and the rows and 공정 folders
+/// riding it, in order, each with what it wears) — and each row riding a
+/// conte names its row of it, `conteKey` on a layer. A v16 build reads
+/// neither: it opens the contes as each cut holds them, and its next save
+/// writes them back without the structure, so the rows it added to one
+/// cut's conte stay that cut's. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a track that says no structure has
+/// it laid from its cuts' contes on the first write, seat by seat — the
+/// rule every write keeps for a row that names none
+/// (`trackWithItsConteLaid`) — so a v16 file is such a document.
+///
 /// v16 (2026-10-14, F-360 — 유저: 「어태치레이어 분명 접은채로 저장했는데
 /// 다시열면 펼쳐져있음 … 제대로 기록되도록」): a row keeps its folds and
 /// twirls — a base's attach group in `collapsed` beside a folder's, and
@@ -261,7 +277,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 16;
+const int anicelFormatVersion = 17;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
