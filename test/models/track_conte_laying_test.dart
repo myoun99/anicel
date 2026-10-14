@@ -680,5 +680,31 @@ void main() {
         'link-1',
       ]);
     });
+
+    test('one of them gone with its cut leaves the other no link group of '
+        'one', () {
+      final laid = projectWithItsContesLaid(film(), settledCut: (_) => null);
+      final track = laid.tracks.single;
+      final given = rowOf(track, 'b', 'X').id;
+      final gone = laid.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              for (final cut in track.cuts)
+                if (cut.id != const CutId('c')) cut,
+            ],
+          ),
+        ],
+      );
+
+      final relaid = laidAgain(gone, laid);
+
+      expect(rowOf(relaid.tracks.single, 'b', 'X').id, given, reason: '⛔전제');
+      expect(
+        relaid.linkRegistry.groupOf(cutId: const CutId('b'), layerId: given),
+        isNull,
+        reason: 'a group of one links nothing',
+      );
+    });
   });
 }
