@@ -3158,8 +3158,14 @@ class _StoryboardSeLabel extends KeptPiece {
   /// Drawn without its ground — the folded overlay's ([_StoryboardFolded]).
   final bool chromeless;
 
-  /// What the row shows: its layer by identity — every switch it draws is
-  /// the layer's own — and what the session answers for it.
+  /// What the row shows: its layer's FACE — the one the timeline's rows are
+  /// kept by ([ControlsRowFace]) — with the two it reads beside it, the eye
+  /// it draws itself (not through `RailEyes`) and the id its switches are
+  /// named and pressed by; and what the session answers for it.
+  ///
+  /// 🚨Not the layer by identity: its twirls live on it since F-360's
+  /// second half, so a group of its lanes twirled open is a new layer this
+  /// row shows nothing new of. ↩️It was identity while the host held them.
   ///
   /// 🚨I-57 (10-14): built again with the panel on every notify and every
   /// cut crossed — 🔬240 of a crossing's 1,088 rebuilds on the AMMI OP, for
@@ -3168,7 +3174,10 @@ class _StoryboardSeLabel extends KeptPiece {
   Object? get facts => (
     trackId,
     slot,
-    ByIdentity(layer),
+    switch (layer) {
+      final layer? => (ControlsRowFace(layer), layer.id, layer.isVisible),
+      null => null,
+    },
     height,
     laneExpanded,
     onToggleLane != null,
