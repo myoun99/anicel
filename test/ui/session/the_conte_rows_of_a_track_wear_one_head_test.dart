@@ -278,15 +278,19 @@ void main() {
     }
   }
 
-  test('each row gets its OWN value back: two cuts that disagreed before '
-      'the edit disagree again after the undo', () {
+  // ↩️Two cuts of a track could disagree on a head, and an undo gave each
+  // its own back. A file's cuts that disagree open wearing the first cut's
+  // (F-343 — the track's structure is laid as the open writes it).
+  test('two cuts that disagreed in the file open wearing the first cut\'s '
+      'head — and an undo puts back the head they opened with', () {
     final session = sessionOf(film(bName: 'Story'));
+    expect(heads(session, (row) => row.name), ['Conte', 'Conte', 'Conte']);
 
     session.layerVerbs.renameLayer(const LayerId('a-conte'), 'Board');
     expect(heads(session, (row) => row.name), ['Board', 'Board', 'Conte']);
 
     session.undo();
-    expect(heads(session, (row) => row.name), ['Conte', 'Story', 'Conte']);
+    expect(heads(session, (row) => row.name), ['Conte', 'Conte', 'Conte']);
   });
 
   group('the fx chain', () {

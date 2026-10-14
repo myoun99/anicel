@@ -1,13 +1,152 @@
-import 'attached_layer_resolve.dart'
-    show attachedGroupEndIndex, attachedGroupSlice, attachedGroupStartIndex;
+import '../core/mapped_or_same.dart';
+import 'attached_layer_resolve.dart' show attachedGroupMembers;
 import 'attached_placement.dart';
 import 'conte_group.dart' show conteGroupOf;
 import 'cut.dart';
 import 'cut_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'layer_link_registry.dart';
+import 'project.dart';
 import 'track.dart';
 import 'track_conte.dart';
+
+/// [project] with every track's conte laid ([trackWithItsConteLaid]) — and
+/// the rows that laying gave the cuts of a 겸용 pair made ONE LAYER.
+///
+/// 🗣️A 겸용 pair's cuts hold their rows as one layer, the rows of a
+/// track's conte among them (I-73: 「A planted row's 겸용 siblings still
+/// take it AS the same layer」). So the rows the structure gives, in one
+/// write, to cuts whose contes are one layer — for one row of it — are one
+/// link group. ↩️F-343 gave each cut its own, and what was drawn on one
+/// was not on the other.
+///
+/// Those link groups are the laying's to keep: a row of one that is gone —
+/// taken back with the step that gave it (`dropConteFills`), or a folder
+/// the structure forgot — goes from it, and a group left linking nothing
+/// goes too.
+Project projectWithItsContesLaid(
+  Project project, {
+  required Cut? Function(CutId cutId) settledCut,
+}) {
+  final tracks = mappedOrSame(
+    project.tracks,
+    (track) => trackWithItsConteLaid(track, settledCut: settledCut),
+  );
+  final laid = identical(tracks, project.tracks)
+      ? project
+      : project.copyWith(tracks: tracks);
+  final registry = laid.linkRegistry;
+  final kept = _withoutGoneFills(laid, registry.groups);
+  final made = _groupsOfRowsGiven(laid, conteFillsGiven(project, laid));
+  if (identical(kept, registry.groups) && made.isEmpty) {
+    return laid;
+  }
+  return laid.copyWith(
+    linkRegistry: registry.copyWith(groups: [...kept, ...made]),
+  );
+}
+
+/// The rows the structure gave the cuts between [before] and [after]: each
+/// one [after] holds that the same cut of [before] did not ([isConteFill]).
+Set<LayerId> conteFillsGiven(Project? before, Project? after) {
+  if (after == null || identical(before, after)) {
+    return const {};
+  }
+  final was = {
+    for (final track in before?.tracks ?? const <Track>[])
+      for (final cut in track.cuts) cut.id: cut,
+  };
+  final given = <LayerId>{};
+  for (final track in after.tracks) {
+    for (final cut in track.cuts) {
+      final old = was[cut.id];
+      if (identical(old, cut)) {
+        continue;
+      }
+      final had = {
+        for (final layer in old?.layers ?? const <Layer>[])
+          if (isConteFill(layer)) layer.id,
+      };
+      for (final layer in cut.layers) {
+        if (isConteFill(layer) && !had.contains(layer.id)) {
+          given.add(layer.id);
+        }
+      }
+    }
+  }
+  return given;
+}
+
+/// [groups] without their members that are rows the structure gave a cut
+/// which the cut no longer holds — a group left linking nothing going with
+/// them — or [groups] itself when none is gone.
+List<LayerLinkGroup> _withoutGoneFills(
+  Project project,
+  List<LayerLinkGroup> groups,
+) {
+  bool given(LayerLinkMember member) =>
+      member.layerId.value.startsWith(_fillPrefix);
+  if (!groups.any((group) => group.members.any(given))) {
+    return groups;
+  }
+  final held = {
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        for (final layer in cut.layers)
+          if (isConteFill(layer)) (cut.id, layer.id),
+  };
+  bool gone(LayerLinkMember member) =>
+      given(member) && !held.contains((member.cutId, member.layerId));
+  if (!groups.any((group) => group.members.any(gone))) {
+    return groups;
+  }
+  return [
+    for (final group in groups)
+      if (!group.members.any(gone))
+        group
+      else if (group.members.where((member) => !gone(member)).toList()
+          case final left when left.length > 1)
+        group.copyWith(members: left),
+  ];
+}
+
+/// The link groups the rows [given] make: the ones given for one row of
+/// the structure to cuts whose contes are one link group, the first cut's
+/// first — the group's canonical member.
+List<LayerLinkGroup> _groupsOfRowsGiven(Project project, Set<LayerId> given) {
+  if (given.isEmpty) {
+    return const [];
+  }
+  final registry = project.linkRegistry;
+  final byRow = <String, List<LayerLinkMember>>{};
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      final base = conteBaseOf(cut);
+      final contes = base == null
+          ? null
+          : registry.groupOf(cutId: cut.id, layerId: base.id);
+      if (contes == null) {
+        continue;
+      }
+      for (final layer in cut.layers) {
+        if (layer.conteKey case final key? when given.contains(layer.id)) {
+          (byRow['${contes.id}~${key.value}'] ??= []).add(
+            LayerLinkMember(
+              trackId: track.id,
+              cutId: cut.id,
+              layerId: layer.id,
+            ),
+          );
+        }
+      }
+    }
+  }
+  return [
+    for (final MapEntry(key: id, value: members) in byRow.entries)
+      if (members.length > 1) LayerLinkGroup(id: id, members: members),
+  ];
+}
 
 /// [track] with every cut's conte laid from the track's conte STRUCTURE —
 /// the structure first taking what this write did to the conte of a cut
@@ -66,15 +205,7 @@ Track trackWithItsConteLaid(
       if (conteBaseOf(cut) case final base?) (cut: cut, base: base),
   ];
   if (contes.isEmpty) {
-    // Rule 3 with no conte left to hold a row of it.
-    final cuts = [for (final cut in track.cuts) _keyedInItsConte(cut, null)];
-    for (final cut in cuts) {
-      _laidFrom[cut] = TrackConte.none;
-    }
-    return track.conte.isEmpty &&
-            cuts.indexed.every((at) => identical(at.$2, track.cuts[at.$1]))
-        ? track
-        : track.copyWith(conte: TrackConte.none, cuts: cuts);
+    return _withNoConteLeft(track);
   }
   final structure = _Structure(track.conte);
   final groups = [
@@ -119,6 +250,20 @@ Track trackWithItsConteLaid(
   return changed ? track.copyWith(conte: laid, cuts: cuts) : track;
 }
 
+/// [track] once no cut of it has a conte: rule 3 with no conte left to hold
+/// a row of the structure — it goes, and no row keeps a key outside a
+/// conte ([_keyedInItsConte]).
+Track _withNoConteLeft(Track track) {
+  final cuts = [for (final cut in track.cuts) _keyedInItsConte(cut, null)];
+  for (final cut in cuts) {
+    _laidFrom[cut] = TrackConte.none;
+  }
+  return track.conte.isEmpty &&
+          cuts.indexed.every((at) => identical(at.$2, track.cuts[at.$1]))
+      ? track
+      : track.copyWith(conte: TrackConte.none, cuts: cuts);
+}
+
 /// The structure each cut instance was laid from, held weakly — a cut laid
 /// from the structure its track holds is not read again.
 final Expando<TrackConte> _laidFrom = Expando('F-343 laid from');
@@ -131,7 +276,7 @@ final Expando<TrackConte> _laidFrom = Expando('F-343 laid from');
 Cut _keyedInItsConte(Cut cut, Layer? base) {
   final riding = base == null
       ? const <LayerId>{}
-      : {for (final row in attachedGroupSlice(base.id, cut.layers)) row.id};
+      : {for (final row in attachedGroupMembers(base.id, cut.layers)) row.id};
   bool stale(Layer layer) =>
       layer.conteKey != null && !riding.contains(layer.id);
   if (!cut.layers.any(stale)) {
@@ -197,11 +342,11 @@ Cut cutWithoutConteFills(Cut cut, Set<LayerId> fills) {
   );
 }
 
-/// One cut's conte group as this write resolves it: its base, its slice of
-/// the stack ([attachedGroupSlice]) and the key of the structure's row each
-/// member of it is.
+/// One cut's conte group as this write resolves it: its base, its members
+/// wherever they stand in the stack ([attachedGroupMembers]) and the key of
+/// the structure's row each member is.
 final class _GroupOf {
-  _GroupOf(this.cut, this.base, this.slice, this.keyOf);
+  _GroupOf(this.cut, this.base, this.members, this.keyOf);
 
   /// A settled cut's group: every member names its row by its own key —
   /// the last write laid it so.
@@ -210,9 +355,9 @@ final class _GroupOf {
     if (base == null) {
       return _GroupOf(cut, null, const [], const {});
     }
-    final slice = attachedGroupSlice(base.id, cut.layers);
-    return _GroupOf(cut, base, slice, {
-      for (final member in slice)
+    final members = attachedGroupMembers(base.id, cut.layers);
+    return _GroupOf(cut, base, members, {
+      for (final member in members)
         if (member.conteKey case final key? when !identical(member, base))
           member.id: key,
     });
@@ -222,19 +367,19 @@ final class _GroupOf {
   final Layer? base;
 
   /// The base and its members in stack order.
-  final List<Layer> slice;
+  final List<Layer> members;
   final Map<LayerId, ConteKey> keyOf;
 
   /// The group's LAYOUT: each member's key in stack order with null for
   /// the base, and the folder each is filed in.
   _Layout get layout => (
     order: [
-      for (final member in slice)
+      for (final member in members)
         if (identical(member, base)) null else ?keyOf[member.id],
     ],
     parents: {
-      for (final member in slice)
-        ?keyOf[member.id]: _keyOfFolder(slice, keyOf, member.folderId),
+      for (final member in members)
+        ?keyOf[member.id]: _keyOfFolder(members, keyOf, member.folderId),
     },
   );
 }
@@ -266,12 +411,12 @@ final class _Structure {
   /// holds — a row copied, or pasted — is a row of its own, as a member
   /// that names none is.
   _GroupOf resolve(Cut cut, Layer base) {
-    final slice = attachedGroupSlice(base.id, cut.layers);
-    final baseIndex = slice.indexWhere((member) => identical(member, base));
+    final members = attachedGroupMembers(base.id, cut.layers);
+    final baseIndex = members.indexWhere((member) => identical(member, base));
     // Who holds each row of the structure here: a row of the cut's own
     // before one the structure gave it, the lower one before the upper.
     final holder = <ConteKey, Layer>{};
-    for (final member in slice) {
+    for (final member in members) {
       final key = member.conteKey;
       if (identical(member, base) || key == null || !entries.containsKey(key)) {
         continue;
@@ -286,11 +431,11 @@ final class _Structure {
         member.id: key,
     };
     final born = <Layer>[];
-    for (final (index, member) in slice.indexed) {
+    for (final (index, member) in members.indexed) {
       if (index == baseIndex || keyOf.containsKey(member.id)) {
         continue;
       }
-      final atItsPlace = _placeOf(slice, baseIndex, index);
+      final atItsPlace = _placeOf(members, baseIndex, index);
       if (atItsPlace != null && !holder.containsKey(atItsPlace)) {
         holder[atItsPlace] = member;
         keyOf[member.id] = atItsPlace;
@@ -298,7 +443,7 @@ final class _Structure {
       }
       final key = place(
         member,
-        after: _keyBefore(slice, keyOf, baseIndex, index),
+        after: _keyBefore(members, keyOf, baseIndex, index),
       );
       holder[key] = member;
       keyOf[member.id] = key;
@@ -311,19 +456,19 @@ final class _Structure {
       final key = keyOf[member.id]!;
       entries[key] = entries[key]!.copyWith(
         head: ConteHead.of(member),
-        parent: _keyOfFolder(slice, keyOf, member.folderId),
+        parent: _keyOfFolder(members, keyOf, member.folderId),
       );
     }
-    return _GroupOf(cut, base, slice, keyOf);
+    return _GroupOf(cut, base, members, keyOf);
   }
 
-  /// The structure's row at the place [slice]'s member at [index] stands
+  /// The structure's row at the place [members]' member at [index] stands
   /// in its cut: an attach row's seat ([_seatIn]), a folder's turn among
   /// the folders on its side.
-  ConteKey? _placeOf(List<Layer> slice, int baseIndex, int index) {
-    final folder = slice[index].kind.groupsLayers;
+  ConteKey? _placeOf(List<Layer> members, int baseIndex, int index) {
+    final folder = members[index].kind.groupsLayers;
     final place = _seatIn(
-      [for (final member in slice) member.kind.groupsLayers == folder],
+      [for (final member in members) member.kind.groupsLayers == folder],
       baseIndex,
       index,
     );
@@ -375,9 +520,9 @@ final class _Structure {
   /// What [group] changed of [settled] — its rows' heads, and where its
   /// rows stand and are filed — made the structure's (rule 2).
   void takeEditsOf(_GroupOf group, _GroupOf settled) {
-    final before = {for (final member in settled.slice) member.id: member};
+    final before = {for (final member in settled.members) member.id: member};
     baseHead = baseHead?.editedBy(settled.base!, group.base!);
-    for (final member in group.slice) {
+    for (final member in group.members) {
       final key = group.keyOf[member.id];
       final was = before[member.id];
       final entry = key == null ? null : entries[key];
@@ -507,11 +652,11 @@ final class _AfterKey extends _After {
   final ConteKey? key;
 }
 
-/// What the member at [index] of [slice] stands after in its cut: the
+/// What the member at [index] of [members] stands after in its cut: the
 /// nearest member under it that has a key, or the conte; or the bottom of
 /// the group.
 _After _keyBefore(
-  List<Layer> slice,
+  List<Layer> members,
   Map<LayerId, ConteKey> keyOf,
   int baseIndex,
   int index,
@@ -520,21 +665,21 @@ _After _keyBefore(
     if (under == baseIndex) {
       return const _AfterKey(null);
     }
-    if (keyOf[slice[under].id] case final key?) {
+    if (keyOf[members[under].id] case final key?) {
       return _AfterKey(key);
     }
   }
   return const _AtTheBottom();
 }
 
-/// The key of the folder [folderId] names when it is a member of [slice];
+/// The key of the folder [folderId] names when it is one of [members];
 /// null for one outside the group — the folder the conte itself is in.
 ConteKey? _keyOfFolder(
-  List<Layer> slice,
+  List<Layer> members,
   Map<LayerId, ConteKey> keyOf,
   LayerId? folderId,
 ) {
-  for (final member in slice) {
+  for (final member in members) {
     if (member.id == folderId) {
       return keyOf[member.id];
     }
@@ -571,6 +716,11 @@ bool _sameOrder(List<ConteKey?> a, List<ConteKey?> b) =>
 /// [group]'s cut with its conte laid from [structure] (rule 4) — the cut
 /// itself when it wears it already.
 ///
+/// The group is laid as ONE RUN where its conte stands, every other row of
+/// the cut keeping its order around it: a row that stood inside the group
+/// steps out on its side of the conte — nothing stands inside an attach
+/// group (R26 #36, `newRowPlacement`).
+///
 /// A member whose row the structure forgot is a 공정 folder left filing
 /// nothing (rule 3): the one the structure gave the cut goes, and one of
 /// the cut's own stands over the group, out of it — an empty folder is not
@@ -579,57 +729,56 @@ Cut _laidCut(_GroupOf group, _Structure structure) {
   final cut = group.cut;
   final base = group.base!;
   final layers = cut.layers;
-  final start = attachedGroupStartIndex(base.id, layers);
-  final end = attachedGroupEndIndex(base.id, layers);
   final mine = {
     for (final MapEntry(key: id, value: key) in group.keyOf.entries)
       if (structure.entries.containsKey(key)) key: id,
   };
-  final members = {for (final member in group.slice) member.id: member};
-  final outside = {
-    for (final layer in [...layers.sublist(0, start), ...layers.sublist(end)])
-      layer.id,
-  };
+  final byId = {for (final member in group.members) member.id: member};
+  final others = [
+    for (final layer in layers)
+      if (!byId.containsKey(layer.id)) layer,
+  ];
+  final outside = {for (final layer in others) layer.id};
   final idOf = {
     for (final key in structure.order.nonNulls)
       key: mine[key] ?? _freeFillId(key, cut.id, outside),
   };
   final baseIndex = structure.order.indexOf(null);
-  final slice = [
+  final run = [
     for (final (index, key) in structure.order.indexed)
       if (key == null)
         structure.baseHead!.wornBy(base)
       else
         _worn(
-          members[mine[key]] ??
+          byId[mine[key]] ??
               _fillFor(structure.entries[key]!, idOf[key]!, base),
           structure.entries[key]!,
-          base: base,
-          placement: index < baseIndex
-              ? AttachedPlacement.below
-              : AttachedPlacement.above,
-          folderId: switch (structure.entries[key]!.parent) {
-            final parent? => idOf[parent],
-            null => base.folderId,
-          },
+          (
+            base: base,
+            side: index < baseIndex
+                ? AttachedPlacement.below
+                : AttachedPlacement.above,
+            folderId: switch (structure.entries[key]!.parent) {
+              final parent? => idOf[parent],
+              null => base.folderId,
+            },
+          ),
         ),
   ];
-  final stepsOut = _foldersSteppingOut(group, mine, base);
-  final old = layers.sublist(start, end);
+  final under = layers
+      .take(layers.indexOf(base))
+      .where((layer) => !byId.containsKey(layer.id))
+      .length;
+  final laid = [
+    ...others.take(under),
+    ...run,
+    ..._foldersSteppingOut(group, mine, base),
+    ...others.skip(under),
+  ];
   final same =
-      stepsOut.isEmpty &&
-      old.length == slice.length &&
-      old.indexed.every((entry) => identical(entry.$2, slice[entry.$1]));
-  return same
-      ? cut
-      : cut.copyWith(
-          layers: [
-            ...layers.sublist(0, start),
-            ...slice,
-            ...stepsOut,
-            ...layers.sublist(end),
-          ],
-        );
+      laid.length == layers.length &&
+      laid.indexed.every((entry) => identical(entry.$2, layers[entry.$1]));
+  return same ? cut : cut.copyWith(layers: laid);
 }
 
 /// [group]'s own folders whose rows the structure forgot, stepping out of
@@ -642,7 +791,7 @@ List<Layer> _foldersSteppingOut(
 ) {
   final kept = mine.values.toSet();
   final out = [
-    for (final member in group.slice)
+    for (final member in group.members)
       if (!identical(member, base) &&
           !kept.contains(member.id) &&
           !isConteFill(member))
@@ -673,29 +822,28 @@ LayerId _freeFillId(ConteKey key, CutId cutId, Set<LayerId> taken) {
   }
 }
 
-/// [row] standing as [entry]'s row of a cut's conte: its key, its head, its
-/// side of [base] and its folder — [row] itself when it stands so already.
-Layer _worn(
-  Layer row,
-  ConteEntry entry, {
-  required Layer base,
-  required AttachedPlacement placement,
-  required LayerId? folderId,
-}) {
+/// Where a row of the structure stands in a cut's conte: riding [base] on
+/// its [side] of it, filed in [folderId].
+typedef _Stand = ({Layer base, AttachedPlacement side, LayerId? folderId});
+
+/// [row] standing as [entry]'s row of a cut's conte, where [stand] puts it:
+/// its key, its head, its side of the conte and its folder — [row] itself
+/// when it stands so already.
+Layer _worn(Layer row, ConteEntry entry, _Stand stand) {
+  final (:base, :side, :folderId) = stand;
   final rides = !entry.isFolder;
   final stands =
       row.conteKey == entry.key &&
       row.folderId == folderId &&
       (!rides ||
-          (row.attachedToLayerId == base.id &&
-              row.attachedPlacement == placement));
+          (row.attachedToLayerId == base.id && row.attachedPlacement == side));
   final placed = stands
       ? row
       : row.copyWith(
           conteKey: entry.key,
           folderId: folderId,
           attachedToLayerId: rides ? base.id : row.attachedToLayerId,
-          attachedPlacement: rides ? placement : row.attachedPlacement,
+          attachedPlacement: rides ? side : row.attachedPlacement,
         );
   return entry.head.wornBy(placed);
 }

@@ -1246,10 +1246,9 @@ class Standing {
   /// Opens [row]'s fold — a folder's members, a base's attach group
   /// (`Layer.collapsed`) — OUTSIDE history ([_openFoldersAbove] says why),
   /// on every row the fold's own command writes ([headMirrorTargets]): its
-  /// fold is its link group's (F-302) — and a conte row's its track's
-  /// structure's, which the write lays on every cut (F-343) — and a walk
-  /// that opened this cut's alone would leave one fold folded two ways. The
-  /// rail reads it at once ([RailView.readFolds]).
+  /// fold is its link group's (F-302) and its head's (I-73), and a walk that
+  /// opened this cut's alone would leave one fold folded two ways. The rail
+  /// reads it at once ([RailView.readFolds]).
   ///
   /// ONE write for the two folds the standing law opens: the folders above
   /// a row an undo walks back to, and the attach group a row you went to

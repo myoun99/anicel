@@ -37,7 +37,11 @@ import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
 import '../models/track_conte_laying.dart'
-    show cutWithoutConteFills, isConteFill, trackWithItsConteLaid;
+    show
+        conteFillsGiven,
+        cutWithoutConteFills,
+        isConteFill,
+        projectWithItsContesLaid;
 import '../models/track_transitions.dart'
     show drawnFrameCountOf, transitionHandlesByCut;
 import '../models/transition_geometry.dart' show CutTransitionHandles;
@@ -144,43 +148,12 @@ class ProjectRepository {
         _currentProject = pass.project;
       }
     }
-    return _fillsGiven(before, _currentProject);
+    return conteFillsGiven(before, _currentProject);
   }
 
   /// The cuts as the write before the first of an [asOneConteWrite]'s left
   /// them, while one is under way — null outside one.
   Map<CutId, _Settled>? _conteStart;
-
-  /// The rows the structure gave the cuts between [before] and [after]:
-  /// each one [after] holds that the same cut of [before] did not.
-  static Set<LayerId> _fillsGiven(Project? before, Project? after) {
-    if (after == null || identical(before, after)) {
-      return const {};
-    }
-    final was = {
-      for (final track in before?.tracks ?? const <Track>[])
-        for (final cut in track.cuts) cut.id: cut,
-    };
-    final given = <LayerId>{};
-    for (final track in after.tracks) {
-      for (final cut in track.cuts) {
-        final old = was[cut.id];
-        if (identical(old, cut)) {
-          continue;
-        }
-        final had = {
-          for (final layer in old?.layers ?? const <Layer>[])
-            if (isConteFill(layer)) layer.id,
-        };
-        for (final layer in cut.layers) {
-          if (isConteFill(layer) && !had.contains(layer.id)) {
-            given.add(layer.id);
-          }
-        }
-      }
-    }
-    return given;
-  }
 
   /// Takes [rows] — rows the structure gave the cuts, by
   /// [asOneConteWrite]'s answer — out of every cut that holds one, what a
@@ -300,9 +273,10 @@ class ProjectRepository {
   }
 
   /// The write-time invariants. First, of every TRACK: its CONTE STRUCTURE
-  /// ([trackWithItsConteLaid], F-343) — what a write did to one cut's conte
-  /// made the track's, and every cut's conte laid from it — so the six
-  /// below read every conte as it stands. Then, of every cut:
+  /// ([projectWithItsContesLaid], F-343) — what a write did to one cut's
+  /// conte made the track's, every cut's conte laid from it, and the rows
+  /// it gave a 겸용 pair one layer — so the six below read every conte as it
+  /// stands. Then, of every cut:
   /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
   ///    layer's stored timeline is ONE real 1-frame block at index 0 plus
   ///    a fixed end-side HOLD whose ghosts fill to the cut's drawn end
@@ -423,23 +397,15 @@ class ProjectRepository {
     );
   }
 
-  /// [project] with each track's conte laid ([trackWithItsConteLaid]), what
-  /// a write changed read against the cuts as [against] holds them.
+  /// [project] with each track's conte laid ([projectWithItsContesLaid]),
+  /// what a write changed read against the cuts as [against] holds them.
   static Project _withContesLaid(
     Project project, {
     required Map<CutId, _Settled> against,
-  }) {
-    final tracks = mappedOrSame(
-      project.tracks,
-      (track) => trackWithItsConteLaid(
-        track,
-        settledCut: (cutId) => against[cutId]?.cut,
-      ),
-    );
-    return identical(tracks, project.tracks)
-        ? project
-        : project.copyWith(tracks: tracks);
-  }
+  }) => projectWithItsContesLaid(
+    project,
+    settledCut: (cutId) => against[cutId]?.cut,
+  );
 
   /// Each cut as the last write left it, with the のりしろ its conte row and
   /// run edges were settled against — so a write settles only the cuts it

@@ -194,8 +194,13 @@ void main() {
       (AttachedPlacement.above, 1),
       (AttachedPlacement.below, -1),
     ]) {
-      test('🚨wears the head of the seat it lands on — ${placement.name} — '
-          'and a cut that already holds that seat is given no second row', () {
+      // ↩️I-73: a row added to a cut lacking a seat another cut held was
+      // born on that seat wearing its head, and the other cut was given no
+      // second row. Since F-343 no cut lacks it past the open: the seat is
+      // the structure's, given to every cut's conte.
+      test('🚨a seat only another cut holds is every cut\'s from the open — '
+          '${placement.name}: given wearing its head — and a row added lands '
+          'past it in every cut', () {
         final session = sessionOf([
           cutOf('a', [cel('a'), conte('a')]),
           cutOf('b', [
@@ -221,17 +226,19 @@ void main() {
               ),
           ]),
         ]);
+        final given = seatRow(session, 'a', seat);
+        expect(
+          (given.name, given.opacity, given.blendMode),
+          ('Shadow', 0.5, LayerBlendMode.multiply),
+        );
         standOn(session, 'a', 'a-conte');
 
         session.folders.addAttachedLayer(placement);
 
-        final born = seatRow(session, 'a', seat);
-        expect(
-          (born.name, born.opacity, born.blendMode),
-          ('Shadow', 0.5, LayerBlendMode.multiply),
-        );
-        expect(conteGroupOf(cutIn(session, 'b')), hasLength(2));
+        expect(seatRow(session, 'a', seat).id, given.id);
         expect(seatRow(session, 'b', seat).id, const LayerId('b-side'));
+        expect(seatRow(session, 'b', seat * 2).id, isNot(given.id));
+        expect(conteGroupOf(cutIn(session, 'b')), hasLength(3));
       });
     }
 
@@ -282,9 +289,12 @@ void main() {
 
     // 🗣️I-73-one-head-Q2 (유저 2026-10-09 → `all`): 「넷 다 모든 컷에 함께」
     // — 오거나이저 안 추가 is one of the four. ↩️Such a row was its cut's
-    // alone: the planner named only the group's edge, and stood down.
+    // alone: the planner named only the group's edge, and stood down. And
+    // it was born in no folder in the other cuts, until the 공정 folder was
+    // the track's structure's as well (F-343).
     test('🚨a row born INTO an organizer of the conte\'s rows is born on its '
-        'seat in every cut\'s — riding the conte there, with no folder', () {
+        'seat in every cut\'s — riding the conte there, in that cut\'s row of '
+        'the folder', () {
       final session = sessionOf([
         cutOf('a', [
           cel('a'),
@@ -318,7 +328,11 @@ void main() {
       final bornInB = inB.firstWhere((entry) => entry.seat == bornSeat).row;
       expect(bornInB.id, isNot(const LayerId('b-over')), reason: 'a new row');
       expect(bornInB.attachedToLayerId, const LayerId('b-conte'));
-      expect(bornInB.folderId, isNull, reason: 'b files nothing there');
+      final folderInA = cutIn(session, 'a').layers.byId(organizer.folderId!)!;
+      expect(
+        cutIn(session, 'b').layers.byId(bornInB.folderId!)?.conteKey,
+        folderInA.conteKey,
+      );
     });
   });
 

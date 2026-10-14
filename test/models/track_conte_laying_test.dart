@@ -12,6 +12,9 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte.dart';
@@ -195,12 +198,22 @@ void main() {
   test('a row a write adds to one cut\'s conte is every cut\'s — on its side '
       'of the conte, where it stands', () {
     final before = twoCuts();
+    // Each where the ＋ puts it: a row under the conte at the bottom of the
+    // group, one over it at the top.
     final added = edited(
       before,
       'a',
       (layers) => [
-        rider('a', 'under', name: 'Under', placement: AttachedPlacement.below),
-        ...layers,
+        for (final layer in layers) ...[
+          if (layer.id == const LayerId('a-conte'))
+            rider(
+              'a',
+              'under',
+              name: 'Under',
+              placement: AttachedPlacement.below,
+            ),
+          layer,
+        ],
         rider('a', 'n', name: 'N'),
       ],
     );
@@ -211,6 +224,38 @@ void main() {
     expect(conteOf(laid, 'b'), ['*Under', 'Conte', 'X', '*N']);
     expect(rowOf(laid, 'a', 'N').conteKey, const ConteKey('a-n'));
     expect(rowOf(laid, 'b', 'N').conteKey, const ConteKey('a-n'));
+  });
+
+  test('a row riding the conte APART from the rest of its group is its '
+      'group\'s — gathered back to its seat with no second one given, the '
+      'rows that stood inside the group stepping out on their side', () {
+    final ink = Layer(id: const LayerId('b-ink'), name: 'Ink', frames: const []);
+    final laid = write(
+      trackOf([
+        cutOf('a', [
+          rider('a', 'u', name: 'U', placement: AttachedPlacement.below),
+          conte('a'),
+          rider('a', 'x', name: 'X'),
+          rider('a', 'q', name: 'Q'),
+        ]),
+        cutOf('b', [
+          rider('b', 'u', name: 'U', placement: AttachedPlacement.below),
+          cel('b'),
+          conte('b'),
+          rider('b', 'x', name: 'X'),
+          ink,
+          rider('b', 'q', name: 'Q'),
+        ]),
+      ]),
+    );
+
+    expect(conteOf(laid, 'b'), ['U', 'Conte', 'X', 'Q']);
+    expect(cutIn(laid, 'b').layers.where(isConteFill), isEmpty);
+    expect(
+      [for (final layer in cutIn(laid, 'b').layers) layer.id.value],
+      ['b-cel', 'b-u', 'b-conte', 'b-x', 'b-q', 'b-ink'],
+      reason: 'the cel under the conte, the ink over it',
+    );
   });
 
   group('what a write changes of a row\'s head', () {
@@ -505,19 +550,23 @@ void main() {
     });
 
     test('reads back from its file as it was, and lays as itself', () {
+      // A track as a file reads one back — its section rows filled in.
+      Track filed(Track track) => Track.fromJson(track.toJson());
       final laid = write(
-        trackOf([
-          cutOf('a', [
-            rider('a', 'u', name: 'U', placement: AttachedPlacement.below),
-            conte('a'),
-            rider('a', 'x', name: 'X', folderId: const LayerId('a-f')),
-            folder('a', 'f', name: 'F'),
+        filed(
+          trackOf([
+            cutOf('a', [
+              rider('a', 'u', name: 'U', placement: AttachedPlacement.below),
+              conte('a'),
+              rider('a', 'x', name: 'X', folderId: const LayerId('a-f')),
+              folder('a', 'f', name: 'F'),
+            ]),
+            cutOf('b', [conte('b')]),
           ]),
-          cutOf('b', [conte('b')]),
-        ]),
+        ),
       );
 
-      final read = Track.fromJson(laid.toJson());
+      final read = filed(laid);
 
       expect(read, laid);
       expect(read.conte, laid.conte);
@@ -543,5 +592,93 @@ void main() {
     expect(conteOf(laid, 'b'), ['Conte', '*X']);
     expect(rowOf(laid, 'b', 'X').id, LayerId('${stray.id.value}~2'));
     expect(rowOf(laid, 'b', 'Stray'), same(stray));
+  });
+
+  group('the rows it gives a 겸용 pair', () {
+    LayerLinkMember use(String cut, String layer) => LayerLinkMember(
+      trackId: const TrackId('t1'),
+      cutId: CutId(cut),
+      layerId: LayerId(layer),
+    );
+
+    /// Cuts a, b and c with a conte, X riding a's alone — b's and c's
+    /// contes one layer: a 겸용 pair.
+    Project film() => Project(
+      id: const ProjectId('laying'),
+      name: 'Laying',
+      createdAt: DateTime.utc(2026, 10, 14),
+      tracks: [
+        trackOf([
+          cutOf('a', [conte('a'), rider('a', 'x', name: 'X')]),
+          cutOf('b', [conte('b')]),
+          cutOf('c', [conte('c')]),
+        ]),
+      ],
+      linkRegistry: LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(
+            id: 'link-1',
+            members: [use('b', 'b-conte'), use('c', 'c-conte')],
+          ),
+        ],
+      ),
+    );
+
+    Project laidAgain(Project project, Project settled) =>
+        projectWithItsContesLaid(
+          project,
+          settledCut: (cutId) =>
+              settled.tracks.single.cuts.firstWhere((cut) => cut.id == cutId),
+        );
+
+    test('are one layer — the first cut\'s the canonical use', () {
+      final laid = projectWithItsContesLaid(film(), settledCut: (_) => null);
+
+      final given = [
+        for (final cut in const ['b', 'c'])
+          rowOf(laid.tracks.single, cut, 'X').id,
+      ];
+      final group = laid.linkRegistry.groupOf(
+        cutId: const CutId('b'),
+        layerId: given.first,
+      );
+      expect([for (final member in group!.members) member.layerId], given);
+      expect(group.members.first.cutId, const CutId('b'));
+      expect(
+        laid.linkRegistry.groupOf(
+          cutId: const CutId('a'),
+          layerId: const LayerId('a-x'),
+        ),
+        isNull,
+        reason: 'a holds its own row: nothing was given it',
+      );
+    });
+
+    test('a row gone from them takes its link group with it', () {
+      final laid = projectWithItsContesLaid(film(), settledCut: (_) => null);
+      final track = laid.tracks.single;
+      final gone = laid.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              for (final cut in track.cuts)
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      if (layer.name != 'X') layer,
+                  ],
+                ),
+            ],
+          ),
+        ],
+      );
+
+      final relaid = laidAgain(gone, laid);
+
+      expect(relaid.tracks.single.conte.entries, isEmpty, reason: '⛔전제');
+      expect([for (final group in relaid.linkRegistry.groups) group.id], [
+        'link-1',
+      ]);
+    });
   });
 }

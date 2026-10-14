@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_mount.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show attachedGroupSlice;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte_group.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -25,7 +28,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 ///
 /// Cuts a, b and c hold the same conte group, bottom first: `under`, the
 /// conte, `over1`, `over2` — and a drawing row `cel` beside it. Cut d's
-/// conte carries `over1` alone; a group shaped otherwise is left as it is.
+/// conte carries `over1` alone in the file, and opens wearing the track's
+/// structure (F-343): the rows it lacked given to it, empty. ↩️A group
+/// shaped otherwise was left as it was.
 void main() {
   const a = CutId('a');
   const b = CutId('b');
@@ -124,8 +129,7 @@ void main() {
   group('a re-ordering of the conte\'s rows', () {
     const swapped = ['2:over1', '1:over2', '0:conte', '-1:under'];
 
-    test('🚨is every cut\'s whose group holds the same seats — and undo takes '
-        'it back from all of them', () {
+    test('🚨is every cut\'s — and undo takes it back from all of them', () {
       final session = open();
 
       place(session, [
@@ -139,14 +143,11 @@ void main() {
       expect(groupOf(session, a), swapped);
       expect(groupOf(session, b), swapped);
       expect(groupOf(session, const CutId('c')), swapped);
-      expect(
-        groupOf(session, d),
-        ['1:over1', '0:conte'],
-        reason: 'shaped otherwise',
-      );
+      expect(groupOf(session, d), swapped, reason: 'd wears the structure');
 
       session.undo();
       expect(groupOf(session, b), asItWas);
+      expect(groupOf(session, d), asItWas);
     });
 
     test('🚨across the conte, the row takes the other side in every cut', () {
@@ -173,104 +174,79 @@ void main() {
       );
     });
 
-    // A group shaped otherwise stands down — each of the ways it can be.
-    void crossOver1(EditorSessionManager session) => place(
-      session,
-      ['a-cel', 'a-under', 'a-over1', 'a-conte', 'a-over2'],
-      moved: 'a-over1',
-      attach: const LayerAttachDrop(
-        sideChanges: [
-          (layerId: LayerId('a-over1'), placement: AttachedPlacement.below),
+    // ↩️A group shaped otherwise stood down here, each of the ways it can
+    // be — the re-ordering was every cut's whose group held the same seats.
+    // The order is the track's structure's now (F-343), and a cut's conte
+    // wears it from the moment the file opens.
+    for (final (shape, layers) in [
+      (
+        'holding only the top seats',
+        [
+          row('e-cel', kind: LayerKind.animation),
+          row('e-conte'),
+          row('e-over1', ridesOn: 'e-conte'),
+          row('e-over2', ridesOn: 'e-conte'),
         ],
       ),
-    );
+      (
+        'with another row standing inside it',
+        [
+          row(
+            'e-under',
+            ridesOn: 'e-conte',
+            placement: AttachedPlacement.below,
+          ),
+          row('e-conte'),
+          row('e-over1', ridesOn: 'e-conte'),
+          row('e-cel', kind: LayerKind.animation),
+          row('e-over2', ridesOn: 'e-conte'),
+        ],
+      ),
+    ]) {
+      test('🚨a group $shape crosses with the rest: one structure for '
+          'every cut\'s conte', () {
+        final session = open(
+          extra: [
+            Cut(
+              id: const CutId('e'),
+              name: 'e',
+              duration: 12,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: layers,
+            ),
+          ],
+        );
 
-    test('🚨a group holding only the first of the seats is left as it is', () {
-      // e's seats are a's from the top, the bottom one missing: the row
-      // that crosses in a would cross in e too, were the rest not asked.
-      final session = open(
-        extra: [
-          Cut(
-            id: const CutId('e'),
-            name: 'e',
-            duration: 12,
-            canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: [
-              row('e-cel', kind: LayerKind.animation),
-              row('e-conte'),
-              row('e-over1', ridesOn: 'e-conte'),
-              row('e-over2', ridesOn: 'e-conte'),
+        place(
+          session,
+          ['a-cel', 'a-under', 'a-over1', 'a-conte', 'a-over2'],
+          moved: 'a-over1',
+          attach: const LayerAttachDrop(
+            sideChanges: [
+              (layerId: LayerId('a-over1'), placement: AttachedPlacement.below),
             ],
           ),
-        ],
-      );
+        );
 
-      crossOver1(session);
-
-      expect(groupOf(session, const CutId('e')), [
-        '2:over2',
-        '1:over1',
-        '0:conte',
-      ]);
-    });
-
-    test('🚨…and so is a group with a row filed in a folder, wherever the '
-        'folder stands', () {
-      final session = open(
-        extra: [
-          Cut(
-            id: const CutId('f'),
-            name: 'f',
-            duration: 12,
-            canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: [
-              row('f-org', kind: LayerKind.folder),
-              row('f-cel', kind: LayerKind.animation),
-              row(
-                'f-under',
-                ridesOn: 'f-conte',
-                placement: AttachedPlacement.below,
-              ),
-              row('f-conte'),
-              row('f-over1', ridesOn: 'f-conte'),
-              row('f-over2', ridesOn: 'f-conte', folderId: 'f-org'),
-            ],
-          ),
-        ],
-      );
-
-      crossOver1(session);
-
-      expect(groupOf(session, const CutId('f')), asItWas);
-    });
-
-    test('🚨…and so is a group another row stands inside', () {
-      final session = open(
-        extra: [
-          Cut(
-            id: const CutId('g'),
-            name: 'g',
-            duration: 12,
-            canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: [
-              row(
-                'g-under',
-                ridesOn: 'g-conte',
-                placement: AttachedPlacement.below,
-              ),
-              row('g-conte'),
-              row('g-over1', ridesOn: 'g-conte'),
-              row('g-cel', kind: LayerKind.animation),
-              row('g-over2', ridesOn: 'g-conte'),
-            ],
-          ),
-        ],
-      );
-
-      crossOver1(session);
-
-      expect(groupOf(session, const CutId('g')), asItWas);
-    });
+        expect(groupOf(session, const CutId('e')), [
+          '1:over2',
+          '0:conte',
+          '-1:over1',
+          '-2:under',
+        ]);
+        expect(
+          [
+            for (final layer in attachedGroupSlice(
+              const LayerId('e-conte'),
+              cutIn(session, const CutId('e')).layers,
+            ))
+              layer.name,
+          ],
+          ['under', 'over1', 'conte', 'over2'],
+          reason: 'one run — nothing stands inside the group',
+        );
+      });
+    }
   });
 
   group('a row dragged onto the conte', () {
@@ -307,12 +283,13 @@ void main() {
       expect(born.frames, isEmpty);
       expect(
         groupOf(session, d),
-        ['1:over1', '0:conte'],
-        reason: 'its above side holds other seats',
+        ['3:over2', '2:over1', '1:cel', '0:conte', '-1:under'],
+        reason: 'd wears the structure',
       );
 
       session.undo();
       expect(groupOf(session, b), asItWas);
+      expect(groupOf(session, d), asItWas);
     });
 
     test('a row dragged onto ANOTHER base is born nowhere else', () {
@@ -370,14 +347,16 @@ void main() {
   });
 
   test('🚨a row added inside an organizer folder of the group is born on its '
-      'seat in every cut\'s — riding the conte there, with no folder', () {
+      'seat in every cut\'s — riding the conte there, filed in that cut\'s '
+      'row of the folder', () {
     final session = open();
-    // a's over2 filed into an organizer folder ORG, which stands over it.
+    // a's over2 filed into an organizer folder ORG, which stands over it —
+    // an edit of the project, which the track's structure takes (F-343).
     final aCut = cutIn(session, a);
-    session.repository.replaceProject(
-      session.repository.requireProject().copyWith(
+    session.repository.updateProject(
+      (project) => project.copyWith(
         tracks: [
-          session.repository.requireProject().tracks.single.copyWith(
+          project.tracks.single.copyWith(
             cuts: [
               aCut.copyWith(
                 layers: [
@@ -389,19 +368,18 @@ void main() {
                   row('a-org', kind: LayerKind.folder),
                 ],
               ),
-              for (final cut in session.repository
-                  .requireProject()
-                  .tracks
-                  .single
-                  .cuts
-                  .skip(1))
-                cut,
+              ...project.tracks.single.cuts.skip(1),
             ],
           ),
         ],
       ),
     );
     expect(groupOf(session, a), asItWas);
+    expect(
+      cutIn(session, b).layers.byId(const LayerId('b-over2'))!.folderId,
+      isNotNull,
+      reason: '⛔전제: b files its over2 in its row of the folder',
+    );
 
     // A new row filed in ORG, under over2: the group's second seat.
     final layers = cutIn(session, a).layers;
@@ -426,7 +404,13 @@ void main() {
       ['3:over2', '2:new', '1:over1', '0:conte', '-1:under'],
     );
     final born = conteRowAtSeat(cutIn(session, b), 2)!;
-    expect(born.folderId, isNull, reason: 'b files nothing there');
+    expect(
+      cutIn(session, b).layers.byId(born.folderId!)?.conteKey,
+      const ConteKey('a-org'),
+      reason:
+          'the 공정 folder is the structure\'s too (F-343) — ↩️b filed '
+          'nothing there',
+    );
     expect(born.attachedToLayerId, const LayerId('b-conte'));
   });
 }

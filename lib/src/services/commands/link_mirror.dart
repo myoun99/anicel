@@ -1,4 +1,4 @@
-import '../../models/attached_layer_resolve.dart' show attachedGroupSlice;
+import '../../models/attached_layer_resolve.dart' show attachedGroupMembers;
 import '../../models/conte_key.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -77,12 +77,10 @@ List<LayerId> linkMirrorRows(
 /// or the rows that name its row of the structure ([Layer.conteKey]) — the
 /// row itself first. Empty for a row riding no conte.
 ///
-/// ↩️It found them by SEAT, and the head was written to each of them by
-/// the verb that changed it. Since F-343 the structure lays the head on
-/// every one of them (`trackWithItsConteLaid`), and a verb writes the row
-/// it was given; this only NAMES them — for what a delete takes together
-/// ([existenceMirrorTargets]) and the view the rail keeps by row
-/// ([rowsWearingOneHead]).
+/// ↩️It found them by SEAT. Since F-343 they are the rows of one row of
+/// the track's structure, and the structure lays the head on every one of
+/// them whatever wrote it (`trackWithItsConteLaid`) — a head edit still
+/// walks them ([headMirrorTargets]) for the link group each one has.
 ///
 /// The row's cut is FOUND, not handed in: a rail that draws one head for
 /// every cut presses it under whichever cut is active, and a layer id is
@@ -113,7 +111,7 @@ List<({CutId cutId, LayerId layerId})> conteHeadTargets(
   if (base.id == layerId) {
     return (key: null);
   }
-  for (final member in attachedGroupSlice(base.id, cut.layers)) {
+  for (final member in attachedGroupMembers(base.id, cut.layers)) {
     if (member.id == layerId) {
       return switch (member.conteKey) {
         final key? => (key: key),
@@ -132,7 +130,7 @@ Layer? _conteRowAt(Cut cut, ({ConteKey? key}) place) {
   if (base == null || key == null) {
     return base;
   }
-  for (final member in attachedGroupSlice(base.id, cut.layers)) {
+  for (final member in attachedGroupMembers(base.id, cut.layers)) {
     if (member.conteKey == key && member.id != base.id) {
       return member;
     }
@@ -196,18 +194,22 @@ List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
 );
 
 /// The addresses a HEAD edit lands on: the row's link group
-/// ([linkMirrorTargets]) and, of a camera field ([cameraHead]), every
-/// camera of the track ([cameraHeadTargets]) — the closure of the two, the
-/// row itself first and each address once.
+/// ([linkMirrorTargets]), the rows of the same row of its track's conte
+/// ([conteHeadTargets]) and, of a camera field ([cameraHead]), every
+/// camera of the track ([cameraHeadTargets]) — the closure of the three,
+/// the row itself first and each address once. A 겸용 sibling's conte on
+/// another track brings that track's conte rows with it: one head is one
+/// head.
 ///
 /// What walks it: a row's name, label, blend, static opacity and fold, its
 /// transform switch and the shape of its effect chain. ⛔Never the named
 /// keys' space or the cel bank — those are the link group's alone.
 ///
-/// ⛔A track's conte rows are not walked (F-343): the edit lands on the row
-/// in its own cut, and the track's structure lays it on the rest
-/// (`trackWithItsConteLaid`) — a 겸용 sibling's conte on another track
-/// taking it from the sibling the same way. One head is one head.
+/// ⚠️The track's conte rows are walked though the structure lays the head
+/// on them (F-343): it lays them within the TRACK, and a link group leaves
+/// it. ↩️F-343 walked the link group alone, and a 겸용 sibling on another
+/// track was left wearing the old head — the walk reaches it through the
+/// conte row of the track it is linked to.
 ///
 /// [cameraHead]: whether the field is one a track's cameras wear as one as
 /// well — the name, the transform switch and the twirl, and not the label.
@@ -216,13 +218,29 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   required CutId cutId,
   required LayerId layerId,
   bool cameraHead = false,
-}) => _oneHeadOf(
-  project,
-  cutId: cutId,
-  layerId: layerId,
-  conte: false,
-  cameraHead: cameraHead,
-);
+}) {
+  // From the cut that HOLDS the row ([conteHeadTargets] says why): the
+  // registry keys a row's group by its own cut, and would call a row
+  // addressed under another one unlinked.
+  final reached = [
+    (cutId: cutIdOfLayer(project, layerId) ?? cutId, layerId: layerId),
+  ];
+  final seen = {reached.first};
+  for (var index = 0; index < reached.length; index += 1) {
+    final at = reached[index];
+    final next = [
+      ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
+      ...conteHeadTargets(project, at.layerId),
+      if (cameraHead) ...cameraHeadTargets(project, at.layerId),
+    ];
+    for (final target in next) {
+      if (seen.add(target)) {
+        reached.add(target);
+      }
+    }
+  }
+  return reached;
+}
 
 /// The ROWS of [headMirrorTargets] — what [linkMirrorRows] is to the link
 /// group: every row a head edit is written to, by id.
@@ -240,60 +258,6 @@ List<LayerId> headMirrorRows(
   ))
     target.layerId,
 ];
-
-/// Every row that WEARS the head ([cutId], [layerId]) wears, by id — its
-/// link group's, its track's conte rows that are the same row of the
-/// structure ([conteHeadTargets]), and of a camera ([cameraHead]) every
-/// camera of the track: what the rail keeps one view for — the twirls and
-/// the folds (F-302, I-73).
-List<LayerId> rowsWearingOneHead(
-  Project project, {
-  required CutId cutId,
-  required LayerId layerId,
-  bool cameraHead = false,
-}) => [
-  for (final target in _oneHeadOf(
-    project,
-    cutId: cutId,
-    layerId: layerId,
-    conte: true,
-    cameraHead: cameraHead,
-  ))
-    target.layerId,
-];
-
-/// The closure of the rows one head reaches from ([cutId], [layerId]): its
-/// link group, and — as [conte] and [cameraHead] ask — its track's conte
-/// rows and cameras, the row itself first and each address once.
-List<({CutId cutId, LayerId layerId})> _oneHeadOf(
-  Project project, {
-  required CutId cutId,
-  required LayerId layerId,
-  required bool conte,
-  required bool cameraHead,
-}) {
-  // From the cut that HOLDS the row ([conteHeadTargets] says why): the
-  // registry keys a row's group by its own cut, and would call a row
-  // addressed under another one unlinked.
-  final reached = [
-    (cutId: cutIdOfLayer(project, layerId) ?? cutId, layerId: layerId),
-  ];
-  final seen = {reached.first};
-  for (var index = 0; index < reached.length; index += 1) {
-    final at = reached[index];
-    final next = [
-      ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
-      if (conte) ...conteHeadTargets(project, at.layerId),
-      if (cameraHead) ...cameraHeadTargets(project, at.layerId),
-    ];
-    for (final target in next) {
-      if (seen.add(target)) {
-        reached.add(target);
-      }
-    }
-  }
-  return reached;
-}
 
 /// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
 /// takes together.
@@ -319,13 +283,7 @@ List<({CutId cutId, LayerId layerId})> existenceMirrorTargets(
       ofTheStructure.isNotEmpty &&
       layerAnywhereOrNull(project, layerId)?.conteKey != null;
   return ridesAConte
-      ? _oneHeadOf(
-          project,
-          cutId: cutId,
-          layerId: layerId,
-          conte: true,
-          cameraHead: false,
-        )
+      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
       : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
 }
 

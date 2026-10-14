@@ -381,18 +381,19 @@ int attachedGroupStartIndex(LayerId baseId, List<Layer> layers) {
   if (start == -1) {
     return layers.length;
   }
-  while (start > 0) {
-    final layer = layers[start - 1];
-    final inGroup =
-        layer.attachedToLayerId == baseId ||
-        attachOrganizerBaseOf(layer, layers) == baseId;
-    if (!inGroup) {
-      break;
-    }
+  while (start > 0 && _ofAttachGroup(layers[start - 1], baseId, layers)) {
     start -= 1;
   }
   return start;
 }
+
+/// Whether [layer] is a row of [baseId]'s attach group other than the base:
+/// one riding it, or an organizer folder over rows that do — the one test
+/// the group's run ([attachedGroupSlice]) and its members wherever they
+/// stand ([attachedGroupMembers]) are read by.
+bool _ofAttachGroup(Layer layer, LayerId baseId, List<Layer> layers) =>
+    layer.attachedToLayerId == baseId ||
+    attachOrganizerBaseOf(layer, layers) == baseId;
 
 /// The index just past [baseId]'s attach group — base plus its contiguous
 /// attach rows AND their organizer folder rows — in [layers]; insertion
@@ -405,14 +406,7 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
     return layers.length;
   }
   end += 1;
-  while (end < layers.length) {
-    final layer = layers[end];
-    final inGroup =
-        layer.attachedToLayerId == baseId ||
-        attachOrganizerBaseOf(layer, layers) == baseId;
-    if (!inGroup) {
-      break;
-    }
+  while (end < layers.length && _ofAttachGroup(layers[end], baseId, layers)) {
     end += 1;
   }
   return end;
@@ -455,6 +449,25 @@ List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
       attachedGroupStartIndex(baseId, layers),
       attachedGroupEndIndex(baseId, layers),
     );
+
+/// [baseId]'s attach group WHEREVER ITS ROWS STAND in [layers], in stack
+/// order: the base, the rows riding it and the organizer folders over them
+/// — the [attachedGroupSlice] when none stands apart from the run. Empty
+/// for a missing base, as the slice is.
+///
+/// What a track's conte structure reads a cut's conte by (F-343): a row
+/// riding the conte is a seat of it wherever it stands — the seats count it
+/// so (`conteGroupOf`) — and the laying gathers the group back into one
+/// run, which nothing else may stand inside (R26 #36, `newRowPlacement`).
+List<Layer> attachedGroupMembers(LayerId baseId, List<Layer> layers) {
+  if (!layers.any((layer) => layer.id == baseId)) {
+    return const [];
+  }
+  return [
+    for (final layer in layers)
+      if (layer.id == baseId || _ofAttachGroup(layer, baseId, layers)) layer,
+  ];
+}
 
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,

@@ -77,7 +77,7 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/link_mirror.dart' show rowsWearingOneHead;
+import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -804,7 +804,7 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Every use of [row] — the rows that twirl and fold as one with it: the
   /// rows that wear its head, in whichever cuts they stand
-  /// ([rowsWearingOneHead] — its link group's, a track's conte rows that are
+  /// ([headMirrorRows] — its link group's, a track's conte rows that are
   /// its row of the track's structure, and a track's cameras), and itself
   /// alone for a row that is none of these or that no cut holds (a track's).
   ///
@@ -832,7 +832,7 @@ class EditorSessionManager extends ChangeNotifier
     final cutId = cutIdOfLayer(project, row) ?? activeCutId;
     return cutId == null
         ? [row]
-        : rowsWearingOneHead(
+        : headMirrorRows(
             project,
             cutId: cutId,
             layerId: row,
