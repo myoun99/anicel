@@ -248,6 +248,8 @@ void main() {
     'inputDragThreeFingers': (s) => s.inputDragThreeFingers,
     'inputExtraFinger': (s) => s.inputExtraFinger,
     'inputExtraFingerHelp': (s) => s.inputExtraFingerHelp,
+    'inputStrokeFinger': (s) => s.inputStrokeFinger,
+    'inputStrokeFingerHelp': (s) => s.inputStrokeFingerHelp,
     'inputTwoFingerRotation': (s) => s.inputTwoFingerRotation,
     'inputTwoFingerRotationHelp': (s) => s.inputTwoFingerRotationHelp,
     'inputRotationLock': (s) => s.inputRotationLock,
