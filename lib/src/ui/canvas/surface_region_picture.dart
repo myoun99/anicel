@@ -70,17 +70,22 @@ class SurfaceRegionBytes implements PictureBytes {
     for (final tile in covered) {
       tile.tile.readPixels(
         (pointer, _) => native.premultiplyRgbaRows(
-          target:
-              target +
-              ((tile.top - region.top) * width + (tile.left - region.left)) *
-                  4,
-          targetStride: stride,
-          source:
-              pointer +
-              ((tile.top - tile.worldTop) * tileSize +
-                      (tile.left - tile.worldLeft)) *
-                  4,
-          sourceStride: tileSize * 4,
+          from: (
+            start:
+                pointer +
+                ((tile.top - tile.worldTop) * tileSize +
+                        (tile.left - tile.worldLeft)) *
+                    4,
+            stride: tileSize * 4,
+          ),
+          into: (
+            start:
+                target +
+                ((tile.top - region.top) * width +
+                        (tile.left - region.left)) *
+                    4,
+            stride: stride,
+          ),
           width: tile.rightExclusive - tile.left,
           rows: tile.bottomExclusive - tile.top,
         ),

@@ -195,24 +195,21 @@ class QaNativeEngine {
   )
   _premultiplyRgbaRows;
 
-  /// [rows] rows of [width] straight pixels at [source], [sourceStride]
-  /// bytes apart, premultiplied into [target] at rows [targetStride] bytes
-  /// apart, in ONE call (`qa_premultiply_rgba_rows`, ABI 46) — the kernel
-  /// of [premultipliedTileScratch] between two strides, so a tile can be
-  /// laid into a picture of several where a call a row would cost more
-  /// than the row.
+  /// [rows] rows of [width] straight pixels read [from] one place,
+  /// premultiplied [into] another, in ONE call (`qa_premultiply_rgba_rows`,
+  /// ABI 46) — the kernel of [premultipliedTileScratch] between two strides,
+  /// so a tile can be laid into a picture of several where a call a row
+  /// would cost more than the row.
   void premultiplyRgbaRows({
-    required Pointer<Uint8> target,
-    required int targetStride,
-    required Pointer<Uint8> source,
-    required int sourceStride,
+    required NativeRows from,
+    required NativeRows into,
     required int width,
     required int rows,
   }) => _premultiplyRgbaRows(
-    target,
-    targetStride,
-    source,
-    sourceStride,
+    into.start,
+    into.stride,
+    from.start,
+    from.stride,
     width,
     rows,
   );
@@ -2383,6 +2380,11 @@ class QaNativeEngine {
         : _batchEvenings.putIfAbsent(evening, () => _arenaFloat64(evening));
   }
 }
+
+/// Rows of pixels in native memory: where the first row starts and how many
+/// bytes on the next one does. A stride belongs to its rows — handed apart,
+/// one plane's stride could walk the other's rows.
+typedef NativeRows = ({Pointer<Uint8> start, int stride});
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
 /// typed-data view over the SAME memory for Dart-side reads/writes.
