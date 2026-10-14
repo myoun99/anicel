@@ -833,9 +833,16 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
   final pixelCount = tileSize * tileSize;
   var index = 0;
   return (tile, mask) => rewriteTileLazily(tile, tileSize, (view) {
+    // 🚨THE LOOP CHECKS LOCALS OF ITS OWN FUNCTION (I-57, 2026-10-14): the
+    // mask and the recipe are captures, and a capture checked inside a loop
+    // is read past its check by the AOT compiler — a null one kills the
+    // release build
+    // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+    final coverage = mask;
+    final recipe = restore;
     Uint8List? out;
     for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-      final maskValue = mask == null ? 255 : mask[pixel];
+      final maskValue = coverage == null ? 255 : coverage[pixel];
       final offset = pixel * 4;
       if (!celPixelParticipates(
         channel: channel,
@@ -852,18 +859,18 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
         original[byte] = view[offset + channel.byteOffset(byte)];
       }
       builder?.addRun(original, 0, 1);
-      if (restore != null) {
+      if (recipe != null) {
         // ⛔A recipe shorter than its walk was built over some other
         // surface. The C pass has to refuse it — reading on there reads
         // whatever memory follows the stream — so this one refuses it too,
         // or the two passes would answer one malformed undo differently.
-        if (index >= restore.touchedPixelCount) {
+        if (index >= recipe.touchedPixelCount) {
           throw StateError(
-            'the recipe holds ${restore.touchedPixelCount} pixels and the '
+            'the recipe holds ${recipe.touchedPixelCount} pixels and the '
             'walk it replays goes past them',
           );
         }
-        restore.readInto(incoming, index);
+        recipe.readInto(incoming, index);
       }
       index += 1;
       out ??= Uint8List.fromList(view);
@@ -876,7 +883,7 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
             // it — a feathered recolour of flat black came back as
             // [55, 61, 67] rather than [10, 20, 30], and a second undo
             // would have drifted again.
-            restore != null || maskValue == 255
+            recipe != null || maskValue == 255
             ? incoming[byte]
             // Forward, partial coverage blends the VALUE, so a feathered
             // edge fades between the old colour and the new one while the

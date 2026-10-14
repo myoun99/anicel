@@ -241,6 +241,11 @@ class CameraFrameRenderService {
     Future<void> composeImages(
       List<CompositeNode<CutFrameCompositeLayer>> list,
     ) async {
+      // 🚨THE LOOP CHECKS A LOCAL OF ITS OWN FUNCTION (I-57, 2026-10-14):
+      // [rows] is the method's, and a capture checked inside a loop is read
+      // past its check by the AOT compiler — a null one kills the release
+      // build (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+      final kept = rows;
       for (final node in list) {
         switch (node) {
           case CompositeLeaf(payload: final layer):
@@ -299,8 +304,8 @@ class CameraFrameRenderService {
               }
             }
 
-            if (rows != null) {
-              layerImages[layer] = await rows.of(layer.surface, level, compose);
+            if (kept != null) {
+              layerImages[layer] = await kept.of(layer.surface, level, compose);
             } else {
               final composed = await compose();
               madeHere.add(composed.image);
