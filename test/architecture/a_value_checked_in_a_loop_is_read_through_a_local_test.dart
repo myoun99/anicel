@@ -168,6 +168,22 @@ class Host {
     }
     return n;
   }
+  int viaIs(List<int> xs, Object? shape) {
+    final round = shape is Circle;
+    var n = 0;
+    for (final x in xs) {
+      if (round) n += shape.radius.round();
+    }
+    return n;
+  }
+  int viaJoinedBool(List<Layer> layers, Layer? preview, bool on) {
+    final has = preview != null && on;
+    var n = 0;
+    for (final layer in layers) {
+      if (has) n += preview.id.length;
+    }
+    return n;
+  }
 }
 ''';
     expect(checkedReadsInLoops('y.dart', planted), {
@@ -176,6 +192,8 @@ class Host {
       'y.dart compared id',
       'y.dart typed _shape',
       'y.dart negated preview',
+      'y.dart viaIs shape',
+      'y.dart viaJoinedBool preview',
     });
   });
 
@@ -417,10 +435,9 @@ class _Walk extends RecursiveAstVisitor<void> {
 /// `x.m()`, `x[i]`, `x == y` — not `x?.f`, not `x!`, not `x == null`.
 bool _isReadThrough(SimpleIdentifier node) {
   final parent = node.parent;
+  // `x.f` parses as a PrefixedIdentifier; a PropertyAccess on a bare `x`
+  // is only ever `x?.f`.
   if (parent is PrefixedIdentifier) return identical(parent.prefix, node);
-  if (parent is PropertyAccess) {
-    return identical(parent.target, node) && !parent.isNullAware;
-  }
   if (parent is MethodInvocation) {
     return identical(parent.target, node) && !parent.isNullAware;
   }
@@ -440,7 +457,6 @@ String? _nameOf(Expression e) {
   if (e is PropertyAccess && e.target is ThisExpression) {
     return e.propertyName.name;
   }
-  if (e is ParenthesizedExpression) return _nameOf(e.expression);
   return null;
 }
 
