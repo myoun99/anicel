@@ -12,6 +12,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -51,27 +53,26 @@ import '../../helpers/named_finders.dart';
 void main() {
   const trackId = TrackId('t1');
 
-  Layer conte(String cut, {String name = 'Conte', bool visible = true}) =>
-      Layer(
-        id: LayerId('$cut-conte'),
-        name: name,
-        kind: LayerKind.storyboard,
-        isVisible: visible,
-        frames: [
-          Frame(id: FrameId('$cut-panel'), duration: 12, strokes: const []),
-        ],
-        timeline: {
-          0: TimelineExposure.drawing(FrameId('$cut-panel'), length: 12),
-        },
-      );
+  Layer conte(String cut) => Layer(
+    id: LayerId('$cut-conte'),
+    name: 'Conte',
+    kind: LayerKind.storyboard,
+    frames: [
+      Frame(id: FrameId('$cut-panel'), duration: 12, strokes: const []),
+    ],
+    timeline: {
+      0: TimelineExposure.drawing(FrameId('$cut-panel'), length: 12),
+    },
+  );
 
   /// Cut [id], its conte — [conteLayer] — ridden by [attachRows] attach
-  /// rows above it, at seats +1 up.
+  /// rows above it, at seats +1 up; its camera wearing [cameraMark].
   Cut cutOf(
     String id, {
     Layer? conteLayer,
     Layer? folder,
     int attachRows = 0,
+    LayerMark cameraMark = LayerMark.none,
   }) => Cut(
     id: CutId(id),
     name: id,
@@ -86,6 +87,7 @@ void main() {
         id: LayerId('$id-cam'),
         name: 'Camera',
         kind: LayerKind.camera,
+        mark: cameraMark,
         frames: const [],
       ),
       ?folder,
@@ -109,11 +111,13 @@ void main() {
   );
 
   /// Cuts a and b, each with a camera and a conte of the same face — b's
-  /// conte as [bConte] makes it, beside [bFolder] where given — on one
-  /// track with [seRows] S rows; a's conte ridden by [attachRows].
+  /// conte as [bConte] makes it, beside [bFolder] where given, and b's
+  /// camera wearing [bCameraMark] — on one track with [seRows] S rows; a's
+  /// conte ridden by [attachRows].
   Project film({
     Layer? bConte,
     Layer? bFolder,
+    LayerMark bCameraMark = LayerMark.none,
     int seRows = 1,
     int attachRows = 0,
   }) => Project(
@@ -127,7 +131,12 @@ void main() {
         seLayers: [for (var n = 1; n <= seRows; n += 1) seLayer(n)],
         cuts: [
           cutOf('a', conteLayer: conte('a'), attachRows: attachRows),
-          cutOf('b', conteLayer: bConte ?? conte('b'), folder: bFolder),
+          cutOf(
+            'b',
+            conteLayer: bConte ?? conte('b'),
+            folder: bFolder,
+            cameraMark: bCameraMark,
+          ),
         ],
       ),
     ],
@@ -262,22 +271,6 @@ void main() {
     expectRowsAsThey(tester, before);
   });
 
-  testWidgets('🚨a head kept across a cut shows the eye of the row it wears '
-      'now', (tester) async {
-    final session = await pumpPanel(
-      tester,
-      film(bConte: conte('b', visible: false)),
-    );
-    final before = tester.widget(headIn(conteLabel));
-    expect(eyeOn(tester, conteLabel), isTrue, reason: 'premise: a\'s eye');
-
-    session.selectCut(const CutId('b'));
-    await tester.pump();
-
-    expect(tester.widget(headIn(conteLabel)), same(before));
-    expect(eyeOn(tester, conteLabel), isFalse);
-  });
-
   testWidgets('🚨the camera head shows the VIEW as it flips — the view is no '
       'part of the face it is kept by', (tester) async {
     final view = ValueNotifier<bool>(true);
@@ -291,8 +284,16 @@ void main() {
     expect(eyeOn(tester, cameraLabel), isFalse);
   });
 
-  testWidgets('🚨a head wears the eye its row has on the timeline: a folder '
-      'above that hides the row dims it (F-185)', (tester) async {
+  /// A head kept across a cut shows the eye of the row it wears NOW.
+  ///
+  /// ↩️That was pinned on a conte of its own eye too — b's shut while a's
+  /// stood open. F-343 makes that a film no session holds: the eye is the
+  /// track conte's head ([ConteHead]), and every cut's conte wears it, so
+  /// what tells a cut's eye from the next one's is the folder above it.
+  testWidgets('🚨a head kept across a cut wears the eye its row has on the '
+      'timeline there: a folder above that hides the row dims it (F-185)', (
+    tester,
+  ) async {
     const folderId = LayerId('b-folder');
     final session = await pumpPanel(
       tester,
@@ -313,21 +314,29 @@ void main() {
         matching: find.byType(LayerVisibilityToggleButton),
       ),
     );
+    final before = tester.widget(headIn(conteLabel));
     expect(eye().hiddenAbove, isFalse, reason: 'premise: a\'s conte');
 
     session.selectCut(const CutId('b'));
     await tester.pump();
 
+    expect(
+      tester.widget(headIn(conteLabel)),
+      same(before),
+      reason: 'kept: the folder a row is filed in is no part of its face',
+    );
     expect(eye().hiddenAbove, isTrue);
     expect(eye().isVisible, isTrue, reason: 'its own switch keeps its value');
   });
 
-  testWidgets('a head handed a row of another face is built again — it says '
-      'the next cut\'s name', (tester) async {
-    final session = await pumpPanel(
-      tester,
-      film(bConte: conte('b', name: 'Layout')),
-    );
+  /// ↩️It was pinned on the conte head — b's conte named Layout. F-343
+  /// makes that a film no session holds: the name is the track conte's
+  /// head. A camera's colour label is each cut's own (I-73 ④, 「색라벨은
+  /// 컷마다 있는게 좋을거같은데」), and the two heads are kept as one piece.
+  testWidgets('a head handed a row of another face is built again — it wears '
+      'the next cut\'s colour label', (tester) async {
+    const label = LayerMark(process: LayerProcess.key);
+    final session = await pumpPanel(tester, film(bCameraMark: label));
     final before = rowsNow(tester);
 
     session.selectCut(const CutId('b'));
@@ -336,11 +345,11 @@ void main() {
     expectRowsAsThey(
       tester,
       before,
-      builtAgain: {'conte', 'conte wrapper'},
+      builtAgain: {'camera', 'camera wrapper'},
     );
     expect(
-      find.descendant(of: conteLabel, matching: find.text('Layout')),
-      findsOneWidget,
+      tester.widget<TimelineLayerControlsRow>(headIn(cameraLabel)).layer.mark,
+      label,
     );
   });
 
@@ -395,6 +404,10 @@ void main() {
     expect(wrapper(tester, vLabel).rowExtent, greaterThan(closed));
   });
 
+  /// ↩️A conte row's grip was pinned beside it: a's conte renamed while b's
+  /// head was kept. F-343 makes that rename the seat's in every cut, so the
+  /// head says the new name and is built again — no conte row is kept while
+  /// its grip would name another.
   testWidgets('🚨a kept S row\'s grip names the rows it carries as the track '
       'holds them at the press', (tester) async {
     final session = await pumpPanel(tester, film(seRows: 2));
@@ -430,50 +443,6 @@ void main() {
     expect([
       for (final chip in before.grip!()) chip.label,
     ], unorderedEquals(['S1', 'Rain']));
-  });
-
-  testWidgets('🚨a kept conte row\'s grip names the seat as the track holds '
-      'it at the press', (tester) async {
-    final session = await pumpPanel(
-      tester,
-      film(bConte: conte('b', name: 'Layout')),
-    );
-    session.selectCut(const CutId('b'));
-    await tester.pump();
-    final before = wrapper(tester, conteLabel);
-    // a's conte — the one that speaks for the seat — is renamed; b's, the
-    // head, is as it was.
-    session.repository.updateProject(
-      (project) => editTracks(
-        project,
-        (track) => track.copyWith(
-          cuts: [
-            for (final cut in track.cuts)
-              if (cut.id == const CutId('a'))
-                cut.copyWith(
-                  layers: [
-                    for (final layer in cut.layers)
-                      if (layer.id == const LayerId('a-conte'))
-                        layer.copyWith(name: 'Plan')
-                      else
-                        layer,
-                  ],
-                )
-              else
-                cut,
-          ],
-        ),
-      ),
-    );
-    session.notifyChanged();
-    await tester.pump();
-    expect(
-      wrapper(tester, conteLabel),
-      same(before),
-      reason: 'premise: the row is kept',
-    );
-
-    expect([for (final chip in before.grip!()) chip.label], ['Plan']);
   });
 
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '
