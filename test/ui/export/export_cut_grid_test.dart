@@ -86,6 +86,33 @@ void main() {
     expect(range, (3, 9));
   });
 
+  testWidgets('a range the IME commits shows half-width, the numbers and '
+      'the marks between them alone', (tester) async {
+    const field = ValueKey<String>('export-cut-grid-range');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: ExportCutGrid(
+              cuts: [for (var i = 1; i <= 4; i += 1) entry(i)],
+              isIncluded: (_) => true,
+              enabled: true,
+              onToggle: (_, _) {},
+              onAllIncluded: () {},
+              onRangeSelected: (_, _) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await composeDraft(tester, find.byKey(field), '１－３ａ');
+    await commitDraft(tester, '１－３ａ');
+
+    expect(tester.widget<TextField>(find.byKey(field)).controller!.text, '1-3');
+  });
+
   testWidgets('a 겸용 group is ONE cell: it prints the joined name and its '
       'cuts flip together', (tester) async {
     // 유저 2026-09-09: 「컷 리스트에도 한 칸 … 겸용컷 비포함이란게 불가능하도록」.
