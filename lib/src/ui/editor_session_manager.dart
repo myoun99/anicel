@@ -221,30 +221,7 @@ class EditorSessionManager extends ChangeNotifier
     activeCutControllers.rebuild();
     renderCaches.attach();
     playbackRig.attach();
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      followPlaybackCut,
-    );
-    // F-90: the cut under the playhead re-answers wherever the playhead or
-    // the cut can move; [CutUnderPlayhead.sync] publishes crossings only.
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      cutUnderPlayhead.sync,
-    );
-    editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
-    frameScrub.active.addListener(cutUnderPlayhead.sync);
-    addListener(cutUnderPlayhead.resync);
-    // …and answers now: the conte's plate reads its VALUE (F-248), where the
-    // sheet and the envelope only heard it — null until the first notify.
-    cutUnderPlayhead.resync();
-    // Where the playhead is drawn re-answers on every channel it moves on —
-    // after the cut follow above, so a tick that crosses into another cut
-    // is answered against the cut it landed in. A scrub move fires the
-    // editing cursor WITHOUT a session notify, so [playheadMoved], which
-    // carries it, is what keeps the playhead glued to the pointer.
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      playheadCursors.sync,
-    );
-    playheadMoved.addListener(playheadCursors.sync);
-    addListener(playheadCursors.sync);
+    _followThePlayhead();
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
     // it.
@@ -272,6 +249,31 @@ class EditorSessionManager extends ChangeNotifier
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+  }
+
+  /// What follows the playhead — the cut a run plays, the cut under it and
+  /// where it is drawn — listening on every channel it moves on, in this
+  /// order.
+  void _followThePlayhead() {
+    final playhead = playbackRig.playback.globalFrameIndexListenable;
+    playhead.addListener(followPlaybackCut);
+    // F-90: the cut under the playhead re-answers wherever the playhead or
+    // the cut can move; [CutUnderPlayhead.sync] publishes crossings only.
+    playhead.addListener(cutUnderPlayhead.sync);
+    editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
+    frameScrub.active.addListener(cutUnderPlayhead.sync);
+    addListener(cutUnderPlayhead.resync);
+    // …and answers now: the conte's plate reads its VALUE (F-248), where the
+    // sheet and the envelope only heard it — null until the first notify.
+    cutUnderPlayhead.resync();
+    // Where the playhead is drawn re-answers on every channel it moves on —
+    // after the cut follow above, so a tick that crosses into another cut
+    // is answered against the cut it landed in. A scrub move fires the
+    // editing cursor WITHOUT a session notify, so [playheadMoved], which
+    // carries it, is what keeps the playhead glued to the pointer.
+    playhead.addListener(playheadCursors.sync);
+    playheadMoved.addListener(playheadCursors.sync);
+    addListener(playheadCursors.sync);
   }
 
   @override
