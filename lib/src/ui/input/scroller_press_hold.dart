@@ -85,9 +85,10 @@ void holdThePressForItsScroller(
 /// every pull across it with its hold, and the panel could not be dragged
 /// that way again (🧪pinned in `an_inner_drag_never_leaks_out_test`).
 ///
-/// ↩️The timeline's rows and frames and the x-sheet were declared here
-/// too. Their axes take no drag of their own now — one [TwoAxisDrag] moves
-/// both at once (F-351) — so no press of theirs is left to hold.
+/// ↩️The timeline's rows and frames, the x-sheet and the conte panel were
+/// declared here too. Their axes take no drag of their own now — one
+/// [TwoAxisDrag] moves both at once (F-351) — so no press of theirs is left
+/// to hold.
 ///
 /// ⚠️Declared on the CONTROLLERS, so it names those two scrollers and no
 /// other: a list inside the panel is inside the pair, not one of it, and is

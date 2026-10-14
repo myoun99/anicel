@@ -2,11 +2,19 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -60,6 +68,33 @@ void main() {
     );
   }
 
+  /// The conte panel: thirty tracks, the last of them four hundred frames
+  /// long and the rest short, so the cells are mostly empty lanes.
+  Widget conte() => StoryboardPanel(
+    project: Project(
+      id: const ProjectId('a-drag-moves-a-sheet'),
+      name: 'a drag moves a sheet',
+      createdAt: DateTime.utc(2026, 10, 14),
+      tracks: [
+        for (var i = 0; i < 30; i += 1)
+          Track(
+            id: TrackId('track-$i'),
+            name: 'V${i + 1}',
+            cuts: [
+              Cut(
+                id: CutId('cut-$i'),
+                name: 'cut-$i',
+                duration: i == 29 ? 400 : 12,
+                canvasSize: const CanvasSize(width: 1280, height: 720),
+                layers: [drawing('draw-$i')],
+              ),
+            ],
+          ),
+      ],
+    ),
+    activeCutId: const CutId('cut-0'),
+  );
+
   /// Every sheet the app scrolls two ways.
   final sheets = <_Sheet>[
     (
@@ -73,6 +108,12 @@ void main() {
       panel: () => timeline(TimelineOrientation.vertical),
       outer: 'xsheet-layer-horizontal-viewport',
       inner: 'xsheet-frame-vertical-viewport',
+    ),
+    (
+      name: 'conte panel',
+      panel: conte,
+      outer: 'storyboard-vertical-viewport',
+      inner: 'storyboard-timeline-horizontal-viewport',
     ),
   ];
 
