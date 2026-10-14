@@ -234,8 +234,9 @@ class CelTextSession extends ChangeNotifier {
   ///
   /// 🚨F-344: TOLD ON [showing] ALONE. The plate is cut onto the cel's grid
   /// once it is asked for ([CelTextShown.plate]) — at the landing — and a
-  /// carry is no other text, so neither the settings nor anyone building
-  /// hears of it.
+  /// carry is no other text, so nobody building hears of it but whoever
+  /// shows where the text stands: the settings' X and Y, the digits alone
+  /// (`CelTextCommands.shownInHand`, F-164).
   void showMoved(
     CelTextMoveOrigin origin, {
     required int dx,

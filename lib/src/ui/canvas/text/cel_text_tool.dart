@@ -344,7 +344,9 @@ class CelTextTool extends ChangeNotifier {
   ///
   /// ⛔ITS OWN LINE, for [crossCarried]'s reason: a text a hand carries is
   /// no other text, so neither the panel is built again at every move nor
-  /// the settings. Whoever draws the text listens here.
+  /// the settings' rows. Whoever draws the text listens here — and whoever
+  /// shows where it stands, through the app's channel
+  /// (`CelTextCommands.shownInHand`).
   ValueListenable<CelTextShown?> get shownInHand => _shownInHand;
   final ValueNotifier<CelTextShown?> _shownInHand = ValueNotifier(null);
 

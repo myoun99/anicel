@@ -142,15 +142,17 @@ class _Reading {
     required this.options,
     required this.commands,
     required this.currentColorOf,
-  }) : news = Listenable.merge([?options, ?commands]);
+  }) : news = Listenable.merge([?options, ?commands, ?commands?.shownInHand]);
 
   final ValueNotifier<TextToolOptions>? options;
   final CelTextCommands? commands;
   final int Function()? currentColorOf;
 
   /// What can change what the section shows: the next text's values and
-  /// the hand. ⚠️Not the fonts: the list of faces is made when it OPENS,
-  /// and nothing on the row itself is read from them.
+  /// the hand — and what the hand shows, which a carry tells of alone
+  /// ([CelTextCommands.shownInHand]). ⚠️Not the fonts: the list of faces
+  /// is made when it OPENS, and nothing on the row itself is read from
+  /// them.
   final Listenable news;
 
   /// The values as they stand NOW — what a control's slice is read from,
