@@ -277,6 +277,41 @@ void main() {
       elsewhere.dispose();
     });
 
+    testWidgets('🚨and held by NO field — a control took the keyboard — the '
+        'text takes it back at its next change', (tester) async {
+      await pumpWithSettings(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      final control = FocusNode();
+      final entry = OverlayEntry(
+        builder: (_) => Positioned(
+          left: 0,
+          top: 0,
+          child: Focus(
+            focusNode: control,
+            child: const SizedBox(width: 8, height: 8),
+          ),
+        ),
+      );
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .overlay!
+          .insert(entry);
+      await pumpFrames(tester);
+      control.requestFocus();
+      await pumpFrames(tester);
+      expect(textHasTheKeyboard(tester), isFalse, reason: '⛔fixture');
+
+      textToolOf(tester).celTextsChanged();
+      await pumpFrames(tester);
+
+      expect(textHasTheKeyboard(tester), isTrue);
+      entry.remove();
+      await pumpFrames(tester);
+      control.dispose();
+    });
+
     testWidgets('🚨with letters SELECTED it reaches those alone — and the '
         'keyboard is the text\'s again once it is set', (tester) async {
       final c = await hiInHand(tester);

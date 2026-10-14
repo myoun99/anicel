@@ -195,10 +195,11 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// 🚨F-353 (유저 2026-10-14: 「텍스트 편집중인 상황에서 크기쪽 연필누르면
   /// 텍스트 선택되지 않은 상태」): letters TAKEN UP take the keyboard — the
   /// person pressed into a text. While they stay in hand it is taken back
-  /// from NOBODY only: a field the person opened to type a number into keeps
-  /// it until it closes, and gives it back then (`InlineNumericField`).
-  /// ↩️It was taken back at every change of the tool — a bake landing, a
-  /// setting set — from whoever held it.
+  /// from NOBODY only — from no text field: a field the person opened to
+  /// type a number into keeps it until it closes, and the keyboard comes
+  /// back as it leaves (`InlineNumericField`). ↩️It was taken back at every
+  /// change of the tool — a bake landing, a setting set — from whoever held
+  /// it.
   void _syncField() {
     final letters = _tool.letters;
     if (letters == null) {
